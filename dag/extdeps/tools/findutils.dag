@@ -1,0 +1,127 @@
+module extdeps.tools.findutils
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { String, NonEmptyStr, Int, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.crypto.hash { sha256sum_program }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/findutils/manual/html_mono/find.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.findutils",
+      decl_name: "find_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+fn find_program() -> ProgramIdentity = uncataloged_program(invocation: "find")
+
+// xargs SHIPS WITH findutils, not coreutils, which is why it is homed here beside find rather than
+// in extdeps.tools.gnu_coreutils. The pairing is the usual one: find -print0 emits NUL-separated
+// names so that a name containing a newline or a space cannot be split, and xargs -0 is the only
+// reader that consumes that encoding. Same PATH-resolved spelling reasoning as find_program above.
+data xargs_program: NonEmptyStr = "xargs"
+
+// -lname IS A GNU EXTENSION and it matches the TARGET of a symbolic link, not the link's own name --
+// which is the whole reason this operation exists rather than a plain -name walk. Its pattern is a
+// GLOB, so a bracketed literal such as socket:[12345] is read as a character class and matches
+// NOTHING: gunbc.build_cache_endpoint_observe records the measurement where exactly that produced a
+// zero that was then read as "the walk cannot be done". A caller passing a target pattern must
+// escape or wildcard its brackets, and this note is here so the next author meets that fact before
+// the empty result rather than after.
+//
+// THE DEPTH BOUND IS A PARAMETER AND HAS NO DEFAULT. An unbounded /proc walk is a different
+// operation with a different cost, and a caller that has not thought about the depth has not thought
+// about the walk.
+fn find_symlink_target_glob_command(
+  search_root: String,
+  max_depth: Int,
+  path_glob: String,
+  link_target_glob: String,
+) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: [
+      search_root,
+      "-maxdepth", to_string(max_depth),
+      "-path", path_glob,
+      "-lname", link_target_glob,
+    ],
+  )
+}
+
+// RUN ONE COMMAND OVER THE REGULAR FILES DIRECTLY IN A DIRECTORY THAT ONE USER OWNS. -maxdepth 1
+// keeps it to that directory, -type f excludes symlinks (find does not follow them by default), and
+// -user narrows it to entries the invoking principal can act on, so an entry another principal owns
+// is never handed to a command that would refuse it. `-exec ... {} +` batches the paths into as few
+// invocations as ARG_MAX admits; find exits nonzero when any invocation does.
+fn find_owned_regular_files_exec_argv(dir: String, owner: String, command: List<String>) -> List<String> {
+  concat(concat([find_program().invocation as String, dir, "-maxdepth", "1", "-type", "f", "-user", owner, "-exec"], command), ["{}", "+"])
+}
+
+// THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
+// size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
+// status is the one the caller reads.
+fn find_regular_file_sizes_argv(root: String) -> List<String> {
+  [find_program().invocation as String, root, "-type", "f", "-printf", "%s %P\n"]
+}
+
+
+// THREE READS OF ONE TREE THAT TOGETHER DESCRIBE ITS CONTENT: every regular file's sha256 (batched
+// through sha256sum by `-exec ... {} +`, printed as `<hex>  <absolute path>`), every regular file
+// with its owner-execute bit set (`x <relative path>`), and every symbolic link with its target
+// (`l <relative path> -> <target>`). %P is the path with the starting point removed; the printf
+// escape \n is find's own, so the argv word carries a backslash and an n, not a newline.
+fn find_regular_files_sha256_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "f", "-exec", sha256sum_program().invocation as String, "{}", "+"])
+}
+
+fn find_owner_executable_files_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "f", "-perm", "-u+x", "-printf", "x %P\\n"])
+}
+
+fn find_symlink_targets_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "l", "-printf", "l %P -> %l\\n"])
+}
+
+// THE REGULAR FILES UNDER A ROOT WITH THEIR SIZE AND MODIFICATION TIME, ONE
+// `<size>\t<mtime>\t<relative path>` LINE EACH, AND NOTHING READ BUT METADATA. Every -printf
+// directive here is answered from the inode find already holds from its own stat(2) of the entry
+// (find manual, "Format Directives"): %s is st_size in bytes, %T@ is st_mtime as seconds since the
+// epoch with a fractional part, %P is the path with the starting point removed. No directive opens
+// the file, and the expression carries no action that runs another program, so the command reads
+// no file content -- find_command_runs_another_program below is how a consumer checks the second
+// half on the value rather than on this note. The path is LAST so a name holding a tab survives as
+// the rest of the line; the escapes are find's own, so the argv word carries a backslash and a
+// letter, never a control character.
+fn find_regular_file_size_mtime_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "f", "-printf", "%s\\t%T@\\t%P\\n"])
+}
+
+// THE ACTIONS THAT MAKE find RUN ANOTHER PROGRAM ON WHAT IT MATCHED (find manual, "Run Commands"):
+// -exec and -execdir, and their prompting forms -ok and -okdir. find itself reads directory entries
+// and inodes; every content reader it can reach -- cat, sha256sum, grep -- arrives through one of
+// these four. find_regular_files_sha256_command above is a real builder that uses one.
+data find_program_running_actions: List<String> = ["-exec", "-execdir", "-ok", "-okdir"]
+
+fn find_command_runs_another_program(command: ArgvCommand) -> Bool {
+  any(command.arguments, a => any(find_program_running_actions, x => a == x))
+}

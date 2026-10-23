@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_cause_asserted_by_symbol_literal_cannot_go_red
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_cause_asserted_by_symbol_literal_cannot_go_red: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cause_asserted_by_symbol_literal_cannot_go_red" as NonEmptyStr,
+
+  receipts: [
+    "a control asserts a refusal cause by symbol literal without importing the declaration, so the assertion compares SPELLINGS and stays green when the cause row is deleted or renamed (INVALID STATE: a witness matches a typed refusal's cause against ^name; ^name mints a Symbol from text rather than resolving a binding; so the control passes whether or not any declaration of that name exists, and the module's strongest-looking evidence — a refusal matched BY NAME rather than by a Bool — is the evidence least able to notice that its subject is gone)",
+
+    "MEASURED, gunbc#11042, and it is the receipt that makes this a class rather than a worry. Two cause rows, ancestry_build_path_unresolved and ancestry_successor_build_path_pinned, were deleted from the entire tree by an unrelated edit — an anchor-to-anchor text slice that took more than intended. The module still typechecked, the floor still ran, and EVERY CONTROL ASSERTING THOSE CAUSES STAYED GREEN ACROSS TWO PUSHES. The count of passing controls was identical before and after a real defect, which is the precise property that makes a green uninformative. Found by review, not by the suite. ",
+
+    "THE FALSIFICATION PASSES DID NOT CATCH IT EITHER, and that is the part worth carrying forward. Disabling a wall clause is the standard discriminating test here, and it still produced a refusal — just a differently spelled one — so the control flipped for the right reason while the missing declaration stayed invisible. A falsification that perturbs the BEHAVIOUR cannot detect a defect in what the assertion RESOLVES AGAINST. The two need separate evidence. ",
+
+    "DISTINGUISHING FACT ABOUT THE INSTRUMENT, because this class hides preferentially from one verification route. claim_batch over a witness entry resolves the module closure and never runs the dag parse sweep, so grain and resolution defects in a touched module are invisible to it while every witness reports PASS. A lane whose local loop is claim_batch alone will see this class only when CI or a reviewer reaches it. v1_src_dag_parse is the gate that sees the parse phase, and it is worth FALSIFYING before it is trusted — a planted body annotation must be located, or its silence carries no information. ",
+
+    "MITIGATION, available today and cheap: import every cause row the witness asserts, by name, from the module that declares it. A deleted or renamed row then fails to resolve at import and the file goes red at typecheck rather than passing against a string. This is validation-shaped — it depends on the author importing what they assert — but it converts a silent green into a loud refusal at the earliest phase that can see it. ",
+
+    "THE CEILING IS NOT SIMPLY MAKING ^name RESOLVE, and proposing that without the tension would be wrong. A symbol literal minting from text is DELIBERATE and load-bearing: v1_compiler.cli_run carries a test asserting exactly that ^probe is a symbol literal and not a reference to whatever declares fn probe, because symbols are used as opaque tags in positions where no declaration exists or should be required. Making ^ resolve against the namespace would refuse every legitimate tag. So the honest climb is not at the SYMBOL but at the CAUSE PARAMETER: a refusal carrier whose cause field admits only inhabitants minted from declared cause rows makes the invalid state unwritable without touching symbol literals anywhere else. NEXT TRIGGER: the cause field of a typed refusal carrying a value type whose constructors are the declared cause rows, rather than Symbol — named at v2.compiler.self_host.ancestry NativeGenerationRefused field cause as the first subject, with the general carrier owed a home before the class can be called structural corpus-wide. ",
+
+    "NEIGHBOUR, named so the boundary is decidable rather than left to a later reader. gunbc.recurring_failure_mode.by_name_evaluation_is_a_string_not_a_binding owns the case where a name passed as a STRING to a by-name evaluation reaches a namespace the context cannot serve — its harm is a runtime lookup against an unreachable scope. This class is not an evaluation at all: nothing is looked up, the symbol is compared as an identity, and the harm is that a CONTROL cannot fail. Same family — a name standing where a binding was meant — different invalid state, different harm, different remedy. ",
+  ],
+
+  evidence: [],
+}

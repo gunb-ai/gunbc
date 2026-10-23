@@ -1,0 +1,50 @@
+module gunbc.bootstrap_operation_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// ENUMERATED BOOTSTRAP RESIDUE, at declaration grain. This is reducible debt, never host physics.
+// Purpose: cross the frozen seed/successor import-closure boundary without importing or mirroring
+// the successor operation. Realization: the retained v1 resolve/eval engine, in process. Public
+// exposure: none; argv exposes only `build PROGRAM`. Forbidden growth: no devboot semantics,
+// producer selection, transport logic, or v2 types may enter the seed. This narrowly supersedes
+// target_invocation_seed_growth only for BootstrapSuccessorOperation; OrdinaryTargetProducer
+// remains ineligible for interpreter execution.
+data bootstrap_operation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "run_bootstrap_dag_operation",
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "bootstrap_invocation_receipt_path",
+      field: WholeDeclaration,
+    },
+  ],
+  reason: "PURPOSE admission serves the v2 self-host program. Classified against the five refused v1 classes: NewLanguageBehavior -- no compiler semantics change; NewCompatibilityObligation -- no predecessor route is retained; NewEscapeHatchOrAdmissionRow -- no, the binding is closed to BootstrapSuccessorOperation and every missing fact refuses; SeedFeatureCompletion -- no; PublicSurfaceGrowth -- yes, one modeled build verb. The successor operation transitively imports v2 and cannot enter the frozen seed closure, while mirroring it would duplicate its semantics. One generic in-process launcher therefore consumes only modeled source/declaration identity, named String bindings, an internal receipt channel, and ProcessExit. It names no product operation, host, transport, cache, provider, or interpreter selector.",
+  owning_dissolution_lane: "BT-5-product-bootstrap-promotion" as RoadmapNodeId,
+  trigger: "Delete this declaration and justification as soon as a promoted non-v1 gunbc artifact executes the same product-build operation without the v1 interpreter on its production path: run `gunbc build gunbc` through that promoted product with the v1 interpreter unavailable and observe the same cold production, warm reuse, digest verification, executable readback, and typed refusal distinctions. BT-7 is the hard outer bound, not a retention target.",
+  current_boundary: "src/v1/stage0/src/cli_run.rs run_bootstrap_dag_operation; modeled only by gunbc.cli_dispatch_surface CliInvokesBootstrapDagOperation; no import-reachable edge from src/v1 to gunbc.devboot or v2.*",
+}
+
+// The carrier, grammar, dispatch envelope, realization selection, and executor-name construction
+// are generated. The existing host arm bodies remain hand-retained behind this one thin host
+// boundary, and shipped main performs one generic delegation. The impl is not separately citable
+// until std.decl_ref grows an impl-block identity; RetainedCliHost is its exact declaration owner,
+// and this sentence keeps that uncitable residue explicit rather than silently dropping it.
+data cli_dispatch_host_boundary_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.main",
+      decl_name: "RetainedCliHost",
+      field: WholeDeclaration,
+    },
+  ],
+  reason: "PURPOSE admission serves the v2 self-host program by moving the complete shipped CLI grammar and realization selection onto the installed generated carrier. Generated: CLI grammar, dispatch envelope, realization selection, and collision-free executor-name construction. Hand-retained: existing host arm bodies, the RetainedCliHost trait impl that exposes them to the carrier, and one generic delegation in the already-existing main function. No command identity or build route is selected in hand Rust.",
+  owning_dissolution_lane: "BT-7-cli-hollowing" as RoadmapNodeId,
+  trigger: "Delete RetainedCliHost, its impl, this justification, and the main.rs divergence row when retained host bodies are themselves emitted or removed, the shipped main is fully produced by the admitted generated boundary, and candidate main.rs is byte-identical to committed main.rs.",
+  current_boundary: "src/v1/stage0/src/main.rs RetainedCliHost and its CliDispatchHost impl; generated gunbc_cli_dispatch_generated.rs is the sole grammar and realization-selection carrier",
+}

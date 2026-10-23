@@ -1,0 +1,10 @@
+module std.hermetic_replay
+
+type PublishedMockCase {
+
+  operation_key: String
+
+  service: String
+  operation: String
+  case_id: Int
+}

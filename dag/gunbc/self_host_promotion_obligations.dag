@@ -1,0 +1,133 @@
+module gunbc.self_host_promotion_obligations
+
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.dissolution {
+  DissolutionCondition,
+  bound_dissolution,
+  dissolution_description,
+  dissolution_is_bound,
+  unbound_dissolution
+}
+import std.types { Bool, List, NonEmptyStr, String }
+
+// THESE ARE ACKNOWLEDGED PREEXISTING DEBT, NOT NEW SCAFFOLDS (DESIGN §5). Neither
+// obligation was created by the change that registers it: the artifact-axis
+// incompleteness was DISCOVERED by measurement on gunbc#8181, and the frontier
+// numerator's inability to distinguish producers is a property of the disposition
+// carrier as it already stands. They are registered here so that documenting
+// previously hidden debt never reads as creating it — the incentive that would
+// otherwise keep it hidden.
+//
+// They are registered rather than left in a session ledger for one blunt reason: an
+// archived session takes its unregistered obligations with it, and both of these
+// survive the lane that found them.
+//
+// Neither is on the critical path to the first frontier flip. Artifact-axis
+// sensitivity is already fail-closed in the direction that matters — false
+// invalidation, never false agreement — so a first flip may proceed by pinning the
+// build directory. The producer-provenance obligation gates DECLARING n/27, not
+// producing it, and the numerator is 0 with nothing currently able to promote.
+type PromotionObligation {
+  subject: DeclarationRef
+  claim_at_risk: NonEmptyStr
+  condition: DissolutionCondition
+}
+
+// THE SIX DECLARED AXES DO NOT DETERMINE THE ARTIFACT. A Rust debug binary embeds its
+// build directory, so identical source built in two directories yields different bytes
+// while every declared axis agrees; the same directory rebuilt yields byte-identical
+// output (measured by hand twice, gunbc#8181). The identity therefore identifies a
+// generation UP TO BUILD LOCATION.
+//
+// The condition is UNBOUND deliberately. Two honest remedies exist — remap the path out
+// of the emitted artifact, or name build path in build_configuration — and neither has
+// a declaration to bind to yet. Binding it to a decl nobody has designed would be a
+// checkable trigger impersonating a decision; unbound prose that cannot report itself
+// fired is the honest arm here.
+data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
+  subject: decl_field_ref(
+    module_path: "v2.compiler.self_host.generation",
+    decl_name: "GenerationIdentity",
+    field_name: "build_configuration"
+  ),
+  claim_at_risk: "Two generations agreeing on all six declared axes may still produce different artifact bytes, so artifact-digest equality across hosts or workspaces is not a reproducibility oracle." as NonEmptyStr,
+  condition: unbound_dissolution(
+    description: "🟡 dissolve-on: EITHER the emitted artifact is built with the path remapped out (making the declared axes an actual determinant of the bytes), OR build path is named as a component of build_configuration (making the axis tell the truth about what it covers). Papering over it inside a comparison is not one of the remedies." as NonEmptyStr
+  ),
+}
+
+// THE FRONTIER NUMERATOR CAN COUNT SEED EVIDENCE. The promoted disposition is generic
+// over its producer, and that producer model admits V1SeedEmitter, so a fully green
+// seed-emitted bundle is REPRESENTABLE in a promoted row. Nothing is miscounted today
+// because the numerator is 0 and no module can currently reach emission — which is
+// exactly why this must be closed before the first flip rather than after it, when the
+// first promoted row would be the thing under scrutiny.
+//
+// The remedy is a construction wall, not a check: a V2SelfHosted disposition whose
+// authorization must carry a V2SelfHostProducer with NO V1 arm, so seed evidence is
+// unrepresentable rather than rejected downstream, with v2_self_hosted_promotions as
+// the sole authoring point from which the roster, the registry and the count all
+// derive. That single authoring point is what the condition binds to: it cannot appear
+// without the carrier it projects.
+//
+// THE BOUND REF NAMES A DECLARATION THAT DOES NOT EXIST YET, AND THAT IS THE POINT.
+// DeclarationAppears fires when the ref is FOUND among present declarations, so a
+// trigger bound to something already in the tree reports DissolutionFired on the day it
+// is written — a false discharge of an obligation nobody has done any work on. Binding
+// to the live roster it means to replace (emitter_produced_frontier_promotions, which
+// exists today) would do exactly that. Every bound trigger in this corpus is a forward
+// reference for the same reason: extdeps.dhcp.v4 binds to extdeps.network.mac
+// parse_mac_address, which has neither a definition nor a module, and its ipv4 sibling
+// is recorded as having FIRED when its named trigger finally landed.
+//
+// The residual risk is real and worth naming: if the carrier is built under a different
+// name, this trigger never fires and the obligation stays pending under a key nobody
+// uses. That is a property of every bound trigger, mitigated the same way — the name
+// here is the specified authoring point, not a guess, and it is stated in the paragraph
+// above so a future author renaming it knows to move this row with it.
+// RE-HOMED, NOT RETIRED (self-host frontier roster cut). Both refs named
+// v2.compiler.self_host.frontier, which is deleted, so the subject pointed at a ghost
+// and — worse — the bound trigger became one that can never fire: DeclarationAppears
+// waits for a declaration in a module nobody will re-create, which is a permanently
+// pending obligation wearing a checkable trigger.
+//
+// The obligation itself survives the roster because it was never about the roster. The
+// hazard is that a self-host promotion can be granted on evidence produced by the v1
+// seed, and its live subject is the producer axis in
+// v2.compiler.self_host.emitter_producer_provenance, whose EmitterProducer still carries
+// a V1SeedEmitter arm. The "n/27" framing goes with the roster; the hazard does not.
+// The trigger keeps its declaration name and moves to the module that is now the
+// specified authoring point, per the paragraph above about a bound ref naming where the
+// carrier will be authored rather than where it is.
+data frontier_numerator_admits_seed_evidence: PromotionObligation = PromotionObligation {
+  subject: decl_ref(
+    module_path: "v2.compiler.self_host.emitter_producer_provenance",
+    decl_name: "EmitterProducer"
+  ),
+  claim_at_risk: "A self-host promotion is supposed to mean a v2 emitter produced the module; the producer axis still carries a V1SeedEmitter arm, so a promotion granted on seed-produced evidence is representable." as NonEmptyStr,
+  condition: bound_dissolution(
+    ref: decl_ref(
+      module_path: "v2.compiler.self_host.emitter_producer_provenance",
+      decl_name: "v2_self_hosted_promotions"
+    )
+  ),
+}
+
+data self_host_promotion_obligations: List<PromotionObligation> = [
+  artifact_axis_omits_build_path,
+  frontier_numerator_admits_seed_evidence,
+]
+
+fn obligation_is_registered(o: PromotionObligation) -> Bool {
+  !(dissolution_description(condition: o.condition) == "")
+    && !((o.claim_at_risk as String) == "")
+    && !((o.subject.decl_name as String) == "")
+}
+
+// A BOUND condition names a declaration whose appearance retires the obligation; an
+// UNBOUND one carries prose that cannot report itself fired. The projection exists so a
+// consumer can tell the two apart without re-matching the coproduct, and so that an
+// obligation silently converted from bound to unbound is visible rather than absorbed.
+fn obligation_reports_itself_fired(o: PromotionObligation) -> Bool {
+  dissolution_is_bound(condition: o.condition)
+}

@@ -1,0 +1,128 @@
+module test.claim.workspace_commissioning_transaction_witness
+
+import std.types { Bool, NonEmptyStr, Int }
+import std.measure { hardware_thread_count }
+import gunbc.workspace_commissioning {
+  WorkspaceCommissioningAdmission, WorkspaceCommissioningReady,
+  workspace_commissioning_admit, WorkspaceCommissioningAuthorizedPlan,
+  WorkspacePriorPurposeWithdrawn, WorkspaceNoPriorObligations,
+}
+import gunbc.workspace_commissioning_transaction {
+  WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordReading,
+  WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable,
+  WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted,
+  WorkspaceCommissioningPrepare, WorkspaceCommissioningWriteReadiness, WorkspaceCommissioningCommit,
+  WorkspaceCommissioningAlreadyCommitted, WorkspaceCommissioningTransitionRefused,
+  WorkspaceCommissioningTransition, workspace_commissioning_next,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import product.host_identity { HostIdentity }
+import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max }
+import gunbc.fleet_host_budget { HostAllocationConserves }
+import product.fabric.sanitation { CellId, CellReady, CellQuarantined, required_sanitation_facts, SlotScopedNetwork, FactConfirmed }
+import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned, CellSettled }
+
+fn transaction_fixture_provenance() -> WorkspaceCommissioningProvenance {
+  WorkspaceCommissioningProvenance {
+    slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 13 },
+    plan_hash: "fixture-plan" as NonEmptyStr,
+    source_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
+    installed_tree_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" as NonEmptyStr,
+    controller_digest: "fixture-controller" as NonEmptyStr,
+    guest_image_digest: "fixture-image" as NonEmptyStr,
+    cpu_budget: hardware_thread_count(count: 4), attempt_envelope: gunbc_microvm_shakedown_slot_memory_max,
+    no_swap: true, sanitation_observation: "fixture-initial-sanitation" as NonEmptyStr,
+  }
+}
+
+fn transaction_fixture_admission() -> WorkspaceCommissioningAdmission {
+  let p = transaction_fixture_provenance()
+  workspace_commissioning_admit(slot: p.slot,
+    authority: WorkspaceCommissioningAuthorizedPlan { slot: p.slot, plan_hash: p.plan_hash },
+    budget: HostAllocationConserves, cpu_budget: p.cpu_budget, attempt_envelope: p.attempt_envelope,
+    prior_purpose: WorkspacePriorPurposeWithdrawn, obligations: WorkspaceNoPriorObligations { settled_generation: 0 },
+    sanitation: map(required_sanitation_facts(scope: SlotScopedNetwork), f => FactConfirmed { fact: f }))
+}
+
+fn transaction_fixture_next(transaction: WorkspaceCommissioningRecordReading, readiness: CellReadinessStoreRead) -> WorkspaceCommissioningTransition {
+  match transaction_fixture_admission() {
+    WorkspaceCommissioningReady { commissioned } => workspace_commissioning_next(admitted: commissioned,
+      provenance: transaction_fixture_provenance(), transaction: transaction, readiness: readiness)
+    _ => WorkspaceCommissioningTransitionRefused { reason: "fixture admission failed" }
+  }
+}
+
+fn transaction_fixture_ready(generation: Int) -> CellReadinessStoreRead {
+  StoreRead { ownership: StoreRootOwned, records: [CellSettled {
+    cell: "srv1-13" as CellId, generation: generation, readiness: CellReady { cell: "srv1-13" as CellId },
+  }] }
+}
+
+test fn commissioning_prepares_before_any_readiness_write() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordAbsent,
+    readiness: StoreRead { ownership: StoreRootOwned, records: [] }) {
+    WorkspaceCommissioningPrepare { record: WorkspaceCommissioningPrepared { provenance } } => provenance == transaction_fixture_provenance()
+    _ => false
+  }
+}
+
+test fn interrupted_prepare_resumes_readiness_without_exposing_supply() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordRead {
+    record: WorkspaceCommissioningPrepared { provenance: transaction_fixture_provenance() } },
+    readiness: StoreRead { ownership: StoreRootOwned, records: [] }) {
+    WorkspaceCommissioningWriteReadiness { write: _ } => true
+    _ => false
+  }
+}
+
+test fn interrupted_readiness_write_resumes_commit_without_rewriting_readiness() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordRead {
+    record: WorkspaceCommissioningPrepared { provenance: transaction_fixture_provenance() } },
+    readiness: transaction_fixture_ready(generation: 0)) {
+    WorkspaceCommissioningCommit { record: WorkspaceCommissioningCommitted { provenance } } => provenance == transaction_fixture_provenance()
+    _ => false
+  }
+}
+
+test fn committed_commissioning_survives_later_cell_generations_without_reset() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordRead {
+    record: WorkspaceCommissioningCommitted { provenance: transaction_fixture_provenance() } },
+    readiness: transaction_fixture_ready(generation: 4)) {
+    WorkspaceCommissioningAlreadyCommitted => true
+    _ => false
+  }
+}
+
+test fn prepared_commissioning_cannot_reset_an_advanced_generation() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordRead {
+    record: WorkspaceCommissioningPrepared { provenance: transaction_fixture_provenance() } },
+    readiness: transaction_fixture_ready(generation: 4)) {
+    WorkspaceCommissioningTransitionRefused { reason } => reason.contains("advanced generation")
+    _ => false
+  }
+}
+
+test fn orphan_readiness_does_not_substitute_for_commissioning_provenance() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordAbsent, readiness: transaction_fixture_ready(generation: 0)) {
+    WorkspaceCommissioningTransitionRefused { reason } => reason.contains("without commissioning provenance")
+    _ => false
+  }
+}
+
+test fn unreadable_provenance_is_not_an_absent_transaction() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordUnreadable { reason: "denied" },
+    readiness: StoreRead { ownership: StoreRootOwned, records: [] }) {
+    WorkspaceCommissioningTransitionRefused { reason } => reason == "denied"
+    _ => false
+  }
+}
+
+test fn prepared_commissioning_does_not_loosen_quarantine() -> Bool {
+  match transaction_fixture_next(transaction: WorkspaceCommissioningRecordRead {
+    record: WorkspaceCommissioningPrepared { provenance: transaction_fixture_provenance() } },
+    readiness: StoreRead { ownership: StoreRootOwned, records: [CellSettled { cell: "srv1-13" as CellId,
+      generation: 0, readiness: CellQuarantined { cell: "srv1-13" as CellId, unproven: [] } }] }) {
+    WorkspaceCommissioningTransitionRefused { reason } => reason.contains("quarantine")
+    _ => false
+  }
+}

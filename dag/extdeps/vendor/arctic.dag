@@ -1,0 +1,50 @@
+module extdeps.vendor.arctic
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.arctic.de"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.arctic",
+      decl_name: "arctic",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THIS ROW CARRIES A TRADING NAME IN A FIELD NAMED legal_name, AND THAT IS A KNOWN CATEGORY
+// MISMATCH RATHER THAN CONSERVATISM. An earlier revision of this comment called it the careful
+// choice; it is not. "ARCTIC" is the brand the product copy prints, and Vendor<Domain> offers one
+// NonEmptyStr called legal_name, so there is nowhere to say "the brand is known and the entity is
+// not" - the carrier forces every vendor to assert a legal entity whether one was established or
+// not.
+//
+// WHAT WAS AND WAS NOT VERIFIED, because three candidate strings exist and they are not
+// interchangeable. The product page's own specification block does not name a legal entity at all.
+// A company history page names "ARCTIC Cooling GmbH" - a 2001 FOUNDING entity inside a biography
+// sentence, which is not a claim about who manufactures this part today. A review reported
+// "ARCTIC (HK) Ltd." as manufacturer with "ARCTIC GmbH" as EU representative; that was not
+// reproducible from the fetched page here, so it is recorded as unconfirmed rather than adopted.
+// Writing any of the three into this field would assert a manufacturer identity on evidence that
+// does not establish one, and the two that look most authoritative disagree with each other.
+//
+// SO THE STRING IS UNDER-SPECIFIED RATHER THAN FALSE - it names a real thing at the wrong grain -
+// and the fix is a carrier change, not a better string. NEXT-RUNG TRIGGER: split the field into
+// VendorLegalEntity | VendorTradingNameOnly and give the ~31 read sites one display accessor. That
+// migration touches 49 files across board parts, SCM issuers and hardware vendors, none of which
+// are this module's subject, so it is tracked separately rather than folded into a fan change.
+// Until it lands this row is a declared mismatch and not evidence that ARCTIC is a legal entity.
+data arctic: Vendor<Hardware> = Vendor { legal_name: "ARCTIC" }

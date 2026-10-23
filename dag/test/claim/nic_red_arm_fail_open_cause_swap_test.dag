@@ -1,0 +1,66 @@
+module test.claim.nic_red_arm_fail_open_cause_swap_test
+
+// THE FAIL-OPEN RED ARM, PINNED.
+//
+// tools.namespace_import_closure_behavioral_transport asserted `red_arm == false`. That is satisfied
+// by the subject genuinely refusing to build AND by the harness never running -- and because it is
+// the RED arm, the harness failure made it PASS. The control that exists to detect vacuity was
+// vacuous exactly when the bench was broken.
+//
+// These construct the standings directly, so the control needs no toolchain, no scratch directory and
+// no gunbc binary, and it routes on the required floor even though the receipt it guards does not.
+
+import std.logic { Bool }
+import v2.std.subject_evidence {
+  EvidenceInstrumentRefused,
+  EvidenceSubjectCompleted,
+  EvidenceSubjectUnreached
+}
+import tools.namespace_import_closure_behavioral_transport {
+  NicCrateBuilds,
+  NicCrateDoesNotBuild,
+  NicEmitRunDidNotSucceed,
+  NicScratchDirNotMade,
+  nic_arm_builds,
+  nic_arm_refuses
+}
+
+// THE OLD PREDICATE, RESTATED EXECUTABLY. Under `red_arm == false`, a broken bench and a genuine
+// refusal agree -- and both would have SATISFIED the red arm. nic_arm_builds is that old predicate's
+// surviving half, so this witness reproduces the collapse rather than citing it.
+test fn a_broken_bench_and_a_genuine_refusal_agree_on_the_old_predicate() -> Bool {
+  let bench_broken = nic_arm_builds(evidence: EvidenceInstrumentRefused { cause: NicScratchDirNotMade })
+  let genuine_refusal = nic_arm_builds(evidence: EvidenceSubjectCompleted { outcome: NicCrateDoesNotBuild })
+  bench_broken == genuine_refusal
+}
+
+// THE REPAIR. The red arm now REFUSES a broken bench instead of being satisfied by it. Drop the
+// produced_a_verdict conjunct from nic_arm_refuses and this goes red -- which is the point, because
+// dropping it is precisely the edit that silently restores the fail-open.
+test fn red_arm_refuses_a_broken_bench() -> Bool {
+  !nic_arm_refuses(evidence: EvidenceInstrumentRefused { cause: NicScratchDirNotMade })
+}
+
+// ...and still passes for the thing it is actually testing: a subject that answered, with an answer
+// that declines to license a build.
+test fn red_arm_passes_a_genuine_refusal() -> Bool {
+  nic_arm_refuses(evidence: EvidenceSubjectCompleted { outcome: NicCrateDoesNotBuild })
+}
+
+// A BUILDING CRATE MUST NOT SATISFY THE RED ARM. This is the arm's original purpose and the one that
+// would go red if the fixture stopped exercising cross-module resolution at all.
+test fn red_arm_rejects_a_building_crate() -> Bool {
+  !nic_arm_refuses(evidence: EvidenceSubjectCompleted { outcome: NicCrateBuilds })
+}
+
+// AN EMIT RUN THAT DID NOT SUCCEED MUST NOT SATISFY THE RED ARM, and this is the arm that would have
+// re-opened the fail-open through the OUTCOME TYPE rather than through the conjunction.
+//
+// A failed gunbc run means either the emitter refused -- the red arm's expected answer -- or the
+// binary was absent and nothing ran. Modelled as a subject outcome, it would license the refusal claim
+// and a missing binary would turn the red arm green again. It is a no-verdict instead, so it satisfies
+// neither arm. Move NicEmitRunDidNotSucceed back into NicEmissionOutcome and this goes red.
+test fn a_failed_emit_run_satisfies_neither_arm() -> Bool {
+  let unreached = EvidenceSubjectUnreached { cause: NicEmitRunDidNotSucceed }
+  !nic_arm_refuses(evidence: unreached) && !nic_arm_builds(evidence: unreached)
+}

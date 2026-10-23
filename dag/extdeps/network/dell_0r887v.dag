@@ -1,0 +1,23 @@
+module extdeps.network.dell_0r887v
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.nic_attachment { NicAttachmentClass, VendorDaughterCard }
+
+// The part owns its attachment, independently of Ampere or any other card.
+// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// The cited Dell network-adapter table identifies R887V as rNDC.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https, locator: "dl.dell.com/manuals/all-products/esuprt_software/esuprt_it_ops_datcentr_mgmt/dell-management-solution-resources_White-Papers_en-us.pdf",
+} }
+
+data dell_0r887v_attachment: NicAttachmentClass = VendorDaughterCard { form_authority: extdeps_external_authority_anchor, form_name: "rNDC" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.dell_0r887v", decl_name: "dell_0r887v_attachment", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

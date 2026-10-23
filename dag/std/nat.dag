@@ -1,0 +1,297 @@
+module std.nat
+import std.optional { Present }
+
+import std.types { List, Bool, Int, String }
+import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater }
+
+// THE NATURALS, DECLARED AS WHAT THEY ARE (operator ruling A, 2026-09-30). The carrier is the
+// accepted inductive definition -- zero, and the successor of a natural -- and it is the ONLY
+// declaration of Nat in the corpus. It used to be two: this module's
+// `CommutativeSemiring<Magnitude>` over an opaque, constructorless Magnitude (a name standing where
+// a definition was available, DESIGN section 2), and v2.std.nat's Peano coproduct. The semiring is
+// not the carrier's body; it is something the carrier INHABITS (nat_semiring below, and the
+// std.algebra carrier row the operators derive from).
+//
+// THE HOST REPRESENTATION IS A REALIZATION FACT, NOT A REASON FOR AN OPAQUE CARRIER (DESIGN section
+// 3). gunbc.structural_realization_bindings kernel_grounding_rows binds this declaration to the
+// kernel integer, and the seed folds every Zero and Succ -- constructed or matched -- into integer
+// form before any realizer reads the tree (v1.compiler.infer ground_kernel_views). No route builds
+// a unary tower, so the operations below are written with the host operators and cost what an
+// integer operation costs; only nat_cata, whose meaning IS n applications, is linear in n.
+type Nat
+  = Zero
+  | Succ { prev: Nat }
+
+// THE ELIMINATOR: succ applied n times to zero. Accumulating, so the recursion is a tail call and
+// its depth does not grow with n.
+fn nat_cata<A>(n: Nat, zero: A, succ: fn(A) -> A) -> A {
+  match n {
+    Zero => zero
+    Succ { prev: p } => nat_cata(n: p, zero: succ(zero), succ: succ)
+  }
+}
+
+fn nat_add(a: Nat, b: Nat) -> Nat {
+  a + b
+}
+
+fn nat_mul(a: Nat, b: Nat) -> Nat {
+  a * b
+}
+
+fn nat_compare(a: Nat, b: Nat) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn nat_max(a: Nat, b: Nat) -> Nat {
+  if a > b { a } else { b }
+}
+
+fn nat_min(a: Nat, b: Nat) -> Nat {
+  if a < b { a } else { b }
+}
+
+// TRUNCATED SUBTRACTION (monus) WITH A TYPED UNDERFLOW OUTCOME. The naturals are not closed under
+// subtraction; a - b for b > a has no answer here and says so as its own arm, never a wrapped or
+// fabricated Zero.
+type NatSubtraction
+  = NatDifference { value: Nat }
+  | NatSubtrahendExceedsMinuend
+
+// THE ONE PLACE A DIFFERENCE OF NATURALS RE-ENTERS THE NATURALS. `a - b` is an Int
+// (std.coercion dag_subtraction_refinement), and an Int crosses into a Nat at the field position
+// below. The crossing is sound only because the branch has already ruled out b > a; it is written
+// inside that branch rather than behind a callable helper, so no caller can reach it without the
+// ordering having been established (review 73960). The crossing itself is still admitted implicitly
+// by the checker -- gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
+fn nat_sub(a: Nat, b: Nat) -> NatSubtraction {
+  if b > a {
+    NatSubtrahendExceedsMinuend
+  } else {
+    NatDifference { value: a - b }
+  }
+}
+
+// EUCLIDEAN DIVISION WITH A TYPED ZERO-DIVISOR OUTCOME. nat_div_rem is the general operation: a
+// Zero divisor is its own arm. nat_div_rem_by_succ is the TOTAL form for a divisor that is nonzero
+// BY CONSTRUCTION -- the caller supplies the divisor's predecessor, so the divisor Succ { prev }
+// cannot be Zero and no zero-divisor arm exists to handle (DESIGN section 4b, the top rung: the
+// invalid state has no constructor). A caller dividing by a literal that it knows is nonzero
+// (decimal conversion by ten) uses the by-succ form rather than matching a zero arm it cannot reach.
+type NatQuotient {
+  quotient: Nat
+  remainder: Nat
+}
+
+type NatDivision
+  = NatQuotientRemainder { quotient: Nat, remainder: Nat }
+  | NatDivisionByZero
+
+fn nat_div_rem(a: Nat, b: Nat) -> NatDivision {
+  match b {
+    Zero => NatDivisionByZero
+    Succ { prev: divisor_prev } =>
+      let q = nat_div_rem_by_succ(a: a, divisor_prev: divisor_prev)
+      NatQuotientRemainder { quotient: q.quotient, remainder: q.remainder }
+  }
+}
+
+fn nat_div_rem_by_succ(a: Nat, divisor_prev: Nat) -> NatQuotient {
+  let divisor = Succ { prev: divisor_prev }
+  NatQuotient { quotient: a / divisor, remainder: a % divisor }
+}
+
+// CEILING DIVISION, WITHOUT LEAVING THE NATURALS. The usual spelling `(a + b - 1) / b` subtracts,
+// and a difference of Nats is an Int (std.coercion dag_subtraction_refinement), so it cannot
+// return a Nat without a proof it does not have. Carrying the remainder instead stays in + and /,
+// which a Nat is closed under. A zero divisor has no quotient, so it is absent rather than
+// answered: each caller says what a zero divisor means in its own domain.
+fn nat_ceil_div(a: Nat, b: Nat) -> Nat? {
+  if b == 0 {
+    none
+  } else {
+    let carry = if a % b == 0 { 0 } else { 1 }
+    Present { value: a / b + carry }
+  }
+}
+
+// THE SEMIRING IS INHABITANCE. These two values are the witnesses that the naturals inhabit the
+// additive commutative monoid and the commutative semiring; nothing about the carrier's body says
+// so, and nothing needs to.
+data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
+  op: nat_add,
+  identity: Zero
+}
+data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
+  add: nat_add,
+  zero: Zero,
+  mul: nat_mul,
+  one: Succ { prev: Zero }
+}
+
+// AN ASCENDING RUN OF NATURALS IS ONE CONCEPT AND THIS IS ITS ONLY AUTHORITY. It lives beside Nat
+// rather than beside any consumer because the run is a fact about the naturals, not about runner
+// slots or DRAM channels; two consumers had each open-coded it as a bucket over hardcoded literal
+// lists, and both buckets were stranded at the widths their author happened to enumerate.
+//
+// AN EMPTY RUN IS AN ANSWER, NOT AN ABSENCE. lo > hi means the run between them is genuinely
+// empty -- there is no naturals-shaped question this function cannot express, so it never needs a
+// could-not-say arm and a caller reading [] here is reading a computed emptiness. That is the
+// property the bucketed forms did not have: they returned [] both for a genuinely empty run and
+// for a width they could not spell, which is the empty-observation narrow DESIGN section 5 names.
+// Callers that must distinguish "no work" from "cannot express the work" must not get that
+// distinction from this function; it has only the first meaning.
+// THE ACCUMULATOR IS THE COST SHAPE AND IT IS NOT INCIDENTAL. The naive form,
+// concat([lo], nat_range_inclusive(lo + 1, hi)), is QUADRATIC on this runtime: rc_list_concat
+// extends its LEFT operand by cloning every element of its RIGHT one, so consing a singleton onto
+// the recursive tail copies the whole tail at every step. Accumulating the other way round makes
+// the long list the left operand and the singleton the right, which clones one element per step.
+// DESIGN section 6 fixes a proven cost-shape defect regardless of the realized n -- n is 7 here
+// today, but a run of naturals is substrate and its n is whatever a future caller wants.
+fn nat_range_inclusive(lo: Nat, hi: Nat) -> List<Nat> {
+  nat_range_accumulate(lo: lo, hi: hi, acc: [])
+}
+
+fn nat_range_accumulate(lo: Nat, hi: Nat, acc: List<Nat>) -> List<Nat> {
+  if lo > hi {
+    acc
+  } else {
+    nat_range_accumulate(lo: lo + 1, hi: hi, acc: concat(acc, [lo]))
+  }
+}
+
+// THE DECIMAL DIGITS OF A NATURAL, AND ITS DECIMAL TEXT. These lived in v2.std.integer, where a
+// dag module compiled into the seed could not reach them (the seed's closure does not contain
+// src/v2), so a seed-emitted module had no declared route from a Nat to its text and an
+// interpolation hole over one fell back to v1's implicit stringify (DESIGN section 4, the coercion
+// law). A natural's decimal spelling is a fact about the naturals, so it lives beside Nat, at the
+// lowest layer that needs it (DESIGN section 3: a fact's home is its layer); v2.std.integer
+// imports the digit coproduct and its tables from here rather than declaring a second copy.
+type DecimalDigit
+  = D0
+  | D1
+  | D2
+  | D3
+  | D4
+  | D5
+  | D6
+  | D7
+  | D8
+  | D9
+
+fn decimal_digit_value(d: DecimalDigit) -> Int {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+// The Peano value of each decimal digit. Every arm is a kernel integer literal at a
+// Nat return boundary: the literal elaborates through the declared homomorphism
+// (gunbc.structural_realization_bindings literal_homomorphism_rows) to its Zero/Succ image --
+// this function is the return-position exemplar of std.literal_elaboration.
+fn decimal_digit_nat(d: DecimalDigit) -> Nat {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+// ONE GLYPH TABLE for the ten decimal digits, keyed on the DecimalDigit coproduct; the Peano
+// rendering below and the machine-integer rendering in std.integer reach it through their own
+// digit selection rather than each carrying a second copy of the ten glyphs.
+fn decimal_digit_glyph(d: DecimalDigit) -> String {
+  match d {
+    D0 => "0"
+    D1 => "1"
+    D2 => "2"
+    D3 => "3"
+    D4 => "4"
+    D5 => "5"
+    D6 => "6"
+    D7 => "7"
+    D8 => "8"
+    D9 => "9"
+  }
+}
+
+// ONE DECIMAL STEP: the successor of a digit is the next digit, or a carry out of D9. The ten arms
+// are the whole coproduct, so no input exists that this table does not answer.
+type DecimalDigitSuccessor
+  = DecimalDigitNext { digit: DecimalDigit }
+  | DecimalDigitCarry
+
+fn decimal_digit_successor(d: DecimalDigit) -> DecimalDigitSuccessor {
+  match d {
+    D0 => DecimalDigitNext { digit: D1 }
+    D1 => DecimalDigitNext { digit: D2 }
+    D2 => DecimalDigitNext { digit: D3 }
+    D3 => DecimalDigitNext { digit: D4 }
+    D4 => DecimalDigitNext { digit: D5 }
+    D5 => DecimalDigitNext { digit: D6 }
+    D6 => DecimalDigitNext { digit: D7 }
+    D7 => DecimalDigitNext { digit: D8 }
+    D8 => DecimalDigitNext { digit: D9 }
+    D9 => DecimalDigitCarry
+  }
+}
+
+// THE UNITS DIGIT OF A NATURAL, by structural descent: Zero is D0, and Succ advances the digit,
+// carrying out of D9. The digit is a DecimalDigit by CONSTRUCTION, so no Nat-to-digit lookup exists
+// to be out of range and no default arm exists to answer it (DESIGN section 5: a failure arm must
+// refuse, never widen). The walk is linear in its argument, so it is applied only to a remainder
+// by ten (at most nine steps); nat_to_decimal_string divides by the declared operation first.
+type NatDecimalSplit {
+  quotient: Nat
+  units: DecimalDigit
+}
+
+fn nat_decimal_split(value: Nat) -> NatDecimalSplit {
+  match value {
+    Zero => NatDecimalSplit { quotient: Zero, units: D0 }
+    Succ { prev: p } =>
+      nat_decimal_split_advance(s: nat_decimal_split(value: p))
+  }
+}
+
+fn nat_decimal_split_advance(s: NatDecimalSplit) -> NatDecimalSplit {
+  match decimal_digit_successor(d: s.units) {
+    DecimalDigitNext { digit: d } => NatDecimalSplit { quotient: s.quotient, units: d }
+    DecimalDigitCarry => NatDecimalSplit { quotient: Succ { prev: s.quotient }, units: D0 }
+  }
+}
+
+// A NATURAL TO ITS DECIMAL TEXT in O(digits): division by ten is the declared
+// nat_div_rem_by_succ with divisor predecessor nine (the divisor Succ { prev: 9 } is nonzero by
+// construction, so no zero-divisor arm exists to be handled), the recursion descends on the
+// quotient, and each remainder's digit comes from nat_decimal_split, which walks at most nine steps
+// because the remainder is below ten. No host operator is applied to a Nat here: an earlier body
+// spelled `value == 0`, `value < 10`, `value / 10` and `value - (rest * 10)` on Rc<Nat>, which
+// rustc refused (E0308 x10, E0369) and which the operator realization authority now refuses at
+// emission by typed diagnostic.
+// EXACT AND LOSSLESS: the canonical decimal spelling (no leading zeros, no sign) is injective over
+// the naturals, so this is the declared conversion an interpolation hole over a Nat names.
+fn nat_to_decimal_string(value: Nat) -> String {
+  let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
+  let digit = decimal_digit_glyph(d: nat_decimal_split(value: q.remainder).units)
+  match q.quotient {
+    Zero => digit
+    Succ { prev: _ } => concat(nat_to_decimal_string(value: q.quotient), digit)
+  }
+}

@@ -1,0 +1,45 @@
+module test.claim.workspace_commissioning_store_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import test.claim.workspace_commissioning_transaction_witness { transaction_fixture_provenance }
+import gunbc.workspace_commissioning_transaction {
+  WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted,
+  WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable,
+}
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text, workspace_commissioning_record_read }
+
+test fn commissioning_prepared_record_round_trip_preserves_phase() -> Bool {
+  let provenance = transaction_fixture_provenance()
+  let record = WorkspaceCommissioningPrepared { provenance: provenance }
+  match workspace_commissioning_record_read(value: workspace_commissioning_record_text(record: record), provenance: provenance) {
+    WorkspaceCommissioningRecordRead { record: back } => back == record
+    _ => false
+  }
+}
+
+test fn commissioning_committed_record_round_trip_preserves_provenance() -> Bool {
+  let provenance = transaction_fixture_provenance()
+  let record = WorkspaceCommissioningCommitted { provenance: provenance }
+  let text = workspace_commissioning_record_text(record: record)
+  match workspace_commissioning_record_read(value: text, provenance: provenance) {
+    WorkspaceCommissioningRecordRead { record: back } => back == record
+      && (text as String).contains("controller_digest") && (text as String).contains("guest_image_digest")
+      && (text as String).contains("sanitation_observation") && (text as String).contains("initial_generation")
+    _ => false
+  }
+}
+
+test fn commissioning_truncated_record_is_unreadable_not_absent() -> Bool {
+  match workspace_commissioning_record_read(value: "{" as NonEmptyStr, provenance: transaction_fixture_provenance()) {
+    WorkspaceCommissioningRecordUnreadable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn commissioning_foreign_record_is_not_a_committed_receipt() -> Bool {
+  match workspace_commissioning_record_read(value: "{\"schema\":\"workspace-commissioning/v1\",\"phase\":\"committed\"}" as NonEmptyStr,
+    provenance: transaction_fixture_provenance()) {
+    WorkspaceCommissioningRecordUnreadable { reason: _ } => true
+    _ => false
+  }
+}

@@ -1,0 +1,778 @@
+module gunbc.roadmap_provider_events
+
+import std.algebra { trim }
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.measure {
+  CharacterCount,
+  character_count,
+  character_count_value,
+  measure_le,
+}
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_parse_string,
+  json_text_skip_ws,
+  json_text_starts_with_at,
+}
+import gunbc.harness.harness_tool_kind {
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
+  harness_tool_item_read,
+}
+import extdeps.languages.json.parse {
+  json_text_parseable, parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field_string, json_field_int, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed,
+}
+
+// THE HARNESS ARMS ARE THE READ SIDE OF gunbc.harness.harness_tool_kind. A harness tool use is
+// written with an item type derived from its HarnessTool, and codex_item_activity inverts that same
+// declaration, so a file read, a file write, a single-match edit and a command arrive as four
+// different activities. Write and edit are NOT folded onto CodexEditingFiles: that arm is the Codex
+// provider's file_change, a patch item that does not say which of the two happened, and folding
+// them would make the read lossy where the write was exact. A consumer that wants "anything that
+// changed a file" takes the three arms together; one that wants them apart still can.
+// HarnessRefusingUnrecognizedTool is a tool use whose name the harness does not declare -- the
+// dispatcher refused it, and it is reported as that rather than as a command or an unknown item.
+type CodexItemActivity
+  = CodexRunningCommand
+  | CodexEditingFiles
+  | CodexUsingConnectedTool
+  | CodexSearching
+  | CodexUpdatingPlan
+  | CodexReasoningItem
+  | CodexReporting
+  | HarnessReadingFile
+  | HarnessWritingFile
+  | HarnessEditingFile
+  | HarnessRefusingUnrecognizedTool
+  | CodexUnclassifiedItem
+
+// THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in the Codex-shaped stream: round.usage, the
+// per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput);
+// turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on;
+// and turn.wire_log_unwritable, the non-terminal notice that a round's durable wire-log write
+// refused (gunbc.harness.harness_turn). The phase fold leaves the provider state unchanged on the
+// non-terminal pair; turn.placement_waiting, the worker announcing that it is waiting in line for a
+// serving seat before any provider call (gunbc.harness.harness_cli harness_bind_seat_waiting). Before these arms the whole stream was refused at such a line as an unknown
+// event type, so a live harness attempt rendered as "Agent evidence refused" with no strip
+// (first belt-dispatched attempt, 2026-09-04).
+type CodexProviderEventKind
+  = CodexThreadStarted
+  | CodexTurnStarted
+  | CodexItemStarted { activity: CodexItemActivity }
+  | CodexItemCompleted { activity: CodexItemActivity }
+  | CodexTurnCompleted
+  | CodexTurnFailed
+  | CodexError
+  | HarnessRoundUsage
+  | HarnessBudgetExhausted
+  | HarnessAlignmentCheckpointDue
+  | HarnessWireLogUnwritable
+  | HarnessPlacementWaiting
+
+type CodexProviderEvent {
+  line_number: Int
+  raw: String
+  kind: CodexProviderEventKind
+}
+
+type CodexEventParse
+  = CodexEventsParsed { events: List<CodexProviderEvent> }
+  | CodexEventsRefused {
+      events_before_refusal: List<CodexProviderEvent>,
+      line_number: Int,
+      raw: String,
+      reason: String,
+    }
+
+type CodexParseFold {
+  events: List<CodexProviderEvent>
+  next_line_number: Int
+  total_lines: Int
+  refused: Bool
+  refused_line_number: Int
+  refused_raw: String
+  refused_reason: String
+}
+
+// BUDGET SPENT IS TERMINAL AND IS NOT FAILED. The harness ends a turn when its step budget is spent
+// (gunbc.harness.harness_turn turn.budget_exhausted) or when a chain-carrying epoch announces its
+// alignment checkpoint (turn.alignment_checkpoint_due -- adjudication is the workflow's, and it is
+// not a pronouncement on the work); the work those rounds produced is in the
+// worktree and the belt commits and verifies it exactly as it does a completed turn. Folding it into
+// ProviderFailed put "Agent failed" beside "Verification passed" on one row (attempt 7f08b76ceb8f4424,
+// 2026-09-04), a pair the reader cannot reconcile because it is false: nothing failed. The verdict is
+// the judge of the work; this state says only that the worker was stopped, and how far it got.
+type ProviderExecutionState
+  = ProviderNotStarted
+  | ProviderStarting { activity: String }
+  | ProviderAwaitingSeat { detail: String }
+  | ProviderRunning { activity: String }
+  | ProviderCompleted { activity: String }
+  | ProviderFailed { activity: String, detail: String }
+  | ProviderBudgetSpent { activity: String, detail: String }
+  | ProviderEventsRefused { activity: String, detail: String }
+
+// review 44089. These are budgets measured in CHARACTERS — a count of a unit, not a bare scalar —
+// so they consume std.measure's CharacterCount on the same Measure<Count, One, Nat> axis
+// HardwareThreadCount instantiates, and the oversize test is measure_le rather than a raw >. The
+// wire spellings (the jq slice bounds and the refusal text) project the count at the boundary; the
+// budgets themselves never travel as Int.
+
+data codex_provider_event_line_observation_budget: CharacterCount = character_count(count: 65536)
+
+data codex_provider_projection_type_budget: CharacterCount = character_count(count: 128)
+data codex_provider_projection_detail_budget: CharacterCount = character_count(count: 4096)
+
+// The agent's REPORT gets its own budget rather than reusing the detail budget beside it, because
+// the two bound different things for different readers. A detail is a diagnostic — a terminal
+// error's message, read to find out what broke, and short by nature. A report is what the provider
+// says it DID, and it is the text an operator reads to judge whether the work is any good; it is
+// the closest thing the dashboard has to the agent's answer. Sharing one number would mean a future
+// tuning of either bound silently retunes the other, which is the coincidence-not-concept trap
+// DESIGN §2 warns about — they are the same TYPE (CharacterCount, the same Measure axis) and
+// genuinely different FACTS.
+//
+// 8192 is chosen against the incident this whole projection exists to prevent: a single
+// item.completed carrying ~154KB of aggregated command output, which killed the old 64KB line
+// reader. A report is bounded an order of magnitude under the 65536 line budget, so it cannot be
+// the payload that reproduces that failure, while still being generous enough that a substantial
+// multi-paragraph summary arrives whole and truncation stays the exception rather than the norm. It
+// is deliberately larger than the 4096 detail budget: an error message that needs 4KB is
+// pathological, a work summary that needs 6KB is ordinary.
+
+data codex_provider_projection_message_budget: CharacterCount = character_count(count: 8192)
+
+// TRUNCATION IS REPORTED, NEVER SILENT — the one place this projection could otherwise fabricate a plausible output (DESIGN §5). Everywhere else the bounds guard a machine-read classification, where a cut string simply fails to match and refuses; here the bounded value is PROSE AN OPERATOR READS AND ACTS ON, so a report severed mid-sentence and presented as if complete is a wrong answer delivered confidently — the operator would judge the work on a fragment while the screen gave no sign anything was missing. The projected envelope therefore carries the boundedness as its own member — a `message` object pairing the bounded text with a `truncated` flag — where truncated is computed from the ORIGINAL length before slicing, so it is a statement about the provider's actual output rather than about the slice. A consumer that renders text without consulting truncated is re-opening the arm this row closes, which is why the flag is a sibling of the text and not a derived guess about whether the slice happens to sit on the budget.
+data codex_provider_event_projection_filter: NonEmptyStr = join([
+  "fromjson | def event_type: if (.type | type) == \"string\" then .type[0:",
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
+  "] else \"unknown\" end; def item_type: if (.item.type | type) == \"string\" then .item.type[0:",
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
+  "] else \"unknown\" end; def num: if type == \"number\" then . else null end; def bounded_text: if . == null then \"\" elif type == \"string\" then .[0:",
+  to_string(character_count_value(c: codex_provider_projection_detail_budget)),
+  "] elif type == \"object\" and (.message | type) == \"string\" then .message[0:",
+  to_string(character_count_value(c: codex_provider_projection_detail_budget)),
+  "] else tostring[0:",
+  to_string(character_count_value(c: codex_provider_projection_detail_budget)),
+  "] end; def agent_report: if (.item.text | type) == \"string\" then {\"text\":(.item.text[0:",
+  to_string(character_count_value(c: codex_provider_projection_message_budget)),
+  "]),\"truncated\":((.item.text | length) > ",
+  to_string(character_count_value(c: codex_provider_projection_message_budget)),
+  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) else {\"type\":$type} end",
+], "") as NonEmptyStr
+
+fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
+  [
+    "--raw-input",
+    "--compact-output",
+    codex_provider_event_projection_filter as String,
+    path as String,
+  ]
+}
+
+// The attempt-owned provider-events.jsonl remains the complete Codex protocol authority. Workflow
+// observation first runs a separately modeled jq capability over that file. `--raw-input` plus
+// `fromjson` proves exactly one JSON value per physical JSONL line before emitting only a bounded
+// envelope (top-level event type, bounded item type, and a bounded terminal error detail); two
+// values on one line, a multiline value, and malformed JSON all refuse. Large command
+// aggregated_output therefore becomes opaque to the synchronous dashboard without becoming lost
+// evidence or an invented success. The exact jq executable and identity probe are part of
+// dispatch-platform Ensure and dashboard provisioning; absence refuses before dispatch and is also
+// visible as an observation refusal for retained attempts. A malformed raw event makes jq nonzero,
+// so no parsed prefix is accepted as a complete observation.
+
+data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and the classifier downstream is anchored and total, so a projector drift refuses rather than reclassifying."
+
+// Codex --json is the provider protocol authority: one JSON object per line with thread.started,
+// turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types,
+// plus the harness's own round.usage, turn.alignment_checkpoint_due and turn.wire_log_unwritable
+// (gunbc.harness.harness_turn). The raw stream is
+// structurally reduced by codex_provider_event_projection_filter before this bounded total envelope
+// classifier runs. The shared RFC 8259 grammar proves each projected line parseable, then the
+// classifier requires the emitted top-level `type` member to be the first object member before
+// selecting a closed event variant. That fail-closed envelope rule prevents a nested item or
+// user-authored string containing `type: turn.completed` from fabricating terminal success.
+// Projected lines are mechanically bounded; the remaining line budget is a red control against
+// projector drift and refuses before grammar descent with the payload elided. Unknown, reordered,
+// malformed, or truncated projected lines still refuse with their located evidence and parsed
+// prefix. A refusal is a workflow fact, never dropped as console noise. Item activity is only a
+// presentation projection from the bounded item type; terminal success/failure comes only from the
+// anchored top-level turn.completed, turn.failed, or error envelope, never from tmux Spawned.
+
+// review 44058. Both reads below are ANCHORED walks over the projector's own envelope shape, not
+// scans. codex_line_contains_type_token, which this replaces, searched the whole line for a
+// `"type":"…"` fragment in either spacing — so an agent_message whose text quoted
+// `"type":"file_change"` reclassified the pane's activity, the same fragment-scan class the
+// top-level classifier already refused to use for terminal events and the same one the dashboard
+// health readback was repaired for. The projector emits exactly {"type":…} for plain events and
+// {"type":…,"item":{"type":…}} for item events — plus, on an agent_message item only, a "message"
+// member SIBLING to and AFTER item.type carrying the bounded report and its truncation flag. The
+// anchor is unaffected by that addition and that is why it was placed there: item.type remains
+// item's FIRST member, so the walk's landing position is unchanged, and a report whose own text
+// quotes an item-type fragment still cannot reclassify the pane because the walk never reaches it.
+// Both anchored members have a known position and the walk either lands on it or answers false.
+// codex_envelope_member_value_start is the single step both readings share (DESIGN 2, one concept).
+
+fn codex_envelope_object_first_member(raw: String, at: Int) -> Int? {
+  let start = json_text_skip_ws(s: raw, i: at)
+  if json_text_starts_with_at(s: raw, i: start, lit: "\{") {
+    Present { value: start + 1 }
+  } else {
+    none
+  }
+}
+
+fn codex_envelope_member_value_start(raw: String, at: Int, key: String) -> Int? {
+  let quoted = join(["\"", key, "\""], "")
+  let key_start = json_text_skip_ws(s: raw, i: at)
+  if !json_text_starts_with_at(s: raw, i: key_start, lit: quoted) {
+    none
+  } else {
+    let colon = json_text_skip_ws(
+      s: raw,
+      i: key_start + string_length(s: quoted),
+    )
+    if json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+      Present { value: json_text_skip_ws(s: raw, i: colon + 1) }
+    } else {
+      none
+    }
+  }
+}
+
+fn codex_envelope_string_member_is(raw: String, at: Int, expected: String) -> Bool {
+  let token = join(["\"", expected, "\""], "")
+  let after = json_text_skip_ws(s: raw, i: at + string_length(s: token))
+  json_text_starts_with_at(s: raw, i: at, lit: token)
+    && (
+      json_text_starts_with_at(s: raw, i: after, lit: ",")
+        || json_text_starts_with_at(s: raw, i: after, lit: "\}")
+    )
+}
+
+fn codex_line_has_top_level_type(raw: String, event_type: String) -> Bool {
+  match codex_envelope_object_first_member(raw: raw, at: 0) {
+    Absent => false
+    Present { value: member } =>
+      match codex_envelope_member_value_start(raw: raw, at: member, key: "type") {
+        Absent => false
+        Present { value: value_start } =>
+          codex_envelope_string_member_is(
+            raw: raw,
+            at: value_start,
+            expected: event_type,
+          )
+      }
+  }
+}
+
+// THE ITEM TYPE IS READ ONCE, AS A VALUE, and classified afterwards. The walk is the anchored one
+// described above; what it returns is the text between the quotes of item's first member, and only
+// when that member is a well-formed string followed by `,` or `}`. An item type carrying an escape
+// comes back in its escaped spelling, which equals no declared kind and so classifies as
+// unclassified -- the same answer the per-candidate token comparison this replaces gave.
+fn codex_line_item_type(raw: String) -> String? {
+  match codex_envelope_object_first_member(raw: raw, at: 0) {
+    Absent => none
+    Present { value: member } =>
+      match codex_envelope_member_value_start(raw: raw, at: member, key: "type") {
+        Absent => none
+        Present { value: type_value } =>
+          match json_text_parse_string(s: raw, i: type_value) {
+            JsonTextParseFail { end: _ } => none
+            JsonTextParseOk { end: after_type } => {
+              let comma = json_text_skip_ws(s: raw, i: after_type)
+              if !json_text_starts_with_at(s: raw, i: comma, lit: ",") {
+                none
+              } else {
+                match codex_envelope_member_value_start(
+                  raw: raw,
+                  at: comma + 1,
+                  key: "item",
+                ) {
+                  Absent => none
+                  Present { value: item_object } =>
+                    match codex_envelope_object_first_member(
+                      raw: raw,
+                      at: item_object,
+                    ) {
+                      Absent => none
+                      Present { value: item_member } =>
+                        match codex_envelope_member_value_start(
+                          raw: raw,
+                          at: item_member,
+                          key: "type",
+                        ) {
+                          Absent => none
+                          Present { value: item_value } =>
+                            match json_text_parse_string(s: raw, i: item_value) {
+                              JsonTextParseFail { end: _ } => none
+                              JsonTextParseOk { end: after_item } => {
+                                let after = json_text_skip_ws(s: raw, i: after_item)
+                                if json_text_starts_with_at(s: raw, i: after, lit: ",")
+                                  || json_text_starts_with_at(s: raw, i: after, lit: "\}") {
+                                  Present {
+                                    value: raw.substring(start: item_value + 1, end: after_item - 1),
+                                  }
+                                } else {
+                                  none
+                                }
+                              }
+                            }
+                        }
+                    }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn harness_tool_item_activity(tool: HarnessTool) -> CodexItemActivity {
+  match tool {
+    RunCommandTool => CodexRunningCommand
+    ReadFileTool => HarnessReadingFile
+    WriteFileTool => HarnessWritingFile
+    EditFileTool => HarnessEditingFile
+  }
+}
+
+// The item types below are the Codex provider's own and the harness's agent_message. The kinds a
+// harness tool use is written as are not spelled here: they are read through
+// gunbc.harness.harness_tool_kind, which is also what wrote them.
+fn codex_provider_item_activity(item_type: String) -> CodexItemActivity {
+  if item_type == "file_change" {
+    CodexEditingFiles
+  } else if item_type == "mcp_tool_call" {
+    CodexUsingConnectedTool
+  } else if item_type == "web_search" {
+    CodexSearching
+  } else if item_type == "plan_update" {
+    CodexUpdatingPlan
+  } else if item_type == "reasoning" {
+    CodexReasoningItem
+  } else if item_type == "agent_message" {
+    CodexReporting
+  } else {
+    CodexUnclassifiedItem
+  }
+}
+
+fn codex_item_activity(raw: String) -> CodexItemActivity {
+  match codex_line_item_type(raw: raw) {
+    Absent => CodexUnclassifiedItem
+    Present { value: item_type } =>
+      match harness_tool_item_read(item_type: item_type) {
+        ItemIsHarnessToolUse { tool: t } => harness_tool_item_activity(tool: t)
+        ItemIsUnrecognizedToolUse => HarnessRefusingUnrecognizedTool
+        ItemIsNotAHarnessToolUse => codex_provider_item_activity(item_type: item_type)
+      }
+  }
+}
+
+fn codex_item_activity_label(activity: CodexItemActivity) -> String {
+  match activity {
+    CodexRunningCommand => "running command"
+    CodexEditingFiles => "editing files"
+    CodexUsingConnectedTool => "using connected tool"
+    CodexSearching => "searching"
+    CodexUpdatingPlan => "updating plan"
+    CodexReasoningItem => "reasoning"
+    CodexReporting => "reporting"
+    HarnessReadingFile => "reading file"
+    HarnessWritingFile => "writing file"
+    HarnessEditingFile => "editing file"
+    HarnessRefusingUnrecognizedTool => "refusing an undeclared tool"
+    CodexUnclassifiedItem => "provider item"
+  }
+}
+
+fn codex_event_from_complete_line(
+  raw: String,
+  line_number: Int,
+) -> CodexProviderEvent? {
+  if codex_line_has_top_level_type(raw: raw, event_type: "thread.started") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexThreadStarted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.started") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexTurnStarted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "item.started") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexItemStarted { activity: codex_item_activity(raw: raw) },
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "item.completed") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexItemCompleted { activity: codex_item_activity(raw: raw) },
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.completed") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexTurnCompleted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.failed") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexTurnFailed,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.budget_exhausted") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessBudgetExhausted,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "round.usage") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessRoundUsage,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.alignment_checkpoint_due") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessAlignmentCheckpointDue,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.placement_waiting") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessPlacementWaiting,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessWireLogUnwritable,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: CodexError,
+    } }
+  } else {
+    none
+  }
+}
+
+fn codex_parse_fold_line(
+  state: CodexParseFold,
+  line: String,
+  line_budget: CharacterCount,
+) -> CodexParseFold {
+  if state.refused {
+    CodexParseFold {
+      events: state.events,
+      next_line_number: state.next_line_number + 1,
+      total_lines: state.total_lines,
+      refused: state.refused,
+      refused_line_number: state.refused_line_number,
+      refused_raw: state.refused_raw,
+      refused_reason: state.refused_reason,
+    }
+  } else {
+    let raw = trim(line)
+    let raw_chars = character_count(count: string_length(s: raw))
+    let is_trailing_empty = raw == ""
+      && state.next_line_number == state.total_lines
+    if is_trailing_empty {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: false,
+        refused_line_number: 0,
+        refused_raw: "",
+        refused_reason: "",
+      }
+    } else if !measure_le(a: raw_chars, b: line_budget) {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: true,
+        refused_line_number: state.next_line_number,
+        refused_raw: join([
+          "<oversized Codex JSONL event elided: ",
+          to_string(character_count_value(c: raw_chars)),
+          " chars>",
+        ], ""),
+        refused_reason: join([
+          "Codex JSONL event exceeds observation line budget ",
+          to_string(character_count_value(c: line_budget)),
+          " chars; full raw remains in attempt evidence",
+        ], ""),
+      }
+    } else if raw == "" {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: true,
+        refused_line_number: state.next_line_number,
+        refused_raw: line,
+        refused_reason: "empty line inside Codex JSONL stream",
+      }
+    } else if !json_text_parseable(s: raw) {
+      CodexParseFold {
+        events: state.events,
+        next_line_number: state.next_line_number + 1,
+        total_lines: state.total_lines,
+        refused: true,
+        refused_line_number: state.next_line_number,
+        refused_raw: line,
+        refused_reason: "malformed or truncated Codex JSONL object",
+      }
+    } else {
+      match codex_event_from_complete_line(
+        raw: raw,
+        line_number: state.next_line_number,
+      ) {
+        Present { value: event } =>
+          CodexParseFold {
+            events: append(state.events, [event]),
+            next_line_number: state.next_line_number + 1,
+            total_lines: state.total_lines,
+            refused: false,
+            refused_line_number: 0,
+            refused_raw: "",
+            refused_reason: "",
+          }
+        Absent =>
+          CodexParseFold {
+            events: state.events,
+            next_line_number: state.next_line_number + 1,
+            total_lines: state.total_lines,
+            refused: true,
+            refused_line_number: state.next_line_number,
+            refused_raw: line,
+            refused_reason: "unknown Codex JSONL event type",
+          }
+      }
+    }
+  }
+}
+
+fn parse_codex_jsonl_with_line_budget(
+  text: String,
+  line_budget: CharacterCount,
+) -> CodexEventParse {
+  if text == "" {
+    CodexEventsParsed { events: [] }
+  } else {
+    let lines = split(s: text, delimiter: "\n")
+    let state = fold(
+      lines,
+      init: CodexParseFold {
+        events: [],
+        next_line_number: 1,
+        total_lines: count(lines),
+        refused: false,
+        refused_line_number: 0,
+        refused_raw: "",
+        refused_reason: "",
+      },
+      f: fn(acc, line) {
+        codex_parse_fold_line(
+          state: acc,
+          line: line,
+          line_budget: line_budget,
+        )
+      },
+    )
+    if state.refused {
+      CodexEventsRefused {
+        events_before_refusal: state.events,
+        line_number: state.refused_line_number,
+        raw: state.refused_raw,
+        reason: state.refused_reason,
+      }
+    } else {
+      CodexEventsParsed { events: state.events }
+    }
+  }
+}
+
+fn parse_codex_jsonl(text: String) -> CodexEventParse {
+  parse_codex_jsonl_with_line_budget(
+    text: text,
+    line_budget: codex_provider_event_line_observation_budget,
+  )
+}
+
+// THE WAIT'S REASON, READ FROM ITS OWN LINE. The line is the harness's own construction, so a
+// line that does not decode is shown as itself rather than guessed at.
+fn harness_placement_waiting_detail(raw: String) -> String {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => join(["undecodable wait announcement: ", raw], "")
+    JsonDocumentParsed { value: v } => {
+      let reason = match json_field_string(obj: v, key: "reason") {
+        FieldRead { value: r } => r
+        FieldAbsent => "no reason recorded"
+        FieldMalformed { cause: c } => join(["reason unreadable: ", c], "")
+      }
+      let wait = match json_field_int(obj: v, key: "wait") {
+        FieldRead { value: n } => to_string(n)
+        FieldAbsent => "?"
+        FieldMalformed { cause: _ } => "?"
+      }
+      let cap = match json_field_int(obj: v, key: "wait_cap") {
+        FieldRead { value: n } => to_string(n)
+        FieldAbsent => "?"
+        FieldMalformed { cause: _ } => "?"
+      }
+      join(["placement pending, wait ", wait, " of ", cap, ", asking again each interval: ", reason], "")
+    }
+  }
+}
+
+fn provider_execution_fold_event(
+  state: ProviderExecutionState,
+  event: CodexProviderEvent,
+) -> ProviderExecutionState {
+  match state {
+    ProviderCompleted { activity: _ } => state
+    ProviderFailed { activity: _, detail: _ } => state
+    ProviderBudgetSpent { activity: _, detail: _ } => state
+    ProviderEventsRefused { activity: _, detail: _ } => state
+    _ =>
+      match event.kind {
+        CodexThreadStarted => ProviderStarting { activity: "thread started" }
+        CodexTurnStarted => ProviderRunning { activity: "agent started" }
+        HarnessRoundUsage => state
+        HarnessWireLogUnwritable => state
+        HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
+        HarnessAlignmentCheckpointDue =>
+          ProviderBudgetSpent {
+            activity: "Alignment checkpoint due · adjudication decides resume",
+            detail: event.raw,
+          }
+        CodexItemStarted { activity } =>
+          ProviderRunning {
+            activity: join(
+              ["Agent working · ", codex_item_activity_label(activity: activity)],
+              "",
+            ),
+          }
+        CodexItemCompleted { activity } =>
+          ProviderRunning {
+            activity: match activity {
+              CodexReporting => "Agent finishing"
+              _ =>
+                join(
+                  ["Agent working · ", codex_item_activity_label(activity: activity)],
+                  "",
+                ),
+            },
+          }
+        CodexTurnCompleted =>
+          ProviderCompleted { activity: "Agent complete" }
+        CodexTurnFailed =>
+          ProviderFailed { activity: "agent turn failed", detail: event.raw }
+        HarnessBudgetExhausted =>
+          ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: event.raw }
+        CodexError =>
+          ProviderFailed { activity: "provider error", detail: event.raw }
+      }
+  }
+}
+
+fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
+  match parsed {
+    CodexEventsParsed { events } =>
+      fold(
+        events,
+        init: ProviderNotStarted,
+        f: fn(state, event) {
+          provider_execution_fold_event(state: state, event: event)
+        },
+      )
+    CodexEventsRefused {
+      events_before_refusal,
+      line_number,
+      raw,
+      reason,
+    } =>
+      let prior = fold(
+        events_before_refusal,
+        init: ProviderNotStarted,
+        f: fn(state, event) {
+          provider_execution_fold_event(state: state, event: event)
+        },
+      )
+      ProviderEventsRefused {
+        activity: match prior {
+          ProviderNotStarted => "event stream refused"
+          ProviderStarting { activity } =>
+            join(["last observed · ", activity], "")
+          ProviderAwaitingSeat { detail: _ } =>
+            "last observed · waiting for a serving seat"
+          ProviderRunning { activity } =>
+            join(["last observed · ", activity], "")
+          ProviderCompleted { activity } =>
+            join(["last observed · ", activity], "")
+          ProviderFailed { activity, detail: _ } =>
+            join(["last observed · ", activity], "")
+          ProviderBudgetSpent { activity, detail: _ } =>
+            join(["last observed · ", activity], "")
+          ProviderEventsRefused { activity, detail: _ } =>
+            join(["last observed · ", activity], "")
+        },
+        detail: join([
+          "line ", to_string(line_number), ": ", reason, "; raw=", raw,
+        ], ""),
+      }
+  }
+}
+
+fn provider_execution_state_label(state: ProviderExecutionState) -> String {
+  match state {
+    ProviderNotStarted => "not_started"
+    ProviderStarting { activity: _ } => "starting"
+    ProviderAwaitingSeat { detail: _ } => "awaiting_seat"
+    ProviderRunning { activity: _ } => "running"
+    ProviderCompleted { activity: _ } => "completed"
+    ProviderFailed { activity: _, detail: _ } => "failed"
+    ProviderBudgetSpent { activity: _, detail: _ } => "budget_spent"
+    ProviderEventsRefused { activity: _, detail: _ } => "events_refused"
+  }
+}
+
+fn provider_execution_activity(state: ProviderExecutionState) -> String {
+  match state {
+    ProviderNotStarted => "Agent waiting"
+    ProviderStarting { activity: _ } => "Agent working"
+    ProviderAwaitingSeat { detail: _ } => "Agent waiting for a serving seat"
+    ProviderRunning { activity } => activity
+    ProviderCompleted { activity: _ } => "Agent complete"
+    ProviderFailed { activity: _, detail: _ } => "Agent failed"
+    ProviderBudgetSpent { activity, detail: _ } => activity
+    ProviderEventsRefused { activity, detail: _ } => activity
+  }
+}
+
+fn provider_execution_detail(state: ProviderExecutionState) -> String {
+  match state {
+    ProviderFailed { activity: _, detail } => detail
+    ProviderBudgetSpent { activity: _, detail } => detail
+    ProviderEventsRefused { activity: _, detail } => detail
+    ProviderAwaitingSeat { detail } => detail
+    _ => ""
+  }
+}

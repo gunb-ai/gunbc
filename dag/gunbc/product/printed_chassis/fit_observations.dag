@@ -1,0 +1,16 @@
+module product.printed_chassis.fit_observations
+import std.types {String,Bool}
+import std.claim_evidence {RecordedFact,EvidenceProvenance}
+
+type FanFitProposition { original_plate_accepts_fan: Bool }
+data rear_fan_fit: RecordedFact<FanFitProposition> = RecordedFact {
+ id:"rear-fan-plate-fit-2026-10-04",value:FanFitProposition {original_plate_accepts_fan:true},
+}
+data rear_fan_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/rear-fan-fit-2026-10-04",activity:"unpowered-fan-plate-fit",agent:"operator",
+}
+// This qualitative observation establishes the original plate/fan pairing only. It
+// supplies no measured length, thread, load, guard rating or new-frame fit evidence.
+fn fan_fit_display() -> String {
+ if rear_fan_fit.value.original_plate_accepts_fan {"Operator reports the original printed rear fan plate fits (4 October 2026). The revised frame/guard stack remains proposed; no further gauge sequence."} else {"Original plate fit not established."}
+}

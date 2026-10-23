@@ -1,0 +1,251 @@
+module gunbc.host_command_binding
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.optional { Present }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.session { ssh_client_error_exit_status }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  converge_typed_remote_file, typed_remote_file_write_seal,
+  TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+  RemoteFileModeOwnerReadWriteWorldRead, RemoteFileAsSessionPrincipal,
+}
+
+// WHERE A HOST EFFECT RUNS, AS THE ONE PERIPHERAL DISPATCH (DESIGN §3: the dispatch that selects a
+// realization is itself realization). Every effect a caller issues is ONE ArgvCommand built by its
+// tool's own extdeps builder; this binding decides only where that argv executes -- on this machine
+// through gunbc.command_runner, or on a fleet host over typed argv (gunbc.typed_argv_exec). A fold
+// written against CommandHost is written once and realized on either transport, so a second
+// transport is never a second route. File CONTENT is the one effect that is not an argv: it is
+// written by Filesystem.Write here, and by gunbc.typed_remote_file_write's staged, compared write
+// on a fleet host (bytes on stdin, never shell).
+type CommandHost
+  = LocalCommandHost
+  | FleetSshCommandHost { target: SshTarget, context: FleetSshExecutionContext }
+
+// ONE LEG AS THE TRANSPORT ANSWERED IT. NotDispatched means no process was started for it: the local
+// runner could not spawn it, or the typed-argv transport refused it before sending
+// (gunbc.fleet_bootstrap_principal_session FleetPrincipalLegRefused: the invocation was never made).
+type HostLeg
+  = LegNotDispatched { reason: String }
+  | LegAnswered { exit_code: Int, stdout: String, stderr: String }
+
+fn host_leg_of_typed_argv(outcome: TypedArgvExecOutcome) -> HostLeg {
+  match outcome {
+    TypedArgvExecRefused { reason: r } => LegNotDispatched { reason: r }
+    TypedArgvExecConverged { result: r } => LegAnswered { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  }
+}
+
+fn host_leg_of_local(outcome: ProcessRunOutcome) -> HostLeg {
+  match outcome {
+    ProcessNotSpawned { program: p, cause: c } => LegNotDispatched { reason: concat(p as String, ": ", c as String) }
+    ProcessRan { observation: o } => LegAnswered { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr }
+  }
+}
+
+fn host_run(host: CommandHost, command: ArgvCommand) -> HostLeg {
+  match host {
+    LocalCommandHost => host_leg_of_local(outcome: run_shell_command_observe_outcome(command: command, transport: LocalExec))
+    FleetSshCommandHost { target: t, context: c } =>
+      host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
+  }
+}
+
+fn host_label(host: CommandHost) -> String {
+  match host {
+    LocalCommandHost => "this host"
+    FleetSshCommandHost { target: t, context: _ } => t.endpoint as String
+  }
+}
+
+// WHICH TRANSPORT ANSWERED, the only fact about the host the leg classification needs.
+type HostTransportKind
+  = LocalTransport
+  | FleetSshTransport
+
+fn host_transport_kind(host: CommandHost) -> HostTransportKind {
+  match host {
+    LocalCommandHost => LocalTransport
+    FleetSshCommandHost { target: _, context: _ } => FleetSshTransport
+  }
+}
+
+// A REPLY CAN BE LOST ONLY ON THE SSH TRANSPORT. ssh's own 255 (extdeps.ssh.session
+// ssh_client_error_exit_status) does not establish that the remote command did not run; a local
+// process that exits 255 did run and said so.
+fn host_leg_reply_lost(kind: HostTransportKind, leg: HostLeg) -> Bool {
+  match kind {
+    LocalTransport => false
+    FleetSshTransport =>
+      match leg {
+        LegNotDispatched { reason: _ } => false
+        LegAnswered { exit_code: c, stdout: _, stderr: _ } => c == ssh_client_error_exit_status
+      }
+  }
+}
+
+// WHAT ONE EFFECT ESTABLISHED, for callers that need the three-way reading rather than a Bool.
+// NOT gunbc.host_effect HostEffect: that type is an INTENT -- which privileged effect to perform.
+// This is the OBSERVED OUTCOME of one command leg that was issued; the two are different facts and
+// carry different names (DESIGN §3: one name, one meaning).
+type HostCommandOutcome
+  = HostCommandDone { stdout: String }
+  | HostCommandFailed { exit_code: Int, stderr: String }
+  | HostCommandUnconfirmed { exit_code: Int, stdout: String, stderr: String }
+  | HostCommandNotDispatched { reason: String }
+
+fn host_command_outcome_of(kind: HostTransportKind, leg: HostLeg) -> HostCommandOutcome {
+  match leg {
+    LegNotDispatched { reason: r } => HostCommandNotDispatched { reason: r }
+    LegAnswered { exit_code: c, stdout: o, stderr: e } =>
+      if c == 0 { HostCommandDone { stdout: o } }
+      else if host_leg_reply_lost(kind: kind, leg: leg) { HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } }
+      else { HostCommandFailed { exit_code: c, stderr: e } }
+  }
+}
+
+fn host_command(host: CommandHost, command: ArgvCommand) -> HostCommandOutcome {
+  host_command_outcome_of(kind: host_transport_kind(host: host), leg: host_run(host: host, command: command))
+}
+
+fn host_command_outcome_text(e: HostCommandOutcome) -> String {
+  match e {
+    HostCommandDone { stdout: _ } => "done"
+    HostCommandFailed { exit_code: c, stderr: s } => concat("failed exit=", to_string(c), " ", trim(s: s))
+    HostCommandUnconfirmed { exit_code: c, stdout: _, stderr: s } => concat("UNCONFIRMED (reply lost) exit=", to_string(c), " ", trim(s: s))
+    HostCommandNotDispatched { reason: r } => concat("not dispatched: ", r)
+  }
+}
+
+type HostFileWrite
+  = HostFileWritten
+  | HostFileWriteRefused { reason: String }
+  | HostFileWriteNotConverged { reason: String }
+
+// WRITE EXACT BYTES TO ONE PATH ON THE HOST. Locally: Filesystem.Write, which writes in place and
+// keeps an existing file's mode. On a fleet host: gunbc.typed_remote_file_write's converging write
+// (stage beside, mode 0644, rename, far-side compare), sealed to `scope_root`. A remote write that did
+// not converge leaves the destination's state unknown -- a staged sibling may remain -- so it is
+// NotConverged, never Refused; Refused is reserved for a seal that sent nothing.
+fn host_write_file(host: CommandHost, path: NonEmptyStr, content: String, scope_root: NonEmptyStr) -> HostFileWrite {
+  match host {
+    LocalCommandHost => {
+      let wrote = Filesystem.Write(path: path as String, content: content)
+      if wrote.success { HostFileWritten } else { HostFileWriteRefused { reason: concat("write ", path as String, ": ", wrote.error) } }
+    }
+    FleetSshCommandHost { target: t, context: c } =>
+      match converge_typed_remote_file(
+        target: t,
+        context: c,
+        admission: typed_remote_file_write_seal(path: path as String, content: content, allowed_scope: FileTreeScope { root_path: scope_root }),
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        privilege: RemoteFileAsSessionPrincipal,
+      ) {
+        TypedRemoteFileConverged { converged: _ } => HostFileWritten
+        TypedRemoteFileConvergenceRefused { step: s, reason: r } =>
+          if s == "admission" { HostFileWriteRefused { reason: r } }
+          else { HostFileWriteNotConverged { reason: concat(s, ": ", r) } }
+      }
+  }
+}
+
+fn host_file_write_text(w: HostFileWrite) -> String {
+  match w {
+    HostFileWritten => "written"
+    HostFileWriteRefused { reason: r } => concat("refused: ", r)
+    HostFileWriteNotConverged { reason: r } => concat("NOT CONVERGED (destination state unknown): ", r)
+  }
+}
+
+// ---- an exclusively owned scratch directory on a host, and its whole history ----
+//
+// mktemp -d creates a NEW 0700 directory and never reuses a name (coreutils "mktemp invocation"),
+// so a successful acquisition is this caller's own. Each outcome names what is established:
+//   CreationNotRequested         a gate stopped the caller before mktemp was issued;
+//   CreationNotDispatched        mktemp was not sent;
+//   CreationFailed               mktemp reported its own failure: nothing was created;
+//   CreationUnconfirmed          mktemp was sent and its result not established (a lost reply, or a
+//                                zero exit whose output is not exactly one path under the prefix).
+//                                A directory MAY remain; what came back is retained, and no name that
+//                                was not admitted is ever used to write into or to delete;
+//   Removed / RemovalFailed / RemovalUnconfirmed / RemovalNotDispatched   the acquired directory's end.
+// Only Removed ends it cleanly.
+type ScratchOutcome
+  = CreationNotRequested
+  | CreationNotDispatched { reason: String }
+  | CreationFailed { exit_code: Int, stderr: String }
+  | CreationUnconfirmed { exit_code: Int, stdout: String, stderr: String }
+  | Removed { dir: NonEmptyStr }
+  | RemovalFailed { dir: NonEmptyStr, exit_code: Int, stderr: String }
+  | RemovalUnconfirmed { dir: NonEmptyStr, exit_code: Int, stderr: String }
+  | RemovalNotDispatched { dir: NonEmptyStr, reason: String }
+
+type ScratchAcquisition
+  = ScratchAcquired { dir: NonEmptyStr }
+  | ScratchNotAcquired { outcome: ScratchOutcome }
+
+fn admitted_scratch_path(prefix: String, stdout: String) -> String? {
+  let dir = trim(s: stdout)
+  if !starts_with(s: dir, prefix: prefix) || dir == prefix
+      || string_contains(s: dir, pattern: "\n") || string_contains(s: dir, pattern: " ") || string_contains(s: dir, pattern: "/..") {
+    none
+  } else {
+    Present { value: dir }
+  }
+}
+
+fn scratch_acquisition_of(kind: HostTransportKind, prefix: String, leg: HostLeg) -> ScratchAcquisition {
+  match host_command_outcome_of(kind: kind, leg: leg) {
+    HostCommandNotDispatched { reason: r } => ScratchNotAcquired { outcome: CreationNotDispatched { reason: r } }
+    HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ScratchNotAcquired { outcome: CreationUnconfirmed { exit_code: c, stdout: o, stderr: e } }
+    HostCommandFailed { exit_code: c, stderr: e } => ScratchNotAcquired { outcome: CreationFailed { exit_code: c, stderr: e } }
+    HostCommandDone { stdout: o } =>
+      match admitted_scratch_path(prefix: prefix, stdout: o) {
+        Absent => ScratchNotAcquired { outcome: CreationUnconfirmed { exit_code: 0, stdout: o, stderr: "" } }
+        Present { value: d } => ScratchAcquired { dir: d as NonEmptyStr }
+      }
+  }
+}
+
+fn scratch_removal_of(kind: HostTransportKind, dir: NonEmptyStr, leg: HostLeg) -> ScratchOutcome {
+  match host_command_outcome_of(kind: kind, leg: leg) {
+    HostCommandNotDispatched { reason: r } => RemovalNotDispatched { dir: dir, reason: r }
+    HostCommandDone { stdout: _ } => Removed { dir: dir }
+    HostCommandUnconfirmed { exit_code: c, stdout: _, stderr: e } => RemovalUnconfirmed { dir: dir, exit_code: c, stderr: e }
+    HostCommandFailed { exit_code: c, stderr: e } => RemovalFailed { dir: dir, exit_code: c, stderr: e }
+  }
+}
+
+fn scratch_removed(o: ScratchOutcome) -> Bool {
+  match o {
+    Removed { dir: _ } => true
+    CreationNotRequested => false
+    CreationNotDispatched { reason: _ } => false
+    CreationFailed { exit_code: _, stderr: _ } => false
+    CreationUnconfirmed { exit_code: _, stdout: _, stderr: _ } => false
+    RemovalFailed { dir: _, exit_code: _, stderr: _ } => false
+    RemovalUnconfirmed { dir: _, exit_code: _, stderr: _ } => false
+    RemovalNotDispatched { dir: _, reason: _ } => false
+  }
+}
+
+fn render_scratch_outcome(label: String, prefix: String, o: ScratchOutcome) -> String {
+  match o {
+    CreationNotRequested => concat(label, "=never created: creation was not requested\n")
+    CreationNotDispatched { reason: r } => concat(label, "=never created: mktemp was not dispatched: ", r, "\n")
+    CreationFailed { exit_code: c, stderr: e } => concat(label, "=never created: mktemp reported failure exit=", to_string(c), " ", trim(s: e), "\n")
+    CreationUnconfirmed { exit_code: c, stdout: out, stderr: e } =>
+      concat(label, "=CREATION UNCONFIRMED exit=", to_string(c), ": a directory under ", prefix, " MAY REMAIN (residue outstanding; not removed, nothing written into it); returned stdout=\"", out, "\" stderr=\"", trim(s: e), "\"\n")
+    Removed { dir: d } => concat(label, "=", d as String, " removed\n")
+    RemovalFailed { dir: d, exit_code: c, stderr: e } => concat(label, "=", d as String, " REMOVAL FAILED exit=", to_string(c), " ", trim(s: e), " (the path may remain)\n")
+    RemovalUnconfirmed { dir: d, exit_code: c, stderr: e } => concat(label, "=", d as String, " REMOVAL UNCONFIRMED exit=", to_string(c), " ", trim(s: e), " (the reply was lost; the path may or may not remain)\n")
+    RemovalNotDispatched { dir: d, reason: r } => concat(label, "=", d as String, " NOT REMOVED: rm was not dispatched (residue outstanding): ", r, "\n")
+  }
+}

@@ -1,0 +1,28 @@
+module gunbc.roadmap.roadmap_publish_admission
+
+import std.types { String, NonEmptyStr }
+import gunbc.roadmap_verification_receipt { VerificationEvidence, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject, VerificationEvidenceLegacyAttemptLevel, VerificationEvidenceUnreadable, VerificationEvidenceV1LegacyExactHead, VerificationReceipt }
+import gunbc.roadmap_validation_oracle { ValidationVerdict, ValidationNotRun, ValidationPassed, ValidationFailed, ValidationRefused }
+
+type PublishAdmission
+  = PublishAdmitted
+  | PublishWithheld { reason: NonEmptyStr }
+
+fn verdict_admission(verdict: ValidationVerdict) -> PublishAdmission {
+  match verdict {
+    ValidationPassed { command: _, oracle_identity: _ } => PublishAdmitted
+    ValidationNotRun => PublishWithheld { reason: "verification has not run" as NonEmptyStr }
+    ValidationFailed { command: _, exit_code: _, detail: _ } => PublishWithheld { reason: "verification failed" as NonEmptyStr }
+    ValidationRefused { cause: _ } => PublishWithheld { reason: "verification refused" as NonEmptyStr }
+  }
+}
+
+fn publish_admission(evidence: VerificationEvidence) -> PublishAdmission {
+  match evidence {
+    VerificationEvidenceForSubject { receipt } => verdict_admission(verdict: receipt.verdict)
+    VerificationEvidenceForAnotherSubject { field: _, expected: _, found: _ } => PublishWithheld { reason: "verification evidence is about another subject" as NonEmptyStr }
+    VerificationEvidenceLegacyAttemptLevel { verdict_key: _ } => PublishWithheld { reason: "verification evidence is legacy attempt-level, not head-exact" as NonEmptyStr }
+    VerificationEvidenceV1LegacyExactHead { legacy: _ } => PublishWithheld { reason: "verification evidence is a v1 exact-head receipt, not the current head-exact form" as NonEmptyStr }
+    VerificationEvidenceUnreadable { reason: _ } => PublishWithheld { reason: "verification evidence is unreadable" as NonEmptyStr }
+  }
+}

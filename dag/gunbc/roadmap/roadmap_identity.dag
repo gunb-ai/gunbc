@@ -1,0 +1,165 @@
+module gunbc.roadmap_identity
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+
+// THE INDEX IS DERIVED, NEVER AUTHORED. An earlier cut carried a hand-written list of (identity,
+// slug) rows beside the authority, which created two things that had to be kept in step and could
+// disagree — the DESIGN 3 fork, with a witness standing in for a construction (DESIGN 5). Identity
+// is now a required field on RoadmapNode, so a node without one is unwritable, and everything below
+// is a projection of declared_roadmap_nodes(). There is exactly one place a node's identity can be
+// stated, and the index cannot drift from it because it has no independent existence.
+
+// PERMANENT NON-REUSE NEEDS A TOMBSTONE, and a base-versus-head diff alone cannot supply it.
+// Without persisted retirement the sequence is: PR A removes node X and its row; a diff gate
+// observes the removal once; after merge X is simply absent from the base registry; PR B mints a
+// new node and reuses X's identity; the next base-versus-head comparison sees an identity that is
+// present in head and absent in base — indistinguishable from a legitimately NEW identity. The
+// reuse passes every check.\n\nSo retirement is a state, not a deletion. A Tombstoned row keeps the
+// identity in the registry forever, carries the slug it last wore so historical links still
+// resolve, and names the identity that superseded it when there is one. Retirement is then
+// observable rather than inferred from absence, and 'may never become active again' becomes
+// checkable.
+
+type RoadmapIdentityRecord
+  = ActiveIdentity {
+      identity: RoadmapNodeIdentity,
+      slug: RoadmapNodeId,
+    }
+  | TombstonedIdentity {
+      identity: RoadmapNodeIdentity,
+      former_slug: RoadmapNodeId,
+      superseded_by: RoadmapNodeIdentity?,
+    }
+
+// The first retirement landed 2026-07-31, in the same change that removed its node from
+// declared_roadmap_nodes() — exactly the discipline this roster exists for (a retirement is a
+// state, never a deletion; the failure mode is the 2026-07-27 authority refresh, when a node
+// carrying the only execution contract was removed and nothing noticed). v2-phase-carriers was
+// split by the post-merge verdict on gunbc#7489 into five staged nodes (self-grounding frontier,
+// Translate refusal, inferred-tree completeness, per-kind derivation coverage, target realization
+// gate); its identity is tombstoned with superseded_by naming the split's entry node, so historical
+// links resolve and the identity can never be reused. The 2026-08-01 spine reconciliation (operator
+// verdict on the guarantee lane) retired four more the same way, each superseded_by the recut's
+// entry node: the three monolithic walls whose landed fragments merged at a different grain than
+// the nodes described (floor-method-existence-wall -> method-established-surface-wall via
+// gunbc#7484; floor-call-shape-wall -> call-label-and-surplus-wall via gunbc#7519;
+// floor-inhabitance-wall -> declared-conformance-ground-fragment via gunbc#7484's counted
+// advisory), and the monolithic acceptance door, split into mechanism-then-activation so the door's
+// audit form lands with the carrier instead of after every wall
+// (compiler-accepted-obligation-closure -> accepted-obligation-door-mechanism).
+
+fn roadmap_tombstoned_identities() -> List<RoadmapIdentityRecord> {
+  [
+    TombstonedIdentity {
+      identity: "rn_SMUGMQLFC6PJT7CF2AKG745O2Y" as RoadmapNodeIdentity,
+      former_slug: "v2-phase-carriers" as RoadmapNodeId,
+      superseded_by: Present { value: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ" as RoadmapNodeIdentity },
+    },
+    TombstonedIdentity {
+      identity: "rn_A7QX5QZMWKC6STOGGDGD4KMIHQ" as RoadmapNodeIdentity,
+      former_slug: "floor-method-existence-wall" as RoadmapNodeId,
+      superseded_by: Present { value: "rn_IGN7UM5UQQPZ6MNMIX5TVUMNSK" as RoadmapNodeIdentity },
+    },
+    TombstonedIdentity {
+      identity: "rn_DYQZBEQKOWIYI776266OWMZREQ" as RoadmapNodeIdentity,
+      former_slug: "floor-call-shape-wall" as RoadmapNodeId,
+      superseded_by: Present { value: "rn_EDXPW53NQMZVLEPYNYH6X4VNKM" as RoadmapNodeIdentity },
+    },
+    TombstonedIdentity {
+      identity: "rn_6W5ACS5ZE3ZMTA7BFCQLY76VW4" as RoadmapNodeIdentity,
+      former_slug: "floor-inhabitance-wall" as RoadmapNodeId,
+      superseded_by: Present { value: "rn_4ELCVV2EIHCBGHMOG6T4IZEMT3" as RoadmapNodeIdentity },
+    },
+    TombstonedIdentity {
+      identity: "rn_J5XDQKBF6J4YPGFKWQXE45KOQM" as RoadmapNodeIdentity,
+      former_slug: "compiler-accepted-obligation-closure" as RoadmapNodeId,
+      superseded_by: Present { value: "rn_6QXWDNSCBUAK6JWU7VSUWBXWMH" as RoadmapNodeIdentity },
+    },
+  ]
+}
+
+fn roadmap_active_identities() -> List<RoadmapIdentityRecord> {
+  declared_roadmap_nodes() |> map(n => ActiveIdentity {
+    identity: n.identity,
+    slug: n.node,
+  })
+}
+
+fn roadmap_identity_registry() -> List<RoadmapIdentityRecord> {
+  concat(roadmap_active_identities(), roadmap_tombstoned_identities())
+}
+
+fn record_identity(r: RoadmapIdentityRecord) -> String {
+  match r {
+    ActiveIdentity { identity, slug: _ } => identity as String
+    TombstonedIdentity { identity, former_slug: _, superseded_by: _ } => identity as String
+  }
+}
+
+fn record_slug(r: RoadmapIdentityRecord) -> String {
+  match r {
+    ActiveIdentity { identity: _, slug } => slug as String
+    TombstonedIdentity { identity: _, former_slug, superseded_by: _ } => former_slug as String
+  }
+}
+
+fn record_is_active(r: RoadmapIdentityRecord) -> Bool {
+  match r {
+    ActiveIdentity { identity: _, slug: _ } => true
+    TombstonedIdentity { identity: _, former_slug: _, superseded_by: _ } => false
+  }
+}
+
+// Resolution is EXACTLY-ONE, not first-pick. A filter-map-first lookup answers a duplicate registry with a plausible first row, which is the fabricated-plausible-output arm DESIGN 5 forbids — and it fails at exactly the moment the registry is corrupt, when a confident wrong answer is worst. The three outcomes are distinct because their remedies are: a MISSING identity is an unknown reference; a DUPLICATE is a corrupt registry; found is found. Callers match the sum rather than unwrapping an Optional that cannot tell those apart.
+type RoadmapIdentityResolution
+  = IdentityResolved { identity: RoadmapNodeIdentity }
+  | IdentityUnknown { slug: String }
+  | IdentityAmbiguous { slug: String, matches: Int }
+
+fn resolve_slug(slug: String) -> RoadmapIdentityResolution {
+  let hits = roadmap_identity_registry() |> filter(r => record_slug(r: r) == slug)
+  if count(hits) == 0 {
+    IdentityUnknown { slug: slug }
+  } else if count(hits) > 1 {
+    IdentityAmbiguous { slug: slug, matches: count(hits) }
+  } else {
+    match hits |> map(r => record_identity(r: r)) |> first {
+      Present { value: i } => IdentityResolved { identity: i as RoadmapNodeIdentity }
+      Absent => IdentityUnknown { slug: slug }
+    }
+  }
+}
+
+fn identity_count() -> Int { count(roadmap_identity_registry()) }
+
+fn distinct_count(values: List<String>) -> Int {
+  count(fold(values, init: [], f: fn(acc, v) {
+    if any(acc, e => e == v) { acc } else { append(acc, [v]) }
+  }))
+}
+
+fn distinct_identity_count() -> Int {
+  distinct_count(values: roadmap_identity_registry() |> map(r => record_identity(r: r)))
+}
+
+fn distinct_active_slug_count() -> Int {
+  distinct_count(values: roadmap_active_identities() |> map(r => record_slug(r: r)))
+}
+
+// WHAT A SNAPSHOT CAN AND CANNOT PROVE, stated so the gap is not mistaken for coverage. The claims
+// below are statements about the CURRENT tree: identities unique across active and tombstoned rows,
+// active slugs unique, every declared node carrying one, resolution exactly-one. None can see
+// history, and permanence is historical — an identity silently REPLACED between base and head
+// produces a tree satisfying every one of them.\n\nThe missing mechanism is a base-versus-head
+// comparison of this registry, which the CI floor already has the shape for in its merge-base diff
+// observation. ADMITTED: an active identity retained across a slug change; a new identity added; an
+// active identity becoming Tombstoned. REFUSED: an active identity replaced by a different value
+// for the same work; a tombstoned identity returning to active; an identity disappearing from the
+// registry entirely rather than being tombstoned; two records sharing one identity; one active slug
+// resolving to two identities.\n\nThe tombstone carrier above is what makes that gate implementable
+// at all — reuse is only detectable because retirement persists. Until the gate runs, permanence
+// rests on review, and this row keeps that fact countable rather than forgotten.
+
+fn active_identity_count() -> Int { count(roadmap_active_identities()) }

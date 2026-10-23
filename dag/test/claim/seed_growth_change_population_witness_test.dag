@@ -1,0 +1,145 @@
+module test.claim.seed_growth_change_population_witness_test
+
+import gunbc.rust_item_host_observation {
+  ItemDeclarationRefProjection,
+  ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List }
+import tools.seed_growth_change_population {
+  RosterCoverageVerdict, RosterCoverageComplete, RosterCoverageRefused,
+  roster_coverage_verdict, coverage_refusal_reason
+}
+import v2.std.algebra { length }
+
+// THE ARM A GREEN RUN OVER THIS BRANCH CANNOT REACH.
+//
+// The instrument's own population is entirely citable, so running it here exercises two of
+// item_declaration_ref's three outcomes and reports success from two lists. A first cut of the
+// verdict dropped the third -- ItemDeclarationRefUncitable is excluded by BOTH
+// projected_declaration_refs and projected_refused_keys -- so an added impl method exited SUCCESS
+// naming neither the item nor the limitation. These controls hand the decision a population no diff
+// on this branch produces, which is the only way that arm is reachable at all.
+//
+// They call roster_coverage_verdict, the same function main reaches. A control over a private
+// re-implementation of the decision would establish nothing about what the instrument decides.
+
+fn rostered_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v1_compiler.v1_interpreter",
+    decl_name: "collect_listing_names_from",
+    field: WholeDeclaration
+  }
+}
+
+fn unrostered_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v1_compiler.v1_interpreter",
+    decl_name: "a_declaration_no_seed_growth_row_names",
+    field: WholeDeclaration
+  }
+}
+
+fn an_uncitable_projection() -> ItemDeclarationRefProjection {
+  ItemDeclarationRefUncitable {
+    item_key: "v1_compiler.v1_interpreter::impl Listing::collect",
+    detail: "std.decl_ref DeclField cannot name a method on an impl block, nor an unnamed impl block itself"
+  }
+}
+
+fn verdict_is_complete(v: RosterCoverageVerdict) -> Bool {
+  match v {
+    RosterCoverageComplete => true
+    RosterCoverageRefused { unaddressable: _, uncitable: _, unjustified: _ } => false
+  }
+}
+
+fn refused_uncitable_keys(v: RosterCoverageVerdict) -> List<String> {
+  match v {
+    RosterCoverageComplete => []
+    RosterCoverageRefused { unaddressable: _, uncitable: uncitable, unjustified: _ } => uncitable
+  }
+}
+
+test fn an_empty_change_population_is_covered() -> Bool {
+  verdict_is_complete(v: roster_coverage_verdict(projections: []))
+}
+
+test fn a_fully_rostered_citable_population_is_covered() -> Bool {
+  verdict_is_complete(
+    v: roster_coverage_verdict(projections: [ItemDeclarationRefProjected { ref: rostered_ref() }])
+  )
+}
+
+// THE BLOCKER'S DISCRIMINATING RED. Under the two-list verdict this population produced
+// ExitSuccess: the item is in neither the projected refs nor the refused keys.
+test fn an_uncitable_addition_alone_refuses_rather_than_reporting_coverage() -> Bool {
+  let v = roster_coverage_verdict(projections: [an_uncitable_projection()])
+  !verdict_is_complete(v: v)
+    && length(xs: refused_uncitable_keys(v: v)) == 1
+    && string_contains(
+         s: coverage_refusal_reason(verdict: v),
+         pattern: "v1_compiler.v1_interpreter::impl Listing::collect"
+       )
+}
+
+// AND IT MUST NOT BE ABSORBED BY ITS COVERED SIBLINGS. This is the shape the omission actually
+// takes in practice: one uncitable item beside a fully rostered population that answers green.
+test fn an_uncitable_addition_beside_covered_ones_still_refuses() -> Bool {
+  let v = roster_coverage_verdict(
+    projections: [
+      ItemDeclarationRefProjected { ref: rostered_ref() },
+      an_uncitable_projection()
+    ]
+  )
+  !verdict_is_complete(v: v) && length(xs: refused_uncitable_keys(v: v)) == 1
+}
+
+test fn an_unaddressable_addition_refuses_under_its_own_cause() -> Bool {
+  let v = roster_coverage_verdict(
+    projections: [
+      ItemDeclarationRefRefused {
+        item_key: "unclaimed/tree/file.rs::fn::something",
+        detail: "no rust_source_namespace_rows row claims this path"
+      }
+    ]
+  )
+  !verdict_is_complete(v: v)
+    && length(xs: refused_uncitable_keys(v: v)) == 0
+    && string_contains(
+         s: coverage_refusal_reason(verdict: v),
+         pattern: "rust_source_namespace_rows does not claim"
+       )
+}
+
+test fn a_citable_addition_with_no_roster_row_refuses() -> Bool {
+  let v = roster_coverage_verdict(
+    projections: [ItemDeclarationRefProjected { ref: unrostered_ref() }]
+  )
+  !verdict_is_complete(v: v)
+    && length(xs: refused_uncitable_keys(v: v)) == 0
+    && string_contains(
+         s: coverage_refusal_reason(verdict: v),
+         pattern: "lack a SeedGrowthJustification row"
+       )
+}
+
+// THE THREE CAUSES ARE NOT RANKED. An arm reporting the first non-empty list and stopping would
+// hide the other two behind it, so a population carrying all three must name all three.
+test fn all_three_causes_are_reported_together_rather_than_ranked() -> Bool {
+  let reason = coverage_refusal_reason(
+    verdict: roster_coverage_verdict(
+      projections: [
+        ItemDeclarationRefRefused {
+          item_key: "unclaimed/tree/file.rs::fn::something",
+          detail: "no rust_source_namespace_rows row claims this path"
+        },
+        an_uncitable_projection(),
+        ItemDeclarationRefProjected { ref: unrostered_ref() }
+      ]
+    )
+  )
+  string_contains(s: reason, pattern: "rust_source_namespace_rows does not claim")
+    && string_contains(s: reason, pattern: "NO DeclarationRef can address")
+    && string_contains(s: reason, pattern: "lack a SeedGrowthJustification row")
+}

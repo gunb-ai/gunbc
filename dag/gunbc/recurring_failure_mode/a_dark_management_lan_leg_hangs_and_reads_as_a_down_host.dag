@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_dark_management_lan_leg_hangs_and_reads_as_a_down_host
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_dark_management_lan_leg_hangs_and_reads_as_a_down_host: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_dark_management_lan_leg_hangs_and_reads_as_a_down_host" as NonEmptyStr,
+
+  receipts: [
+    "**a dark management-LAN leg hangs, then reads as a down host** (a fleet ssh leg bounded only at connect waits indefinitely when an established session's path goes dark, and when it does end, the run reports the host as down although the evidence in hand cannot tell a dark LAN leg from a host that is off).",
+
+    "INVALID STATE: gunbc.fleet_known_hosts_anchor shape_fleet_ssh_exec and fleet_ssh_password_client_options carried ConnectTimeout=10 and no ServerAliveInterval (ssh_config(5) default 0, never), so an established session had no liveness bound; and gunbc.spark.model_snapshot_materialize spark_remote_run folded ssh's own 255 into RemoteRan, so a leg whose session died read as a command that exited 255.",
+
+    "HARM: 2026-10-03, Spark Group A bring-up. Every Spark reaches the executor only over wlP9s9 (MediaTek mt7925e). Router band steering roamed the hosts; a failed 4-way handshake left NetworkManager DISCONNECTED ('no secrets: No agents were available') on srv8 and Group B spark-3336, and srv7 stayed associated but forwarded nothing 05:33-06:53 EDT (read on the hosts by valiant-crab-775). Fleet-converge run 37156689444 sat ~1h inside one ssh leg. No host rebooted or wedged; the runs called them down.",
+
+    "DISTINGUISHING FACTS: liveness is a different bound from connect (ssh_config(5) ServerAliveInterval x ServerAliveCountMax); sshd answers keepalives itself, so a silent remote command is not cut off, only a path that returns nothing. Whether the leg's began-line ARRIVED is read in band (gunbc.spark.remote_leg_began remote_leg_began_word on stdout, the one protocol gunbc.spark.pair_serving_apply also reads), not from stderr -- and its absence does not establish that nothing ran, because the marker and the command share one unacknowledged stream: so the arm is LegBeginUnobserved, projected to ArgvLegMayHaveRun, never to ArgvLegDidNotRun (review of gunbc#13204). 'Host down' needs an observation this boundary does not hold, so the type has no HostDown arm: LegBeginUnobserved is dark-or-down UNDECIDED and names the readbacks that close it: first a probe of the host's fabric-rail address (192.168.110.x) from a same-group peer (rail answers -> LAN dark, host up), then uptime and the wlP9s9 journal. Two further triggers, separate from the deadline one: a two-phase leg protocol (the client receives an acknowledgement before it sends the effect command), SUFFICIENT FOR a NeverBegan arm a consumer may retry without a readback; and an automatic rail-jump classifier with its own consumer, SUFFICIENT FOR LegBeginUnobserved to be split into LAN-dark-host-up vs rail-also-dark without a human.",
+
+    "RUNG: found at 1 (a human read the hang and the hosts). Now 2: gunbc.fleet_known_hosts_anchor fleet_ssh_leg_deadline is the one row both fleet shapers derive their deadline words from and neither shaper takes an options parameter, and dag/test/claim/spark/spark_remote_leg_deadline_witness_test.dag pins the argv, the route through the password session, a zeroed-keepalive red control and the never-began reading. CEILING 3: the deadline as a required field of the operation every fleet ssh transport declares, so no ssh leg in the corpus (including extdeps.bmc.openbmc_password_ssh_transport and extdeps.ssh.password_session CopyFile, which still carry ConnectTimeout only) is expressible without it. NEXT-RUNG TRIGGER: those transport literals moved onto extdeps.ssh.client_options with the deadline derived, SUFFICIENT FOR no ssh argv in the corpus lacking a liveness bound.",
+  ],
+
+  evidence: [],
+}

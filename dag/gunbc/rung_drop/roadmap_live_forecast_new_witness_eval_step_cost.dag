@@ -1,0 +1,80 @@
+module gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_live_forecast_rows }
+
+// DECLARED 4b(3) DROP (gunbc#10994, 2026-09-19). The DECLARATION lives here; the POPULATION's
+// authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_live_forecast_rows`. The seed runner's membership set is the UNION of
+// all three eval-step drop lists via `floor_eval_step_cost_drop_members`, not a second copy of this
+// name. It is its own list because that module's rule is that growing a drop's list is a new drop:
+// the roadmap four may only shrink, and this identity is not one of them.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIM ITSELF IS UNTOUCHED. The identity is still planned,
+// still executed, still measured on every pull request; its eval_steps are still recorded; a
+// semantic red and a wall-clock crossing still block. Membership changes exactly one thing: an
+// eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop` rather than refusing.
+// The budget is not raised, and no other identity is covered.
+//
+// THE COST IS THE ASSERTION, NOT REACH AROUND IT -- WHICH IS WHY A DROP AND NOT A REWRITE.
+// `gunbc.rung_drop` `roadmap_sizing_authored_to_derived` names this claim as the ONE control that
+// executes the live authority and refuses, standing in for five controls that drop retired. While
+// `gunbc.roadmap_sizing` `derive_task_sizing` is a stub, `gunbc.roadmap_forecast`
+// `derived_node_sizings` mints a NodeUnsized refusal for EVERY active node of the live graph, and
+// the claim joins that refusal set to the active set in both directions. So the per-node work IS
+// what the claim establishes -- that the loss is TOTAL -- and reducing it would reduce the
+// assertion. DESIGN section 3's rule against buying reach with a debt row is not engaged: the live
+// authority is this claim's SUBJECT, not reach it acquired.
+//
+// THE IRREDUCIBILITY IS TESTED, NOT ASSERTED -- A DROP THAT MERELY CLAIMS IT IS THE INFLATION
+// SECTION 4b(1) FORBIDS. Two candidate reductions were measured and FALSIFIED.
+// (1) Binding the cycle-time history lazily inside the non-refusing branch of
+// `roadmap_schedule_forecast_over` moved the claim by ONE eval step: the substrate already
+// evaluates a `let` on demand, so the binding was never paid.
+// (2) Routing the claim through `frontier_sets_from_live_history` with an empty document showed a
+// large win under `claim_batch` and was REVERTED: `v2.workflow.floor_pure_producer_share` enrols
+// `roadmap_authority_projection` as a served carried-input warm row and does not serve that
+// spelling, so the local win would have RAISED the gated figure. `claim_batch` has no cross-claim
+// share and is therefore not the instrument that decides this; the floor's own
+// `required_floor_claim_cost` is, and the standing figure is read from it rather than copied here.
+//
+// A THIRD CANDIDATE WAS NOT A REDUCTION BUT A DEFECT, AND IT IS FIXED RATHER THAN RECORDED.
+// `derived_node_sizings` rebuilt both halves of its accumulator per node. That is a copied
+// accumulator, which DESIGN section 6 fixes AT ANY N, so measuring that the repair barely moved
+// this claim was never a reason to decline it -- the realized-n rebuttal is the one section 6
+// rules out by name. It is now an append-free `flat_map` on each independent list, and it is NOT
+// part of this row's irreducibility case (gunbc#10994 review 68130). What remains after that
+// repair is the per-node sizing derivation itself, which is what clause (i) below names.
+//
+// WHY NOT THE LONG HOME, WHICH IS THE FLOOR'S OTHER SANCTIONED REMEDY. Because there it would stop
+// running on the change it exists to catch. The floor plans a changed witness from
+// `edited_test_fns` -- the `test fn`s the DIFF TOUCHED, established in
+// `required_floor_runner.rs` `changed_witness_identities_from_edited_test_fns` -- and NOT from the
+// closure, so a change to `gunbc.roadmap_sizing` would not plan it. Nothing else executes the long
+// home: `witnesses.yml` carries no schedule, `falsifier.yml` was deleted in the 2026-08-15 floor
+// cut, and on run 35408358503 exactly three `test.claim.long.*` identities executed -- all of them
+// ones that run's own diff had edited -- against `declined_long=416`. The relocation would have
+// turned this control into the decoration section 4b reserves that word for.
+data roadmap_live_forecast_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_live_forecast_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_live_forecast_rows; measured by "), m.measured_by))
+
+data roadmap_live_forecast_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "roadmap_live_forecast_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one live-forecast control that executes the live roadmap authority and refuses: it still executes on every pull request, eval_steps stay observed and recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-09-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the live graph's per-node sizing derivation reaching a claim frame as a served value rather than being re-derived inside it, so asserting that the loss is total stops costing one derivation per active node",
+    },
+    population: roadmap_live_forecast_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER. (i) The per-node sizing derivation over the LIVE graph reaches this claim as a value it does not compute in its own frame -- concretely, gunbc.roadmap_forecast derived_node_sizings over the live active node set is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path, the way roadmap_authority_projection already is. WHAT THAT FILL MUST BE SUFFICIENT FOR, stated because a trigger naming less than the capability is satisfied while the capability stays dead: a required-floor claim asserting the TOTAL unsized set over the live graph must not re-derive a sizing per active node inside its own frame. A share row that does not cover this identity's demand does not satisfy this clause, and neither does any change that makes the claim assert over fewer nodes. (ii) AND this identity measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, while STILL executing on every pull request, still recording eval_steps, and still asserting the refusal set and the active set agree in both directions. Deleting the identity, weakening it to a supplied fixture, moving it to a home that does not execute it on the change it exists to catch, or the stub deriver merely being replaced without clause (i) holding, satisfies neither clause. Note that replacing the stub does NOT by itself retire this row: a deriver that answers sends the fold on to schedule_forecast instead, which is a different and not necessarily cheaper path, so the retiring evidence is clause (ii)'s measurement and not the replacement.",
+  }
+}

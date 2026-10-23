@@ -1,0 +1,7 @@
+module test.fixture.reference_derived_graph.consumer_callee_only
+
+import std.types { Int }
+
+fn uses_only_as_callee() -> Int {
+  test.fixture.reference_derived_graph.provider.provided_fn()
+}

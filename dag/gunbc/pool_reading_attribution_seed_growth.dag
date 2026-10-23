@@ -1,0 +1,28 @@
+module gunbc.pool_reading_attribution_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that records the pool's lexing, newline index and heads parse at
+// their producer. An attribution correction on an existing receipt: it changes which row the
+// time is reported under and changes no demand, verdict or budget.
+//
+// WHY IT IS RUST AND NOT .dag. The measured subject is the seed's own acquisition of a source
+// file, whose interval exists only inside that host call, and the receipt it feeds
+// (v1_compiler.cli_run.pre_entry_phase) is host transport that names its own dissolution.
+//
+// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.cli_run.pool_acquire. One
+// thread-local accumulator beside them is not a citable declaration and is named here rather
+// than omitted. build_module_graph_facts_live_uncached is an existing item modified, not an
+// addition.
+data pool_reading_attribution_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.pool_acquire", decl_name: "attribute", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pool_acquire", decl_name: "attributed", field: WholeDeclaration }
+  ],
+  reason: "Lexing, the newline index and the heads parse of a pool file are demanded by whichever walk reaches the file first, so a timer at the demander reports them under the demander's name: the module path index is built inside the import-edge facts, and the pre-entry row graph_facts_import_edges carried the whole pool's reading while its own work is a line scan. attribute records the lexing, the newline index and the heads parse as their own rows where they are produced; attributed reads the running total so a span that forces acquisitions reports itself net of them instead of counting the same work twice.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when the pre-entry receipt is a projection of a .dag per-phase PerformanceReceipt carrier consumed by execution, the trigger v1_compiler.cli_run.pre_entry_phase names for itself: the reading of a source file is then a node the cost model sees and attributing it by hand is duplicated accounting.",
+  current_boundary: "Thread-local and write-only on an acquisition miss or a first heads parse; read only by build_module_graph_facts_live_uncached to net its own row. It reports time and decides nothing: no verdict, budget or refusal reads it."
+}

@@ -1,0 +1,6 @@
+module v2.extdeps.languages.fidelity
+
+type FidelityDisposition<Feature>
+  = Modeled
+  | DeclaredNormalized { feature: Feature }
+  | FailClosed { feature: Feature }

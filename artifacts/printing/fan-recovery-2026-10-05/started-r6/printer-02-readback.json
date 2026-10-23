@@ -1,0 +1,103 @@
+{
+  "project_sha256": "5c0d360672cd8d95062f20d9e706b7e86985b51e47a345e8d47da58d60c91765",
+  "objects": [
+    "G140"
+  ],
+  "seconds": 7373,
+  "grams": 36.26,
+  "paths": {
+    "bounds": [
+      10.472,
+      10.472,
+      0.2,
+      169.528,
+      169.528,
+      15.0
+    ],
+    "arcs": 5967,
+    "extrusion": {
+      "Brim": 184.74183999999994,
+      "Support": 46.81354000000003,
+      "Outer wall": 2333.451830000022,
+      "Inner wall": 5331.58355999996,
+      "Gap infill": 987.935140000008,
+      "Bottom surface": 208.52404000000195,
+      "Internal solid infill": 1642.6848999998172,
+      "Support interface": 48.238109999999764,
+      "Sparse infill": 303.33471999999927,
+      "Overhang wall": 8.721709999999998,
+      "Bridge": 5.89972,
+      "Internal Bridge": 330.4049299999993,
+      "Top surface": 701.0523199999619
+    },
+    "supports": {
+      "G140": 95.05164999999901
+    },
+    "object_bounds": {
+      "outside-object": [
+        10.472,
+        10.472,
+        0.2,
+        169.528,
+        169.528,
+        0.2
+      ],
+      "G140": [
+        14.21,
+        14.21,
+        0.2,
+        165.79,
+        165.79,
+        15.0
+      ]
+    }
+  },
+  "support_fraction": 0.007833892961107423,
+  "warnings": [
+    {
+      "msg": "bed_temperature_too_high_than_filament",
+      "level": "3",
+      "error_code": "1000C001"
+    },
+    {
+      "msg": "not_support_traditional_timelapse",
+      "level": "2",
+      "error_code": "10018003"
+    },
+    {
+      "msg": "not_support_traditional_timelapse",
+      "level": "3",
+      "error_code": "1000C003"
+    }
+  ],
+  "support_geometry_sha256": "7ea8df80b0b3488ed7a020aceb103b27f14186f1a26835719a876e0f9e1acef6",
+  "cad_binding": {
+    "cad_manifest_sha256": "5966dbd36f6c0187abd91ad957b6242a1d136eadc544253f3beade477d2cbdd9",
+    "steps": {
+      "G140": "48f1e7c259c2fa37e3cd2a9bfc6cef5cfeb329a85e5330c44a54ad1eba81a2e8"
+    },
+    "placements": [
+      {
+        "id": "G140",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_um": [
+          14000,
+          14000
+        ]
+      }
+    ],
+    "pack_program_sha256": "cf2d43b34ea43713838bdc60696e5b1a12deca648b439b01ec797bee02902125"
+  },
+  "source_project_sha256": "61411ca741674c4ebeef79b9a9dbcdfb264daf7dd29898ec49ca56063861b950",
+  "profile_sha256": {
+    "machine": "9dec6ea4e57bb3fcdff48c4b22a061459baebbce55d60cbedcb03afe68c6d5ab",
+    "filament": "1f6178d40844c64d089ae1d3fbbcfb0eede5f0cd6bb1eed36eae2c17be66b64a",
+    "process": "db2a5059c19afbc9987733add30bb309955051300734c2689a6d9f018a533f01"
+  },
+  "orca_archive_sha256": "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba",
+  "reader_program_sha256": "045865f6fa784c86635f3e9b1d866a63001f9f79e4f75a7fb02d95c9e5cf280d"
+}

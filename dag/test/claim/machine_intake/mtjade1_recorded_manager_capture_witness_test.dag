@@ -1,0 +1,52 @@
+module test.claim.mtjade1_recorded_manager_capture_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake_mtjade1_access_observation {
+  RecordedManagerDecoded,
+  RecordedManagerRefused,
+  read_mtjade1_recorded_manager_identity,
+  recorded_manager_family_standing,
+}
+import gunbc.machine_intake_mtjade1_fan_standing {
+  FamilyUnobservedNoFanRealizer,
+  JadeFanRouteSelected,
+  jade_current_fan_policy_convergence,
+}
+import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ONE EXECUTION OF THE REAL PATH (DESIGN §3 pairing obligation): the committed capture is read
+// from the tree, hashed against the digest recorded at capture time, decoded, bound to mtjade1's
+// observed BMC link through Oem.Amp.FruInformation.BoardExtra, and discriminated. The ROUTE is
+// asserted, not only the answer: the receipt must be RecordedManagerDecoded with the fields the
+// bytes carry, and its standing must be AmiMegaRac. Editing one byte of the artifact, or its
+// recorded digest, or the observed link, reds this claim through a typed refusal.
+test fn w_the_committed_capture_decodes_bound_to_mtjade1_as_megarac() -> Bool {
+  let receipt = read_mtjade1_recorded_manager_identity()
+  let fields = match receipt.decoded {
+    RecordedManagerDecoded { observation: o } =>
+      (o.manager_id as String) == "Self" && o.firmware_version == "2.11.104000" && o.model == "130582050" && o.oem_keys == ["Ami", "Amp"]
+    RecordedManagerRefused { gap: _ } => false
+  }
+  fields
+    && match recorded_manager_family_standing(decoded: receipt.decoded) {
+      FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false }
+      FamilyUnobserved { discriminator: _ } => false
+    }
+}
+
+// THE PRODUCTION CONSUMER OF THAT STANDING: the current fan convergence selects the MegaRAC route,
+// which is unbound and carries its read obligation.
+test fn w_the_current_jade_fan_convergence_selects_the_observed_megarac_route_unbound() -> Bool {
+  match jade_current_fan_policy_convergence() {
+    JadeFanRouteSelected { route: r } => match r {
+      ConvergeRouteUnbound { authority: _, read_obligation: _ } => true
+      ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => false
+    }
+    FamilyUnobservedNoFanRealizer => false
+  }
+}

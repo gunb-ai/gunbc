@@ -1,0 +1,174 @@
+module test.claim.emit_stage_blocking_population_census_witness_test
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.measure { second, byte_size_count }
+import std.decl_ref { decl_ref }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.rusage { RusageMaxrssObservation, RusageChildren }
+import extdeps.linux.rusage { linux_rusage_maxrss_unit }
+import gunbc.emit_diagnostic_observation {
+  EmitPopulationComplete,
+  EmitPopulationCompletenessUnestablished
+}
+import gunbc.emit_stage_blocking_population_census {
+  CensusRun,
+  CensusReading,
+  PopulationRead,
+  NoPopulation,
+  BlockingSite,
+  CompileExited,
+  CompileKilledBySignal,
+  CompileUnterminatedWithinBudget,
+  PristineAtRevision,
+  LocallyPerturbed,
+  WorkflowParameterDefaultGate,
+  AnonymousRecordLiteralGate,
+  EmitStoppedOnUpstreamCauses,
+  NoGateFired,
+  ProducedByEmit,
+  ProducedUpstreamSurfacedAtEmitRefusal,
+  emit_produced_sites,
+  BoundedAbove,
+  LowerBoundOnly,
+  NoBound,
+  census_population_bound,
+  census_reading_extent,
+  census_run_peak_bytes,
+  census_revision,
+  pristine_census,
+  pristine_census_run,
+  layer_two_census,
+  layer_three_census,
+  src_v2_root_census
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_subject_note: String = "THE ASSERTIONS HERE ARE ABOUT THE CARRIER'S JUDGEMENTS, NOT ABOUT THE CORPUS, and the distinction decides what a red means. The measured rows are inputs the compiler produced on a named revision; re-asserting their counts would be a snapshot of a tree, which DESIGN section 5 refuses as an oracle. What is checked instead is the derivation the receipt exists for: a killed run yields NO bound however plausible its output looked, a gate that fired yields a LOWER bound and never a complete one, and only an emit that ran to the end of its body bounds the population from above.\n\nThe discriminating RED is authorable at every one of them: flip the termination to a signal, flip the gate to NoGateFired, and each claim fails. A carrier that answered BoundedAbove for a masked reading is precisely the fabricated bound this whole lane exists to prevent, and it is the state these arms make fail loudly."
+
+// A SIGKILLED RUN CARRIES NO BOUND, even where the decode recovered members. This is the arm that
+// matters most: the killed process printed a prefix, the prefix parsed, and a reader who trusted
+// the count would have published a number no compiler ever finished producing.
+fn killed_reading() -> CensusReading {
+  PopulationRead {
+    run: CensusRun {
+      source_revision: census_revision,
+      subject_tree: PristineAtRevision,
+      primary_root: "dag" as NonEmptyStr,
+      dependency_pool_root: "src/v2" as NonEmptyStr,
+      render_target: "rust" as NonEmptyStr,
+      termination: CompileKilledBySignal { signal: 9 },
+      peak_resident: RusageMaxrssObservation {
+        who: RusageChildren,
+        raw_value: 4900000,
+        unit: linux_rusage_maxrss_unit
+      },
+      wall: second(240),
+      resolved_sources: 3006
+    },
+    stopping_gate: NoGateFired,
+    blocking: [],
+    advisory_total: 0
+  }
+}
+
+test fn a_killed_run_yields_no_bound_even_with_an_empty_looking_population() -> Bool {
+  match census_population_bound(r: killed_reading()) {
+    NoBound { cause: c } => !((c as String) == "")
+    BoundedAbove { count: _ } => false
+    LowerBoundOnly { count: _, masking_gate: _ } => false
+  }
+}
+
+test fn the_pristine_census_bounds_only_from_below_and_names_its_mask() -> Bool {
+  match census_population_bound(r: pristine_census) {
+    LowerBoundOnly { count: n, masking_gate: g } =>
+      n == 3
+        && match g {
+          WorkflowParameterDefaultGate => true
+          AnonymousRecordLiteralGate => false
+          EmitStoppedOnUpstreamCauses => false
+          NoGateFired => false
+        }
+    BoundedAbove { count: _ } => false
+    NoBound { cause: _ } => false
+  }
+}
+
+test fn a_masked_reading_is_never_complete_and_an_unmasked_one_is() -> Bool {
+  match census_reading_extent(r: pristine_census) {
+    EmitPopulationCompletenessUnestablished => true
+    EmitPopulationComplete => false
+  }
+    && match census_reading_extent(r: layer_two_census) {
+      EmitPopulationCompletenessUnestablished => true
+      EmitPopulationComplete => false
+    }
+}
+
+// THE PEAK IS RECORDED IN THE UNIT THE PLATFORM ANSWERS IN, and read back in bytes through the
+// cited authority rather than by a local multiplication. A Linux ru_maxrss misread as bytes
+// understates residency by three orders of magnitude, in the direction that looks comfortable.
+test fn the_peak_is_read_through_the_cited_unit_authority() -> Bool {
+  byte_size_count(b: census_run_peak_bytes(r: pristine_census_run)) == 11960416 * 1024
+}
+
+// AN UNTERMINATED RUN CARRIES NO POPULATION AND NO BOUND. This is the arm layer 3 actually
+// produced: the process was still computing when the observer's budget expired, so it has no exit
+// status to record and nothing to count. A carrier that let this render as an ordinary refusal --
+// or worse, as a clean pass with an empty population -- would be the fabricated zero one step
+// removed from the SIGKILL case above.
+test fn an_unterminated_run_carries_no_population_and_no_bound() -> Bool {
+  match census_population_bound(r: layer_three_census) {
+    NoBound { cause: c } => !((c as String) == "")
+    BoundedAbove { count: _ } => false
+    LowerBoundOnly { count: _, masking_gate: _ } => false
+  }
+}
+
+// AND ITS TERMINATION IS NOT AN EXIT. The discriminating check is on the arm rather than on a
+// code, because the defect being refused is a run that borrows an exit status it never produced.
+test fn the_unterminated_run_records_a_budget_rather_than_an_exit_code() -> Bool {
+  match layer_three_census {
+    NoPopulation { run: r, cause: _ } =>
+      match r.termination {
+        CompileUnterminatedWithinBudget { budget: _ } => true
+        CompileExited { code: _ } => false
+        CompileKilledBySignal { signal: _ } => false
+      }
+    PopulationRead { run: _, stopping_gate: _, blocking: _, advisory_total: _ } => false
+  }
+}
+
+// A WHOLE-REFUSAL COUNT IS NOT THE CLASS'S COUNT, and the src/v2 root is where the two part
+// company: twenty members stand at that refusal and none of them was produced by emit. A carrier
+// that could only report the wider figure would have handed a nineteen-member import cascade and
+// a planted fixture to a row about emit-stage defects.
+test fn the_emit_produced_subset_is_narrower_than_the_refusal_population() -> Bool {
+  match src_v2_root_census {
+    PopulationRead { run: _, stopping_gate: _, blocking: bs, advisory_total: _ } =>
+      count(bs) == 20 && count(emit_produced_sites(sites: bs)) == 0
+    NoPopulation { run: _, cause: _ } => false
+  }
+}
+
+// AND A REFUSAL OVER UPSTREAM CAUSES ESTABLISHES NOTHING ABOUT EMIT'S OWN GATES. Zero emit-produced
+// members there is an OBSERVATION OF ZERO, not a clean pass, so the reading stays incomplete and
+// bounds only from below.
+test fn an_upstream_refusal_does_not_certify_emit_as_clean() -> Bool {
+  match census_reading_extent(r: src_v2_root_census) {
+    EmitPopulationCompletenessUnestablished => true
+    EmitPopulationComplete => false
+  }
+    && match census_population_bound(r: src_v2_root_census) {
+      LowerBoundOnly { count: n, masking_gate: g } =>
+        n == 0 && match g {
+          EmitStoppedOnUpstreamCauses => true
+          WorkflowParameterDefaultGate => false
+          AnonymousRecordLiteralGate => false
+          NoGateFired => false
+        }
+      BoundedAbove { count: _ } => false
+      NoBound { cause: _ } => false
+    }
+}

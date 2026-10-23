@@ -1,0 +1,343 @@
+module gunbc.machine_intake_sol_hold
+
+import std.types { Bool, NonEmptyStr, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
+  bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_from_stmts,
+  bash_build_test_bracket, bash_build_with_redir, bash_build_negation, bash_build_subshell_from_stmts, bash_build_exit,
+  bash_build_with_redir_to_file, bash_build_if_else, bash_build_stmt_list_from_nodes,
+}
+
+// HOLDING A STREAMING SOL SESSION IS REALIZATION, NOT THE IPMI INTERFACE. extdeps.bmc.ipmi
+// SolDeactivate is a flat ipmitool argv; `sol activate` is the matching interface and it does not
+// return until the session ends. Backgrounding, redirecting the collector, and writing a pid are
+// how THIS workflow holds that session after the operator grant — one of N realizations, never a
+// fact about IPMI (DESIGN §3). The hold is still bash: process-hold is not a Node in the grammar
+// yet, so the transport is a marked scaffold rather than an unmarked script fused into the BMC
+// interface (review 67590).
+//
+// THE COLLECTOR'S STDIN IS OPEN AND SILENT, AND ITS LIFETIME IS THE COLLECTOR'S. `sol activate` is
+// interactive. ipmitool 1.8.19 lib/ipmi_sol.c ipmi_sol_red_pill tests stdin FIRST in an if/else over
+// its select set and forwards every byte it reads to the host as SOL input (processSolUserInput); a
+// read of <= 0 bytes sets bShouldExit. So /dev/zero TYPED an endless run of NULs at the host (and,
+// being always readable, starved the receive branch), and /dev/null is EOF, which ends the session
+// seconds after activation. The replacement is a fifo created 0600 beside the pid file, opened
+// read-write on fd 3 (a read-write open of a fifo does not block and makes the holder its own
+// writer, so no read ever returns EOF), unlinked at once, and handed to the collector as fd 0 with
+// fd 3 closed in the child. Nothing ever writes to it and no second process holds it: the last
+// descriptor is the collector's own, so the pipe ends with the collector. Keepalives are unaffected
+// -- the loop sends them at the top of every pass on SOL_KEEPALIVE_TIMEOUT whatever stdin holds.
+//
+// THE COLLECTOR IS SUPERVISED, AND WHAT IT SAYS IS KEPT APART FROM WHAT THE HOST SAYS. The launch
+// backgrounds a supervisor subshell that starts the collector as its own child, so three facts exist
+// that a pid alone never gave: (1) IDENTITY -- the pid file holds "<pid> <starttime>", /proc/<pid>/stat
+// field 22 at spawn, which no later process given the same pid shares; it is written to a temporary
+// name and renamed, so a reader never sees half of it; (2) SOURCE -- the collector's stdout, which is
+// the host's console bytes, goes to the capture, and its stderr, which is ipmitool's own diagnostics,
+// goes to a separate client-diagnostic file, so no host output can be read as a client event and no
+// client event hides among host lines; (3) EXIT -- the supervisor waits on the child and appends
+// "gunbc-sol-hold: collector exited status=<n> at=<UTC instant>" to the diagnostic file (128+n is
+// signal n), so how and WHEN the collector ended is recorded, not inferred from a vanished pid or
+// from an untimestamped client line. Lines the hold itself writes
+// carry the "gunbc-sol-hold:" prefix; every other diagnostic line is the client's.
+//
+// THE COLLECTOR'S STDOUT IS LINE-BUFFERED so that "the session is established" is observable. ipmitool
+// 1.8.19 prints "[SOL Session operational.  Use ~? for help]" with printf just before its receive
+// loop and flushes stdout only after each received SOL packet (output()); into a file that is a full
+// stdio buffer, so on a quiet console -- expected here, the census kernel's /dev/console is tty0 --
+// the banner could sit unwritten indefinitely. `stdbuf -oL` (coreutils) execs the collector, so the
+// pid, start time and cmdline stay the collector's own, and the banner lands at activation. Received
+// host bytes are unchanged: output() already flushes after every packet.
+//
+// IF THE PID CANNOT BE PUBLISHED, THE CHILD THIS LAUNCH CREATED IS STOPPED. The supervisor is the
+// child's parent and has not yet reaped it, so its pid cannot have been reused: it kills exactly that
+// child, records "gunbc-sol-hold: pid not published; collector stopped", and still records the exit.
+// Never a global kill or a BMC deactivate. The launch itself returns once the supervisor is started;
+// whether a collector was ESTABLISHED is read afterwards from the pid, the stat and the diagnostics
+// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_activate_held).
+//
+// THE BUILD THIS IS READ FROM. srv1, reported 2026-09-27: `ipmitool -V` 1.8.19; dpkg ipmitool
+// 1.8.19-7ubuntu0.24.04.3 arm64; /usr/bin/ipmitool sha256 prefix 84b8c7b03972e809. That package's
+// debian/patches series (11 patches) touches lib/ipmi_tsol.c, sensor, SEL/SDR, lan print, time and
+// manpage paths and nothing in lib/ipmi_sol.c, so the loop above is upstream IPMITOOL_1_8_19.
+//
+// THE EXECUTABLE IS AN INPUT so the launch can be exercised against a probe: the boot passes
+// `ipmitool` (resolved on the runner's PATH, as every extdeps.bmc.ipmi operation is), and
+// test.claim.machine_intake.sol_hold_stdin_wet_witness passes a process that reports what arrived
+// on its stdin -- the executed evidence that the stdin supplies zero bytes and no EOF.
+
+data mtcollins1_sol_hold_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.machine_intake_sol_hold",
+    decl_name: "mtcollins1_sol_hold_shell_emit_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data mtcollins1_sol_hold_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.sol_hold ActivateHeld — a bash -c script held as a string: it starts `ipmitool sol activate` in the background (stdin from an unlinked read-write fifo on fd 3, stdout line-buffered and appended to the capture, stderr appended to the client file) inside a background supervisor subshell whose body -- start-time read, publication, stop on failure, wait, exit record -- is already bash_build nodes (sol_hold_supervisor_body); and the one line of the boot step (gunbc.ci_spec gunbc_ci_mtcollins1_boot_watcher_background_line) that starts the SOL notice watcher with `&` and captures its pid from $!, the step being otherwise bash_build nodes. Paths are positional data (`$1`…`$7`), not interpolated shell syntax. DISSOLVES WHEN [C5 background-hold] (no intent or bash grammar row for a background process with its pid captured via $!) and [C8 fd-redirection] (no bash grammar rows for opening a file read-write on a numbered fd, duplicating it onto stdin, closing it, or >>/2>> appends) land, or a typed process-hold realization provides the WHOLE lifecycle -- start a streaming session with a held-open silent input and redirected output, publish an instance-bound identity, and supervise and record the exit -- without a medium-as-string script; the release by identity is already bash_build nodes (mtcollins1_sol_hold_release_script)")
+
+// THE HOLD'S OWN LINES IN THE CLIENT DIAGNOSTIC FILE, as the launch below writes them. The watch
+// classifies a loss by them (gunbc.machine_intake_mtcollins1_boot_run sol_client_diagnostics), so
+// they are named once here; test.claim.machine_intake.mtcollins1_boot_run_witness asserts the launch
+// text carries each spelling, and the wet controls read them back from a real supervisor.
+data sol_hold_line_prefix: String = "gunbc-sol-hold:"
+
+data sol_hold_exit_record_prefix: String = "gunbc-sol-hold: collector exited status="
+
+data sol_hold_exit_record_instant_marker: String = " at="
+
+data sol_hold_pid_not_published_line: String = "gunbc-sol-hold: pid not published; collector stopped"
+
+// Publication failed and the child survived TERM and KILL within their bounds: nothing claims it stopped.
+data sol_hold_pid_not_published_unstopped_line: String = "gunbc-sol-hold: pid not published; collector NOT stopped (survived TERM and KILL)"
+
+// THE LAUNCH IS THREE PARTS, and only the outer two are a string. The supervisor BODY -- the start-time
+// read, the atomic "<pid> <starttime>" publication, the stop of the child if publication fails, the
+// wait and the exit record -- is bash_build nodes rendered by v2.workflow.bash_emit
+// (sol_hold_supervisor_body), exactly as the release is. What stays a string is what the grammar has
+// no row for: the background start and its pid ($!, [C5 background-hold]) and the file-descriptor
+// plumbing around it -- opening the fifo read-write on fd 3, handing fd 3 to the collector as stdin
+// and closing it, and the collector's >>/2>> appends ([C8 fd-redirection]).
+fn sol_hold_record_line(parts: List<Node>) -> Node {
+  bash_build_pipe(
+    left: bash_build_command_with_words(words: [shl(text: "echo"), bash_build_word_concat_from_nodes(parts: parts)]),
+    right: bash_build_command_with_words(words: [shl(text: "dd"), bash_build_word_concat_from_nodes(parts: [shl(text: "of="), shv(name: "diag")]), shl(text: "oflag=append"), shl(text: "conv=notrunc"), shl(text: "status=none")]),
+  )
+}
+
+// A CHILD THAT EXITED BEFORE ITS START TIME COULD BE READ IS NOT A PUBLICATION FAILURE: bash reaps a
+// finished background child asynchronously, so a collector that refuses and exits at once can leave no
+// /proc/<pid> to read. With /proc/<pid> already gone nothing is signalled and no "pid not published"
+// record is written; the ordinary wait returns the saved status and records the exit, so the client's
+// own words (an activation refusal) decide the cause.
+// A PUBLICATION FAILURE ENDS ON WHAT WAS OBSERVED. After TERM, a bounded wait, KILL and a second bounded
+// wait, a child still present is recorded as cleanup residue WITH ITS PID (the only record of it, since
+// its identity was never published) and the supervisor returns at once: no unbounded wait, and no
+// "collector exited" record, because no exit was observed. A child observed ended is reaped by the
+// ordinary wait below, which then records its exit.
+// The supervisor's own child, still running: /proc/<p> present and not a zombie. The child is unreaped
+// until the supervisor waits, so its pid cannot have been reused and the bare pid is its identity here.
+fn sol_hold_child_running() -> Node {
+  bash_build_and_then(
+    left: sol_hold_proc_present(),
+    right: bash_build_and_then(
+      left: bash_build_assign(name: "cstate", value: sh_stat_word(n: "1")),
+      right: bash_build_test_bracket(words: [shv(name: "cstate"), shl(text: "!="), shl(text: "Z")]),
+    ),
+  )
+}
+
+fn sol_hold_supervisor_body() -> List<Node> {
+  let staged = bash_build_word_concat_from_nodes(parts: [shv(name: "pf"), shl(text: ".tmp")])
+  [
+    bash_build_assign(name: "s", value: sh_stat_word(n: "20")),
+    bash_build_if_from_stmts(
+      cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [
+        bash_build_and_then(
+          left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")]),
+          right: bash_build_and_then(
+            left: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [shl(text: "printf"), shl(text: "%s %s\\n"), shv(name: "p"), shv(name: "s")]), path: staged),
+            right: bash_build_command_with_words(words: [shl(text: "mv"), shl(text: "-T"), staged, shv(name: "pf")]),
+          ),
+        ),
+      ])),
+      then_stmts: [
+        bash_build_command_with_words(words: [shl(text: "rm"), shl(text: "-f"), staged]),
+        bash_build_if_from_stmts(cond: sol_hold_proc_present(), then_stmts: [
+        bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
+        sh_wait_gone(seconds: "2"),
+        bash_build_if_from_stmts(cond: sol_hold_child_running(), then_stmts: [
+          bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shl(text: "-9"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
+          sh_wait_gone(seconds: "1"),
+        ]),
+        bash_build_if_else(
+          cond: sol_hold_child_running(),
+          then_body: bash_build_stmt_list_from_nodes(stmts: [
+            sol_hold_record_line(parts: [shl(text: sol_hold_pid_not_published_unstopped_line), shl(text: " pid="), shv(name: "p")]),
+            bash_build_exit(code: "0"),
+          ]),
+          else_body: bash_build_stmt_list_from_nodes(stmts: [sol_hold_record_line(parts: [shl(text: sol_hold_pid_not_published_line)])]),
+        ),
+        ]),
+      ],
+    ),
+    bash_build_if_else(
+      cond: bash_build_command_with_words(words: [shl(text: "wait"), shv(name: "p")]),
+      then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_assign(name: "rc", value: shl(text: "0"))]),
+      else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_assign(name: "rc", value: shv(name: "?"))]),
+    ),
+    sol_hold_record_line(parts: [shl(text: sol_hold_exit_record_prefix), shv(name: "rc"), shl(text: sol_hold_exit_record_instant_marker), bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]))]),
+  ]
+}
+
+// The rendered supervisor body, exposed so its bounded publication-failure path can be executed on its own.
+data mtcollins1_sol_hold_supervisor_script: String = sol_hold_rendered(stmts: sol_hold_supervisor_body())
+
+data mtcollins1_sol_hold_activate_script: String = join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", mtcollins1_sol_hold_supervisor_script, "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
+
+// RELEASE IS THE ONE SPELLING OF "stop the collector this hold started": the workflow's teardown calls
+// ReleaseHeld after the BMC deactivate, and the boot step's EXIT trap runs the same script on cancel or
+// timeout (gunbc.ci_spec gunbc_ci_mtcollins1_boot_trap_body), for the collector and for the notice
+// watcher's record alike. There is no separate stdin holder to stop: the collector's pipe is held only
+// by the collector. The supervisor records the resulting exit.
+// RELEASE AND THE OWNED CHECK ARE bash_build NODES RENDERED BY v2.workflow.bash_emit, not scripts held
+// as strings: neither backgrounds a process or reads $!, so neither belongs under [C5 background-hold]
+// (review 72304). The grammar has no loop, function definition, input redirect or pattern-removal
+// expansion, so the construction avoids all four: the record is read with `cut`, the identity with
+// `sed | cut` over /proc/<pid>/stat (the start time is word 20 after the parenthesised comm, the state
+// word 1), and the bounded waits are `timeout <s> tail --pid`. `sol_hold_owned_condition` is the ONE
+// identity predicate: true while the recorded "<pid> <starttime>" names a live, non-zombie process with
+// that start time. The release consumes it before each signal and after each wait, so it signals
+// nothing that is not that instance; the owned check is that predicate alone.
+fn shl(text: String) -> Node { bash_build_word_lit(text: text) }
+fn shv(name: String) -> Node { bash_build_word_var(name: name) }
+fn sh_stat_word(n: String) -> Node {
+  bash_build_word_cmdsubst(body: bash_build_pipe(
+    left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "sed"), shl(text: "s/^.*) //"), bash_build_word_concat_from_nodes(parts: [shl(text: "/proc/"), shv(name: "p"), shl(text: "/stat")])]), redir: ^bash_production_fold_redir_stderr_null),
+    right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f", n]),
+  ))
+}
+
+// The serializer leaves a command substitution unquoted, so every value compared in a test is first
+// assigned to a variable and compared quoted: an empty or spaced value then compares as one word.
+fn sol_hold_owned_condition() -> Node {
+  bash_build_and_then(
+    left: bash_build_and_then(
+      left: bash_build_assign(name: "ost", value: sh_stat_word(n: "20")),
+      right: bash_build_assign(name: "ostate", value: sh_stat_word(n: "1")),
+    ),
+    right: bash_build_and_then(
+      left: bash_build_test_bracket(words: [shv(name: "ost"), shl(text: "="), shv(name: "s")]),
+      right: bash_build_test_bracket(words: [shv(name: "ostate"), shl(text: "!="), shl(text: "Z")]),
+    ),
+  )
+}
+
+fn sol_hold_record_read(absent_code: String, unreadable_code: String) -> List<Node> {
+  [
+    bash_build_assign(name: "f", value: shv(name: "1")),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-e"), shv(name: "f")])), then_stmts: [bash_build_exit(code: absent_code)]),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_test_bracket(words: [shl(text: "-r"), shv(name: "f")])), then_stmts: [bash_build_exit(code: unreadable_code)]),
+    bash_build_assign(name: "p", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f1"), shv(name: "f")]))),
+    bash_build_assign(name: "s", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [shl(text: "cut"), shl(text: "-d"), shl(text: " "), shl(text: "-f2"), shv(name: "f")]))),
+    bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(left: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "p")]), right: bash_build_test_bracket(words: [shl(text: "-n"), shv(name: "s")]))])), then_stmts: [bash_build_exit(code: unreadable_code)]),
+  ]
+}
+
+// Whether /proc/<p> exists at all: its absence is a confirmed end, never an unreadable one.
+fn sol_hold_proc_present() -> Node {
+  bash_build_test_bracket(words: [shl(text: "-e"), bash_build_word_concat_from_nodes(parts: [shl(text: "/proc/"), shv(name: "p")])])
+}
+
+// The String seam: a refused render becomes a marker that is not valid shell, the same discipline as
+// v2.workflow.bash_emit bash_emit_program_sequence_refused_poison. Its own marker, naming its own
+// subject: the one it used to borrow named the gunbc run step pipeline, and borrowing it put
+// v2.workflow.gunbc_invoke_step_emit, and through it v2.compiler.emit_orchestration, in the closure of
+// every process hold and every read-only observer that releases one.
+data sol_hold_render_refused_poison: String = "__GUNBC_SOL_HOLD_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.machine_intake_sol_hold script; this marker is not valid shell, so the hold or release it stands for fails loudly rather than running a partial script (DESIGN 5: refuse, never widen)\n"
+
+fn sol_hold_rendered(stmts: List<Node>) -> String {
+  match bash_emit_stmts(statements: stmts, set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => sol_hold_render_refused_poison
+  }
+}
+
+fn sh_wait_gone(seconds: String) -> Node {
+  bash_build_or_else(
+    left: bash_build_command_with_words(words: [shl(text: "timeout"), shl(text: seconds), shl(text: "tail"), bash_build_word_concat_from_nodes(parts: [shl(text: "--pid="), shv(name: "p")]), shl(text: "-f"), shl(text: "/dev/null")]),
+    right: bash_build_command_from_lits(lits: ["true"]),
+  )
+}
+
+// RELEASE KILLS THE OWNED COLLECTOR AND NOTHING ELSE: TERM, a two-second bounded wait, KILL only if it
+// is still that instance, a one-second wait. Exits 0 when the recorded instance is gone (or the record
+// names no live instance, which is left alone), 1 only when our process survived KILL, and 2 when the
+// identity is UNOBSERVABLE -- the record exists but cannot be read or parsed, or /proc/<pid> exists
+// but its stat cannot be read -- so an unobservable identity never reads as a clean release.
+data mtcollins1_sol_hold_release_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "0", unreadable_code: "2").concat([
+  bash_build_if_from_stmts(cond: bash_build_and_then(left: sol_hold_proc_present(), right: bash_build_and_then(left: bash_build_assign(name: "ost", value: sh_stat_word(n: "20")), right: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")]))), then_stmts: [bash_build_exit(code: "2")]),
+  bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [sol_hold_owned_condition()])), then_stmts: [bash_build_exit(code: "0")]),
+  bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
+  sh_wait_gone(seconds: "2"),
+  bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [sol_hold_owned_condition()])), then_stmts: [bash_build_exit(code: "0")]),
+  bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_with_words(words: [shl(text: "kill"), shl(text: "-9"), shv(name: "p")]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["true"])),
+  sh_wait_gone(seconds: "1"),
+  bash_build_if_from_stmts(cond: bash_build_negation(inner: bash_build_subshell_from_stmts(stmts: [sol_hold_owned_condition()])), then_stmts: [bash_build_exit(code: "0")]),
+  bash_build_exit(code: "1"),
+]))
+
+// THE OWNED CHECK HAS THREE OUTCOMES, and never conflates the last two: 0 while the record at $1 names
+// its live instance; 1 when that instance is CONFIRMED not live -- no record, /proc/<pid> absent, or
+// the pid now carries another start time or is a zombie; 2 when the identity is UNOBSERVABLE -- the
+// record exists but cannot be read or does not parse, or /proc/<pid> exists but its stat cannot be
+// read. Signals nothing. A caller must treat 2 as unresolved, never as ended.
+data mtcollins1_sol_hold_owned_check_script: String = sol_hold_rendered(stmts: sol_hold_record_read(absent_code: "1", unreadable_code: "2").concat([
+  bash_build_if_from_stmts(cond: bash_build_negation(inner: sol_hold_proc_present()), then_stmts: [bash_build_exit(code: "1")]),
+  bash_build_assign(name: "ost", value: sh_stat_word(n: "20")),
+  bash_build_if_from_stmts(cond: bash_build_test_bracket(words: [shl(text: "-z"), shv(name: "ost")]), then_stmts: [bash_build_exit(code: "2")]),
+  bash_build_if_from_stmts(cond: sol_hold_owned_condition(), then_stmts: [bash_build_exit(code: "0")]),
+  bash_build_exit(code: "1"),
+]))
+
+service gunbc.machine_intake.sol_hold {
+  operation ActivateHeld {
+    requires opaque
+    input {
+      bmc_host: NonEmptyStr
+      username: NonEmptyStr
+      password_file: NonEmptyStr
+      capture_path: NonEmptyStr
+      pid_path: NonEmptyStr
+      ipmitool: NonEmptyStr
+      client_diagnostic_path: NonEmptyStr
+    }
+    output { stdout: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
+    transport shell {
+      argv: [
+        "bash",
+        "-c",
+        mtcollins1_sol_hold_activate_script,
+        "sol-hold",
+        "{bmc_host}",
+        "{username}",
+        "{password_file}",
+        "{capture_path}",
+        "{pid_path}",
+        "{ipmitool}",
+        "{client_diagnostic_path}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sol activate held failed"
+    }
+  }
+
+  operation ReleaseHeld {
+    requires none
+    input {
+      pid_path: NonEmptyStr
+    }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: [
+        "bash",
+        "-c",
+        mtcollins1_sol_hold_release_script,
+        "sol-release",
+        "{pid_path}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sol held collector survived KILL"
+    }
+  }
+}

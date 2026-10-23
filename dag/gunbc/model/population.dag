@@ -1,0 +1,336 @@
+module gunbc.model.population
+
+import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
+import std.nat { Nat }
+import gunbc.model.publication {
+  ModelRelease, ReleaseIdentity, DistributionChannel, DistributionObservation,
+  release_identity, release_identity_equal, release_is_open_weight, distribution_channel_wire,
+}
+
+// THE CANDIDATE POPULATION AND ITS NARROWING, built so that the invariant we care about is a
+// property of the constructors rather than a rule someone remembers.
+//
+// THE INVARIANT: failure to enter a later population must never remove membership from an earlier
+// one. Open weights exist regardless of whether a packager packaged them, a runtime loads them, a
+// host fits them, or they answer well. Whether any packager packaged the release is still a fact
+// about the release; whether a particular artifact loads, fits or answers well is a verdict about a
+// REALIZATION, and no such verdict is representable at this grain -- see PopulationStage.
+//
+// HOW IT IS MADE STRUCTURAL RATHER THAN CHECKED. A narrowed population is not authored -- it is
+// CONSTRUCTED FROM A PARENT by filtering, and it retains the parent's roster. Members of a stage are
+// a subset of its parent's members by the meaning of filter, so a stage cannot introduce a member
+// the parent lacks, and refusing a stage cannot reach back into the parent because the parent is a
+// separate immutable value that the narrowing consumed rather than modified.
+//
+// AND THE TYPE ENFORCES IT, not merely the constructor. ModelPopulation is sole_constructor, so the
+// two mints below are the only producers of a population anywhere -- there is no hand-built value to
+// violate the invariant. See PopulationProvenance for the scope of that guarantee and for the rung
+// error this replaced.
+
+// The ordered stages. Each names what it is a verdict about, and BOTH are verdicts about the
+// RELEASE -- which is the grain this population's members are keyed at.
+//
+// WHY THE LATER STAGES ARE NOT HERE. Runtime compatibility, single- and multi-node feasibility,
+// context qualification and coding qualification are verdicts about a REALIZATION -- one artifact,
+// one quantization, one runtime -- and this repository's own measurements show two quantizations of
+// ONE release reaching different verdicts at one floor. The falsifier this comment used to cite --
+// "IQ2_XXS fits at 400k and IQ3_S does not" -- was itself wrong and is withdrawn: loading the build
+// on the node showed IQ3_S resident at a 400,000 window, so the memory claim reversed. What the
+// measurements DO establish is the finer split: at the same 400k floor, DeepSeek V4 Flash 0731 at
+// IQ2_XXS carries a retrieval receipt and is admissible, while the SAME release at UD-IQ3_S carries
+// none and is UNANSWERABLE. The witness is gunbc.model.ollama_choice, exercised by
+// test.claim.model.serving_choice_witness_test; the verdicts are re-derived by running it, never
+// read from this sentence.
+//
+// A `List<ModelRelease>` cannot retain that distinction, so a stage keyed here would answer
+// "DeepSeek V4 is in" for both and lose the only fact the measurement produced. Enumerating them
+// anyway would be rung inflation: a stage name that reads as a modeled verdict while the carrier
+// underneath cannot hold the verdict's subject.
+//
+// NEXT-RUNG TRIGGER: a RealizationIdentity distinguishing artifact x quantization x runtime, and a
+// RealizationPopulation whose members carry it. Those stages belong to that carrier, not this one.
+type PopulationStage
+  = OpenWeightStage
+  | LocallyPackagedStage
+
+fn population_stage_wire(stage: PopulationStage) -> String {
+  match stage {
+    OpenWeightStage => "open-weight"
+    LocallyPackagedStage => "locally-packaged"
+  }
+}
+
+// WHERE THE UNIVERSE CAME FROM, carried as data because the defect this repairs was a DISCOVERY
+// error, not only a modeling one.
+//
+// Splitting release from distribution stops a probe's silence from meaning absence. It does NOT stop
+// a census from being narrow because only one distributor was ever asked. If the source of the
+// universe is implicit, the population is shaped by whichever prober happened to run, and it reports
+// that shape as completeness. So the source is a modeled fact with a declared coverage scope, and a
+// completeness question outside that scope REFUSES instead of answering from what it happens to hold.
+type CoverageScope
+  = PublisherReleaseCatalog { publisher: NonEmptyStr }
+  | SingleDistributorCatalog { channel: DistributionChannel }
+  | OperatorAssertedRoster
+
+type ReleaseDiscoverySource {
+  authority: NonEmptyStr
+  coverage: CoverageScope
+  observed_at: Timestamp
+}
+
+// A population, with its stage, its members, and the provenance that makes both auditable.
+//
+// narrowed_from is the parent stage where one exists. Its absence marks the root, and the root is the
+// only population anyone authors directly.
+// PROVENANCE RETAINS THE PARENT'S MEMBERSHIP, not merely its stage name.
+//
+// The predecessor carried `parent_stage` and a count. Neither identifies the parent: two different
+// populations at the same stage are indistinguishable in it, so a "narrowing" could name a parent it
+// was never derived from and nothing downstream could tell. The subset property the module claims
+// was therefore unauditable at exactly the point it mattered.
+//
+// THE RUNG STATEMENT THIS COMMENT USED TO CARRY WAS ITSELF A RUNG ERROR, and it is worth recording
+// because it is the exact class this document keeps filing. It read: the class sits at MECHANICALLY
+// PREVENTABLE, and its next-rung trigger is "constructor privacy in the substrate", a capability
+// declared unavailable.
+//
+// THE CAPABILITY WAS ALREADY IN THE TREE. `sole_constructor` refuses a record literal outside the
+// declaring module, and extdeps.pin, extdeps.exec.command, extdeps.shell.exec and
+// extdeps.filesystem.filesystem_io were already using it for precisely this shape. So the trigger
+// named a capability that existed, which means the row would have sat below its ceiling forever
+// while reading as an honest stall -- an untracked stall wearing rung honesty's clothes.
+//
+// It is now used. `ModelPopulation` is sole_constructor, `open_weight_population` and
+// `narrow_population` are its only mints, and no module outside this one can write a population at
+// all. A later stage containing a release its parent lacks therefore has NO CONSTRUCTOR: the class
+// is STRUCTURALLY IMPOSSIBLE within this authority, not merely unproduced by the sanctioned path.
+//
+// THE SCOPE OF THAT CLAIM, DECLARED RATHER THAN INHERITED. sole_constructor binds the .dag surface.
+// The emitted Rust mirror of a sole_constructor type is a public struct with public fields, so a
+// consumer writing Rust against the seed is outside this guarantee -- that boundary belongs to the
+// emission surface and is named here rather than left for a reader to assume covered.
+//
+// NO HERMETIC WITNESS CAN HOLD THIS CLAIM, because its subject is what the COMPILER REFUSES about
+// SOURCE TEXT, not a value any accepted program can produce. A witness asserting it would be a
+// permanently-green arm over a state it cannot express -- the decoration section 4b calls worse than
+// absent. MEASURED BY EXECUTION instead: a fixture module importing ModelPopulation and writing the
+// record literal `ModelPopulation { stage: OpenWeightStage, members: [], provenance: DiscoveredRoot
+// { sources: [] } }` in a function body, resolved by `claim_batch --source-root dag --source-root
+// src/v2 --source-root <fixture root> --entry <fixture> --function forge`, is REFUSED at the
+// literal's own position with `sole_constructor type 'ModelPopulation' cannot be constructed outside
+// its defining module`.
+//
+// THE POSITIVE CONTROL IS ENROLLED AND IS NOT A SECOND FIXTURE:
+// test.claim.model.model_population_narrowing_witness_test obtains populations FROM THE MINTS,
+// cross-module, and reads their members and provenance throughout -- so the refusal above is the
+// construction being confined and not the type being unusable.
+//
+// WHAT THIS DOES NOT ESTABLISH: the mechanism's general coverage, which is
+// gunbc.guarantee_probe_corpus sole_constructor_cross_module_class and its probes. This is the
+// fixture-boundary red section 4b asks for, taken once, not a standing gate.
+type PopulationProvenance sole_constructor
+  = DiscoveredRoot { sources: List<ReleaseDiscoverySource> }
+  | NarrowedFrom {
+      parent_stage: PopulationStage,
+      parent_members: List<ReleaseIdentity>,
+      rejected_count: Nat,
+    }
+
+type ModelPopulation sole_constructor {
+  stage: PopulationStage
+  members: List<ModelRelease>
+  provenance: PopulationProvenance
+}
+
+// THE ROOT. Open-weight membership is read from the release's CONSTRUCTOR, so no distribution
+// observation participates in building it. A channel probe cannot shrink this set because a channel
+// probe is not an input to it.
+fn open_weight_population(
+  discovered: List<ModelRelease>,
+  sources: List<ReleaseDiscoverySource>,
+) -> ModelPopulation {
+  ModelPopulation {
+    stage: OpenWeightStage,
+    members: filter(discovered, r => release_is_open_weight(subject: r)),
+    provenance: DiscoveredRoot { sources: sources },
+  }
+}
+
+// THE ONLY WAY TO BUILD A LATER STAGE. Members are a filter of the parent's members, so the subset
+// property holds by construction rather than by assertion, and the count of what was rejected is
+// retained so a narrowing that eliminates everything is visible rather than silent.
+fn narrow_population(
+  parent: ModelPopulation,
+  stage: PopulationStage,
+  admits: List<ReleaseIdentity>,
+) -> NarrowingOutcome {
+  match population_stage_ordinal(stage: stage) > population_stage_ordinal(stage: parent.stage) {
+    false => NarrowingRefused {
+      reason: join([
+        "a narrowing must move FORWARD: ", population_stage_wire(stage: parent.stage),
+        " -> ", population_stage_wire(stage: stage),
+        " is a backward or same-stage transition, which would re-key one population's members ",
+        "under a stage they were never adjudicated for",
+      ], ""),
+    }
+    true => {
+      let kept = filter(parent.members, r =>
+        identity_in(roster: admits, candidate: release_identity(subject: r)))
+      NarrowingProduced { population: ModelPopulation {
+        stage: stage,
+        members: kept,
+        provenance: NarrowedFrom {
+          parent_stage: parent.stage,
+          parent_members: map(parent.members, r => release_identity(subject: r)),
+          rejected_count: length(parent.members) - length(kept),
+        },
+      } }
+    }
+  }
+}
+
+// A BACKWARD OR SAME-STAGE TRANSITION IS NOT A NARROWING. Stages are ordered, and re-labelling a
+// population as an EARLIER stage would assert that failing a later test restored membership in an
+// earlier one -- the exact invariant at the top of this module, inverted.
+type NarrowingOutcome
+  = NarrowingProduced { population: ModelPopulation }
+  | NarrowingRefused { reason: String }
+
+fn population_stage_ordinal(stage: PopulationStage) -> Int {
+  match stage {
+    OpenWeightStage => 0
+    LocallyPackagedStage => 1
+  }
+}
+
+// THE DECIDABLE SUBSET CHECK the retained parent roster makes possible. It is not run by
+// `narrow_population` -- that constructor cannot produce a violation -- but by a consumer holding a
+// population it did not build, which is the only place the question is live.
+fn population_members_are_subset_of_parent(population: ModelPopulation) -> Bool {
+  match population.provenance {
+    DiscoveredRoot { sources: _ } => true
+    NarrowedFrom { parent_stage: _, parent_members: parents, rejected_count: _ } =>
+      length(filter(population.members, r =>
+        !identity_in(roster: parents, candidate: release_identity(subject: r)))) == 0
+  }
+}
+
+fn identity_in(roster: List<ReleaseIdentity>, candidate: ReleaseIdentity) -> Bool {
+  length(filter(roster, i => release_identity_equal(a: i, b: candidate))) > 0
+}
+
+// ===========================================================================================
+// COMPLETENESS, and its refusal.
+// ===========================================================================================
+
+// A completeness question is answerable only when the sources behind the population actually cover
+// the axis being asked about. Answering from a single distributor's catalog about the open-weight
+// universe is the original defect in its general form: a real count over the wrong population.
+// COMPLETENESS IS ALWAYS SCOPED, and the unscoped question is the defect in its purest form.
+//
+// The predecessor answered `CompletenessAnswerable` for ANY PublisherReleaseCatalog source, which
+// says: because someone enumerated DeepSeek's catalogue completely, this population is complete
+// about the open-weight universe. It is not. A publisher catalogue is complete about ONE PUBLISHER,
+// and reading it as global completeness is the original error -- a real count over the wrong
+// population -- re-committed by the very function written to prevent it.
+//
+// So the question must name its subject. Completeness is answerable for a publisher when some
+// source carries that publisher's catalogue; the universe-wide question has no answerable arm at
+// all, because no source this repository can hold spans every publisher. That is not a gap waiting
+// on an implementation -- it is what the sources are, said out loud.
+//
+// NEXT-RUNG TRIGGER: a registry-wide enumeration authority whose coverage is over publishers rather
+// than over one publisher's releases. Until one exists, UniverseCompletenessUnavailable is the
+// honest terminal and not a stall.
+type CompletenessQuestion
+  = CompleteForPublisher { publisher: NonEmptyStr }
+  | CompleteForOpenWeightUniverse
+
+type CompletenessVerdict
+  = CompletenessAnswerable { publisher: NonEmptyStr, member_count: Nat }
+  | CompletenessRefused { reason: String }
+
+fn publisher_completeness(population: ModelPopulation, publisher: NonEmptyStr) -> CompletenessVerdict {
+  match population.provenance {
+    NarrowedFrom { parent_stage: p, rejected_count: _ } =>
+      CompletenessRefused {
+        reason: join([
+          "completeness about the open-weight universe was asked of the ",
+          population_stage_wire(stage: population.stage),
+          " stage, which is a narrowing of ", population_stage_wire(stage: p),
+          " -- a narrowed stage is a filtered subset and under-reports the universe",
+        ], ""),
+      }
+    DiscoveredRoot { sources: sources } =>
+      match length(filter(sources, s =>
+        coverage_spans_publisher(coverage: s.coverage, publisher: publisher))) > 0 {
+        true => CompletenessAnswerable {
+          publisher: publisher,
+          member_count: length(filter(population.members, r =>
+            (release_identity(subject: r).publisher as String) == (publisher as String))),
+        }
+        false => CompletenessRefused {
+          reason: join([
+            "no discovery source carries a release catalogue for publisher ", (publisher as String),
+            "; every source is a single distributor, an operator roster, or another publisher's ",
+            "catalogue, so an absent release is indistinguishable from one that was never enumerated",
+          ], ""),
+        }
+      }
+  }
+}
+
+// THE UNIVERSE-WIDE QUESTION HAS NO ANSWERABLE ARM. It is a function rather than a comment so the
+// refusal is executable, and it takes the population it is asked of so a caller cannot mistake it
+// for a constant that might one day be edited to true.
+fn open_weight_universe_completeness(population: ModelPopulation) -> CompletenessVerdict {
+  CompletenessRefused {
+    reason: join([
+      "completeness about the OPEN-WEIGHT UNIVERSE is not answerable from any source shape this ",
+      "module can hold: a publisher catalogue is complete about one publisher, a distributor ",
+      "catalogue about one channel, an operator roster about what a person remembered. The ",
+      population_stage_wire(stage: population.stage),
+      " stage carries ", to_string(length(population.members)),
+      " member(s), which is a count over what was enumerated and not over what exists",
+    ], ""),
+  }
+}
+
+fn completeness(population: ModelPopulation, question: CompletenessQuestion) -> CompletenessVerdict {
+  match question {
+    CompleteForPublisher { publisher: p } =>
+      publisher_completeness(population: population, publisher: p)
+    CompleteForOpenWeightUniverse => open_weight_universe_completeness(population: population)
+  }
+}
+
+// A publisher's catalogue spans exactly that publisher and no other. A single distributor's
+// catalogue spans a channel rather than a publisher, and an operator roster is whatever a human
+// remembered -- which is the other half of how the original census went stale.
+// THE SINGLE ELIMINATOR FOR CoverageScope. The predicate below re-matched all three arms to answer
+// one question, which is the same second-representation defect channel_presence_fold closes in
+// gunbc.model.publication: a fourth scope would have to be remembered at the type AND at every
+// predicate, and a predicate that forgot it would answer false rather than refuse to compile. The
+// fold takes the publisher-scoped arm's payload as a function argument because that arm is the only
+// one carrying anything a caller can interrogate.
+fn coverage_scope_fold<T>(
+  coverage: CoverageScope,
+  publisher_catalog: fn(NonEmptyStr) -> T,
+  single_distributor: T,
+  operator_roster: T,
+) -> T {
+  match coverage {
+    PublisherReleaseCatalog { publisher: p } => publisher_catalog(p)
+    SingleDistributorCatalog { channel: _ } => single_distributor
+    OperatorAssertedRoster => operator_roster
+  }
+}
+
+fn coverage_spans_publisher(coverage: CoverageScope, publisher: NonEmptyStr) -> Bool {
+  coverage_scope_fold(
+    coverage: coverage,
+    publisher_catalog: p => (p as String) == (publisher as String),
+    single_distributor: false,
+    operator_roster: false)
+}

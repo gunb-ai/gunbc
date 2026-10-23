@@ -1,0 +1,21 @@
+GUNBC-TOPOLOGY-CONTROL mtcollins1 host_utc=2026-09-12T20:59:29Z
+subject: 8x HMA82GR7AFR4N-VK (known-good 16GB monolithic) in socket 0 odd connectors; socket 1 EMPTY
+question: does the half-populated topology itself train, independent of module class
+argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted> sel time get
+09/12/2026 04:59:29 PM UTC
+argv: ... chassis power status
+Chassis Power is on
+argv: ... sel list (tail, boot sequence onward)
+ 702 | 09/12/2026 | 04:45:25 PM UTC | Fan #0x12 | Device Present | Asserted
+ 703 | 09/12/2026 | 04:45:25 PM UTC | Fan #0x13 | Device Present | Asserted
+ 704 | 09/12/2026 | 04:45:25 PM UTC | Fan #0x14 | Device Present | Asserted
+ 705 | 09/12/2026 | 04:45:25 PM UTC | Fan #0x15 | Device Present | Asserted
+ 706 | 09/12/2026 | 04:45:25 PM UTC | Fan #0x16 | Device Present | Asserted
+ 707 | 09/12/2026 | 04:45:33 PM UTC | OEM record c0 | 00cd3a | caef7104ffff
+ 708 | 09/12/2026 | 04:45:34 PM UTC | OEM record c0 | 00cd3a | caeff104ffff
+ 709 | 09/12/2026 | 04:45:43 PM UTC | System ACPI Power State #0x4d | S0/G0: working | Asserted
+ 70a | 09/12/2026 | 04:45:48 PM UTC | System ACPI Power State #0x5e | S0/G0: working | Asserted
+ 70b | 09/12/2026 | 04:45:53 PM UTC | Power Supply #0xea | Presence detected | Asserted
+ 70c | 09/12/2026 | 04:45:53 PM UTC | Power Supply #0xeb | Presence detected | Asserted
+ 70d | 09/12/2026 | 04:45:53 PM UTC | Power Supply #0xeb | Power Supply AC lost | Asserted
+exit=0

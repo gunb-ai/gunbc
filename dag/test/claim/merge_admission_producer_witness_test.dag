@@ -1,0 +1,127 @@
+module test.claim.merge_admission_producer_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data scenario_base: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-producer-base")
+data scenario_head: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base,
+  floor_exit_code: 0,
+)
+
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base,
+  floor_exit_code: 1,
+)
+
+test fn floor_exit_zero_maps_to_success() -> Bool {
+  floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
+}
+
+test fn floor_exit_nonzero_maps_to_failure() -> Bool {
+  floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
+}
+
+test fn mint_binds_current_gate_roster_hash() -> Bool {
+  green_receipt.gate_roster_hash == current_gate_roster_hash
+}
+
+test fn shell_stdout_line_strips_trailing_newline() -> Bool {
+  shell_stdout_line(raw: "abc123\n") == "abc123"
+}
+
+test fn wire_roundtrip_preserves_admission_fields() -> Bool {
+  let wire = render_receipt_wire(receipt: green_receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      (parsed.base_tree_hash == scenario_base)
+        && (parsed.gate_roster_hash == current_gate_roster_hash)
+        && (parsed.conclusion == extdeps.github.checks.Success)
+        && (parsed.head_sha == scenario_head)
+        && match parsed.pr_number {
+          Present { value: n } => n == 5933
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn wire_missing_head_sha_returns_absent() -> Bool {
+  let wire = concat(
+    concat(
+      concat(git_object_id_wire_hex(oid: scenario_base), "\n"),
+      concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")
+    ),
+    check_conclusion_wire_label(c: Success)
+  )
+  match parse_receipt_wire(text: wire) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
+  let wire = concat(
+    concat(
+      concat(concat(git_object_id_wire_hex(oid: scenario_base), "\n"), concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")),
+      concat(check_conclusion_wire_label(c: Success), "\n")
+    ),
+    scenario_head
+  )
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      match parsed.pr_number {
+        Absent => parsed.conclusion == extdeps.github.checks.Success
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
+  let receipt = stamp_floor_receipt(
+    pr_number: none,
+    head_sha: scenario_head,
+    base_tree_hash: scenario_base,
+    floor_exit_code: 0,
+  )
+  let wire = render_receipt_wire(receipt: receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      match parsed.pr_number {
+        Absent =>
+          (parsed.base_tree_hash == scenario_base)
+            && (parsed.conclusion == extdeps.github.checks.Success)
+            && (parsed.head_sha == scenario_head)
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn red_floor_stamps_failure_conclusion() -> Bool {
+  red_receipt.conclusion == extdeps.github.checks.Failure
+}
+
+test fn receipt_schema_and_path_are_stable() -> Bool {
+  (merge_admission_receipt_schema == "gunbc.merge_admission_receipt.v1")
+    && (merge_admission_receipt_rel_path == ".gunbc/merge-admission-receipt.wire")
+}
+
+test fn mint_matches_explicit_constructor() -> Bool {
+  let explicit = mint_merge_admission_receipt(
+    pr_number: Present { value: 5933 },
+    head_sha: scenario_head,
+    base_tree_hash: scenario_base,
+    gate_roster_hash: current_gate_roster_hash,
+    conclusion: Success,
+  )
+  (explicit.base_tree_hash == green_receipt.base_tree_hash)
+    && (explicit.gate_roster_hash == green_receipt.gate_roster_hash)
+    && (explicit.conclusion == green_receipt.conclusion)
+}

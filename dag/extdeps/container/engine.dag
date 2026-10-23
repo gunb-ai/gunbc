@@ -1,0 +1,100 @@
+module extdeps.container.engine
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.software { Software }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import std.types { Bool, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/runtime-spec/blob/main/spec.md"
+  }
+}
+
+// THE AGNOSTIC SHAPE OF A THING THAT RUNS AN OCI IMAGE, WITH NO PRODUCT ENUMERATED IN IT.
+//
+// This hub defines what a container engine IS. It names neither Docker nor Podman and carries no
+// `match` over products: enumerating them here is the case DESIGN's external-upstream-decomposition
+// section rules out with "adding Opera must not widen a generic browser-product enum". Each engine
+// is an independently versioned upstream with its own module authority and cited row; adding one is
+// a new file, never an edit here.
+//
+// WHAT THIS REPLACES. `gunbc.fleet_intent` carried type ContainerRuntime = Docker | Podman | Gvisor
+// | Ubicloud | GcloudRun fusing three unrelated concepts into one enum: container engines (Docker,
+// Podman), a sandboxing runtime whose point is the isolation guarantee it adds (gVisor), and two
+// companies that rent you a machine (Ubicloud, Google Cloud Run). Widening it was the only way to
+// add an engine or a supplier, so the two questions could never be asked separately.
+
+type EnginePrivilegeMode
+  = RootfulDaemon
+  | RootlessDaemon
+
+fn engine_privilege_mode_label(mode: EnginePrivilegeMode) -> String {
+  match mode {
+    RootfulDaemon => "rootful"
+    RootlessDaemon => "rootless"
+  }
+}
+
+// A PRODUCT CAPABILITY ROW, NOT A DEPLOYMENT.
+//
+// `privilege_modes` is what the PRODUCT supports, cited to its own docs. Which mode a host actually
+// runs is a fact about that host and lives on the deployment below — the interface / realization /
+// policy split of DESIGN section 3. Fusing them is how "we run Docker" came to say nothing about
+// whether the daemon is root, the one property deciding whether a compromised job owns the machine.
+type ContainerEngine {
+  vendor: Vendor<Software>
+  product_name: NonEmptyStr
+  privilege_modes: List<EnginePrivilegeMode>
+}
+
+fn container_engine_supports_privilege_mode(engine: ContainerEngine, mode: EnginePrivilegeMode) -> Bool {
+  any(engine.privilege_modes, m => m == mode)
+}
+
+type EngineDeploymentRefusal
+  = PrivilegeModeUnsupported { product_name: NonEmptyStr, mode: EnginePrivilegeMode }
+
+// WHAT IS ACTUALLY INSTALLED SOMEWHERE: THE ENGINE PLUS ONE CHOICE ABOUT IT.
+type ContainerEngineDeployment {
+  engine: ContainerEngine
+  privilege_mode: EnginePrivilegeMode
+}
+
+type ContainerEngineDeploymentOutcome
+  = ContainerEngineDeployed { deployment: ContainerEngineDeployment }
+  | ContainerEngineDeploymentRefused { refusal: EngineDeploymentRefusal }
+
+// Claiming a mode the product does not offer cannot be true, so it refuses here rather than riding
+// as a surface fact nothing checks.
+fn container_engine_deployment(
+  engine: ContainerEngine,
+  privilege_mode: EnginePrivilegeMode,
+) -> ContainerEngineDeploymentOutcome {
+  if container_engine_supports_privilege_mode(engine: engine, mode: privilege_mode) {
+    ContainerEngineDeployed {
+      deployment: ContainerEngineDeployment { engine: engine, privilege_mode: privilege_mode },
+    }
+  } else {
+    ContainerEngineDeploymentRefused {
+      refusal: PrivilegeModeUnsupported {
+        product_name: engine.product_name,
+        mode: privilege_mode,
+      },
+    }
+  }
+}
+
+fn container_engine_deployment_label(deployment: ContainerEngineDeployment) -> String {
+  join(
+    [
+      deployment.engine.product_name as String,
+      " (",
+      engine_privilege_mode_label(mode: deployment.privilege_mode),
+      ")",
+    ],
+    "",
+  )
+}

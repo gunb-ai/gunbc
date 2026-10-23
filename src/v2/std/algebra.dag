@@ -1,0 +1,386 @@
+module v2.std.algebra
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Conj, Edge, Authored, Node, TypeNode }
+import std.optional { Optional, optional_absent, optional_present }
+import std.algebra {
+  AbelianGroup,
+  BooleanAlgebra,
+  BoundedLattice,
+  CommutativeMonoid,
+  CommutativeSemiring,
+  Cons,
+  Empty,
+  Equal,
+  Field,
+  FreeMonoid,
+  FreeSemigroup,
+  Greater,
+  Group,
+  Lattice,
+  Less,
+  Magma,
+  Monoid,
+  OrderedRing,
+  Ordering,
+  PointwisePower,
+  Ring,
+  Semigroup,
+  Semiring,
+  list_append,
+  list_snoc_item,
+}
+
+type Equivalence<T> {
+  eq: fn(T, T) -> Bool
+}
+
+
+type FreeMonoidUniqueState<T> {
+  seen: FreeMonoid<T>
+  unique: Bool
+}
+
+fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+  }
+}
+fn fold_non_empty<T>(head: T, tail: FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
+  fold_list(xs: tail, empty: head, cons: cons)
+}
+
+fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+  }
+}
+
+fn list_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+fn list_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    Cons { head: f(item), tail: acc }
+  })
+}
+
+fn list_flat_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> FreeMonoid<U>) -> FreeMonoid<U> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    fold_list_right(xs: f(item), empty: acc, snoc: fn(inner, produced) {
+      Cons { head: produced, tail: inner }
+    })
+  })
+}
+
+type ListTailResult<T>
+  = TailFound { tail: FreeMonoid<T> }
+  | TailAbsent
+
+fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
+  match xs {
+    Empty => TailAbsent
+    Cons { head: _, tail: t } => TailFound { tail: t }
+  }
+}
+
+type ListHeadResult<T>
+  = HeadFound { value: T }
+  | HeadAbsent
+
+fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
+  match xs {
+    Empty => HeadAbsent
+    Cons { head: h, tail: _ } => HeadFound { value: h }
+  }
+}
+
+fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  if n <= 0 {
+    xs
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
+    }
+  }
+}
+fn fold_list_node<T>(
+  xs: FreeMonoid<T>,
+  item_node: fn(T) -> Node
+) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: Node { kind: TypeNode { connective: Conj }, children: [],
+ occurrence_id: OccurrenceSynthetic
+},
+    snoc: fn(tail_node, item) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    }
+  )
+}
+
+fn algebra_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+}
+
+type BoundedLatticeMissingWitness
+  = MissingMeet
+  | MissingJoin
+  | MissingLatticeField
+
+type BoundedLatticeInstanceCompleteness
+  = NotBoundedLatticeInstance
+  | BoundedLatticeComplete
+  | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
+
+
+fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match is_empty(xs: xs) {
+    true => false
+    false => true
+  }
+}
+
+// `count` is the primitive authority for carrier size (O(1) on the persistent-vector
+// realization); the fold this replaced was O(n) per call, and the parse repeat loop calls
+// length on the remaining-token list twice per element — an O(elements x tokens) quadratic
+// measured at 40% of self-hosted parse self-time (2026-09-09, required-v2-native lane work).
+fn length<T>(xs: FreeMonoid<T>) -> Int {
+  xs |> count
+}
+
+fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: true, cons: fn(acc, item) {
+    match acc {
+      true => predicate(item)
+      false => false
+    }
+  })
+}
+
+fn any<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, item) {
+    match acc {
+      true => true
+      false => predicate(item)
+    }
+  })
+}
+
+fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> FreeMonoid<T> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    match predicate(item) {
+      true => Cons { head: item, tail: acc }
+      false => acc
+    }
+  })
+}
+
+fn contains<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Bool {
+  any(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+}
+
+fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(count, item) {
+    match predicate(item) {
+      true => count + 1
+      false => count
+    }
+  })
+}
+
+fn count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
+  count_where(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+}
+
+fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  let state = fold_list(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
+    match acc.unique {
+      true => match count_equal(xs: acc.seen, item: item, eq: eq) {
+        0 => FreeMonoidUniqueState { seen: Cons { head: item, tail: acc.seen }, unique: true }
+        _ => FreeMonoidUniqueState { seen: acc.seen, unique: false }
+      }
+      false => acc
+    }
+  })
+  state.unique
+}
+
+
+
+// FIRST MATCH, WITH THE EARLY EXIT. The closed vocabulary has any/filter/contains -- Bool, or the
+// whole filtered list -- and none of them answers "the first element satisfying p, or nothing"
+// without walking the rest. Expressing that as a fold over Optional is the shape this function
+// exists to stop: the accumulator is already Present and the fold keeps walking, so every hit
+// still pays the full length. Recursion on the cons cell RETURNS at the first hit.
+//
+// PROMOTED HERE FROM v2.workflow.compile_door_cause_ownership (review 64135). It was homed beside
+// its single consumer under the facts-before-abstraction discipline, with the promotion rule
+// written on it: "promote to v2.std.algebra when a second consumer inhabits it, not before". The
+// required-v2-native route's per-module file-refusal lookup is that second consumer, and it had
+// re-expressed the shape as a non-short-circuiting fold -- net concepts growing by re-invention
+// (DESIGN section 2) in a per-module x per-refusal position (section 6, bare minimum cost, which
+// is fixed regardless of the realized n because n is not time-stable).
+fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+  match xs {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      if predicate(h) {
+        optional_present(value: h)
+      } else {
+        list_find_first(xs: t, predicate: predicate)
+      }
+  }
+}
+
+type ListPrefixState<T> {
+  rest: FreeMonoid<T>
+  matched: Bool
+}
+
+fn list_starts_with<T>(xs: FreeMonoid<T>, prefix: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  let state = fold_list(
+    xs: prefix,
+    empty: ListPrefixState { rest: xs, matched: true },
+    cons: fn(acc, item) {
+      match acc.matched {
+        false => acc
+        true => match acc.rest {
+          Empty => ListPrefixState { rest: Empty, matched: false }
+          Cons { head: h, tail: t } => ListPrefixState { rest: t, matched: eq(h, item) }
+        }
+      }
+    }
+  )
+  state.matched
+}
+
+fn non_empty_singleton<T>(item: T) -> FreeSemigroup<T> {
+  FreeSemigroup { head: item, tail: Empty }
+}
+
+fn non_empty_append<T>(left: FreeSemigroup<T>, right: FreeSemigroup<T>) -> FreeSemigroup<T> {
+  FreeSemigroup {
+    head: left.head,
+    tail: list_append(
+      left: list_snoc_item(xs: left.tail, item: right.head),
+      right: right.tail
+    )
+  }
+}
+
+fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
+  Cons { head: xs.head, tail: xs.tail }
+}
+
+fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  match xs {
+    Empty => Empty
+    Cons { head: _, tail: Empty } => Empty
+    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
+  }
+}
+
+type CopiedPortFact {
+  combiner: Symbol
+  copied_port_index: Int
+}
+
+data copied_port_fact_registry_dissolution_note: String = "Wave 1 Gate 1 C1: hand-stamped copied_port_fact_* rows and copied_port_fact_registry deleted — per-op indices derive from combiner Arrow citations via v2.lens.cost.copied_port_derivation (cost lens over ^arrow_body_edge only). classify_call reads copied_port_index_of from v2.lens.cost.copied_port_citations; unpriceable combiners stay ^combiner_unregistered_carrier_reaches fail-closed."
+
+fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  if length(xs: xs) != length(xs: ys) {
+    false
+  } else {
+    for_all(xs: xs, predicate: fn(item) {
+      count_equal(xs: xs, item: item, eq: eq) == count_equal(xs: ys, item: item, eq: eq)
+    })
+  }
+}
+
+fn zip_eq<T>(
+  a: FreeMonoid<T>,
+  b: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match a {
+    Empty =>
+      match b {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => false
+        Cons { head: hb, tail: tb } =>
+          eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
+      }
+  }
+}
+
+fn zip_map<A, B, C>(
+  a: FreeMonoid<A>,
+  b: FreeMonoid<B>,
+  f: fn(A, B) -> C
+) -> FreeMonoid<C> {
+  match a {
+    Empty => Empty
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => Empty
+        Cons { head: hb, tail: tb } =>
+          Cons { head: f(ha, hb), tail: zip_map(a: ta, b: tb, f: f) }
+      }
+  }
+}
+
+fn reduce_or<T>(xs: FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
+  match xs {
+    Empty => fallback
+    Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
+  }
+}
+
+fn is_prefix_of<T>(
+  prefix: FreeMonoid<T>,
+  xs: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match xs {
+        Empty => false
+        Cons { head: h_xs, tail: t_xs } =>
+          eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
+      }
+  }
+}
+
+type Homomorphism<C, Source, Target> {
+  source: C<Source>
+  target: C<Target>
+  map: fn(Source) -> Target
+}

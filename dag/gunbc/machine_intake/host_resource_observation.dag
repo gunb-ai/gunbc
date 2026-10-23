@@ -1,0 +1,403 @@
+module gunbc.machine_intake_host_resource_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure {
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+  Kibibyte, kibibyte, kibibyte_count, kibibyte_to_byte_size,
+}
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationAttempt, ObservationEstablished, ObservationRefused, assess_by_deviations_and_unknowns }
+import std.optional { Absent, Present }
+import v2.std.algebra { non_empty_to_list }
+import v2.std.cardinality { Never }
+import extdeps.toolchain.types { Architecture }
+import extdeps.linux.proc_meminfo { MemoryMetric, meminfo_line_metric }
+import product.fabric.envelope { cpu_memory_envelope }
+import product.fabric.work { Shape, HardRequirements }
+import product.fabric.supply { UnmetShapeAxis, unmet_shape_axes }
+
+// FOUR QUESTIONS, NOT ONE VERDICT (docs/plans/mtcollins1-boot-observe-publish-capacity.md).
+//
+// Whether a host BOOTED, what resources it ACTUALLY HAS, whether it is HEALTHY against what was
+// intended and what was seen before, and whether a workload is ELIGIBLE on it are four facts with
+// four owners. Folding the second and third into the first is how an 80-CPU boot "failed to boot"
+// against a 160-CPU target: an intent comparison was allowed to erase an observation. This module
+// carries questions two to four for a host-capture's in-band sections; question one stays with
+// the boot run.
+//
+// THE OBSERVATION IS NEVER CONDITIONAL ON HEALTH. host_resource_observation reads the sections and
+// nothing else, so the reading exists (and is what the fabric schedules against) whatever the
+// assessment below concludes. A health finding restricts or withholds eligibility; it cannot
+// rewrite or delete what was read.
+//
+// NO CAPACITY VOCABULARY IS COINED HERE. Threads are std.measure HardwareThreadCount, memory is
+// Kibibyte, the offer is a product.fabric.work Shape built by product.fabric.envelope
+// cpu_memory_envelope, and coverage is product.fabric.supply unmet_shape_axes -- the same fold every
+// supplier offer is judged by. Every field is a std.goal_assessment ObservationAttempt: a field that
+// is missing or malformed is ObservationRefused with its cause, never a zero.
+//
+// DECLARED FRONTIER (DESIGN 3c): publishing this reading into the host's product.capacity.pool (the
+// gunbc.compute.host_capacity appropriation) is triggered by the host's FABRIC ENROLMENT -- a
+// HostDashboardInstance naming it -- which mtcollins1 does not have yet. Until then the executing
+// consumers are host_topology_assessment and host_workload_eligibility below.
+//
+// WHY THE HEALTH HALF IS NOT product.host_health. That module's standing rule is that its signals
+// are read OUT OF BAND ("a count the BMC does not expose is an unknown, never a host-OS read"), and
+// nproc / numactl are in-band host-OS reads from the census image. Adding them there would break the
+// rule the module is built on, so this is a sibling instance of the same authority --
+// std.goal_assessment -- over an in-band subject, stated here rather than silently forked.
+
+// ── question two: what the host has ─────────────────────────────────────────────────────────────
+
+// THREE WAYS A FIELD FAILS TO BE READ, KEPT APART. Absent: the capture never carried the section.
+// Unparsed: a line the section's grammar does not admit. Inconsistent: every line parsed, but the
+// lines contradict each other or the section's cardinality (two counts, a node listed twice, a CPU
+// on two nodes, more available memory than total). None of them is resolved by picking the first
+// or last line -- a pick is an answer the host never gave.
+type ResourceUnread
+  = SectionAbsent { section: NonEmptyStr }
+  | SectionUnparsed { section: NonEmptyStr, detail: String }
+  | SectionInconsistent { section: NonEmptyStr, detail: String }
+
+// A NUMA node as numactl prints it: its id and the identities of the CPUs on it, not only their
+// count, so disjointness across nodes is checkable.
+type NumaNode { node: Nat, cpus: List<Nat> }
+
+// MemTotal and MemAvailable are read TOGETHER, from one parse, because each is only meaningful
+// beside the other: available above total is a contradiction, not an offer.
+type HostMemoryReading { total: Kibibyte, available: Kibibyte }
+
+type HostResourceObservation {
+  threads: ObservationAttempt<HardwareThreadCount, ResourceUnread>
+  numa: ObservationAttempt<List<NumaNode>, ResourceUnread>
+  memory: ObservationAttempt<HostMemoryReading, ResourceUnread>
+}
+
+fn non_blank(out: List<String>) -> List<String> {
+  filter(map(out, l => trim(l)), l => l != "")
+}
+
+fn nat_token(t: String) -> Nat? {
+  match parse_int(s: t) {
+    Present { value: n } => checked_int_to_nat(n: n)
+    Absent => none
+  }
+}
+
+// nproc prints EXACTLY ONE line, a non-negative integer. Zero lines, two lines, or a line that is
+// not a count each refuse; none of them is read as a count.
+fn observe_threads(nproc: List<String>?) -> ObservationAttempt<HardwareThreadCount, ResourceUnread> {
+  match nproc {
+    Absent => ObservationRefused { cause: SectionAbsent { section: "nproc" } }
+    Present { value: out } => {
+      let lines = non_blank(out: out)
+      if count(lines) != 1 {
+        ObservationRefused { cause: SectionInconsistent { section: "nproc", detail: concat(to_string(count(lines)), " output lines, expected exactly 1") } }
+      } else {
+        let line = join(lines, "")
+        match nat_token(t: line) {
+          Present { value: k } => ObservationEstablished { observed: hardware_thread_count(count: k) }
+          Absent => ObservationRefused { cause: SectionUnparsed { section: "nproc", detail: concat("not a count: ", line) } }
+        }
+      }
+    }
+  }
+}
+
+// THE CPU-RECORD FAMILY IS RECOGNIZED LOOSELY AND PARSED STRICTLY. A line is a CPU record when its
+// first token is `node` and its third starts with `cpus`; only then is the grammar
+// `node N cpus: a b c` applied. Recognizing by the full grammar instead would drop a malformed
+// record (`node 1 cpus 2 3`, no colon) as if it were not a record, and a valid row beside it would
+// establish a partial topology (review 5328361038). numactl's other lines -- `node N size:`,
+// `node N free:`, `node distances:`, the distance table's `node 0 1` header, `available:` -- are
+// outside the family and are ignored as the non-CPU lines they are. `node N cpus:` with no ids is a
+// well-formed EMPTY list, not a malformed one.
+fn is_node_cpus_line(line: String) -> Bool {
+  let tokens = filter(split(s: line, delimiter: " "), t => t != "")
+  count(tokens) >= 3
+    && join(tokens.take(n: 1), "") == "node"
+    && starts_with(s: join(tokens.skip(n: 2).take(n: 1), ""), prefix: "cpus")
+}
+
+fn numa_node_line(line: String) -> NumaNode? {
+  let halves = split(s: line, delimiter: " cpus:")
+  if count(halves) != 2 { none } else {
+    let head = filter(split(s: trim(join(halves.take(n: 1), "")), delimiter: " "), t => t != "")
+    let tail = filter(split(s: trim(join(halves.skip(n: 1), "")), delimiter: " "), t => t != "")
+    let ids = flat_map(tail, t => match nat_token(t: t) { Present { value: k } => [k]  Absent => [] })
+    if count(head) != 2 || count(ids) != count(tail) { none } else {
+      match nat_token(t: join(head.skip(n: 1), "")) {
+        Present { value: n } => Present { value: NumaNode { node: n, cpus: ids } }
+        Absent => none
+      }
+    }
+  }
+}
+
+type DuplicateSweep { previous: Nat?, found: Bool }
+
+// Ordered sweep, n log n: after sort_by, a repeat is always adjacent.
+fn has_duplicate(xs: List<Nat>) -> Bool {
+  fold(xs.sort_by(x => x), init: DuplicateSweep { previous: none, found: false }, f: (acc, x) =>
+    DuplicateSweep {
+      previous: Present { value: x },
+      found: acc.found || (match acc.previous { Present { value: p } => p == x  Absent => false }),
+    }
+  ).found
+}
+
+// One pass: each candidate line is parsed once into an attempt that carries either its node or a
+// refusal naming the line verbatim, so the diagnostic names the offending record.
+fn observe_numa(numa: List<String>?) -> ObservationAttempt<List<NumaNode>, ResourceUnread> {
+  match numa {
+    Absent => ObservationRefused { cause: SectionAbsent { section: "numa" } }
+    Present { value: out } => {
+      let lines = filter(non_blank(out: out), l => is_node_cpus_line(line: l))
+      let attempts = map(lines, l => numa_record_attempt(line: l))
+      let malformed = flat_map(attempts, a => numa_record_refusal(a: a))
+      if count(lines) == 0 {
+        ObservationRefused { cause: SectionUnparsed { section: "numa", detail: "no `node N cpus:` line" } }
+      } else {
+        match first(malformed) {
+          Present { value: c } => ObservationRefused { cause: c }
+          Absent => numa_identities(nodes: flat_map(attempts, a => numa_record_node(a: a)))
+        }
+      }
+    }
+  }
+}
+
+fn numa_record_attempt(line: String) -> ObservationAttempt<NumaNode, ResourceUnread> {
+  match numa_node_line(line: line) {
+    Present { value: n } => ObservationEstablished { observed: n }
+    Absent => ObservationRefused { cause: SectionUnparsed { section: "numa", detail: concat("not a `node N cpus: ids` record: ", line) } }
+  }
+}
+
+fn numa_record_refusal(a: ObservationAttempt<NumaNode, ResourceUnread>) -> List<ResourceUnread> {
+  match a {
+    ObservationRefused { cause: c } => [c]
+    ObservationEstablished { observed: _ } => []
+  }
+}
+
+fn numa_record_node(a: ObservationAttempt<NumaNode, ResourceUnread>) -> List<NumaNode> {
+  match a {
+    ObservationEstablished { observed: n } => [n]
+    ObservationRefused { cause: _ } => []
+  }
+}
+
+fn numa_identities(nodes: List<NumaNode>) -> ObservationAttempt<List<NumaNode>, ResourceUnread> {
+  if has_duplicate(map(nodes, n => n.node)) {
+    ObservationRefused { cause: SectionInconsistent { section: "numa", detail: "a node is listed more than once" } }
+  } else if has_duplicate(flat_map(nodes, n => n.cpus)) {
+    ObservationRefused { cause: SectionInconsistent { section: "numa", detail: "a CPU id is listed more than once" } }
+  } else {
+    ObservationEstablished { observed: nodes }
+  }
+}
+
+fn memory_field(metrics: List<MemoryMetric>, field: NonEmptyStr) -> ObservationAttempt<Kibibyte, ResourceUnread> {
+  let hits = filter(metrics, m => (m.key as String) == (field as String))
+  if count(hits) == 0 {
+    ObservationRefused { cause: SectionUnparsed { section: "meminfo", detail: concat("no ", field as String, " line") } }
+  } else if count(hits) != 1 {
+    ObservationRefused { cause: SectionInconsistent { section: "meminfo", detail: concat(field as String, " appears more than once") } }
+  } else {
+    match first(hits) {
+      Present { value: m } => ObservationEstablished { observed: m.value }
+      Absent => ObservationRefused { cause: SectionUnparsed { section: "meminfo", detail: concat("no ", field as String, " line") } }
+    }
+  }
+}
+
+// ONE parse of the section. Every non-blank line must be a `Name: N kB` metric (the stage greps
+// only these two names), each name exactly once, and available may not exceed total.
+fn observe_memory(meminfo: List<String>?) -> ObservationAttempt<HostMemoryReading, ResourceUnread> {
+  match meminfo {
+    Absent => ObservationRefused { cause: SectionAbsent { section: "meminfo" } }
+    Present { value: out } => {
+      let lines = non_blank(out: out)
+      let metrics = flat_map(lines, l => match meminfo_line_metric(line: l) { Present { value: m } => [m]  Absent => [] })
+      if count(metrics) != count(lines) {
+        ObservationRefused { cause: SectionUnparsed { section: "meminfo", detail: "a line is not a `Name: N kB` metric" } }
+      } else {
+        match memory_field(metrics: metrics, field: "MemTotal") {
+          ObservationRefused { cause: c } => ObservationRefused { cause: c }
+          ObservationEstablished { observed: total } =>
+            match memory_field(metrics: metrics, field: "MemAvailable") {
+              ObservationRefused { cause: c } => ObservationRefused { cause: c }
+              ObservationEstablished { observed: available } =>
+                if kibibyte_count(k: available) > kibibyte_count(k: total) {
+                  ObservationRefused { cause: SectionInconsistent { section: "meminfo", detail: join(["MemAvailable ", to_string(kibibyte_count(k: available)), " kB exceeds MemTotal ", to_string(kibibyte_count(k: total)), " kB"], "") } }
+                } else {
+                  ObservationEstablished { observed: HostMemoryReading { total: total, available: available } }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
+// Each section is Present only when the capture carried it; the caller supplies that from the
+// envelope's section reading, so this fold never guesses whether a section ran.
+fn host_resource_observation(nproc: List<String>?, numa: List<String>?, meminfo: List<String>?) -> HostResourceObservation {
+  HostResourceObservation {
+    threads: observe_threads(nproc: nproc),
+    numa: observe_numa(numa: numa),
+    memory: observe_memory(meminfo: meminfo),
+  }
+}
+
+// ── question three: health against intent and history ──────────────────────────────────────────
+
+// WHAT WAS INTENDED, AND WHAT WAS SEEN BEFORE. `intended_threads` is the configuration the host is
+// meant to present; `prior` are earlier boots' receipts (for mtcollins1, the census boot's
+// mtcollins1_nproc stays a true receipt of that boot and enters here, not as a boot precondition).
+type HostTopologyGoal {
+  intended_threads: HardwareThreadCount
+  intended_nodes: Nat
+  prior_threads: List<HardwareThreadCount>
+}
+
+type HostTopologyDeviation
+  = ThreadsBelowIntent { intended: HardwareThreadCount, observed: HardwareThreadCount }
+  | ThreadsBelowPrior { prior: HardwareThreadCount, observed: HardwareThreadCount }
+  | ThreadsAboveIntent { intended: HardwareThreadCount, observed: HardwareThreadCount }
+  | PopulatedNodesBelowIntent { intended: Nat, observed: Nat }
+
+type HostTopologyUnknown = TopologyFieldUnread { cause: ResourceUnread }
+
+// Evidence is only minted when nothing is unknown, so both fields are the observed values; they
+// stay optional in the type so no default has to be written for the arm that cannot reach it.
+type HostTopologyEvidence { threads: HardwareThreadCount?, populated_nodes: Nat? }
+
+type HostTopologyAssessment = GoalAssessment<HostTopologyEvidence, HostTopologyDeviation, HostTopologyUnknown, Never>
+
+fn populated_nodes(nodes: List<NumaNode>) -> Nat {
+  count(filter(nodes, n => count(n.cpus) > 0))
+}
+
+fn thread_deviations(goal: HostTopologyGoal, t: HardwareThreadCount) -> List<HostTopologyDeviation> {
+  let seen = hardware_thread_count_value(t: t)
+  let want = hardware_thread_count_value(t: goal.intended_threads)
+  concat(
+    if seen < want { [ThreadsBelowIntent { intended: goal.intended_threads, observed: t }] }
+    else if seen > want { [ThreadsAboveIntent { intended: goal.intended_threads, observed: t }] }
+    else { [] },
+    flat_map(goal.prior_threads, p => if seen < hardware_thread_count_value(t: p) { [ThreadsBelowPrior { prior: p, observed: t }] } else { [] }),
+  )
+}
+
+// An unexpected reduction is a FINDING. It never removes the observed threads from the evidence or
+// from the offer; it is what the eligibility policy reads.
+fn host_topology_assessment(goal: HostTopologyGoal, observed: HostResourceObservation) -> HostTopologyAssessment {
+  let threads = match observed.threads {
+    ObservationEstablished { observed: t } => Present { value: t }
+    ObservationRefused { cause: _ } => none
+  }
+  let nodes = match observed.numa {
+    ObservationEstablished { observed: ns } => Present { value: populated_nodes(nodes: ns) }
+    ObservationRefused { cause: _ } => none
+  }
+  let unknowns = concat(
+    match observed.threads { ObservationRefused { cause: c } => [TopologyFieldUnread { cause: c }]  ObservationEstablished { observed: _ } => [] },
+    match observed.numa { ObservationRefused { cause: c } => [TopologyFieldUnread { cause: c }]  ObservationEstablished { observed: _ } => [] },
+  )
+  let deviations = concat(
+    match threads { Present { value: t } => thread_deviations(goal: goal, t: t)  Absent => [] },
+    match nodes {
+      Present { value: n } => if n < goal.intended_nodes { [PopulatedNodesBelowIntent { intended: goal.intended_nodes, observed: n }] } else { [] }
+      Absent => []
+    },
+  )
+  assess_by_deviations_and_unknowns(
+    evidence: HostTopologyEvidence {
+      threads: threads,
+      populated_nodes: nodes,
+    },
+    deviations: deviations,
+    unknowns: unknowns,
+  )
+}
+
+// ── question four: workload eligibility ─────────────────────────────────────────────────────────
+
+// THE HEALTH POLICY, EXPLICIT. A topology that diverged BELOW intent is still schedulable against
+// what is actually there -- the offer is built from the observation, so the reduction is already
+// priced in -- and the finding travels with the admission. An indeterminate or refused assessment
+// withholds: an unread fact is not health. A withheld admission still carries every deviation that
+// WAS proved, so an unknown never hides a known shortfall.
+type HealthAdmission
+  = HealthAdmits
+  | HealthAdmitsWithFindings { findings: List<HostTopologyDeviation> }
+  | HealthWithholds { known: List<HostTopologyDeviation>, unknowns: List<HostTopologyUnknown> }
+
+fn topology_health_admission(a: HostTopologyAssessment) -> HealthAdmission {
+  match a {
+    GoalSatisfied { evidence: _ } => HealthAdmits
+    GoalDiverged { deviations: ds } => HealthAdmitsWithFindings { findings: non_empty_to_list(ds) }
+    GoalIndeterminate { known_deviations: ks, unknowns: us } => HealthWithholds { known: ks, unknowns: non_empty_to_list(us) }
+    GoalAssessmentRefused { cause: _ } => HealthWithholds { known: [], unknowns: [] }
+  }
+}
+
+type CapacityUnknown
+  = OfferFieldUnread { cause: ResourceUnread }
+  | ReserveExceedsAvailable { reserve: Kibibyte, available: Kibibyte }
+
+// WHAT THE HOST CAN OFFER: the observed threads and the observed available memory less an explicit
+// reserve. A reserve larger than what is available refuses; it is never clamped to an empty offer.
+fn host_offered_shape(observed: HostResourceObservation, reserve: Kibibyte, architecture: Architecture?) -> ObservationAttempt<Shape, CapacityUnknown> {
+  match observed.threads {
+    ObservationRefused { cause: c } => ObservationRefused { cause: OfferFieldUnread { cause: c } }
+    ObservationEstablished { observed: t } =>
+      match observed.memory {
+        ObservationRefused { cause: c } => ObservationRefused { cause: OfferFieldUnread { cause: c } }
+        ObservationEstablished { observed: reading } => {
+          let avail = reading.available
+          if kibibyte_count(k: reserve) > kibibyte_count(k: avail) {
+            ObservationRefused { cause: ReserveExceedsAvailable { reserve: reserve, available: avail } }
+          } else {
+            let allocatable = kibibyte(count: kibibyte_count(k: avail) - kibibyte_count(k: reserve))
+            ObservationEstablished {
+              observed: Shape {
+                hard: HardRequirements { threads: t },
+                envelope: cpu_memory_envelope(min_threads: t, architecture: architecture, min_bytes: kibibyte_to_byte_size(k: allocatable)),
+              },
+            }
+          }
+        }
+      }
+  }
+}
+
+type HostWorkloadEligibility
+  = WorkloadEligible { offered: Shape, findings: List<HostTopologyDeviation> }
+  | WorkloadNotCovered { unmet: List<UnmetShapeAxis> }
+  | WorkloadCapacityUnknown { cause: CapacityUnknown }
+  | WorkloadHealthWithheld { known: List<HostTopologyDeviation>, unknowns: List<HostTopologyUnknown> }
+
+// Capacity is judged first and independently of health, so a withheld host still reports whether
+// the work would have fit -- the observation is not erased by the finding.
+fn host_workload_eligibility(offered: ObservationAttempt<Shape, CapacityUnknown>, health: HealthAdmission, needed: Shape) -> HostWorkloadEligibility {
+  match offered {
+    ObservationRefused { cause: c } => WorkloadCapacityUnknown { cause: c }
+    ObservationEstablished { observed: shape } => {
+      let unmet = unmet_shape_axes(offered: shape, needed: needed)
+      if count(unmet) != 0 {
+        WorkloadNotCovered { unmet: unmet }
+      } else {
+        match health {
+          HealthAdmits => WorkloadEligible { offered: shape, findings: [] }
+          HealthAdmitsWithFindings { findings: fs } => WorkloadEligible { offered: shape, findings: fs }
+          HealthWithholds { known: ks, unknowns: us } => WorkloadHealthWithheld { known: ks, unknowns: us }
+        }
+      }
+    }
+  }
+}

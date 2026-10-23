@@ -1,0 +1,21 @@
+module gunbc.regen_rustfmt_batch_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data regen_rustfmt_batch_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "memo_normalized", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "normalize_population", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "normalize_batch_dir", field: WholeDeclaration }
+  ],
+
+  reason: "A COST-SHAPE REPAIR INSIDE EXISTING HOST NORMALIZATION, NOT NEW BEHAVIOUR (DESIGN section 6, bare minimum cost). The stage0 regen round normalized each mirror through its own two-spawn rustfmt fixed-point seek, twice over (the emitted bytes, then the committed bytes that equal their normalized output): 654 spawns for 163 mirrors, about 58 s of every round, measured by //gunbc/instruments:regen-round-cost (run 37293307189). These declarations record an observed fixed point as itself, and run the same fixed-point seek for a whole population with one rustfmt invocation per pass. The per-member answer is unchanged, held by the byte-identity control batched_normalization_is_byte_identical_to_the_single_seek. They live where the normalization they serve lives, in the hand-retained regen host.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations with the host normalization they serve, when the regen round's write, adjudicate and digest steps are a .dag fold over a modeled formatter operation (so batching is that operation's realization, not host Rust). WHAT DOES NOT RETIRE IT: a faster single spawn, which leaves the per-member spawn count, and the cost, standing.",
+
+  current_boundary: "src/v1/stage0/src/required_regen_host.rs memo_normalized, normalize_population and normalize_batch_dir, called from write_emitted_tree and tree_digest_for_basenames"
+}

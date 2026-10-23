@@ -1,0 +1,16 @@
+module test.fixture.lambda_receiver_provider
+
+data lambda_receiver_provider_fixture_note: String = "Provider fixture for test.claim.lambda_receiver_type_witness_test: the smallest declaration set in which a lambda parameter's type is reachable ONLY through a callable-typed field. LamrecvHolder's run field is declared fn(LamrecvAlgebra<R>) -> R, so the lambda supplied for it has an unannotated parameter whose only type source is that callable's parameter list. THE GENERIC IS LOAD-BEARING and a non-generic pair cannot discriminate: with no type arguments the parameter type is a bare leaf, which type-expression resolution already grounds through its name, so the receiver resolves and the subject never arises. It is the type APPLICATION node -- a head with argument children and no resolved target -- that carries no method surface, and only a parameterized declaration produces one. Self-contained by construction: the census harness assembles its source set by following imports, so a fixture reaching a third module makes the harness refuse the closure and the control arm reds for a reason unrelated to the subject. The names are deliberately unlike anything in the seed, so a homonym in the bare-name registry cannot satisfy the assertions by accident."
+
+type LamrecvPayload {
+  root: String
+}
+
+type LamrecvAlgebra<R> {
+  unit: R
+  combine: fn(R, R) -> R
+}
+
+type LamrecvHolder<R> {
+  run: fn(LamrecvAlgebra<R>) -> R
+}

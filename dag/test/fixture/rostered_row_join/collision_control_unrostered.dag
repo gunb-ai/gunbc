@@ -1,0 +1,15 @@
+module test.fixture.rostered_row_join.collision_control_unrostered
+
+import std.types { String }
+import test.fixture.rostered_row_join.collision_control_rostered { CollisionControlRow }
+
+// THE UNROSTERED HALF OF THE BARE-NAME COLLISION CONTROL. Same bare name as
+// `test.fixture.rostered_row_join.collision_control_rostered` `collision_row`, different module,
+// and NOT named by the roster. The join must report THIS declaration, by its full identity.
+//
+// KEEP THE COLLISION AND KEEP THE OMISSION. Renaming this row, or adding it to the roster, deletes
+// the only executing evidence that membership is keyed on declaration identity rather than on a
+// spelling that happens to be unique in today's corpus.
+data collision_row: CollisionControlRow = CollisionControlRow {
+  subject: "the unrostered half: same bare name, different module, deliberately absent from the roster",
+}

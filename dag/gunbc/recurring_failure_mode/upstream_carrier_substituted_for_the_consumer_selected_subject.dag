@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.upstream_carrier_substituted_for_the_consumer_selected_subject
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data upstream_carrier_substituted_for_the_consumer_selected_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "upstream_carrier_substituted_for_the_consumer_selected_subject" as NonEmptyStr,
+
+  receipts: [
+    "**the producer's countable artifact is not necessarily the consumer's subject** (INVALID STATE: a claim about a downstream consumer's behaviour, coverage or resource use is derived from an UPSTREAM CARRIER because that carrier is easy to inspect or count, while no receipt binds the carrier to the exact subject or event the consumer actually processed -- and the carrier-to-consumer mapping may transform, suppress, coalesce, repeat or fan out. HARM: every measurement of the carrier can be perfectly pinned and perfectly correct, and the conclusion about the consumer still false, because the two name different objects. The error survives arbitrary care applied to the wrong side of the boundary.)",
+
+    "THIS IS AN IDENTITY SUBSTITUTION ACROSS A CONSUMPTION BOUNDARY, AND NOT A PROXY METRIC BEING IMPRECISE. The distinction is load-bearing: an imprecise proxy is improved by measuring it better, which is exactly the move that entrenches this defect. Measuring the carrier harder produces a more confident statement about an object nobody asked about.",
+
+    "MEASURED INSTANCE ONE -- branch tree substituted for the CI subject. A required workflow runs on `pull_request`, so its subject is the COMPOSED tree T = merge(M, H), never the branch head H. A projection census run on H reported 96/96/96 and was reported as a live safety gap in what CI would accept. Re-measured on T: merge-tree CLEAN, every row present, the relation covering the case exactly. The H-side measurement was TRUE OF H and was never a statement about the consumer. The consumer transforms the carrier before judging it.",
+
+    "MEASURED INSTANCE TWO -- head SHAs substituted for paid validation epochs. Merge latency was modelled as raw head count times one CI cycle. The mapping is not a bijection in either direction: a head superseded before its run starts consumes ZERO started executions (the workflow groups by PR with cancel-in-progress false, so several pushes collapse into one pending member), while retries and separate events can make one head consume more than one. Measured across live PRs, started-runs / distinct-heads ranged 0.29 to 0.88 and was never 1. The resource is consumed by STARTED epochs; heads are merely what is easy to count.",
+
+    "DISTINGUISHING WITNESS, and it must be taken on the CONSUMER'S side: name the exact subject the consumer processed -- the composed tree's oid, the started run's id -- and assert the claim against THAT, not against the artifact the producer emitted. A witness that measures the carrier passes identically whether or not the substitution occurred, and therefore discriminates nothing.",
+
+    "RECOGNITION RULE, phrased so it fires before the measurement is taken: ask WHAT OBJECT THE CONSUMER ACTUALLY READS, and whether any receipt binds your measured artifact to it. If the consumer transforms, filters, batches or supersedes its input, the carrier is a different object and no amount of rigour on the carrier repairs the inference. The tell is a sentence of the form 'I measured X, therefore the consumer of X will Y' with no step establishing that the consumer's subject IS X.",
+
+    "BOUNDARY AGAINST instrument_output_read_as_subject_content, WHICH IS ADJACENT AND NOT THE SAME: there a SET is derived from a report whose COMPLETENESS is a property of the reporting tool, and the repair is to know the tool's coverage. Here the carrier may be reported completely and correctly, and the defect is that the consumer's subject is a TRANSFORMATION of it. Knowing your instrument's coverage perfectly does not tell you that CI checks out a merge commit.",
+
+    "RUNG FOUND AT: mitigatable, and the mitigation was re-measuring on the consumer's subject after a peer challenged the inference -- twice, both times catching a claim already stated as a finding. CEILING: mechanically preventable -- whether a claimed subject is the one a named consumer processes is decidable wherever the consumer's subject is itself an identified artifact (a run id, a tree oid). NEXT-RUNG TRIGGER, stated as a CAPABILITY and not as an artifact: a receipt that binds each measurement to the identified subject the consumer processed, so a claim measured on the carrier cannot be stated about the consumer without the join failing loudly. Re-measuring either instance by hand satisfies none of that and leaves every other producer-consumer pair unbound.",
+  ],
+
+  evidence: [],
+}

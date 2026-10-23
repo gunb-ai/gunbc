@@ -1,0 +1,189 @@
+module test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test
+
+// THE BASE ADVANCE, EXECUTED AGAINST A REAL GIT REPOSITORY (the BaseAdvance follow-up to
+// gunbc#13111). The hermetic claims (test.claim.roadmap.roadmap_belt_base_advance_witness_test)
+// supply the diff and the bytes; this one runs the SAME shell production runs
+// (gunbc.roadmap_belt_actuate belt_scm_base_advance) over a throwaway repository with two real
+// commits S0 and S1 -- a modify, an add, a delete, a rename, and a path below a new directory -- so
+// git itself answers whether both revisions are observable, what changed between them, and what each
+// changed path holds at S1. The advanced manifest must be S1's tree exactly, path for path and byte
+// for byte, the commit must be an IntakeAdvance { S0, S1 } child of the S0 base, and an advance to a
+// revision git cannot observe must refuse by name (BaseAdvanceRevisionUnobservable) rather than diff
+// against whatever git resolves instead.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeAdvance, IntakeNone, IntakeBase, IntakeUnrecordedByFormat, intake_revision_eq }
+import gunbc.scm.ancestry { DescendsFrom, RootCommit, repository_commit_ref_eq }
+import gunbc.scm.object_store {
+  find_corpus_manifest_record, CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode,
+  scm_object_identity, authored_source_object,
+}
+import gunbc.scm.object_table_json { object_id_key }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, intake_tip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous }
+import gunbc.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap_belt_actuate {
+  belt_scm_base_advance, BaseAdvanced, BaseAdvanceRefused, BaseAdvancePoisoned,
+  belt_exec, belt_path_parent_dir, ExecOk, ExecFailed, ExecRefused,
+}
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_intake_base }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type AdvanceFixtureFile { path: String, text: String }
+
+fn advance_s0() -> List<AdvanceFixtureFile> {
+  [
+    AdvanceFixtureFile { path: "src/kept.dag", text: "kept" },
+    AdvanceFixtureFile { path: "src/modified.dag", text: "before" },
+    AdvanceFixtureFile { path: "src/deleted.dag", text: "gone" },
+    AdvanceFixtureFile { path: "src/old_name.dag", text: "moved" },
+  ]
+}
+
+fn advance_s1() -> List<AdvanceFixtureFile> {
+  [
+    AdvanceFixtureFile { path: "src/kept.dag", text: "kept" },
+    AdvanceFixtureFile { path: "src/modified.dag", text: "after" },
+    AdvanceFixtureFile { path: "src/new_name.dag", text: "moved" },
+    AdvanceFixtureFile { path: "src/deep/added.dag", text: "new" },
+  ]
+}
+
+fn run_git(dir: FilePath, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir as String) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn git_head(dir: FilePath) -> String {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: ["rev-parse", "HEAD"]), workdir: dir as String) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn write_fixture(dir: FilePath, files: List<AdvanceFixtureFile>) -> Bool {
+  let parents = files |> map(f => belt_path_parent_dir(path: f.path)) |> filter(p => p != "")
+  let made = match belt_exec(cmd: host_exec_argv(program: "install", args: concat(["-d", "-m", "0700"], parents)), workdir: dir as String) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+  made && fold(files, init: true, f: (ok, f) => ok && Filesystem.Write(path: join([dir as String, "/", f.path], ""), content: f.text).success)
+}
+
+fn commit_all(dir: FilePath, message: String) -> Bool {
+  run_git(dir: dir, args: ["add", "-A"])
+    && run_git(dir: dir, args: ["-c", "user.name=witness", "-c", "user.email=witness@invalid", "commit", "-q", "-m", message])
+}
+
+fn rev(hex: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+fn staged_s0(r0: IntakeRevision) -> MbBuild {
+  mb_intake_base(
+    build: fold(advance_s0(), init: mb_start(), f: (b, f) => mb_stage(build: b, path: f.path, text: f.text)),
+    message: "project base",
+    revision: r0,
+  )
+}
+
+fn tree_of(files: List<AdvanceFixtureFile>) -> List<String> {
+  sort_by(map(files, f => join([f.path, "=", object_id_key(identity: scm_object_identity(object: authored_source_object(text: f.text)))], "")), r => r)
+}
+
+fn advanced_reaches_s1(advanced: RepositoryEnvelope, reference: gunbc.scm.ancestry.RepositoryCommitRef, base_ref: gunbc.scm.ancestry.RepositoryCommitRef, r0: IntakeRevision, r1: IntakeRevision) -> Bool {
+  match commit_at_reference(commits: advanced.commits, reference: reference) {
+    Absent => false
+    Present { value: c } => {
+      let shape = match c.intake {
+        IntakeAdvance { from, to } => intake_revision_eq(left: from, right: r0) && intake_revision_eq(left: to, right: r1)
+        IntakeNone => false
+        IntakeBase { revision: _ } => false
+        IntakeUnrecordedByFormat => false
+        IntakeStaleCapture { captured_against: _ } => false
+      } && match c.ancestry {
+        DescendsFrom { parent } => repository_commit_ref_eq(left: parent, right: base_ref)
+        RootCommit => false
+      }
+      let tree = match find_corpus_manifest_record(store: advanced.store, identity: c.root.locator) {
+        CorpusManifestFound(record) =>
+          sort_by(map(record.entries, e => join([e.path as String, "=", object_id_key(identity: e.source.locator)], "")), r => r) == tree_of(files: advance_s1())
+        CorpusManifestAbsent { identity: _ } => false
+        CorpusManifestIsAuthoredSource { identity: _ } => false
+        CorpusManifestIsSemanticNode { identity: _ } => false
+      }
+      shape && tree
+    }
+  }
+}
+
+fn advance_over(dir: FilePath) -> Bool {
+  let s0_ok = write_fixture(dir: dir, files: advance_s0())
+    && run_git(dir: dir, args: ["init", "-q"])
+    && commit_all(dir: dir, message: "s0")
+  let s0 = git_head(dir: dir)
+  let s1_ok = s0_ok
+    && run_git(dir: dir, args: ["rm", "-q", "src/deleted.dag", "src/old_name.dag"])
+    && write_fixture(dir: dir, files: advance_s1())
+    && commit_all(dir: dir, message: "s1")
+  let s1 = git_head(dir: dir)
+  let envelope_path = join([dir as String, "/envelope.json"], "")
+  s1_ok && match rev(hex: s0) {
+    Absent => false
+    Present { value: r0 } =>
+      match rev(hex: s1) {
+        Absent => false
+        Present { value: r1 } =>
+          match staged_s0(r0: r0) {
+            MbSetupFailed => false
+            MbBuilt { repository, at } =>
+              match at {
+                Absent => false
+                Present { value: base_ref } =>
+                  match intake_tip(commits: repository.commits) {
+                    IntakeTipNoLine => false
+                    IntakeTipAmbiguous { tips: _ } => false
+                    IntakeTipFound(tip) => {
+                      let reached = match belt_scm_base_advance(git_program: "git", worktree: dir as String, path: envelope_path, envelope: repository, tip_commit: tip.commit, from: tip.revision, to: r1) {
+                        BaseAdvanced { envelope: advanced, reference } => advanced_reaches_s1(advanced: advanced, reference: reference, base_ref: base_ref, r0: r0, r1: r1)
+                        BaseAdvanceRefused { detail: _ } => false
+                        BaseAdvancePoisoned { detail: _ } => false
+                      }
+                      let unobservable = match rev(hex: "0123456789abcdef0123456789abcdef01234567") {
+                        Absent => false
+                        Present { value: ghost } =>
+                          match belt_scm_base_advance(git_program: "git", worktree: dir as String, path: envelope_path, envelope: repository, tip_commit: tip.commit, from: tip.revision, to: ghost) {
+                            BaseAdvancePoisoned { detail } => string_contains(s: detail, pattern: "BaseAdvanceRevisionUnobservable")
+                            BaseAdvanced { envelope: _, reference: _ } => false
+                            BaseAdvanceRefused { detail: _ } => false
+                          }
+                      }
+                      reached && unobservable
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = dir.success && advance_over(dir: dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  observed && cleaned.success
+}

@@ -1,0 +1,72 @@
+module test.claim.dag_compile_clean_shard_hermetic_witness
+
+import tools.dag_compile_clean_shard_roster {
+  witness_roster_nonempty_on_fixture_facts,
+  witness_roster_build_admits_on_fixture_facts,
+  witness_roster_build_refuses_synthetic_duplicate_facts,
+  witness_roster_empty_facts_are_not_nonempty,
+}
+import tools.dag_compile_clean_shard_totality {
+  witness_totality_reds_on_synthetic_orphan,
+  witness_totality_reds_on_synthetic_double_claim,
+  witness_totality_reds_on_synthetic_surplus,
+  witness_totality_fails_closed_on_glob_failure,
+  witness_totality_green_when_glob_matches_roster
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// NINE ASSERTIONS THAT NEEDED NO LIVE TREE AND WERE DECLINED FOR SHARING A FILE WITH ONE THAT DOES.
+//
+// They lived in test.claim.dag_compile_clean_shard_totality_witness, which is stamped ReadsLiveTree.
+// The stamp is declared once per MODULE while the assertions live per test fn, so a single genuinely
+// live test fn -- compile_clean_shard_totality_holds_on_live_tree, whose closure reaches
+// tools.dag_compile_clean_shard_totality_transport run_live_dag_entry_glob and through it
+// git.Inspect.Toplevel -- routed the whole module to DeclinedLiveTree and took these nine with it.
+// Discovered, counted, never executed.
+//
+// A DISPOSITION DECLARED AT A COARSER GRAIN THAN THE ASSERTIONS IT ROUTES PROPAGATES THE STRICTEST
+// REQUIREMENT DOWNWARD TO EVERYTHING SHARING THE DECLARATION. That is the class; this file is one
+// instance of it, and the corpus-wide population is measured elsewhere.
+//
+// Both fns below are hermetic by construction rather than by inspection: every input is a
+// hand-authored fixture row or a literal, and neither closure reaches a shell effect.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ROSTER BUILDER'S MECHANISM, OVER FIXTURE FACTS.
+//
+// The load-bearing member is witness_roster_build_refuses_synthetic_duplicate_facts: it asserts that
+// a duplicate entry path REFUSES, and that the refusal NAMES the colliding key and both modules,
+// through both constructors. That is the guard against a duplicate being silently deduplicated into
+// a smaller universe -- and a smaller universe reads as an exact population, so this is the
+// assertion protecting the emit-subject roster's denominator from silently shrinking.
+//
+// WHAT IS DELIBERATELY ABSENT: witness_shard_roster_boundary_is_witness_layer_roots, which stood
+// first in this conjunction before the split. It is hermetic and would route here, and it is NOT
+// enrolled, because its RED IS UNAUTHORABLE. Its body compares
+// compile_clean_partition_boundary().entry_roots against witness_layer_roots, and that field is
+// initialised directly FROM witness_layer_roots one line up in the constructor, so it reduces to
+// X == X. No edit to the roster, the discovery chain or the policy can make it fail. Enrolling it
+// would add a permanently-green row that reads as provenance coverage and carries none. The
+// property it appears to check -- that the declared roster policy matches the executed discovery --
+// is real and unguarded, and is answered by deriving the policy from the discovery chain rather
+// than by comparing a declaration with itself.
+test fn compile_clean_shard_roster_is_well_formed() -> Bool {
+  witness_roster_nonempty_on_fixture_facts()
+    && witness_roster_build_admits_on_fixture_facts()
+    && witness_roster_build_refuses_synthetic_duplicate_facts()
+    && witness_roster_empty_facts_are_not_nonempty()
+}
+
+// THE TOTALITY ALGEBRA, OVER SYNTHETIC GLOB RESULTS.
+//
+// Every conjunct calls compile_clean_partition_totality_verdict_from with literal inputs -- a
+// glob_success flag, a hand-written stdout listing, and a literal roster -- so the fn never observes
+// the tree at all. Four of the five are discriminating reds (orphan, double claim, surplus, and a
+// fail-closed arm on glob failure) with a green control beside them.
+test fn compile_clean_shard_totality_algebra_holds() -> Bool {
+  witness_totality_reds_on_synthetic_orphan()
+    && witness_totality_reds_on_synthetic_double_claim()
+    && witness_totality_reds_on_synthetic_surplus()
+    && witness_totality_fails_closed_on_glob_failure()
+    && witness_totality_green_when_glob_matches_roster()
+}

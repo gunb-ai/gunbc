@@ -1,0 +1,66 @@
+module extdeps.formats.dnsmasq
+
+import std.types { Int, String, List }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import std.layout {
+  Doc,
+  LayoutProtocol,
+  doc_concat, doc_line_of,
+  render
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example"
+  }
+}
+
+// A TAGGED dhcp-boot CARRIES AT LEAST ONE TAG BY CONSTRUCTION (first_tag): an untagged dhcp-boot
+// applies to every client on the segment, so an empty tag list would silently invert a restricted
+// boot line into a permissive one.
+type DnsmasqDirective =
+    DnsmasqComment { text: String }
+  | DnsmasqPort { value: Int }
+  | DnsmasqDhcpRangeProxy { network_address: String }
+  | DnsmasqDhcpMatchSet { tag: String, option: String, value: String }
+  | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
+  | DnsmasqDhcpHostSetTag { mac: String, tag: String }
+  | DnsmasqDhcpBootTags { first_tag: String, more_tags: List<String>, target: String, server_name: String, server_address: String }
+  | DnsmasqLogDhcp
+  | DnsmasqEnableTftp
+  | DnsmasqTftpRoot { path: String }
+
+data dnsmasq_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
+  match d {
+    DnsmasqComment { text: t } => concat("# ", t)
+    DnsmasqPort { value: v } => concat("port=", to_string(v))
+    DnsmasqDhcpRangeProxy { network_address: n } => concat(concat("dhcp-range=", n), ",proxy")
+    DnsmasqDhcpMatchSet { tag: tag, option: option, value: value } =>
+      concat(concat(concat("dhcp-match=set:", tag), concat(",", option)), concat(",", value))
+    DnsmasqDhcpOptionForceTag { tag: tag, option: option, value: value } =>
+      concat(concat(concat("dhcp-option-force=tag:", tag), concat(",", option)), concat(",", value))
+    DnsmasqDhcpHostSetTag { mac: mac, tag: tag } =>
+      concat(concat("dhcp-host=", mac), concat(",set:", tag))
+    DnsmasqDhcpBootTags { first_tag: first, more_tags: more, target: target, server_name: name, server_address: address } =>
+      join([
+        "dhcp-boot=tag:", first, ",",
+        fold(more, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ","))),
+        target, ",", name, ",", address,
+      ], "")
+    DnsmasqLogDhcp => "log-dhcp"
+    DnsmasqEnableTftp => "enable-tftp"
+    DnsmasqTftpRoot { path: path } => concat("tftp-root=", path)
+  }
+}
+
+fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> Doc {
+  doc_concat(parts: map(directives, d => doc_line_of(text: dnsmasq_directive_line(d: d))))
+}
+
+fn serialize_dnsmasq(directives: List<DnsmasqDirective>) -> String {
+  render(doc: dnsmasq_to_doc(directives: directives), proto: dnsmasq_protocol)
+}

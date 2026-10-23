@@ -1,0 +1,211 @@
+module gunbc.workspace_demo_preparation_policy
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom, content_hash_of_value, serialize_content_hash }
+import std.measure { second, money_amount_micro, MoneyPerSecond, MoneyOnce, MoneyAmountMicro }
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, OfferKey }
+import product.fabric.demand { Demand, BuyTerms, BudgetAccountId }
+import product.fabric.budget { MoneyAccount }
+import product.fabric.supply { GrantDuration, EstimatedGrantDuration, QuotedPerSecond }
+import product.fabric.selection {
+  ResourceBudgetPolicy, DispatchInputs, AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
+  OperatingCostMeasured, NoFeasibleAlternativeUse,
+}
+import product.fabric.provider_route {
+  ProviderRoute, ProviderRouteFacts, ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
+  NoDownstreamProviders, CompliancePostureRevision, PermittedJurisdictionsEnumerated,
+}
+import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope, DispositionStanding, DispositionNotEngaged }
+import product.fabric.route_readiness { ExerciseOfRoute }
+import gunbc.spark.dgx_procurement { OperatorAllocation }
+import gunbc.spark.first_party_serving { FirstPartySelfUsePosture, FirstPartyUseProfile, UseProgramStanding }
+import gunbc.workspace_allocation { WorkspaceRequest, workspace_lease_bound }
+import gunbc.workspace_allocation_reservation { workspace_demand }
+import gunbc.workspace_offer_producer { WorkspaceOfferTerms, WorkspaceHostOfferAdmission, workspace_observed_offer_identity }
+import gunbc.workspace_prepare_convergence { WorkspacePreparationPolicy, WorkspacePreparationEvidence }
+import std.measure { minute_to_second }
+
+// THE FIXED DEMO PREPARATION AUTHORITY, OPERATOR-ONLY, FIRST REVISION. Every WorkspacePreparationPolicy
+// field the convergence consumes is supplied here and nowhere else, so a second request producer or
+// a later timer cannot assemble a different policy. It is a demo authority by name: serving anyone
+// but the enrolled operator is a NEW posture revision, which leaves every sanction below stale.
+//
+// THE FLEET-CI POSTURE IS NOT REUSED, and that is a stated divergence: it serves gunbc's CI jobs and
+// egresses to GitHub; a workspace serves the operator and egresses nowhere. One posture name for
+// both would be the section 3 meaning fork gunbc.runner_fleet_ci_posture itself names. The TYPES are
+// reused, as that module reuses Spark's.
+data workspace_demo_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
+  assertion: OperatorAllocation {
+    decided_by: "operator approval of escalation msg_62c723e4 (option P, the sentence as written), relayed by the owning parent session snappy-gull-889 in msg_d316d720",
+    decided_on: "2026-10-04",
+    basis: "Escalation msg_62c723e4 was approved by the operator on 2026-10-04 with the sentence: 'Workspace microVMs on my hosts serve only me, the enrolled operator principal; they hold only my own gunbc work, stay on my hosts, and send no route material to any third party.' The approval reached this lane relayed by the parent session (msg_d316d720), not as a direct operator utterance here. It is an attributable statement of intent, not a measurement: who a workspace serves is a fact about our intent, which no probe reads off a running microVM.",
+  },
+  serves: "the enrolled operator principal only (gunbc.workspace_allocation_policy workspace_operator_principal). No other principal can own a request under this revision.",
+  data_subject: "the operator's own gunbc work inside a microVM on an operator-held host. No customer data and no third-party data; no route material leaves the operator's hosts.",
+  hardware_custody: "operator-held. The cells run on the operator's own hosts; no hosting contract stands between us and the hardware.",
+}
+
+data workspace_demo_customer_profile: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "operator-self",
+  basis: "The customer is the enrolled operator principal; no other party owns a workspace under this revision.",
+}
+
+data workspace_demo_data_handling_profile: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "operator-own-data-on-host",
+  basis: "The operator's own work on operator-held hosts, with no egress to any third party.",
+}
+
+data workspace_demo_operator_hardware_agreement: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "operator-held-hardware",
+  basis: "The agreement authority is the operator's custody of the hosts; there is no third party, so this row is what the scope cites rather than an empty field.",
+}
+
+data workspace_demo_prohibited_use_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "prohibited use",
+  engagement: "NOT ENGAGED under operator-only self-use. No prohibited-use assessment has been performed.",
+  basis: "The only user is the enrolled operator on the operator's own hosts, so the program has no subject; it acquires one when any other principal is admitted.",
+}
+
+data workspace_demo_sanctions_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "sanctions",
+  engagement: "NOT ENGAGED under operator-only self-use. This is NOT a sanctions determination and no screening was performed.",
+  basis: "No good, service or route material is supplied to any party outside the operator; the program has no subject here, which is not a clearance.",
+}
+
+data workspace_demo_export_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "export control",
+  engagement: "NOT ENGAGED under operator-only self-use. This is NOT an export determination or classification.",
+  basis: "Nothing leaves the operator's hosts; no determination has been sought and none is claimed.",
+}
+
+fn workspace_demo_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.workspace_demo_preparation_policy", decl_name: name)
+}
+
+data workspace_demo_posture: CompliancePostureRevision = CompliancePostureRevision {
+  authority: decl_ref(module_path: "gunbc.workspace_demo_preparation_policy", decl_name: "workspace_demo_use_posture"),
+  revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.workspace.operator-self-use.2026-10-04" as NonEmptyStr)),
+  permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+    first: decl_ref(module_path: "gunbc.workspace_demo_preparation_policy", decl_name: "workspace_demo_use_posture"),
+    further: [],
+  },
+  jurisdiction_drop_enrollments: [],
+}
+
+// THE ROUTE IS THE FLEET'S OWN DESIGNATED WORKSPACE SLOTS, cited by declaration: the provider is the
+// slot designation roster, the service is the microVM slot unit, the region is the posture's own
+// assertion of where the hosts are.
+fn workspace_demo_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "workspace_dedicated_slot_designations"),
+    service: decl_ref(module_path: "gunbc.runner_microvm_slot_unit", decl_name: "microvm_slot_unit_template_name"),
+    region: workspace_demo_ref(name: "workspace_demo_use_posture"),
+  }
+}
+
+fn workspace_demo_on_host_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "workspace_dedicated_slot_designations"),
+    jurisdiction: workspace_demo_ref(name: "workspace_demo_use_posture"),
+    evidence: workspace_demo_ref(name: "workspace_demo_use_posture"),
+  }
+}
+
+// Every path is on the operator's hosts, as the posture asserts; none is claimed absent.
+fn workspace_demo_route_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: workspace_demo_route(),
+    contract_terms: workspace_demo_ref(name: "workspace_demo_operator_hardware_agreement"),
+    data_paths: ProviderDataPathClosure {
+      execution: workspace_demo_on_host_path(), durable_storage: workspace_demo_on_host_path(),
+      backups: workspace_demo_on_host_path(), logs: workspace_demo_on_host_path(),
+      telemetry: workspace_demo_on_host_path(), control_plane: workspace_demo_on_host_path(),
+      support_access: workspace_demo_on_host_path(), administrative_access: workspace_demo_on_host_path(),
+      spill: workspace_demo_on_host_path(),
+    },
+    downstream: NoDownstreamProviders { evidence: workspace_demo_ref(name: "workspace_demo_use_posture") },
+    observed_at: "2026-10-04T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.workspace.route-facts.2026-10-04" as NonEmptyStr)),
+  }
+}
+
+data workspace_demo_supplier: NonEmptyStr = "gunbc-fleet-workspace"
+data workspace_demo_budget_account: BudgetAccountId = "workspace-demo" as BudgetAccountId
+
+fn workspace_demo_maximum_buy_order() -> MoneyAmountMicro { money_amount_micro(count: 1000000) }
+
+// THE FLEET PRICES ITS OWN CELLS AT NOTHING, as the shakedown does: the budget is a wall against a
+// defect, not a market. That is also why the commercial terms are policy rather than a host
+// observation -- no host-local commercial fact exists to read (a stated divergence from the brief).
+fn workspace_demo_buy() -> BuyTerms {
+  BuyTerms { budget_account: workspace_demo_budget_account, currency: Usd,
+    reservation_price: money_amount_micro(count: 500000), maximum_buy_order: workspace_demo_maximum_buy_order() }
+}
+
+fn workspace_demo_initial_account() -> MoneyAccount {
+  MoneyAccount { account: workspace_demo_budget_account, currency: Usd,
+    ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: workspace_demo_maximum_buy_order() }, entries: [] },
+    leases: [] }
+}
+
+fn workspace_demo_terms(admission: WorkspaceHostOfferAdmission, request: WorkspaceRequest) -> WorkspaceOfferTerms {
+  let receipt = admission.commissioning_plan_hash
+  WorkspaceOfferTerms {
+    supplier: workspace_demo_supplier, route: workspace_demo_route(),
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    dispatch: DispatchInputs {
+      offer: workspace_observed_offer_identity(admission: admission, request: request, supplier: workspace_demo_supplier),
+      availability: AvailableIndefinitely { delay: second(count: 0), receipt: receipt },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured { amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt },
+      transition: NoTransitionRequired,
+      operating: OperatingCostMeasured { rate: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }, receipt: receipt },
+      opportunity: NoFeasibleAlternativeUse { receipt: receipt },
+    },
+  }
+}
+
+fn workspace_demo_evidence(admissions: List<WorkspaceHostOfferAdmission>, request: WorkspaceRequest) -> List<WorkspacePreparationEvidence> {
+  map(admissions, admission => WorkspacePreparationEvidence { admission: admission,
+    terms: workspace_demo_terms(admission: admission, request: request), route_facts: workspace_demo_route_facts() })
+}
+
+// ONE ATTEMPT PER DEMAND. A retry after commit never reaches this (the durable plan is returned
+// first), so the attempt is a pure function of the demand rather than a fresh mint per pass.
+fn workspace_demo_attempt(demand: Demand<NonEmptyStr>) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: demand.work.principal,
+    key: serialize_content_hash(hash: content_hash_of_value(value: concat("workspace-attempt:", demand.id.key as String))) as ExecutionAttemptKey }
+}
+
+// Every first placement is its route's own exercise (product.fabric.route_readiness ExerciseOfRoute),
+// exactly as the shakedown's is; no prior exercise is fabricated.
+fn workspace_demo_policy(request: WorkspaceRequest, submitted_at: String, evidence: List<WorkspacePreparationEvidence>) -> WorkspacePreparationPolicy {
+  let demand = workspace_demand(request: request, submitted_at: submitted_at, buy: workspace_demo_buy())
+  WorkspacePreparationPolicy {
+    resource_budget: ResourceBudgetPolicy { authority: "gunbc.workspace_demo_preparation_policy", revision: "2026-10-04",
+      demand: demand.id, work: demand.work, allowed_offers: map(evidence, sample => sample.terms.dispatch.offer) },
+    sanctions: [RouteScopeSanction { route: workspace_demo_route(), posture: workspace_demo_posture,
+      customer_profile: workspace_demo_ref(name: "workspace_demo_customer_profile"),
+      data_handling_profile: workspace_demo_ref(name: "workspace_demo_data_handling_profile"),
+      requires_agreement: workspace_demo_ref(name: "workspace_demo_operator_hardware_agreement") }],
+    active: workspace_demo_posture,
+    scope: ProviderUseScope { demand: demand.id, work: demand.work,
+      customer_profile: workspace_demo_ref(name: "workspace_demo_customer_profile"),
+      data_handling_profile: workspace_demo_ref(name: "workspace_demo_data_handling_profile"),
+      agreement: workspace_demo_ref(name: "workspace_demo_operator_hardware_agreement"),
+      prohibited_use_disposition: DispositionNotEngaged { basis: workspace_demo_ref(name: "workspace_demo_prohibited_use_not_engaged") },
+      sanctions_disposition: DispositionNotEngaged { basis: workspace_demo_ref(name: "workspace_demo_sanctions_not_engaged") },
+      export_disposition: DispositionNotEngaged { basis: workspace_demo_ref(name: "workspace_demo_export_not_engaged") } },
+    decision_receipt: workspace_demo_ref(name: "workspace_demo_use_posture"),
+    exercises: [],
+    readiness: ExerciseOfRoute { route: workspace_demo_route(), work: demand.work },
+    buy: workspace_demo_buy(),
+    initial_account: workspace_demo_initial_account(),
+    duration: EstimatedGrantDuration { seconds: minute_to_second(m: workspace_lease_bound()) },
+  }
+}

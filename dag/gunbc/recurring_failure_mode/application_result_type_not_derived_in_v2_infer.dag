@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.application_result_type_not_derived_in_v2_infer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data application_result_type_not_derived_in_v2_infer: RecurringFailureMode = RecurringFailureMode {
+  identity: "application_result_type_not_derived_in_v2_infer" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: an application whose callee declares its return type -- `mk(x: x)` with `fn mk(x: Int) -> D` -- is left without a derived type by v2.compiler.infer whenever its argument judgement is not fully decided: infer_transform_derived_optional types an application only when arguments_decided, and here the argument obligation came back inhabitance_undecidable_argument_type_not_derived, so the result stays on the infer_grounding_not_derived frontier, carried on the direct infer outcome and NOT yet counted on the native route (program_assembly, the 00_compile native fold and reference_conservation drop advisories on accepted outcomes). HARM: anything consuming the result is not judged. A field projection off it (`mk(x: x).nope`) lands in the non-refusing ReceiverTypeUnderived arm, so an UNDECLARED field is accepted -- visible only as a frontier entry on the direct infer outcome, never typed, never fabricated, but never refused either. Measured on the seed while adding v2.compiler.resolve resolve_value_projection_walk; held by v2.test.claim.value_base_projection vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome.",
+    "RUNG FOUND AT: mitigatable -- carried on the direct infer outcome, not refused, and not yet counted on the native route. CEILING: structurally guaranteed; a callee's declared return is the application's type once its arguments inhabit their formals, and an undecided argument is itself a counted obligation that need not withhold the declared return. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 infer types an application by its callee's declared return (instantiated through the existing application-instantiation route) with any undecided argument obligation carried beside it as its own counted entry -- SUFFICIENT FOR `mk(x: x).nope` to refuse at the field and `mk(x: x).reason` to type as the field's declared type, at which point the carried-frontier control above is inverted into the refusal's control.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_transform_derived_optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.value_base_projection", decl_name: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", field: WholeDeclaration },
+  ],
+}

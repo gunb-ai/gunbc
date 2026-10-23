@@ -1,0 +1,66 @@
+module test.claim.cassette_provisional_mechanicals_witness
+import std.types {Bool}
+import std.measure {micrometer,micrometer_count}
+import product.printed_chassis.cassette_profiles {mt_collins_profile,mt_jade_profile,altra_profile,gh200_p4261_profile}
+import product.printed_chassis.cassette_profile {CassetteProfile,BoardOutlineKnown,BoardOutlinePending}
+import product.printed_chassis.cassette_layout {partition_layout,layout_from_outline,proposed_panel_print_policy,TrayPartitionKnown,TrayPartitionInvalid,TrayPartitionNeedsOutline}
+import product.printed_chassis.board_mechanical_reference {jade_image_mount_reading,jade_raster_calibration,CandidateMountPixel,image_from_left_um,image_from_front_um,placement_admitted,mounting_reference_json,MountingReferencePending,ImageLocationReference,StandardLocationReference}
+import product.printed_chassis.platform_projects_review {platform_projects_review}
+import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
+import extdeps.external_authority {CitedToAuthority,TranscribedUncited}
+import extdeps.boards.asrock_rack {HoleCorrespondenceInferred,HolePositionEstimatedFromImage,HolePhysicallyConfirmedPresent,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.languages.json.emit {serialize_json,JsonValue,JsonArray,JsonObject,JsonNull,JsonBool,JsonNumber,JsonString}
+import extdeps.languages.json.parse {json_field,json_field_string,json_field_bool,FieldRead,FieldAbsent,FieldMalformed}
+
+test fn collins_outline_joins_upstream_dimensions_and_evidence() -> Bool {
+ let r=collins_datasheet_mechanicals
+ match mt_collins_profile.outline {
+ BoardOutlinePending=>false
+ BoardOutlineKnown {width:w,depth:d,standing:s}=>w==r.second_board_dimension && d==r.first_board_dimension && s==r.standing && micrometer_count(m:w)<micrometer_count(m:r.chassis_width) && micrometer_count(m:d)>micrometer_count(m:r.chassis_width)
+ }
+}
+test fn unverified_image_position_refuses_while_known_correspondence_admits() -> Bool {
+ !placement_admitted(standing:jade_image_mount_reading.standing) && !placement_admitted(standing:HolePositionEstimatedFromImage) && placement_admitted(standing:HoleCorrespondenceInferred) && placement_admitted(standing:HolePhysicallyConfirmedPresent)
+}
+test fn calibration_maps_its_datums_to_upstream_outline_without_claiming_board_containment() -> Bool {
+ let c=jade_raster_calibration
+ let front=CandidateMountPixel {id:"front-datum",x:c.left_px,y:c.front_px}
+ let rear=CandidateMountPixel {id:"rear-datum",x:c.right_px,y:c.rear_px}
+ image_from_left_um(c:c,p:front)==0 && image_from_front_um(c:c,p:front)==0 && image_from_left_um(c:c,p:rear)==micrometer_count(m:c.width) && image_from_front_um(c:c,p:rear)==micrometer_count(m:c.depth)
+}
+test fn renamed_profile_retains_its_mounting_reference() -> Bool {
+ let p=mt_jade_profile
+ let renamed=CassetteProfile {id:"new-display-id",requested_hardware:p.requested_hardware,outline:p.outline,mounting:p.mounting,power:p.power,retain:p.retain,open:p.open}
+ serialize_json(v:mounting_reference_json(reference:renamed.mounting))==serialize_json(v:mounting_reference_json(reference:p.mounting))
+}
+fn kind_is(v:JsonValue,wanted:String) -> Bool {
+ match json_field_string(obj:v,key:"kind") {FieldRead {value:s}=>s==wanted FieldAbsent=>false FieldMalformed {cause:_}=>false}
+}
+test fn reference_emitter_distinguishes_altra_jade_and_unresolved_profiles() -> Bool {
+ kind_is(v:mounting_reference_json(reference:altra_profile.mounting),wanted:"standard-location-correspondence") && kind_is(v:mounting_reference_json(reference:mt_jade_profile.mounting),wanted:"image-derived-candidates") && kind_is(v:mounting_reference_json(reference:mt_collins_profile.mounting),wanted:"pending") && kind_is(v:mounting_reference_json(reference:gh200_p4261_profile.mounting),wanted:"pending")
+}
+fn has_reference(v:JsonValue) -> Bool {
+ match json_field(obj:v,key:"mounting_reference") {FieldRead {value:m}=>match json_field_string(obj:m,key:"kind") {FieldRead {value:_}=>true FieldAbsent=>false FieldMalformed {cause:_}=>false} FieldAbsent=>false FieldMalformed {cause:_}=>false}
+}
+test fn whole_review_emits_mounting_evidence_for_every_profile() -> Bool {
+ match platform_projects_review() {JsonArray {elements:e}=>count(e)>0 && all(e,p=>has_reference(v:p)) JsonObject {members:_}=>false JsonNull=>false JsonBool {value:_}=>false JsonNumber {lexeme:_}=>false JsonString {value:_}=>false}
+}
+fn columns_for(width:Int) -> Int {
+ match partition_layout(layout:layout_from_outline(width_um:micrometer(count: width),depth_um:micrometer(count: 200000),edge_margin_um:micrometer(count: 14000)),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:p}=>p.columns TrayPartitionInvalid=>0 TrayPartitionNeedsOutline=>0}
+}
+test fn partition_threshold_is_visible_at_one_micrometre_not_hidden_by_rounding() -> Bool {
+ let a=proposed_panel_print_policy.along_width
+ let process=2*(micrometer_count(m: a.brim_each_side_um)+micrometer_count(m: a.edge_clearance_each_side_um))
+ let boundary=3*(micrometer_count(m: a.bed_um)-process)-micrometer_count(m: a.outer_low_um)-micrometer_count(m: a.outer_high_um)-2*micrometer_count(m: a.internal_low_um)-2*micrometer_count(m: a.internal_high_um)-2*14000
+ columns_for(width:boundary)==3 && columns_for(width:boundary+1)==4
+}
+
+fn refuses_in_wire(v:JsonValue) -> Bool {
+ match json_field_bool(obj:v,key:"standoff_admitted") {FieldRead {value:b}=>!b FieldAbsent=>false FieldMalformed {cause:_}=>false}
+}
+test fn review_cannot_silently_promote_image_candidates_to_standoffs() -> Bool {
+ match json_field(obj:mounting_reference_json(reference:mt_jade_profile.mounting),key:"candidates") {
+ FieldRead {value:v}=>match v {JsonArray {elements:e}=>count(e)>0 && all(e,p=>refuses_in_wire(v:p)) JsonObject {members:_}=>false JsonNull=>false JsonBool {value:_}=>false JsonNumber {lexeme:_}=>false JsonString {value:_}=>false}
+ FieldAbsent=>false FieldMalformed {cause:_}=>false
+ }
+}

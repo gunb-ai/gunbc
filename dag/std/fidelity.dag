@@ -1,0 +1,30 @@
+module std.fidelity
+
+import std.types { FermiDepth, List, Xs }
+import std.fermi { fermi_max_of }
+
+type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
+
+type TestClass = Unit | Hermetic | Integration
+
+type DerivedClassification {
+  test_class: TestClass
+  depth: FermiDepth
+  hermetic: Bool
+}
+
+type TransportFidelity {
+  depth: FermiDepth
+  hermetic: Bool
+}
+
+fn classify_fidelities(fidelities: List<TransportFidelity>) -> DerivedClassification {
+  let depths = map(fidelities, f => f.depth)
+  let max_depth = fermi_max_of(depths: depths)
+  let all_hermetic = all(fidelities, f => f.hermetic)
+  let n = count(fidelities)
+  let test_class = if n == 0 { Unit } else { if all_hermetic { Hermetic } else { Integration } }
+  let depth = if n == 0 { Xs } else { max_depth }
+  let hermetic = if n == 0 { true } else { all_hermetic }
+  DerivedClassification { test_class: test_class, depth: depth, hermetic: hermetic }
+}

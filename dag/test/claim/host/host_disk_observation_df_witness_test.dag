@@ -1,0 +1,35 @@
+module test.claim.host.host_disk_observation_df_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { byte_size_count }
+import gunbc.host_disk_observation {
+  HostDiskObservation, DiskObserved, DiskObservationRefused, DiskUnobserved,
+  host_disk_observation_of_df, host_disk_free_space_argv,
+}
+
+// THE FREE-SPACE READER, OVER SUPPLIED df OUTPUT. The byte count on df's last line is the observation;
+// a failed df, or output that is not a count, refuses -- it is never a zero.
+
+test fn df_output_reads_as_free_bytes() -> Bool {
+  match host_disk_observation_of_df(exit_code: 0, stdout: "      Avail\n2857198092288\n", stderr: "", observed_on: "fixture" as NonEmptyStr) {
+    DiskObserved { free_bytes: b, observed_on: _ } => byte_size_count(b: b) == 2857198092288
+    DiskObservationRefused { detail: _ } => false
+    DiskUnobserved { reason: _ } => false
+  }
+}
+
+test fn a_failed_or_unreadable_df_refuses_and_is_never_zero() -> Bool {
+  (match host_disk_observation_of_df(exit_code: 1, stdout: "", stderr: "df: /x: No such file or directory", observed_on: "fixture" as NonEmptyStr) {
+    DiskObservationRefused { detail: d } => (d as String).contains("df exited 1")
+    DiskObserved { free_bytes: _, observed_on: _ } => false
+    DiskUnobserved { reason: _ } => false
+  }) && (match host_disk_observation_of_df(exit_code: 0, stdout: "Avail\n", stderr: "", observed_on: "fixture" as NonEmptyStr) {
+    DiskObservationRefused { detail: d } => (d as String).contains("no byte count")
+    DiskObserved { free_bytes: _, observed_on: _ } => false
+    DiskUnobserved { reason: _ } => false
+  })
+}
+
+test fn the_free_space_argv_is_df_available_bytes() -> Bool {
+  host_disk_free_space_argv(path: "/home/x") == ["df", "-B1", "--output=avail", "/home/x"]
+}

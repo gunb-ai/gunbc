@@ -1,0 +1,28 @@
+module test.claim.fleet_cap_observation_witness
+
+import std.types { String, NonEmptyStr }
+import gunbc.fleet_converge_plan_cli {
+  CapMemberReadAbsent,
+  CapMemberReadUnobservable,
+  CapMembersAbsent,
+  CapMembersObserved,
+  CapMembersUnobservable,
+  cap_members_observation,
+}
+
+test fn unreadable_cap_member_cannot_become_an_empty_observation() -> Bool {
+  match cap_members_observation(reads: [
+    CapMemberReadUnobservable { path: "/fixture/20-width.conf" as NonEmptyStr, cause: "permission denied" },
+  ]) {
+    CapMembersUnobservable { path: path, cause: _ } => path as String == "/fixture/20-width.conf"
+    CapMembersAbsent => false
+    CapMembersObserved { members: _ } => false
+  }
+}
+
+test fn established_absence_is_distinct_from_unobservable_cap_population() -> Bool {
+  match cap_members_observation(reads: [CapMemberReadAbsent]) {
+    CapMembersAbsent => true
+    _ => false
+  }
+}

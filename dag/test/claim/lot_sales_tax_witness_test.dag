@@ -1,0 +1,355 @@
+module test.claim.lot_sales_tax_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import product.inventory {
+  InventoryLotAllocator,
+  InventoryLotIdentity,
+  inventory_lot_allocator_initial,
+  mint_inventory_lot_identity,
+  inventory_lot_identity_eq,
+}
+import product.lot_sales_tax {
+  LotTaxEvidence,
+  LotTaxPopulationComplete,
+  LotTaxPopulationRepeatedLot,
+  SalesTaxCollected,
+  SalesTaxAttestedIncluded,
+  AttestedJurisdictionStanding,
+  AttestedAtCitedJurisdiction,
+  AttestedJurisdictionGrainUnread,
+  SalesTaxIncludedJurisdictionUnread,
+  SalesTaxTreatmentUnrecorded,
+  RateTranscribedFromNamedReceiptLine,
+  RateDerivedFromReceiptBaseAndTax,
+  ResidualUseTaxOwed,
+  ResidualUseTaxNone,
+  ResidualUseTaxUnread,
+  UseTaxResidualStanding,
+  admit_lot_tax_population,
+  attested_lots,
+  residual_owed_lots,
+  unread_or_unrecorded_lots,
+  residual_destination_jurisdiction,
+  DestinationCitedByRate,
+  DestinationNotApplicableNoResidual,
+  DestinationUnreadWithResidualStanding,
+  ResidualDestinationReading,
+  lot_tax_covers_ledgers,
+  LotTaxJoinCovered,
+  LedgerMissingTax,
+  TaxWithoutLedger,
+  LotTaxJoinRepeatedLot,
+}
+import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq }
+import std.measure { parts_per_million, parts_per_million_count, parts_per_million_scale_million }
+import extdeps.tax.statutory_rate { statutory_rate_value, EffectiveFrom, EffectiveDateUnread }
+import extdeps.tax.new_jersey_sales_and_use {
+  nj_statewide_sales_tax,
+  nj_uez_reduced_sales_tax,
+}
+import extdeps.tax.new_york_city_sales_and_use {
+  nyc_combined_sales_tax,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data tax_fixture_seed: InventoryLotAllocator = inventory_lot_allocator_initial()
+data lot_mt_collins: InventoryLotIdentity = mint_inventory_lot_identity(alloc: tax_fixture_seed).id
+data tax_alloc_after_mt_collins: InventoryLotAllocator = mint_inventory_lot_identity(alloc: tax_fixture_seed).alloc
+data lot_spark_uez: InventoryLotIdentity = mint_inventory_lot_identity(alloc: tax_alloc_after_mt_collins).id
+data tax_alloc_after_uez: InventoryLotAllocator = mint_inventory_lot_identity(alloc: tax_alloc_after_mt_collins).alloc
+data lot_marketplace: InventoryLotIdentity = mint_inventory_lot_identity(alloc: tax_alloc_after_uez).id
+data tax_alloc_after_marketplace: InventoryLotAllocator = mint_inventory_lot_identity(alloc: tax_alloc_after_uez).alloc
+data lot_attested_ny: InventoryLotIdentity = mint_inventory_lot_identity(alloc: tax_alloc_after_marketplace).id
+data tax_alloc_after_attested: InventoryLotAllocator = mint_inventory_lot_identity(alloc: tax_alloc_after_marketplace).alloc
+data lot_unrecorded: InventoryLotIdentity = mint_inventory_lot_identity(alloc: tax_alloc_after_attested).id
+
+data nyc_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
+  destination_combined_rate: nyc_combined_sales_tax,
+}
+
+data fixture_population: List<LotTaxEvidence> = [
+  LotTaxEvidence {
+    lot: lot_mt_collins,
+    standing: SalesTaxCollected {
+      collection: RateDerivedFromReceiptBaseAndTax {
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
+        rate: statutory_rate_value(r: nj_statewide_sales_tax),
+      },
+      residual: nyc_residual,
+    },
+  },
+  LotTaxEvidence {
+    lot: lot_spark_uez,
+    standing: SalesTaxCollected {
+      collection: RateTranscribedFromNamedReceiptLine {
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
+        rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
+        receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
+      },
+      residual: nyc_residual,
+    },
+  },
+  LotTaxEvidence {
+    lot: lot_marketplace,
+    standing: SalesTaxIncludedJurisdictionUnread {
+      read_obligation: "marketplace-collected tax; jurisdiction and rate unverified" as NonEmptyStr,
+    },
+  },
+  LotTaxEvidence {
+    lot: lot_attested_ny,
+    standing: SalesTaxAttestedIncluded {
+      jurisdiction: AttestedJurisdictionGrainUnread {
+        named_as_attested: "New York" as NonEmptyStr,
+        read_obligation: "read the tax line and establish which New York rate was charged" as NonEmptyStr,
+      },
+      residual: ResidualUseTaxUnread {
+        read_obligation: "unsettled until the grain above is read" as NonEmptyStr,
+      },
+      attestation: "operator attests New York tax was paid; no tax line has been read" as NonEmptyStr,
+    },
+  },
+  LotTaxEvidence {
+    lot: lot_unrecorded,
+    standing: SalesTaxTreatmentUnrecorded {
+      read_obligation: "no acquisition record; tax standing unknown" as NonEmptyStr,
+    },
+  },
+]
+
+// EFFECTIVE VERSIONS ARE READ FOR ONE ROW AND UNREAD FOR TWO, and this pins that distinction
+// rather than merely that the field exists. New Jersey's statewide rate carries its 2018-01-01
+// effective date from N.J.S.A. 54:32B-3; the Urban Enterprise Zone rate and the New York City
+// combined rate do not, and inferring the UEZ date from the statewide one is exactly the
+// inference this refuses - the statute makes it half that rate, which dates the VALUE and not
+// the version. If a later edit quietly supplies an unread date to silence the obligation, or
+// drops the read one, this reds.
+test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
+  match nj_statewide_sales_tax.effective {
+    EffectiveFrom { date: _, instrument: _ } => true
+    EffectiveDateUnread { obligation: _ } => false
+  }
+    && match nj_uez_reduced_sales_tax.effective {
+      EffectiveFrom { date: _, instrument: _ } => false
+      EffectiveDateUnread { obligation: _ } => true
+    }
+    && match nyc_combined_sales_tax.effective {
+      EffectiveFrom { date: _, instrument: _ } => false
+      EffectiveDateUnread { obligation: _ } => true
+    }
+}
+
+// AN ATTESTATION NAMING A STATE DOES NOT ESTABLISH A CITY, and this is the control for that.
+// Both attested census lots rest on the operator saying "New York tax was paid" - which does not
+// say whether the state rate or the New York City combined rate was the one charged. An earlier
+// revision cited nyc_combined_sales_tax for both, narrowing the attestation to a grain no evidence
+// established; the figures differ, so a state-only payment on goods used in the city leaves a
+// residual that the narrowed reading reported as settled. That is the expensive direction of the
+// DESIGN section 4d error: the narrower claim was the comfortable one and had no evidence.
+//
+// Read the named lot from the fixture itself. Citing a city or settling its residual
+// without a reading must fail; missing or repeated fixture identities also refuse.
+test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool {
+  let selected = fixture_population.filter(row => inventory_lot_identity_eq(left: row.lot, right: lot_attested_ny))
+  selected.length() == 1 && match selected.first() {
+    Absent => false
+    Present { value: row } => match row.standing {
+      SalesTaxAttestedIncluded { jurisdiction: j, residual: r, attestation: _ } =>
+        match j {
+          AttestedAtCitedJurisdiction { jurisdiction: _ } => false
+          AttestedJurisdictionGrainUnread { named_as_attested: n, read_obligation: _ } =>
+            n == ("New York" as NonEmptyStr)
+        }
+        && match r {
+          ResidualUseTaxOwed { destination_combined_rate: _ } => false
+          ResidualUseTaxNone => false
+          ResidualUseTaxUnread { read_obligation: _ } => true
+        }
+      SalesTaxCollected { collection: _, residual: _ } => false
+      SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => false
+      SalesTaxTreatmentUnrecorded { read_obligation: _ } => false
+    }
+  }
+}
+
+// THE DESTINATION IS PROJECTED OUT OF THE RATE, WHICH IS THE WHOLE POINT OF DELETING THE SIBLING
+// FIELD. An earlier revision of this change dropped ResidualUseTaxOwed's destination_jurisdiction
+// claiming the rate already determined it, while StatutoryRate carried only a figure and a version
+// and therefore determined nothing - the destination would simply have been gone. This pins the
+// repaired version: the residual built from the New York City rate reports NEW YORK CITY, and it
+// reports it by reading the rate rather than by a second field an author typed.
+//
+// THE DISCRIMINATING RED: point nyc_residual at nj_statewide_sales_tax instead and the first
+// conjunct reds, because the projection follows the rate. Under the deleted-field premise there
+// would have been nothing left to red. The second and third conjuncts hold the arms apart so a
+// projection that answered DestinationCitedByRate for every residual cannot pass.
+// ORIGIN AND DESTINATION ACTUALLY JOIN, which is the property the meaning fork destroyed and the
+// reason it mattered rather than being untidy. Before this repair, StatutoryRate.jurisdiction
+// pointed at an ExternalAuthority row while every authored collection put a StatutoryRate row in
+// the same field, so two references both meaning "New York City" could never compare equal: a lot
+// whose tax was collected in a jurisdiction could not be tested against a residual owed to that
+// same jurisdiction, and the join that the whole residual model exists to support silently
+// answered false. (review 65153)
+//
+// THIS IS THE CONTROL THAT WOULD HAVE CAUGHT IT, and none existed - every prior witness compared a
+// reference against a literal of its own kind, so both sides of the fork stayed self-consistent
+// and the mismatch lived exactly in the comparison nobody wrote. The attested New York City lot's
+// collected jurisdiction must equal the destination projected out of the New York City rate.
+//
+// DISCRIMINATING RED: point either side back at a rate row or an authority row instead of the
+// jurisdiction row and this reds, because the two referents differ. The second conjunct keeps it
+// from passing by universal equality - a New Jersey origin must NOT equal a New York City
+// destination.
+test fn w_collected_origin_joins_projected_destination() -> Bool {
+  match residual_destination_jurisdiction(residual: nyc_residual) {
+    DestinationCitedByRate { jurisdiction: dest } =>
+      declaration_ref_eq(
+        a: dest,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_york_city_sales_and_use",
+          decl_name: "new_york_city",
+        ),
+      )
+      && !declaration_ref_eq(
+        a: dest,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_jersey_sales_and_use",
+          decl_name: "new_jersey",
+        ),
+      )
+    DestinationNotApplicableNoResidual => false
+    DestinationUnreadWithResidualStanding => false
+  }
+}
+
+test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
+  match residual_destination_jurisdiction(residual: nyc_residual) {
+    DestinationCitedByRate { jurisdiction: j } =>
+      declaration_ref_eq(
+        a: j,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_york_city_sales_and_use",
+          decl_name: "new_york_city",
+        ),
+      )
+    DestinationNotApplicableNoResidual => false
+    DestinationUnreadWithResidualStanding => false
+  }
+  && match residual_destination_jurisdiction(residual: ResidualUseTaxNone) {
+    DestinationCitedByRate { jurisdiction: _ } => false
+    DestinationNotApplicableNoResidual => true
+    DestinationUnreadWithResidualStanding => false
+  }
+  && match residual_destination_jurisdiction(
+    residual: ResidualUseTaxUnread {
+      read_obligation: "probe arm; no destination to project" as NonEmptyStr,
+    },
+  ) {
+    DestinationCitedByRate { jurisdiction: _ } => false
+    DestinationNotApplicableNoResidual => false
+    DestinationUnreadWithResidualStanding => true
+  }
+}
+
+test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
+  parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) == 66250
+    && parts_per_million_count(m: statutory_rate_value(r: nj_uez_reduced_sales_tax)) == 33125
+    && parts_per_million_count(m: statutory_rate_value(r: nyc_combined_sales_tax)) == 88750
+    && parts_per_million_count(m: statutory_rate_value(r: nj_uez_reduced_sales_tax)) * 2
+      == parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax))
+    && parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) < parts_per_million_scale_million()
+}
+
+test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
+  match admit_lot_tax_population(rows: fixture_population) {
+    LotTaxPopulationComplete { rows: admitted } =>
+      admitted.length() == 5
+        && residual_owed_lots(rows: admitted).length() == 2
+        && attested_lots(rows: admitted).length() == 1
+        && unread_or_unrecorded_lots(rows: admitted).length() == 2
+    LotTaxPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+  }
+    && match admit_lot_tax_population(rows: concat(fixture_population, [
+      LotTaxEvidence {
+        lot: lot_mt_collins,
+        standing: SalesTaxTreatmentUnrecorded { read_obligation: "duplicate" as NonEmptyStr },
+      },
+    ])) {
+      LotTaxPopulationComplete { rows: _ } => false
+      LotTaxPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: later } =>
+        inventory_lot_identity_eq(left: l, right: lot_mt_collins)
+          && first == 0
+          && later == 5
+    }
+}
+
+// Repeat the second lot after an intervening lot, then repeat another lot.
+// The first refusal must retain both nonzero positions and survive later rows.
+test fn w_nonadjacent_repetition_preserves_first_refusal_ordinals() -> Bool {
+  match admit_lot_tax_population(rows: concat(fixture_population.take(n: 3), [
+    LotTaxEvidence {
+      lot: lot_spark_uez,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "first repeated identity" as NonEmptyStr },
+    },
+    LotTaxEvidence {
+      lot: lot_mt_collins,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "later repeated identity" as NonEmptyStr },
+    },
+  ])) {
+    LotTaxPopulationComplete { rows: _ } => false
+    LotTaxPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: later } =>
+      inventory_lot_identity_eq(left: l, right: lot_spark_uez)
+        && first == 1 && later == 3
+  }
+}
+
+test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool {
+  residual_owed_lots(rows: fixture_population).length() == 2
+    && residual_owed_lots(rows: fixture_population.skip(n: 1)).length() == 1
+    && match fixture_population.first() {
+      Absent => false
+      Present { value: row } =>
+        attested_lots(rows: [row]).length() == 0
+          && residual_owed_lots(rows: [row]).length() == 1
+    }
+}
+
+test fn w_unread_residual_is_not_a_known_owe() -> Bool {
+  residual_owed_lots(rows: [LotTaxEvidence {
+    lot: lot_mt_collins,
+    standing: SalesTaxCollected {
+      collection: RateTranscribedFromNamedReceiptLine {
+        jurisdiction: decl_ref(module_path: "extdeps.tax.new_jersey_sales_and_use", decl_name: "new_jersey"),
+        rate: parts_per_million(count: 1),
+        receipt_line_label: "tax" as NonEmptyStr,
+      },
+      residual: ResidualUseTaxUnread { read_obligation: "destination rate unread" as NonEmptyStr },
+    },
+  }]).length() == 0
+}
+
+test fn w_equal_length_is_not_tax_coverage() -> Bool {
+  let lots = [lot_mt_collins, lot_spark_uez, lot_marketplace]
+  let tax = [
+    LotTaxEvidence {
+      lot: lot_mt_collins,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "a" as NonEmptyStr },
+    },
+    LotTaxEvidence {
+      lot: lot_spark_uez,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "b" as NonEmptyStr },
+    },
+    LotTaxEvidence {
+      lot: lot_unrecorded,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "orphan" as NonEmptyStr },
+    },
+  ]
+  lots.length() == tax.length()
+    && match lot_tax_covers_ledgers(lots: lots, tax: tax) {
+      LotTaxJoinCovered { rows: _ } => false
+      LedgerMissingTax { lot: l } => inventory_lot_identity_eq(left: l, right: lot_marketplace)
+      TaxWithoutLedger { lot: _ } => false
+      LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+    }
+}

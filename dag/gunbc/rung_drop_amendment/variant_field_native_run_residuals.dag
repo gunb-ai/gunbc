@@ -1,0 +1,28 @@
+module gunbc.rung_drop_amendment.variant_field_native_run_residuals
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// THE NATIVE RUN THIS ROW'S DEFERRAL NAMED HAS NOW EXECUTED, AND IT REFUSED BEFORE THE ROW'S
+// SUBJECT COULD BE OBSERVED. The drop row deferred the native-route run "until gunbc#12100 lands";
+// the run was executed locally on 2026-10-02 (eager-cat-664, head 17fccbf3f62) with the seed emit,
+// the emitted-crate build, the discriminating red and the malformed control all established, and
+// the two halves of the universe refused at PREPARE for two DIFFERENT named reasons. This row
+// carries the finding so the drop's standing is read against it, and so the two residuals are not
+// mistaken for the drop being retired (it is not) or for one gap (they are two, in two stages).
+//
+// WHY THIS IS WORTH A ROW RATHER THAN A COMMENT ON THE DROP: the comment is unreadable by any
+// Accepted program, and the projection renders this row's message beside the drop's declaration,
+// so the next reader of docs/design-rung-drops.md meets the residuals without loading anything
+// else. The two recurring-failure-mode rows it names carry the per-class receipts, the
+// distinguishing facts and the next-rung triggers; this row carries only the join.
+
+data variant_field_native_run_residuals: RungDropAmendment = RungDropAmendment {
+  drop_identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
+
+  amended: "2026-10-02",
+
+  later_event: "the native run this row deferred was executed (eager-cat-664, head 17fccbf3f62: gunbc test over //v2/test/claim/variant_field_native_binding:all and //v2/test/claim/variant_field_native_specimen:all; seed emit 225 files, closure ae6fb52183d56945c0dedad90047279110c416c3f7ea5dcb6b5a10724ab7cff6, emitted crate clean under -D warnings, discriminating red and malformed control established, driver rows persisted to target/v2-native-lane/driver-rows.jsonl) and it refused at prepare on both halves, naming two residuals instead of the row's subject" as NonEmptyStr,
+
+  bearing: "the INFER residual: the emitted front end's infer accepts only Bool and Int match scrutinees (infer_match_scrutinee_not_bool, raised where v2.compiler.04_infer's infer_match_bool finds the scrutinee's resolved type neither infer_branch_type_is_bool nor infer_branch_type_is_int), fed by infer_grounding_not_derived on the variant-field pattern binders and inhabitance_undecidable_argument_type_not_derived, so all four round-trip identities refuse at prepare -- the capability that retires this residual is variant-scrutinee match infer plus payload binder grounding; the SPECIMEN residual: the native resolver does not bind a fold handler's binder (resolve_reason_unbound_symbol anchored at the fold spine over candidate.path), so all three specimen identities refuse at prepare -- the capability that retires this residual is fold-handler binder resolution in the native resolver; both residuals are filed as gunbc.recurring_failure_mode rows (native_infer_accepts_only_bool_and_int_match_scrutinees, fold_cons_handler_binder_unbound_on_the_native_resolver), the interpreted floor cannot see either because it never runs the native infer or the native resolver over test modules -- the floor's green over this universe is not evidence about the native route, and CI enrollment still waits on gunbc.rung_drop v2_native_route_off_the_merge_path" as NonEmptyStr,
+}

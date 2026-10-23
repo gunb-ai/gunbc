@@ -1,0 +1,412 @@
+module v2.test.claim.normalize.operation_requires_edge
+
+import v2.compiler.normalize { normalize, normalize_census }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
+import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, resolve_requirement_member_refusal_optional, scope_from_namespace }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.declaration_marker { test_code_index_empty }
+import v2.std.collection { empty_map }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.qualified_name { declaration_reference_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list_node }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import std.optional { Absent, Present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Arrow, Atom, Conj, Edge, Found, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_intern_lexeme, ArrowResourceRequirementsEdge, Authored, core_edge_target_lookup, core_edge_label }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+// AN OPERATION'S DECLARED RESOURCE REQUIREMENTS (D13 step a; v2.std.node
+// CoreEdgeLabel ArrowResourceRequirementsEdge). `requires R, ..` lowers onto the operation Arrow
+// (v2.compiler.body_lowering_fold body_lower_operation_requires) and v2.compiler.resolve
+// resolve_arrow_resource_requirements checks, in the Arrow's type scope, that every member names a
+// declared resource (v2.std.symbol_index symbol_index_declares_resource_at) at most once. These claims
+// are that check's production route; the resource fixtures are the module's own declarations, which the
+// single-module resolve marks from its normalize-captured resource names.
+//
+// SUPPLIED TOKEN STREAMS, each paired with a fidelity claim that the real tokenizer produces it
+// (DESIGN section 3 pairing obligation), as v2.test.claim.normalize.resource_declaration_lowering does.
+
+// An operation requiring a resource the module declares: the positive control.
+data requires_resource_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\nservice S {\n  operation Op {\n    requires N\n  }\n}\n"
+
+
+// RED: one spelling written twice is an ill-formed requirements Conj, refused at lowering.
+data requires_spelled_twice_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\nservice S {\n  operation Op {\n    requires N, N\n  }\n}\n"
+
+
+// An operation with no requires clause: its Arrow carries no requirements edge.
+data no_requires_source: String = "module m\nservice S {\n  operation Op {}\n}\n"
+
+
+fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize_census(parse_tree: tree) })
+}
+
+fn node_carries_requirements_edge(n: Node) -> Bool {
+  match core_edge_target_lookup(children: n.children, marker: ArrowResourceRequirementsEdge) {
+    Found { target: _ } => true
+    _ => false
+  }
+}
+
+fn carries_requirements_edge(root: Node) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(found, n) { found || node_carries_requirements_edge(n: n) })
+}
+
+
+// THE REAL ROUTE, AT A MOVED BOUNDARY. Whole-module normalize-and-resolve claims sat at the new-witness
+// eval-step budget (72,309, then 72,394 of 72,300 on composed revisions): their cost is the fixed
+// overhead of lowering and resolving a module, which no smaller fixture removes. The route is therefore
+// split at its own seam, and each half runs for real: LOWERING of a `requires` clause onto the operation
+// Arrow is held on source text by a_requires_clause_lowers_onto_the_operation_arrow_holds; RESOLUTION of
+// that edge -- v2.compiler.resolve resolve_node into resolve_arrow_node_in, its requirements arm, and the
+// requirement decision -- is held by the pair below over an operation Arrow of exactly that shape and a
+// symbol index filled by v2.compiler.symbol_index_fill from a module root that declares T. The pair
+// differs in one fact (whether T is marked a declared resource), so neither verdict can come from
+// anything but the requirement check.
+// The positive fixture's Arrow does carry the edge, so the absence below is a discriminating control.
+test fn a_requires_clause_lowers_onto_the_operation_arrow_holds() -> Bool {
+  match census_of_stream(tokens: requires_resource_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } => carries_requirements_edge(root: census_tree_binding_source(t: t).root)
+  }
+}
+
+// A REQUIREMENT-FREE OPERATION KEEPS ITS IDENTITY: no requires clause, no edge, so its Arrow is the
+// three signature edges it was before this change (v2.compiler.body_lowering_fold
+// body_lower_operation_arrow_children).
+test fn an_operation_without_requires_carries_no_requirements_edge_holds() -> Bool {
+  match census_of_stream(tokens: no_requires_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } => !carries_requirements_edge(root: census_tree_binding_source(t: t).root)
+  }
+}
+
+
+test fn a_requirement_spelled_twice_refuses_at_lowering_RED() -> Bool {
+  match census_of_stream(tokens: requires_spelled_twice_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_operation_requirement_repeated
+  }
+}
+
+
+fn requires_resource_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^requires_edge_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^requires_edge_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^requires_edge_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^requires_edge_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^requires_edge_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^requires_edge_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^requires_edge_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^requires_edge_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^requires_edge_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^requires_edge_probe, start: 56, end: 63 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^requires_edge_probe, start: 64, end: 65 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 66, end: 67 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^requires_edge_probe, start: 70, end: 79 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^requires_edge_probe, start: 80, end: 82 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_ident, lexeme: "requires", file: ^requires_edge_probe, start: 89, end: 97 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 98, end: 99 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 102, end: 103 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 104, end: 105 }
+  ])
+}
+
+test fn requires_resource_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: requires_resource_source, file: ^requires_edge_probe, supplied: requires_resource_stream())
+}
+
+
+fn requires_spelled_twice_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^requires_edge_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^requires_edge_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^requires_edge_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^requires_edge_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^requires_edge_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^requires_edge_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^requires_edge_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^requires_edge_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^requires_edge_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^requires_edge_probe, start: 56, end: 63 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^requires_edge_probe, start: 64, end: 65 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 66, end: 67 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^requires_edge_probe, start: 70, end: 79 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^requires_edge_probe, start: 80, end: 82 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_ident, lexeme: "requires", file: ^requires_edge_probe, start: 89, end: 97 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 98, end: 99 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^requires_edge_probe, start: 99, end: 100 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 101, end: 102 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 105, end: 106 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 107, end: 108 }
+  ])
+}
+
+test fn requires_spelled_twice_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: requires_spelled_twice_source, file: ^requires_edge_probe, supplied: requires_spelled_twice_stream())
+}
+
+
+fn no_requires_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^requires_edge_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^requires_edge_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^requires_edge_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^requires_edge_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^requires_edge_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Op", file: ^requires_edge_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 39, end: 40 }
+  ])
+}
+
+test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: no_requires_source, file: ^requires_edge_probe, supplied: no_requires_stream())
+}
+
+// ONE RESOURCE NAMED TWICE, AT THE DECISION'S OWN INTERFACE (DESIGN section 3: a witness supplies the
+// inputs of the one interface it discriminates). v2.compiler.resolve resolve_requirement_member_refusal_optional
+// decides over resolved members and the index; the members here are supplied as the declaration
+// references resolve produces for `N` and `m.N` -- one path under two labels -- and the index is the
+// census index of a module that declares N. The real route through normalize and resolve stays
+// exercised by a_requirement_naming_a_declared_resource_resolves_at_resolve_holds (a member resolving to a marked
+// resource path) and a_requirement_naming_a_non_resource_refuses_at_resolve_RED, so supplying the members here
+// removes no execution of it.
+data resource_only_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\n"
+
+test fn one_resource_named_twice_is_refused_by_the_requirement_decision_RED() -> Bool {
+  match census_of_stream(tokens: resource_only_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
+      let path = Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }
+      let members = [
+        Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) },
+        Edge { label: Authored { name: symbol_intern_lexeme(lexeme: "m.N") }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) }
+      ]
+      match resolve_requirement_member_refusal_optional(index: index, members: members) {
+        Present { value: d } => d.reason == ^resolve_reason_requirement_repeated
+        Absent => false
+      }
+  }
+}
+
+// The same decision admits the resource named once, so the refusal above is the repetition and not the
+// member: a discriminating control at the same interface.
+test fn one_resource_named_once_is_admitted_by_the_requirement_decision_holds() -> Bool {
+  match census_of_stream(tokens: resource_only_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
+      let members = [Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }, occurrence_id: OccurrenceSynthetic) }]
+      match resolve_requirement_member_refusal_optional(index: index, members: members) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+fn resource_only_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^requires_edge_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^requires_edge_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^requires_edge_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^requires_edge_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^requires_edge_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^requires_edge_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^requires_edge_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^requires_edge_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^requires_edge_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 54, end: 55 }
+  ])
+}
+
+test fn resource_only_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: resource_only_source, file: ^requires_edge_probe, supplied: resource_only_stream())
+}
+
+// THE TWO WHOLE-CLAUSE WORDS (D13 ruling B) lower onto the SAME edge as childless Atoms, so the one
+// carrier has three declared states and an operation with no clause carries none of them.
+data requires_words_source: String = "module m\nservice S {\n  operation Q {\n    requires none\n  }\n  operation X {\n    requires opaque\n  }\n}\n"
+
+data requires_none_with_member_source: String = "module m\nservice S {\n  operation Q {\n    requires none, N\n  }\n}\n"
+
+fn requirements_atom_count(root: Node, identity: Symbol) -> Int {
+  fold(node_subtree_nodes(root: root), init: 0, f: fn(acc, n) { acc + node_requirements_atom_count(n: n, identity: identity) })
+}
+
+fn node_requirements_atom_count(n: Node, identity: Symbol) -> Int {
+  match core_edge_target_lookup(children: n.children, marker: ArrowResourceRequirementsEdge) {
+    Found { target: t } =>
+      match t.kind {
+        TypeNode { connective: Atom { identity: id } } => if id == identity { 1 } else { 0 }
+        _ => 0
+      }
+    _ => 0
+  }
+}
+
+test fn requires_none_and_requires_opaque_lower_to_their_declared_atoms_holds() -> Bool {
+  match census_of_stream(tokens: requires_words_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      let root = census_tree_binding_source(t: t).root
+      (requirements_atom_count(root: root, identity: ^requirements_declared_none) == 1)
+        && (requirements_atom_count(root: root, identity: ^requirements_opaque) == 1)
+  }
+}
+
+test fn requires_none_followed_by_a_member_refuses_RED() -> Bool {
+  match census_of_stream(tokens: requires_none_with_member_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn requires_words_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^requires_edge_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^requires_edge_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^requires_edge_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^requires_edge_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^requires_edge_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Q", file: ^requires_edge_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_ident, lexeme: "requires", file: ^requires_edge_probe, start: 41, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "none", file: ^requires_edge_probe, start: 50, end: 54 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 57, end: 58 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^requires_edge_probe, start: 61, end: 70 },
+    Token { class: ^dag_token_ident, lexeme: "X", file: ^requires_edge_probe, start: 71, end: 72 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 73, end: 74 },
+    Token { class: ^dag_token_ident, lexeme: "requires", file: ^requires_edge_probe, start: 79, end: 87 },
+    Token { class: ^dag_token_ident, lexeme: "opaque", file: ^requires_edge_probe, start: 88, end: 94 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 97, end: 98 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 99, end: 100 }
+  ])
+}
+
+test fn requires_words_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: requires_words_source, file: ^requires_edge_probe, supplied: requires_words_stream())
+}
+
+fn requires_none_with_member_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^requires_edge_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^requires_edge_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "service", file: ^requires_edge_probe, start: 9, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^requires_edge_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "operation", file: ^requires_edge_probe, start: 23, end: 32 },
+    Token { class: ^dag_token_ident, lexeme: "Q", file: ^requires_edge_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^requires_edge_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_ident, lexeme: "requires", file: ^requires_edge_probe, start: 41, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "none", file: ^requires_edge_probe, start: 50, end: 54 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^requires_edge_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^requires_edge_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 60, end: 61 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^requires_edge_probe, start: 62, end: 63 }
+  ])
+}
+
+test fn requires_none_with_member_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: requires_none_with_member_source, file: ^requires_edge_probe, supplied: requires_none_with_member_stream())
+}
+
+// THE RESOLVE HALF OF THE ROUTE. A module m declaring T, its header naming m through the qualified-name
+// spine a parsed header carries (fold_list_node, as v2.test.resolve.qualified_module_projection_resolve
+// builds it), so the index fill reads the module's own path; an operation Arrow whose requirements edge names
+// T, as body_lower_operation_requires builds it. Resolved at m through the real resolve_node.
+fn req_module_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_surface_edge(edge: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: fold_list_node(xs: Cons { head: ^m, tail: Empty }, item_node: fn(sym) { req_atom(sym: sym) })),
+      Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn req_atom(sym: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn req_operation_arrow() -> Node {
+  let signature = declared_signature(params: [], source: req_atom(sym: ^Op))
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      signature.order,
+      Edge {
+        label: core_edge_label(marker: ArrowResourceRequirementsEdge),
+        target: Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T) }], occurrence_id: OccurrenceSynthetic }
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+
+fn req_refusal_reason(resources: FreeMonoid<Symbol>) -> Symbol {
+  let index = symbol_index_fill_module_root(index: empty_symbol_index(), root: req_module_root(), record_declarations: Empty, resource_declarations: resources)
+  let module_qn = Cons { head: ^m, tail: Empty }
+  let namespace = Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: index,
+    module_qn: module_qn,
+    test_code: test_code_index_empty(),
+    declared_in: module_qn,
+    imported_origins: empty_map()
+  }
+  match resolve_node(
+    ctx: ResolveContext {
+      scope: scope_from_namespace(namespace: namespace),
+      type_scope: scope_from_namespace(namespace: namespace),
+      namespace: namespace,
+      policy: NamespaceOnlyY,
+      position: module_qn,
+      lm: dag_language_model_surface_empty_prelude(),
+      under_module_root: false,
+      declaring: NotDeclaring
+    },
+    n: req_operation_arrow()
+  ) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r)
+  }
+}
+
+test fn a_requirement_naming_a_declared_resource_resolves_at_resolve_holds() -> Bool {
+  req_refusal_reason(resources: Cons { head: ^T, tail: Empty }) == ^accepted
+}
+
+test fn a_requirement_naming_a_non_resource_refuses_at_resolve_RED() -> Bool {
+  req_refusal_reason(resources: Empty) == ^resolve_reason_requirement_not_a_resource
+}

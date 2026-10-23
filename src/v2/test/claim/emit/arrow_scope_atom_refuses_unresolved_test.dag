@@ -1,0 +1,267 @@
+module v2.test.emit.arrow_scope_atom_refuses_unresolved
+
+import v2.std.arrow_signature { declared_signature }
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.dag { dag_value_expression_projection }
+import v2.extdeps.languages.typescript { ts_binding_spellings, ts_source_text_authority, ts_fn_add_lex_rules }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal, node_locus }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge,
+}
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  TargetValueExpression,
+  target_model_emit_transforms_empty,
+  target_operator_realizations_catalog_node,
+  target_project_arrow_body_to_value_expression,
+  target_project_loop,
+  target_value_expression_binding_ref,
+  target_value_expression_loop,
+  value_expr_projection_bundle_node
+}
+import v2.std.compilers.lexing { ModeledLexRules }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS AN ATOM THAT MISSES ARROW SCOPE (v2.std.compilers.target_model
+// target_value_expr_project_atom_in_arrow_scope). Before this change its Rejected arm fell through to
+// the literal projector, whose last arm minted the name as a symbol_identity -- an unresolved name
+// emitted as if it resolved (DESIGN §5, absorbing fallback). The fixture is `f(xs, (acc) => <atom>)`:
+// the closure is a call argument, so its body atom reaches exactly that site with the closure as its
+// arrow. An atom that names nothing in scope must refuse `body_scope_binding_invalid`, LOCATED AT THE
+// ATOM; an atom that spells a literal (`true`) still projects. Restoring the fallback makes the
+// refusal row false.
+fn probe_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn probe_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn probe_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn probe_closure(body: Node) -> Node {
+  let signature = declared_signature(
+    params: [binder_edge(name: ^fold_call_closure_acc, type_node: probe_atom(id: ^fold_call_type_int))],
+    source: probe_atom(id: ^fold_call_type_int)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      probe_positional(target: probe_atom(id: ^fold_call_type_int)),
+      signature.order,
+      core_edge(marker: ArrowBodyEdge, target: body)
+    ]
+  )
+}
+
+fn probe_arrow(closure_body: Node) -> Node {
+  let signature = declared_signature(
+    params: [binder_edge(name: ^fold_call_param_xs, type_node: probe_atom(id: ^fold_call_type_int))],
+    source: probe_atom(id: ^fold_call_type_int)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      probe_positional(target: probe_atom(id: ^fold_call_type_int)),
+      signature.order,
+      core_edge(marker: ArrowBodyEdge,
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Transform },
+          children: [
+            probe_positional(target: probe_atom(id: ^fold_call_callee)),
+            probe_positional(target: probe_atom(id: ^fold_call_param_xs)),
+            probe_positional(target: probe_closure(body: closure_body))
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn probe_target_model() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        probe_named(
+          name: ^target_model_edge_value_expression_projection,
+          target: value_expr_projection_bundle_node(projection: dag_value_expression_projection())
+        ),
+        probe_named(
+          name: ^target_model_edge_operator_realizations,
+          target: target_operator_realizations_catalog_node(rows: [])
+        )
+      ]
+    ),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
+    binding_spellings: ts_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: ts_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn probe_project(closure_body: Node) -> Outcome<TargetValueExpression> {
+  target_project_arrow_body_to_value_expression(
+    arrow: probe_arrow(closure_body: closure_body),
+    target: probe_target_model(),
+    source_bool_form: dag_value_expression_projection().bool_literal_form,
+    handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+  )
+}
+
+data probe_unbound_atom: Node = probe_atom(id: ^arrow_scope_probe_unbound_name)
+
+// THE WALL: the name resolves in no scope, so the projection refuses at that atom.
+test fn arrow_scope_unresolved_atom_refuses_located() -> Bool {
+  match probe_project(closure_body: probe_unbound_atom) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_unbound_atom)
+  }
+}
+
+// THE POSITIVE CONTROL ON THE SAME ROUTE: an atom that spells a literal still projects as that literal,
+// so the refusal above is about the name, not the position.
+test fn arrow_scope_literal_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_atom(id: ^dag_token_kw_true)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE SAME ROUTE THROUGH THE PICK-TABLE ARM: an atom the one literal ladder maps to a binding
+// (target_value_expr_binding_ref_for_literal_atom) still projects, so the arrow-scope caller shares
+// that ladder rather than carrying its own copy of it.
+test fn arrow_scope_pick_table_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_atom(id: ^dag_rec_lit_nine)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data probe_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
+
+// A CANONICAL PARAMETER NAME IS A NAME, NOT A LITERAL: `^dag_binding_param_x` is in no domain of this
+// fixture, so it must refuse located at the atom -- the historical canonical-parameter table
+// (target_value_expr_binding_ref_for_canonical_param_atom, since deleted) may not admit it past a
+// scope miss.
+test fn arrow_scope_out_of_scope_canonical_param_refuses_located() -> Bool {
+  match probe_project(closure_body: probe_out_of_scope_param_atom) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_out_of_scope_param_atom)
+  }
+}
+
+// THE LOOP BODY IS THE SAME ROUTE, NOT A SECOND ONE (target_model target_project_loop). Its atom used
+// to reach the literal projector directly, whose no-literal arm minted the name as a symbol_identity
+// (target_value_expr_mint_unscoped_atom, deleted): a loop body naming nothing emitted as if it
+// resolved. It now projects through target_value_expr_project_atom_in_arrow_scope, so the same atom
+// refuses located inside `loop`, and a literal loop body still projects. Restoring the mint on the loop
+// arm makes the refusal row false.
+fn probe_loop(body: Node) -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Loop }, children: [probe_positional(target: body)])
+}
+
+test fn loop_body_unresolved_atom_refuses_located() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_unbound_atom)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_unbound_atom)
+  }
+}
+
+test fn loop_body_literal_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_pick_lit_one))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A FOUND BINDING IS ACCEPTED WHATEVER THE BODY SHAPE. The closure declares `acc`, so `loop acc` in its
+// body projects as a loop over a binding reference to `acc`. Scope acceptance
+// (target_value_expr_arrow_body_scope_binding) used to also require the arrow to match the add
+// signature or have a Transform/Match body, so a found parameter in a Loop-bodied closure refused
+// body_scope_binding_invalid. The body-shape gate decided scope; it no longer does.
+data probe_bound_loop: Node = probe_loop(body: probe_atom(id: ^fold_call_closure_acc))
+
+test fn loop_body_bound_param_projects_as_its_binding_ref() -> Bool {
+  match target_project_loop(
+    arrow: probe_closure(body: probe_bound_loop),
+    body: probe_bound_loop,
+    target: probe_target_model(),
+    source_bool_form: dag_value_expression_projection().bool_literal_form,
+    handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+  ) {
+    Accepted { value: expr, diagnostics: _ } =>
+      expr.node == target_value_expression_loop(
+        body: target_value_expression_binding_ref(binding: ^fold_call_closure_acc)
+      ).node
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_body_bound_param_projects_through_the_call_route() -> Bool {
+  match probe_project(closure_body: probe_bound_loop) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE LOOP BODY SHARES THE CANONICAL-PARAMETER AND PICK-TABLE ROWS OF THE ARROW-SCOPE ROUTE. A
+// canonical parameter name that no domain here declares refuses located inside `loop` (the deleted
+// canonical-parameter table may not admit it). A pick-table atom still projects through the one
+// literal ladder.
+data probe_loop_out_of_scope_param_atom: Node = probe_atom(id: ^dag_binding_param_x)
+
+test fn loop_body_out_of_scope_canonical_param_refuses_located() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_loop_out_of_scope_param_atom)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_body_scope_binding_invalid
+        && diagnostics_fatal(d: d).at == node_locus(node: probe_loop_out_of_scope_param_atom)
+  }
+}
+
+test fn loop_body_pick_table_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_rec_lit_nine))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn loop_body_bool_literal_atom_still_projects() -> Bool {
+  match probe_project(closure_body: probe_loop(body: probe_atom(id: ^dag_token_kw_true))) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -1,0 +1,957 @@
+module std.induction
+import std.optional { Absent, Present }
+
+import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int, DescentUnknown, DivideByTwo, NonIncreasing, OneStep, Strict, TreeSize }
+
+import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound, ArithmeticDivideCall, ArithmeticParam, ArithmeticSubtractCall, ChildAccessorCall, CollectionSize, ConstantShrink, Descend, Fold, Forever, ProportionalShrink, Repeat, SameArgumentCall, UnitShrink }
+
+import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
+import std.algebra {
+  CostShape,
+  ShapeConstant,
+  ShapeIterateBody,
+  ShapeLinearScan,
+  ShapeSortBody,
+  Equal,
+  Greater,
+  Less,
+  Ordering
+}
+import std.types { List }
+
+
+type RecursionShape
+  = DirectRecursion
+  | ListRecursion
+  | OptionalRecursion
+  | SetRecursion
+  | MapValueRecursion
+
+type InductiveField {
+  type_name: String
+  variant_name: String
+  field_name: String
+  shape: RecursionShape
+  element_type: String
+}
+
+fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> Bool {
+  match a {
+    DirectRecursion => match b { DirectRecursion => true, _ => false }
+    ListRecursion => match b { ListRecursion => true, _ => false }
+    OptionalRecursion => match b { OptionalRecursion => true, _ => false }
+    SetRecursion => match b { SetRecursion => true, _ => false }
+    MapValueRecursion => match b { MapValueRecursion => true, _ => false }
+  }
+}
+
+fn inductive_field_eq(a: InductiveField, b: InductiveField) -> Bool {
+  a.type_name == b.type_name &&
+    a.variant_name == b.variant_name &&
+    a.field_name == b.field_name &&
+    recursion_shape_eq(a: a.shape, b: b.shape) &&
+    a.element_type == b.element_type
+}
+
+fn inductive_field_to_dimension(field: InductiveField, param: String) -> RankingDimension {
+  TreeSize { param: param }
+}
+
+type SubValueRelation
+  = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
+  | IteratedSubValue { field: InductiveField }
+  | ArithmeticDescent { param: String, factor: ShrinkFactor }
+  | PreservedValue
+  | NonIncreasingValue
+  | StrictAxisErased
+  | MixedTop
+  | SubValueUnknown
+
+fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
+  match relation {
+    StrictSubValue { field: _, factor: f } =>
+      match f {
+        UnitShrink => Strict
+        ConstantShrink { steps: _ } => Strict
+        ProportionalShrink { divisor: _ } => Strict
+      }
+    IteratedSubValue { field: _ }            => Strict
+    ArithmeticDescent { param: _, factor: f } =>
+      match f {
+        UnitShrink => Strict
+        ConstantShrink { steps: _ } => Strict
+        ProportionalShrink { divisor: _ } => Strict
+      }
+    PreservedValue                           => NonIncreasing
+    NonIncreasingValue                       => NonIncreasing
+
+    StrictAxisErased                         => Strict
+
+    MixedTop                                 => NonIncreasing
+    SubValueUnknown                          => DescentUnknown
+  }
+}
+
+fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
+  match a {
+    UnitShrink =>
+      match b { UnitShrink => true, _ => false }
+    ConstantShrink { steps: sa } =>
+      match b {
+        ConstantShrink { steps: sb } =>
+          positive_descent_count(sa) == positive_descent_count(sb)
+        _ => false
+      }
+    ProportionalShrink { divisor: da } =>
+      match b {
+        ProportionalShrink { divisor: db } =>
+          proportional_divisor_to_int(d: da) == proportional_divisor_to_int(d: db)
+        _ => false
+      }
+  }
+}
+
+fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
+  match a {
+    StrictSubValue { field: fa, factor: fac_a } =>
+      match b {
+        StrictSubValue { field: fb, factor: fac_b } =>
+          inductive_field_eq(a: fa, b: fb) && shrink_factor_eq(a: fac_a, b: fac_b)
+        _ => false
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        IteratedSubValue { field: fb } => inductive_field_eq(a: fa, b: fb)
+        _ => false
+      }
+    ArithmeticDescent { param: pa, factor: fac_a } =>
+      match b {
+        ArithmeticDescent { param: pb, factor: fac_b } =>
+          (pa == pb) && shrink_factor_eq(a: fac_a, b: fac_b)
+        _ => false
+      }
+    PreservedValue => match b { PreservedValue => true, _ => false }
+    NonIncreasingValue => match b { NonIncreasingValue => true, _ => false }
+    StrictAxisErased => match b { StrictAxisErased => true, _ => false }
+    MixedTop => match b { MixedTop => true, _ => false }
+    SubValueUnknown => match b { SubValueUnknown => true, _ => false }
+  }
+}
+
+fn is_strict_style_structural(r: SubValueRelation) -> Bool {
+  match r {
+    StrictSubValue { field: _, factor: _ } => true
+    IteratedSubValue { field: _ } => true
+    ArithmeticDescent { param: _, factor: _ } => true
+    StrictAxisErased => true
+    PreservedValue => false
+    NonIncreasingValue => false
+    MixedTop => false
+    SubValueUnknown => false
+  }
+}
+
+fn sub_value_level(r: SubValueRelation) -> Int {
+  match r {
+    MixedTop => 4
+    StrictAxisErased => 3
+    StrictSubValue { field: _, factor: _ } => 2
+    IteratedSubValue { field: _ } => 2
+    ArithmeticDescent { param: _, factor: _ } => 2
+    PreservedValue => 2
+    NonIncreasingValue => 1
+    SubValueUnknown => 0
+  }
+}
+
+fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  if sub_value_structural_eq(a: a, b: b) { a }
+  else {
+    let la = sub_value_level(r: a)
+    let lb = sub_value_level(r: b)
+
+    if la == 0 || lb == 0 { SubValueUnknown }
+    else {
+
+      if la == 4 || lb == 4 { NonIncreasingValue }
+      else {
+
+          if la == 3 {
+
+            if is_strict_style_structural(r: b) { b }
+            else { NonIncreasingValue }
+          }
+          else {
+            if lb == 3 {
+              if is_strict_style_structural(r: a) { a }
+              else { NonIncreasingValue }
+            }
+            else {
+
+              NonIncreasingValue
+            }
+          }
+      }
+    }
+  }
+}
+
+fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
+  if sub_value_structural_eq(a: a, b: b) { a }
+  else {
+    let la = sub_value_level(r: a)
+    let lb = sub_value_level(r: b)
+
+    if la == 0 { b }
+    else {
+      if lb == 0 { a }
+      else {
+
+        if la == 4 || lb == 4 { MixedTop }
+        else {
+
+          if la == 1 { b }
+          else {
+            if lb == 1 { a }
+            else {
+
+              if is_strict_style_structural(r: a) && is_strict_style_structural(r: b) {
+                StrictAxisErased
+              } else { MixedTop }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueRelation {
+  match base {
+    SubValueUnknown => SubValueUnknown
+
+    PreservedValue => StrictSubValue { field: field, factor: UnitShrink }
+    NonIncreasingValue => StrictSubValue { field: field, factor: UnitShrink }
+    StrictSubValue { field: _, factor: _ } => StrictSubValue { field: field, factor: UnitShrink }
+    IteratedSubValue { field: _ } => StrictSubValue { field: field, factor: UnitShrink }
+    ArithmeticDescent { param: _, factor: _ } => StrictSubValue { field: field, factor: UnitShrink }
+    StrictAxisErased => StrictSubValue { field: field, factor: UnitShrink }
+    MixedTop => StrictSubValue { field: field, factor: UnitShrink }
+  }
+}
+
+fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
+  match callee_rel {
+    PreservedValue => arg_rel
+    SubValueUnknown => SubValueUnknown
+
+    NonIncreasingValue =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => NonIncreasingValue
+        StrictSubValue { field: _, factor: _ } => NonIncreasingValue
+        IteratedSubValue { field: _ } => NonIncreasingValue
+        ArithmeticDescent { param: _, factor: _ } => NonIncreasingValue
+        StrictAxisErased => NonIncreasingValue
+        MixedTop => NonIncreasingValue
+        NonIncreasingValue => NonIncreasingValue
+      }
+    StrictAxisErased =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+
+        PreservedValue => StrictAxisErased
+
+        StrictSubValue { field: _, factor: _ } => StrictAxisErased
+        IteratedSubValue { field: _ } => StrictAxisErased
+        ArithmeticDescent { param: _, factor: _ } => StrictAxisErased
+        StrictAxisErased => StrictAxisErased
+
+        NonIncreasingValue => NonIncreasingValue
+        MixedTop => MixedTop
+      }
+    MixedTop =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+
+        NonIncreasingValue => NonIncreasingValue
+        PreservedValue => MixedTop
+        StrictSubValue { field: _, factor: _ } => MixedTop
+        IteratedSubValue { field: _ } => MixedTop
+        ArithmeticDescent { param: _, factor: _ } => MixedTop
+        StrictAxisErased => MixedTop
+        MixedTop => MixedTop
+      }
+    StrictSubValue { field: _, factor: _ } =>
+      match arg_rel {
+        PreservedValue => callee_rel
+        SubValueUnknown => SubValueUnknown
+        StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
+        IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
+        ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
+      }
+    IteratedSubValue { field: _ } =>
+      match arg_rel {
+        PreservedValue => callee_rel
+        SubValueUnknown => SubValueUnknown
+
+        StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
+        IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
+        ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
+      }
+    ArithmeticDescent { param: p, factor: f } =>
+      match arg_rel {
+        PreservedValue => ArithmeticDescent { param: p, factor: f }
+        SubValueUnknown => SubValueUnknown
+
+        NonIncreasingValue => NonIncreasingValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
+
+        StrictSubValue { field: _, factor: _ } => SubValueUnknown
+        IteratedSubValue { field: _ } => SubValueUnknown
+        ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+      }
+  }
+}
+
+fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
+  match relation {
+    StrictSubValue { field: f, factor: _ }    => Present { value: ChildAccessorCall { accessor: f.field_name } }
+    IteratedSubValue { field: f }             => Present { value: ChildAccessorCall { accessor: f.field_name } }
+    ArithmeticDescent { param: p, factor: f } =>
+      match f {
+        ConstantShrink { steps: steps } =>
+          Present { value: ArithmeticSubtractCall { steps: steps, ring_param: p } }
+        ProportionalShrink { divisor: d } =>
+          Present { value: ArithmeticDivideCall { divisor: d, ring_param: p } }
+        UnitShrink => Present { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
+      }
+    PreservedValue                            => Present { value: SameArgumentCall }
+
+    NonIncreasingValue                        => none
+    StrictAxisErased                          => none
+    MixedTop                                  => none
+    SubValueUnknown                           => none
+  }
+}
+
+fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
+  match relation {
+    StrictSubValue { field: f, factor: fac } =>
+      Present { value: LoweringTarget {
+        primitive: Descend,
+        bound: tree_size_bound(param: f.field_name),
+        evidence: Strict,
+        factor: Present { value: fac }
+      }}
+    IteratedSubValue { field: f } =>
+      Present { value: LoweringTarget {
+        primitive: Fold,
+        bound: CollectionSize { param: f.field_name },
+        evidence: Strict,
+        factor: none
+      }}
+    ArithmeticDescent { param: p, factor: fac } =>
+      Present { value: LoweringTarget {
+        primitive: Repeat,
+        bound: ArithmeticParam { param: p },
+        evidence: Strict,
+        factor: Present { value: fac }
+      }}
+    PreservedValue =>
+      Present { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
+        factor: none
+      }}
+
+    NonIncreasingValue =>
+      Present { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
+        factor: none
+      }}
+
+    StrictAxisErased => none
+
+    MixedTop => none
+    SubValueUnknown => none
+  }
+}
+
+type PolynomialExponent
+  = IntegerExpZero
+  | IntegerExpPos { degree: PositiveDescentAmount }
+  | FractionExp { numerator: PositiveDescentAmount, root: PositiveDescentAmount }
+  | LogBasedExp { base: ProportionalDivisor, argument: PositiveDescentAmount }
+
+fn poly_exp_degree_one() -> PolynomialExponent {
+  IntegerExpPos { degree: OneStep }
+}
+
+// THE CALLER'S BODY IS AN ATOM OF COST, NOT A SHAPE OF ONE. A higher-order operation runs a body
+// the caller supplies once per element, and that work is real, unbounded by anything this carrier
+// knows, and NOT a polynomial or a logarithm in the parameter: it is a factor whose magnitude is
+// the caller's business. std.algebra CostShape has always distinguished it (ShapeIterateBody against
+// ShapeLinearScan) and std.primitive_identity carries it today for fold_list and index_by, so the
+// fact predates this arm; what was missing was a spelling for it here, which is why a projection
+// from this authority to CostShape could not reach ShapeIterateBody at all.
+type AtomicCost
+  = PolyCost { param: String, exponent: PolynomialExponent }
+  | LogCost { param: String }
+  | CallerBodyCost { param: String }
+
+type CostBound
+  = ConstantBound
+  | AtomicBound { cost: AtomicCost }
+  | ProductBound { factors: List<AtomicCost> }
+  | SumOfProductsBound { terms: List<List<AtomicCost>> }
+
+  | SumBound { terms: List<CostBound> }
+  | ForeverBound
+  | ErrorBound
+
+fn sum_bound(terms: List<CostBound>) -> CostBound {
+  match terms |> first {
+    Absent => ErrorBound
+    Present { value: _ } => SumBound { terms: terms }
+  }
+}
+
+fn cost_bound_is_sum_bound(b: CostBound) -> Bool {
+  match b {
+    SumBound { terms: _ } => true
+    ConstantBound => false
+    AtomicBound { cost: _ } => false
+    ProductBound { factors: _ } => false
+    SumOfProductsBound { terms: _ } => false
+    ForeverBound => false
+    ErrorBound => false
+  }
+}
+
+fn cost_constant() -> CostBound { ConstantBound }
+fn cost_linear(param: String) -> CostBound { AtomicBound { cost: PolyCost { param: param, exponent: poly_exp_degree_one() } } }
+fn cost_poly(param: String, degree: Int) -> CostBound {
+  if degree < 0 { ErrorBound }
+  else {
+    if degree == 0 {
+      AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpZero } }
+    } else {
+      match positive_descent_amount_from_positive_int(k: degree) {
+        Present { value: deg } =>
+          AtomicBound { cost: PolyCost { param: param, exponent: IntegerExpPos { degree: deg } } }
+        Absent => ErrorBound
+      }
+    }
+  }
+}
+fn cost_root(param: String, k: Int) -> CostBound {
+  if k <= 0 { ErrorBound }
+  else {
+    match positive_descent_amount_from_positive_int(k: k) {
+      Present { value: rw } =>
+        AtomicBound { cost: PolyCost { param: param, exponent: FractionExp { numerator: OneStep, root: rw } } }
+      Absent => ErrorBound
+    }
+  }
+}
+fn cost_sqrt(param: String) -> CostBound { cost_root(param: param, k: 2) }
+fn cost_cbrt(param: String) -> CostBound { cost_root(param: param, k: 3) }
+fn cost_log(param: String) -> CostBound { AtomicBound { cost: LogCost { param: param } } }
+
+fn cost_nlogn(param: String) -> CostBound {
+  ProductBound { factors: [PolyCost { param: param, exponent: poly_exp_degree_one() }, LogCost { param: param }] }
+}
+
+// Once per element of `param`, times whatever the caller's body costs -- the bound behind
+// std.algebra ShapeIterateBody.
+fn cost_iterate_body(param: String) -> CostBound {
+  ProductBound { factors: [
+    PolyCost { param: param, exponent: poly_exp_degree_one() },
+    CallerBodyCost { param: param }
+  ] }
+}
+
+fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
+  SumOfProductsBound { terms: [
+    [PolyCost { param: v_param, exponent: poly_exp_degree_one() }],
+    [PolyCost { param: e_param, exponent: poly_exp_degree_one() }]
+  ] }
+}
+
+// GROWTH IN ONE PARAMETER, READ OFF A CostBound. A consumer comparing two cost bounds needs to ask
+// what each one does as ONE named parameter grows, and the answer is three numbers rather than one:
+// the polynomial degree, the number of logarithmic factors, and whether a caller-supplied body runs
+// per element. Collapsing them loses real distinctions -- a single ordinal makes log(n)*log(n) and n
+// compare equal -- so they are carried, and the order below is lexicographic on (degree, logs),
+// which is the true order of n^a (log n)^b, with the body held out of the order deliberately.
+//
+// THE UNORDERABLE CASE IS AN ARM, NOT A FLAG BESIDE THE NUMBERS. A `representable: Bool` on a flat
+// record leaves the illegal state writable: a growth that cannot be placed on the lattice still
+// carries a degree and a log count, so an ordering can be computed from numbers that mean nothing,
+// and that is precisely how sqrt(n) came to be ordered as cheaper than n and an unbounded cost came
+// to compare equal to a constant. Both were caught by a gate ADDED AFTER the numbers were compared,
+// which is validation standing where construction was available (DESIGN section 5). So the rank and
+// the refusal are two constructors: `param_growth_order` takes GrowthRank, an unorderable growth has
+// no rank to hand it, and the comparison the flag existed to prevent has no way to be written.
+// The unorderable arm carries no payload, deliberately: a body count on a growth no consumer can
+// place is a field nothing reads (DESIGN section 3c).
+type GrowthRank {
+  degree: Int
+  logs: Int
+  bodies: Int
+}
+
+type ParamGrowth
+  = OrderableGrowth { rank: GrowthRank }
+  | GrowthNotOrderable
+
+fn growth_rank_zero() -> GrowthRank {
+  GrowthRank { degree: 0, logs: 0, bodies: 0 }
+}
+
+fn param_growth_zero() -> ParamGrowth {
+  OrderableGrowth { rank: growth_rank_zero() }
+}
+
+// A FRACTIONAL OR LOG-BASED EXPONENT IS A REAL BOUND THIS READING CANNOT ORDER, and it says so
+// rather than rounding to the nearest integer degree. sqrt(n) is not linear and is not constant; a
+// reader that reported either would be fabricating. The arm travels with the growth so every
+// consumer meets the same refusal instead of each one rediscovering it.
+fn param_growth_not_orderable() -> ParamGrowth {
+  GrowthNotOrderable
+}
+
+fn atomic_cost_param(c: AtomicCost) -> String {
+  match c {
+    PolyCost { param: p, exponent: _ } => p
+    LogCost { param: p } => p
+    CallerBodyCost { param: p } => p
+  }
+}
+
+fn exponent_growth(e: PolynomialExponent) -> ParamGrowth {
+  match e {
+    IntegerExpZero => param_growth_zero()
+    IntegerExpPos { degree: d } =>
+      OrderableGrowth { rank: GrowthRank { degree: positive_descent_count(steps: d), logs: 0, bodies: 0 } }
+    FractionExp { numerator: _, root: _ } => param_growth_not_orderable()
+    LogBasedExp { base: _, argument: _ } => param_growth_not_orderable()
+  }
+}
+
+fn atomic_cost_growth(c: AtomicCost) -> ParamGrowth {
+  match c {
+    PolyCost { param: _, exponent: e } => exponent_growth(e: e)
+    LogCost { param: _ } => OrderableGrowth { rank: GrowthRank { degree: 0, logs: 1, bodies: 0 } }
+    CallerBodyCost { param: _ } => OrderableGrowth { rank: GrowthRank { degree: 0, logs: 0, bodies: 1 } }
+  }
+}
+
+// A PRODUCT MULTIPLIES, so the exponents ADD -- separately, which is why two linear factors over one
+// parameter read quadratic and two logarithmic ones read log-squared rather than colliding with it.
+fn param_growth_multiply(a: ParamGrowth, b: ParamGrowth) -> ParamGrowth {
+  match a {
+    GrowthNotOrderable => GrowthNotOrderable
+    OrderableGrowth { rank: ra } =>
+      match b {
+        GrowthNotOrderable => GrowthNotOrderable
+        OrderableGrowth { rank: rb } =>
+          OrderableGrowth { rank: GrowthRank {
+            degree: ra.degree + rb.degree,
+            logs: ra.logs + rb.logs,
+            bodies: ra.bodies + rb.bodies,
+          } }
+      }
+  }
+}
+
+// THE ORDER IS OVER RANKS, NOT OVER GROWTHS, and that is the whole construction: a caller holding a
+// growth it cannot place has nothing to pass here, so the fabricated comparison is not refused at
+// run time, it is unwritable.
+fn param_growth_order(a: GrowthRank, b: GrowthRank) -> Ordering {
+  if a.degree < b.degree {
+    Less
+  } else {
+    if a.degree > b.degree {
+      Greater
+    } else {
+      if a.logs < b.logs { Less } else { if a.logs > b.logs { Greater } else { Equal } }
+    }
+  }
+}
+
+// A SUM TAKES THE LARGEST TERM'S GROWTH -- but the body count is a fact about the WHOLE cost, not
+// about the winning term, so it survives a term that loses the ordering. Returning the winner whole
+// drops it, and dropping the body makes a cost that runs a caller's body compare EQUAL to one that
+// does not. An unorderable term makes the whole sum unorderable, which is the same absorption: a
+// sum whose largest term cannot be placed has no place either.
+fn param_growth_max(a: ParamGrowth, b: ParamGrowth) -> ParamGrowth {
+  match a {
+    GrowthNotOrderable => GrowthNotOrderable
+    OrderableGrowth { rank: ra } =>
+      match b {
+        GrowthNotOrderable => GrowthNotOrderable
+        OrderableGrowth { rank: rb } => {
+          let bodies = if ra.bodies > rb.bodies { ra.bodies } else { rb.bodies }
+          match param_growth_order(a: ra, b: rb) {
+            Less => OrderableGrowth { rank: GrowthRank { degree: rb.degree, logs: rb.logs, bodies: bodies } }
+            Equal => OrderableGrowth { rank: GrowthRank { degree: ra.degree, logs: ra.logs, bodies: bodies } }
+            Greater => OrderableGrowth { rank: GrowthRank { degree: ra.degree, logs: ra.logs, bodies: bodies } }
+          }
+        }
+      }
+  }
+}
+
+fn atomic_factors_growth_in_param(factors: List<AtomicCost>, param: String) -> ParamGrowth {
+  factors |> fold(init: param_growth_zero(), f: fn(acc, c) {
+    if atomic_cost_param(c: c) == param {
+      param_growth_multiply(a: acc, b: atomic_cost_growth(c: c))
+    } else {
+      acc
+    }
+  })
+}
+
+// ForeverBound and ErrorBound are not growths and are not zero. Unbounded work and a malformed bound
+// are different facts from "does not grow in this parameter", and answering zero for either would
+// report the strongest possible claim about a cost nobody bounded.
+fn cost_bound_growth_in_param(b: CostBound, param: String) -> ParamGrowth {
+  match b {
+    ConstantBound => param_growth_zero()
+    AtomicBound { cost: c } =>
+      if atomic_cost_param(c: c) == param { atomic_cost_growth(c: c) } else { param_growth_zero() }
+    ProductBound { factors: fs } => atomic_factors_growth_in_param(factors: fs, param: param)
+    SumOfProductsBound { terms: ts } =>
+      ts |> fold(init: param_growth_zero(), f: fn(acc, factors) {
+        param_growth_max(a: acc, b: atomic_factors_growth_in_param(factors: factors, param: param))
+      })
+    SumBound { terms: ts } =>
+      ts |> fold(init: param_growth_zero(), f: fn(acc, inner) {
+        param_growth_max(a: acc, b: cost_bound_growth_in_param(b: inner, param: param))
+      })
+    ForeverBound => param_growth_not_orderable()
+    ErrorBound => param_growth_not_orderable()
+  }
+}
+
+fn cost_bound_params_of_factors(factors: List<AtomicCost>, seen: List<String>) -> List<String> {
+  factors |> fold(init: seen, f: fn(acc, c) {
+    if acc |> fold(init: false, f: fn(found, p) { found || p == atomic_cost_param(c: c) }) {
+      acc
+    } else {
+      concat([atomic_cost_param(c: c)], acc)
+    }
+  })
+}
+
+fn cost_bound_params_into(b: CostBound, seen: List<String>) -> List<String> {
+  match b {
+    ConstantBound => seen
+    AtomicBound { cost: c } => cost_bound_params_of_factors(factors: [c], seen: seen)
+    ProductBound { factors: fs } => cost_bound_params_of_factors(factors: fs, seen: seen)
+    SumOfProductsBound { terms: ts } =>
+      ts |> fold(init: seen, f: fn(acc, factors) {
+        cost_bound_params_of_factors(factors: factors, seen: acc)
+      })
+    SumBound { terms: ts } =>
+      ts |> fold(init: seen, f: fn(acc, inner) { cost_bound_params_into(b: inner, seen: acc) })
+    ForeverBound => seen
+    ErrorBound => seen
+  }
+}
+
+fn cost_bound_params(b: CostBound) -> List<String> {
+  reverse(cost_bound_params_into(b: b, seen: []))
+}
+
+// THE ORDERABILITY PREDICATES ARE GONE, AND THE FOLD THEY SHADOWED ANSWERS THE QUESTION.
+// cost_bound_is_orderable, atomic_factors_are_orderable and atomic_cost_is_orderable re-walked
+// CostBound's arms in parallel with cost_bound_growth_in_param, which already decides orderability
+// per parameter and already recurses SumBound. Two walks over one storage shape is one authority
+// too many (DESIGN section 5), and the second one drifts silently because nothing forces them to
+// agree.
+//
+// WHAT THE PREDICATES ACTUALLY COVERED that the fold did not: only the bound with NO PARAMETERS,
+// where there is no axis to carry a refusal. That case now asks this fold about a parameter the
+// bound does not carry -- ForeverBound and ErrorBound answer not-orderable whatever they are asked,
+// a structured bound answers zero growth, and a sum recurses -- so the residue is one question to
+// the canonical authority rather than a parallel recursion. The consumer is
+// std.realization_cost_fidelity param_axis_comparisons, and its two controls
+// (an_unbounded_cost_is_not_preserved_against_a_constant, a_malformed_bound_is_not_orderable) are
+// the executed evidence that the case is still refused.
+
+// THE PROJECTION TO CostShape, AND IT IS PARTIAL ON PURPOSE. CostShape can say exactly four things,
+// and each has exactly one preimage here: constant (0,0,0), iterate-body (1,0,1), linear-scan
+// (1,0,0), sort-body (1,1,0), all in a single parameter. Every other real bound -- logarithmic,
+// quadratic, log-squared, a cost in two parameters, a fractional exponent, an unbounded one --
+// answers absent rather than being rounded to the nearest thing CostShape can say, because a
+// rounded rank presented as the operation's shape is a fabricated answer.
+fn shape_for_growth_rank(r: GrowthRank) -> CostShape? {
+  if r.degree == 0 && r.logs == 0 && r.bodies == 0 {
+    Present { value: ShapeConstant }
+  } else {
+    if r.degree == 1 && r.logs == 0 && r.bodies == 1 {
+      Present { value: ShapeIterateBody }
+    } else {
+      if r.degree == 1 && r.logs == 0 && r.bodies == 0 {
+        Present { value: ShapeLinearScan }
+      } else {
+        if r.degree == 1 && r.logs == 1 && r.bodies == 0 {
+          Present { value: ShapeSortBody }
+        } else {
+          none
+        }
+      }
+    }
+  }
+}
+
+fn shape_for_param_growth(growth: ParamGrowth) -> CostShape? {
+  match growth {
+    GrowthNotOrderable => none
+    OrderableGrowth { rank: r } => shape_for_growth_rank(r: r)
+  }
+}
+
+fn cost_bound_to_shape(b: CostBound) -> CostShape? {
+  let params = cost_bound_params(b: b)
+  if params.length() == 0 {
+    match b {
+      ConstantBound => Present { value: ShapeConstant }
+      AtomicBound { cost: _ } => none
+      ProductBound { factors: _ } => none
+      SumOfProductsBound { terms: _ } => none
+      SumBound { terms: _ } => none
+      ForeverBound => none
+      ErrorBound => none
+    }
+  } else {
+    if params.length() == 1 {
+      match params.first() {
+        Absent => none
+        Present { value: only } =>
+          shape_for_param_growth(growth: cost_bound_growth_in_param(b: b, param: only))
+      }
+    } else {
+      none
+    }
+  }
+}
+
+type RecurrenceForm {
+  param: String
+  branches: Int
+  divisor: Int
+  work_exponent: Int
+}
+
+fn bounded_int_pow_exponent(k: Int) -> Int? {
+  if k < 0 { none }
+  else {
+    if k > peano_literal_materialization_cap() { none }
+    else { Present { value: k } }
+  }
+}
+
+fn int_pow_bounded(base: Int, exp: Int) -> Int? {
+  match bounded_int_pow_exponent(k: exp) {
+    Absent => none
+    Present { value: e } =>
+      if e == 0 { Present { value: 1 } }
+      else {
+        if base == 0 { Present { value: 0 } }
+        else {
+          if base == 1 { Present { value: 1 } }
+          else {
+            if base == (0 - 1) {
+              let half = e / 2
+              if half + half == e { Present { value: 1 } } else { Present { value: 0 - 1 } }
+            }
+            else {
+
+              match int_pow_bounded(base: base, exp: exp - 1) {
+                Present { value: prev } =>
+                  match checked_int_optional(r: checked_int_multiply(a: base, b: prev)) {
+                    Present { value: prod } => Present { value: prod }
+                    Absent => none
+                  }
+                Absent => none
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn ceil_log(base: Int, argument: Int) -> Int? {
+  if base < 2 || argument < 1 { none }
+  else { ceil_log_iter(base: base, argument: argument, k: 0, power: 1) }
+}
+
+fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
+  if power >= argument { Present { value: k } }
+  else {
+    match checked_int_optional(r: checked_int_multiply(a: power, b: base)) {
+      Absent => none
+      Present { value: next_power } =>
+        match checked_int_optional(r: checked_int_add(a: k, b: 1)) {
+          Absent => none
+          Present { value: k1 } =>
+            ceil_log_iter(base: base, argument: argument, k: k1, power: next_power)
+        }
+    }
+  }
+}
+
+fn master_theorem(form: RecurrenceForm) -> CostBound {
+  let a = form.branches
+  let b = form.divisor
+  let d = form.work_exponent
+  let n = form.param
+
+  if a < 1 || b < 2 { ErrorBound }
+  else {
+    match bounded_int_pow_exponent(k: d) {
+      Absent => ErrorBound
+      Present { value: d_ok } =>
+        match int_pow_bounded(base: b, exp: d_ok) {
+          Absent => ErrorBound
+          Present { value: b_to_d } =>
+            if a < b_to_d {
+
+              match d_ok {
+                0 => ConstantBound
+                _ => cost_poly(param: n, degree: d_ok)
+              }
+            } else {
+              if a == b_to_d {
+
+                match d_ok {
+                  0 => cost_log(param: n)
+                  _ =>
+                    match positive_descent_amount_from_positive_int(k: d_ok) {
+                      Present { value: deg } =>
+                        ProductBound { factors: [PolyCost { param: n, exponent: IntegerExpPos { degree: deg } }, LogCost { param: n }] }
+                      Absent => ErrorBound
+                    }
+                }
+              } else {
+
+                match proportional_divisor_from_int_at_least_two(k: b) {
+                  Present { value: baseW } =>
+                    match positive_descent_amount_from_positive_int(k: a) {
+                      Present { value: argW } =>
+                        AtomicBound { cost: PolyCost { param: n, exponent: LogBasedExp { base: baseW, argument: argW } } }
+                      Absent => ErrorBound
+                    }
+                  Absent => ErrorBound
+                }
+              }
+            }
+        }
+    }
+  }
+}
+
+fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
+  if nesting_depth < 0 { ErrorBound }
+  else {
+    if nesting_depth == 0 { ConstantBound }
+    else { cost_poly(param: param, degree: nesting_depth) }
+  }
+}
+
+fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostBound {
+  if branches < 1 { ErrorBound }
+  else {
+    match bounded_int_pow_exponent(k: work_exponent) {
+      Absent => ErrorBound
+      Present { value: _ } =>
+        match factor {
+
+          UnitShrink =>
+            if branches <= 1 { cost_linear(param: param) }
+            else {
+
+              ForeverBound
+            }
+
+          ConstantShrink { steps: _ } =>
+            if branches <= 1 { cost_linear(param: param) }
+            else { ForeverBound }
+
+          ProportionalShrink { divisor: d } =>
+            master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: proportional_divisor_to_int(d: d), work_exponent: work_exponent })
+        }
+    }
+  }
+}
+
+fn tree_traversal_bound() -> CostBound {
+  catamorphism_bound(param: "tree", nesting_depth: 1)
+}
+
+fn nested_iteration_bound() -> CostBound {
+  catamorphism_bound(param: "items", nesting_depth: 2)
+}
+
+fn linear_scan_bound() -> CostBound {
+  catamorphism_bound(param: "xs", nesting_depth: 1)
+}
+
+fn binary_search_bound() -> CostBound {
+  derive_bound(param: "xs", branches: 1, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 0)
+}
+
+fn mergesort_bound() -> CostBound {
+  derive_bound(param: "xs", branches: 2, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
+}
+
+fn karatsuba_bound() -> CostBound {
+  derive_bound(param: "digits", branches: 3, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
+}
+
+fn strassen_bound() -> CostBound {
+  derive_bound(param: "n", branches: 7, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 2)
+}
+
+fn trial_division_bound() -> CostBound { cost_sqrt(param: "n") }
+fn cube_root_bound() -> CostBound { cost_cbrt(param: "n") }
+
+fn kth_root_bound(k: Int) -> CostBound { cost_root(param: "n", k: k) }
+
+fn bfs_dfs_bound() -> CostBound {
+  cost_graph_linear(v_param: "V", e_param: "E")
+}
+
+fn dijkstra_bound() -> CostBound {
+
+  SumOfProductsBound { terms: [
+    [PolyCost { param: "V", exponent: poly_exp_degree_one() }, LogCost { param: "V" }],
+    [PolyCost { param: "E", exponent: poly_exp_degree_one() }, LogCost { param: "V" }]
+  ] }
+}
+
+fn bellman_ford_bound() -> CostBound {
+  ProductBound { factors: [
+    PolyCost { param: "V", exponent: poly_exp_degree_one() },
+    PolyCost { param: "E", exponent: poly_exp_degree_one() }
+  ] }
+}
+
+fn floyd_warshall_bound() -> CostBound {
+  cost_poly(param: "V", degree: 3)
+}

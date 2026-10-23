@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.wet_witness_keyed_to_the_runner_not_its_subject
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data wet_witness_keyed_to_the_runner_not_its_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "wet_witness_keyed_to_the_runner_not_its_subject" as NonEmptyStr,
+
+  receipts: [
+    "a wet witness keyed to the runner rather than to its subject: a claim whose verdict depends on which runner executes it. The primary cause is a claim that reads a fact about the EXECUTING HOST (its hostname, its fleet membership, whether a user manager answers) and asserts ONE fixed arm of the decision that fact selects, so its verdict is decided by which runner dequeues the job. The required floor then goes red or green by runner assignment while the subject under test is unchanged. DESIGN section 3 (a witness discriminates at one interface) names the remedy: either supply the host fact as data and assert the decision, keeping one inhabitance claim on the real host, or read the host and assert the RELATION between the host fact and the arm, never a fixed arm.",
+
+    "SPECIMENS (flagged by cool-otter-576 on gunbc#12384, run 36345601443 on actions-runner@srv1-02). test.claim.spark.fabric_capacity_standing_wet_witness and test.claim.spark.spark_pair_serving_apply_wet_witness asserted every serving authority unread because the host declares no dashboard instance -- true on srv4-10 and srv3-07, false on srv1, which is a fleet host. test.claim.compute.manager_unaskable_wet_witness already read the host through an independent probe and branched, but its manager-present arm asserted that nothing frees, and a reachable user manager answers LoadState=not-found for the all-f unit, which the termination fold correctly reads as an authoritative absence: red on every host with a working user manager, blocking every srv1 floor replay. Repairs: the two spark claims by gunbc#12478 (the off-fleet premise SUPPLIED at fabric_capacity_standing_for / the apply seam, plus one real-read claim per seam asserting the entry judges exactly what the runner's log read returned -- DESIGN section 3 option (a)); manager_unaskable by gunbc#12456 (the manager-present arm asserts the termination and lifecycle routes AGREE, not a fixed arm -- option (b)).",
+
+    "CENSUS at the time of filing, over dag/test/**/*wet*: the three above were the instances. host_capacity_wet_witness and attempt_lifecycle_wet_witness SUPPLY the host (srv1 dashboard instances as data, memory totals as arguments) and are the correct shape; ci_deploy_observed_wet asserts both arms of its access decision; host_cli_dependency_wet accepts both typed observations; the codex, json-protocol-schema and runner-microvm wet files are not enrolled. Residual not closed here: host_capacity's live-standing claims still depend on the runner having the small headroom they request.",
+
+    "SIBLING CAUSE, same harm: SHARED HOST-GLOBAL PATHS ACROSS RUNNER INSTANCES ON ONE HOST. test.claim.mtcollins1_census_image_local_wet a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution kept its disagreeing stub's counter at the fixed /tmp/gunbc-wl-counter, and its pre-clear was an unused binding that never ran. srv1 hosts several runner instances sharing /tmp, so a counter left by another runner's user was readable but not writable, both passes printed one digest, the disagreeing case agreed and the claim was red there (neat-boar-16's srv1 floor, 2026-09-27). Repaired by gunbc#12467 (a per-claim shell.Mktemp.DirWithTemplate directory). The census of scheduled wet witnesses (v2.workflow.local_repo_wet_terminal) found no other fixed-path WRITE; remaining fixed /tmp strings are argv data or expected-absent probes.",
+
+    "THE HARM is two-sided. Red-by-assignment trains the reader to re-run until the job lands elsewhere, which is an absorbing fallback on the evidence itself; and the tempting repair -- removing the offending host from the runner label -- hides the defect and shrinks capacity. Green-by-assignment is quieter: the claim establishes nothing on the hosts where its arm is not the honest one.",
+
+    "RECOGNITION RULE. A wet claim that performs a host read (hostname, a PosixCommandV probe, a manager query, a layout lookup keyed on the host) and whose assertion does not branch on, or is not supplied, the fact that read selects; or a wet claim that writes or reads state at a fixed host-global path instead of a directory it creates. The tell in prose is a header that says 'on the wet lane's runner' followed by a single expected arm.",
+
+    "RUNG found at 1, mitigatable: the floor goes red on some runners and review reads the claim. ATTAINABLE CEILING 2, mechanically preventable: which runners a wet lane may land on is a declared label set, so replaying each wet claim under every host class that label admits is decidable over declared host classes; a single-arm claim then reds deterministically instead of by assignment. It is not structural: a host read's result is an external fact.",
+
+    "NEXT-RUNG TRIGGER, at capability grain: a wet-lane qualification that executes every enrolled wet claim on at least one runner of each host class its runner label admits (fleet and off-fleet), so a claim keyed to one class reds on the change that writes it rather than on a later unrelated PR.",
+  ],
+
+  evidence: [],
+}

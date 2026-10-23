@@ -1,0 +1,295 @@
+module extdeps.provisioning.ubuntu_seeded_install_media
+
+import std.types { Bool, Int, List, NonEmptyStr, String, path_segment_is_safe }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+  content_hash_validate_lower_hex_length,
+  content_hash_validate_lower_hex_syntax,
+}
+import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { Digest, Sha256, Sha512 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/providing-autoinstall.html"
+  }
+}
+
+// A file the NoCloud seed directory carries beside user-data and meta-data. The seed directory is
+// the medium's only payload channel that needs no network at runtime, so a program the seed runs
+// rides here rather than being fetched.
+type NoCloudSeedFile {
+  name: NonEmptyStr
+  content: NonEmptyStr
+}
+
+// A BINARY SEED MEMBER, NAMED BY ITS CONTENT DIGEST. A NoCloudSeedFile is text the caller renders;
+// an artifact is bytes someone else publishes, so the input carries where they are fetched from and
+// the Digest (algorithm and hex, extdeps.crypto.hash) they must have, and the build fetches them into the seed directory and refuses unless
+// the readback digest equals it. The digest is in the build key and the URL is not: the URL is
+// transport, and two URLs serving the same bytes build the same image.
+type NoCloudSeedArtifact {
+  name: NonEmptyStr
+  source_url: NonEmptyStr
+  digest: Digest
+}
+
+// AN ARTIFACT NAME IS ADMITTED BEFORE ANY BYTE MOVES, because the remaster writes it under the seed
+// directory and a name is a path: `../../boot/grub/grub.cfg` would land outside the seed, and
+// `user-data` or a seed file's own name would replace a member the input separately claims the image
+// carries -- a correct digest only proves the unintended bytes arrived. So the fetch takes an
+// AdmittedSeedArtifact, and the one constructor of its basename is the admission below: a single
+// path segment (std.types path_segment_is_safe, the one law for that), none of the NoCloud datasource's own file names,
+// no collision with a text seed file, and no duplicate among the artifacts.
+type SeedArtifactBasename sole_constructor {
+  value: NonEmptyStr
+}
+
+type AdmittedSeedArtifact sole_constructor {
+  basename: SeedArtifactBasename
+  source_url: NonEmptyStr
+  digest: Digest
+}
+
+type SeedArtifactAdmissionRefusal
+  = SeedArtifactNameNotABasename { name: NonEmptyStr }
+  | SeedArtifactNameReserved { name: NonEmptyStr }
+  | SeedArtifactNameCollidesWithSeedFile { name: NonEmptyStr }
+  | SeedArtifactNameDuplicated { name: NonEmptyStr }
+
+type SeedArtifactAdmission
+  = SeedArtifactsAdmitted { artifacts: List<AdmittedSeedArtifact> }
+  | SeedArtifactsRefused { refusals: List<SeedArtifactAdmissionRefusal> }
+
+// The NoCloud datasource reads these names from the seed directory (cloud-init NoCloud: user-data,
+// meta-data, vendor-data, network-config); an artifact may not occupy one.
+data nocloud_seed_reserved_names: List<String> = ["user-data", "meta-data", "vendor-data", "network-config"]
+
+fn seed_artifact_name_refusals(input: UbuntuSeededInstallMediaBuildInput, artifact: NoCloudSeedArtifact) -> List<SeedArtifactAdmissionRefusal> {
+  let name = artifact.name as String
+  let shape = if path_segment_is_safe(raw: name) { [] } else { [SeedArtifactNameNotABasename { name: artifact.name }] }
+  let reserved = if any(nocloud_seed_reserved_names, r => r == name) { [SeedArtifactNameReserved { name: artifact.name }] } else { [] }
+  let collides = if any(input.seed_files, f => (f.name as String) == name) { [SeedArtifactNameCollidesWithSeedFile { name: artifact.name }] } else { [] }
+  let duplicated = if count(filter(input.seed_artifacts, a => (a.name as String) == name)) > 1 { [SeedArtifactNameDuplicated { name: artifact.name }] } else { [] }
+  append(append(append(shape, items: reserved), items: collides), items: duplicated)
+}
+
+fn seeded_install_media_seed_artifact_admission(input: UbuntuSeededInstallMediaBuildInput) -> SeedArtifactAdmission {
+  let refusals = flat_map(input.seed_artifacts, a => seed_artifact_name_refusals(input: input, artifact: a))
+  if count(refusals) == 0 {
+    SeedArtifactsAdmitted {
+      artifacts: map(input.seed_artifacts, a => AdmittedSeedArtifact { basename: SeedArtifactBasename { value: a.name }, source_url: a.source_url, digest: a.digest }),
+    }
+  } else {
+    SeedArtifactsRefused { refusals: refusals }
+  }
+}
+
+fn seed_artifact_admission_refusal_text(refusal: SeedArtifactAdmissionRefusal) -> String {
+  match refusal {
+    SeedArtifactNameNotABasename { name: n } => concat("seed artifact name ", concat(n as String, " is not a single path component"))
+    SeedArtifactNameReserved { name: n } => concat("seed artifact name ", concat(n as String, " is a NoCloud datasource file"))
+    SeedArtifactNameCollidesWithSeedFile { name: n } => concat("seed artifact name ", concat(n as String, " is already a text seed file"))
+    SeedArtifactNameDuplicated { name: n } => concat("seed artifact name ", concat(n as String, " is named by more than one artifact"))
+  }
+}
+
+// WHAT A DERIVED SEEDED IMAGE IS BUILT FROM, and nothing else: every field below reaches the output
+// bytes, so each one is in the derivation key. The payload is a PARAMETER -- an install autoinstall
+// (srv3) and a live-session census program (Mt. Collins) are both a rendered user-data body plus seed
+// files, rendered by their own layer; this module does not know which it is carrying. The volume id
+// is a parameter because it decides the block-device label the booted host reports, so a consumer
+// that checks the boot medium must expect the derived label, never the stock one.
+type UbuntuSeededInstallMediaBuildInput {
+  stock_artifact: UbuntuInstallMediaArtifactRow
+  nocloud_dir_on_iso: NonEmptyStr
+  user_data_body: NonEmptyStr
+  seed_files: List<NoCloudSeedFile>
+  seed_artifacts: List<NoCloudSeedArtifact>
+  grub_kernel_cmdline: NonEmptyStr
+  volume_id: NonEmptyStr
+  pinned_dates: SeededInstallMediaPinnedDates
+  image_stem: NonEmptyStr
+  builder_revision: NonEmptyStr
+}
+
+// THE DATES ARE PINNED SO THAT IDENTICAL INPUTS CAN REPRODUCE IDENTICAL BYTES, AND THAT IS A BET
+// UNTIL A BUILD RUNS (DESIGN §4d: an inference is typed as a bet, not promoted). What is established:
+// the replay stamps the build instant into the volume descriptors and into mapped files, so WITHOUT
+// pinning a rebuild of the same inputs measures a different digest. What is NOT established: that
+// pinning these two dates is SUFFICIENT for byte-identical output -- xorriso may carry other
+// build-varying state, and the ordering these commands rely on (both -volume_date commands after the
+// -map commands, so freshly mapped files are covered) is read off the tool's left-to-right execution
+// rather than measured. WHAT WOULD SETTLE IT: the srv2 wet control named in
+// gunbc.machine_intake_mtcollins1_census_image -- build twice from one input, compare the two measured
+// digests, and change one seed byte and compare again.
+//
+// NOTHING SILENTLY DEPENDS ON THE BET. If a rebuild is not byte-identical it produces a DIFFERENT
+// digest, so it publishes under a different name; create-only publication refuses nothing and
+// replaces nothing, and the derivation record names whichever bytes were actually built. The cost of
+// the bet being wrong is a second published image, not a wrong one.
+//
+// uuid is xorriso's 16-digit volume date (it is also the medium's blkid UUID); file_date is the
+// -alter_date timestring applied to every file.
+type SeededInstallMediaPinnedDates {
+  volume_uuid: NonEmptyStr
+  file_date: NonEmptyStr
+}
+
+// THE IDENTITY IS THE MEASURED OUTPUT, not this. The build key names the derivation (which inputs,
+// which builder) so a later reader can find what was built from them; the published name carries the
+// sha256 of the bytes the replay actually wrote, read after the build.
+type UbuntuSeededInstallMediaBuilt {
+  build_key: NonEmptyStr
+  output_digest: NonEmptyStr
+  image_name: NonEmptyStr
+}
+
+// The ds= NoCloud seedfrom carries a ';' (e.g. ds=nocloud;s=<path>). In a grub.cfg linux line ';' is grub's command separator, so the arg MUST be double-quoted or grub truncates the cmdline at ';' and the kernel never sees s=<seedfrom> — autoinstall then falls to interactive. These builders emit grub cmdline strings (injected by the remaster sed), so they quote the ds arg here; the List<KernelCmdlineArg> grub path quotes structurally in grub_cmdline_arg_render.
+fn ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: NonEmptyStr) -> NonEmptyStr {
+  concat("autoinstall \"ds=nocloud;s=/cdrom/", concat(nocloud_dir as String, "/\"")) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_grub_kernel_cmdline_net(seed_url: NonEmptyStr) -> NonEmptyStr {
+  concat("autoinstall ip=dhcp \"ds=nocloud-net;s=", concat(seed_url as String, "\"")) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> NonEmptyStr {
+  concat("nocloud/", hostname as String) as NonEmptyStr
+}
+
+fn seeded_install_media_seed_file_key(file: NoCloudSeedFile) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    content_hash_atom(value: file.name),
+    content_hash_atom(value: file.content),
+  )
+}
+
+fn seeded_install_media_seed_artifact_key(artifact: NoCloudSeedArtifact) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    content_hash_atom(value: artifact.name),
+    content_hash_combine_structural(
+      content_hash_atom(value: seed_artifact_digest_algorithm_token(digest: artifact.digest)),
+      content_hash_atom(value: artifact.digest.hex),
+    ),
+  )
+}
+
+// THE ALGORITHM IS PART OF THE PIN, so it is part of the key: the same hex under another algorithm is
+// another artifact. A closed match over extdeps.crypto.hash HashAlgorithm, no fallback arm.
+fn seed_artifact_digest_algorithm_token(digest: Digest) -> NonEmptyStr {
+  match digest.algorithm {
+    Sha256 => "sha256"
+    Sha512 => "sha512"
+  }
+}
+
+// An input with no artifacts folds to the key it had before artifacts existed, so every image built
+// without one keeps its key and its published digest.
+fn seeded_install_media_build_key(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  let text_seed = fold(
+    input.seed_files,
+    init: content_hash_combine_structural(
+      content_hash_atom(value: input.nocloud_dir_on_iso),
+      content_hash_atom(value: input.user_data_body),
+    ),
+    f: (acc, file) => content_hash_combine_structural(acc, seeded_install_media_seed_file_key(file: file)),
+  )
+  let seed = fold(
+    input.seed_artifacts,
+    init: text_seed,
+    f: (acc, artifact) => content_hash_combine_structural(acc, seeded_install_media_seed_artifact_key(artifact: artifact)),
+  )
+  let boot = content_hash_combine_structural(
+    content_hash_combine_structural(
+      content_hash_atom(value: input.grub_kernel_cmdline),
+      content_hash_atom(value: input.volume_id),
+    ),
+    content_hash_combine_structural(
+      content_hash_atom(value: input.pinned_dates.volume_uuid),
+      content_hash_atom(value: input.pinned_dates.file_date),
+    ),
+  )
+  content_hash_tagged_structural(
+    tag: "ubuntu-seeded-install-media/v3",
+    payload: content_hash_combine_structural(
+      content_hash_combine_structural(
+        content_hash_atom(value: input.stock_artifact.content_sha256 as NonEmptyStr),
+        content_hash_combine_structural(seed, boot),
+      ),
+      content_hash_combine_structural(
+        content_hash_atom(value: input.image_stem),
+        content_hash_atom(value: input.builder_revision),
+      ),
+    ),
+  ).digest as NonEmptyStr
+}
+
+// Sixteen hex digits of the output sha256 name the image: enough to be unique across every image
+// this fleet will ever build, short enough to read on a BMC's virtual-media page. The full digest
+// travels in UbuntuSeededInstallMediaBuilt and is what every read-back compares.
+data seeded_install_media_name_digest_width: Int = 16
+
+fn ubuntu_seeded_install_media_image_name(image_stem: NonEmptyStr, output_digest: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    image_stem as String,
+    "-",
+    substring(s: output_digest as String, start: 0, end: seeded_install_media_name_digest_width),
+    ".iso",
+  ) as NonEmptyStr
+}
+
+// THE INVERSE OF THE NAME, so "is this one of that stem's images" is answered by the naming
+// authority rather than by a caller's prefix test. A name is of the stem exactly when it is what
+// ubuntu_seeded_install_media_image_name would produce for SOME output digest: the stem, a hyphen,
+// seeded_install_media_name_digest_width lower-hex digits, ".iso". The digest prefix is returned so
+// a consumer can report WHICH build it recognised; a bare prefix match would also admit
+// "<stem>-old-backup.iso", which no build of this stem ever published.
+fn ubuntu_seeded_install_media_name_digest_prefix(image_stem: NonEmptyStr, image_name: String) -> String? {
+  let head = concat(image_stem as String, "-")
+  let tail = ".iso"
+  let expected = head.length() + seeded_install_media_name_digest_width + tail.length()
+  if image_name.length() != expected {
+    none
+  } else if starts_with(s: image_name, prefix: head) == false {
+    none
+  } else if substring(s: image_name, start: expected - tail.length(), end: expected) != tail {
+    none
+  } else {
+    let digits = substring(s: image_name, start: head.length(), end: head.length() + seeded_install_media_name_digest_width)
+    if content_hash_validate_lower_hex_length(text: digits, expected_hex_digits: seeded_install_media_name_digest_width) && content_hash_validate_lower_hex_syntax(text: digits) {
+      Present { value: digits }
+    } else {
+      none
+    }
+  }
+}
+
+fn ubuntu_seeded_install_media_built(input: UbuntuSeededInstallMediaBuildInput, output_digest: NonEmptyStr) -> UbuntuSeededInstallMediaBuilt {
+  UbuntuSeededInstallMediaBuilt {
+    build_key: seeded_install_media_build_key(input: input),
+    output_digest: output_digest,
+    image_name: ubuntu_seeded_install_media_image_name(image_stem: input.image_stem, output_digest: output_digest),
+  }
+}
+
+// The derivation record: build key -> measured output digest. It is how a consumer that did not run
+// the build (an actuator in another process) finds the image the inputs it holds produced, and every
+// consumer re-measures the named file against the recorded digest before trusting it.
+fn ubuntu_seeded_install_media_record_path(dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  concat(
+    dir as String, "/.", input.image_stem as String, ".", seeded_install_media_build_key(input: input) as String, ".built",
+  ) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_staging_path(dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  concat(
+    dir as String, "/.", input.image_stem as String, ".", seeded_install_media_build_key(input: input) as String, ".staging",
+  ) as NonEmptyStr
+}

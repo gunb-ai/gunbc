@@ -1,0 +1,110 @@
+module gunbc.fleet.fleet_host_power
+
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.measure { Watt, watt, watt_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// WHAT A FLEET HOST DRAWS, AND HOW WE KNOW IT.
+//
+// This is the power half of the marginal cost of running work on owned hardware: the money half is
+// extdeps.energy.con_edison, and neither is useful without the other. It is a gunbc fact rather
+// than an extdeps one because it is an OBSERVATION THIS REPOSITORY MADE about hosts it operates --
+// DESIGN section 3's external-decomposition rule puts observations in the observing layer, never
+// authored back into the upstream module as a property of the hardware. The Ampere part's rated
+// TDP belongs to extdeps.cpu.ampere; what our srv1 actually pulled at a moment does not.
+
+// PROVENANCE IS PART OF THE FIGURE, NOT METADATA BESIDE IT.
+//
+// Only srv1 is reachable from this session: srv2 refuses the operator key, and the fleet key
+// authenticates as ghrunner on srv3/srv4 but that account is nologin, so no reading can be taken
+// there. The operator's direction was to carry srv1's figure across the fleet on the grounds that
+// the builds are alike, which is a reasonable engineering call and is followed here -- but a
+// measurement and an inference from similarity are different epistemic objects, and flattening
+// them would let three unmeasured hosts report as measured. A consumer that must not price work on
+// an inferred figure can then still refuse, and the roster shows exactly which hosts to measure
+// when access exists.
+type PowerProvenance
+  = MeasuredOnHost {
+      sample_count: Int
+      sensor: NonEmptyStr
+      observed_on: NonEmptyStr
+    }
+  | InferredFromSimilarBuild {
+      basis_host: NonEmptyStr
+      basis_reason: NonEmptyStr
+    }
+
+type HostPowerProfile {
+  host: NonEmptyStr
+  draw: Watt
+  provenance: PowerProvenance
+}
+
+// THE OPERATING POINT IS PART OF THE OBSERVATION AND IS NOT A DUTY-CYCLE AVERAGE.
+//
+// srv1 read 100/93/95/94/89 W across five samples two seconds apart while its one-minute load
+// average was 42.77 on 128 cores -- roughly a third of the machine busy. That is a MODERATELY
+// LOADED operating point, not idle and not saturated, so the mean below bounds neither end. A true
+// marginal figure is the DIFFERENCE between loaded and idle draw, which needs an idle reading this
+// session could not take without quiescing a host that is serving production CI.
+data srv1_observed_draw_note: NonEmptyStr = "Five samples at two-second intervals on srv1, 2026-09-05, from /sys/class/hwmon/hwmon1 power1_input + power2_input (sensor apm_xgene): 100, 93, 95, 94, 89 W, mean 94 W, taken while the one-minute load average was 42.77 across 128 cores. This is a single loaded operating point, NOT an idle-to-peak envelope and NOT a duty-cycle average."
+
+data srv1_power: HostPowerProfile = HostPowerProfile {
+  host: "srv1",
+  draw: watt(count: 94),
+  provenance: MeasuredOnHost {
+    sample_count: 5,
+    sensor: "hwmon apm_xgene power1_input + power2_input",
+    observed_on: "2026-09-05",
+  },
+}
+
+data similar_build_basis: NonEmptyStr = "same asrock_altrad8ud_1l2t baseboard catalog as srv1 in gunbc.fleet_intent, same Ampere Altra class part; operator direction 2026-09-05 to carry srv1's figure across the fleet pending per-host access"
+
+data srv2_power: HostPowerProfile = HostPowerProfile {
+  host: "srv2",
+  draw: watt(count: 94),
+  provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
+}
+
+data srv3_power: HostPowerProfile = HostPowerProfile {
+  host: "srv3",
+  draw: watt(count: 94),
+  provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
+}
+
+data srv4_power: HostPowerProfile = HostPowerProfile {
+  host: "srv4",
+  draw: watt(count: 94),
+  provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
+}
+
+data fleet_host_power_roster: List<HostPowerProfile> = [srv1_power, srv2_power, srv3_power, srv4_power]
+
+fn power_is_measured(p: HostPowerProfile) -> Bool {
+  match p.provenance {
+    MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => true
+    InferredFromSimilarBuild { basis_host: _, basis_reason: _ } => false
+  }
+}
+
+fn measured_host_count() -> Int {
+  count(filter(fleet_host_power_roster, p => power_is_measured(p: p)))
+}
+
+fn inferred_host_count() -> Int {
+  count(filter(fleet_host_power_roster, p => !power_is_measured(p: p)))
+}
+
+fn host_power_profile(host: NonEmptyStr) -> HostPowerProfile? {
+  fold(fleet_host_power_roster, init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if p.host == host { Present { value: p } } else { none }
+    }
+  })
+}
+
+data per_host_measurement_trigger: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: a shell-capable credential exists for srv2, srv3 and srv4 -- the fleet key authenticates as ghrunner there but that account is nologin, so no reading can be taken -- at which point each InferredFromSimilarBuild row is replaced by its own MeasuredOnHost reading and inferred_host_count reaches zero. Separately and not covered by that trigger: every row here is a single LOADED operating point, so the idle-to-loaded DIFFERENCE that a true marginal figure needs is still unobserved, and obtaining it requires quiescing a host that currently serves production CI."
+)

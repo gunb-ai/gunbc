@@ -1,0 +1,95 @@
+module gunbc.workspace_commissioning_dispatch_transport
+
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_operation }
+
+import std.types { String, NonEmptyStr, CommitSha }
+import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObservation, WorkspaceCommissioningFleetRefused, workspace_commissioning_basis_from_privileged }
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.runner_microvm_slot_unit { microvm_controller_root }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, RunGunbcEntryAs, executor_privileged_operation_shell_command }
+import gunbc.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_controller_owner }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+import gunbc.workspace_commissioning_executor { workspace_executor_read_systemd }
+import gunbc.fleet_generation_execution { fleet_generation_lock, fleet_generation_writer }
+import extdeps.sudo.elevation { sudo_elevate_as }
+import extdeps.systemd.systemctl { systemctl_binary_path }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import v2.std.orchestration { Pipeline, FailFast }
+import v2.workflow.orchestration_bash_emit_support { orch_bash_do, orch_bash_emit_pipeline }
+
+
+fn workspace_dispatch_apply_script(release_dir: NonEmptyStr, slot: NonEmptyStr) -> String {
+  workspace_dispatch_transport(stage_command: executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: release_dir, function: "workspace_dispatch_stage_cli")),
+    complete_command: executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: release_dir, function: "workspace_dispatch_complete_cli")),
+    unit: workspace_executor_unit_instance_name(slot: slot), slot: slot, lock: fleet_generation_lock, systemctl: systemctl_binary_path() as String)
+}
+
+// argv[1] is the hash already admitted by fleet apply. stdin is the captured canonical bundle.
+// The root stage receives both through a pipe, never by reopening job-writable artifact paths.
+// Stage returns after StartUnit/reattachment; it never waits for the lock-owning executor.
+// Cancellation of this caller leaves the host-owned executor and its CAS input intact.
+fn workspace_dispatch_transport(stage_command: String, complete_command: String, unit: NonEmptyStr,
+  slot: NonEmptyStr, lock: String, systemctl: String) -> String {
+  let script = join([
+    "set -euo pipefail",
+    "[[ $# == 1 && $1 =~ ^[a-f0-9]\{16}$ ]] || exit 64",
+    "dispatch_bundle=$1",
+    concat("executor_unit=", posix_single_quote(spelling: unit as String)),
+    concat("executor_systemctl=", posix_single_quote(spelling: systemctl)),
+    concat("dispatch_slot=", posix_single_quote(spelling: slot as String)),
+    concat("exec 9< ", posix_single_quote(spelling: lock)),
+    "flock -w 1200 -x 9 || exit 70",
+    concat("dispatch_invocation=$(\{ printf '%s\\n' \"$dispatch_bundle\"; cat; } | ", concat(stage_command, ")")),
+    "[[ $dispatch_invocation =~ ^[a-f0-9]\{32}$ ]] || exit 65",
+    "flock -u 9",
+    "exec 9<&-",
+    workspace_executor_read_systemd,
+    "for ((dispatch_poll=0; dispatch_poll<1200; dispatch_poll++)); do",
+    "  executor_observe || exit 66",
+    "  [[ $executor_seen == \"$dispatch_invocation\" ]] || exit 67",
+    "  if [[ $executor_pid == 0 && -z $executor_job ]]; then",
+    "    [[ $executor_active == active || $executor_active == inactive ]] || exit 68",
+    concat("    dispatch_terminal=$(printf '%s\\n%s' \"$dispatch_bundle\" \"$dispatch_slot\" | ", concat(complete_command, ")")),
+    "    [[ $dispatch_terminal == \"commissioning-fleet-generation-committed:$dispatch_bundle:$dispatch_invocation\" ]] || exit 69",
+    "    executor_observe || exit 66",
+    "    [[ $executor_seen == \"$dispatch_invocation\" && $executor_pid == 0 && -z $executor_job ]] || exit 67",
+    "    printf '%s\\n' \"$dispatch_terminal\"",
+    "    exit 0",
+    "  fi",
+    "  [[ $executor_active == active || $executor_active == activating || $executor_active == deactivating ]] || exit 68",
+    "  sleep 1",
+    "done",
+    "exit 70",
+  ], "\n")
+  orch_bash_emit_pipeline(p: Pipeline { steps: [orch_bash_do(command: script)], on_failure: FailFast }, refused_poison: "__COMMISSIONING_DISPATCH_REFUSED__")
+}
+
+fn workspace_dispatch_observe(host: NonEmptyStr, revision: CommitSha) -> WorkspaceCommissioningFleetObservation {
+  let installed = approval_broker_release_dir(root: microvm_controller_root, revision: RevisionBoundAtEmission { revision: revision }) as NonEmptyStr
+  let command = join(["printf '%s' ", posix_single_quote(spelling: join([revision as String, host as String], "\n")), " | ",
+    executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: installed, function: "workspace_dispatch_plan_cli"))], "")
+  match run_shell_command_capture(command: bash_program_command(script: command), transport: LocalExec) {
+    ProcessOutputPresent { text } => workspace_commissioning_basis_from_privileged(text: text, host: host, revision: revision)
+    ProcessOutputAbsent => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
+  }
+}
+
+// Use the fleet lock's existing owner, including for an operator-local apply.
+// Captured script and input stay values; no mutable artifact path is reopened.
+fn workspace_dispatch_captured_command(effective_user: NonEmptyStr, shell: String, bundle: String, payload: String) -> String {
+  let words = ["bash", "-c", shell, "workspace-commissioning", bundle]
+  let command = if effective_user == fleet_generation_writer() {
+    words
+  } else {
+    let elevated = sudo_elevate_as(user: fleet_generation_writer(), command: words)
+    list_append(left: [elevated.bin_path], right: elevated.args)
+  }
+  join(["set -o pipefail; printf '%s' ", posix_single_quote(spelling: payload), " | ",
+    join(map(command, word => posix_single_quote(spelling: word)), " ")], "")
+}

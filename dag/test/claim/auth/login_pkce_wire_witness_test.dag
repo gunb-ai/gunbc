@@ -1,0 +1,38 @@
+module test.claim.auth.login_pkce_wire_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.roadmap_auth_routes { auth_hex_bytes, auth_base64url_wire }
+
+// THE PKCE S256 WIRE OVER A SUPPLIED DIGEST (DESIGN §3 witness rule): RFC 7636 Appendix B's
+// verifier hashes to this hex digest, and its published code_challenge is the unpadded base64url
+// of those octets. The digest is supplied rather than recomputed, so the claim's subject is the
+// hex decode and the wire, not SHA-256.
+data rfc7636_digest_hex: String = "13d31e961a1ad8ec2f16b10c4c982e0876a878ad6df144566ee1894acb70f9c3"
+
+data rfc7636_challenge: String = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+
+test fn the_rfc7636_digest_renders_the_published_challenge() -> Bool {
+  match auth_hex_bytes(hex: rfc7636_digest_hex) {
+    Absent => false
+    Present { value: octets } =>
+      count(octets) == 32 && match auth_base64url_wire(octets: octets) {
+        Absent => false
+        Present { value: wire } => (wire as String) == rfc7636_challenge
+      }
+  }
+}
+
+test fn either_hex_case_decodes_to_the_same_octets() -> Bool {
+  match auth_hex_bytes(hex: "0aFf") {
+    Absent => false
+    Present { value: octets } => octets == [10, 255]
+  }
+}
+
+// RED: an odd-length digest or a non-hex character refuses rather than truncating or skipping.
+test fn an_odd_length_or_non_hex_digest_refuses() -> Bool {
+  all(["abc", "0g", "zz"], hex => match auth_hex_bytes(hex: hex) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}

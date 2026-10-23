@@ -1,0 +1,33 @@
+module extdeps.tools.mosquitto_rr
+
+import std.types { NonEmptyStr, String, FilePath }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_mosquitto_clients, apt_bin_dir }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_pinned_version }
+import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "mosquitto.org/man/mosquitto_rr-1.html" }
+}
+fn mosquitto_rr_program() -> ProgramIdentity = cataloged_program(invocation: "mosquitto_rr")
+
+data mosquitto_rr_cli_tool: CliTool = CliTool {
+  program: mosquitto_rr_program(),
+  min_version: Present { value: mosquitto_pub_pinned_version },
+  installable_via: [SourceApt { package: package_mosquitto_clients, bin_dir: apt_bin_dir }],
+}
+
+data mosquitto_rr_options_file_name: NonEmptyStr = "mosquitto_rr"
+
+// Subscribe before requesting read-only status, using MQTT 3.1.1 and a bounded wait.
+fn mosquitto_snapshot_command(endpoint: MqttEndpoint, topic: MqttTopic, request_topic: MqttTopic, payload: String, ca_bundle: FilePath) -> ArgvCommand {
+  argv_command(program: mosquitto_rr_program(), arguments: [
+    "-h", endpoint.host as String, "-p", to_string(endpoint.port),
+    "--cafile", ca_bundle as String, "--insecure", "-e", topic as String,
+    "-t", request_topic as String, "-m", payload, "-V", "mqttv311", "-q", "1", "-R", "-W", "15",
+  ])
+}

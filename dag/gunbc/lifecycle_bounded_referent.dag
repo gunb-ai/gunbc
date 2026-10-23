@@ -1,0 +1,62 @@
+module gunbc.lifecycle_bounded_referent
+
+import std.types { String, Bool }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// A REFERENT WHOSE EXISTENCE IS BOUNDED BY A LIFECYCLE THAT CAN END WHILE THE SENTENCE CITING IT
+// STAYS BYTE-IDENTICAL. `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`
+// names two decidable sub-cases of that class and this module is the second: a citation naming a
+// DECLARED SYMBOL is already decided at ingestion by `v1_compiler.cli_run.declaration_index`,
+// while a citation naming a lifecycle-bounded referent is decidable the same way ONLY IF SUCH
+// REFERENTS ARE MODELED RATHER THAN SPELLED INTO A `String`. Until they are, the two halves of a
+// sentence like "node://adhoc-a3b0e05f-374 lands: the wall materializes the operation" are one
+// opaque field, and no consumer can tell the PROVENANCE half -- who was asked -- from the
+// OPERATIVE half, which is the condition a later reader must re-measure.
+//
+// THE DISTINCTION IS NOT NEW HERE; IT WAS ARGUED IN PROSE AND IS NOW CARRIED AS STRUCTURE.
+// `gunbc.guarantee_stall.roster` already records, against a dated dashboard reading, that three
+// cited work items reported done while their conditions were unmet, and states the rule it had to
+// state in a paragraph because nothing could hold it: the node ids are provenance for who was
+// asked, never evidence that the climb happened, and each trigger's operative half is the semantic
+// clause. A paragraph asserting that separation is exactly what this class survives -- the
+// paragraph does not change when a node closes.
+//
+// WHY THE ID IS REUSED AND NOT RE-MINTED. `gunbc.roadmap_model` `RoadmapNodeId` is this
+// repository's single authority for a dashboard work item's minted, durable identity, and its own
+// law states that the identity must outlive the graph it is read from. A second brand for the same
+// concept spelled `node://...` would be the nickname DESIGN section 3 forbids, and would fork the
+// one fact -- which node -- across two naming schemes.
+//
+// ONE REFERENT KIND, DELIBERATELY, AND NOT A COPRODUCT WITH ONE ARM. A dashboard work item is the
+// only lifecycle-bounded referent this repository actually cites inside a modeled carrier today.
+// A single-variant coproduct reads as a type alias and is the hollow shape DESIGN section 3 names,
+// so the kind is carried by the record's own name; a SECOND referent kind -- a session, a CI run
+// attempt, a workflow job -- makes the coproduct real at the moment one is actually cited, which
+// is where DESIGN section 6's just-in-time rule puts it.
+type DashboardWorkItemReferent {
+  node: RoadmapNodeId
+}
+
+fn dashboard_work_item_referent(node: RoadmapNodeId) -> DashboardWorkItemReferent {
+  DashboardWorkItemReferent { node: node }
+}
+
+// THE URI SCHEME IS DECLARED HERE SO THE SPELLING HAS ONE OWNER. Rendering a referent and
+// recognising one spelled into prose are the same fact read in two directions, and a consumer that
+// spelled `node://` itself would be a second authority for it.
+data dashboard_node_uri_scheme: String = "node://"
+
+fn dashboard_work_item_referent_uri(referent: DashboardWorkItemReferent) -> String {
+  concat(dashboard_node_uri_scheme, referent.node as String)
+}
+
+// WHAT THIS RECOGNISER IS AND IS NOT. It decides one exact question: does this text spell the
+// declared URI scheme. That is not a heuristic -- the scheme is owned three declarations above and
+// a match on it is a match on this repository's own spelling -- and it is not a general detector
+// for prose naming a lifecycle-bounded thing, which is not a property the source decides at all.
+// A trigger sentence saying "when the assimilate lane finishes" is unreachable by this and by
+// anything else; the class row is explicit that free prose sits outside the modeled guarantee
+// rather than at a low rung on it.
+fn text_spells_a_dashboard_node_uri(text: String) -> Bool {
+  text.contains(dashboard_node_uri_scheme)
+}

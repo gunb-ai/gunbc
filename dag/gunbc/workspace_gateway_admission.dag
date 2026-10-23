@@ -1,0 +1,132 @@
+module gunbc.workspace_gateway_admission
+
+import std.types { NonEmptyStr, String, Timestamp }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.shell.exec { ProcessObservation, process_observation }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse { json_field_string, json_field_int, json_field_value }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.workspace_gateway { workspace_fleet_gateway }
+import gunbc.runner_microvm_network { runner_slot_network }
+import extdeps.network.endpoint { render_network_host, host_by_name, host_by_ipv4, SocketAddress }
+import extdeps.dns.domain_name { parse_host_name }
+import std.error_primitives { Ok, Err }
+import extdeps.access.posix { PosixLoginName }
+import extdeps.network.ipv4 { render_ipv4_address }
+import extdeps.ssh.openssh_port_forwarding { ForwardingAdmissionSubject, ForwardingAdmission, ForwardingAdmitted, ForwardingAdministrativelyProhibited, ForwardingAdmissionUnobserved, SshLoginPrincipal, SshCertificatePrincipal, LocalForward, ssh_stdio_forward_admission }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+
+// This is the observation of one real forwarding request, not a host-level declaration that
+// forwarding is enabled. Its receipt must come from the commissioning/live access observer.
+// The existing OpenSSH authority owns the subject and the admitted/prohibited/unobserved sum.
+type WorkspaceGatewayEvidence {
+  subject: ForwardingAdmissionSubject
+  known_host: NonEmptyStr
+  observation: ProcessObservation
+  observed_at: Timestamp
+  receipt: NonEmptyStr
+}
+
+fn workspace_gateway_refusal(slot: RunnerSlotIdentity, evidence: WorkspaceGatewayEvidence, now: Timestamp) -> NonEmptyStr? {
+  if string_contains(s: evidence.known_host as String, pattern: "\n") || !(match render_network_host(host: evidence.subject.relay) {
+    Present { value: relay_name } => starts_with(s: evidence.known_host as String, prefix: concat(relay_name as String, " "))
+    Absent => false
+  }) { Present { value: "gateway public host-key row does not name the observed relay" } }
+  else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: evidence.observed_at) {
+    Present { value: "gateway forwarding observation has no canonical time" }
+  } else if utc_instant_seconds_after(later: now, earlier: evidence.observed_at) < 0
+    || utc_instant_seconds_after(later: now, earlier: evidence.observed_at) > 60 {
+    Present { value: "gateway forwarding observation is stale or in the future" }
+  } else { match ssh_stdio_forward_admission(subject: evidence.subject, observation: evidence.observation) {
+    ForwardingAdministrativelyProhibited { subject: _ } => Present { value: "SSH server prohibited this principal's forwarding request" }
+    ForwardingAdmissionUnobserved { subject: _ } => Present { value: "SSH forwarding to this guest has not been observed" }
+    ForwardingAdmitted { subject: observed_subject } => match workspace_fleet_gateway(slot: slot) {
+      Absent => Present { value: "fleet gateway naming and operator account are unresolved" }
+      Present { value: expected_gateway } => {
+        let relay = render_network_host(host: observed_subject.relay)
+        let target = render_network_host(host: observed_subject.target.host)
+        let expected_target = render_ipv4_address(addr: runner_slot_network(slot: slot).guest_address)
+        let principal_matches = match observed_subject.principal {
+          SshLoginPrincipal { login: observed_login } => (observed_login as String) == (expected_gateway.host_account as String)
+          SshCertificatePrincipal { principal: _ } => false
+        }
+        if !principal_matches || observed_subject.direction != LocalForward || observed_subject.target.port != 22 {
+          Present { value: "forwarding observation names another principal, direction, or target port" }
+        } else if !(match relay { Present { value: actual_relay } => actual_relay == expected_gateway.tailnet_name Absent => false })
+          || !(match target { Present { value: actual_target } => (actual_target as String) == expected_target Absent => false }) {
+          Present { value: "forwarding observation names another relay or guest address" }
+        } else { none }
+      }
+    }
+  } }
+}
+
+fn workspace_gateway_subject(slot: RunnerSlotIdentity) -> ForwardingAdmissionSubject? {
+  match workspace_fleet_gateway(slot: slot) {
+    Absent => none
+    Present { value: gateway } => match parse_host_name(raw: gateway.tailnet_name as String) {
+      Err { value: _ } => none
+      Ok { value: relay_name } => Present { value: ForwardingAdmissionSubject {
+        relay: host_by_name(name: relay_name),
+        principal: SshLoginPrincipal { login: gateway.host_account as PosixLoginName },
+        direction: LocalForward,
+        target: SocketAddress { host: host_by_ipv4(addr: runner_slot_network(slot: slot).guest_address), port: 22 },
+      } }
+    }
+  }
+}
+
+fn workspace_gateway_evidence(subject: ForwardingAdmissionSubject, observation: ProcessObservation, observed_at: Timestamp, known_host: NonEmptyStr) -> WorkspaceGatewayEvidence {
+  WorkspaceGatewayEvidence { subject: subject, known_host: known_host, observation: observation, observed_at: observed_at,
+    receipt: serialize_content_hash(hash: content_hash_of_value(value: concat(to_string(subject), to_string(observation), observed_at, known_host as String))),
+  }
+}
+
+fn workspace_gateway_evidence_json(evidence: WorkspaceGatewayEvidence) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "known_host", value: json_string(s: evidence.known_host as String)),
+    json_kv(key: "subject", value: json_string(s: to_string(evidence.subject))),
+    json_kv(key: "stdout", value: json_string(s: evidence.observation.stdout)),
+    json_kv(key: "stderr", value: json_string(s: evidence.observation.stderr)),
+    json_kv(key: "exit_code", value: json_int(n: evidence.observation.exit_code)),
+    json_kv(key: "observed_at", value: json_string(s: evidence.observed_at)),
+    json_kv(key: "receipt", value: json_string(s: evidence.receipt as String)),
+  ])
+}
+
+// The slot key and every subject coordinate are joined on read. Reclassification consumes the
+// original process observation; an authored JSON boolean cannot assert forwarding permission.
+fn workspace_gateway_evidence_decode(slot: RunnerSlotIdentity, doc: JsonValue) -> WorkspaceGatewayEvidence? {
+  match workspace_gateway_subject(slot: slot) {
+    Absent => none
+    Present { value: expected_subject } => match json_field_value(r: json_field_string(obj: doc, key: "subject")) {
+      Absent => none
+      Present { value: wire_subject } => if wire_subject != to_string(expected_subject) { none } else {
+        match json_field_value(r: json_field_string(obj: doc, key: "stdout")) {
+          Absent => none
+          Present { value: wire_stdout } => match json_field_value(r: json_field_string(obj: doc, key: "stderr")) {
+            Absent => none
+            Present { value: wire_stderr } => match json_field_value(r: json_field_int(obj: doc, key: "exit_code")) {
+              Absent => none
+              Present { value: wire_exit } => match json_field_value(r: json_field_string(obj: doc, key: "observed_at")) {
+                Absent => none
+                Present { value: wire_time } => if !utc_instant_is_canonical(t: wire_time) { none } else {
+                  match json_field_value(r: json_field_string(obj: doc, key: "known_host")) {
+                    Absent => none
+                    Present { value: wire_known_host } => if wire_known_host == "" { none } else {
+                      let decoded = workspace_gateway_evidence(subject: expected_subject, known_host: wire_known_host as NonEmptyStr, observation: process_observation(exit_code: wire_exit, stdout: wire_stdout, stderr: wire_stderr), observed_at: wire_time)
+                      match json_field_value(r: json_field_string(obj: doc, key: "receipt")) {
+                        Absent => none
+                        Present { value: wire_receipt } => if wire_receipt == (decoded.receipt as String) { Present { value: decoded } } else { none }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

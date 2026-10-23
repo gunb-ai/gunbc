@@ -1,0 +1,45 @@
+module gunbc.observation_file_effect_seed_growth
+
+import std.types { List }
+// THE RECEIPT FOR THE [file] MIGRATION'S SEED SIDE.
+//
+// The [file] family's projection authority is
+// gunbc.observation_ci_render ci_file_effect_line, reached through
+// gunbc.observation_seed_render seed_file_effect_begin_line. dispatch_file in
+// v1_compiler.v1_interpreter prints its line BEFORE it attempts the effect and holds only
+// the arguments, so the seed cannot reach that projection at that seam -- it calls a
+// hand-written Rust copy of it, render_file_effect_begin_line_mirror, plus the two
+// helpers that spell a payload clause and a mode, and the test module that holds the
+// copy against the .dag authority by execution.
+//
+// WHAT THIS ROW DOES AND DOES NOT CLAIM. It makes the added declarations citable by the
+// join gunbc.seed_growth_admission already runs, so the roster-coverage instrument
+// (tools.seed_growth_change_population) stops refusing on this change. It does not claim
+// the copy is free: the copy IS the debt, and the trigger below is what ends it. It also
+// does not claim the roster is complete in general -- hand_authored_declarations is an
+// authored obligation roster, and gunbc.seed_growth records why a helper nobody listed
+// stays invisible until the completeness join exists.
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data observation_file_effect_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "FILE_CENSUS_MARKER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "render_file_effect_begin_line_mirror", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_payload_clause", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_mode_octal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "file_effect_trace_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "oracle_context", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "variant", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "byte_size", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "mode_bound", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "written_payload", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "render", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.file_effect_trace_tests", decl_name: "file_effect_begin_mirror_keeps_the_operand", field: WholeDeclaration },
+  ],
+  reason: "WHY RUST IS STILL NEEDED HERE: the [file] family's line is a projection of a modeled observation event, but the seed emits it BEFORE the effect and from inside dispatch_file, which holds the operation's intent, path and payload and has no way to call gunbc.observation_seed_render seed_file_effect_begin_line -- the projection is .dag, and the interpreter is the hand-written Rust that would have to call it. So the line is rendered twice: once by the .dag authority and once by a hand-written copy in the seed.\n\nTHE COPY IS HELD TO THE AUTHORITY BY EXECUTION RATHER THAN BY EXPLANATION, AT A STATED RUNG. file_effect_begin_mirror_matches_seed_oracle renders BOTH the mirror and seed_file_effect_begin_line through the interpreter on the same inputs and asserts byte equality plus the expected literal, over the three payload states (write with mode, write without, path-only). file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range drives extdeps.access.posix file_mode_of_octal_text -> file_mode_octal and asserts the seed's copy agrees over 0000/0600/0644/0755/1777/2755/4755/7777, and pins the out-of-range masking case EXPLICITLY because the refusal lives upstream in dispatch_file rather than in the copy. Neither side can pass by the other's construction.\n\nAND THE RUNG OF THAT HOLDING IS THE FIXTURE BOUNDARY, NOT THE MERGE PATH, which is stated here because the first version of this row implied otherwise and review 72597 was right to refuse it. Both tests are `--lib` tests. The job that runs that population is `continue-on-error` and is NOT read by the required `witnesses` aggregate -- gunbc.rung_drop rust_unit_tests_off_the_merge_path, whose own text says NO CI STEP EXECUTES THEM. So a SEMANTIC drift between the two representations can land on main with every required check green. What the required path does buy is ATTRIBUTION rather than agreement: this test module compiles under cargo clippy --all-targets -- -D warnings on the `generated` lane, which IS required and IS read by that aggregate, so deleting or renaming the mirror, its helpers, or their call sites cannot land silently -- only a change in what they RENDER can.\n\nWHY THE MIRROR RATHER THAN THE RAW eprintln IT REPLACED: the seven emit sites printed a bracket tag and a verb, and the census row gunbc.observation_emit_census file_trace_site records what that shape cost -- the line fired before the attempt, so twelve publication-receipt writes into an absent directory (srv1, 2026-08-19) logged exactly like successes. The operand is therefore a required argument of the projection, not decoration, and file_effect_begin_mirror_keeps_the_operand holds that property across every payload state.\n\nWHAT THE SEED SIDE COSTS AND WHAT IT DOES NOT: one copy, one clause helper, one octal spelling, and the fixtures that hold them against the authority. No policy: the intent names, the payload sum, the mode carrier and the clause wording all come from the .dag side, and the byte count crosses as u64 that the caller already measured.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all four hand-written declarations (and the module with its tests) when dispatch_file no longer renders the line itself: either the seed calls gunbc.observation_seed_render seed_file_effect_begin_line directly at that seam, or the effect is represented by a modeled operation whose realization emits the observation event and the projection renders it from there. Naming the capability and not an artifact: moving these functions to another Rust file, or adding a second helper beside them, discharges nothing. gunbc.observation_emit_census file_trace_site's own dissolve-on is the same event stated from the roster's side -- the raw shape retires when the identifier is produced by the renderer rather than hand-written beside it.",
+  current_boundary: "extdeps.filesystem.filesystem_io's operation roster (Write / Read / List / Delete / WriteOwnerOnly / WriteCreateNew / WriteCreateNewWithMode) -> v1_compiler.v1_interpreter dispatch_file -> render_file_effect_begin_line_mirror + file_payload_clause + file_mode_octal -> the echoed line, held byte-equal to gunbc.observation_ci_render ci_file_effect_line (seed seed_file_effect_begin_line) by the file_effect_trace_tests module. The mirror decides no policy and holds no state: it formats the intent, the operand and the clause it was handed, and the clause is built from the authorities' own carriers (std.measure ByteSize, extdeps.access.posix FileMode)."
+}

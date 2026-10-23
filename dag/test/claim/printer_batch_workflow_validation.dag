@@ -1,0 +1,44 @@
+module test.claim.printer_batch_workflow_validation
+import std.types {String,Bool}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import gunbc.fleet.printer_operator_approval {print_request,print_subject,start_claim_path}
+import gunbc.fleet_asset_identity {printer_01,printer_02}
+import test.claim.print_preparation_kernel_validation {exercise_kernel}
+import product.printed_chassis.print_workflow {run}
+
+// Boundary tests are entered individually by the witness runner, never called here.
+// End-to-end local validation entry. The production root is fixed to preparation;
+// this function cannot file an approval or start a printer.
+fn validate_preparation(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,control_script:String) -> ProcessExit {
+ if !approval_changes_with_device_bytes_version_or_attempt() {return exit_failure(reason:"Approval identity did not bind the print inputs")}
+ match exercise_kernel(script:control_script) {
+  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:"prepare")
+  other=>other
+ }
+}
+
+// Integration coverage retains real SHA-256 construction outside the fast floor.
+// validate_preparation is its executing consumer, before CAD or slicing.
+fn approval_changes_with_device_bytes_version_or_attempt() -> Bool {
+  let base = print_request(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a")
+  let variants = [
+    print_request(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a"),
+    print_request(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a"),
+    print_request(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a"),
+    print_request(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b"),
+  ]
+  match base {
+    Absent => false
+    Present { value: original } =>
+      original.subject == print_subject(printer:printer_01,digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",version:"1",attempt:"batch-a") &&
+      start_claim_path(escalation_id:original.escalation_id)==concat(concat("/var/lib/gunbc/printer-starts/",original.escalation_id as String),".claimed") &&
+      all(variants, v => match v {
+      Absent => false
+      Present { value: changed } => original.escalation_id != changed.escalation_id
+    })
+  }
+}
+
+fn validate_approval_identity() -> ProcessExit {
+ if approval_changes_with_device_bytes_version_or_attempt() {ExitSuccess} else {exit_failure(reason:"Approval identity did not bind the print inputs")}
+}

@@ -1,0 +1,351 @@
+module gunbc.cloudflare.r2_staged_transfer
+
+import std.types { String, NonEmptyStr, Bool, Int, FilePath, HttpStatus, http_status_of }
+import std.citation { http_status_is_success }
+import std.algebra { trim }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.shell
+import extdeps.shell.exec { ProcessObservation }
+import extdeps.exec.command { LocalExec }
+import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
+import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool, curl_s3_entity_tag_cli_tool, S3TransferReport, ReportStatus, ReportStatusAndEntityTag }
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
+import std.optional { Present, Absent }
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyPresent,
+  HostCliDependencyAbsent,
+}
+import extdeps.cloudflare.r2 {
+  R2ObjectLocator,
+  r2_object_url,
+  r2_s3_endpoint_host,
+  r2_s3_sigv4_region,
+}
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.auth.netrc_binding { netrc_binding_path }
+import gunbc.cloudflare.r2_s3_netrc {
+  R2S3NetrcPlaced,
+  R2S3NetrcRefused,
+  R2S3NetrcRefusedResidueRemains,
+  place_r2_s3_netrc,
+  shred_r2_s3_netrc,
+}
+
+// ONE FILE TO ONE R2 OBJECT, OR ONE R2 OBJECT INTO A DIRECTORY THIS MODULE MINTED, AND NOTHING ABOUT
+// WHAT THE BYTES ARE FOR. This is the staged-file R2 mechanism that gunbc.cloudflare.r2_origin_object
+// built for the durable origin, extracted below the origin's provenance so a second population (the
+// fabric blob plane, gunbc.fabric.fabric_blob_r2) reaches R2 through the same transport rather than a
+// copy of it. What stays ABOVE is everything that names a purpose: which bucket, which credential
+// for which direction, the origin's OriginReading and its commit-readback vocabulary. What lives
+// HERE is the transfer: the SigV4 curl invocation, the credential's custody across it, the HTTP
+// status read off --write-out, and the four-way put verdict.
+//
+// THE STATUS COMES FROM curl's --write-out ON STDOUT, so the transport's own exit code is not the
+// classifier's input: curl -f exits 22 for every non-2xx, and 22 does not say whether the store said
+// 404 or 403. Three digits on stdout do. "000" is curl's word for "no status was received", and a
+// stdout that is not three digits at all is a transport that did not run as modeled. The parsed Int
+// is admitted through std.types http_status_of, and 2xx is std.citation http_status_is_success.
+//
+// THE ENTITY TAG RIDES ON A SECOND LINE when the transfer was asked to report it
+// (extdeps.tools.curl ReportStatusAndEntityTag); a status-only stdout has no second line, and an
+// empty one is a response with no ETag header. Either reads as no tag, never as an empty tag.
+type S3TransferAnswer
+  = S3Answered { status: HttpStatus, tag: ObjectEntityTag? }
+  | S3NotAnswered { cause: NonEmptyStr }
+
+fn s3_stdout_line(stdout: String, index: Int) -> String {
+  match split(s: stdout, delimiter: "\n").skip(index).first() {
+    Present { value: l } => trim(s: l)
+    Absent => ""
+  }
+}
+
+fn s3_entity_tag_of(stdout: String) -> ObjectEntityTag? {
+  let raw = s3_stdout_line(stdout: stdout, index: 1)
+  if raw == "" { none } else { Present { value: ObjectEntityTag { value: raw as NonEmptyStr } } }
+}
+
+fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
+  let code = s3_stdout_line(stdout: observation.stdout, index: 0)
+  if code == "000" {
+    S3NotAnswered {
+      cause: concat("no HTTP status was received from the store: ", trim(s: observation.stderr)) as NonEmptyStr,
+    }
+  } else {
+    match parse_int(s: code) {
+      Absent =>
+        S3NotAnswered {
+          cause: join(["the transport printed no HTTP status (exit ", to_string(observation.exit_code), "): ", trim(s: observation.stderr)], "") as NonEmptyStr,
+        }
+      Present { value: n } =>
+        match http_status_of(n: n) {
+          Absent =>
+            S3NotAnswered {
+              cause: join(["the transport printed a status outside HTTP's range: ", code], "") as NonEmptyStr,
+            }
+          Present { value: status } => S3Answered { status: status, tag: s3_entity_tag_of(stdout: observation.stdout) }
+        }
+    }
+  }
+}
+
+data s3_status_not_found: HttpStatus = 404
+
+data s3_status_precondition_failed: HttpStatus = 412
+
+// WHAT A PUT ANSWERS IS FOUR THINGS AND NOT THREE. A 2xx stored it; a 412 is the precondition not
+// holding, and WHICH precondition decides what it means: under If-None-Match: * an object is already
+// present, and under If-Match the object has moved past the tag the writer read -- the lost race of
+// a compare-and-set, an outcome and not a fault (std.fabric_storage FabricHeadMoved); a 4xx the store decided BEFORE committing anything; and a 5xx or a
+// transfer that never received a status may have committed -- extdeps.transports.rest
+// mutation_status_is_commit_ambiguous owns that boundary -- so those are OUTCOME UNKNOWN, which a
+// caller reconciles by fetching, never by putting again.
+type R2PutVerdict
+  = R2ObjectStored { tag: ObjectEntityTag? }
+  | R2ObjectAlreadyPresent
+  | R2ObjectTagMoved
+  | R2PutRefused { cause: NonEmptyStr }
+  | R2PutOutcomeUnknown { cause: NonEmptyStr }
+
+fn classify_r2_put(precondition: ObjectPutPrecondition, answer: S3TransferAnswer, stderr: String) -> R2PutVerdict {
+  match answer {
+    S3NotAnswered { cause: cause } =>
+      R2PutOutcomeUnknown {
+        cause: concat("the PUT may have committed, no verdict was received; reconcile by fetching the key: ", cause as String) as NonEmptyStr,
+      }
+    S3Answered { status: status, tag: tag } =>
+      if http_status_is_success(status: status) {
+        R2ObjectStored { tag: tag }
+      } else if status == s3_status_precondition_failed {
+        match precondition {
+          PutIfAbsent => R2ObjectAlreadyPresent
+          PutIfMatch { tag: _ } => R2ObjectTagMoved
+          PutUnconditional => R2PutRefused { cause: "the store answered 412 to a PUT that carried no precondition; that is not this protocol" }
+        }
+      } else if mutation_status_is_commit_ambiguous(status: status) {
+        R2PutOutcomeUnknown {
+          cause: join(["the store answered ", to_string(status), ", which does not establish that the PUT did not commit: ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      } else {
+        R2PutRefused {
+          cause: join(["the store refused the PUT with ", to_string(status), ": ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+// THE READ VERDICT IS PURE UP TO THE STAGED FILE: which arm a status selects is decidable from a
+// fixture. -f makes a non-2xx write NOTHING to the destination (extdeps.tools.curl), so a staged
+// path either holds the object's bytes or does not exist.
+// A store that ANSWERED and refused (a 403, a 400) and a transfer that received NO answer are two
+// facts with two remedies -- investigate the store vs retry the transport -- so they are two arms.
+type R2FetchVerdict
+  = R2FetchStagedAt { staged_path: NonEmptyStr, tag: ObjectEntityTag? }
+  | R2FetchAbsent
+  | R2FetchRefused { cause: NonEmptyStr }
+  | R2FetchUnanswered { cause: NonEmptyStr }
+
+fn classify_r2_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr: String) -> R2FetchVerdict {
+  match answer {
+    S3NotAnswered { cause: cause } => R2FetchUnanswered { cause: cause }
+    S3Answered { status: status, tag: tag } =>
+      if http_status_is_success(status: status) {
+        R2FetchStagedAt { staged_path: staged_path, tag: tag }
+      } else if status == s3_status_not_found {
+        R2FetchAbsent
+      } else {
+        R2FetchRefused {
+          cause: join(["the store refused the GET with ", to_string(status), ": ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+// WHERE ONE TRANSFER GOES AND WITH WHAT IT IS SIGNED. Resolved by the purpose's owner (the origin,
+// the blob placement) from its own declarations; this module never chooses a bucket or a credential.
+// The precondition is that owner's STORE POLICY, derived from what the purpose admits (create-only
+// for an admitted immutable object) or from the tag the owner last read (a compare-and-set head),
+// never a default. report says whether the owner reads the entity tag back.
+type R2TransferTarget {
+  locator: R2ObjectLocator
+  access_key_id: NonEmptyStr
+  token_value: SecretRef
+  precondition: ObjectPutPrecondition
+  report: S3TransferReport
+}
+
+// WHAT BECAME OF THE CREDENTIAL, CARRIED BESIDE THE STORE'S ANSWER AND NEVER FOLDED INTO IT. A stored
+// object whose credential could not be shredded is two true facts, not one refusal (gunbc#11157
+// review 64512): demoting the store's verdict would hide a durable write, and hiding the residue
+// would let a caller that later confirmed the object exit clean with a credential on disk.
+type WriteCredentialCustody
+  = WriteCredentialShredded
+  | WriteCredentialResidueRemains { cause: NonEmptyStr }
+
+type R2Put {
+  verdict: R2PutVerdict
+  credential: WriteCredentialCustody
+}
+
+data credential_residue_cause: NonEmptyStr = "the write credential's private directory could not be removed; credential material may remain and requires cleanup"
+
+type R2TransportStanding
+  = R2TransportPresent
+  | R2TransportAbsent { cause: NonEmptyStr }
+
+// THE TRANSPORT'S HOST DEPENDENCY IS OBSERVED BEFORE ANY CREDENTIAL IS FETCHED, against the SigV4 row
+// (extdeps.tools.curl curl_aws_sigv4_cli_tool carries the >= 7.75 pin --aws-sigv4 needs). What this
+// observes is PRESENCE on PATH; the version pin is carried, not checked.
+fn r2_transport_present(report: S3TransferReport) -> R2TransportStanding {
+  match observe_host_cli_dependency(tool: match report { ReportStatus => curl_aws_sigv4_cli_tool  ReportStatusAndEntityTag => curl_s3_entity_tag_cli_tool }) {
+    HostCliDependencyAbsent { absence: absence } =>
+      R2TransportAbsent {
+        cause: join(["THE TRANSPORT IS NOT ON THIS HOST: ", absence.tool as String, " (", absence.hint, ")"], "") as NonEmptyStr,
+      }
+    HostCliDependencyPresent => R2TransportPresent
+  }
+}
+
+fn put_refused_before_transfer(cause: NonEmptyStr) -> R2Put {
+  R2Put { verdict: R2PutRefused { cause: cause }, credential: WriteCredentialShredded }
+}
+
+// THE WRITE. local_path is the bytes to store; the target names where and with which credential.
+fn r2_put_staged_file(target: R2TransferTarget, local_path: FilePath, token_source: AccessTokenSource) -> R2Put {
+  match r2_transport_present(report: target.report) {
+    R2TransportAbsent { cause: cause } => put_refused_before_transfer(cause: cause)
+    R2TransportPresent =>
+      match place_r2_s3_netrc(
+        host: r2_s3_endpoint_host(endpoint: target.locator.endpoint) as NonEmptyStr,
+        access_key_id: target.access_key_id,
+        token_value: target.token_value,
+        token_source: token_source,
+      ) {
+        R2S3NetrcRefused { cause: cause } => put_refused_before_transfer(cause: cause)
+        R2S3NetrcRefusedResidueRemains { cause: cause } =>
+          R2Put { verdict: R2PutRefused { cause: cause }, credential: WriteCredentialResidueRemains { cause: cause } }
+        R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
+          let observed = run_shell_command_observe(
+            command: curl_sigv4_s3_upload_command(
+              url: r2_object_url(locator: target.locator),
+              local_path: local_path as String,
+              netrc_path: netrc_binding_path(binding: binding),
+              sigv4_region: r2_s3_sigv4_region,
+              precondition: target.precondition,
+              report: target.report,
+            ),
+            transport: LocalExec,
+          )
+          let shredded = shred_r2_s3_netrc(workspace: workspace)
+          R2Put {
+            verdict: classify_r2_put(precondition: target.precondition, answer: classify_s3_transfer(observation: observed), stderr: observed.stderr),
+            credential: if shredded { WriteCredentialShredded } else { WriteCredentialResidueRemains { cause: credential_residue_cause } },
+          }
+        }
+      }
+  }
+}
+
+fn r2_put_is_clean(put: R2Put) -> Bool {
+  match put.credential {
+    WriteCredentialShredded => true
+    WriteCredentialResidueRemains { cause: _ } => false
+  }
+}
+
+// THE READ STAGES ITS OWN OUTPUT. The caller names a target; the fetch mints a private directory and
+// points the transport at a file inside it, so no caller can substitute a path of its own and the
+// file a later digest is taken over is the file this transfer wrote. A credential that could not be
+// shredded refuses the fetch rather than reporting it as staged.
+// WHAT BECAME OF A STAGING DIRECTORY: never created, removed, or left behind at a reported path. It
+// rides beside every fetch arm, as credential custody rides beside a put: a fetch that ends without
+// handing bytes to the caller removes the directory it minted before returning, and a removal that
+// fails is a residue fact, never silence.
+type R2StagingCustody
+  = R2StagingNotCreated
+  | R2StagingRemoved
+  | R2StagingResidue { path: NonEmptyStr }
+
+fn r2_release_staging(dir: NonEmptyStr) -> R2StagingCustody {
+  if shell.Remove.RecursiveForce(path: dir as FilePath).success { R2StagingRemoved } else { R2StagingResidue { path: dir } }
+}
+
+// THE FETCH. Staged hands the caller the bytes AND the directory holding them, which the caller
+// discharges with r2_release_staging once it has read them. Every other arm has already discharged
+// its directory and says how. A local failure before or after the transfer (no transport, no
+// private directory, the credential not placed or not shredded) is its own arm: the store is not
+// implicated by it.
+type R2Fetch
+  = R2FetchStaged { staged_path: NonEmptyStr, staging_dir: NonEmptyStr, tag: ObjectEntityTag? }
+  | R2FetchObjectAbsent { staging: R2StagingCustody }
+  | R2FetchStoreRefused { cause: NonEmptyStr, staging: R2StagingCustody }
+  | R2FetchTransportUnanswered { cause: NonEmptyStr, staging: R2StagingCustody }
+  | R2FetchLocalFailure { cause: NonEmptyStr, staging: R2StagingCustody }
+
+// The verdict as the fetch, pure: which arm a status selects, with the custody of a directory that
+// was already released (staging) or retained for the caller (staging_dir).
+fn r2_fetch_of_verdict(verdict: R2FetchVerdict, staging_dir: NonEmptyStr, released: R2StagingCustody) -> R2Fetch {
+  match verdict {
+    R2FetchStagedAt { staged_path: p, tag: t } => R2FetchStaged { staged_path: p, staging_dir: staging_dir, tag: t }
+    R2FetchAbsent => R2FetchObjectAbsent { staging: released }
+    R2FetchRefused { cause: c } => R2FetchStoreRefused { cause: c, staging: released }
+    R2FetchUnanswered { cause: c } => R2FetchTransportUnanswered { cause: c, staging: released }
+  }
+}
+
+// Whether a verdict hands its directory to the caller; every other verdict releases it now.
+fn r2_fetch_retains_staging(verdict: R2FetchVerdict) -> Bool {
+  match verdict {
+    R2FetchStagedAt { staged_path: _, tag: _ } => true
+    R2FetchAbsent => false
+    R2FetchRefused { cause: _ } => false
+    R2FetchUnanswered { cause: _ } => false
+  }
+}
+
+data r2_staged_object_basename: String = "object"
+
+fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSource) -> R2Fetch {
+  match r2_transport_present(report: target.report) {
+    R2TransportAbsent { cause: cause } => R2FetchLocalFailure { cause: cause, staging: R2StagingNotCreated }
+    R2TransportPresent => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        R2FetchLocalFailure { cause: "no private directory could be minted to stage the store's bytes, so nothing was fetched", staging: R2StagingNotCreated }
+      } else {
+        let dir = staging.path as NonEmptyStr
+        let staged_path = join([dir as String, "/", r2_staged_object_basename], "") as NonEmptyStr
+        match place_r2_s3_netrc(
+          host: r2_s3_endpoint_host(endpoint: target.locator.endpoint) as NonEmptyStr,
+          access_key_id: target.access_key_id,
+          token_value: target.token_value,
+          token_source: token_source,
+        ) {
+          R2S3NetrcRefused { cause: cause } => R2FetchLocalFailure { cause: cause, staging: r2_release_staging(dir: dir) }
+          R2S3NetrcRefusedResidueRemains { cause: cause } => R2FetchLocalFailure { cause: cause, staging: r2_release_staging(dir: dir) }
+          R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
+            let observed = run_shell_command_observe(
+              command: curl_sigv4_s3_download_command(
+                url: r2_object_url(locator: target.locator),
+                destination: staged_path as String,
+                netrc_path: netrc_binding_path(binding: binding),
+                sigv4_region: r2_s3_sigv4_region,
+                report: target.report,
+              ),
+              transport: LocalExec,
+            )
+            let shredded = shred_r2_s3_netrc(workspace: workspace)
+            if shredded == false {
+              R2FetchLocalFailure { cause: "the read credential's private directory could not be removed after the GET; credential material may remain and requires cleanup, and the fetch is not reported as staged", staging: r2_release_staging(dir: dir) }
+            } else {
+              let verdict = classify_r2_fetch(answer: classify_s3_transfer(observation: observed), staged_path: staged_path, stderr: observed.stderr)
+              r2_fetch_of_verdict(verdict: verdict, staging_dir: dir, released: if r2_fetch_retains_staging(verdict: verdict) { R2StagingNotCreated } else { r2_release_staging(dir: dir) })
+            }
+          }
+        }
+      }
+    }
+  }
+}

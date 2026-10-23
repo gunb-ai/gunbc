@@ -1,0 +1,126 @@
+module gunbc.typed_graph_exclusive_bytes
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count, MeasureSubtraction, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_sub, Memory, One }
+import std.checked_arithmetic { nat_magnitude }
+import std.dissolution { DissolutionCondition }
+import gunbc.floor_demand { floor_beat_reading_primitive_boundary }
+
+// WHAT A REMOVAL SAVES, DECIDED HERE; THE HOST ONLY READS THE ALLOCATOR. The leave-one-out reading
+// (//gunbc/instruments:typed-graph-exclusive-bytes and its -floor-subject row) resolves a fresh
+// typed graph per class, drops that ONE class while every other class is still held, then drops
+// the rest, reading the allocator's live bytes at each step. Those three readings and the graph's
+// TypeEnv entry counts are all the host transcribes; what they MEAN -- the class's exclusive bytes,
+// the graph's total, how much the classes share -- is this fold's, the way
+// gunbc.floor_demand floor_phase_attribution decides what the heartbeat's counters mean.
+//
+// Why EXCLUSIVE and not the sequential split: a class freed after others is credited every node it
+// shared with them, so gunbc#12774's sequential `typed_graph_byte_attribution` over-credits late
+// classes. //gunbc/instruments:typed-graph-exclusive-bytes re-derives each class's exclusive bytes;
+// gunbc#12832's floor-memory-qualification A/B is the case where the sequential figure misled.
+//
+// THE THREE ALLOCATOR READINGS ARE BYTE COUNTS ON BARE Int FOR THE SAME REASON AS THE HEARTBEAT'S:
+// the host cannot construct a std.measure value as an argument. The debt and its trigger are ONE
+// fact, so this module consumes gunbc.floor_demand's row rather than restating it; the lift to
+// ByteSize happens once, in class_exclusive_of, after negative readings refuse.
+data typed_graph_class_reading_primitive_boundary: DissolutionCondition = floor_beat_reading_primitive_boundary
+
+type TypedGraphClassReading {
+  class: NonEmptyStr
+  members: Int
+  modules: Int
+  in_use_all: Int
+  in_use_after_class: Int
+  in_use_end: Int
+  ancestry_entries: Int
+  own_entries: Int
+}
+
+type ClassExclusiveBytes {
+  class: NonEmptyStr
+  members: Int
+  modules: Int
+  exclusive: ByteSize
+  graph_total: ByteSize
+  ancestry_entries: Int
+  own_entries: Int
+}
+
+// THE SUM IS OVER A PARTITION. A joint set (members > 1) is reported beside the singles and never
+// added into sum_of_exclusives: its bytes include its members' exclusives, so adding both counts them
+// twice and drives shared_or_unlisted below zero (gunbc#12850, PREDICTION 2's scoring).
+// THE SHARED RESIDUAL IS A TYPED SUBTRACTION, NOT A CLAMP: each class comes from its own fresh
+// resolve, so the exclusives can sum past the first run's total by run-to-run variation, and a
+// zero there would read as "the classes share nothing". MeasureSubtrahendExceedsMinuend says so.
+type TypedGraphExclusiveReport
+  = ExclusiveBytesReported {
+      classes: List<ClassExclusiveBytes>,
+      graph_total: ByteSize,
+      sum_of_exclusives: ByteSize,
+      shared_or_unlisted: MeasureSubtraction<Memory, One>,
+    }
+  | ExclusiveReadingTorn { class: NonEmptyStr, cause: String }
+  | ExclusiveReadingEmpty
+
+type ClassFold
+  = ClassFoldRunning { classes: List<ClassExclusiveBytes>, first_total: ByteSize?, sum: Int }
+  | ClassFoldTorn { class: NonEmptyStr, cause: String }
+
+fn reading_is_negative(r: TypedGraphClassReading) -> Bool {
+  r.members < 1 || r.modules < 0 || r.in_use_all < 0 || r.in_use_after_class < 0 || r.in_use_end < 0
+    || r.ancestry_entries < 0 || r.own_entries < 0
+}
+
+fn class_exclusive_of(r: TypedGraphClassReading) -> ClassFold {
+  if reading_is_negative(r: r) {
+    ClassFoldTorn { class: r.class, cause: "a negative reading or a class of no members: the allocator and the entry counts report non-negative values and every reading drops at least one class, so this read is malformed" }
+  } else {
+    let all = byte_size(count: nat_magnitude(a: r.in_use_all))
+    match measure_sub(a: all, b: byte_size(count: nat_magnitude(a: r.in_use_after_class))) {
+      MeasureSubtrahendExceedsMinuend => ClassFoldTorn { class: r.class, cause: "live bytes ROSE when the class was dropped: the reading is not of a drop" }
+      MeasureDifference { value: exclusive } =>
+        match measure_sub(a: all, b: byte_size(count: nat_magnitude(a: r.in_use_end))) {
+          MeasureSubtrahendExceedsMinuend => ClassFoldTorn { class: r.class, cause: "live bytes ROSE when the graph was dropped: the reading is not of a drop" }
+          MeasureDifference { value: total } => ClassFoldRunning {
+            classes: [ClassExclusiveBytes {
+              class: r.class, members: r.members, modules: r.modules, exclusive: exclusive, graph_total: total,
+              ancestry_entries: r.ancestry_entries, own_entries: r.own_entries,
+            }],
+            first_total: Present { value: total },
+            sum: byte_size_count(b: exclusive),
+          }
+        }
+    }
+  }
+}
+
+fn class_fold_step(acc: ClassFold, r: TypedGraphClassReading) -> ClassFold {
+  match acc {
+    ClassFoldTorn { class: c, cause: why } => ClassFoldTorn { class: c, cause: why }
+    ClassFoldRunning { classes: done, first_total: first, sum: s } =>
+      match class_exclusive_of(r: r) {
+        ClassFoldTorn { class: c, cause: why } => ClassFoldTorn { class: c, cause: why }
+        ClassFoldRunning { classes: one, first_total: t, sum: x } => ClassFoldRunning {
+          classes: concat(done, one),
+          first_total: match first { Present { value: f } => Present { value: f } Absent => t },
+          sum: if r.members == 1 { s + x } else { s + 0 },
+        }
+      }
+  }
+}
+
+fn typed_graph_exclusive_report(readings: List<TypedGraphClassReading>) -> TypedGraphExclusiveReport {
+  match fold(readings, init: ClassFoldRunning { classes: [], first_total: none, sum: 0 }, f: (acc, r) => class_fold_step(acc: acc, r: r)) {
+    ClassFoldTorn { class: c, cause: why } => ExclusiveReadingTorn { class: c, cause: why }
+    ClassFoldRunning { classes: cs, first_total: first, sum: s } =>
+      match first {
+        Absent => ExclusiveReadingEmpty
+        Present { value: total } => ExclusiveBytesReported {
+          classes: cs,
+          graph_total: total,
+          sum_of_exclusives: byte_size(count: nat_magnitude(a: s)),
+          shared_or_unlisted: measure_sub(a: total, b: byte_size(count: nat_magnitude(a: s))),
+        }
+      }
+  }
+}

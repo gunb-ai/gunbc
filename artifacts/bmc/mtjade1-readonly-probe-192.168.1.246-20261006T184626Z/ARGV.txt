@@ -1,0 +1,23 @@
+subject: mtjade1 BMC 192.168.1.246
+credential: AMI MegaRAC published factory default (user=admin, password from a file outside the repo, redacted in argv)
+--- argv classes (password never written):
+ipmitool -I lanplus -H 192.168.1.246 -U admin -P <redacted:published-factory-default> mc info
+ipmitool ... bmc info
+ipmitool ... sel time get
+ipmitool ... sdr list
+ipmitool ... sdr elist
+ipmitool ... channel info <0..15>
+ipmitool ... user summary <lan>
+ipmitool ... user list <lan>
+ipmitool ... channel getaccess <lan> <1..16>
+curl -sk -m20 -u admin:<redacted> -w \nHTTP_CODE:%{http_code} https://192.168.1.246/redfish/v1/Managers/Self
+curl ... https://192.168.1.246/redfish/v1/Systems/Self
+curl ... https://192.168.1.246/redfish/v1/Systems/Self/Memory
+curl ... https://192.168.1.246/redfish/v1/Chassis/Self
+curl ... https://192.168.1.246/redfish/v1/Chassis/Self/Thermal
+curl ... https://192.168.1.246/redfish/v1/Managers/Self/VirtualMedia
+notes:
+- channel 14 (0xE) is IPMI "current channel"; this controller answered it as Channel 0x1 (802.3 LAN).
+- LAN channels that answered Channel Medium Type 802.3 LAN: 1 and 8 (and current=14).
+- Channels 4 (SMBus) and 5 (KCS) exist; user list on those refused Invalid data field.
+- started_at/finished_at are observer UTC; sel time get and Manager DateTime are the controller clock (year 2000), not corrected.

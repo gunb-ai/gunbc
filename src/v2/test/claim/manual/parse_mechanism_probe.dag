@@ -1,0 +1,63 @@
+module v2.test.manual.parse_mechanism_probe
+
+
+data pmp_anchor: Symbol = ^pmp_anchor
+
+fn pmp_tokenize_parse_text(source_text: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn pmp_tokenize_parse_path(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  pmp_tokenize_parse_text(source_text: source)
+}
+
+data pmp_through_decimal_path: String = "src/v2/test/fixture/integer_census_trunc/through_decimal_compare.txt"
+
+fn exp_nest_d1_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d1.dag")
+}
+
+fn exp_nest_d2_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d2.dag")
+}
+
+fn exp_nest_d3_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d3.dag")
+}
+
+fn exp_nest_d4_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/nest_d4.dag")
+}
+
+fn exp_elseif_k4_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k4.dag")
+}
+
+fn exp_elseif_k8_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k8.dag")
+}
+
+fn exp_elseif_k16_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k16.dag")
+}
+
+fn exp_elseif_k32_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/parse_mechanism/elseif_k32.dag")
+}
+
+fn exp_through_compose_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: "src/v2/test/fixture/integer_census_trunc/through_compose_types.txt")
+}
+
+fn exp_through_decimal_parse_holds() -> Bool {
+  pmp_tokenize_parse_path(path: pmp_through_decimal_path)
+}

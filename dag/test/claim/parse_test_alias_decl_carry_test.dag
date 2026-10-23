@@ -1,0 +1,173 @@
+module test.claim.parse_test_alias_decl_carry
+
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, node_subtree_nodes }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.std.symbol_index {
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
+  SymbolIndex,
+  symbol_index_lexical_lookup
+}
+import v2.test.parse.alias_decl_parse {
+  alias_amb_a_source,
+  alias_amb_b_source,
+  alias_amb_subject_source,
+  alias_decl_fill_parse_source,
+  alias_decl_index_of,
+  alias_decl_lookup_hits_target,
+  alias_decl_normalized,
+  alias_decl_resolve_verdict,
+  alias_decl_unresolved_source
+}
+
+// THE `alias Name = a.b.C` CARRY, CLAIMED ON THE PER-PR PATH (gunbc#13428; ruling B, the grammar
+// program). Each subject is produced ONCE from real source by a NULLARY producer below, and every
+// producer is read by at least two claims, so the required floor fills it once and nets the fill from
+// the claim that pays it (v2.workflow.floor_pure_producer_share): each claim is charged only for its
+// own assertion. Producing from source rather than supplying a built tree is deliberate -- the
+// subject IS the route (graft dissolves the declaration, normalize captures its row, the fill binds
+// it), and a supplied tree would assert a shape nothing produced (DESIGN section 3, the pairing rule).
+// The discriminating red is enrolled, not transcribed: alias_decl_graft_dissolves_the_declaration_holds
+// asserts the absence of exactly the self-binding member this class names, so it is false whenever
+// v2.compiler.namespace_graft grafts the alias as a member again.
+
+data acd_fill_module: String = "v2.test.parse.alias_decl_fill_probe"
+
+data acd_fill_target: String = "v2.test.parse.alias_decl_fill_probe.AliasTargetType"
+
+fn acd_fill_tree() -> Outcome<NormalizedTree> {
+  alias_decl_normalized(text: alias_decl_fill_parse_source, file: ^alias_decl_fill_probe)
+}
+
+fn acd_edge_names(e: Edge, name: Symbol) -> Bool {
+  match e.label {
+    Authored { name: s } => s == name
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+fn acd_names_a_member(root: Node, name: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
+    acc || fold(n.children, init: false, f: fn(a, e) { a || acd_edge_names(e: e, name: name) })
+  })
+}
+
+// ROUTE, GRAFT: the declaration dissolved, so the normalized root names no member AliasBinding.
+test fn alias_decl_graft_dissolves_the_declaration_holds() -> Bool {
+  match acd_fill_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      !acd_names_a_member(root: t.root, name: ^AliasBinding)
+        && acd_names_a_member(root: t.root, name: ^AliasTargetType)
+  }
+}
+
+// ROUTE, CAPTURE: normalize carried exactly the one row, binding AliasBinding to its target.
+test fn alias_decl_normalize_captures_the_binding_row_holds() -> Bool {
+  match acd_fill_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      t.import_bindings == [
+        AliasBindingRow { binding: ^AliasBinding, target: qualified_name_from_dotted_string(dotted: acd_fill_target) }
+      ]
+  }
+}
+
+// ROUTE, BIND: the alias name's lexical hit at its module IS the target's node (the #13375 control,
+// flipped: before the interim refusal the hit was the alias's own grafted node).
+test fn alias_decl_name_resolves_to_its_target_holds() -> Bool {
+  match acd_fill_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      alias_decl_lookup_hits_target(
+        idx: alias_decl_index_of(trees: [t]),
+        position: acd_fill_module,
+        name: ^AliasBinding,
+        target: acd_fill_target
+      )
+  }
+}
+
+// AN ALIAS TO A TARGET NOTHING DECLARES: the row stays deferred at the fill's fixed point, so the name
+// is UNBOUND (never a hit on its own node), and resolution refuses the reference that wanted it,
+// located at that reference (docs/plans/namespace-resolution-design.md section 13).
+fn acd_unresolved_tree() -> Outcome<NormalizedTree> {
+  alias_decl_normalized(text: alias_decl_unresolved_source, file: ^alias_decl_unresolved_probe)
+}
+
+test fn alias_decl_to_an_undeclared_target_is_unbound_holds() -> Bool {
+  match acd_unresolved_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match symbol_index_lexical_lookup(
+        index: alias_decl_index_of(trees: [t]),
+        position: qualified_name_from_dotted_string(dotted: "v2.test.parse.alias_decl_unresolved_probe"),
+        name: ^Missing
+      ) {
+        LexicalUnbound => true
+        LexicalHit { node: _, path: _ } => false
+        LexicalAmbiguous { candidates: _ } => false
+      }
+  }
+}
+
+test fn alias_decl_to_an_undeclared_target_refuses_at_the_reference_holds() -> Bool {
+  match acd_unresolved_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      alias_decl_resolve_verdict(t: t, module: "v2.test.parse.alias_decl_unresolved_probe")
+        == "resolve_reason_unbound_symbol@Missing"
+  }
+}
+
+// AN ALIAS DISAMBIGUATES WHAT UNIQUE-ON-CHAIN REFUSES: two imports bind X at the subject, so X is
+// Ambiguous there; `alias AX = ...alias_amb_a.X` names one of them under a name only it binds.
+fn acd_amb_index() -> Outcome<SymbolIndex> {
+  match alias_decl_normalized(text: alias_amb_a_source, file: ^alias_amb_a_probe) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: a, diagnostics: _ } =>
+      match alias_decl_normalized(text: alias_amb_b_source, file: ^alias_amb_b_probe) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: b, diagnostics: _ } =>
+          match alias_decl_normalized(text: alias_amb_subject_source, file: ^alias_amb_s_probe) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: s, diagnostics: _ } =>
+              Accepted { value: alias_decl_index_of(trees: [a, b, s]), diagnostics: v2.std.diagnostic.None }
+          }
+      }
+  }
+}
+
+test fn two_imports_of_one_name_stay_ambiguous_beside_an_alias_holds() -> Bool {
+  match acd_amb_index() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: idx, diagnostics: _ } =>
+      match symbol_index_lexical_lookup(
+        index: idx,
+        position: qualified_name_from_dotted_string(dotted: "v2.test.parse.alias_amb_s"),
+        name: ^X
+      ) {
+        LexicalAmbiguous { candidates: _ } => true
+        LexicalHit { node: _, path: _ } => false
+        LexicalUnbound => false
+      }
+  }
+}
+
+test fn an_alias_resolves_one_of_two_ambiguous_imports_holds() -> Bool {
+  match acd_amb_index() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: idx, diagnostics: _ } =>
+      alias_decl_lookup_hits_target(
+        idx: idx,
+        position: "v2.test.parse.alias_amb_s",
+        name: ^AX,
+        target: "v2.test.parse.alias_amb_a.X"
+      )
+  }
+}

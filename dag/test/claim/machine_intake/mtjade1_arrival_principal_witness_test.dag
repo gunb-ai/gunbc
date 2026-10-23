@@ -1,0 +1,224 @@
+module test.claim.machine_intake.mtjade1_arrival_principal_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.machine_intake_arrival_subject {
+  arrival_converge_subject_options, admit_arrival_subject,
+  ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion,
+}
+import gunbc.machine_intake_arrival_interlock {
+  ArrivalSlotHeld, ArrivalSlotNotHeld,
+  admit_arrival_archive_interlock, admit_arrival_bmc_secure_interlock,
+  ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
+  ArrivalBmcSecureInterlockAdmitted, ArrivalBmcSecureInterlockRefused,
+  arrival_combine_prefix_and_release, arrival_after_acquire, arrival_archive_slot_held,
+  ArrivalArchiveSlotRelease, ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
+  ArrivalArchiveSlotAcquire, ArrivalArchiveSlotAcquireRefused, ArrivalArchiveSlotAcquired, ArrivalArchiveSlotHeld,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.durable_compare_and_set { cas_generation_first }
+import gunbc.machine_intake_bmc_rotation_route { rotation_route_ungrounded }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import gunbc.auth.mtjade1_arrival_pair { mtjade1_arrival_principal_member, mtjade1_arrival_secret_grants }
+import gunbc.auth.mtjade1_arrival_federation {
+  mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
+}
+import gunbc.auth.authorization_pattern_selection {
+  FederatedScopedGrant, OperatorApprovedCapability,
+  PatternSelected, AuthorizationPatternSelection,
+  InterlockPending, InterlockedBy,
+  select_authorization_pattern,
+}
+import gunbc.auth.privileged_effect_census {
+  rulings_without_a_rostered_interlock, privileged_effect_census,
+  RealizedUnauthorized, RealizedFederatedGrant, RealizedRunSelected,
+  RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession,
+}
+import gunbc.machine_intake_arrival_converge { grant_discharges_bmc_secure_account_write }
+import gunbc.machine_intake_arrival_run { arrival_wet_prefix_from_unobserved_world }
+import gunbc.auth.standing_operator_grant {
+  mtjade1_live_standing_grant, standing_grant_covers, standing_grant_arm_interlock, StandingGrantHost,
+  StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite, StandingD0ReleaseToFleet,
+}
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+
+fn selected_federated(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+fn selected_approved(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn w_arrival_options_are_the_population_projection() -> Bool {
+  arrival_converge_subject_options() == ["mtjade1"]
+}
+
+test fn w_mtjade1_is_admitted_and_mtcollins1_and_outsiders_refuse_before_effect() -> Bool {
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } => (s.wire as String) == "mtjade1"
+    _ => false
+  }
+    && match admit_arrival_subject(wire: operator_host_mtcollins1 as String) {
+      ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => true
+      _ => false
+    }
+    && match admit_arrival_subject(wire: "not-a-unit") {
+      ArrivalSubjectUnknown { wire: w } => w == "not-a-unit"
+      _ => false
+    }
+}
+
+test fn w_grant_covers_arrival_arms_on_mtjade1_only() -> Bool {
+  standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
+    && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
+    && !grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1)
+    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingBmcSecureAccountWrite)
+    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
+}
+
+test fn w_ungrounded_route_refuses_bmc_secure_interlock() -> Bool {
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match admit_arrival_archive_interlock(subject: s, slot: ArrivalSlotNotHeld { cause: "slot free" as NonEmptyStr }) {
+        ArrivalArchiveInterlockRefused { cause: _ } =>
+          match admit_arrival_bmc_secure_interlock(
+            subject: s,
+            slot: ArrivalSlotHeld { subject: s },
+            route: rotation_route_ungrounded(
+              endpoint: BmcControllerEndpoint { host: "192.168.1.246" },
+              firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11.104000" as NonEmptyStr),
+            ),
+          ) {
+            ArrivalBmcSecureInterlockRefused { cause: _ } => true
+            ArrivalBmcSecureInterlockAdmitted { subject: _ } => false
+          }
+        ArrivalArchiveInterlockAdmitted { subject: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn w_release_failure_after_success_is_visible() -> Bool {
+  match arrival_combine_prefix_and_release(
+    prefix: ExitSuccess,
+    slot: ArrivalArchiveSlotReleaseRefused { cause: "arrival slot release was not eligible" as NonEmptyStr },
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "slot release refused")
+  }
+}
+
+test fn w_release_failure_after_prefix_failure_is_concatenated() -> Bool {
+  match arrival_combine_prefix_and_release(
+    prefix: ExitFailure { code: 2, reason: "prefix refused" },
+    slot: ArrivalArchiveSlotReleaseRefused { cause: "arrival slot release was not eligible" as NonEmptyStr },
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: c, reason: r } =>
+      c == 2 && string_contains(s: r, pattern: "prefix refused") && string_contains(s: r, pattern: "slot release refused")
+  }
+}
+
+fn body_that_refuses() -> ProcessExit {
+  ExitFailure { code: 9, reason: "BODY_RAN" }
+}
+
+fn release_that_marks(held: ArrivalArchiveSlotHeld) -> ArrivalArchiveSlotRelease {
+  match held {
+    ArrivalArchiveSlotHeld { subject: _, slot_key: _, owner: _, generation: _ } =>
+      ArrivalArchiveSlotReleaseRefused { cause: "RELEASE_RAN" as NonEmptyStr }
+  }
+}
+
+fn fixture_acquired_slot() -> ArrivalArchiveSlotAcquire {
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      ArrivalArchiveSlotAcquired {
+        held: arrival_archive_slot_held(
+          subject: s,
+          slot_key: "arrival:mtjade1" as NonEmptyStr,
+          owner: "arrival-principal-witness" as DurableHoldOwnerRef,
+          generation: cas_generation_first(),
+        ),
+      }
+    _ => ArrivalArchiveSlotAcquireRefused { cause: "fixture subject was not admitted" as NonEmptyStr }
+  }
+}
+
+test fn w_acquired_runs_body_and_release_when_body_refuses() -> Bool {
+  match arrival_after_acquire(
+    outcome: fixture_acquired_slot(),
+    body: fn() { body_that_refuses() },
+    release_fn: fn(h) { release_that_marks(held: h) },
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: c, reason: r } =>
+      c == 9 && string_contains(s: r, pattern: "BODY_RAN") && string_contains(s: r, pattern: "RELEASE_RAN")
+  }
+}
+
+test fn w_successful_release_keeps_the_prefix() -> Bool {
+  match arrival_combine_prefix_and_release(
+    prefix: ExitSuccess,
+    slot: ArrivalArchiveSlotReleased { generation: cas_generation_first() },
+  ) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
+  selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
+    && selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
+    && !selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
+    && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
+    && mtjade1_arrival_principal_member() == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+    && mtjade1_arrival_secret_grants().length() == 1
+    && rulings_without_a_rostered_interlock().length() == 1
+    && match rulings_without_a_rostered_interlock().first() {
+      Present { value: s } =>
+        declaration_ref_display_key(ref: s) == "gunbc.auth.mtjade1_arrival_federation::mtjade1_arrival_firmware_qualification_effect"
+      Absent => false
+    }
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
+      InterlockPending { obligation: _ } => true
+      InterlockedBy { hold: _ } => false
+    }
+    && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingBmcSecureAccountWrite) {
+      InterlockedBy { hold: h } => (h.decl_name as String) == "admit_rotation_apply"
+      InterlockPending { obligation: _ } => false
+    }
+}
+
+test fn w_wet_door_refuses_unobserved_prior_life_world() -> Bool {
+  match arrival_wet_prefix_from_unobserved_world() {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "unobserved PriorLifeBoundary")
+  }
+}
+
+test fn w_archive_census_does_not_claim_a_write_the_wet_door_refuses() -> Bool {
+  any(privileged_effect_census, row =>
+    (row.site.decl_name as String) == "mtjade1_arrival_archive_effect"
+      && match row.realized {
+        RealizedUnauthorized => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
+      })
+}

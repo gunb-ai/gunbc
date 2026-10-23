@@ -1,0 +1,98 @@
+module gunbc.fleet.printer_setup_reports
+import v2.std.algebra {filter,length}
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.printing.fdm { FilamentMaterial, Pla }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
+
+// Operator reports retained independently of machine telemetry and slicer presets. A preset
+// named PETG is not evidence that PETG was loaded; a generic Bambu profile is not the spool's
+// manufacturer. These records neither identify a physical spool nor admit a print attempt.
+// Sources are the operator's messages, recovered from session crisp-ibex-710 on 2026-10-03.
+type PrinterSetupReportSource { session: NonEmptyStr, timestamp: NonEmptyStr }
+type ReportedFilamentProduct {
+  packaging: NonEmptyStr
+  material: FilamentMaterial
+  source: PrinterSetupReportSource
+}
+
+data creality_pla_report: ReportedFilamentProduct = ReportedFilamentProduct {
+  packaging: "Creality 2kg Black & White PLA 1.75mm Filament Bundle; two 1kg spools",
+  material: Pla,
+  source: PrinterSetupReportSource {
+    session: "crisp-ibex-710", timestamp: "2026-09-04T06:17:29.596Z",
+  },
+}
+
+type PrinterFilamentReport {
+  printer: PhysicalAssetIdentity
+  product: ReportedFilamentProduct
+  colour: NonEmptyStr
+  source: PrinterSetupReportSource
+}
+
+data printer_colour_report_source: PrinterSetupReportSource = PrinterSetupReportSource {
+  session: "crisp-ibex-710", timestamp: "2026-09-05T05:58:48.735Z",
+}
+
+data printer_filament_reports: List<PrinterFilamentReport> = [
+  PrinterFilamentReport { printer: printer_01, product: creality_pla_report,
+    colour: "white", source: printer_colour_report_source },
+  PrinterFilamentReport { printer: printer_02, product: creality_pla_report,
+    colour: "black", source: printer_colour_report_source },
+]
+
+// The slot report does not name a printer. Preserve that missing attribution instead of
+// copying slot 1 to both machines, or treating the human slot number as an MQTT tray index.
+type UnattributedPrinterSetupReport { statement: NonEmptyStr, source: PrinterSetupReportSource }
+data ams_slot_report: UnattributedPrinterSetupReport = UnattributedPrinterSetupReport {
+  statement: "Filament loaded into AMS slot 1; printer not named in this message",
+  source: PrinterSetupReportSource {
+    session: "crisp-ibex-710", timestamp: "2026-09-04T06:15:41.511Z",
+  },
+}
+
+// The current operator says the setups are identical. This establishes a relationship,
+// not a nozzle diameter, plate type, temperature, feedstock sensor state or clear bed.
+type MatchingPrinterSetupsReport {
+  first: PhysicalAssetIdentity
+  second: PhysicalAssetIdentity
+  reported_on: NonEmptyStr
+  statement: NonEmptyStr
+}
+data matching_printer_setups_report: MatchingPrinterSetupsReport = MatchingPrinterSetupsReport {
+  first: printer_01, second: printer_02, reported_on: "2026-10-03",
+  statement: "both setups are identical",
+}
+
+type PrinterFilamentReportLookup
+  = PrinterFilamentReported { report: PrinterFilamentReport }
+  | PrinterFilamentUnreported { printer: PhysicalAssetIdentity }
+  | PrinterFilamentReportsConflict { printer: PhysicalAssetIdentity }
+
+fn printer_filament_report(printer: PhysicalAssetIdentity) -> PrinterFilamentReportLookup {
+  let reports = filter(printer_filament_reports, r => r.printer == printer)
+  if length(reports) > 1 {
+    PrinterFilamentReportsConflict { printer: printer }
+  } else {
+    match reports |> first {
+      Present { value: r } => PrinterFilamentReported { report: r },
+      Absent => PrinterFilamentUnreported { printer: printer },
+    }
+  }
+}
+
+// Read-only operator projection; no credential resolution or printer actuation.
+fn main() -> CliWireResponse {
+  let rows = fold(printer_filament_reports, init: "", f: fn(text, r) {
+    concat(text, concat(r.printer as String, concat(": ", concat(r.colour as String,
+      concat("; ", concat(r.product.packaging as String, concat("; reported ",
+        concat(r.source.timestamp as String, "\n"))))))))
+  })
+  CliWirePrintable { bytes: concat(rows, concat(ams_slot_report.statement as String,
+    concat("\n", concat(matching_printer_setups_report.statement as String,
+      " (operator report 2026-10-03).\nThese are setup reports, not live readiness or process qualification.\n")))),
+    exit: ExitSuccess }
+}

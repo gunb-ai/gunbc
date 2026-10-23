@@ -1,0 +1,51 @@
+module gunbc.workspace_allocation_dispatch_transport
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import std.durable_compare_and_set { ExpectSlotGeneration }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_operation }
+import gunbc.workspace_allocation_store { WorkspaceOwnerSnapshot }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, WorkspaceConvergenceUnobserved, workspace_convergence_basis }
+import gunbc.workspace_allocation_launch_directive { WorkspaceLaunchDirective, workspace_launch_directive_text, workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
+
+fn workspace_allocation_dispatch_command(release_dir: NonEmptyStr, function: NonEmptyStr, payload: String) -> String {
+  join(["set -o pipefail; printf '%s' ", posix_single_quote(spelling: payload), " | ",
+    executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: release_dir, function: function))], "")
+}
+
+fn workspace_allocation_dispatch_result(text: String, host: NonEmptyStr, release_dir: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  match workspace_launch_directive_from_text(text: trim(s: text)) {
+    WorkspaceLaunchDirectiveRefused { reason } => WorkspaceConvergenceUnobserved { reason: reason }
+    WorkspaceLaunchDirectiveReady { directive } => if directive.release_dir != release_dir {
+      WorkspaceConvergenceUnobserved { reason: "privileged workspace observation returned another installed release" }
+    } else { workspace_convergence_basis(snapshot: WorkspaceOwnerSnapshot {
+      owner: directive.allocation.request.owner, expected: ExpectSlotGeneration { generation: directive.owner_generation },
+      allocations: [directive.allocation],
+    }, idempotency_key: directive.allocation.request.idempotency_key, host: host) }
+  }
+}
+
+fn workspace_allocation_dispatch_call(host: NonEmptyStr, release_dir: NonEmptyStr, function: NonEmptyStr, payload: String) -> WorkspaceConvergenceObservation {
+  match run_shell_command_capture(command: bash_program_command(script: workspace_allocation_dispatch_command(
+    release_dir: release_dir, function: function, payload: payload)), transport: LocalExec) {
+    ProcessOutputPresent { text } => workspace_allocation_dispatch_result(text: text, host: host, release_dir: release_dir)
+    ProcessOutputAbsent => WorkspaceConvergenceUnobserved { reason: "installed workspace observer returned no receipt" }
+    ProcessRefused { exit_code: _, stderr } => WorkspaceConvergenceUnobserved { reason: concat("installed workspace observer refused: ", stderr) }
+  }
+}
+
+fn workspace_allocation_dispatch_prepare(host: NonEmptyStr, release_dir: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  workspace_allocation_dispatch_call(host: host, release_dir: release_dir, function: "workspace_dispatch_allocation_plan_cli",
+    payload: join([release_dir as String, host as String], "\n"))
+}
+
+fn workspace_allocation_dispatch_readback(host: NonEmptyStr, planned: WorkspaceLaunchDirective) -> WorkspaceConvergenceObservation {
+  workspace_allocation_dispatch_call(host: host, release_dir: planned.release_dir, function: "workspace_dispatch_allocation_readback_cli",
+    payload: workspace_launch_directive_text(directive: planned))
+}

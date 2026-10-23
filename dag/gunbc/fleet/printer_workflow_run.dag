@@ -1,0 +1,73 @@
+module gunbc.fleet.printer_workflow_run
+
+import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
+import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { sha256_hex_digest }
+import std.decimal { decimal_digits_only }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number, sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
+import gunbc.secret_provision { secret_ref_pin_version }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
+import gunbc.fleet_printer_access {
+  printer_access_code_locus, PrinterAccessCodeDesiredLocusFound,
+  PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
+}
+import gunbc.auth.access_token_source { AccessTokenSource, WorkloadIdentityToken }
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+}
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused,print_inputs_admitted}
+import gunbc.fleet.printer_receipt {write_receipt}
+import gunbc.fleet.printer_operator_approval {approve_and_print}
+
+// Discovery reads latest once and records the provider's numeric identity, never the code.
+// Starting is a different operation and requires that exact numeric pin.
+fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: AccessTokenSource) -> ProcessExit {
+  match printer_access_code_locus(printer: printer) {
+    PrinterAccessCodeLocusUnknown { printer: _ } => exit_failure(reason: "Printer credential locus is absent")
+    PrinterAccessCodeLocusConflict { printer: _, matches: _ } => exit_failure(reason: "Printer credential locus is ambiguous")
+    PrinterAccessCodeDesiredLocusFound { locus: locus } =>
+      match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: "latest"), token_source: token_source) {
+        SecretCredentialReady { credential: c, resolved_version: version } =>
+          if (c as String) == "" { exit_failure(reason: "Printer credential is empty") }
+          else { match sm_resolved_version_id(identity: version) {
+            SmVersionIdProjected { version: v } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "", token_source:token_source)
+            SmVersionIdNotAVersionResource { supplied: _ } => exit_failure(reason: "Credential version identity cannot be projected")
+          } }
+        SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "Printer federation needs the ntfy-approved IAM converge")
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => exit_failure(reason: "Printer credential response did not decode")
+        SecretCredentialFetchRefused { reason: r } => exit_failure(reason: r as String)
+        SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => exit_failure(reason: "Printer credential response names another resource")
+      }
+  }
+}
+
+fn run() -> ProcessExit {
+  let run_id = actions_variable_trimmed(name: "GITHUB_RUN_ID")
+  let attempt = actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT")
+  let operation = actions_variable_trimmed(name: "PRINTER_OPERATION")
+  if run_id == "" || !decimal_digits_only(s: run_id) {
+    exit_failure(reason: "Printer workflow requires an attributed Actions run")
+  } else {
+    match select_printer(name: actions_variable_trimmed(name: "PRINTER_TARGET")) {
+      PrinterSelectionRefused => exit_failure(reason: "Printer identity is not in the fleet roster")
+      PrinterSelected { printer: printer } =>
+        if operation == "observe" { observe_credential_with_source(printer:printer,token_source:WorkloadIdentityToken) }
+        else if operation != "print" { exit_failure(reason: "Unknown printer operation") }
+        else {
+          let path = actions_variable_trimmed(name: "PRINTER_PROJECT_PATH")
+          let digest = actions_variable_trimmed(name: "PRINTER_PROJECT_SHA256")
+          let version = actions_variable_trimmed(name: "PRINTER_CREDENTIAL_VERSION")
+          if path == "" || attempt != "1" || !print_inputs_admitted(version: version, digest: digest,
+            bed_clear: actions_variable_trimmed(name: "PRINTER_BED_CLEAR")) {
+            exit_failure(reason: "Print requires a project path, SHA-256, observed numeric credential version, clear-bed report, and first run attempt")
+          } else { approve_and_print(printer: printer as String, path: path, digest: digest, version: version, attempt: concat("actions-",run_id), bed_clear: actions_variable_trimmed(name:"PRINTER_BED_CLEAR"), token_source:WorkloadIdentityToken) }
+        }
+    }
+  }
+}

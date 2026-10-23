@@ -1,0 +1,46 @@
+module extdeps.apple.secure_enclave
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth }
+
+// Apple CryptoKit SecureEnclave.P256.Signing.PrivateKey, and the Keychain access-control flags that
+// gate its use. Cited pages: CryptoKit "SecureEnclave.P256.Signing.PrivateKey", Security
+// "SecAccessControlCreateFlags", Apple Platform Security "Secure Enclave".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/cryptokit/secureenclave/p256/signing/privatekey"
+  }
+}
+
+// THE ENCLAVE SUPPORTS EXACTLY ONE SIGNING SUITE, and it is extdeps.crypto.signature's, named there.
+// Apple documents the Secure Enclave as P-256 only; a model with a suite field a caller may choose
+// would describe keys the hardware cannot hold.
+data secure_enclave_signing_suite: SignatureSuite = EcdsaP256Sha256
+
+// What leaves the device. The private key never does: CryptoKit's dataRepresentation for an enclave
+// key is an opaque, device-bound wrapped blob, usable only by the enclave that made it.
+data secure_enclave_public_key_encoding: PublicKeyEncoding = Sec1Uncompressed
+data secure_enclave_signature_encoding: SignatureEncoding = P1363FixedWidth
+
+// THE SIGNED INPUT IS HASHED BY CRYPTOKIT, NOT BY THE CALLER. PrivateKey.signature(for: Data) hashes
+// the data with SHA-256 and signs the digest, which is the verify side's expectation under
+// EcdsaP256Sha256. Signing a pre-computed digest through signature(for: digest) and verifying the
+// raw message would double-hash; the model fixes the one spelling.
+//
+// ── Who may use the key ──────────────────────────────────────────────────────────────────────
+// The access-control flags bound to the key at CREATION, not checked by the app at sign time. That
+// is the difference between an enclave-enforced gate and an app-enforced one: with the policy on the
+// key, the enclave itself refuses to sign without a satisfied biometric, so a compromised app process
+// cannot sign silently. An LAContext prompt the app shows before calling an unguarded key is a UI,
+// not a gate.
+//
+// biometryCurrentSet invalidates the key when the enrolled fingers or face change. That is the
+// property wanted here: someone who adds their face to the operator's unlocked phone does not inherit
+// the ability to approve. The cost is that re-enrolling Face ID requires re-enrolling the device.
+type EnclaveKeyAccessPolicy
+  = BiometryCurrentSet
+  | BiometryAny
+  | UserPresence

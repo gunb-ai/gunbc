@@ -1,0 +1,10 @@
+module test.probe.alias_head_identity_hom_alias
+
+import test.probe.alias_head_identity_hom_a { WrHomRec }
+import std.integer { Int }
+
+type WrHomAlias = WrHomRec
+
+fn hx(p: WrHomAlias) -> Int {
+  p.x
+}

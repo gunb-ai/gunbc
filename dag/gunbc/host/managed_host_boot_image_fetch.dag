@@ -1,0 +1,117 @@
+module gunbc.managed_host_boot_image_fetch
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.provisioning.ubuntu_install_media { CdimageUbuntuCom, OldReleasesUbuntuCom, ReleasesUbuntuCom, noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_mirror_rows, ubuntu_install_media_mirror_url }
+import gunbc.boot_medium { BootMedium, BootImageExport, stock_installer_boot_medium }
+import gunbc.machine_intake_boot_image_fetch {
+  BootImageAdmitted,
+  BootImageDigestMismatchRefused,
+  BootImageDigestUnreadable,
+  BootImageFetchFailed,
+  BootImageFetchOutcome,
+  BootImagePublishFailed,
+  BootImagePublishedDigestMismatch,
+  BootImagePublicationNotAdmitted,
+  BootImagePresentWithDifferentDigest,
+  BootImageAdmittedStagingRemains,
+  fetch_verified_boot_image,
+}
+
+// FETCHING A MEDIUM INTO ITS EXPORT IS THE MEDIUM'S OWN DATA: the export directory, the image name the
+// published path is composed from (gunbc.machine_intake_boot_image_fetch boot_image_published_path), and
+// the digest the staged bytes must hash to are all read off the BootMedium, so the bytes verified, the
+// file published and the file a controller is later pointed at are one medium's facts. Only WHERE the
+// release is downloaded from is supplied, because a built medium (the census image) is published by
+// its build and has no upstream URL.
+fn boot_medium_fetch_render(medium: BootMedium, outcome: BootImageFetchOutcome) -> ProcessExit {
+  match outcome {
+    BootImageAdmitted { path: _, digest: _ } => ExitSuccess
+    BootImageAdmittedStagingRemains { path: p, digest: _, staging: st, reason: r } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": published and verified at ", p as String, " but the staging file ", st as String, " was not removed from the export: ", r))
+    BootImageFetchFailed { url: u } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": fetch failed for ", u as String))
+    BootImageDigestUnreadable { path: p, reason: r } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": staged at ", p as String, " but its digest could not be read: ", r))
+    BootImageDigestMismatchRefused { expected: e, observed: o } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": REFUSED, staged bytes digest ", o as String, " does not match the pinned ", e as String, "; the staged file is left in place as the evidence and was NOT published"))
+    BootImagePublishFailed { staged: s, destination: d } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": digest agreed but publishing ", s as String, " to ", d as String, " failed"))
+    BootImagePublicationNotAdmitted { export_dir: d, reason: r } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": the artifact verified but publication into ", d as String, " was NOT admitted: ", r))
+    BootImagePresentWithDifferentDigest { path: p, expected: e, observed: o } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": REFUSED, ", p as String, " already exists and holds ", o as String, " rather than the verified ", e as String, "; publication is create-only, so nothing was replaced and the verified bytes remain staged beside it"))
+    BootImagePublishedDigestMismatch { path: p, expected: e, observed: o } =>
+      exit_failure(reason: concat("boot image ", medium.image_name as String, ": the move reported success but ", p as String, " now holds ", o as String, " rather than the verified ", e as String, "; the export does NOT contain what this program published and the unit must not be booted from it until that is explained"))
+  }
+}
+
+// SEALED TO THIS MODULE'S ENTRIES: the fetch publishes into medium.export.dir on the host it runs on, and
+// it does not reach medium.export.target, so it is correct only where the caller runs it on that
+// exporter. Each admitted entry fetches the stock installer row (or a control naming a path no
+// controller reads) and is run on its exporter; any other caller is refused at compile time rather
+// than trusted to pair a medium with the host it runs on.
+fn fetch_boot_medium(medium: BootMedium, url: NonEmptyStr) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_boot_medium"),
+    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_wrong_pin_control"),
+    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_unowned_export_control"),
+  ]
+{
+  boot_medium_fetch_render(
+    medium: medium,
+    outcome: fetch_verified_boot_image(url: url, export_dir: medium.export.dir, image_name: medium.image_name, expected_sha256: medium.digest),
+  )
+}
+
+// THE STOCK INSTALLER'S URL IS THE SAME UPSTREAM ROW AS ITS DIGEST: extdeps.provisioning.ubuntu_install_media
+// noble_numbat_2404_3_live_server_arm64 at the cdimage mirror, whose SHA256SUMS the digest is cited to.
+fn stock_installer_fetch_url() -> NonEmptyStr {
+  join(
+    flat_map(ubuntu_install_media_mirror_rows, m => match m.host {
+      CdimageUbuntuCom => [ubuntu_install_media_mirror_url(artifact: noble_numbat_2404_3_live_server_arm64, mirror: m) as String]
+      ReleasesUbuntuCom => []
+      OldReleasesUbuntuCom => []
+    }),
+    "",
+  ) as NonEmptyStr
+}
+
+fn fetch_stock_installer_boot_medium() -> ProcessExit {
+  fetch_boot_medium(medium: stock_installer_boot_medium, url: stock_installer_fetch_url())
+}
+
+// THE DISCRIMINATING RED. Same artifact, a pin that cannot match. If this returns success the
+// verification is decorative, and the wrong-pin case is the one that matters: a mismatched image
+// reaching the export is exactly the failure the staging split exists to prevent. It publishes to a
+// path no controller reads, so a defect in the wall cannot put an unverified artifact where a unit
+// would boot it.
+fn fetch_stock_installer_wrong_pin_control() -> ProcessExit {
+  fetch_boot_medium(
+    medium: BootMedium {
+      image_name: stock_installer_boot_medium.image_name,
+      digest: "0000000000000000000000000000000000000000000000000000000000000000",
+      export: BootImageExport { target: stock_installer_boot_medium.export.target, dir: "/var/tmp" },
+      terminal: stock_installer_boot_medium.terminal,
+    },
+    url: stock_installer_fetch_url(),
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE OWNERSHIP GATE, and a different one from the wrong-pin control: that
+// control refuses at the DIGEST and never reaches the write boundary. This one supplies the CORRECT
+// pin, so the run arrives at the publish with the bytes in order, and points the export at /var/tmp,
+// which is root-owned and world-writable by mode -- exactly the configuration that makes an ownership
+// check look unnecessary. The move would succeed there; only the admission stops it.
+fn fetch_stock_installer_unowned_export_control() -> ProcessExit {
+  fetch_boot_medium(
+    medium: BootMedium {
+      image_name: stock_installer_boot_medium.image_name,
+      digest: stock_installer_boot_medium.digest,
+      export: BootImageExport { target: stock_installer_boot_medium.export.target, dir: "/var/tmp" },
+      terminal: stock_installer_boot_medium.terminal,
+    },
+    url: stock_installer_fetch_url(),
+  )
+}

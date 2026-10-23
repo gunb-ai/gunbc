@@ -1,0 +1,109 @@
+module test.claim.live_deploy.approval_broker_helper_readback_real_execution
+
+import std.logic { Bool }
+import std.types { String, List }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.live_deploy.emit { helper_snapshot_readback_command_at }
+import v2.extdeps.languages.bash_build { bash_build_word_cmdsubst, bash_build_command_from_lits }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HELPER SNAPSHOT READBACK, BY REAL EXECUTION (side-chat review on 15f470cfc8). The defect it
+// guards is a fact about Bash's EXECUTION semantics, not about the text: `test -z "$(find ...)"` takes
+// test's status, so a find that FAILED printed nothing and read as clean, and the helper grant was
+// installed with no observation behind it. A claim over the rendered shape stays green if the
+// assignments are later moved into a context where errexit is suppressed. So this witness runs the
+// text gunbc.live_deploy.emit helper_snapshot_readback_command_at renders, under the deploy's own
+// strict line, through the modeled bash invocation and LocalExec, and asserts the exit status and
+// whether the grant step was reached.
+//
+// THE ROUTE IS THE ADMITTED ONE (as in test.claim.spark_snapshot_verify_wrapper_local_wet):
+// bash_program_command carries a genuine program body, and run_shell_command_observe runs it.
+//
+// FIXTURES. Each program builds a fresh tree under mktemp -d, with a fixed umask so a runner's umask
+// cannot make the clean tree writable, and removes it on exit. The owner the readback demands is the
+// running user, a `$(id -un)` command-substitution word expanded by the shell at run time; the paths are relative to the fixture directory, so the check holds whatever account
+// executes it. Production renders the same function with root. The two ancestors stand in for
+// / .. /opt/gunbc/approval-broker-helpers, because the runner's real / and /tmp are not the running
+// user's.
+data grant_marker: String = "GUNBC-GRANT-REACHED"
+
+fn readback_program(setup: String) -> String {
+  join([
+    "set -euo pipefail\n",
+    "umask 022\n",
+    "T=\"$(mktemp -d)\"\n",
+    "trap 'chmod -R u+rwx \"$T\" 2>/dev/null; rm -rf \"$T\"' EXIT\n",
+    "cd \"$T\"\n",
+    "mkdir -p a/b\n",
+    setup,
+    helper_snapshot_readback_command_at(
+      ancestors: ["a", "a/b"],
+      dir: "a/b/snap",
+      owner: bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["id", "-un"])),
+    ),
+    "\n",
+    "echo ", grant_marker, "\n",
+  ], "")
+}
+
+data clean_snapshot_setup: String = "mkdir -p a/b/snap/dag/sub\nprintf x > a/b/snap/dag/sub/f.dag\n"
+
+fn reached(stdout: String) -> Bool {
+  string_contains(s: stdout, pattern: grant_marker)
+}
+
+// (1) THE POSITIVE CONTROL: a fully observable tree the running user owns, with nothing group- or
+// world-writable and no link, passes, and the grant step runs.
+test fn a_clean_observable_snapshot_reaches_the_grant_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: readback_program(setup: clean_snapshot_setup)), transport: LocalExec)
+  obs.exit_code == 0 && reached(stdout: obs.stdout)
+}
+
+// (2) THE OBSERVATION FAILED: the snapshot does not exist, so find exits nonzero and prints nothing.
+// The pre-fix form read that empty output as clean and reached the grant. It must stop here.
+test fn a_missing_snapshot_stops_before_the_grant_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(command: bash_program_command(script: readback_program(setup: "")), transport: LocalExec)
+  obs.exit_code != 0 && !reached(stdout: obs.stdout)
+}
+
+// The same failure one level up: an ancestor that does not exist.
+test fn a_missing_ancestor_stops_before_the_grant_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: bash_program_command(script: readback_program(setup: concat(clean_snapshot_setup, "mv a/b a/moved\n"))),
+    transport: LocalExec,
+  )
+  obs.exit_code != 0 && !reached(stdout: obs.stdout)
+}
+
+// (3) THE OBSERVATION FOUND A VIOLATION: a group-writable entry, a symlink inside the snapshot, and a
+// symlinked ancestor each stop the stage.
+test fn a_writable_entry_stops_before_the_grant_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: bash_program_command(script: readback_program(setup: concat(clean_snapshot_setup, "chmod 664 a/b/snap/dag/sub/f.dag\n"))),
+    transport: LocalExec,
+  )
+  obs.exit_code != 0 && !reached(stdout: obs.stdout)
+}
+
+test fn a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: bash_program_command(script: readback_program(setup: concat(clean_snapshot_setup, "ln -s /etc/passwd a/b/snap/dag/link\n"))),
+    transport: LocalExec,
+  )
+  obs.exit_code != 0 && !reached(stdout: obs.stdout)
+}
+
+test fn a_symlinked_ancestor_stops_before_the_grant_by_real_execution() -> Bool {
+  let obs = run_shell_command_observe(
+    command: bash_program_command(script: readback_program(setup: concat(
+      clean_snapshot_setup,
+      "mv a/b a/real\nln -s \"$T/a/real\" a/b\n",
+    ))),
+    transport: LocalExec,
+  )
+  obs.exit_code != 0 && !reached(stdout: obs.stdout)
+}

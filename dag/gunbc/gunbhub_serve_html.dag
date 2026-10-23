@@ -1,0 +1,23 @@
+module gunbc.gunbhub_serve_html
+
+import std.markup { Fragment, Element, FragmentText }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+
+fn sample_html_page() -> Fragment {
+  Element {
+    tag: "p",
+    attributes: [],
+    children: [ FragmentText { content: "gunbhub" } ],
+  }
+}
+
+fn witness_html_consumer_serializes() -> Bool {
+  match try_serialize_html_source(node: sample_html_page()) {
+    EmitOk { html: h } => h == "<p>gunbhub</p>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+fn gunbhub_html_render_keystone_holds() -> Bool {
+  witness_html_consumer_serializes()
+}

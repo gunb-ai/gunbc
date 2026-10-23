@@ -1,0 +1,82 @@
+module gunbc.workspace_commissioning_admission_observe
+
+import std.types { String, NonEmptyStr }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
+import gunbc.workspace_commissioning {
+  WorkspaceCommissioningAdmission, WorkspaceCommissioningReady, WorkspaceCommissioningRefused,
+  workspace_commissioning_admit, WorkspaceCommissioningAuthorizedPlan, WorkspacePriorPurposeWithdrawn,
+}
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable }
+import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
+import gunbc.workspace_commissioning_history { workspace_initial_controller_history_refusal }
+import gunbc.workspace_commissioning_observe { workspace_observe_commissioning_obligations }
+import gunbc.workspace_commissioning_store {
+  workspace_commissioning_store_root, workspace_commissioning_store_observe, workspace_commissioning_store_restore_admission,
+  WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused,
+}
+import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.fabric_control_plane { fabric_control_plane_store_root, fabric_cell_allocation_key }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.fleet_host_budget { HostAllocationConserves }
+
+// The installed controller calls this under its slot incarnation and the fleet apply's host
+// mutation exclusion. Intent fields never stand in for host observations. No operation writes.
+fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningProvenance,
+  release_dir: NonEmptyStr, login: NonEmptyStr, network: SlotNetworkSanitationSubject) -> WorkspaceCommissioningAdmission {
+  if !workspace_commissioning_mutation_held(slot_key: runner_slot_instance_name(slot: provenance.slot), plan_hash: provenance.plan_hash) {
+    WorkspaceCommissioningRefused { reason: "the enclosing commissioning mutation does not hold this slot" }
+  } else {
+  match workspace_commissioning_runtime_refusal(provenance: provenance, release_dir: release_dir, login: login) {
+    Present { value: reason } => WorkspaceCommissioningRefused { reason: reason }
+    Absent => match workspace_commissioning_no_hold_refusal(provenance: provenance) {
+      Present { value: reason } => WorkspaceCommissioningRefused { reason: reason }
+      Absent => match workspace_observe_initial_sanitation(subject: network) {
+        WorkspaceInitialSanitationUnavailable { reason } => WorkspaceCommissioningRefused { reason: reason }
+        WorkspaceInitialSanitationReadback { observation } => if observation.slot != provenance.slot
+          || observation.observation_identity != provenance.sanitation_observation {
+          WorkspaceCommissioningRefused { reason: "fresh sanitation does not match the reviewed slot subject" }
+        } else { match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+          WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningRefused { reason: reason }
+          WorkspaceCommissioningStoreObserved { snapshot } => match snapshot.reading {
+            WorkspaceCommissioningRecordAbsent => match workspace_initial_controller_history_refusal(slot: provenance.slot) {
+              Present { value: reason } => WorkspaceCommissioningRefused { reason: reason }
+              Absent => workspace_commissioning_admit(slot: provenance.slot,
+                authority: WorkspaceCommissioningAuthorizedPlan { slot: provenance.slot, plan_hash: provenance.plan_hash },
+                budget: HostAllocationConserves, cpu_budget: provenance.cpu_budget, attempt_envelope: provenance.attempt_envelope,
+                prior_purpose: WorkspacePriorPurposeWithdrawn,
+                obligations: workspace_observe_commissioning_obligations(root: fabric_control_plane_store_root(), slot: provenance.slot),
+                sanitation: observation.observations)
+            }
+            WorkspaceCommissioningRecordRead { record: _ } => workspace_commissioning_store_restore_admission(snapshot: snapshot)
+            WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningRefused { reason: "commissioning history is unreadable" }
+          }
+        } }
+      }
+    }
+  }
+}
+
+}
+
+// Repeated before every phase, including recovery after initial readiness was written. A free
+// nonzero generation is history, not a never-acquired slot. Unknown queued effects must be
+// drained by the enclosing host mutation transition; this read does not claim to cancel them.
+fn workspace_commissioning_no_hold_refusal(provenance: WorkspaceCommissioningProvenance) -> String? {
+  let root = fabric_control_plane_store_root()
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: provenance.slot)) {
+      HoldSlotAbsent => none
+      HoldSlotFree { generation: _, released_by: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
+      HoldSlotHeld { generation: _, owner: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
+      HoldSlotUndecodable { generation: _, detail: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
+      HoldObservationUnavailable { cause: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
+    OwnershipUnread { reason: _ } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
+  }
+}

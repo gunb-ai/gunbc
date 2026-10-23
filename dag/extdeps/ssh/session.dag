@@ -1,0 +1,206 @@
+module extdeps.ssh.session
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit, String }
+import std.resources { Network }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc4254"
+  }
+}
+
+// This anchor moved from RFC 4253 to RFC 4254 (review 45901). What this module declares is Exec,
+// ExecScript and Reachability - channel requests, which RFC 4254 (SSH Connection
+// Protocol) defines. RFC 4253 is the SSH Transport Layer Protocol: key exchange, encryption, MAC.
+// It underlies every SSH session but defines none of the operations here, so it was the authority
+// for a layer this module does not model, and a note grounding an exec fact in it would have been
+// citing the wrong document.\n\nThe sibling modules keep their own anchors and are untouched; this
+// is a fidelity correction for this file's declarations, not a fleet-wide repoint.
+
+// These operations take CLIENT_ARGS -- everything after argv[0] -- and the transport supplies the
+// literal `ssh` itself. An earlier revision spliced the whole argv from the input, which the
+// operation-argv executable-position wall refused, correctly: argv[0] decided by a bound input
+// means a CALLER decides which program runs, and std.operation_argv states that a generic binder
+// over the executable position is strictly worse than the hardcoded list it replaces. The shaper's
+// own prepending of `ssh` was no defense -- the OPERATION could not know that, and a second caller
+// could have passed anything. The wall found this within one CI run of the operations landing.
+
+// ExecPortableWords is the successor to the deleted ExecArgv — the take-client_args shape (the
+// `ExecPortableWords` operation below) instead of the earlier take-host+argv shape, because a
+// literal in a service block cannot be called by a witness and RFC 4254 §6.5 gives the exec request
+// a single string-typed command field. What holds locally is the portable-word allowlist at
+// gunbc.typed_argv_exec; ExecPortableWords names exactly that.
+
+fn shape_scp_copy_to_argv(
+  host: NonEmptyStr,
+  local_path: FilePath,
+  remote_path: FilePath,
+) -> List<String> {
+  [local_path as String, join([host as String, ":", remote_path as String], "")]
+}
+
+// ssh(1) EXIT STATUS (OpenBSD 7.6): "ssh exits with the exit status of the remote command or with 255
+// if an error occurred." 255 is the CLIENT's status: it does not establish that the remote command
+// did not run -- a connection lost after the command started, or before its status came back, also
+// ends here. A command that itself exits 255 is indistinguishable from it at this boundary.
+data ssh_client_error_exit_status: Int = 255
+
+type SshSessionExecResult {
+  exit_code: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+service ssh.Session {
+  operation Exec {
+    requires Network
+    input { host: NonEmptyStr, command: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", "{host}", "{command}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh remote command failed"
+    }
+  }
+
+  operation ExecPortableWords {
+    requires Network
+    input { client_args: List<String> }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", client_args]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh portable-words exec failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words", stderr: "" } "hermetic ssh.Session.ExecPortableWords"
+    }
+  }
+
+  operation ExecPortableWordsWithStdin {
+    requires Network
+    input { client_args: List<String>, stdin_payload: String }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", client_args]
+      stdin: stdin_payload
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh portable-words exec with stdin failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words-stdin", stderr: "" } "hermetic"
+    }
+  }
+
+  operation ExecScript {
+    requires Network
+    input { host: NonEmptyStr, script: String }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["ssh", "{host}", "bash", "-s"]
+      stdin: script
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh remote script failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock ssh stdin script executed", stderr: "" } "ok"
+    }
+  }
+
+  operation Reachability {
+    requires Network
+    input { host: NonEmptyStr }
+    output { reachable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "{host}", "true"] }
+    exit {
+      0 => Unit
+      nonzero => String "ssh unreachable"
+    }
+  }
+}
+
+fn ssh_session_exec_result_from_service(
+  exit_code: Int,
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> SshSessionExecResult {
+  SshSessionExecResult {
+    exit_code: exit_code,
+    success: success,
+    stdout: stdout,
+    stderr: stderr,
+  }
+}
+
+fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecResult {
+  let result = ssh.Session.Exec(host: host, command: command)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn ssh_session_exec_portable_words(client_args: List<String>) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWords(client_args: client_args)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWordsWithStdin(client_args: client_args, stdin_payload: stdin_payload)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn ssh_session_exec_script(host: NonEmptyStr, script: String) -> SshSessionExecResult {
+  let result = ssh.Session.ExecScript(host: host, script: script)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}

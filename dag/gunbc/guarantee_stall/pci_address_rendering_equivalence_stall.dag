@@ -1,0 +1,17 @@
+module gunbc.guarantee_stall.pci_address_rendering_equivalence_stall
+
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data pci_address_rendering_equivalence_stall: GuaranteeStall = GuaranteeStall {
+  subject: "Owner: gunbc.runner.runner_host_hardware_observation and gunbc.runner.runner_host_first_boot_receipt, under the hw-first-host lane. extdeps.pci.identity.PciAddress currently carries opaque UEFI and Linux text under one brand. Text equality cannot establish or refute cross-rendering function identity. The receipt's former annotation asserted equivalence without an executable join; the namespace repair does not discharge that claim.",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+    "extdeps.pci.identity.PciAddress",
+    "gunbc.runner.runner_host_hardware_observation.mtcollins1_observed_pci_functions",
+    "gunbc.runner.runner_host_first_boot_receipt.mtcollins1_igb_binding"
+  ] },
+  next_rung_trigger: climbs_when(capability: "The receipt owners consume a cited UEFI/Linux PCI address grammar that distinguishes rendering and derives segment, bus, device and function with typed refusal for unsupported or malformed text; an executable join over the two recorded receipt populations compares those components at the same host grain. Required controls accept the recorded equivalent renderings, reject a different function or segment, preserve missing addresses, and refuse malformed renderings. Only that executed join can discharge the equivalence claim and retire this stall; importing both closures or comparing raw strings cannot.")
+}

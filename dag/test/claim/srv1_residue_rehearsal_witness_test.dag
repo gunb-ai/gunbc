@@ -1,0 +1,77 @@
+module test.claim.srv1_residue_rehearsal_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.live_deploy.srv1_residue_rehearsal {
+  srv1_rehearsal_every_residue_path_is_explicitly_deleted,
+  srv1_rehearsal_population_is_complete,
+  srv1_rehearsal_primary_is_detached,
+}
+import extdeps.git.enumeration { git_ref_set_observation_of }
+import extdeps.git.worktree_enumeration { git_worktree_set_observation_of }
+import gunbc.live_deploy.repository_convergence {
+  RepositoryState,
+  GitTextObserved,
+  RepositoryCoherenceObserved,
+  GitUntrackedObserved,
+  ConvergenceCompleted,
+  repository_convergence_verdict,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn exact_srv1_rehearsal_population_is_complete() -> Bool {
+  srv1_rehearsal_population_is_complete()
+}
+
+test fn every_predicted_residue_path_has_an_explicit_delete_disposition() -> Bool {
+  srv1_rehearsal_every_residue_path_is_explicitly_deleted()
+}
+
+test fn captured_primary_is_detached() -> Bool {
+  srv1_rehearsal_primary_is_detached()
+}
+
+// The primary has no branch arm in the real capture. This fixture differs from an attached primary
+// exactly at that checkout arm and proves the convergence fold treats the branch obligation as not
+// applicable: the transition completes without inventing a branch that must move to the candidate.
+fn detached_state(head: String, reflog: String, index_tree: String) -> RepositoryState {
+  RepositoryState {
+    refs: git_ref_set_observation_of(
+      raw: concat(concat("refs/remotes/origin/main\0", head), "\0\n"),
+      exit_code: 0,
+      stderr: "",
+    ),
+    worktrees: git_worktree_set_observation_of(
+      raw: concat(concat("worktree /opt/gunbc/gunbc\0HEAD ", head), "\0detached\0\0"),
+      exit_code: 0,
+      stderr: "",
+    ),
+    head: GitTextObserved { text: head },
+    reflog: GitTextObserved { text: reflog },
+    untracked: GitUntrackedObserved { paths: "" },
+    coherence: RepositoryCoherenceObserved {
+      index_tree: index_tree,
+      candidate_tree: "candidate-tree",
+      tracked_paths: "",
+    },
+  }
+}
+
+test fn detached_primary_has_no_primary_branch_obligation() -> Bool {
+  let old = "1111111111111111111111111111111111111111"
+  let candidate = "2222222222222222222222222222222222222222"
+  let outcome = repository_convergence_verdict(
+    before: detached_state(head: old, reflog: "old-reflog", index_tree: "old-tree"),
+    after: detached_state(
+      head: candidate,
+      reflog: concat(candidate, " HEAD@{0} reset: moving to candidate\nold-reflog"),
+      index_tree: "candidate-tree",
+    ),
+    candidate: candidate,
+    base_ref: "refs/remotes/origin/main",
+  )
+  match outcome {
+    ConvergenceCompleted { candidate: c, refs_preserved: _, worktrees_preserved: _ } => c == candidate
+    _ => false
+  }
+}

@@ -1,0 +1,232 @@
+module v2.std.integer
+
+import v2.std.algebra {
+  AbelianGroup,
+  Cons,
+  Empty,
+  fold_list_node,
+  FreeMonoid,
+  Group,
+  length,
+  Magma,
+  Monoid,
+  OrderedRing,
+  Ordering,
+  Ring,
+  Semigroup
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.machine {
+  MachineWidth,
+  PointerWidth,
+  Word8,
+  Word16,
+  Word32,
+  Word64,
+  Word128
+}
+import v2.std.nat { Nat }
+type GroupCompletion<M>
+type Int = GroupCompletion<Nat>
+type UInt = Nat
+type Compose<carrier, dimension>
+
+type Signedness = Signed | Unsigned
+
+type Representation
+  = TwosComplement
+  | OnesComplement
+  | SignMagnitude
+
+type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
+
+type Int8 = Compose<Int, MachineWidth<Word8>>
+type Int16 = Compose<Int, MachineWidth<Word16>>
+type Int32 = Compose<Int, MachineWidth<Word32>>
+type Int64 = Compose<Int, MachineWidth<Word64>>
+type Int128 = Compose<Int, MachineWidth<Word128>>
+
+type UInt8 = Compose<UInt, MachineWidth<Word8>>
+type UInt16 = Compose<UInt, MachineWidth<Word16>>
+type UInt32 = Compose<UInt, MachineWidth<Word32>>
+type UInt64 = Compose<UInt, MachineWidth<Word64>>
+type UInt128 = Compose<UInt, MachineWidth<Word128>>
+
+type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
+
+type IntegerBoundSign
+  = IntegerBoundNegative
+  | IntegerBoundNonNegative
+
+type IntegerRangeEndpoint
+  = IntegerRangeInclusiveMin
+  | IntegerRangeInclusiveMax
+
+type DecimalDigit
+  = D0
+  | D1
+  | D2
+  | D3
+  | D4
+  | D5
+  | D6
+  | D7
+  | D8
+  | D9
+
+type NonZeroDecimalDigit
+  = NonZeroD1
+  | NonZeroD2
+  | NonZeroD3
+  | NonZeroD4
+  | NonZeroD5
+  | NonZeroD6
+  | NonZeroD7
+  | NonZeroD8
+  | NonZeroD9
+
+type DecimalNonZeroMagnitude {
+  lead: NonZeroDecimalDigit
+  tail: List<DecimalDigit>
+}
+
+type DecimalMagnitude
+  = DecimalZero
+  | DecimalNonZero { magnitude: DecimalNonZeroMagnitude }
+
+type IntegerIntervalBound
+  = IntegerConcreteZero
+  | IntegerConcreteBound { sign: IntegerBoundSign, magnitude: DecimalNonZeroMagnitude }
+  | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
+
+type IntegerIntervalSpec {
+  inclusive_min: IntegerIntervalBound
+  inclusive_max: IntegerIntervalBound
+}
+
+fn integer_standard_integer_type_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^integer_standard_integer_type_decode_invalid,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn decimal_digit_value(d: DecimalDigit) -> Int {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+fn decimal_digit_compare(left: DecimalDigit, right: DecimalDigit) -> Ordering {
+  int_compare(a: decimal_digit_value(d: left), b: decimal_digit_value(d: right))
+}
+
+fn decimal_digit_list_compare(left: FreeMonoid<DecimalDigit>, right: FreeMonoid<DecimalDigit>) -> Ordering {
+  match left {
+    Empty => match right {
+      Empty => Equal
+      Cons { head: _, tail: _ } => Less
+    }
+    Cons { head: left_head, tail: left_tail } => match right {
+      Empty => Greater
+      Cons { head: right_head, tail: right_tail } =>
+        match decimal_digit_compare(left: left_head, right: right_head) {
+          Equal => decimal_digit_list_compare(left: left_tail, right: right_tail)
+          Less => Less
+          Greater => Greater
+        }
+    }
+  }
+}
+
+fn decimal_nonzero_magnitude_compare(left: DecimalNonZeroMagnitude, right: DecimalNonZeroMagnitude) -> Ordering {
+  let left_len = 1 + length(xs: left.tail)
+  let right_len = 1 + length(xs: right.tail)
+  if left_len < right_len {
+    Less
+  } else if left_len > right_len {
+    Greater
+  } else {
+    match decimal_digit_compare(
+      left: integer_nonzero_decimal_digit_widen(digit: left.lead),
+      right: integer_nonzero_decimal_digit_widen(digit: right.lead)
+    ) {
+      Equal => decimal_digit_list_compare(left: left.tail, right: right.tail)
+      Less => Less
+      Greater => Greater
+    }
+  }
+}
+
+fn ordering_invert(ordering: Ordering) -> Ordering {
+  match ordering {
+    Less => Greater
+    Equal => Equal
+    Greater => Less
+  }
+}
+
+type StandardIntegerType
+  = Int128
+  | Int64
+  | Int32
+  | Int16
+  | Int8
+  | UInt128
+  | UInt64
+  | UInt32
+  | UInt16
+  | UInt8
+
+fn integer_standard_integer_type_interval_spec(standard_integer_type: StandardIntegerType) -> IntegerIntervalSpec {
+  match standard_integer_type {
+    Int128 => int128_interval_spec()
+    Int64 => int64_interval_spec()
+    Int32 => int32_interval_spec()
+    Int16 => int16_interval_spec()
+    Int8 => int8_interval_spec()
+    UInt128 => uint128_interval_spec()
+    UInt64 => uint64_interval_spec()
+    UInt32 => uint32_interval_spec()
+    UInt16 => uint16_interval_spec()
+    UInt8 => uint8_interval_spec()
+  }
+}
+
+fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntegerType> {
+  if node == integer_interval_spec_node(spec: int128_interval_spec()) {
+    Accepted { value: Int128, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int64_interval_spec()) {
+    Accepted { value: Int64, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int32_interval_spec()) {
+    Accepted { value: Int32, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int16_interval_spec()) {
+    Accepted { value: Int16, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: int8_interval_spec()) {
+    Accepted { value: Int8, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint128_interval_spec()) {
+    Accepted { value: UInt128, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint64_interval_spec()) {
+    Accepted { value: UInt64, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint32_interval_spec()) {
+    Accepted { value: UInt32, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint16_interval_spec()) {
+    Accepted { value: UInt16, diagnostics: None }
+  } else if node == integer_interval_spec_node(spec: uint8_interval_spec()) {
+    Accepted { value: UInt8, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnos

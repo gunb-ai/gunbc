@@ -1,0 +1,70 @@
+module test.manual.runner_microvm_network_local_stage_probe
+
+import std.types { String, NonEmptyStr, FilePath, Bool }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import extdeps.tools.stat { stat_mode_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import gunbc.file_access { FileTreeScope }
+import gunbc.runner_microvm_network_converge { StagedFile }
+import gunbc.runner_microvm_network_apply { write_local_staged_file, StagedWriteOutcome, StagedWritten, StagedWriteRefused }
+
+fn stage_succeeded(result: StagedWriteOutcome) -> Bool {
+  match result { StagedWritten => true StagedWriteRefused { step: _, reason: _ } => false }
+}
+
+fn owner_only(path: String) -> Bool {
+  match run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec) {
+    ProcessOutputPresent { text } => trim(s: text) == "600"
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+// The admitted directory exists, so removing scope admission would actually write the
+// out-of-scope destination. A missing directory would refuse for an unrelated reason.
+fn outside_scope_refuses(root: String) -> Bool {
+  let allowed = shell.Mktemp.DirWithTemplate(template: concat(root, "/allowed.XXXXXX") as FilePath)
+  if !allowed.success { false }
+  else {
+    let scope = FileTreeScope { root_path: trim(s: allowed.path as String) as NonEmptyStr }
+    let refused = write_local_staged_file(file: StagedFile { path: concat(root, "/outside") as NonEmptyStr, content: "no" }, scope: scope)
+    let children = Filesystem.List(path: scope.root_path as String)
+    let parent = Filesystem.List(path: root)
+    !stage_succeeded(result: refused) && children.success && trim(s: children.entries) == ""
+      && parent.success && !filesystem_listing_names_entry(listing: parent.entries, name: "outside")
+  }
+}
+
+// Real local filesystem effects in one freshly created scratch directory. No root, network,
+// sudo or host configuration is touched. This CLI control is not a hermetic floor witness.
+fn local_stage_replaces_owned_bytes_wet() -> ProcessExit {
+  let temporary = shell.Mktemp.Dir()
+  if !temporary.success { exit_failure(reason: "local staging control could not create its scratch directory") }
+  else {
+    let root = trim(s: temporary.path as String)
+    let path = concat(root, "/staged")
+    let scope = FileTreeScope { root_path: root as NonEmptyStr }
+    let first = write_local_staged_file(file: StagedFile { path: path as NonEmptyStr, content: "prior\n" }, scope: scope)
+    let first_read = Filesystem.Read(path: path)
+    let first_mode = owner_only(path: path)
+    let next = StagedFile { path: path as NonEmptyStr, content: "replacement\n\n" }
+    let second = write_local_staged_file(file: next, scope: scope)
+    let second_read = Filesystem.Read(path: path)
+    let second_mode = owner_only(path: path)
+    let replay = write_local_staged_file(file: next, scope: scope)
+    let replay_read = Filesystem.Read(path: path)
+    let listing = Filesystem.List(path: root)
+    let scope_refused = outside_scope_refuses(root: root)
+    let removed = shell.Remove.RecursiveForce(path: root as FilePath)
+    if stage_succeeded(result: first) && first_read.success && first_read.content == "prior\n" && first_mode
+      && stage_succeeded(result: second) && second_read.success && second_read.content == next.content && second_mode
+      && stage_succeeded(result: replay) && replay_read.success && replay_read.content == next.content
+      && scope_refused && listing.success && trim(s: listing.entries) == "staged" && removed.success {
+      ExitSuccess
+    } else { exit_failure(reason: "local staging failed create, replacement, replay, custody, scope refusal or cleanup control") }
+  }
+}

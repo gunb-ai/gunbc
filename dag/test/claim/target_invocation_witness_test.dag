@@ -1,0 +1,1302 @@
+module test.claim.target_invocation_witness
+
+import extdeps.bazel.label {
+  Label, PackagePath, TargetName,
+  LabelRefusal, TargetPattern, MissingRepositoryRootPrefix,
+  render_label, label_eq,
+  LabelCanonicality, LabelCanonical, LabelNonCanonical, label_canonicality,
+  LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
+}
+import gunbc.target_binding {
+  TargetBinding,
+  TargetBindingIndex,
+  TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
+  build_target_binding_index,
+  TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
+  BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
+  CompileCleanDiagnosticCensusProducer,
+  EvaluationStoreAddressExactHeadProducer,
+  PrimitiveEgressCensusProducer,
+  PrimitiveEgressCensusV2Producer,
+  RequiredLaneResolutionCensusProducer,
+  CompileCleanDiagnosticCensusStanding, CompileCleanDiagnosticCensusCompleted,
+  CompileCleanDiagnosticCensusRefused, CompileCleanDiagnosticCensusObservation,
+  CompileCleanDiagnosticCensusIdentity,
+  RawDiagnosticClassObservation, DiagnosticCensusClosureUnresolvable,
+  DiagnosticCensusGateDisposition, DiagnosticCensusSeverity,
+  CensusBlocking, CensusAdvisoryTypecheck, CensusRenderedUncounted,
+  CensusSeverityError, CensusSeverityNonError,
+  DiagnosticCensusPolicyUnreadable,
+  HeadsReadingDifferentialStanding,
+  HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
+  HeadsReadingDifferentialRefused,
+  HeadsReadingDifferentialObservation,
+  DifferentialSourceRootAbsent, DifferentialReadingExecutionRefused,
+  BareReferenceChannelOutcomeProducer,
+  SelfHostBehavioralEquivalenceProducer,
+  DependencyDemandCensusProducer,
+  GenericIdentityCensusProducer,
+  InterpolationHoleCensusProducer,
+  RegenRoundCostProducer,
+  BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
+  BareReferenceChannelEntryReading,
+  BareReferenceChannelStanding, BareReferenceChannelRead,
+  BareReferenceChannelSubjectUnreached, BareChannelFixtureRootAbsent,
+  BareChannelEntryAbsent, BareChannelIndexRefused,
+}
+import gunbc.target_invocation {
+  BinaryInput, InputNotNewer, InputNewer, InputMissing, InputOutsideWorktree,
+  BinaryInputObservation, InputsObserved, DepInfoUnreadable,
+  BinaryFreshness, BinaryFresh, BinaryStale, BinaryFreshnessUndecided,
+  assess_binary_freshness,
+  TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
+  TargetInvocationRefusal,
+  OperandNotALabel, InvocationRegistryRefused, InvocationLabelNotCanonical,
+  invocation_refusal_rendered,
+  TargetIsUnknown, TargetHasNoProducer,
+  InvocationTermination,
+  InvocationObservationHeld, InvocationObservationDidNotHold,
+  InvocationSubjectUnreached, InvocationRefused,
+  route_target_invocation, route_target_invocation_in, invocation_exit_status,
+  TestOperandExactTarget, TestOperandSetForm, TestOperandNativeRoute, TestOperandRefused,
+  admit_test_operand, test_operand_refusal_rendered, test_operand_set_form_refusal_rendered,
+  TestOperandClaimRoute, ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved,
+  claim_route_termination,
+}
+// `TargetPattern` IS DELIBERATELY NOT IMPORTED HERE, and the omission is the point. This module
+// already imports `extdeps.bazel.label`'s `TargetPattern`, which is a `LabelRefusal` CONSTRUCTOR
+// (a single target was expected and a pattern was given) and is matched as one below. The pattern
+// TYPE of the same spelling is a materially different meaning, so importing both would put one
+// name on two meanings in one scope and let import ORDER decide which wins -- the meaning fork
+// DESIGN section 3 names, arriving through a binding table rather than through a type. The type is
+// spelled QUALIFIED at its one use site instead.
+import extdeps.bazel.target_pattern {
+  PatternNotAbsolute, PatternAllTargetsUnsupported, PatternLabelRefused,
+  SingleTarget, PackageTargets, SubtreeTargets,
+  render_target_pattern, target_pattern_within,
+}
+import gunbc.instrument_targets {
+  heads_reading_differential_label,
+  heads_reading_differential_target,
+  heads_reading_differential_binding,
+  behavioral_receipt_plan_label, behavioral_receipt_census_label,
+  behavioral_receipt_selftest_label,
+  compile_clean_diagnostic_census_label,
+  evaluation_store_address_exact_head_label,
+  primitive_egress_census_label,
+  primitive_egress_census_v2_label,
+  required_lane_resolution_census_label,
+  self_host_behavioral_equivalence_label,
+  dependency_demand_census_label,
+  generic_identity_census_label,
+  interpolation_hole_census_label,
+  regen_round_cost_label,
+  compile_clean_diagnostic_census_termination,
+  compile_clean_diagnostic_census_standing_rendered,
+  instrument_targets, instrument_bindings,
+  invoke_target,
+  heads_reading_differential_termination,
+  heads_reading_differential_standing_rendered,
+  bare_reference_channel_outcome_label,
+  bare_reference_channel_expectations,
+  bare_reference_channel_holds,
+  bare_reference_channel_termination,
+  bare_channel_reading_rendered,
+  bare_reference_channel_standing_rendered,
+  bare_reference_channel_source_roots,
+}
+import gunbc.build_target {
+  BuildTarget, TestRule,
+  TestStanding, TestMeasuredByHeadsReadingDifferential,
+  StandingVerdict, StandingSatisfied, StandingUnsatisfied,
+  StandingCause, TestProducerOutsideRequiredAggregate,
+  test_standing_verdict,
+  BlazeTestStatusExport, BlazeTestStatusExported, TestStandingNotExportable,
+  blaze_test_status_of_test_standing,
+}
+import gunbc.discovery_census {
+  DiscoveredSite,
+  SiteCensus, CensusAccepted, CensusRefused,
+  discovery_census, census_planned_labels, claim_route_universe, site_label_text,
+  RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
+  required_aggregate_from_census,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, NonEmptyStr }
+import std.integer { Int }
+
+// EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
+// so. Without the declaration the floor's fail-closed default reads the module as live-tree
+// reading and DECLINES it: discovered, counted, never run.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn differential_operand() -> String {
+  "//gunbc/instruments:heads-reading-differential"
+}
+
+fn label_in(labels: List<Label>, wanted: Label) -> Bool {
+  fold(labels, init: false, f: fn(acc, l) { acc || label_eq(a: l, b: wanted) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ACCEPTANCE CASE: AN EXACT LABEL REACHES ITS REAL PRODUCER
+// ---------------------------------------------------------------------------------------------
+
+// THE COMMAND THE SEAM EXISTS FOR, AS THE OPERAND TEXT A SHELL WOULD HAND IT. The route is asked
+// exactly what argv carries -- a string -- and the assertion is that it ends at the producer the
+// live registry binds, not merely that it parses.
+test fn the_acceptance_operand_routes_to_the_real_differential_producer() -> Bool {
+  match invoke_target(operand: differential_operand()) {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: heads_reading_differential_label())
+        && (b.producer == HeadsReadingDifferentialProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn every_behavioral_instrument_operand_routes_to_its_own_producer() -> Bool {
+  let plan = invoke_target(operand: "//gunbc/instruments:behavioral-receipt-plan")
+  let census = invoke_target(operand: "//gunbc/instruments:behavioral-receipt-census")
+  let selftest = invoke_target(operand: "//gunbc/instruments:behavioral-receipt-selftest")
+  match plan {
+    TargetInvocationRouted { binding: p } => match census {
+      TargetInvocationRouted { binding: c } => match selftest {
+        TargetInvocationRouted { binding: s } =>
+          (p.producer == BehavioralReceiptPlanProducer {})
+            && (c.producer == BehavioralReceiptCensusProducer {})
+            && (s.producer == BehavioralReceiptSelftestProducer {})
+        TargetInvocationRouteRefused { cause: _ } => false
+      }
+      TargetInvocationRouteRefused { cause: _ } => false
+    }
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// THE CENSUS ENTRY POINT IS A ROW ON THE SAME GENERIC ROUTE. This is the reachability the
+// burndown sizing cites: the operand a shell would hand the verb must end at the census's own
+// producer, and a registry that lost the row reds here rather than silently halving the roster.
+test fn the_diagnostic_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compile-clean-diagnostic-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compile_clean_diagnostic_census_label())
+        && (b.producer == CompileCleanDiagnosticCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_evaluation_store_address_exact_head_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:evaluation-store-address-exact-head") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: evaluation_store_address_exact_head_label())
+        && (b.producer == EvaluationStoreAddressExactHeadProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The bounded projection is its own target: the full label and the v2 label reach DIFFERENT
+// producers, which is what makes a scope a row rather than a flag.
+test fn the_primitive_egress_census_v2_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:primitive-egress-census-v2") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: primitive_egress_census_v2_label())
+        && (b.producer == PrimitiveEgressCensusV2Producer {})
+        && !(b.producer == PrimitiveEgressCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_primitive_egress_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:primitive-egress-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: primitive_egress_census_label())
+        && (b.producer == PrimitiveEgressCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE ROUTE ITSELF. A label of the same SHAPE that names no registered
+// target must refuse rather than reach a producer -- without this, the assertion above is
+// satisfied by any function that returns the one binding it knows.
+test fn a_well_formed_label_naming_no_registered_target_refuses() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:no-such-instrument") {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        TargetIsUnknown { target: t } =>
+          render_label(l: t) == "//gunbc/instruments:no-such-instrument"
+        OperandNotALabel { operand: _, cause: _ } => false
+        InvocationRegistryRefused { cause: _ } => false
+        InvocationLabelNotCanonical { target: _, cause: _ } => false
+        TargetHasNoProducer { target: _ } => false
+      }
+  }
+}
+
+// THE MATCH IS EXACT AND THERE IS NO NEAR MISS. A prefix of a registered label is a different
+// target, and a seam that ran the registered one because the operand looked close would run
+// something the caller did not name.
+test fn a_prefix_of_a_registered_label_is_not_the_registered_target() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:heads-reading") {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// PATTERNS REFUSE, AND THE CITED GRAMMAR IS WHAT REFUSES THEM
+// ---------------------------------------------------------------------------------------------
+
+// THE THREE PATTERN FORMS THE LABEL AUTHORITY NAMES, EACH ARRIVING AS ITS OWN CAUSE. The
+// assertion is not merely that they refuse: it is that the refusal carries `TargetPattern`, which
+// is what distinguishes "name one target" from every other malformed-operand remedy. A second
+// pattern test written at the CLI layer would satisfy the first half and lose the second.
+fn operand_refuses_as_pattern(operand: String) -> Bool {
+  match invoke_target(operand: operand) {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        OperandNotALabel { operand: _, cause: lc } =>
+          match lc {
+            TargetPattern { pattern: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn target_patterns_refuse_with_the_cited_grammars_own_cause() -> Bool {
+  operand_refuses_as_pattern(operand: "//gunbc/instruments:all")
+    && operand_refuses_as_pattern(operand: "//gunbc/instruments:*")
+    && operand_refuses_as_pattern(operand: "//gunbc/...")
+}
+
+// A RELATIVE OPERAND IS A DIFFERENT REFUSAL WITH A DIFFERENT REMEDY, and asserting that keeps the
+// pattern witness above from being satisfied by a route that refuses everything malformed alike.
+test fn a_relative_operand_refuses_as_not_absolute_and_not_as_a_pattern() -> Bool {
+  match invoke_target(operand: ":heads-reading-differential") {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        OperandNotALabel { operand: _, cause: lc } =>
+          match lc {
+            MissingRepositoryRootPrefix { text: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PRODUCER'S NATIVE STANDING, NOT THE AGGREGATE'S VERDICT
+// ---------------------------------------------------------------------------------------------
+
+fn held_observation() -> HeadsReadingDifferentialObservation {
+  HeadsReadingDifferentialObservation {
+    modules_compared: 3
+    divergent: []
+    narrowed: ["dag/one.dag"]
+    regressed: []
+    both_refused: []
+  }
+}
+
+fn divergent_observation() -> HeadsReadingDifferentialObservation {
+  HeadsReadingDifferentialObservation {
+    modules_compared: 3
+    divergent: ["dag/two.dag"]
+    narrowed: []
+    regressed: []
+    both_refused: []
+  }
+}
+
+// A NARROWING IS NOT A DEFECT AND A DIVERGENCE IS, which is the producer's own criterion and the
+// reason this classification lives beside the producer rather than in a consumer. Both arms are
+// asserted together: an implementation that answered `Held` unconditionally passes the first, and
+// one that counted `narrowed` as a defect passes the second.
+test fn narrowing_holds_while_divergence_does_not() -> Bool {
+  (heads_reading_differential_termination(
+     s: HeadsReadingDifferentialCompleted { observation: held_observation() }
+   ) == InvocationObservationHeld {})
+  && (heads_reading_differential_termination(
+        s: HeadsReadingDifferentialCompleted { observation: divergent_observation() }
+      ) == InvocationObservationDidNotHold {})
+}
+
+// AN UNREACHED SUBJECT IS NOT A FAILED READING, AND THE STATUSES SEPARATE THEM. Collapsing the two
+// would announce a defect where no reading was taken -- and a caller reading only the status could
+// not tell an instrument that found divergence from one that never ran.
+test fn an_unreached_subject_is_not_reported_as_a_failed_reading() -> Bool {
+  let unreached = heads_reading_differential_termination(
+    s: HeadsReadingDifferentialSubjectUnreached {
+      source_roots: ["dag"],
+      cause: DifferentialSourceRootAbsent {}
+    }
+  )
+  let diverged = heads_reading_differential_termination(
+    s: HeadsReadingDifferentialCompleted { observation: divergent_observation() }
+  )
+  (unreached == InvocationSubjectUnreached {})
+    && (invocation_exit_status(t: unreached) == 2)
+    && (invocation_exit_status(t: diverged) == 1)
+    && (invocation_exit_status(t: InvocationObservationHeld {}) == 0)
+}
+
+// THE OUTPUT-POLICY TRAP, ASSERTED FROM BOTH SIDES.
+//
+// This is the whole reason a direct invocation has its own rendering. The SAME completed, HELD
+// observation that this seam reports as an ordinary reading is what `//:required` aggregate policy
+// refuses as out-of-aggregate, and what the Blaze export refuses as unexportable. Both of those
+// are correct at their own seams; either one consulted here would report a healthy instrument as
+// a problem. The witness pins all three answers together, so a later change that routed the direct
+// result through either policy reds here rather than in production.
+test fn the_direct_standing_is_not_the_aggregate_verdict_nor_the_blaze_export() -> Bool {
+  let standing = HeadsReadingDifferentialCompleted { observation: held_observation() }
+  let direct_holds = heads_reading_differential_termination(s: standing) == InvocationObservationHeld {}
+  let aggregate_refuses = match test_standing_verdict(
+    t: TestMeasuredByHeadsReadingDifferential { standing: standing }
+  ) {
+    StandingSatisfied => false
+    StandingUnsatisfied { cause: c } =>
+      match c {
+        TestProducerOutsideRequiredAggregate { producer: p } =>
+          p == HeadsReadingDifferentialProducer {}
+        _ => false
+      }
+  }
+  let export_refuses = match blaze_test_status_of_test_standing(
+    t: TestMeasuredByHeadsReadingDifferential { standing: standing }
+  ) {
+    BlazeTestStatusExported { status: _ } => false
+    TestStandingNotExportable { producer: p } => p == HeadsReadingDifferentialProducer {}
+  }
+  direct_holds && aggregate_refuses && export_refuses
+}
+
+// THE RENDERING SPEAKS THE PRODUCER'S VOCABULARY AND BORROWS NONE OF THE AGGREGATE'S.
+test fn the_rendering_reports_the_populations_the_differential_measured() -> Bool {
+  heads_reading_differential_standing_rendered(
+    s: HeadsReadingDifferentialCompleted { observation: divergent_observation() }
+  ) == "heads-reading-differential: compared=3 divergent=1 narrowed=0 regressed=0 both_refused=0"
+}
+
+// THE CENSUS WALL IS CLASS-SPECIFIC AND DISPOSITION-INDEPENDENT -- the two properties the raw
+// census exists to carry, each with its own discriminating arm. HELD: UnlistedImportUse emits
+// nothing while another advisory class still carries rows -- the all-classes-empty completion
+// target is the program's final state, not this instrument's admission question, and an
+// implementation that answered DidNotHold over ANY nonempty class row fails this arm. DID NOT
+// HOLD, THREE TIMES: a raw UnlistedImportUse row flips the wall whether its gate is
+// advisory-typecheck TODAY, blocking AFTER promotion, or rendered-uncounted -- an implementation
+// that filtered the population by disposition before counting passes the first arm and silently
+// passes the other two, which is exactly the false-zero state the raw rework exists to delete. A
+// refusal is neither: it never reached a counted population, and it must not inherit a verdict.
+fn census_fixture_identity() -> CompileCleanDiagnosticCensusIdentity {
+  CompileCleanDiagnosticCensusIdentity {
+    source_vector_digest: "sv" as NonEmptyStr,
+    compiler_executable_digest: "ce" as NonEmptyStr,
+    resolver_policy_digest: "rp" as NonEmptyStr,
+    diagnostic_class_schema_digest: "cs" as NonEmptyStr,
+    closure_digest: "cl" as NonEmptyStr
+  }
+}
+
+fn census_class_row(
+  class_name: NonEmptyStr,
+  gate: DiagnosticCensusGateDisposition,
+  severity: DiagnosticCensusSeverity,
+  diagnostics: Int
+) -> RawDiagnosticClassObservation {
+  RawDiagnosticClassObservation {
+    diagnostic_class: class_name,
+    gate: gate,
+    severity: severity,
+    diagnostics: diagnostics,
+    distinct_modules: 1,
+    distinct_positions: diagnostics
+  }
+}
+
+fn census_observation(classes: List<RawDiagnosticClassObservation>) -> CompileCleanDiagnosticCensusObservation {
+  CompileCleanDiagnosticCensusObservation {
+    identity: census_fixture_identity(),
+    closure_modules: 3,
+    raw_diagnostics: classes |> fold(init: 0, f: fn(acc, r) { acc + r.diagnostics }),
+    classes: classes
+  }
+}
+
+test fn the_diagnostic_census_wall_is_class_specific_and_severity_independent() -> Bool {
+  let held = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "WhereRefinementUnenforced" as NonEmptyStr, gate: CensusAdvisoryTypecheck {}, severity: CensusSeverityNonError {}, diagnostics: 2)
+      ])
+    }
+  )
+  let carrying_advisory = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, gate: CensusAdvisoryTypecheck {}, severity: CensusSeverityNonError {}, diagnostics: 2)
+      ])
+    }
+  )
+  let carrying_blocking = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, gate: CensusBlocking {}, severity: CensusSeverityNonError {}, diagnostics: 2)
+      ])
+    }
+  )
+  let carrying_rendered_uncounted = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, gate: CensusRenderedUncounted { reason: "fixture" as NonEmptyStr }, severity: CensusSeverityError {}, diagnostics: 2)
+      ])
+    }
+  )
+  let refused = compile_clean_diagnostic_census_termination(
+    s: CompileCleanDiagnosticCensusRefused { cause: DiagnosticCensusClosureUnresolvable {} }
+  )
+  (held == InvocationObservationHeld {})
+    && (carrying_advisory == InvocationObservationDidNotHold {})
+    && (carrying_blocking == InvocationObservationDidNotHold {})
+    && (carrying_rendered_uncounted == InvocationObservationDidNotHold {})
+    && (refused == InvocationRefused {})
+    && (invocation_exit_status(t: carrying_advisory) == 1)
+    && (invocation_exit_status(t: refused) == 2)
+}
+
+// THE CENSUS RENDERING CARRIES THE DENOMINATOR, THE RAW TOTAL, THE WALLED CLASS'S OWN COUNT, THE
+// FIVE IDENTITY DIGESTS, AND PER CLASS THE GATE AND SEVERITY ATTRIBUTES BESIDE THE THREE
+// BURNDOWN COUNTS -- the walled count printed so the verdict and the printout cannot diverge,
+// and the disposition printed as an attribute of the row rather than a filter on whether the row
+// exists. The gate renders all three of the authority's states; the advisory arm spells itself
+// advisory-typecheck so it can never be read as covering a rendered-uncounted row.
+test fn the_diagnostic_census_rendering_reports_the_raw_counts_and_identity() -> Bool {
+  compile_clean_diagnostic_census_standing_rendered(
+    s: CompileCleanDiagnosticCensusCompleted {
+      observation: census_observation(classes: [
+        census_class_row(class_name: "UnlistedImportUse" as NonEmptyStr, gate: CensusAdvisoryTypecheck {}, severity: CensusSeverityNonError {}, diagnostics: 2)
+      ])
+    }
+  ) == "compile-clean-diagnostic-census: closure_modules=3 raw_diagnostics=2 classes=1 unlisted_import_use_raw=2\nidentity source_vector=sv compiler=ce resolver_policy=rp diagnostic_class_schema=cs closure=cl\nUnlistedImportUse gate=advisory-typecheck severity=non-error diagnostics=2 distinct_modules=1 distinct_positions=2"
+}
+
+// THE POLICY-UNREADABLE REFUSAL RENDERS AS ITSELF, because it is the arm the false-zero finding
+// is closed by: a census that cannot read the disposition policy must say so in its own
+// vocabulary, never report a population it could not attribute.
+test fn the_diagnostic_census_refusal_renders_its_own_cause() -> Bool {
+  compile_clean_diagnostic_census_standing_rendered(
+    s: CompileCleanDiagnosticCensusRefused { cause: DiagnosticCensusPolicyUnreadable {} }
+  ) == "compile-clean-diagnostic-census: refused: disposition policy or ceiling roster unreadable"
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROWS ARE REAL, AND THE LABEL IS ABSENT FROM //:required
+// ---------------------------------------------------------------------------------------------
+
+test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
+  let t = heads_reading_differential_target()
+  let b = heads_reading_differential_binding()
+  label_eq(a: t.label, b: b.target)
+    && (match label_canonicality(label: t.label) {
+         LabelCanonical => true
+         LabelNonCanonical { cause: _ } => false
+       })
+    && (render_label(l: t.label) == differential_operand())
+    && registry_and_bindings_are_one_population()
+}
+
+// THE REGISTRY AND ITS BINDINGS ARE ONE POPULATION, JOINED AT IDENTITY GRAIN. Completeness is an
+// identity join and never a count (DESIGN section 5): a literal count of the live registry is a
+// measurement copied from the tree it measures, and it went false the first time a row was added.
+// Both directions are asserted, so a target with no binding AND a binding for no registered
+// target each fail -- a count equality passes a registry that swapped one row for another.
+fn registry_and_bindings_are_one_population() -> Bool {
+  let bound = instrument_bindings() |> map(b => b.target)
+  fold(instrument_targets(), init: true, f: fn(acc, t) { acc && label_in(labels: bound, wanted: t) })
+    && fold(bound, init: true, f: fn(acc, l) { acc && label_in(labels: instrument_targets(), wanted: l) })
+}
+
+// THE ABSENCE PROOF, MEASURED OVER THE DERIVED POPULATION RATHER THAN ASSERTED IN PROSE.
+//
+// `//:required`'s dependencies are DERIVED by `gunbc.discovery_census` from the floor's discovered
+// witness sites. The fixture authors two sites -- one the floor plans, one it declines -- and the
+// assertion is a membership test at identity grain against the aggregate that derivation produces.
+//
+// THE DISCRIMINATING CONTROL IS THE SECOND CONJUNCT AND IT IS WHAT MAKES THIS A CHECK. The planned
+// site's OWN label must be present in the same population; without it, an aggregate that lost
+// every row -- or a membership predicate stuck at false -- would satisfy the absence claim
+// perfectly. Absence is only evidence when presence is demonstrated by the same instrument.
+//
+// THE PLANNED SITE'S MODULE PATH MUST SIT INSIDE THE STATIC GATE. Since the 2026-08-29 bankruptcy
+// ruling, `v2.workflow.required_floor` `required_gate_prefixes` is a static roster and a site
+// outside it dispositions `DeclinedOutsideRequiredGate`, so the presence conjunct below goes
+// silently red while the fixture itself sits off-gate. This fixture has been bitten twice: the
+// original `test.claim.some_witness` path, and then `v2.test.some_witness`, whose `v2.test.` prefix
+// the revert of gunbc#12582 (gunbc#12852) removed from the roster. The path now rides the
+// `test.claim.infer_` family row, which has been in the roster throughout; a future roster change
+// that drops it reds the planned-site conjunct, which is the control working.
+fn census_fixture_sites() -> List<DiscoveredSite> {
+  [
+    DiscoveredSite {
+      module_path: "test.claim.infer_some_witness",
+      function: "a_planned_site",
+      reads_live_tree: SubstrateInputsOnly {}
+    },
+    DiscoveredSite {
+      module_path: "gunbc.instruments",
+      function: "heads_reading_differential",
+      reads_live_tree: SubstrateInputsOnly {}
+    }
+  ]
+}
+
+fn planned_site_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["test", "claim", "infer_some_witness"] }
+    target: TargetName { name: "a_planned_site" }
+  }
+}
+
+test fn the_instrument_label_is_absent_from_the_derived_required_aggregate() -> Bool {
+  match required_aggregate_from_census(census: discovery_census(sites: census_fixture_sites())) {
+    RequiredAggregateUnderivable { cause: _ } => false
+    RequiredAggregateDerived { aggregate: a } =>
+      !label_in(labels: a.dependencies, wanted: heads_reading_differential_label())
+        && label_in(labels: a.dependencies, wanted: planned_site_label())
+  }
+}
+
+// THE TWO NAMING AXES CANNOT COLLIDE, AND THE FIXTURE ABOVE IS BUILT TO TRY.
+//
+// Its second site is the closest a discovered site can come to the instrument: the same package
+// path, and the function name that would be the instrument's if a `.dag` function could carry
+// hyphens. It cannot, so the derived label is `:heads_reading_differential` with underscores and
+// the instrument's is `:heads-reading-differential` with hyphens. This asserts the near miss
+// stays a miss -- which is why the absence above is a property of the naming axes rather than of
+// which sites this fixture happened to author.
+test fn the_nearest_discoverable_site_label_is_still_not_the_instrument_label() -> Bool {
+  match discovery_census(sites: census_fixture_sites()) {
+    CensusRefused { cause: _ } => false
+    CensusAccepted { rows: rows } =>
+      !label_in(labels: census_planned_labels(rows: rows), wanted: heads_reading_differential_label())
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROUTE IS GENERIC: THE SAME FOLD ANSWERS FOR A POPULATION IT HAS NEVER SEEN
+// ---------------------------------------------------------------------------------------------
+
+// A TARGET REGISTERED WITH NO BINDING IS A REGISTRY GAP, NOT AN UNKNOWN TARGET, and the two are
+// separated because their remedies are: one is a label to fix, the other is a producer to bind.
+// This state is reachable only through the parameterized route -- the live population binds every
+// target it registers -- which is exactly why the route takes its population as an argument.
+fn unbound_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["gunbc", "instruments"] }
+    target: TargetName { name: "unbound-instrument" }
+  }
+}
+
+test fn a_registered_target_with_no_producer_refuses_as_a_registry_gap() -> Bool {
+  match route_target_invocation(
+    operand: "//gunbc/instruments:unbound-instrument",
+    targets: [unbound_label()],
+    bindings: []
+  ) {
+    TargetInvocationRouted { binding: _ } => false
+    TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        TargetHasNoProducer { target: t } => label_eq(a: t, b: unbound_label())
+        _ => false
+      }
+  }
+}
+
+// THE FOLD KNOWS NO INSTRUMENT'S NAME. A population this module invents, bound to a producer the
+// differential does not use, routes through the same function with no edit anywhere -- which is
+// the property that makes the remaining three instruments rows rather than dispatch work.
+test fn an_invented_population_routes_through_the_same_fold() -> Bool {
+  match route_target_invocation(
+    operand: "//gunbc/instruments:unbound-instrument",
+    targets: [unbound_label()],
+    bindings: [TargetBinding {
+      target: unbound_label()
+      producer: BehavioralReceiptPlanProducer {}
+    }]
+  ) {
+    TargetInvocationRouteRefused { cause: _ } => false
+    TargetInvocationRouted { binding: b } => b.producer == BehavioralReceiptPlanProducer {}
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE CANONICALITY CAUSE SURVIVES THIS LAYER
+// ---------------------------------------------------------------------------------------------
+
+// A NON-CANONICAL LABEL BUILT THE ONE WAY A HAND-AUTHORED VALUE ACTUALLY GOES WRONG: a package
+// authored as ONE segment containing a `/`, where `parse_label` builds TWO. It renders to the same
+// text as the canonical form, so `render_label` round-trips through the rendering while the
+// STRUCTURE differs -- which is exactly what `label_structural_eq` catches and `package_eq` does
+// not.
+// THE INDEX IS BUILT THROUGH ITS SOLE CONSTRUCTOR, which is the only way it CAN be built: gunbc#9323
+// sealed `TargetBindingIndex`, so a witness cannot forge one with hand-written maps to reach the
+// lookup directly. The refused arm answers `false` rather than being ignored -- a witness whose
+// setup silently failed would assert nothing while passing.
+fn differential_index_build() -> TargetBindingIndexBuild {
+  build_target_binding_index(targets: instrument_targets(), bindings: instrument_bindings())
+}
+
+fn structurally_non_canonical_label() -> Label {
+  Label {
+    package: PackagePath { segments: ["gunbc/instruments"] }
+    target: TargetName { name: "heads-reading-differential" }
+  }
+}
+
+// THE CAUSE REACHES THE ROUTE'S REFUSAL RATHER THAN DYING AT THE REGISTRY BOUNDARY.
+//
+// gunbc#9323 made `TargetLookupLabelNotCanonical` carry a `LabelCanonicalityCause`. This asserts
+// the seam one layer up does not re-collapse it: the route's own refusal must name the STRUCTURE
+// MISMATCH arm specifically, not merely report that something was non-canonical. Written because
+// the collapse was live in this module until that fix arrived, and nothing downstream would have
+// noticed -- the value was typed, and simply never carried.
+test fn the_canonicality_cause_survives_into_the_routes_refusal() -> Bool {
+  match differential_index_build() {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: idx } =>
+    match route_target_invocation_in(
+      index: idx,
+      target: structurally_non_canonical_label()
+    ) {
+      TargetInvocationRouted { binding: _ } => false
+      TargetInvocationRouteRefused { cause: c } =>
+      match c {
+        InvocationLabelNotCanonical { target: _, cause: lc } =>
+          match lc {
+            RenderedLabelStructureMismatch { reparsed: r } =>
+              label_eq(a: r, b: heads_reading_differential_label())
+            RenderedLabelRefused { cause: _ } => false
+          }
+        _ => false
+      }
+    }
+  }
+}
+
+// AND IT REACHES THE TEXT A HUMAN READS. A typed cause nothing renders is a cause that exists for
+// programs and not for the person running the verb, which is the half of this repair that would
+// have been easiest to leave undone.
+test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
+  match differential_index_build() {
+    TargetBindingIndexRefused { cause: _ } => false
+    TargetBindingIndexReady { index: idx } =>
+      match route_target_invocation_in(
+        index: idx,
+        target: structurally_non_canonical_label()
+      ) {
+        TargetInvocationRouted { binding: _ } => false
+        TargetInvocationRouteRefused { cause: c } =>
+          string_contains(s: invocation_refusal_rendered(cause: c), pattern: "different structure")
+      }
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE VERB'S OPERAND ADMISSION: ONE EXACT LABEL, TWO SET FORMS, AND THE REFUSED SHAPES
+// ---------------------------------------------------------------------------------------------
+
+// THE NATIVE ROUTE'S UNIVERSE, SUPPLIED AT THIS BOUNDARY RATHER THAN DERIVED. `admit_test_operand`
+// takes it as a parameter precisely so a claim can author one, and the production caller supplies
+// `gunbc.witness_v2_native_route` `native_route_default_pattern`. Spelling it here means the arms
+// below discriminate the CONTAINMENT decision rather than one compiled-in constant.
+fn native_universe() -> extdeps.bazel.target_pattern.TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
+}
+
+// ADMISSION IS THE PATTERN AUTHORITY'S ANSWER, NOT A STRING TEST AT THE VERB. Each row below
+// plants an operand text and asserts the ADMISSION COPRODUCT's arm, so a route that string-matched
+// suffixes of its own — or admitted everything and let the failure surface later — reds here.
+
+// AN EXACT LABEL IS STILL THE EXACT ROUTE. The admission hands the single-target form to the label
+// the grammar spelled, and the composed assertion — admit, then route through the live registry —
+// proves the set-form admission changed nothing for the operand the verb was born serving. Without
+// the second half, an admission that answered ExactTarget for every text would pass.
+test fn an_exact_label_is_admitted_as_the_single_target_and_still_routes() -> Bool {
+  match admit_test_operand(operand: differential_operand(), native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandExactTarget { label: l } =>
+      label_eq(a: l, b: heads_reading_differential_label())
+        && (match invoke_target(operand: differential_operand()) {
+          TargetInvocationRouted { binding: b } =>
+            b.producer == HeadsReadingDifferentialProducer {}
+          TargetInvocationRouteRefused { cause: _ } => false
+        })
+    TestOperandSetForm { pattern: _ } => false
+    TestOperandNativeRoute { pattern: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// A SUBTREE PATTERN IS ADMITTED AS A SET FORM, RENDERED BACK AS ITSELF. Asserting the render —
+// not merely the arm — is what discriminates against an admission that parsed `//pkg/...` as a
+// package-wide pattern: the two arms render differently.
+test fn a_subtree_pattern_is_admitted_as_a_set_form() -> Bool {
+  match admit_test_operand(operand: "//dag/test/claim/compute/...", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandSetForm { pattern: p } =>
+      render_target_pattern(pattern: p) == "//dag/test/claim/compute/..."
+    TestOperandExactTarget { label: _ } => false
+    TestOperandNativeRoute { pattern: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// A PACKAGE-WIDE PATTERN IS THE SAME ROUTE, AND `:*` RENDERS CANONICALLY AS `:all` — the cited
+// authority treats them alike, so the admission must not invent a third arm for the second
+// spelling.
+test fn package_patterns_are_admitted_as_set_forms() -> Bool {
+  match admit_test_operand(operand: "//dag/test/claim/compute:all", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandSetForm { pattern: p } =>
+      render_target_pattern(pattern: p) == "//dag/test/claim/compute:all"
+    TestOperandExactTarget { label: _ } => false
+    TestOperandNativeRoute { pattern: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  } && match admit_test_operand(operand: "//dag/test/claim/compute:*", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandSetForm { pattern: p } =>
+      render_target_pattern(pattern: p) == "//dag/test/claim/compute:all"
+    TestOperandExactTarget { label: _ } => false
+    TestOperandNativeRoute { pattern: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// THE REFUSED SHAPES ARRIVE AS THE AUTHORITY'S OWN TYPED CAUSES. A relative text and the
+// `:all-targets` form have different remedies, so they are different arms; and a single target
+// the label grammar refuses carries that refusal INSIDE `PatternLabelRefused`, which is what
+// keeps "the pattern layer refuses" and "the label layer refuses" from collapsing into one bit.
+test fn refused_operand_forms_carry_the_pattern_authoritys_typed_causes() -> Bool {
+  (match admit_test_operand(operand: "dag/test/claim/compute/...", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandRefused { operand: _, cause: c } =>
+      match c { PatternNotAbsolute { text: t } => t == "dag/test/claim/compute/..."  _ => false }
+    _ => false
+  }) && (match admit_test_operand(operand: "//dag/test/claim:all-targets", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandRefused { operand: _, cause: c } =>
+      match c { PatternAllTargetsUnsupported { text: t } => t == "//dag/test/claim:all-targets"  _ => false }
+    _ => false
+  }) && (match admit_test_operand(operand: "//dag/test/claim:bad/name", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandRefused { operand: _, cause: c } =>
+      match c { PatternLabelRefused { cause: _ } => true  _ => false }
+    _ => false
+  })
+}
+
+// AND THE REFUSAL RENDERS FOR A HUMAN. A typed cause nothing renders is a cause that exists for
+// programs only; the text names the operand and the authority's own refusal text.
+test fn a_refused_operand_renders_the_operand_and_the_authoritys_cause() -> Bool {
+  match admit_test_operand(operand: "dag/test/claim/compute/...", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandRefused { operand: o, cause: c } =>
+      string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "dag/test/claim/compute/...")
+        && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "not absolute")
+    _ => false
+  }
+}
+
+// A SET FORM OUTSIDE EVERY UNIVERSE IS ADMITTED AND THEN REFUSED BY THE ROUTE, NEVER WIDENED. The
+// rendering names the operand, says the form is a SET, names BOTH routes whose universes it lies
+// outside, and says it is not widened into another route -- a text that dropped the claim route
+// would send a reader looking for an executor that does exist, under the spelling it answers to.
+test fn a_set_form_refusal_names_both_routes_and_refuses_widening() -> Bool {
+  let text = test_operand_set_form_refusal_rendered(operand: "//dag/test/claim/compute/...")
+  string_contains(s: text, pattern: "//dag/test/claim/compute/...")
+    && string_contains(s: text, pattern: "SET")
+    && string_contains(s: text, pattern: "native test route")
+    && string_contains(s: text, pattern: "claim route")
+    && string_contains(s: text, pattern: "never widened into another route")
+}
+
+// THE CLAIM ROUTE'S UNIVERSE, SUPPLIED HERE for the same reason `native_universe` is: the arms
+// below discriminate the containment decision, not one compiled-in constant. The production value
+// is `gunbc.discovery_census` `claim_route_universe`, and
+// `the_production_claim_universe_is_the_site_label_subtree` pins that it is the subtree the
+// census's own labels occupy.
+fn claim_universe() -> extdeps.bazel.target_pattern.TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["test" as NonEmptyStr, "claim" as NonEmptyStr] } }
+}
+
+fn admits_to_claim_route_as(operand: String, rendered: String) -> Bool {
+  match admit_test_operand(operand: operand, native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandClaimRoute { pattern: p } => render_target_pattern(pattern: p) == rendered
+    TestOperandNativeRoute { pattern: _ } => false
+    TestOperandExactTarget { label: _ } => false
+    TestOperandSetForm { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  }
+}
+
+// AN EXACT CLAIM LABEL IS THE CLAIM ROUTE'S OPERAND, NOT A REGISTRY LOOKUP. Before the claim route
+// existed this operand reached the instrument registry and came back `no such target`. The render
+// assertion discriminates against an admission that admitted the arm but rewrote the pattern.
+test fn an_exact_claim_label_admits_to_the_claim_route() -> Bool {
+  admits_to_claim_route_as(
+    operand: "//test/claim/target_invocation_witness:the_universe_contains_itself_and_not_its_siblings",
+    rendered: "//test/claim/target_invocation_witness:the_universe_contains_itself_and_not_its_siblings"
+  )
+}
+
+// A MODULE'S `:all` AND `:*` AND A `/...` SUBTREE ARE CLAIM-ROUTE SET FORMS -- the population the
+// set-form refusal used to say no executor enumerates. `:*` renders canonically as `:all`.
+test fn claim_set_forms_admit_to_the_claim_route() -> Bool {
+  admits_to_claim_route_as(
+    operand: "//test/claim/target_invocation_witness:all",
+    rendered: "//test/claim/target_invocation_witness:all"
+  )
+    && admits_to_claim_route_as(
+         operand: "//test/claim/target_invocation_witness:*",
+         rendered: "//test/claim/target_invocation_witness:all"
+       )
+    && admits_to_claim_route_as(operand: "//test/claim/...", rendered: "//test/claim/...")
+    && admits_to_claim_route_as(operand: "//test/claim/long/...", rendered: "//test/claim/long/...")
+}
+
+// OUTSIDE EVERY UNIVERSE STILL REFUSES, AND THE NATIVE UNIVERSE STILL WINS. `//test/...` CONTAINS
+// the claim universe rather than lying inside it, so it is a set form with no executor; an
+// instrument label is still the exact route; and a native operand never reaches the claim route.
+// Without these an admission that routed EVERYTHING to the claim executor would pass the arms above.
+test fn operands_outside_the_claim_universe_do_not_admit_to_it() -> Bool {
+  (match admit_test_operand(operand: "//test/...", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandSetForm { pattern: _ } => true
+    _ => false
+  }) && (match admit_test_operand(operand: "//dag/test/claim/compute:all", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandSetForm { pattern: _ } => true
+    _ => false
+  }) && (match admit_test_operand(operand: differential_operand(), native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandExactTarget { label: _ } => true
+    _ => false
+  }) && (match admit_test_operand(operand: "//v2/test/parse:all", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandNativeRoute { pattern: _ } => true
+    _ => false
+  })
+}
+
+// THE PRODUCTION UNIVERSE IS THE SUBTREE THE CENSUS'S OWN LABELS OCCUPY. A claim site labelled by
+// `site_label_text` must lie inside `claim_route_universe`, or the route would refuse the very
+// labels the census mints; and the universe must not reach the native one.
+test fn the_production_claim_universe_is_the_site_label_subtree() -> Bool {
+  let site = DiscoveredSite {
+    module_path: "test.claim.target_invocation_witness",
+    function: "w",
+    reads_live_tree: SubstrateInputsOnly
+  }
+  render_target_pattern(pattern: claim_route_universe()) == "//test/claim/..."
+    && admits_to_claim_route_as(operand: site_label_text(site: site), rendered: "//test/claim/target_invocation_witness:w")
+    && !target_pattern_within(inner: claim_route_universe(), outer: native_universe())
+}
+
+// THE CLAIM ROUTE'S TERMINATION AND ITS EXIT STATUS. Each arm is pinned through
+// `invocation_exit_status`, so a fold that answered held for an empty selection, or let an
+// unobserved member mask a definite failure, or reported an unobserved one as a failure, reds here.
+test fn the_claim_route_termination_maps_to_the_three_exit_statuses() -> Bool {
+  invocation_exit_status(t: claim_route_termination(verdicts: [ClaimHeld {}, ClaimHeld {}])) == 0
+    && invocation_exit_status(t: claim_route_termination(verdicts: [ClaimHeld {}, ClaimDidNotHold {}])) == 1
+    && invocation_exit_status(t: claim_route_termination(verdicts: [ClaimUnobserved {}, ClaimDidNotHold {}])) == 1
+    && invocation_exit_status(t: claim_route_termination(verdicts: [ClaimHeld {}, ClaimUnobserved {}])) == 2
+    && invocation_exit_status(t: claim_route_termination(verdicts: [])) == 2
+}
+
+// THE CONTAINMENT DECIDES THE EXECUTOR, AND BOTH DIRECTIONS ARE PINNED.
+//
+// A set form INSIDE the native universe is no longer a refusal: it is the native route's operand,
+// carried through unchanged so the run adjudicates exactly what was asked for. A set form OUTSIDE
+// it still has no executor. One claim asserting only the first would pass for an admission that
+// routed EVERYTHING native; one asserting only the second would pass for the pre-change behaviour.
+test fn a_pattern_inside_the_native_universe_routes_to_the_native_route() -> Bool {
+  (match admit_test_operand(operand: "//v2/test/parse:all", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandNativeRoute { pattern: p } =>
+      render_target_pattern(pattern: p) == "//v2/test/parse:all"
+    TestOperandSetForm { pattern: _ } => false
+    TestOperandExactTarget { label: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+  }) && (match admit_test_operand(operand: "//dag/test/claim/compute:all", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandSetForm { pattern: _ } => true
+    TestOperandNativeRoute { pattern: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+    TestOperandExactTarget { label: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+  })
+}
+
+// A SINGLE TARGET INSIDE THE UNIVERSE GOES NATIVE TOO, AND THAT IS THE ARM THE REGISTRY USED TO
+// SWALLOW. `//v2/test/parse:expression_bodied_fn_decl_parse` is a declaration identity the native
+// route can select; before the containment decided the executor it reached the instrument registry
+// and came back `no such target`, which sent a reader to fix a label that was already correct.
+test fn a_single_target_inside_the_native_universe_routes_to_the_native_route() -> Bool {
+  match admit_test_operand(
+    operand: "//v2/test/parse:expression_bodied_fn_decl_parse",
+    native_universe: native_universe(),
+    claim_universe: claim_universe()
+  ) {
+    TestOperandNativeRoute { pattern: p } =>
+      render_target_pattern(pattern: p) == "//v2/test/parse:expression_bodied_fn_decl_parse"
+    TestOperandExactTarget { label: _ } => false
+    TestOperandSetForm { pattern: _ } => false
+    TestOperandRefused { operand: _, cause: _ } => false
+    TestOperandClaimRoute { pattern: _ } => false
+  }
+}
+
+// THE WHOLE UNIVERSE IS INSIDE ITSELF, AND A SIBLING SUBTREE IS NOT. Containment is a relation, so
+// the reflexive case and a near-miss that shares no segment prefix both have to answer, or a
+// `package_within` that compared lengths only would pass the arms above.
+test fn the_universe_contains_itself_and_not_its_siblings() -> Bool {
+  target_pattern_within(inner: native_universe(), outer: native_universe())
+    && target_pattern_within(
+         inner: SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr, "parse" as NonEmptyStr] } },
+         outer: native_universe()
+       )
+    && !target_pattern_within(
+         inner: SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "compiler" as NonEmptyStr] } },
+         outer: native_universe()
+       )
+    && !target_pattern_within(
+         inner: native_universe(),
+         outer: SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr, "parse" as NonEmptyStr] } }
+       )
+}
+
+// A SUBTREE IS NOT CONTAINED IN A PACKAGE, AND THE REFUSAL IS THE HONEST DIRECTION. `//a:all` names
+// one package; `//a/...` reaches sub-packages it does not, and whether any exists is a fact about a
+// corpus this authority does not read. Answering `false` costs a caller a refusal; answering `true`
+// would widen a route past what was asked for.
+test fn a_subtree_is_not_contained_in_a_package_pattern() -> Bool {
+  let package_a = PackageTargets { package: PackagePath { segments: ["a" as NonEmptyStr] } }
+  !target_pattern_within(
+     inner: SubtreeTargets { package: PackagePath { segments: ["a" as NonEmptyStr] } },
+     outer: package_a
+   )
+    && target_pattern_within(inner: package_a, outer: package_a)
+    && target_pattern_within(
+         inner: SingleTarget { label: Label { package: PackagePath { segments: ["a" as NonEmptyStr] }, target: TargetName { name: "t" } } },
+         outer: package_a
+       )
+}
+
+// The required-lane resolution census is its own label bound to its own producer, on the same
+// seam as its siblings: a regression in it is reported under a name that says which instrument.
+test fn the_required_lane_resolution_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:required-lane-resolution-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: required_lane_resolution_census_label())
+        && (b.producer == RequiredLaneResolutionCensusProducer {})
+        && !(b.producer == PrimitiveEgressCensusV2Producer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The self-host behavioral-equivalence receipt taker is a label bound to its own producer: a
+// receipt is taken by name, never by a flag on another instrument.
+test fn the_self_host_behavioral_equivalence_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:self-host-behavioral-equivalence") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: self_host_behavioral_equivalence_label())
+        && (b.producer == SelfHostBehavioralEquivalenceProducer {})
+        && !(b.producer == RequiredLaneResolutionCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// D13's dependency-demand census is a label bound to its own producer, never a mode of another
+// instrument.
+test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:dependency-demand-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: dependency_demand_census_label())
+        && (b.producer == DependencyDemandCensusProducer {})
+        && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The generic-identity census is a label bound to its own producer, never a mode of another census.
+test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:generic-identity-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: generic_identity_census_label())
+        && (b.producer == GenericIdentityCensusProducer {})
+        && !(b.producer == DependencyDemandCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The interpolation hole-type census is a label bound to its own producer, never a mode of another census.
+test fn the_interpolation_hole_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:interpolation-hole-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: interpolation_hole_census_label())
+        && (b.producer == InterpolationHoleCensusProducer {})
+        && !(b.producer == GenericIdentityCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The regen round's price is its own label and producer, never a flag on claim_executor.
+test fn the_regen_round_cost_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:regen-round-cost") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: regen_round_cost_label())
+        && (b.producer == RegenRoundCostProducer {})
+        && !(b.producer == GenericIdentityCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OWN CLASSIFIER, EXERCISED ON ITS OWN VOCABULARY
+// ---------------------------------------------------------------------------------------------
+
+// THE READINGS ARE SUPPLIED, NOT COMPUTED, AND THAT IS THE POINT (DESIGN section 3, a witness
+// discriminates at one interface). The subject here is the CLASSIFIER -- given readings, does it
+// decide held versus did-not-hold -- so running the loader to produce them would re-execute a
+// different interface once per claim. The pairing obligation is discharged by the REAL producer:
+// `gunbc test //gunbc/instruments:bare-reference-channel-outcome` runs
+// `v1_compiler.cli_run` `bare_reference_channel_readings` against the fixture root, so the
+// inhabitance of this shape by the live loader is established by execution and not by this file.
+fn brc_reading(
+  module_path: NonEmptyStr,
+  eligibility: BareChannelEligibility,
+  pulled_modules: List<String>
+) -> BareReferenceChannelEntryReading {
+  BareReferenceChannelEntryReading {
+    module_path: module_path
+    eligibility: eligibility
+    pulled_modules: pulled_modules
+  }
+}
+
+// THE READINGS THE UNPERTURBED LOADER PRODUCES, transcribed from the four expectation rows -- the
+// one arrangement that must hold.
+fn brc_agreeing_readings() -> List<BareReferenceChannelEntryReading> {
+  [
+    brc_reading(module_path: "probe.brc.bare_record_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: ["probe.brc.record_home"]),
+    brc_reading(module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: []),
+    brc_reading(module_path: "probe.brc.imported_record_consumer" as NonEmptyStr, eligibility: BareChannelDisabledByImportLine {}, pulled_modules: []),
+    brc_reading(module_path: "probe.brc.transitive_alias_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: ["probe.brc.alias_home", "probe.brc.passenger_home"]),
+  ]
+}
+
+// Replace one entry's reading, keeping the other three -- the shape a single moved gate produces.
+fn brc_readings_with(
+  module_path: NonEmptyStr,
+  eligibility: BareChannelEligibility,
+  pulled_modules: List<String>
+) -> List<BareReferenceChannelEntryReading> {
+  (brc_agreeing_readings() |> filter(r => !(r.module_path == module_path)))
+    .append(brc_reading(module_path: module_path, eligibility: eligibility, pulled_modules: pulled_modules))
+}
+
+// EACH GATE GETS ITS OWN RED, AND THE TWO ARE DIFFERENT FACTS. The first is the perturbation that
+// widens `pullable` (the alias entry acquires a pull); the second is the one that removes gate one
+// (the imported entry's channel starts running). An implementation that compared only the pull
+// sets passes the second arm and fails nothing, which is why eligibility is its own field.
+test fn a_moved_bare_channel_gate_does_not_hold() -> Bool {
+  let agreeing = bare_reference_channel_holds(readings: brc_agreeing_readings())
+  let pullable_widened = bare_reference_channel_holds(
+    readings: brc_readings_with(
+      module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+      eligibility: BareChannelRuns {},
+      pulled_modules: ["probe.brc.alias_home"]
+    )
+  )
+  let gate_one_removed = bare_reference_channel_holds(
+    readings: brc_readings_with(
+      module_path: "probe.brc.imported_record_consumer" as NonEmptyStr,
+      eligibility: BareChannelRuns {},
+      pulled_modules: ["probe.brc.record_home"]
+    )
+  )
+  agreeing && !pullable_widened && !gate_one_removed
+}
+
+// A PULL THAT MOVED TO ANOTHER MODULE IS NOT A SATISFIED ROW, and a missing entry is not a
+// satisfied one either. The first arm is what a count-equality comparison would admit; the second
+// is the silent-decline shape one layer up -- an expectation nothing answered.
+test fn the_bare_channel_join_is_at_identity_grain_and_total() -> Bool {
+  let swapped_pull = bare_reference_channel_holds(
+    readings: brc_readings_with(
+      module_path: "probe.brc.bare_record_consumer" as NonEmptyStr,
+      eligibility: BareChannelRuns {},
+      pulled_modules: ["probe.brc.alias_home"]
+    )
+  )
+  let entry_missing = bare_reference_channel_holds(
+    readings: brc_agreeing_readings() |> filter(r => !(r.module_path == ("probe.brc.bare_alias_consumer" as NonEmptyStr)))
+  )
+  (!swapped_pull) && (!entry_missing)
+    && ((bare_reference_channel_expectations() |> count) == 4)
+}
+
+// AN ABSENT FIXTURE ROOT OBSERVED NOTHING, and the exit statuses keep that separate from a moved
+// gate: 2 is no observation, 1 is an observation that did not hold. Conflating them would announce
+// a moved loader gate on a checkout that never had the fixtures.
+test fn an_absent_bare_channel_fixture_root_is_not_a_moved_gate() -> Bool {
+  let unreached = bare_reference_channel_termination(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelFixtureRootAbsent { root: "fixtures/bare_reference_channel" }
+    }
+  )
+  let moved = bare_reference_channel_termination(
+    s: BareReferenceChannelRead {
+      readings: brc_readings_with(
+        module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+        eligibility: BareChannelRuns {},
+        pulled_modules: ["probe.brc.alias_home"]
+      )
+    }
+  )
+  let held = bare_reference_channel_termination(
+    s: BareReferenceChannelRead { readings: brc_agreeing_readings() }
+  )
+  (unreached == InvocationSubjectUnreached {})
+    && (invocation_exit_status(t: unreached) == 2)
+    && (moved == InvocationObservationDidNotHold {})
+    && (invocation_exit_status(t: moved) == 1)
+    && (held == InvocationObservationHeld {})
+    && (invocation_exit_status(t: held) == 0)
+}
+
+// THE RENDERING CARRIES BOTH GATES' ANSWERS, so a reader of the output can tell a channel that
+// never ran from one whose every arm declined -- the distinction the whole fixture set exists for.
+test fn the_bare_channel_rendering_names_the_channel_and_the_pull_set() -> Bool {
+  (bare_channel_reading_rendered(
+     r: brc_reading(module_path: "probe.brc.imported_record_consumer" as NonEmptyStr, eligibility: BareChannelDisabledByImportLine {}, pulled_modules: [])
+   ) == "bare-reference-channel-outcome: probe.brc.imported_record_consumer channel=DISABLED pulled=[]")
+  && (bare_channel_reading_rendered(
+        r: brc_reading(module_path: "probe.brc.bare_record_consumer" as NonEmptyStr, eligibility: BareChannelRuns {}, pulled_modules: ["probe.brc.record_home"])
+      ) == "bare-reference-channel-outcome: probe.brc.bare_record_consumer channel=RUNS pulled=[probe.brc.record_home]")
+}
+
+// THE ROW IS REAL ON THE SAME SEAM ITS SIBLINGS USE: the label is canonical and the registry the
+// production entry builds admits it, so a binding that never reached `instrument_bindings()` reds
+// here rather than being discovered at the first invocation.
+//
+// THE SUBJECT IS THE FIXTURE ROOT AND NOTHING ELSE, which is what makes this instrument's reading
+// stable: a corpus-wide change cannot move it, so a moved reading means a moved gate. An
+// invocation that reached `dag` would be measuring a different population under this target's
+// name -- hence the last conjunct pins the source roots.
+test fn the_bare_channel_instrument_is_a_real_row_on_the_shared_registry() -> Bool {
+  let label = bare_reference_channel_outcome_label()
+  (match label_canonicality(label: label) {
+     LabelCanonical => true
+     LabelNonCanonical { cause: _ } => false
+   })
+  && (render_label(l: label) == "//gunbc/instruments:bare-reference-channel-outcome")
+  && (match invoke_target(operand: render_label(l: label)) {
+        TargetInvocationRouted { binding: b } =>
+          (b.producer == BareReferenceChannelOutcomeProducer {})
+            && label_eq(a: b.target, b: label)
+        TargetInvocationRouteRefused { cause: _ } => false
+      })
+  && (bare_reference_channel_source_roots() == ["fixtures/bare_reference_channel"])
+}
+
+// AN UNREACHED SUBJECT RENDERS ITS LOCATED CAUSE AND REPORTS NO COUNTS, and both halves are
+// asserted. A renderer that dropped the payload would answer "fixture source root absent" without
+// saying WHICH, which is a located cause rendering as an unlocated sentence; and one that printed
+// `unmet=0` for a run that observed nothing would read as a clean result, which is the conflation
+// the three exit statuses exist to prevent.
+test fn the_bare_channel_standing_rendering_locates_an_unreached_subject() -> Bool {
+  let root_absent = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelFixtureRootAbsent { root: "fixtures/bare_reference_channel" }
+    }
+  )
+  let entry_absent = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelEntryAbsent { module_path: "probe.brc.bare_alias_consumer" }
+    }
+  )
+  let index_refused = bare_reference_channel_standing_rendered(
+    s: BareReferenceChannelSubjectUnreached {
+      cause: BareChannelIndexRefused { detail: "pulled file has no module in the index" }
+    }
+  )
+  (root_absent == "bare-reference-channel-outcome: subject unreached: fixture source root absent: fixtures/bare_reference_channel")
+    && (entry_absent == "bare-reference-channel-outcome: subject unreached: fixture entry absent from the module index: probe.brc.bare_alias_consumer")
+    && (index_refused == "bare-reference-channel-outcome: subject unreached: module index refused: pulled file has no module in the index")
+    && !string_contains(s: root_absent, pattern: "unmet=")
+}
+
+// A READ STANDING REPORTS BOTH POPULATIONS, and the unmet count is DERIVED from the readings by
+// the same fold the verdict uses -- so a rendering that disagreed with the termination would be
+// two authorities for one answer.
+test fn the_bare_channel_standing_rendering_reports_the_read_populations() -> Bool {
+  (bare_reference_channel_standing_rendered(
+     s: BareReferenceChannelRead { readings: brc_agreeing_readings() }
+   ) == "bare-reference-channel-outcome: entries=4 unmet=0")
+  && (bare_reference_channel_standing_rendered(
+        s: BareReferenceChannelRead {
+          readings: brc_readings_with(
+            module_path: "probe.brc.bare_alias_consumer" as NonEmptyStr,
+            eligibility: BareChannelRuns {},
+            pulled_modules: ["probe.brc.alias_home"]
+          )
+        }
+      ) == "bare-reference-channel-outcome: entries=4 unmet=1")
+}
+
+// THE LABEL GRAMMAR'S LOCATED CAUSE REACHES THE PERSON (review 69617). A single target the label
+// grammar refuses renders the pattern layer's sentence AND the label layer's located cause, so a
+// renderer that dropped the inner cause reds here even though the typed arm above still holds.
+test fn a_refused_single_target_renders_the_label_grammars_located_cause() -> Bool {
+  match admit_test_operand(operand: "//dag/test/claim:bad/name", native_universe: native_universe(), claim_universe: claim_universe()) {
+    TestOperandRefused { operand: o, cause: c } =>
+      string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "label grammar refuses")
+        && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "contains `/`")
+        && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "bad/name")
+    _ => false
+  }
+}
+
+// STALE-BINARY CONTROLS. Before `assess_binary_freshness` existed every arm below ran its
+// instrument; the stale and undecided arms are the reds that old behaviour lacked. The fresh arm
+// is the positive control that an unrelated commit no longer refuses: no input moved.
+fn observed(inputs: List<BinaryInput>) -> BinaryInputObservation {
+  InputsObserved { binary: "bin", inputs: inputs }
+}
+
+test fn a_binary_whose_inputs_did_not_move_is_fresh() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputNotNewer { path: "b.dag" }])) {
+    BinaryFresh { binary: _, inputs: n } => n == 2
+    _ => false
+  }
+}
+
+test fn the_first_changed_input_is_named_as_stale() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputNewer { path: "b.rs" }, InputMissing { path: "c.rs" }])) {
+    BinaryStale { binary: _, input: p, why: _ } => p == "b.rs"
+    _ => false
+  }
+}
+
+test fn an_input_from_another_worktree_outranks_staleness() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNewer { path: "b.rs" }, InputOutsideWorktree { path: "/w/other/a.rs" }])) {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn unreadable_dep_info_is_undecided_not_fresh() -> Bool {
+  match assess_binary_freshness(observed: DepInfoUnreadable { binary: "bin", reason: "no bin.d" }) {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => true
+    _ => false
+  }
+}

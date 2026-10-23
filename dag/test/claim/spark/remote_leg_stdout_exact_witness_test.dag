@@ -1,0 +1,51 @@
+module test.claim.spark.remote_leg_stdout_exact_witness_test
+
+import std.types { Bool, String, List }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import gunbc.spark.remote_leg_began { remote_leg_began_word, remote_stdout_as_one_word }
+import gunbc.spark.model_snapshot_materialize { spark_remote_run_of_session, SparkRemoteRun, RemoteRan, RemoteUnreachable }
+
+// THE TRANSPORT RETURNS THE COMMAND'S BYTES (side-chat ruling on gunbc#13427). Every claim runs the
+// REAL production projection, spark_remote_run_of_session, over a session result as ssh delivers it:
+// the began-line, then the command's own output.
+
+data w_ten: String = "xxxxxxxxxx"
+
+fn w_hundred() -> String { join([w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten], "") }
+
+fn w_bytes(s: String) -> Int { count(bytes_octets(b: utf8_encode_bytes(s: s))) }
+
+fn w_projected(command_output: String) -> String {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 0, stdout: join([remote_leg_began_word, "\n", command_output], ""), stderr: "") {
+    RemoteRan { exit_code: _, stdout: o, stderr: _ } => o
+    RemoteUnreachable { cause: _, reach: _ } => "UNREACHED"
+  }
+}
+
+// RED: 300 bytes that look like a whole record, then a newline at byte 301. The projection must hand the
+// consumer all 301 bytes -- the trailing newline is evidence that the file is longer than its bound.
+test fn w_a_trailing_newline_past_the_bound_survives_the_transport() -> Bool {
+  let record = join(["fp8-16 abcd ", w_hundred(), w_hundred(), w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, "xxxxxxxx"], "")
+  let out = w_projected(command_output: join([record, "\n"], ""))
+  w_bytes(s: record) == 300 && w_bytes(s: out) == 301 && ends_with(s: out, suffix: "\n")
+}
+
+// CONTROL: exactly 300 bytes ending in a meaningful space arrive unchanged, so a whole-file read reads
+// the file and not a rewritten copy of it.
+test fn w_meaningful_trailing_whitespace_is_not_rewritten() -> Bool {
+  let file = join([w_hundred(), w_hundred(), w_hundred()], "")
+  let spaced = join([substring(s: file, start: 0, end: 299), " "], "")
+  w_projected(command_output: spaced) == spaced
+}
+
+// Only the protocol's own line is removed: a later line of the command's output that happens to spell
+// the marker is the command's output, and stays.
+test fn w_only_the_first_marker_line_is_removed() -> Bool {
+  w_projected(command_output: join(["a\n", remote_leg_began_word, "\nb\n"], "")) == join(["a\n", remote_leg_began_word, "\nb\n"], "")
+}
+
+// A consumer that reads ONE WORD says so: the newline a state word arrives with is not part of it.
+test fn w_one_word_is_a_reading_the_consumer_chooses() -> Bool {
+  let out = w_projected(command_output: "active\n")
+  out == "active\n" && remote_stdout_as_one_word(stdout: out) == "active"
+}

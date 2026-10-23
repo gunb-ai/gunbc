@@ -1,0 +1,184 @@
+module test.claim.rung_drop_shared_capability_witness_test
+
+import std.types { String, Bool, NonEmptyStr, List }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+import gunbc.rung_drop {
+  RungDrop, RungDropStanding, TypedDeclaration, AuthoredProse, FloorCutFalsifierCadence,
+  DeletedWithoutReplacement, Standing, Retired,
+}
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop.shared_capability {
+  SharedCapability, missing_cadence_category, shared_capabilities,
+  shared_capability_holds, shared_capability_verdict, every_shared_capability_holds,
+  typed_waiters_cite_capability, AllWaitersStanding, AllWaitersRetired,
+  SplitRetirement, WaiterAbsent, EmptyWaiters, WaiterListHasDuplicates,
+  WaiterDuplicatedOnRoster,
+}
+
+fn fixture_drop(id: String, standing: RungDropStanding, trigger: String) -> RungDrop {
+  RungDrop {
+    identity: id as NonEmptyStr,
+    subject: id,
+    declared: "2026-01-01",
+    standing: standing,
+    declaration: TypedDeclaration {
+      previous: Mitigatable,
+      temporary: OutsideTheLadder,
+      reason: DeletedWithoutReplacement,
+      population: ["fixture.population"],
+      restoration_trigger: trigger
+    }
+  }
+}
+
+fn fixture_cap(waiters: List<String>) -> SharedCapability {
+  SharedCapability {
+    identity: "fixture.shared" as NonEmptyStr,
+    capability: "fixture capability",
+    waiter_identities: waiters
+  }
+}
+
+data fixture_shared_trigger: String = "fixture.shared remainder"
+
+data split_roster: List<RungDrop> = [
+  fixture_drop(id: "w.standing", standing: Standing, trigger: fixture_shared_trigger),
+  fixture_drop(
+    id: "w.retired",
+    standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr },
+    trigger: fixture_shared_trigger
+  ),
+]
+
+data uniform_standing_roster: List<RungDrop> = [
+  fixture_drop(id: "w.a", standing: Standing, trigger: fixture_shared_trigger),
+  fixture_drop(id: "w.b", standing: Standing, trigger: fixture_shared_trigger),
+]
+
+data uniform_retired_roster: List<RungDrop> = [
+  fixture_drop(
+    id: "w.a",
+    standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr },
+    trigger: fixture_shared_trigger
+  ),
+  fixture_drop(
+    id: "w.b",
+    standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr },
+    trigger: fixture_shared_trigger
+  ),
+]
+
+// THE LIVE JOIN. Five waiters, all standing today, each rostered once. This is the positive
+// control: the capability exists and its waiters have not split.
+test fn live_missing_cadence_waiters_are_uniformly_standing() -> Bool {
+  match shared_capability_verdict(cap: missing_cadence_category, ds: rung_drop_roster) {
+    AllWaitersStanding => true
+    AllWaitersRetired => false
+    SplitRetirement { standing_identities: _, retired_identities: _ } => false
+    WaiterAbsent { identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    WaiterListHasDuplicates { identities: _ } => false
+    EmptyWaiters => false
+  } && shared_capability_holds(cap: missing_cadence_category, ds: rung_drop_roster)
+    && every_shared_capability_holds(caps: shared_capabilities, ds: rung_drop_roster)
+    && typed_waiters_cite_capability(cap: missing_cadence_category, ds: rung_drop_roster)
+}
+
+// THE HAZARD THIS MODULE EXISTS TO MAKE LOUD. One waiter retired, one still standing — the state
+// in which the capability has fired for one author and three drops keep standing. A predicate
+// stuck at true agrees with the uniform-standing control and is caught here.
+test fn split_retirement_is_the_discriminating_red() -> Bool {
+  let cap = fixture_cap(waiters: ["w.standing", "w.retired"])
+  match shared_capability_verdict(cap: cap, ds: split_roster) {
+    SplitRetirement { standing_identities: s, retired_identities: r } =>
+      length(xs: s) == 1 && length(xs: r) == 1 && !shared_capability_holds(cap: cap, ds: split_roster)
+    AllWaitersStanding => false
+    AllWaitersRetired => false
+    WaiterAbsent { identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    WaiterListHasDuplicates { identities: _ } => false
+    EmptyWaiters => false
+  } && shared_capability_holds(cap: fixture_cap(waiters: ["w.a", "w.b"]), ds: uniform_standing_roster)
+}
+
+test fn uniform_retirement_holds() -> Bool {
+  let cap = fixture_cap(waiters: ["w.a", "w.b"])
+  match shared_capability_verdict(cap: cap, ds: uniform_retired_roster) {
+    AllWaitersRetired => shared_capability_holds(cap: cap, ds: uniform_retired_roster)
+    AllWaitersStanding => false
+    SplitRetirement { standing_identities: _, retired_identities: _ } => false
+    WaiterAbsent { identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    WaiterListHasDuplicates { identities: _ } => false
+    EmptyWaiters => false
+  }
+}
+
+test fn a_waiter_missing_from_the_roster_refuses() -> Bool {
+  let cap = fixture_cap(waiters: ["w.a", "w.absent"])
+  match shared_capability_verdict(cap: cap, ds: uniform_standing_roster) {
+    WaiterAbsent { identities: ids } =>
+      length(xs: ids) == 1 && !shared_capability_holds(cap: cap, ds: uniform_standing_roster)
+    AllWaitersStanding => false
+    AllWaitersRetired => false
+    SplitRetirement { standing_identities: _, retired_identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    WaiterListHasDuplicates { identities: _ } => false
+    EmptyWaiters => false
+  }
+}
+
+test fn empty_waiters_and_duplicate_waiters_refuse() -> Bool {
+  let empty = fixture_cap(waiters: [])
+  let dups = fixture_cap(waiters: ["w.a", "w.a"])
+  match shared_capability_verdict(cap: empty, ds: uniform_standing_roster) {
+    EmptyWaiters => !shared_capability_holds(cap: empty, ds: uniform_standing_roster)
+    AllWaitersStanding => false
+    AllWaitersRetired => false
+    SplitRetirement { standing_identities: _, retired_identities: _ } => false
+    WaiterAbsent { identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    WaiterListHasDuplicates { identities: _ } => false
+  } && match shared_capability_verdict(cap: dups, ds: uniform_standing_roster) {
+    WaiterListHasDuplicates { identities: ids } =>
+      length(xs: ids) > 0 && !shared_capability_holds(cap: dups, ds: uniform_standing_roster)
+    AllWaitersStanding => false
+    AllWaitersRetired => false
+    SplitRetirement { standing_identities: _, retired_identities: _ } => false
+    WaiterAbsent { identities: _ } => false
+    WaiterDuplicatedOnRoster { identities: _ } => false
+    EmptyWaiters => false
+  }
+}
+
+test fn typed_citation_is_not_vacuous() -> Bool {
+  let cap = fixture_cap(waiters: ["w.a", "w.b"])
+  let citing = [
+    fixture_drop(id: "w.a", standing: Standing, trigger: "uses fixture.shared"),
+    fixture_drop(id: "w.b", standing: Standing, trigger: "uses fixture.shared"),
+  ]
+  let silent = [
+    fixture_drop(id: "w.a", standing: Standing, trigger: "private trigger only"),
+    fixture_drop(id: "w.b", standing: Standing, trigger: "uses fixture.shared"),
+  ]
+  typed_waiters_cite_capability(cap: cap, ds: citing)
+    && !typed_waiters_cite_capability(cap: cap, ds: silent)
+}
+
+fn fixture_prose_drop(id: String, authored: String) -> RungDrop {
+  RungDrop {
+    identity: id as NonEmptyStr,
+    subject: id,
+    declared: "2026-01-01",
+    standing: Standing,
+    declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, authored: authored }
+  }
+}
+
+test fn prose_citation_is_not_stuck_true() -> Bool {
+  let cap = fixture_cap(waiters: ["w.prose"])
+  let citing = [fixture_prose_drop(id: "w.prose", authored: "enrolled on fixture.shared")]
+  let silent = [fixture_prose_drop(id: "w.prose", authored: "no capability identity here")]
+  typed_waiters_cite_capability(cap: cap, ds: citing)
+    && !typed_waiters_cite_capability(cap: cap, ds: silent)
+}

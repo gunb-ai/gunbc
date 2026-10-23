@@ -1,0 +1,218 @@
+module test.claim.fabric_source_snapshot_witness
+
+// THE PURE HALF OF THE SNAPSHOT AUTHORITY, AND WHAT THIS IS AND IS NOT EVIDENCE OF.
+//
+// The capability itself is established by a WET run -- tools.source_snapshot_handoff captures a
+// source composition, materializes it into a directory that is not this checkout, and runs a real
+// claim request against those bytes in a child process. THAT is the inhabitance claim for this
+// module, and nothing here substitutes for it: these claims supply their inputs, so they establish
+// what a function RETURNS for a shape and never that the shape occurs.
+//
+// What they are for is the part a wet run cannot discriminate cheaply. The composition wire is the
+// string an executor and a snapshot must agree on, and its whole job is to distinguish states that
+// LOOK alike; a wet scenario exercises one pairing per run, while the interesting question is
+// whether two different compositions can ever render the same. That is a property of the rendering
+// rule over its whole domain, and it is asked here.
+
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.fabric_source_snapshot {
+  SourceComposition,
+  PublicOnlyComposition,
+  PublicAndPrivateComposition,
+  source_composition_wire,
+  source_composition_roots,
+  snapshot_path_inside_composition,
+  RelativeSourcePath,
+  RelativePathAdmission,
+  RelativePathAdmitted,
+  RelativePathRefused,
+  admit_relative_source_path,
+  TrustedOwners,
+  LevelObservation,
+  LevelObserved,
+  LevelUnobservable,
+  level_is_safe,
+  base_is_admissible,
+  snapshot_inclusion_relative_path,
+  SnapshotInclusion,
+}
+
+// THE PAIRING THAT MUST NOT COLLIDE. A public-only snapshot under the root "public" and a
+// public-and-private snapshot whose public root is "public" are exactly the two an executor must
+// keep apart -- one carries private bytes and the other does not -- and a rendering that dropped
+// the private half, or appended it without a separator a root name cannot contain, would answer
+// equal for them. This is the claim that would go red if the wire were reduced to its roots.
+test fn composition_wire_separates_the_two_arms() -> Bool {
+  let public_only = source_composition_wire(
+    composition: PublicOnlyComposition { public_root: "public" as NonEmptyStr },
+  )
+  let with_private = source_composition_wire(
+    composition: PublicAndPrivateComposition {
+      public_root: "public" as NonEmptyStr,
+      private_root: "dag" as NonEmptyStr,
+    },
+  )
+  (public_only as String) != (with_private as String)
+}
+
+// A DIFFERENT PUBLIC ROOT IS A DIFFERENT COMPOSITION, so an executor pinned to one public checkout
+// cannot be handed another under the same agreement.
+test fn composition_wire_carries_the_public_root() -> Bool {
+  let here = source_composition_wire(
+    composition: PublicOnlyComposition { public_root: "public" as NonEmptyStr },
+  )
+  let elsewhere = source_composition_wire(
+    composition: PublicOnlyComposition { public_root: "pinned" as NonEmptyStr },
+  )
+  (here as String) != (elsewhere as String)
+}
+
+fn path_is_refused(text: String) -> Bool {
+  match admit_relative_source_path(text: text) {
+    RelativePathRefused { text: _, cause: _ } => true
+    RelativePathAdmitted { path: _ } => false
+  }
+}
+
+fn inside(composition: SourceComposition, text: String) -> Bool {
+  match admit_relative_source_path(text: text) {
+    RelativePathRefused { text: _, cause: _ } => false
+    RelativePathAdmitted { path: p } =>
+      snapshot_path_inside_composition(composition: composition, path: p)
+  }
+}
+
+// A PARENT-DIRECTORY SEGMENT HAS FOUR POSITIONS AND THE ADMISSION CLAIMS ALL FOUR. This is the
+// claim the module's exhaustiveness argument is worth writing down for: over a "/"-separated
+// relative path, `..` can be the whole path, the first segment, an interior segment or the last
+// segment, and there is no fifth position. A rule that caught three of them would look like a wall
+// and be a sieve, and the one it would most plausibly miss is the trailing form.
+test fn every_position_of_a_parent_segment_is_refused() -> Bool {
+  path_is_refused(text: "..")
+    && path_is_refused(text: "../x.dag")
+    && path_is_refused(text: "public/../../outside.dag")
+    && path_is_refused(text: "public/dag/..")
+}
+
+// THE OTHER THREE FORMS THAT WOULD LEAVE OR DEGENERATE THE TREE.
+test fn an_absolute_or_degenerate_path_is_refused() -> Bool {
+  path_is_refused(text: "")
+    && path_is_refused(text: "/etc/passwd")
+    && path_is_refused(text: "public//x.dag")
+    && path_is_refused(text: "public/x.dag/")
+    && path_is_refused(text: "./public/x.dag")
+    && path_is_refused(text: "public/./x.dag")
+}
+
+// AND THE ORDINARY PATH STILL PASSES, which is the half that keeps the rule from being a refusal
+// that happens to be safe. A wall nothing can get through is not a wall, it is a wall-shaped hole
+// in the capability.
+test fn an_ordinary_relative_path_is_admitted() -> Bool {
+  !path_is_refused(text: "public/dag/gunbc/x.dag")
+    && !path_is_refused(text: "dag/test/claim/y.dag")
+}
+
+// THE BOUNDARY, AND THE PREFIX THAT IS NOT A ROOT. "publicity/x.dag" starts with "public" and is
+// under no declared root; admitting it would let a path outside the composition ride in on a bare
+// prefix test, which is the defect gunbc.roadmap_execution_contract allowed_prefix_boundary exists
+// to prevent for an edit scope and this rule prevents for a snapshot.
+test fn a_prefix_that_is_not_a_root_is_outside() -> Bool {
+  let composition = PublicAndPrivateComposition {
+    public_root: "public" as NonEmptyStr,
+    private_root: "dag" as NonEmptyStr,
+  }
+  inside(composition: composition, text: "public/dag/gunbc/x.dag")
+    && inside(composition: composition, text: "dag/test/claim/x.dag")
+    && !inside(composition: composition, text: "publicity/x.dag")
+    && !inside(composition: composition, text: "src/v2/std/x.dag")
+}
+
+// A PUBLIC-ONLY EXECUTOR HAS NO PRIVATE ROOT AT ALL, so a private path is outside its composition
+// rather than merely unexpected -- which is what makes the mismatch refusal a wall and not a
+// preference.
+test fn a_public_only_composition_excludes_the_private_root() -> Bool {
+  let composition = PublicOnlyComposition { public_root: "public" as NonEmptyStr }
+  !inside(composition: composition, text: "dag/test/claim/x.dag")
+    && (length(source_composition_roots(composition: composition)) == 1)
+}
+
+// THE SOURCE PATH AND THE MANIFEST PATH ARE DIFFERENT FACTS. The relative path an entry lands at is
+// built from the directory and name the requester declared, never from where the bytes were read --
+// so a snapshot cannot acquire the author's layout by accident.
+test fn an_inclusion_lands_where_it_was_declared_to() -> Bool {
+  let inclusion = SnapshotInclusion {
+    source_path: "/tmp/scratch/probe.dag" as NonEmptyStr,
+    directory: "public/dag/gunbc" as NonEmptyStr,
+    name: "snapshot_public_probe.dag" as NonEmptyStr,
+  }
+  snapshot_inclusion_relative_path(inclusion: inclusion)
+    == "public/dag/gunbc/snapshot_public_probe.dag"
+}
+
+// ── THE ANCESTRY RULE, OVER OBSERVATIONS THIS HOST CANNOT PRODUCE ────────────────────────────
+//
+// `level_is_safe` is the decision the wet control executes for real, once per ancestor, over
+// observations `observe_level` takes from the filesystem. These claims supply those observations
+// instead, for one reason: the case that matters most -- a STICKY DIRECTORY OWNED BY AN UNTRUSTED
+// PRINCIPAL -- cannot be built by the harness, because creating one requires a privilege it does
+// not have. The inhabitance obligation is discharged by tools.source_snapshot_handoff, whose
+// unsafe-allocation-root scenario runs this same function against a real ancestry and refuses; what
+// is supplied here is the input the world would not hand us.
+
+fn observed(owner: String, mode: String, sticky: Bool) -> LevelObservation {
+  LevelObserved { owner: owner, mode: mode, sticky: sticky }
+}
+
+fn trusted_as(me: String) -> TrustedOwners {
+  TrustedOwners { me: me as NonEmptyStr }
+}
+
+// THE DEFECT THE HARNESS CANNOT CONSTRUCT. Sticky says only that an entry may be renamed by ITS
+// OWNER; a sticky directory owned by someone else is one that principal may still rearrange. /tmp
+// is safe because it is root-owned AND sticky, and a rule that kept the second half and dropped the
+// first admits any sticky directory anybody set up.
+test fn a_sticky_directory_owned_by_another_principal_is_unsafe() -> Bool {
+  let me = trusted_as(me: "builder")
+  !level_is_safe(observed: observed(owner: "mallory", mode: "1777", sticky: true), trusted: me)
+    && level_is_safe(observed: observed(owner: "root", mode: "1777", sticky: true), trusted: me)
+    && level_is_safe(observed: observed(owner: "builder", mode: "1777", sticky: true), trusted: me)
+}
+
+// AND OWNERSHIP ALONE IS NOT ENOUGH EITHER. A directory this process owns but that anybody may
+// write is one anybody may rearrange, so the two halves are a conjunction rather than alternatives.
+test fn a_world_writable_level_is_unsafe_even_when_owned() -> Bool {
+  let me = trusted_as(me: "builder")
+  !level_is_safe(observed: observed(owner: "builder", mode: "777", sticky: false), trusted: me)
+    && level_is_safe(observed: observed(owner: "builder", mode: "700", sticky: false), trusted: me)
+    && level_is_safe(observed: observed(owner: "root", mode: "755", sticky: false), trusted: me)
+}
+
+// AN UNREADABLE LEVEL IS UNSAFE, NOT UNKNOWN. A level whose owner or mode could not be observed is
+// a level nothing was established about, and admitting it would be the empty observation read as a
+// clean one -- the absorbing arm DESIGN section 5 refuses.
+test fn an_unobservable_level_is_unsafe() -> Bool {
+  !level_is_safe(
+    observed: LevelUnobservable { detail: "owner unreadable" },
+    trusted: trusted_as(me: "builder"),
+  )
+}
+
+// THE PROVIDER BASE IS HELD TO A STRICTER RULE THAN ITS ANCESTRY, and this is the case the harness
+// cannot stage: a base owned by ANOTHER principal, which needs a chown it has no privilege for. The
+// wet squatted-base scenario covers the reachable half -- a pre-created base at the wrong mode is
+// refused and left untouched -- against this same function.
+test fn a_base_owned_by_another_principal_is_inadmissible() -> Bool {
+  let me = trusted_as(me: "builder")
+  !base_is_admissible(observed: observed(owner: "mallory", mode: "700", sticky: false), trusted: me)
+    && base_is_admissible(observed: observed(owner: "builder", mode: "700", sticky: false), trusted: me)
+}
+
+// AND ROOT IS NOT TRUSTED FOR THE BASE THE WAY IT IS FOR AN ANCESTOR. An ancestor only has to be
+// un-substitutable, which root-owned delivers; the base HOLDS THE SNAPSHOT, so it must be owned by
+// this process -- a root-owned base is one this process cannot govern.
+test fn the_base_rule_is_stricter_than_the_ancestry_rule() -> Bool {
+  let me = trusted_as(me: "builder")
+  level_is_safe(observed: observed(owner: "root", mode: "1777", sticky: true), trusted: me)
+    && !base_is_admissible(observed: observed(owner: "root", mode: "1777", sticky: true), trusted: me)
+    && !base_is_admissible(observed: observed(owner: "builder", mode: "755", sticky: false), trusted: me)
+}

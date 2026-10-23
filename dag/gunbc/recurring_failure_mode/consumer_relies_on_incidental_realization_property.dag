@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.consumer_relies_on_incidental_realization_property
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data consumer_relies_on_incidental_realization_property: RecurringFailureMode = RecurringFailureMode {
+  identity: "consumer_relies_on_incidental_realization_property" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a consumer relies on a property of its provider's current implementation that the provider's contract does not promise. DISTINGUISHING FACT, the class that recurs: OwnerOnly's O_EXCL is incidental to MODE, not its contract. Complete exclusive publication is WriteCreateNew, published via extdeps.filesystem.rust_realization (complete content then hard_link). A consumer that treats OwnerOnly as exclusive complete publication is leaning on a disclaimed property; the next instance need not be a CAS writer. HARM: a contract-preserving provider change can invalidate the consumer, and even the current implementation may establish only part of the property the consumer assumes. Agreement on happy-path output conceals the missing guarantee; reviewing the implementation alone cannot repair the dependency contract.",
+
+    "SPECIMEN, REPAIRED AT THE REALIZATION HOME (silent-stag-307): gunbc.durable_cas_file_store cas_commit_at previously used Filesystem.WriteOwnerOnly, whose v1 interpreter realization opens the FINAL path then write_all. cas_commit_at now publishes through Filesystem.WriteCreateNew. WriteOwnerOnly remains the owner-only MODE operation. This receipt records that repair; it does not redefine the class as 'CAS now uses WriteCreateNew'.",
+
+    "EXECUTED, filesystem publication layer (BuildBuddy amd64): cargo test --release -p v1-compiler --lib write_file_create_new (11 tests), including a_write_failure_after_creation_leaves_no_target_behind (post-staging RLIMIT_FSIZE) and direct_final_path_open_then_write_leaves_a_target_when_the_write_fails.",
+
+    "EXECUTED, COMPOSED PATH (floor run 34800475614, local-repo wet lane, standing hermetic-route-gap-held-and-wet-passed): test.claim.durable_cas_file_store_wet_witness commit_then_independent_read_back_agrees_by_real_execution, a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution, an_advance_after_commit_lands_generation_two_by_real_execution, a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution. These are the only cells that run file_compare_and_set against a real filesystem. The same four already ran in 34797864081 D0-MEASURE.",
+
+    "NUANCE, not a retraction: floor_route_gap_expectation_chunk_12 makes the HERMETIC floor silent about those four by construction, so a green hermetic floor is not what establishes them -- the [local-repo-wet] receipt lines are. Session claim_batch OOM at about 7GiB explains why THIS SESSION has no local receipt; it is not an absence of one.",
+
+    "RUNG FOUND AT BY EXECUTION: mechanically preventable for exclusive complete VISIBILITY of a generation file, at the grain of the rust suite and the composed-path wet receipt together, and no higher. Crash-durable directory metadata is NOT claimed: rust_realization fsyncs the staging file and does not fsync the parent directory after hard_link.",
+
+    "CEILING: structurally guaranteed for the internal bind of CAS to WriteCreateNew once acceptance refuses a consumer of WriteOwnerOnly for exclusive complete publication; external crash durability remains outside the modeled guarantee. NEXT TRIGGER: a publication contract that includes parent-directory sync, with executed evidence, or acceptance that refuses WriteOwnerOnly as a CAS publication primitive.",
+
+    "DISPOSITION: production CAS publication uses WriteCreateNew. The discriminating RED stays enrolled (DESIGN 4b(4)); the retired construction is a #[cfg(test)] specimen in the rust suite, not a production declaration. gunbc.fabric_control_plane still consumes file_compare_and_set; successful CellReserved and race ReservationLost are unchanged in meaning. Torn generations at the slot path are no longer a WriteOwnerOnly leftover wearing a commit.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_commit_at"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_outcome_from_create"),
+    decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "rust_file_write_create_new_fn_def"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "commit_then_independent_read_back_agrees_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_non_contention_store_refusal_is_not_precondition_failed_by_real_execution"),
+  ],
+}

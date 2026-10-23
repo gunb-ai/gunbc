@@ -1,0 +1,3 @@
+module fixture.text_string_importer_census.host_literal
+import v2.std.text { String }
+data greeting: String = "hello"

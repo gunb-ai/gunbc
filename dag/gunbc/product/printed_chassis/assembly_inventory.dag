@@ -1,0 +1,244 @@
+module product.printed_chassis.assembly_inventory
+import product.printed_chassis.preparation_identity { PreparedRevision, PreparedSlot, revision_eq, revision_valid, revision_json, optional_revision_json, decode_revision }
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonObject}
+import std.types { String, List, Bool, Timestamp }
+import std.goal_assessment { GoalAssessment, GoalAssessmentRefused, ObservationAttempt, ObservationEstablished, ObservationRefused, inspect_goal, assess_by_deviations_and_unknowns }
+import product.printed_chassis.assembly_geometry { AssemblyPart, Printed, Purchased, Metal, Clearance }
+import extdeps.languages.json.emit { JsonValue, json_array, json_object, json_kv, json_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field, json_field_string, json_field_string_list, FieldRead, FieldAbsent, FieldMalformed, JsonDocumentUnreadable }
+import extdeps.languages.json.emit { JsonArray, JsonString, serialize_json }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalInspected, GoalObservationRefused }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess, exit_failure }
+
+
+// One desired slot per placed printed occurrence, never per interface demand.
+// Revision is an immutable geometry/process identity supplied by the preparation root.
+type RequiredPart { slot: String, revision: PreparedRevision? }
+type InspectionEvidence { reference:String, observed_at:Timestamp }
+type PartObservation = PartAccepted { physical_item: String, attempt: String, evidence: InspectionEvidence }
+ | PartRejected { physical_item: String, attempt: String, evidence: InspectionEvidence }
+ | PartReserved { attempt: String }
+ | PartAwaitingInspection { physical_item: String, attempt: String }
+type InventoryEntry { slot: String, revision: PreparedRevision, state: PartObservation }
+type RejectedPhysicalItem {slot:String,revision:PreparedRevision,physical_item:String,attempt:String,evidence:InspectionEvidence}
+// Coverage describes an independent inventory capture. An unread inventory is not empty.
+type InventoryReadRefusal = InventoryUnread { reason: String }
+type InventoryObservation = InventoryCaptured { snapshot: String, covered_slots: List<String>, entries: List<InventoryEntry>, retired_rejections:List<RejectedPhysicalItem> }
+type InventoryDeviation = MissingPart { part: RequiredPart } | RejectedPart { part: RequiredPart, evidence: InspectionEvidence }
+type InventoryUnknown = PreparationNeeded {slot:String}
+ | SlotNotObserved { part: RequiredPart }
+ | AttemptInFlight { part: RequiredPart, attempt: String }
+ | InspectionNeeded { part: RequiredPart, physical_item: String, attempt: String }
+ | RevisionReconciliationNeeded { part: RequiredPart }
+type InventoryRefusal = DuplicateDesiredSlot | DuplicateObservedSlot | PhysicalItemReused | InvalidInventoryEvidence
+
+type SlotFinding = SlotAccepted | SlotDeviation { deviation: InventoryDeviation } | SlotUnknown { unknown: InventoryUnknown }
+
+fn printed_occurrences(parts:List<AssemblyPart>) -> List<AssemblyPart> {
+ filter(parts,p=>match p.kind {Printed=>true Purchased=>false Metal=>false Clearance=>false})
+}
+fn required_printed_parts(parts: List<AssemblyPart>, bindings:List<PreparedSlot>) -> List<RequiredPart> {
+ map(printed_occurrences(parts:parts), p => RequiredPart {slot:p.id,revision:match filter(bindings,b=>b.slot==p.id).first() {Present {value:b}=>Present {value:b.revision} Absent=>none}})
+}
+fn revision_matches(actual:PreparedRevision,desired:PreparedRevision?) -> Bool {match desired {Absent=>false Present {value:d}=>revision_eq(a:actual,b:d)}}
+fn required_revision_valid(p:RequiredPart) -> Bool {match p.revision {Absent=>true Present {value:r}=>revision_valid(r:r)}}
+
+fn valid_entry(entry: InventoryEntry) -> Bool {
+ entry.slot != "" && revision_valid(r:entry.revision) && match entry.state {
+  PartAccepted { physical_item: p, attempt: a, evidence: e } => p != "" && a != "" && e.reference != "" && e.observed_at != ""
+  PartRejected { physical_item: p, attempt: a, evidence: e } => p != "" && a != "" && e.reference != "" && e.observed_at != ""
+  PartReserved { attempt: a } => a != ""
+  PartAwaitingInspection { physical_item: p, attempt: a } => p != "" && a != ""
+ }
+}
+fn physical_identity(entry: InventoryEntry) -> String {
+ match entry.state { PartAccepted { physical_item: p, attempt: _, evidence: _ } => p PartRejected { physical_item: p, attempt: _, evidence: _ } => p PartReserved { attempt: _ } => "" PartAwaitingInspection { physical_item: p, attempt: _ } => p }
+}
+fn slot_finding(part: RequiredPart, coverage: List<String>, entries: List<InventoryEntry>) -> SlotFinding {
+ if (match part.revision {Absent=>true Present {value:_}=>false}) {return SlotUnknown {unknown:PreparationNeeded {slot:part.slot}}}
+ if count(filter(coverage, s => s == part.slot)) == 0 { return SlotUnknown { unknown: SlotNotObserved { part: part } } }
+ match filter(entries,e=>e.slot==part.slot).first() {
+ Absent=>SlotDeviation {deviation:MissingPart {part:part}}
+ Present {value:entry}=>if !revision_matches(actual:entry.revision,desired:part.revision) {SlotUnknown {unknown:RevisionReconciliationNeeded {part:part}}} else {
+ match entry.state {
+ PartAccepted {physical_item:_,attempt:_,evidence:_}=>SlotAccepted
+ PartRejected {physical_item:_,attempt:_,evidence:e}=>SlotDeviation {deviation:RejectedPart {part:part,evidence:e}}
+ PartReserved {attempt:a}=>SlotUnknown {unknown:AttemptInFlight {part:part,attempt:a}}
+ PartAwaitingInspection {physical_item:p,attempt:a}=>SlotUnknown {unknown:InspectionNeeded {part:part,physical_item:p,attempt:a}}
+ }
+ }
+ }
+}
+fn capture_validity(observed:InventoryObservation) -> InventoryRefusal? {
+ match observed {InventoryCaptured {snapshot:s,covered_slots:_,entries:entries,retired_rejections:retired}=>{
+ if s=="" || any(entries,e=>!valid_entry(entry:e)) || any(retired,r=>r.slot=="" || !revision_valid(r:r.revision) || r.physical_item=="" || r.attempt=="" || r.evidence.reference=="" || r.evidence.observed_at=="") {return Present {value:InvalidInventoryEvidence}}
+ if any(entries,e=>count(filter(entries,other=>other.slot==e.slot))!=1) {return Present {value:DuplicateObservedSlot}}
+ let identities=concat(filter(map(entries,e=>physical_identity(entry:e)),p=>p!=""),map(retired,r=>r.physical_item))
+ if any(identities,p=>count(filter(identities,other=>other==p))!=1) {return Present {value:PhysicalItemReused}}
+ none
+ }}
+}
+
+fn assess_inventory(desired: List<RequiredPart>, observed: InventoryObservation) -> GoalAssessment<List<InventoryEntry>, InventoryDeviation, InventoryUnknown, InventoryRefusal> {
+ if count(filter(desired, p => count(filter(desired, q => q.slot == p.slot)) != 1)) != 0 { return GoalAssessmentRefused { cause: DuplicateDesiredSlot } }
+ if count(filter(desired, p => p.slot == "" || !required_revision_valid(p:p))) != 0 { return GoalAssessmentRefused { cause: InvalidInventoryEvidence } }
+ match capture_validity(observed:observed) {Present {value:c}=>return GoalAssessmentRefused {cause:c} Absent=>{}}
+ match observed {
+  InventoryCaptured {snapshot:_,covered_slots:covered,entries:entries,retired_rejections:_}=>{
+   let findings = map(desired, p => slot_finding(part: p, coverage: covered, entries: entries))
+   assess_by_deviations_and_unknowns(evidence: filter(entries,e=>any(desired,p=>p.slot==e.slot && revision_matches(actual:e.revision,desired:p.revision))),
+    deviations: flat_map(findings, f => match f { SlotDeviation { deviation: d } => [d] SlotAccepted=>[] SlotUnknown {unknown:_}=>[] }),
+    unknowns: flat_map(findings, f => match f { SlotUnknown { unknown: u } => [u] SlotAccepted=>[] SlotDeviation {deviation:_}=>[] }))
+  }
+ }
+}
+
+// Review exports desired occurrences only. No physical snapshot is fabricated from CAD.
+fn desired_inventory_json(parts: List<AssemblyPart>, bindings:List<PreparedSlot>) -> JsonValue {
+ json_object(members: [json_kv(key: "standing", value: json_string(s: "desired-only; independent inventory capture required")), json_kv(key: "parts", value: json_array(elements: map(required_printed_parts(parts:parts,bindings:bindings), p => json_object(members: [json_kv(key: "slot", value: json_string(s: p.slot)), json_kv(key: "revision", value: optional_revision_json(r:p.revision))]))))])
+}
+
+
+fn read_string(v: JsonValue, key: String) -> String? {
+ match json_field_string(obj:v,key:key) {FieldRead {value:s}=>if s!="" {Present {value:s}} else {none} FieldAbsent=>none FieldMalformed {cause:_}=>none}
+}
+fn decode_entry(v: JsonValue) -> InventoryEntry? {
+ let slot=match read_string(v:v,key:"slot") {Present {value:s}=>s Absent=>return none}
+ let revision=match json_field(obj:v,key:"revision") {FieldRead {value:r}=>match decode_revision(v:r) {Present {value:d}=>d Absent=>return none} FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let attempt=match read_string(v:v,key:"attempt") {Present {value:s}=>s Absent=>return none}
+ let status=match read_string(v:v,key:"status") {Present {value:s}=>s Absent=>return none}
+ if status=="reserved" {return Present {value:InventoryEntry {slot:slot,revision:revision,state:PartReserved {attempt:attempt}}}}
+ let item=match read_string(v:v,key:"physical_item") {Present {value:s}=>s Absent=>return none}
+ if status=="awaiting-inspection" {return Present {value:InventoryEntry {slot:slot,revision:revision,state:PartAwaitingInspection {physical_item:item,attempt:attempt}}}}
+ let reference=match read_string(v:v,key:"evidence") {Present {value:s}=>s Absent=>return none}
+ let observed_at=match read_string(v:v,key:"observed_at") {Present {value:s}=>s Absent=>return none}
+ let evidence=InspectionEvidence {reference:reference,observed_at:observed_at}
+ if status=="accepted" {Present {value:InventoryEntry {slot:slot,revision:revision,state:PartAccepted {physical_item:item,attempt:attempt,evidence:evidence}}}} else {
+ if status=="rejected" {Present {value:InventoryEntry {slot:slot,revision:revision,state:PartRejected {physical_item:item,attempt:attempt,evidence:evidence}}}} else {none}}
+}
+fn decode_inventory(text:String) -> InventoryObservation? {
+ let v=match parse_json_document(s:text) {JsonDocumentParsed {value:parsed}=>parsed JsonDocumentUnreadable {gap:_}=>return none}
+ if (match read_string(v:v,key:"schema") {Present {value:s}=>s!="gunbc.cassette-inventory.v2" Absent=>true}) {return none}
+ let snapshot=match read_string(v:v,key:"snapshot") {Present {value:s}=>s Absent=>return none}
+ let covered=match json_field_string_list(obj:v,key:"covered_slots") {FieldRead {value:xs}=>xs FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ if any(covered,s=>s=="") {return none}
+ let rows=match json_field(obj:v,key:"entries") {FieldRead {value:JsonArray {elements:xs}}=>xs FieldRead {value:JsonNull}=>return none FieldRead {value:JsonBool {value:_}}=>return none FieldRead {value:JsonNumber {lexeme:_}}=>return none FieldRead {value:JsonString {value:_}}=>return none FieldRead {value:JsonObject {members:_}}=>return none FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let entries=map(rows,x=>decode_entry(v:x))
+ if any(entries,x=>match x {Absent=>true Present {value:_}=>false}) {return none}
+ let old_rows=match json_field(obj:v,key:"retired_rejections") {FieldRead {value:JsonArray {elements:xs}}=>xs FieldRead {value:JsonNull}=>return none FieldRead {value:JsonBool {value:_}}=>return none FieldRead {value:JsonNumber {lexeme:_}}=>return none FieldRead {value:JsonString {value:_}}=>return none FieldRead {value:JsonObject {members:_}}=>return none FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let old=map(old_rows,r=>decode_retired(v:r))
+ if any(old,r=>match r {Absent=>true Present {value:_}=>false}) {return none}
+ Present {value:InventoryCaptured {snapshot:snapshot,covered_slots:covered,entries:flat_map(entries,x=>match x {Present {value:e}=>[e] Absent=>[]}),retired_rejections:flat_map(old,r=>match r {Present {value:e}=>[e] Absent=>[]})}}
+}
+
+// The observer reads the entire supplied capture; neither desired membership nor revision
+// shapes this read. This file is an inspection import, not the durable reservation store.
+fn observe_inventory(path:String, request:Bool) -> ObservationAttempt<InventoryObservation,InventoryReadRefusal> {
+ let read=Filesystem.Read(path:path)
+ inventory_read_result(success:read.success,text:read.content)
+}
+fn inventory_read_result(success:Bool,text:String) -> ObservationAttempt<InventoryObservation,InventoryReadRefusal> {
+ if !success {return ObservationRefused {cause:InventoryUnread {reason:"Inventory capture unreadable"}}}
+ match decode_inventory(text:text) {Present {value:c}=>ObservationEstablished {observed:c} Absent=>ObservationRefused {cause:InventoryUnread {reason:"Inventory capture malformed"}}}
+}
+fn work_json(kind:String,slot:String,detail:String) -> JsonValue {
+ json_object(members:[json_kv(key:"kind",value:json_string(s:kind)),json_kv(key:"slot",value:json_string(s:slot)),json_kv(key:"detail",value:json_string(s:detail))])
+}
+fn deviation_work(d:InventoryDeviation) -> JsonValue {
+ match d {MissingPart {part:p}=>work_json(kind:"print-candidate",slot:p.slot,detail:serialize_json(v:optional_revision_json(r:p.revision))) RejectedPart {part:p,evidence:e}=>work_json(kind:"replacement-candidate",slot:p.slot,detail:e.reference)}
+}
+fn unknown_work(u:InventoryUnknown) -> JsonValue {
+ match u {
+ PreparationNeeded {slot:s}=>work_json(kind:"prepare",slot:s,detail:"No bound prepared project for this slot")
+ SlotNotObserved {part:p}=>work_json(kind:"observe",slot:p.slot,detail:"Slot outside inventory capture coverage")
+ AttemptInFlight {part:p,attempt:a}=>work_json(kind:"reconcile-attempt",slot:p.slot,detail:a)
+ InspectionNeeded {part:p,physical_item:i,attempt:a}=>work_json(kind:"inspect",slot:p.slot,detail:concat(concat(i," / "),a))
+ RevisionReconciliationNeeded {part:p}=>work_json(kind:"review-compatibility",slot:p.slot,detail:serialize_json(v:optional_revision_json(r:p.revision)))
+ }
+}
+fn render_inventory_assessment(parts:List<AssemblyPart>,bindings:List<PreparedSlot>,capture:InventoryObservation,a:GoalAssessment<List<InventoryEntry>,InventoryDeviation,InventoryUnknown,InventoryRefusal>) -> CliWireResponse {
+ let baseline=match capture {InventoryCaptured {snapshot:s,covered_slots:_,entries:_,retired_rejections:_}=>s}
+ let standing=match a {GoalSatisfied {evidence:_}=>"satisfied" GoalDiverged {deviations:_}=>"diverged" GoalIndeterminate {known_deviations:_,unknowns:_}=>"indeterminate" GoalAssessmentRefused {cause:_}=>"refused"}
+ let work=match a {
+  GoalSatisfied {evidence:_}=>[]
+  GoalDiverged {deviations:d}=>map(concat([d.head],d.tail),x=>deviation_work(d:x))
+  GoalIndeterminate {known_deviations:d,unknowns:u}=>concat(map(d,x=>deviation_work(d:x)),map(concat([u.head],u.tail),x=>unknown_work(u:x)))
+  GoalAssessmentRefused {cause:_}=>return CliWirePrintable {bytes:"Inventory assessment refused: ambiguous or invalid identities/evidence",exit:exit_failure(reason:"Inventory assessment refused")}
+ }
+ CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"standing",value:json_string(s:"shadow assessment; no reservation or actuation")),json_kv(key:"assessment",value:json_string(s:standing)),json_kv(key:"baseline",value:json_string(s:baseline)),json_kv(key:"desired",value:desired_inventory_json(parts:parts,bindings:bindings)),json_kv(key:"work",value:json_array(elements:work))])),exit:ExitSuccess}
+}
+fn captured_inventory_report(parts:List<AssemblyPart>,bindings:List<PreparedSlot>,capture:InventoryObservation) -> CliWireResponse {
+ render_inventory_assessment(parts:parts,bindings:bindings,capture:capture,a:assess_inventory(desired:required_printed_parts(parts:parts,bindings:bindings),observed:capture))
+}
+fn inventory_report(parts:List<AssemblyPart>,bindings:List<PreparedSlot>,path:String) -> CliWireResponse {
+ let desired=required_printed_parts(parts:parts,bindings:bindings)
+ match inspect_goal(subject:path,goal:desired,request:true,observe:observe_inventory,assess:assess_inventory) {
+ GoalObservationRefused {subject:_,goal:_,request:_,cause:InventoryUnread {reason:r}}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ GoalInspected {subject:_,goal:_,request:_,observed:capture,assessment:a}=>render_inventory_assessment(parts:parts,bindings:bindings,capture:capture,a:a)
+ }
+}
+
+// A single transition reserves the entire requested set. Store publication must CAS the
+// complete returned capture; publishing entries independently would permit partial wins.
+type PartReservation {part:RequiredPart,attempt:String}
+type InventoryMutation = ReserveParts { baseline:String, next_snapshot:String, reservations:List<PartReservation> }
+ | InspectPart { baseline:String, next_snapshot:String, part:RequiredPart, attempt:String, physical_item:String, evidence:InspectionEvidence, accepted:Bool }
+type InventoryMutationRefusal = StaleInventoryBaseline | InvalidMutation | ReservationUnavailable | InspectionAttemptMismatch
+type InventoryTransition = InventoryTransitionPrepared { next:InventoryObservation } | InventoryTransitionRefused { cause:InventoryMutationRefusal }
+fn transition_inventory(observed:InventoryObservation, mutation:InventoryMutation) -> InventoryTransition {
+ match capture_validity(observed:observed) {Present {value:_}=>return InventoryTransitionRefused {cause:InvalidMutation} Absent=>{}}
+ match observed {InventoryCaptured {snapshot:s,covered_slots:covered,entries:entries,retired_rejections:retired}=>match mutation {
+ ReserveParts {baseline:b,next_snapshot:n,reservations:requests}=>{
+  let parts=map(requests,r=>r.part)
+  if b!=s {return InventoryTransitionRefused {cause:StaleInventoryBaseline}}
+  if n=="" || n==s || any(requests,r=>r.attempt=="") || count(parts)==0 {return InventoryTransitionRefused {cause:InvalidMutation}}
+  match assess_inventory(desired:parts,observed:observed) {
+   GoalDiverged {deviations:d}=>{
+    if count(d.tail)+1!=count(parts) {return InventoryTransitionRefused {cause:ReservationUnavailable}}
+    let retained=filter(entries,e=>!any(parts,p=>p.slot==e.slot))
+    let reserved=flat_map(requests,r=>match r.part.revision {Present {value:revision}=>[InventoryEntry {slot:r.part.slot,revision:revision,state:PartReserved {attempt:r.attempt}}] Absent=>[]})
+    let newly_retired=flat_map(filter(entries,e=>any(parts,p=>p.slot==e.slot)),e=>match e.state {PartRejected {physical_item:i,attempt:a,evidence:ev}=>[RejectedPhysicalItem {slot:e.slot,revision:e.revision,physical_item:i,attempt:a,evidence:ev}] PartAccepted {physical_item:_,attempt:_,evidence:_}=>[] PartReserved {attempt:_}=>[] PartAwaitingInspection {physical_item:_,attempt:_}=>[]})
+    InventoryTransitionPrepared {next:InventoryCaptured {snapshot:n,covered_slots:covered,entries:concat(retained,reserved),retired_rejections:concat(retired,newly_retired)}}
+   }
+   GoalSatisfied {evidence:_}=>InventoryTransitionRefused {cause:ReservationUnavailable}
+   GoalIndeterminate {known_deviations:_,unknowns:_}=>InventoryTransitionRefused {cause:ReservationUnavailable}
+   GoalAssessmentRefused {cause:_}=>InventoryTransitionRefused {cause:ReservationUnavailable}
+  }
+ }
+ InspectPart {baseline:b,next_snapshot:n,part:p,attempt:a,physical_item:item,evidence:e,accepted:accepted}=>{
+  if b!=s {return InventoryTransitionRefused {cause:StaleInventoryBaseline}}
+  if n=="" || n==s || item=="" || (e.reference=="" || e.observed_at=="") || a=="" {return InventoryTransitionRefused {cause:InvalidMutation}}
+  let matching=filter(entries,row=>row.slot==p.slot && revision_matches(actual:row.revision,desired:p.revision) && match row.state {PartReserved {attempt:pending}=>pending==a PartAwaitingInspection {physical_item:existing,attempt:pending}=>pending==a && existing==item PartAccepted {physical_item:_,attempt:_,evidence:_}=>false PartRejected {physical_item:_,attempt:_,evidence:_}=>false})
+  if count(matching)!=1 {return InventoryTransitionRefused {cause:InspectionAttemptMismatch}}
+  let bound=match p.revision {Present {value:r}=>r Absent=>return InventoryTransitionRefused {cause:InvalidMutation}}
+  let updated=InventoryEntry {slot:p.slot,revision:bound,state:if accepted {PartAccepted {physical_item:item,attempt:a,evidence:e}} else {PartRejected {physical_item:item,attempt:a,evidence:e}}}
+  let next=InventoryCaptured {snapshot:n,covered_slots:covered,entries:concat(filter(entries,row=>row.slot!=p.slot),[updated]),retired_rejections:retired}
+  match capture_validity(observed:next) {Present {value:_}=>InventoryTransitionRefused {cause:InvalidMutation} Absent=>InventoryTransitionPrepared {next:next}}
+ }
+ }}
+}
+fn entry_json(entry:InventoryEntry) -> JsonValue {
+ let common=[json_kv(key:"slot",value:json_string(s:entry.slot)),json_kv(key:"revision",value:revision_json(r:entry.revision))]
+ let status=match entry.state {PartAccepted {physical_item:_,attempt:_,evidence:_}=>"accepted" PartRejected {physical_item:_,attempt:_,evidence:_}=>"rejected" PartReserved {attempt:_}=>"reserved" PartAwaitingInspection {physical_item:_,attempt:_}=>"awaiting-inspection"}
+ let detail=match entry.state {
+ PartAccepted {physical_item:p,attempt:a,evidence:e}=>[json_kv(key:"physical_item",value:json_string(s:p)),json_kv(key:"attempt",value:json_string(s:a)),json_kv(key:"evidence",value:json_string(s:e.reference)),json_kv(key:"observed_at",value:json_string(s:e.observed_at))]
+ PartRejected {physical_item:p,attempt:a,evidence:e}=>[json_kv(key:"physical_item",value:json_string(s:p)),json_kv(key:"attempt",value:json_string(s:a)),json_kv(key:"evidence",value:json_string(s:e.reference)),json_kv(key:"observed_at",value:json_string(s:e.observed_at))]
+ PartReserved {attempt:a}=>[json_kv(key:"attempt",value:json_string(s:a))]
+ PartAwaitingInspection {physical_item:p,attempt:a}=>[json_kv(key:"physical_item",value:json_string(s:p)),json_kv(key:"attempt",value:json_string(s:a))]
+ }
+ json_object(members:concat(common,concat([json_kv(key:"status",value:json_string(s:status))],detail)))
+}
+fn inventory_json(observed:InventoryObservation) -> JsonValue {
+ match observed {InventoryCaptured {snapshot:s,covered_slots:c,entries:e,retired_rejections:r}=>json_object(members:[json_kv(key:"schema",value:json_string(s:"gunbc.cassette-inventory.v2")),json_kv(key:"retired_rejections",value:json_array(elements:map(r,x=>retired_json(r:x)))),json_kv(key:"snapshot",value:json_string(s:s)),json_kv(key:"covered_slots",value:json_array(elements:map(c,x=>json_string(s:x)))),json_kv(key:"entries",value:json_array(elements:map(e,x=>entry_json(entry:x))))])}
+}
+
+fn required_slots_json(parts:List<AssemblyPart>) -> JsonValue {
+ json_object(members:[json_kv(key:"standing",value:json_string(s:"design occurrences only; geometry/process revision unbound")),json_kv(key:"slots",value:json_array(elements:map(printed_occurrences(parts:parts),p=>json_string(s:p.id))))])
+}
+
+fn retired_json(r:RejectedPhysicalItem) -> JsonValue {entry_json(entry:InventoryEntry {slot:r.slot,revision:r.revision,state:PartRejected {physical_item:r.physical_item,attempt:r.attempt,evidence:r.evidence}})}
+fn decode_retired(v:JsonValue) -> RejectedPhysicalItem? {
+ match decode_entry(v:v) {Absent=>none Present {value:e}=>match e.state {PartRejected {physical_item:p,attempt:a,evidence:ev}=>Present {value:RejectedPhysicalItem {slot:e.slot,revision:e.revision,physical_item:p,attempt:a,evidence:ev}} PartAccepted {physical_item:_,attempt:_,evidence:_}=>none PartReserved {attempt:_}=>none PartAwaitingInspection {physical_item:_,attempt:_}=>none}}
+}

@@ -1,0 +1,94 @@
+module gunbc.process_lifecycle_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// Seed-growth obligation for the typed process-lifecycle realization in the v1 seed: the
+// detached-spawn half of the shell transport (extdeps.posix.process StartDetached) and the
+// native posix.Process.Reap answer. Homed beside the other v1-realization justification rows.
+//
+// WHAT THE CHANGE IS. dispatch_shell spawned every transport argv synchronously and waited, so
+// "start a server, hold a pid, kill it later" was inexpressible as typed ops -- the last untyped
+// process lifecycle (the retained_foreign node-http heredoc in tools.emit_host_transport, whose
+// `&` / `$!` / `trap` plumbing carried exactly these facts in shell text) had no typed route. The
+// interface is modeled in extdeps first (dag/extdeps/posix/process.dag, POSIX spawn anchor); the
+// seed only realizes it: a native StartDetached handler keyed like shell.Env.Get (the operation
+// is transport-less by contract: no argv can spawn a process that survives its own transport
+// call while the caller holds the pid), which spawns detached (own process group, stdio to
+// declared files, no wait), projects the typed ProcessSpawnOutcome, and a native Reap that is
+// parent-only by waitpid semantics (kept Child handles; an arbitrary pid is ECHILD, typed).
+//
+// WHY SEED RUST IS NEEDED (REACHABILITY LIMIT -- section 4b). The spawn happens inside
+// dispatch_service_wet behind full interpreter evaluation; no .dag witness reaches it without a
+// wet transport, and the child's detachment (fork/exec with process_group(0), stdio file actions)
+// is OS work no .dag or emitted substrate performs. Reap is parent-only: no argv can waitpid
+// another process's child, so the seed is the ONLY honest realization of the pid->reap edge.
+//
+// PURPOSE (v2 program): emit-host execution evidence for self-host -- the emit-host gate must
+// start, observe readiness of, and kill a real server process through modeled operations, which
+// is the wet half of proving the emitted host's artifacts run. The v1 realization below is debt,
+// not architecture: it dissolves when v2 realizes the spawn op natively in its own substrate.
+data process_lifecycle_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "spawn_shell_detached" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "dispatch_start_detached_native" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "stdio_path_input" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "render_shell_detached_trace" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "process_spawn_outcome_variant" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "map_detached_outputs" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "DETACHED_CHILDREN" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "detached_children" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "dispatch_process_reap_native" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "process_reap_outcome_variant" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
+      decl_name: "dispatch_service_wet" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+  ],
+  reason: "PURPOSE admission serves the v2 self-host program: the emit-host gate needs to start, observe readiness of, and kill a real server process through modeled operations (emit-host execution evidence for self-host), and the seed is the only substrate where a pid can be held across operations and reaped by its parent (waitpid is parent-only; no argv realizes it). Classified against the five refused v1 classes: NewLanguageBehavior -- no compiler semantics change; NewCompatibilityObligation -- no predecessor route gains an obligation; NewEscapeHatchOrAdmissionRow -- this IS the admission row, and the binding is closed (the transport detaches only with the two declared stdio file properties, and only a declared ProcessSpawnOutcome field surfaces the pid); SeedFeatureCompletion -- no general process API is exposed, only StartDetached and Reap behind a modeled extdeps interface; PublicSurfaceGrowth -- yes, two modeled operations on the existing CLI, which is the point of the dissolve trigger. The spawn refuses closed on every arm (missing stdio property, unopenable file action per POSIX spawn file-action semantics, spawn refusal) and drops nothing silently.",
+  owning_dissolution_lane: "transport-argv-anemia-dissolution" as RoadmapNodeId,
+  trigger: "Delete this realization and justification when v2 realizes the spawn op natively in its own substrate: a v2-emitted (non-v1-interpreter) artifact starts a real process with extdeps.posix.process StartDetached, holds the typed pid, observes readiness with http.Client.Probe, reaps with posix.Process.Reap, and the wet witness for that flow runs green without the v1 interpreter on its path. A partial migration (v2 emits the op but the witness still runs under v1) does NOT dissolve this row.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs ShellDispatch, spawn_shell_detached, dispatch_process_reap_native (+DETACHED_CHILDREN registry); src/v1/stage0/src/v1_std_core.rs transport_background_* accessors and reserved keys; modeled only by extdeps.posix.process posix.Process; no import-reachable edge from src/v1 to v2.*"
+}

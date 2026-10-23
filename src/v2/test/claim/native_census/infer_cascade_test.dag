@@ -1,0 +1,332 @@
+module v2.test.claim.native_census.infer_cascade
+
+import v2.compiler.compile {
+  NativeCensusCascadeMemberOf,
+  NativeCensusCascadeNone,
+  NativeCensusCascadeUnattributed,
+  NativeCensusCascadeRoot,
+  NativeCensusCauseFrontEnd,
+  NativeCensusCauseInfer,
+  NativeCensusCauseMember,
+  NativeCensusCauseResolve,
+  NativeCensusCauseStage,
+  NativeCensusClosureFanOutAtLeast,
+  NativeCensusClosureFanOutCounted,
+  NativeCensusClosureFanOutUnavailable,
+  NativeCensusClosureIndexRead,
+  NativeCensusInSubjectClosure,
+  NativeCensusModule,
+  NativeCensusOutsideSubjectClosure,
+  NativeCensusSubjectMembership,
+  NativeCensusSubjectMembershipUnavailable,
+  NativeImportTargetAttribution,
+  NativeImportTargetsAdmitted,
+  native_census_infer_cascade_of,
+  native_census_cause_group_rows,
+  native_census_cause_groups_add_infer_module,
+  native_census_cause_groups_from_file_refusals,
+  native_census_closure_index,
+  native_census_module_inference,
+  native_census_module_paths,
+  native_census_modules,
+  native_census_root_subject_membership,
+  native_census_roots_ranked,
+  native_census_subject_closure,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.resolve { ClosureProviderRefusal }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length, list_map }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, DeclarationLocus, Diagnostic, NonEmptyDiagnostics, Rejected, Unavailable }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import std.optional { optional_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CENSUS PART 2'S CASCADE CONTROLS, STRUCTURED BY THE DESIGN SECTION 3 WITNESS RULE. ONE inhabitance
+// claim runs the real census-infer route over supplied source bytes: native_test_context_from_ingest, the
+// census roster, the closure index, native_census_module_inference per module (resolve, then the real
+// infer_and_discharge) and native_census_cause_groups_add_infer_module. Removing the infer cascade from
+// that route reds it. Every other control supplies values to the decision it judges
+// (native_census_infer_cascade_of, native_census_subject_closure, native_census_root_subject_membership)
+// and runs no front end.
+//
+// THE EDGE THESE CONTROLS EXERCISE IS THE ONE v2 INFER HAS (v2.compiler.compile
+// native_census_infer_cascade, superseding docs/plans/census-part-2-inference-design.md section 4 on
+// this point). Provider b fails RESOLVE (an unbound name in a body beside the record). Importer a
+// resolves, because b's declarations are indexed, and then fails INFER projecting that record, because
+// a provider that never resolved contributes nothing to the closure index. a's chain carries b's
+// resolve chain immediately ahead of its closure-miss fatal.
+
+data infer_b_unresolvable_source: String = "module v2.census_infer_b\n\ntype InferLeg {\n  target: Int\n}\n\nfn census_infer_b_broken() -> Int {\n  no_such_name_anywhere\n}\n"
+
+data infer_a_source: String = "module v2.census_infer_a\n\nimport v2.census_infer_b { InferLeg }\n\nfn census_infer_a_read(l: InferLeg) -> Int {\n  l.target\n}\n"
+
+fn infer_read(source: String, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+fn infer_ingest(b_source: String) -> SourceRootIngest {
+  [
+    infer_read(source: infer_a_source, unit: ^census_infer_a_cu, path: "dag/census_infer_a.dag"),
+    infer_read(source: b_source, unit: ^census_infer_b_cu, path: "dag/census_infer_b.dag")
+  ]
+}
+
+// WHAT THE CENSUS REPORTED, reduced to what the claims read. `walls` counts every member that is NOT a
+// cascade member, so a census that filed a's infer refusal as a root of its own is counted there.
+type InferCensus
+  = InferCensusContextRefused
+  | InferCensusReported {
+      walls: Int
+      roots: List<NativeCensusCauseMember>
+      a_members: List<NativeCensusCauseMember>
+    }
+
+fn infer_census(ingest: SourceRootIngest) -> InferCensus {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => InferCensusContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let modules = native_census_modules(ingest: ingest)
+        let closure = native_census_closure_index(context: context, refusal_index: refusal_index, modules: modules)
+        let module_paths = native_census_module_paths(modules: modules)
+        let groups = fold_list(
+          xs: modules,
+          empty: native_census_cause_groups_from_file_refusals(refusals: context.file_refusals, closure: closure, resolves: true),
+          cons: fn(acc, entry) {
+            native_census_cause_groups_add_infer_module(
+              groups: acc,
+              closure: closure,
+              module_paths: module_paths,
+              entry: entry,
+              step: native_census_module_inference(context: context, refusal_index: refusal_index, entry: entry)
+            )
+          }
+        )
+        let rows = native_census_cause_group_rows(groups: groups)
+        let roots = native_census_roots_ranked(rows: rows)
+        InferCensusReported {
+          walls: fold_list(xs: rows, empty: 0, cons: fn(n, g) {
+            fold_list(xs: g.members, empty: n, cons: fn(k, m) {
+              match m.cascade {
+                NativeCensusCascadeMemberOf { root: _, root_reason: _ } => k
+                NativeCensusCascadeNone => k + 1
+                NativeCensusCascadeUnattributed { reason: _ } => k + 1
+                NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => k + 1
+              }
+            })
+          }),
+          roots: roots,
+          a_members: fold_list(xs: rows, empty: Empty, cons: fn(acc, g) {
+            fold_list(xs: g.members, empty: acc, cons: fn(ms, m) {
+              if m.path == ^census_infer_a_cu { Cons { head: m, tail: ms } } else { ms }
+            })
+          })
+        }
+      }
+  }
+}
+
+// THE ONE REAL-ROUTE PRODUCER, read by the one inhabitance claim below. It is a single-claim fill-debt
+// member of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt: assemble, resolve and
+// infer of a two-module fixture is more than one claim's budget.
+fn infer_cascade_census() -> InferCensus { infer_census(ingest: infer_ingest(b_source: infer_b_unresolvable_source)) }
+
+fn infer_stage_is(stage: NativeCensusCauseStage, infer: Bool) -> Bool {
+  match stage {
+    NativeCensusCauseInfer => infer
+    NativeCensusCauseResolve => !infer
+    NativeCensusCauseFrontEnd => false
+  }
+}
+
+// THE ONE ROOT IS b, AT THE GIVEN STAGE, WITH AN EXACT CLOSURE FAN-OUT.
+fn infer_single_root_is_b(roots: List<NativeCensusCauseMember>, infer: Bool, fan_out: Int) -> Bool {
+  match roots {
+    Empty => false
+    Cons { head: m, tail: rest } =>
+      length(xs: rest) == 0 && m.path == ^census_infer_b_cu && infer_stage_is(stage: m.stage, infer: infer) && match m.cascade {
+        NativeCensusCascadeRoot { closure_fan_out: f, resolve_refused_importers: _ } =>
+          match f {
+            NativeCensusClosureFanOutCounted { modules: n } => n == fan_out
+            NativeCensusClosureFanOutAtLeast { modules: _, unread_refused_files: _ } => false
+            NativeCensusClosureFanOutUnavailable { reason: _ } => false
+          }
+        NativeCensusCascadeNone => false
+        NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+        NativeCensusCascadeUnattributed { reason: _ } => false
+      }
+  }
+}
+
+// THE INHABITANCE CLAIM (DESIGN section 3 pairing): THE CASCADE OVER THE REAL ROUTE. b refuses resolve, a refuses infer only because b's record never entered the
+// closure index. Expected: ONE wall, b, a Resolve-stage root with closure fan-out 1 ({a}). a has exactly
+// one member, at the Infer stage, a cascade member of b. RED if a's infer refusal is filed as its own root
+// (walls 2), if a's row is stamped Resolve (the stage conflation design section 3 forbids), if b carries no
+// fan-out, or if the infer call is gone (a has no member at all).
+test fn census_infer_provider_cascade_is_one_root_with_fan_out_one_holds() -> Bool {
+  match infer_cascade_census() {
+    InferCensusContextRefused => false
+    InferCensusReported { walls: w, roots: roots, a_members: a } =>
+      w == 1
+        && infer_single_root_is_b(roots: roots, infer: false, fan_out: 1)
+        && match a {
+          Empty => false
+          Cons { head: m, tail: rest } =>
+            length(xs: rest) == 0 && infer_stage_is(stage: m.stage, infer: true) && match m.cascade {
+              NativeCensusCascadeMemberOf { root: r, root_reason: _ } => r == ^census_infer_b_cu
+              NativeCensusCascadeNone => false
+              NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => false
+              NativeCensusCascadeUnattributed { reason: _ } => false
+            }
+        }
+  }
+}
+
+
+// ── supplied-value claims: native_census_infer_cascade_of and the subject closure, at their interface ──
+//
+// The real route above establishes that infer emits the chain shape these claims supply: a provider's
+// resolve chain carried immediately before the closure-miss fatal, with the module's own advisories
+// ahead of it. Each claim below hands the decision that shape directly, so none re-runs a front end.
+
+fn sv_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic { reason: reason, at: DeclarationLocus { declaration: [] }, correction: Unavailable { reason: CorrectionNotModeled } }
+}
+
+fn sv_chain(reasons: List<Symbol>) -> NonEmptyDiagnostics {
+  match reasons {
+    Empty => NonEmptyDiagnostics { head: sv_diagnostic(reason: ^sv_empty), tail: [] }
+    Cons { head: h, tail: t } => NonEmptyDiagnostics { head: sv_diagnostic(reason: h), tail: list_map(xs: t, f: fn(r) { sv_diagnostic(reason: r) }) }
+  }
+}
+
+fn sv_provider(module: String, reasons: List<Symbol>) -> ClosureProviderRefusal {
+  ClosureProviderRefusal { module: qualified_name_from_dotted_string(dotted: module), refusal: sv_chain(reasons: reasons) }
+}
+
+data sv_paths: Map<String, Symbol> = map_insert(map_insert(empty_map(), "v2.sv_b", ^sv_b_cu), "v2.sv_c", ^sv_c_cu)
+
+fn sv_admitted(provider: QualifiedName) -> NativeImportTargetAttribution { NativeImportTargetsAdmitted }
+
+// b's resolve chain [own advisory, unbound], carried before the miss, behind a's own advisory.
+data sv_cascade_chain: List<Symbol> = [^sv_a_advisory, ^sv_b_advisory, ^resolve_reason_unbound_symbol, ^infer_reason_projection_receiver_declaration_unavailable]
+
+fn sv_cascade_is_member_of(cascade: NativeCensusCascade, root: Symbol) -> Bool {
+  match cascade {
+    NativeCensusCascadeMemberOf { root: r, root_reason: _ } => r == root
+    NativeCensusCascadeNone => false
+    NativeCensusCascadeUnattributed { reason: _ } => false
+    NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => false
+  }
+}
+
+fn sv_cascade_is_own_root(cascade: NativeCensusCascade) -> Bool {
+  match cascade {
+    NativeCensusCascadeNone => true
+    NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+    NativeCensusCascadeUnattributed { reason: _ } => false
+    NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => false
+  }
+}
+
+fn sv_cascade_is_unattributed(cascade: NativeCensusCascade) -> Bool {
+  match cascade {
+    NativeCensusCascadeUnattributed { reason: _ } => true
+    NativeCensusCascadeNone => false
+    NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+    NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => false
+  }
+}
+
+// THE PROVIDER CHAIN AT THE END, NOT THE HEAD. RED under a prefix match (a's own advisory leads), and RED
+// if the module's own advisories were required to be absent.
+test fn census_infer_cascade_matches_the_provider_chain_ahead_of_the_miss_holds() -> Bool {
+  sv_cascade_is_member_of(
+    cascade: native_census_infer_cascade_of(module_paths: sv_paths, providers: [sv_provider(module: "v2.sv_b", reasons: [^sv_b_advisory, ^resolve_reason_unbound_symbol])], chain: sv_chain(reasons: sv_cascade_chain), attribution: sv_admitted),
+    root: ^sv_b_cu
+  )
+}
+
+// THE NEGATIVE: an infer refusal whose fatal is not the closure miss is its own root even with a refused
+// provider in the tree, and so is a miss no refused provider leads. RED if any refused provider in the
+// tree were blamed (the infer->infer edge v2 infer does not have).
+test fn census_infer_refusal_not_led_by_a_provider_is_its_own_root_holds() -> Bool {
+  let providers = [sv_provider(module: "v2.sv_b", reasons: [^resolve_reason_unbound_symbol])]
+  sv_cascade_is_own_root(cascade: native_census_infer_cascade_of(module_paths: sv_paths, providers: providers, chain: sv_chain(reasons: [^sv_a_advisory, ^infer_reason_projection_receiver_declares_no_fields]), attribution: sv_admitted))
+    && sv_cascade_is_own_root(cascade: native_census_infer_cascade_of(module_paths: sv_paths, providers: [], chain: sv_chain(reasons: sv_cascade_chain), attribution: sv_admitted))
+}
+
+// TWO PROVIDERS WHOSE CHAINS BOTH MATCH: Unattributed, never the first. RED if the fold picked one.
+test fn census_infer_cascade_two_matching_providers_is_unattributed_holds() -> Bool {
+  let providers = [
+    sv_provider(module: "v2.sv_b", reasons: [^resolve_reason_unbound_symbol]),
+    sv_provider(module: "v2.sv_c", reasons: [^resolve_reason_unbound_symbol])
+  ]
+  sv_cascade_is_unattributed(cascade: native_census_infer_cascade_of(module_paths: sv_paths, providers: providers, chain: sv_chain(reasons: [^resolve_reason_unbound_symbol, ^infer_reason_projection_receiver_declaration_unavailable]), attribution: sv_admitted))
+}
+
+// THE SUBJECT CLOSURE OVER A SUPPLIED IMPORT GRAPH: subject s imports a, a imports b; u imports nothing
+// and nothing imports u. b is inside, u outside. RED if every root were marked inside, or if the walk
+// followed importers instead of imports (b would be outside).
+fn sv_member(module: String) -> NativeCensusCauseMember {
+  NativeCensusCauseMember {
+    stage: NativeCensusCauseInfer,
+    path: ^sv_root,
+    module: optional_present(value: qualified_name_from_dotted_string(dotted: module)),
+    head_reason: ^sv_head,
+    cascade: NativeCensusCascadeNone
+  }
+}
+
+fn sv_membership_is_inside(m: NativeCensusSubjectMembership) -> Bool {
+  match m {
+    NativeCensusInSubjectClosure => true
+    NativeCensusOutsideSubjectClosure => false
+    NativeCensusSubjectMembershipUnavailable { reason: _ } => false
+  }
+}
+
+fn sv_membership_is_outside(m: NativeCensusSubjectMembership) -> Bool {
+  match m {
+    NativeCensusOutsideSubjectClosure => true
+    NativeCensusInSubjectClosure => false
+    NativeCensusSubjectMembershipUnavailable { reason: _ } => false
+  }
+}
+
+test fn census_infer_roots_are_marked_against_the_subject_closure_holds() -> Bool {
+  let index = NativeCensusClosureIndexRead {
+    importers_of: map_insert(map_insert(empty_map(), "v2.sv_a", ["v2.sv_s"]), "v2.sv_b", ["v2.sv_a"]),
+    imports_of: map_insert(map_insert(empty_map(), "v2.sv_s", ["v2.sv_a"]), "v2.sv_a", ["v2.sv_b"]),
+    modules: 4,
+    refused_modules: 0
+  }
+  let modules = [
+    NativeCensusModule { module: "v2.sv_s", path: ^sv_s_cu },
+    NativeCensusModule { module: "v2.sv_a", path: ^sv_a_cu },
+    NativeCensusModule { module: "v2.sv_b", path: ^sv_b_cu },
+    NativeCensusModule { module: "v2.sv_u", path: ^sv_u_cu }
+  ]
+  let subject = native_census_subject_closure(index: index, modules: modules, label: "//v2/sv_s:all")
+  sv_membership_is_inside(m: native_census_root_subject_membership(subject: subject, root: sv_member(module: "v2.sv_b")))
+    && sv_membership_is_outside(m: native_census_root_subject_membership(subject: subject, root: sv_member(module: "v2.sv_u")))
+}

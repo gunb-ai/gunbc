@@ -1,0 +1,167 @@
+module std.spatial_knowledge
+
+import std.types { Bool, NonEmptyStr }
+
+// SPATIAL-1: the epistemic layer for physical quantities, landed before any geometry carrier per
+// the spatial-world-kernel directive's ordering. It exists because the opposite was measured: a
+// site packet rendered a dimensioned 25 x 30 ft plan from hand-authored constants while the typed
+// authority held zero measured dimensions, and the 25 ft premise was refuted by parcel records.
+// No lens could see it — the fabrication was ordinary data of an ordinary type.
+//
+// VALUE AND UNCERTAINTY ARE SEPARATE PARAMETERS. An earlier revision wrote `tolerance: T`, which
+// works only by accident for a scalar length and is wrong for everything this substrate must
+// eventually carry: a Point3's uncertainty is a region, a Rotation3's is an angle, and a
+// temperature's is a temperature DIFFERENCE — an affine distinction std.measure already draws
+// (Celsius vs CelsiusDelta) and product.placement_supply already draws (affine rack position vs
+// cardinal rack height). Conflating them would have had to be unwound by every later consumer.
+//
+// AN ESTIMATE IS A REGION, NOT A VALUE. It carries no privileged point, so there is no midpoint to
+// collapse to; the region type is the caller's, which keeps a 1-D interval from being mistaken for
+// a universal uncertainty representation. std.interval supplies the ordered scalar case.
+//
+// METHOD AND OBLIGATION ARE PARAMETERS, NOT MINTED HERE. A survey obligation is a workflow fact
+// and has no business in std; a method that derives an estimate from evidence is what
+// std.claim_evidence already calls an InferenceRuleId, so the product layer binds it there rather
+// than nicknaming it. Evidence is likewise a parameter — this module is evidence-payload agnostic,
+// and it is the PRODUCT-LAYER BINDING, not this carrier, that is responsible for requiring an
+// admitted std.claim_evidence relation. Stated plainly because the generic alone proves nothing:
+// it permits an arbitrary payload, including a bare string.
+//
+// No Bool projection of any coproduct is offered, by ruling (review 50845): collapsing four
+// standings to two states destroys exactly what the rendering rule preserves — told only "not
+// definite", a renderer cannot draw a hypothesis differently from an unknown.
+
+type SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>
+  = SpatialMeasured { value: Value, uncertainty: Uncertainty, evidence: Evidence }
+  | SpatialEstimated { region: Uncertainty, method: Method, evidence: Evidence }
+  | SpatialHypothesis { value: Value, purpose: NonEmptyStr }
+  | SpatialUnknown { obligation: Obligation }
+
+type SpatialEvidenceClass
+  = SpatialClassMeasured
+  | SpatialClassEstimated
+  | SpatialClassHypothesis
+  | SpatialClassUnknown
+
+fn spatial_evidence_class<Value, Uncertainty, Evidence, Method, Obligation>(
+  knowledge: SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>,
+) -> SpatialEvidenceClass {
+  match knowledge {
+    SpatialMeasured { value: _, uncertainty: _, evidence: _ } => SpatialClassMeasured
+    SpatialEstimated { region: _, method: _, evidence: _ } => SpatialClassEstimated
+    SpatialHypothesis { value: _, purpose: _ } => SpatialClassHypothesis
+    SpatialUnknown { obligation: _ } => SpatialClassUnknown
+  }
+}
+
+// The only route to a bare magnitude, partial by construction: Absent for the three non-measured
+// arms, with no `_or_default` sibling — such a sibling would BE the absorbing fallback.
+fn spatial_measured_value<Value, Uncertainty, Evidence, Method, Obligation>(
+  knowledge: SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>,
+) -> Value? {
+  match knowledge {
+    SpatialMeasured { value: v, uncertainty: _, evidence: _ } => Present { value: v }
+    SpatialEstimated { region: _, method: _, evidence: _ } => Absent
+    SpatialHypothesis { value: _, purpose: _ } => Absent
+    SpatialUnknown { obligation: _ } => Absent
+  }
+}
+
+// RENDERING AND DECISION ADMISSION ARE DIFFERENT VERBS, because the requirement genuinely differs:
+// explore freely, claim conservatively. A hypothesis MUST be renderable as a hypothesis or massing
+// exploration (H1/H2/H3) is impossible, while the same hypothesis must never back an egress
+// clearance. One function cannot honestly answer both questions.
+type SpatialRenderProjection<Value, Uncertainty, Obligation>
+  = RenderMeasured { value: Value, uncertainty: Uncertainty }
+  | RenderEstimated { region: Uncertainty }
+  | RenderHypothesis { value: Value, purpose: NonEmptyStr }
+  | RenderUnknown { obligation: Obligation }
+
+// Total: every standing is renderable AS ITSELF. The guarantee this buys is scoped honestly — it
+// is that a renderer CONSUMING this projection cannot erase standing, because the arm it matches
+// is the standing. It is NOT that no renderer can erase standing: the raw coproduct remains
+// public, so a renderer that matches SpatialHypothesis directly can still draw its value like a
+// measurement. That residue closes only when construction and read paths are confined; until then
+// the honest rung is mechanically preventable at this seam, not structurally impossible.
+fn project_spatial_rendering<Value, Uncertainty, Evidence, Method, Obligation>(
+  knowledge: SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>,
+) -> SpatialRenderProjection<Value, Uncertainty, Obligation> {
+  match knowledge {
+    SpatialMeasured { value: v, uncertainty: u, evidence: _ } =>
+      RenderMeasured { value: v, uncertainty: u }
+    SpatialEstimated { region: r, method: _, evidence: _ } => RenderEstimated { region: r }
+    SpatialHypothesis { value: v, purpose: p } => RenderHypothesis { value: v, purpose: p }
+    SpatialUnknown { obligation: o } => RenderUnknown { obligation: o }
+  }
+}
+
+type MinimumSpatialStanding
+  = MeasuredOnly
+  | MeasuredOrEstimated
+
+// The requirement carries a PRECISION BUDGET, not merely a standing. Without it the metrology rule
+// this module claims — required tolerance is set by the consuming decision, never by the
+// instrument — was unimplemented: a width measured to +/- 2 metres admitted exactly as readily as
+// one measured to +/- 10 mm, because only the standing was checked.
+type SpatialRequirement<Uncertainty> {
+  minimum_standing: MinimumSpatialStanding
+  maximum_uncertainty: Uncertainty
+}
+
+type SpatialRefusalCause<Uncertainty, Method, Obligation>
+  = SpatialGeometryUnknown { obligation: Obligation }
+  | SpatialHypothesisNotAdmissible { purpose: NonEmptyStr }
+  | SpatialStandingBelowMinimum { method: Method }
+  | SpatialUncertaintyExceedsBudget { actual: Uncertainty, budget: Uncertainty }
+
+// An admitted estimate stays a REGION: no arm carries a single Value for an estimated quantity, so
+// "admitted, therefore a number" has no constructor. Refusals are typed and located — naming the
+// obligation, the purpose, the method, or the actual-versus-budget pair — so the deficit stays
+// countable rather than absorbed.
+type SpatialAdmission<Value, Uncertainty, Method, Obligation>
+  = SpatialAdmittedMeasured { value: Value, uncertainty: Uncertainty }
+  | SpatialAdmittedEstimated { region: Uncertainty }
+  | SpatialRefused { cause: SpatialRefusalCause<Uncertainty, Method, Obligation> }
+
+// Uncertainty comparison is supplied by the domain: this module cannot know whether a region is
+// compared by width, radius, volume, or covariance, and inventing an ordering here would be the
+// heuristic DESIGN section 4 rules out. `uncertainty_admissible(actual, budget)` is the domain's
+// answer to "is this evidence precise enough for that decision".
+fn admit_spatial_decision_input<Value, Uncertainty, Evidence, Method, Obligation>(
+  knowledge: SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>,
+  requirement: SpatialRequirement<Uncertainty>,
+  uncertainty_admissible: fn(Uncertainty, Uncertainty) -> Bool,
+) -> SpatialAdmission<Value, Uncertainty, Method, Obligation> {
+  match knowledge {
+    SpatialMeasured { value: v, uncertainty: u, evidence: _ } =>
+      if uncertainty_admissible(u, requirement.maximum_uncertainty) {
+        SpatialAdmittedMeasured { value: v, uncertainty: u }
+      } else {
+        SpatialRefused {
+          cause: SpatialUncertaintyExceedsBudget {
+            actual: u,
+            budget: requirement.maximum_uncertainty,
+          },
+        }
+      }
+    SpatialEstimated { region: r, method: m, evidence: _ } =>
+      match requirement.minimum_standing {
+        MeasuredOnly => SpatialRefused { cause: SpatialStandingBelowMinimum { method: m } }
+        MeasuredOrEstimated =>
+          if uncertainty_admissible(r, requirement.maximum_uncertainty) {
+            SpatialAdmittedEstimated { region: r }
+          } else {
+            SpatialRefused {
+              cause: SpatialUncertaintyExceedsBudget {
+                actual: r,
+                budget: requirement.maximum_uncertainty,
+              },
+            }
+          }
+      }
+    SpatialHypothesis { value: _, purpose: p } =>
+      SpatialRefused { cause: SpatialHypothesisNotAdmissible { purpose: p } }
+    SpatialUnknown { obligation: o } =>
+      SpatialRefused { cause: SpatialGeometryUnknown { obligation: o } }
+  }
+}

@@ -1,0 +1,59 @@
+module gunbc.rung_drop.serving_offer_identity_is_the_exporter_process
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for a serving offer identified by its exporter process (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHY THIS IS A ROW AND NOT A SENTENCE IN THE PR. The module states honestly that
+// VllmEndpointProcessLaunch identifies the process that EXPORTS the metrics endpoint and nothing
+// about the engine core, the rank population, the loaded weights or the numerical realization. That
+// is accurate prose, and prose discharges nothing: the same identity is then used as the COMPLETE
+// SupplierOffer identity and as the post-acquisition fence. Naming a gap does not make it safe, and
+// the neighbouring cost-axis gap was already promoted to a row for exactly this reason (review of
+// 4f603304).
+//
+// WHAT THE DROP IS. An inner engine-core or rank replacement behind an unchanged exporting process
+// keeps the same offer identity, the readiness and capability association taken against its
+// predecessor, and the post-acquisition fence result. So a seat taken against one engine can
+// authorize a request against another as long as the process exporting /metrics did not restart --
+// which is precisely the class the launch-keyed identity was introduced to close, closed at the
+// exporter grain rather than the execution grain.
+//
+// WHAT IS AND IS NOT COVERED. A restart of the serving process IS caught: the start time moves, the
+// key moves, and prior evidence stops pricing the successor. A relocation is caught, because the
+// endpoint participates in the key. What is not caught is a replacement UNDER a surviving exporter,
+// which this repository cannot currently observe at all -- there is no read that names the engine
+// core or the rank population, so the honest position is a bounded drop rather than a check that
+// cannot discriminate.
+//
+// THE TRIGGER NAMES THE CAPABILITY. A launch receipt read from the running engine that joins the
+// exporting process to the engine-core incarnation and its rank population, so an offer identity and
+// a fence both name the thing that will actually execute the turn. An observation of the exporter
+// alone does not discharge this row -- that is what stands today.
+//
+// DECLARED 2026-09-08 in the fabric relief cut.
+
+data serving_offer_identity_is_the_exporter_process: RungDrop = RungDrop {
+  identity: "serving_offer_identity_is_the_exporter_process" as NonEmptyStr,
+
+  subject: "a serving offer's identity and its post-acquisition fence are the metrics-exporting process, so an engine-core or rank replacement behind a surviving exporter keeps the offer identity, its readiness evidence and its fence",
+
+  declared: "2026-09-08",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+    "gunbc.spark.serving_offer spark_serving_offer_key (the exporting process's key standing as the complete SupplierOffer identity)",
+    "gunbc.harness.harness_seat harness_fence_grant (the post-acquisition re-read, which compares the exporter's launch and therefore cannot see an engine replacement beneath it)",
+    ],
+    restoration_trigger: "a launch receipt read from the running engine joins the metrics-exporting process to the engine-core incarnation and its rank population, so that the offer identity and the post-acquisition fence both name the incarnation that will execute the turn. An observation of the exporting process alone does NOT discharge this row: that is what stands today, and it is what lets a seat taken against one engine authorize a request against its replacement",
+  }
+}

@@ -1,0 +1,66 @@
+module gunbc.roadmap.roadmap_publish_actuate
+
+import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha }
+import std.credentials { CredentialSource }
+import extdeps.git
+import extdeps.github.pulls
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import gunbc.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
+
+// PUBLICATION ACTUATION: the two host effects that turn a verified attempt head into a bound pull
+// request, kept thin so that everything decidable is decided elsewhere. The push is the NON-FORCED
+// git.Core.PushRefInRepo: a rejected push (a branch that moved under us) is a typed refusal with the
+// remote's own stderr, never forced through. The pull request is github.Pulls.Create; its created
+// number and URL map, purely and witnessed, onto the ReceiptBound arm the publication receipt
+// already carries, so the belt's existing receipt writer needs no new arm.
+type PublishActuation
+  = PublishActuated { pr_number: Int, url: NonEmptyStr }
+  | PushRefused { exit_code: Int, stderr: String }
+  | PullRequestRefused { detail: String }
+
+fn attempt_branch_refspec(branch: NonEmptyStr) -> String {
+  join([branch as String, ":refs/heads/", branch as String], "")
+}
+
+fn pull_request_created_outcome(number: Int, html_url: NonEmptyStr) -> PublicationReceiptOutcome {
+  ReceiptBound { pr_number: number, url: html_url, draft: false }
+}
+
+fn pull_request_refusal_detail(outcome: RestRefusal) -> String {
+  match outcome {
+    RestStatusRefused { status: _, body } => join(["GitHub refused the pull request: ", body], "")
+    RestTransportRefused { cause } => join(["the pull request request did not reach GitHub: ", cause as String], "")
+    RestBodyUndecodable { status: _, cause } => join(["GitHub answered but the pull request body was undecodable: ", cause as String], "")
+  }
+}
+
+fn publish_attempt(
+  repo: FilePath,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  base: NonEmptyStr,
+  owner: String,
+  repo_name: String,
+  title: NonEmptyStr,
+  body: String,
+  credential: CredentialSource,
+) -> PublishActuation {
+  let pushed = git.Core.PushRefInRepo(repo: repo, remote: remote as String, refspec: attempt_branch_refspec(branch: branch))
+  if pushed.exit_code != 0 {
+    PushRefused { exit_code: pushed.exit_code, stderr: pushed.stderr }
+  } else {
+    match github.Pulls.Create(
+      auth_token: credential,
+      owner: owner,
+      repo: repo_name,
+      title: title,
+      head: branch,
+      base: base,
+      body: body,
+      draft: false,
+    ) {
+      RestAnswered { answer } => PublishActuated { pr_number: answer.number, url: answer.html_url }
+      RestRefused { refusal } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: refusal) }
+    }
+  }
+}

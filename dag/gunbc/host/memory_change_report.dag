@@ -1,0 +1,155 @@
+module gunbc.memory_change_report
+
+import std.types { String, NonEmptyStr, List, Int }
+import std.integer { UInt8 }
+import std.measure { byte_size_count }
+import std.decl_ref { declaration_ref_display_key }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 {
+  SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT, spd4_primary_package_type,
+  spd4_primary_die_count_encoding, spd4_primary_signal_loading,
+}
+import gunbc.memory_configuration {
+  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
+  PositionedMemoryModule, MemoryOperatingObligation, MemoryPlacement, MemorySocketCapacity, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
+  MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
+  AdditionalMemoryRequirement,
+}
+import gunbc.memory_configuration_evaluation {
+  MemoryMixtureEvidenceRead, MemoryObligationResult, MemoryCounterexample, MemoryPackageConflict, MemoryCapturedMixtureConflict, MemoryStandingConflict,
+  MemoryTrainingScreenConflict, MemoryPositionConflict, MemorySocketCapacityConflict, MemoryUnknownFact,
+  MemoryPackageMissing, MemoryVariantsMissing, MemoryProcurementCondition,
+  MemoryFindingUnavailable, MemoryFirmwareScopeUnestablished, MemoryComparisonUnestablished,
+  MemoryStandingMissing, MemoryStandingEvidenceUnobserved, MemoryTrainingScreenUnresolved,
+  MemoryModelMissing, MemoryCollectorUnavailable, MemoryPopulationRoleUnresolved, MemoryCatalogBindingUnresolved, MemoryCapacityMissing,
+}
+import gunbc.memory_change_evaluation { MemoryChangeAssessment }
+
+fn memory_obligation_label(obligation: MemoryOperatingObligation) -> NonEmptyStr {
+  match obligation {
+    MemoryPlacement => "connector placement"
+    MemorySocketCapacity => "per-socket DIMM capacity"
+    MemoryCatalogBinding => "module catalog binding"
+    MemoryFirmwareScopeCoverage => "firmware comparison-scope coverage"
+    MemoryPackageMixture => "observed firmware package-mixture acceptance"
+    MemoryClassSupport => "board class support"
+    MemorySpecificPartQualification => "specific-part qualification"
+    MemoryTraining => "training observation"
+    MemoryBoot => "boot observation"
+    MemoryTrainingFailureScreen => "known training-failure screen"
+    AdditionalMemoryRequirement { authority } => declaration_ref_display_key(ref: authority) as NonEmptyStr
+  }
+}
+
+fn memory_package_fields(value: UInt8) -> String {
+  let package = SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: value }
+  concat("byte6(decimal)=", to_string(value), " [package-type bit=", to_string(spd4_primary_package_type(value: package)),
+    ", die-count encoding=", to_string(spd4_primary_die_count_encoding(value: package)),
+    ", signal-loading encoding=", to_string(spd4_primary_signal_loading(value: package)), "]")
+}
+
+fn memory_capacity_text(dimm: PositionedMemoryModule) -> String {
+  match memory_module_capacity(dimm: dimm) {
+    Absent => "capacity unobserved"
+    Present { value } => concat(to_string(byte_size_count(b: value.value)), " bytes (", declaration_ref_display_key(ref: value.source), ")")
+  }
+}
+
+fn memory_counterexample_text(counterexample: MemoryCounterexample) -> NonEmptyStr {
+  match counterexample {
+    MemoryPackageConflict { left, right, left_variant, right_variant, left_byte, right_byte, finding } =>
+      concat("socket ", to_string(left.position.socket), ": ", left.position.connector as String,
+        " (MCU ", to_string(left.position.controller), ", slot ", to_string(left.position.slot), ") ", memory_module_label(dimm: left) as String,
+        " / ", left_variant as String, " ", memory_package_fields(value: left_byte), " conflicts with ",
+        right.position.connector as String, " (MCU ", to_string(right.position.controller), ", slot ", to_string(right.position.slot), ") ",
+        memory_module_label(dimm: right) as String, " / ", right_variant as String, " ", memory_package_fields(value: right_byte),
+        "; observed DRAM firmware ", finding.configuration.platform.firmware as String,
+        ", attempt ", finding.attempt as String, ", source ", declaration_ref_display_key(ref: finding.collector.source),
+        ". This is the witnessed acceptance check, not a defect finding against either part family.") as NonEmptyStr
+    MemoryCapturedMixtureConflict { finding } => concat("captured configuration refused on socket ", to_string(finding.comparison_socket),
+      ": expected ", memory_package_fields(value: finding.expected_byte), ", found ", memory_package_fields(value: finding.actual_byte),
+      " at ", finding.mismatch_position.connector as String, " (MCU ", to_string(finding.mismatch_position.controller),
+      ", slot ", to_string(finding.mismatch_position.slot), "); printed/module identity ",
+      join(map(filter(finding.configuration.population, dimm => dimm.position == finding.mismatch_position), dimm => memory_module_label(dimm: dimm) as String), ", "),
+      "; firmware ", finding.configuration.platform.firmware as String, "; attempt ", finding.attempt as String,
+      "; source ", declaration_ref_display_key(ref: finding.collector.source),
+      ". Expected-value selection and individual unmeasured package bytes remain unestablished.") as NonEmptyStr
+    MemoryStandingConflict { standing } => concat("independent standing conflicts for ", standing.part_number as String) as NonEmptyStr
+    MemoryTrainingScreenConflict { dimm, implication: _ } => concat("training failure implicates ", memory_module_label(dimm: dimm) as String,
+      " at ", dimm.position.connector as String) as NonEmptyStr
+    MemorySocketCapacityConflict { left, right, authority } => concat("unequal DIMM capacities on socket ", to_string(left.position.socket),
+      ": ", left.position.connector as String, " / ", memory_capacity_text(dimm: left), " and ", right.position.connector as String,
+      " / ", memory_capacity_text(dimm: right), "; source ", declaration_ref_display_key(ref: authority)) as NonEmptyStr
+    MemoryPositionConflict { position } => concat("invalid or duplicate placement at ", position.connector as String) as NonEmptyStr
+  }
+}
+
+fn memory_unknown_text(fact: MemoryUnknownFact) -> NonEmptyStr {
+  match fact {
+    MemoryPackageMissing { position, variant } => concat("missing package byte at ", position.connector as String, " / ", variant as String) as NonEmptyStr
+    MemoryVariantsMissing { position } => concat("allowed delivery variants missing at ", position.connector as String) as NonEmptyStr
+    MemoryProcurementCondition { counterexample, condition } => concat(condition as String, ": ", memory_counterexample_text(counterexample: counterexample) as String) as NonEmptyStr
+    MemoryFindingUnavailable { cause } => cause
+    MemoryFirmwareScopeUnestablished { position } => concat("firmware comparison applicability unestablished at socket ", to_string(position.socket), " / ", position.connector as String) as NonEmptyStr
+    MemoryComparisonUnestablished { left, right } => concat("no observed rejection rule for byte pair ", to_string(left), "/", to_string(right)) as NonEmptyStr
+    MemoryStandingMissing { position, obligation } => concat("missing independent ", memory_obligation_label(obligation: obligation) as String, " at ", position.connector as String) as NonEmptyStr
+    MemoryStandingEvidenceUnobserved { standing, obligation } => concat("standing does not establish ", memory_obligation_label(obligation: obligation) as String, " for ", standing.part_number as String) as NonEmptyStr
+    MemoryTrainingScreenUnresolved { dimm, implication: _ } => concat("training screen requires evidence for ", memory_module_label(dimm: dimm) as String, " at ", dimm.position.connector as String) as NonEmptyStr
+    MemoryModelMissing { obligation } => concat("model capability missing: ", memory_obligation_label(obligation: obligation) as String) as NonEmptyStr
+    MemoryCollectorUnavailable { cause } => cause
+    MemoryCapacityMissing { dimm } => concat("missing DIMM capacity at ", dimm.position.connector as String) as NonEmptyStr
+    MemoryCatalogBindingUnresolved { dimm } => match dimm.identity {
+      CatalogMemoryModule { catalog } => concat("catalog binding requires review: ", catalog.part_number as String) as NonEmptyStr
+      ObservedMemoryModule { printed_part, capacity: _, source, missing_catalog_binding } => concat("unresolved catalog binding for ", printed_part as String,
+        " at ", dimm.position.connector as String, ": ", missing_catalog_binding as String, "; source ", declaration_ref_display_key(ref: source)) as NonEmptyStr
+    }
+    MemoryPopulationRoleUnresolved { refusal } => concat("population role unresolved at socket ", to_string(refusal.processor_socket),
+      " / MCU ", to_string(refusal.memory_controller), "; pair ", to_string(refusal.table_left_connector), "/", to_string(refusal.table_right_connector),
+      ": ", to_string(refusal.cause)) as NonEmptyStr
+  }
+}
+
+type MemoryChangeExplanation {
+  assessment: MemoryChangeAssessment
+  lines: List<NonEmptyStr>
+}
+
+// Values are projected from the joined assessment; none is authored again in
+// the report. Unknown payloads remain available structurally in assessment.
+fn memory_obligation_lines(results: List<MemoryObligationResult>) -> List<NonEmptyStr> {
+  fold(results, init: [], f: (lines, r) => {
+      let name = memory_obligation_label(obligation: r.obligation)
+      concat(lines, match r.assessment {
+        GoalSatisfied { evidence: _ } => [concat(name as String, ": SATISFIED for the modeled scope") as NonEmptyStr]
+        GoalDiverged { deviations } => concat([concat(name as String, ": VIOLATED") as NonEmptyStr],
+          map(concat([deviations.head], deviations.tail), d => memory_counterexample_text(counterexample: d)))
+        GoalIndeterminate { known_deviations, unknowns } => concat(
+          [concat(name as String, ": UNRESOLVED") as NonEmptyStr],
+          concat(map(concat([unknowns.head], unknowns.tail), u => memory_unknown_text(fact: u)),
+            map(known_deviations, d => memory_counterexample_text(counterexample: d))))
+        GoalAssessmentRefused { cause } => [concat(name as String, ": UNEVALUATED: ", cause as String) as NonEmptyStr]
+      })
+    })
+}
+
+fn memory_mixture_evidence_lines(read: MemoryMixtureEvidenceRead) -> List<NonEmptyStr> {
+  concat(map(read.findings, finding => concat("retained observation ", finding.attempt as String,
+    ": socket ", to_string(finding.comparison_socket), ", firmware ", finding.configuration.platform.firmware as String,
+    ", expected group ", memory_package_fields(value: finding.expected_byte), ", found ", memory_package_fields(value: finding.actual_byte),
+    "; source ", declaration_ref_display_key(ref: finding.collector.source), "; coverage ", to_string(finding.collector.coverage)) as NonEmptyStr),
+    map(read.unavailable, unknown => concat("excluded observation: ", memory_unknown_text(fact: unknown) as String) as NonEmptyStr))
+}
+
+fn explain_memory_change(assessment: MemoryChangeAssessment) -> MemoryChangeExplanation {
+  MemoryChangeExplanation {
+    assessment: assessment,
+    lines: concat(
+      concat(memory_mixture_evidence_lines(read: assessment.final_configuration.mixture_observations),
+        concat(["final configuration"], memory_obligation_lines(results: assessment.final_configuration.results))),
+      fold(assessment.workflow.initializations, init: [], f: (lines, initialization) =>
+        concat(lines, concat(
+          [concat("initialization at action ", to_string(initialization.action_ordinal)) as NonEmptyStr],
+          memory_obligation_lines(results: initialization.assessment.results)))),
+    ),
+  }
+}

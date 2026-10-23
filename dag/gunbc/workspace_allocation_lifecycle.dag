@@ -1,0 +1,207 @@
+module gunbc.workspace_allocation_lifecycle
+
+import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
+
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import std.types { String, NonEmptyStr, Bool, Int, Timestamp }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation { WorkspaceReservation }
+import gunbc.workspace_allocation_store {
+  WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceRecorded, WorkspaceReserved,
+  WorkspaceRunning, WorkspaceTerminationRequested, WorkspaceCleanupUncertain, WorkspaceReleased,
+  WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreConflict,
+  WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_read_owner, workspace_write_allocation,
+  workspace_retired, workspace_retired_at, workspace_allocation_coherent,
+}
+import gunbc.runner_microvm_lifecycle_realize { TeardownRun, TeardownSettled, TeardownSubjectRefused }
+import gunbc.runner_microvm_cell_readiness_store { StorePersisted, CellReadinessStorePersist, persist_cell_readiness_write, read_cell_readiness_store, StorePersistReadbackFailed }
+import gunbc.runner_microvm_cell_readiness { CellSettled, readiness_cell, cell_reservation_released_write, StoreRead, StoreRootOwned }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import product.fabric.sanitation { cell_is_ready, CellId }
+import gunbc.workspace_allocation_release { WorkspaceReleasePlan, WorkspaceReleasePrepared, WorkspaceReleaseRefused, workspace_release_prepare, workspace_release_read, workspace_release_reason }
+import gunbc.workspace_allocation { workspace_reservation_json }
+import gunbc.workspace_money_codec { workspace_money_json }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import std.durable_exclusive_hold { HoldSlotFree }
+import gunbc.fabric_control_plane { fabric_hold_release_ref, CellHoldEnd, CellHoldEnded, release_reserved_cell_money_generation, fabric_cell_allocation_key, fabric_money_reservation_ref }
+
+// Sanitation is the existing lifecycle's verdict, and it must have become durable. A successful
+// stop, elapsed lease, clean-looking console, or cleanup command exit cannot mint this carrier.
+type WorkspaceSanitized sole_constructor { reservation: WorkspaceReservation }
+type WorkspaceSanitationAdmission = WorkspaceSanitationAdmitted { sanitized: WorkspaceSanitized } | WorkspaceSanitationRefused { reason: String }
+
+fn workspace_admit_sanitized(reservation: WorkspaceReservation, teardown: TeardownRun) -> WorkspaceSanitationAdmission {
+  match teardown {
+    TeardownSubjectRefused { cleanup: _, binding: _ } => WorkspaceSanitationRefused { reason: "teardown observations do not bind to the allocation incarnation" }
+    TeardownSettled { cleanup: _, settlement: settlement, persisted: persisted, unit_released: _ } => match persisted {
+      StorePersisted { record: record } => match record {
+        CellSettled { cell: cell, generation: generation, readiness: readiness } =>
+          if (cell as String) != (runner_slot_instance_name(slot: reservation.slot) as String) || generation != reservation.generation
+            || readiness_cell(readiness: readiness) != cell || readiness_cell(readiness: settlement.readiness) != cell {
+            WorkspaceSanitationRefused { reason: "durable sanitation belongs to a different reservation incarnation" }
+          } else if cell_is_ready(readiness: readiness) && cell_is_ready(readiness: settlement.readiness) {
+            WorkspaceSanitationAdmitted { sanitized: WorkspaceSanitized { reservation: reservation } }
+          } else { WorkspaceSanitationRefused { reason: "cleanup is uncertain; reservation and owner quota remain held" } }
+        other => WorkspaceSanitationRefused { reason: "the durable cell record still requires attempt recovery" }
+      }
+      other => WorkspaceSanitationRefused { reason: "sanitation result was not durably recorded" }
+    }
+  }
+}
+
+// The caller supplies the teardown for the reservation only through the existing generation and
+// subject binding. The fabric release rereads the actual hold and performs its generation CAS.
+fn workspace_release_sanitized(root: NonEmptyStr, sanitized: WorkspaceSanitized, released_at: Timestamp) -> CellHoldEnd
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_complete_teardown")]
+ {
+  let reservation = sanitized.reservation
+  release_reserved_cell_money_generation(
+    root: root,
+    slot_key: fabric_cell_allocation_key(slot: reservation.slot),
+    acquired_generation: reservation.generation,
+    reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer),
+    money_generation: reservation.money_generation,
+    reason: workspace_release_reason,
+    released_at: released_at,
+    account: reservation.money_account,
+  )
+}
+
+fn workspace_connection_current(allocation: WorkspaceAllocation, observed_at: Timestamp, maximum_age: Int) -> Bool {
+  if !workspace_allocation_coherent(allocation: allocation) || allocation.desired != WorkspaceWanted || allocation.phase != WorkspaceRunning || allocation.connection == ""
+    || !utc_instant_is_canonical(t: allocation.observed_at) || !utc_instant_is_canonical(t: observed_at) {
+    false
+  } else {
+    let age = utc_instant_seconds_after(later: observed_at, earlier: allocation.observed_at)
+    match workspace_lease_standing(expires_at: allocation.request.expires_at, observed_at: observed_at) {
+      WorkspaceLeaseLive { remaining: _ } => age >= 0 && age <= maximum_age
+      other => false
+    }
+  }
+}
+
+fn workspace_connection_for_page(allocation: WorkspaceAllocation, observed_at: Timestamp) -> String {
+  if workspace_connection_current(allocation: allocation, observed_at: observed_at, maximum_age: 30) { allocation.connection } else { "" }
+}
+
+fn workspace_advance_released_readiness(reservation: WorkspaceReservation, freed_generation: Int) -> CellReadinessStorePersist
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_publish_release"),
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_recover_release"),
+  ]
+{
+  match read_cell_readiness_store() {
+    StoreRead { ownership: StoreRootOwned, records: _ } => persist_cell_readiness_write(write: cell_reservation_released_write(
+      cell: runner_slot_instance_name(slot: reservation.slot) as CellId,
+      held_generation: reservation.generation, freed_generation: freed_generation,
+    ))
+    other => StorePersistReadbackFailed { reason: "release requires root-authoritative cell readiness" as NonEmptyStr }
+  }
+}
+
+// The durable release intent binds the monetary outcome before freeing the hold. The observed
+// receipt must agree with it; readiness then advances exactly one generation before publication.
+fn workspace_publish_release(store: FabricStorageBinding, sanitized: WorkspaceSanitized, plan: WorkspaceReleasePlan, ended: CellHoldEnd, observed_at: Timestamp) -> WorkspaceStoreWrite
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_complete_teardown")]
+ {
+  let reservation = sanitized.reservation
+  if serialize_json(v: workspace_reservation_json(reservation: reservation)) != serialize_json(v: workspace_reservation_json(reservation: plan.reservation)) {
+    WorkspaceStoreWriteRefused { reason: "release intent does not match the sanitized reservation" }
+  } else { match ended {
+    CellHoldEnded { slot_key: key, generation: freed, account: advanced } =>
+      if key != fabric_cell_allocation_key(slot: reservation.slot) || freed != reservation.generation + 1
+        || serialize_json(v: workspace_money_json(account: advanced)) != serialize_json(v: workspace_money_json(account: plan.released_account)) {
+        WorkspaceStoreWriteRefused { reason: "release receipt belongs to a different cell incarnation or monetary transition" }
+      } else { match workspace_advance_released_readiness(reservation: reservation, freed_generation: freed) {
+        StorePersisted { record: _ } => workspace_publish_released_record(store: store, plan: plan, observed_at: observed_at)
+        other => WorkspaceStoreWriteRefused { reason: "Reservation released but cell readiness advancement remains unconfirmed" }
+      } }
+    other => WorkspaceStoreWriteRefused { reason: "fabric hold remains outstanding after release attempt" }
+  } }
+}
+
+fn workspace_publish_released_record(store: FabricStorageBinding, plan: WorkspaceReleasePlan, observed_at: Timestamp) -> WorkspaceStoreWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_publish_release"),
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_recover_release"),
+  ]
+{
+  let reservation = plan.reservation
+  match workspace_read_owner(store: store, owner: reservation.request.owner) {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
+    WorkspaceStoreReadOk { snapshot: observed } => match filter(observed.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "released allocation is absent from its owner ledger" }
+      Present { value: allocation } => match allocation.reservation {
+        Absent => WorkspaceStoreWriteRefused { reason: "allocation has no recorded reservation; recovery is required" }
+        Present { value: current } => if serialize_json(v: workspace_reservation_json(reservation: current)) != serialize_json(v: workspace_reservation_json(reservation: reservation)) {
+          WorkspaceStoreWriteRefused { reason: "allocation reservation changed before release publication" }
+        } else if allocation.phase == WorkspaceReleased { WorkspaceStoreWritten { allocation: allocation } }
+        else { workspace_write_allocation(store: store, snapshot: observed, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+          plan: allocation.plan, desired: WorkspaceRetired, request: allocation.request, reservation: allocation.reservation,
+          phase: WorkspaceReleased, connection: "", observed_at: observed_at,
+          reason: "Guest stopped, sanitation recorded, reservation released; disposable contents deleted",
+        }) }
+      }
+    }
+  }
+}
+
+// Recovery reads both authorities; it never fabricates a hold-ended receipt. A later generation,
+// foreign release, missing monetary intent or uncertain readiness keeps the owner outstanding.
+fn workspace_recover_release(store: FabricStorageBinding, fabric_root: NonEmptyStr, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_release_read(store: store, reservation: reservation) {
+    WorkspaceReleaseRefused { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
+    WorkspaceReleasePrepared { plan: recorded } => match observe_file_hold(root: fabric_root, key: fabric_cell_allocation_key(slot: reservation.slot)) {
+      HoldSlotFree { generation: freed, released_by: reference } => if freed != reservation.generation + 1 || reference != fabric_hold_release_ref(reason: workspace_release_reason) {
+        WorkspaceStoreWriteRefused { reason: "free slot does not match this release incarnation" }
+      } else { match workspace_advance_released_readiness(reservation: reservation, freed_generation: freed) {
+        StorePersisted { record: _ } => workspace_publish_released_record(store: store, plan: recorded, observed_at: observed_at)
+        other => WorkspaceStoreWriteRefused { reason: "release recovery could not establish sanitized readiness" }
+      } }
+      other => WorkspaceStoreWriteRefused { reason: "release recovery has no matching free slot observation" }
+    }
+  }
+}
+
+// The convergence receipt consumer has one teardown settlement entry. Both refusal and success
+// become durable owner-visible observations; only successful sanitation reaches fabric release.
+fn workspace_complete_teardown(store: FabricStorageBinding, fabric_root: NonEmptyStr, reservation: WorkspaceReservation, teardown: TeardownRun, observed_at: Timestamp) -> WorkspaceStoreWrite
+  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_settle_teardown_result")]
+ {
+  match workspace_admit_sanitized(reservation: reservation, teardown: teardown) {
+    WorkspaceSanitationAdmitted { sanitized: sanitized } => match workspace_release_prepare(store: store, reservation: reservation, released_at: observed_at) {
+      WorkspaceReleaseRefused { reason: detail } => workspace_publish_cleanup_uncertain(store: store, reservation: reservation, reason: detail, observed_at: observed_at)
+      WorkspaceReleasePrepared { plan: durable } => {
+        let ended = workspace_release_sanitized(root: fabric_root, sanitized: sanitized, released_at: durable.released_at)
+        match ended {
+          CellHoldEnded { slot_key: _, generation: _, account: _ } => workspace_publish_release(store: store, sanitized: sanitized, plan: durable, ended: ended, observed_at: observed_at)
+          other => workspace_recover_release(store: store, fabric_root: fabric_root, reservation: reservation, observed_at: observed_at)
+        }
+      }
+    }
+    WorkspaceSanitationRefused { reason: reason } => workspace_publish_cleanup_uncertain(store: store, reservation: reservation, reason: reason, observed_at: observed_at)
+  }
+}
+
+fn workspace_publish_cleanup_uncertain(store: FabricStorageBinding, reservation: WorkspaceReservation, reason: String, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_read_owner(store: store, owner: reservation.request.owner) {
+    WorkspaceStoreUnreadable { reason: why } => WorkspaceStoreWriteRefused { reason: why }
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
+      Absent => WorkspaceStoreWriteRefused { reason: "uncertain cleanup has no durable owner record" }
+      Present { value: allocation } => match allocation.reservation {
+        Absent => WorkspaceStoreWriteRefused { reason: "uncertain cleanup reservation has not been published; recovery required" }
+        Present { value: current } => if current.generation != reservation.generation || current.slot.host != reservation.slot.host || current.slot.slot_index != reservation.slot.slot_index {
+          WorkspaceStoreWriteRefused { reason: "uncertain cleanup concerns another reservation incarnation" }
+        } else {
+          workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+            plan: allocation.plan, desired: WorkspaceRetired, request: allocation.request,
+            reservation: allocation.reservation, phase: WorkspaceCleanupUncertain,
+            connection: "", observed_at: observed_at, reason: reason,
+          })
+        }
+      }
+    }
+  }
+}

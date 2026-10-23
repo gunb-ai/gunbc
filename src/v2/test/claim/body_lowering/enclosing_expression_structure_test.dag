@@ -1,0 +1,215 @@
+module v2.test.claim.body_lowering.enclosing_expression_structure
+
+import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lower_value_read }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { ComputationNode, Match, Node, Symbol, Transform }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN EXPRESSION THAT CONTAINS A BLOCK LOWERS TO ITSELF, WITH THE BLOCK AS ONE OF ITS PARTS.
+//
+// THE SUBJECT IS ONE PRODUCER BOUNDARY: v2.compiler.body_lowering_fold body_lower_value_read, the one
+// value reader, called on the body expression of a parsed module (tokenize and parse only; no
+// normalize runs). The conservation controls
+// (v2.test.claim.namespace_xl0.reference_conservation_accepted_drops *_is_conserved_holds) establish
+// that every constituent atom reaches the tree; they stay green under a producer that keeps every
+// atom but builds the wrong shape. These claims read the shape: an `&&` whose right operand is a
+// match lowers to a Transform headed by the `&&` token over the left operand and a Match, not to the
+// Match alone (the dropped-enclosing form) and not to `t && w` (the collapsed-operand form, where the
+// match was answered with its scrutinee atom).
+//
+// Parameters, not data declarations, so the first expression in the module is the body's.
+
+data ees_and_match_source: String = "module m\n\nfn ees(ees_t: Bool, ees_w: Bool) -> Bool {\n  ees_t && match ees_w {\n    true => ees_t\n    false => ees_w\n  }\n}\n"
+
+data ees_call_match_source: String = "module m\n\nfn ees_h(a: Bool, b: Bool) -> Bool { a }\n\nfn ees(ees_s: Bool, ees_w: Bool) -> Bool {\n  ees_h(a: match ees_w {\n    true => ees_s\n    false => ees_w\n  }, b: ees_s)\n}\n"
+
+fn ees_parsed(source: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^ees_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
+      }
+  }
+}
+
+// The last dag_surface_expr in pre-order whose subtree is the whole body of the LAST fn: found as the
+// first dag_surface_expr under the last dag_surface_fn_body.
+fn ees_emitted_first(root: Node, production: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { optional_present(value: root) } else { ees_emitted_first_kids(root: root, production: production) }
+    Absent => ees_emitted_first_kids(root: root, production: production)
+  }
+}
+
+fn ees_emitted_first_kids(root: Node, production: Symbol) -> Optional<Node> {
+  fold(root.children, init: optional_absent(), f: fn(acc, e) {
+    match acc { Present { value: _ } => acc  Absent => ees_emitted_first(root: e.target, production: production) }
+  })
+}
+
+fn ees_emitted_last(root: Node, production: Symbol) -> Optional<Node> {
+  let own = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { optional_present(value: root) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+  fold(root.children, init: own, f: fn(acc, e) {
+    match ees_emitted_last(root: e.target, production: production) { Present { value: n } => optional_present(value: n)  Absent => acc }
+  })
+}
+
+type EesValue
+  = EesNotRead
+  | EesRefused { reason: Symbol }
+  | EesLowered { value: Node }
+
+// THE TWO ROUTES. A value reaches lowering by two producers: the one value reader (field, argument,
+// let and arm positions, and any value the bottom-up fold is handed) and the top-down body walker
+// (body_lower_body_subtree_lower), which the fn body producer and the value reader's own fall-back
+// enter. The defect had one link on each: the walker searched the whole subtree for a control form
+// and lowered that form alone, and the primary reducer re-read a capture the fold had already
+// lowered. Measured (gunbc PR body): with the search fix reverted and the primary rule kept, the
+// body walker's call claim is red; with the primary rule reverted and the search fix kept, both
+// binary claims are red; the base fold reds all three discriminating claims.
+type EesRoute = EesValueReader | EesBodyWalker
+
+fn ees_body_value(source: String) -> EesValue {
+  ees_route_value(source: source, route: EesValueReader)
+}
+
+fn ees_route_value(source: String, route: EesRoute) -> EesValue {
+  match ees_parsed(source: source) {
+    Absent => EesNotRead
+    Present { value: tree } =>
+      match ees_emitted_last(root: tree, production: ^dag_surface_fn_body) {
+        Absent => EesNotRead
+        Present { value: body } =>
+          match ees_emitted_first(root: body, production: ^dag_surface_expr) {
+            Absent => EesNotRead
+            Present { value: expr } =>
+              match route {
+                EesValueReader =>
+                  match body_lower_value_read(value: expr) {
+                    Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+                    Accepted { value: v, diagnostics: _ } => EesLowered { value: v }
+                  }
+                EesBodyWalker =>
+                  match body_lower_body_subtree_lower(captured: expr) {
+                    Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+                    Accepted { value: Absent, diagnostics: _ } => EesNotRead
+                    Accepted { value: Present { value: v }, diagnostics: _ } => EesLowered { value: v }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ees_child(n: Node, i: Int) -> Optional<Node> {
+  match n.children.skip(n: i).first() {
+    Present { value: e } => optional_present(value: e.target)
+    Absent => optional_absent()
+  }
+}
+
+fn ees_is_atom(n: Optional<Node>, spelling: Symbol) -> Bool {
+  match n {
+    Present { value: x } =>
+      match node_atom_identity_optional(node: x) { Present { value: s } => s == spelling  Absent => false }
+    Absent => false
+  }
+}
+
+fn ees_is_match(n: Optional<Node>, scrutinee: Symbol, arms: Int) -> Bool {
+  match n {
+    Present { value: x } =>
+      match x.kind {
+        ComputationNode { behavior: Match } => ees_is_atom(n: ees_child(n: x, i: 0), spelling: scrutinee) && (count(x.children) == arms + 1)
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn ees_is_transform(n: Node, arity: Int) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => count(n.children) == arity
+    _ => false
+  }
+}
+
+fn ees_and_match_value() -> EesValue {
+  ees_body_value(source: ees_and_match_source)
+}
+
+fn ees_call_match_value() -> EesValue {
+  ees_body_value(source: ees_call_match_source)
+}
+
+// `ees_t && match ees_w {..}` is Transform(&&, ees_t, Match(ees_w, arm, arm)).
+test fn an_operand_beside_a_match_lowers_as_the_operator_over_both_operands() -> Bool {
+  match ees_and_match_value() {
+    EesLowered { value: v } =>
+      ees_is_transform(n: v, arity: 3)
+        && ees_is_atom(n: ees_child(n: v, i: 0), spelling: ^dag_token_and_and)
+        && ees_is_atom(n: ees_child(n: v, i: 1), spelling: ^ees_t)
+        && ees_is_match(n: ees_child(n: v, i: 2), scrutinee: ^ees_w, arms: 2)
+    _ => false
+  }
+}
+
+// `ees_h(a: match ees_w {..}, b: ees_s)` is Transform(ees_h, Match(ees_w, arm, arm), ees_s).
+// A CONTROL, NOT A DISCRIMINATOR, on this route: the value reader already lowered a match-valued
+// argument whole before this change (green on the base fold and under either revert). It pins that
+// the value-reader route stays correct; the discriminating call claim is the body-walker one below.
+test fn a_call_with_a_match_argument_lowers_as_the_call_over_every_argument() -> Bool {
+  match ees_call_match_value() {
+    EesLowered { value: v } =>
+      ees_is_transform(n: v, arity: 3)
+        && ees_is_atom(n: ees_child(n: v, i: 0), spelling: ^ees_h)
+        && ees_is_match(n: ees_child(n: v, i: 1), scrutinee: ^ees_w, arms: 2)
+        && ees_is_atom(n: ees_child(n: v, i: 2), spelling: ^ees_s)
+    _ => false
+  }
+}
+
+fn ees_and_match_walked() -> EesValue {
+  ees_route_value(source: ees_and_match_source, route: EesBodyWalker)
+}
+
+fn ees_call_match_walked() -> EesValue {
+  ees_route_value(source: ees_call_match_source, route: EesBodyWalker)
+}
+
+// The same two expressions through the body walker, the fn-body route.
+test fn the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_both_operands() -> Bool {
+  match ees_and_match_walked() {
+    EesLowered { value: v } =>
+      ees_is_transform(n: v, arity: 3)
+        && ees_is_atom(n: ees_child(n: v, i: 0), spelling: ^dag_token_and_and)
+        && ees_is_atom(n: ees_child(n: v, i: 1), spelling: ^ees_t)
+        && ees_is_match(n: ees_child(n: v, i: 2), scrutinee: ^ees_w, arms: 2)
+    _ => false
+  }
+}
+
+test fn the_body_walker_lowers_a_call_with_a_match_argument_as_the_call_over_every_argument() -> Bool {
+  match ees_call_match_walked() {
+    EesLowered { value: v } =>
+      ees_is_transform(n: v, arity: 3)
+        && ees_is_atom(n: ees_child(n: v, i: 0), spelling: ^ees_h)
+        && ees_is_match(n: ees_child(n: v, i: 1), scrutinee: ^ees_w, arms: 2)
+        && ees_is_atom(n: ees_child(n: v, i: 2), spelling: ^ees_s)
+    _ => false
+  }
+}

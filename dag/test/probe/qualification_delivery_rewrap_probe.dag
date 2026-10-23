@@ -1,0 +1,19 @@
+module test.probe.qualification_delivery_rewrap_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function is a route by which a holder of two legitimate JIT
+// deliveries would relabel one: keep delivery B's sealed credential and the runner id GitHub returned
+// for B, and claim dispatch A produced them -- so a qualification subject over A would carry B's
+// runner. The witness test.claim.runner_qualification_delivery_rewrap_witness hands this source to the
+// compiler and requires the refusal at the sealed carrier by name. dag/test/probe/ sits under the
+// whole-tree strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { Int }
+import gunbc.runner.runner_jit_perform {
+  AuthorizedJitMintDispatch, BoundJitCredential, JitCredentialDelivery, JitCredentialBoundToAttempt,
+}
+
+fn rewrap(a: AuthorizedJitMintDispatch, b: BoundJitCredential) -> JitCredentialDelivery {
+  JitCredentialBoundToAttempt {
+    bound: BoundJitCredential { dispatch: a, credential: b.credential, runner_id: b.runner_id },
+  }
+}

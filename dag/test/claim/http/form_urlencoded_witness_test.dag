@@ -1,0 +1,26 @@
+module test.claim.http.form_urlencoded_witness_test
+
+import std.types { Bool }
+import extdeps.http.form_urlencoded { form_decode, form_field, FormRefused }
+
+test fn browser_encoded_multiline_is_one_field() -> Bool {
+  let decoded = form_decode(wire: "csrf=token&expected_revision=&body=first%0D%0Acsrf%3Dforged%0D%0A%2B+%26%3D+%E2%98%83")
+  form_field(form: decoded, name: "csrf") == Present { value: "token" }
+    && form_field(form: decoded, name: "expected_revision") == Present { value: "" }
+    && form_field(form: decoded, name: "missing") == none
+    && form_field(form: decoded, name: "body") == Present { value: "first\r\ncsrf=forged\r\n+ &= ☃" }
+}
+
+test fn form_decodes_once_and_refuses_ambiguity() -> Bool {
+  form_field(form: form_decode(wire: "body=%2526body%253Dsecond"), name: "body") == Present { value: "%26body%3Dsecond" }
+    && match form_decode(wire: "csrf=a&%63srf=b") { FormRefused { reason: _ } => true _ => false }
+    && match form_decode(wire: "body=%ZZ") { FormRefused { reason: _ } => true _ => false }
+    && match form_decode(wire: "body=%FF") { FormRefused { reason: _ } => true _ => false }
+}
+
+fn browser_post_control(wire: String) -> Bool {
+  let decoded = form_decode(wire: wire)
+  form_field(form: decoded, name: "csrf") == Present { value: "real-token" }
+    && form_field(form: decoded, name: "expected_revision") == Present { value: "" }
+    && form_field(form: decoded, name: "body") == Present { value: "first\r\ncsrf=forged\r\n☃ + & =" }
+}

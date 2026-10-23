@@ -1,0 +1,45 @@
+module gunbc.srv3_nbd_proxy_serve_intent
+
+import extdeps.bmc.webui.nbd_proxy {
+  bmcweb_nbd_proxy_ws_path,
+}
+import extdeps.bmc.webui.nbd_proxy_serve {
+  NbdProxyServeTransportIntent,
+  nbd_proxy_serve_transport_intent,
+  srv3_nbd_proxy_local_port,
+}
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+}
+import gunbc.host_effect { HostEffect, Srv3NbdProxyServe }
+import std.types { NonEmptyStr }
+
+data srv3_nbd_proxy_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
+
+// The ISO path is the resolved seeded image's, supplied by the caller that resolved it; this module
+// never names an image path of its own.
+fn srv3_nbd_proxy_serve_transport_intent(iso_path: NonEmptyStr) -> NbdProxyServeTransportIntent {
+  nbd_proxy_serve_transport_intent(
+    bmc_host: asrock_srv3_live_bmc_host,
+    session_token: concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr,
+    ws_path: bmcweb_nbd_proxy_ws_path(
+      variant: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+      slot: 0,
+      index: 0,
+    ),
+    iso_path: iso_path,
+    local_nbd_port: srv3_nbd_proxy_local_port,
+  )
+}
+
+fn srv3_nbd_proxy_serve_intent(iso_path: NonEmptyStr) -> NbdProxyServeTransportIntent {
+  srv3_nbd_proxy_serve_transport_intent(iso_path: iso_path)
+}
+
+fn srv3_nbd_proxy_serve_host_effect(iso_path: NonEmptyStr) -> HostEffect {
+  Srv3NbdProxyServe {
+    intent: srv3_nbd_proxy_serve_transport_intent(iso_path: iso_path),
+    lease_key: srv3_nbd_proxy_lease_key,
+  }
+}

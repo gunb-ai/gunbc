@@ -1,0 +1,1297 @@
+module gunbc.roadmap_service_evidence
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_object, json_kv, json_string, json_int, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_field_int, FieldRead, FieldAbsent, FieldMalformed }
+import std.content_hash { content_hash_of_value, lower_hex_40 }
+import std.materialization_provider { wire_content_hash_to_hex }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, Second, second, second_count, TokenCount, token_count, token_count_value }
+import gunbc.roadmap_session_placement {
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionPlacementRecord,
+  session_placement_observe_for_attempt,
+}
+import gunbc.roadmap_attempt_metering {
+  AttemptMeteringObservation, AttemptMeteringRecord, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
+  MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
+  metering_token_total, metering_seat_time_total, metering_observe_for_attempt,
+}
+import gunbc.roadmap.roadmap_result_returned {
+  ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
+  result_returned_observe_for_attempt,
+}
+import gunbc.roadmap.roadmap_event_carrier { CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
+import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, attempt_result_outcome_word, attempt_result_outcome_members, attempt_result_outcome_decode }
+import gunbc.roadmap_launch_admission {
+  attempt_launch_record_of_json, AttemptLaunchBound, AttemptLaunchUnbound, AttemptLaunchUnreadable,
+  launch_identity_node_id_text, launch_identity_instance_text, launch_identity_revision_hex,
+}
+
+// THE SERVICE EVIDENCE RECEIPT (roadmap node service-evidence-capture). One joined reading per
+// attempt over every field the node lists, bound to ONE attempt of ONE node on ONE dashboard
+// instance. It is a PURE JOIN COMPUTED ON READ, never a stored copy: each joined reader's own
+// record is already durable in attempt state, so persisting the join would give those facts a
+// second home (DESIGN §2/§3), and a write on an early tick would freeze fields that mature later
+// (ruling relayed by bold-bee-114, 2026-10-03). The immutable artifact is the dogfood START receipt
+// (gunbc.roadmap_dogfood_route, gunbc#13077), which pins this receipt's digest and per-field
+// standing once, when the start is recorded.
+//
+// THE SHAPE (side-chat NO-LAND ruling on c8b743d, relayed by bold-bee-114):
+//   1. the effectful boundary BINDS the attempt from its durable launch record (which names the
+//      node, the dashboard instance and the attempt) and GATHERS one typed input per reader, once
+//      per attempt;
+//   2. the receipt is that binding and that bundle, nothing else -- it carries no reading, so no
+//      reading can be written into it;
+//   3. every field's reading is DERIVED from the bundle into one closed product
+//      (ServiceEvidenceReadings, 21 named fields), which the wire and the closing contract both
+//      read. An Observed reading exists only as the projection of a landed reader's typed
+//      observation (today G5 gunbc.roadmap_session_placement, G3 gunbc.roadmap_attempt_metering and
+//      G4 gunbc.roadmap.roadmap_result_returned); every other reader is pending.
+//   The ordered view (service_evidence_entries) is WITNESSED against the node's list, not
+//   structurally guaranteed: the language has no record-member iteration (rung 2).
+
+// ── 1. THE ATTEMPT BINDING ──
+// Admitted only when the attempt's launch record (gunbc.roadmap_launch_admission
+// AttemptLaunchRecordDecode) names the expected node, the expected dashboard instance AND the
+// expected attempt. A legacy record that carries no attempt key is unbound and refuses: it cannot
+// say which attempt it belongs to, and such attempts never qualify for the dogfood clock.
+type AttemptBinding {
+  instance_id: NonEmptyStr
+  node_id: NonEmptyStr
+  attempt_key: NonEmptyStr
+  revision_hex: NonEmptyStr
+}
+
+type AttemptBindingOutcome
+  = AttemptBound { binding: AttemptBinding }
+  | AttemptUnlaunched
+  | AttemptBindingRefused { reason: String }
+
+fn file_refusal(o: FilesystemFileObservation, what: String) -> String? {
+  match o {
+    FilesystemFileRead { path: _, content: _ } => none
+    FilesystemFileAbsent(_) => Present { value: join([what, " is absent"], "") }
+    FilesystemFileIndeterminate { cause } => Present { value: join([what, ": ", cause], "") }
+    FilesystemFileObservationsDisagree { path: _, cause } => Present { value: join([what, ": ", cause], "") }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => Present { value: join([what, ": ", cause], "") }
+  }
+}
+
+fn file_content(o: FilesystemFileObservation) -> String {
+  match o {
+    FilesystemFileRead { path: _, content } => content
+    FilesystemFileAbsent(_) => ""
+    FilesystemFileIndeterminate { cause: _ } => ""
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => ""
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => ""
+  }
+}
+
+fn launch_is_absent(o: FilesystemFileObservation) -> Bool {
+  match o {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+fn names_attempt(recorded: NonEmptyStr, attempt_key: String) -> Bool {
+  (recorded as String) == attempt_key
+}
+
+fn service_evidence_bind_attempt(
+  instance_id: String,
+  node_id: String,
+  attempt_key: String,
+  launch: FilesystemFileObservation,
+) -> AttemptBindingOutcome {
+  if instance_id == "" { AttemptBindingRefused { reason: "instance_id is empty" } }
+  else if node_id == "" { AttemptBindingRefused { reason: "node_id is empty" } }
+  else if attempt_key == "" { AttemptBindingRefused { reason: "attempt_key is empty" } }
+  else if launch_is_absent(o: launch) { AttemptUnlaunched }
+  else {
+    match file_refusal(o: launch, what: "the attempt's launch record") {
+      Present { value: why } => AttemptBindingRefused { reason: why }
+      Absent =>
+        match parse_json_document(s: file_content(o: launch)) {
+          JsonDocumentUnreadable { gap: _ } => AttemptBindingRefused { reason: "the attempt's launch record is not a JSON document" }
+          JsonDocumentParsed { value: doc } =>
+            match attempt_launch_record_of_json(doc: doc) {
+              AttemptLaunchUnreadable { reason } => AttemptBindingRefused { reason: reason }
+              AttemptLaunchUnbound { identity: _ } => AttemptBindingRefused { reason: "the attempt's launch record carries no attempt key, so it cannot be bound to this attempt" }
+              AttemptLaunchBound { identity, attempt_key: recorded } =>
+                if launch_identity_node_id_text(id: identity) != node_id {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names node ", launch_identity_node_id_text(id: identity)], "") }
+                } else if launch_identity_instance_text(id: identity) != instance_id {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names instance ", launch_identity_instance_text(id: identity)], "") }
+                } else if !names_attempt(recorded: recorded, attempt_key: attempt_key) {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names attempt ", recorded as String], "") }
+                } else {
+                  AttemptBound { binding: AttemptBinding {
+                    instance_id: instance_id as NonEmptyStr,
+                    node_id: node_id as NonEmptyStr,
+                    attempt_key: attempt_key as NonEmptyStr,
+                    revision_hex: launch_identity_revision_hex(id: identity) as NonEmptyStr,
+                  } }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ── 2. THE READERS AND THEIR TYPED INPUTS ──
+// The closed reader vocabulary. Readers are compared by variant; the citation is wire output only.
+type ServiceEvidenceReader
+  = MeteringReader
+  | SessionPlacementReader
+  | SharedComputationReader
+  | ResultReturnedReader
+
+fn service_evidence_reader_wire(r: ServiceEvidenceReader) -> String {
+  match r {
+    MeteringReader => "gunbc.roadmap_attempt_metering metering_observe_for_attempt"
+    SessionPlacementReader => "gunbc.roadmap_session_placement session_placement_observe_for_attempt"
+    SharedComputationReader => "gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt"
+    ResultReturnedReader => "gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt"
+  }
+}
+
+// ONE INPUT PER LANDED READER. A reader on main is a member of the bundle carrying that reader's
+// own typed observation, gathered once per attempt; its fields are derived from NAMED members of that
+// observation, re-checking the observation's (node, attempt) against the binding. A reader not yet on
+// main has NO member: its fields are derived as owed to it (pending_reader_owed), and its pull
+// request is derived from the reader (reader_pending_pr), so nothing a caller supplies can reach the
+// canonical wire for it. No member carries a bare value, so no field can be observed without its
+// reader's record. When a pending reader lands, its change adds its member exactly as G5's below.
+type SessionPlacementInput = SessionPlacementRead { observation: SessionPlacementObservation }
+
+type MeteringInput = MeteringRead { observation: AttemptMeteringObservation }
+
+// The result reader answers with its observation AND the standing of the event-log snapshot it
+// owned; both are carried, so a leaked snapshot is a refusal here, never dropped.
+type ResultReturnedInput = ResultReturnedRead { observation: ResultReturnedObservation, close: CarrierSnapshotClose }
+
+type ServiceEvidenceInputs {
+  session_placement: SessionPlacementInput
+  metering: MeteringInput
+  result_returned: ResultReturnedInput
+}
+
+// THE READERS NOT YET ON MAIN, as their own coproduct: a landed reader (G5) has no arm here, so a
+// field cannot be recorded as pending a reader that has already landed (side-chat note on b422c05).
+// A reader's landing deletes its arm here and adds its member to ServiceEvidenceInputs.
+type PendingServiceReader
+  = | PendingSharedComputation
+
+fn pending_reader(r: PendingServiceReader) -> ServiceEvidenceReader {
+  match r {
+    PendingSharedComputation => SharedComputationReader
+  }
+}
+
+fn reader_pending_pr(r: PendingServiceReader) -> Int {
+  match r {
+    PendingSharedComputation => 13097
+  }
+}
+
+// The effectful gather, once per bound attempt: every landed reader is called exactly once.
+fn service_evidence_inputs_for_attempt(instance: HostDashboardInstance, binding: AttemptBinding) -> ServiceEvidenceInputs {
+  ServiceEvidenceInputs {
+    session_placement: SessionPlacementRead { observation: session_placement_observe_for_attempt(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String) },
+    metering: MeteringRead { observation: metering_observe_for_attempt(instance: instance, node_id: binding.node_id as RoadmapNodeId, attempt_key: binding.attempt_key as String) },
+    result_returned: result_returned_input(read: result_returned_observe_for_attempt(instance: instance, node_id: binding.node_id as String, attempt_key: binding.attempt_key as String)),
+  }
+}
+
+fn result_returned_input(read: CarrierClosed<ResultReturnedObservation>) -> ResultReturnedInput {
+  ResultReturnedRead { observation: read.result, close: read.close }
+}
+
+// ── THE RECEIPT: the binding and the bundle, and no reading ──
+type ServiceEvidenceReceipt {
+  binding: AttemptBinding
+  inputs: ServiceEvidenceInputs
+}
+
+// ── 3. THE CLOSED PER-FIELD READING, typed per field; there is no default and no zero ──
+// Two slot kinds (review 75015, DESIGN §2: a String leaf hiding named parts is anemic modeling):
+//   a field whose reader has LANDED holds ServiceEvidenceReading<T>, where T is the typed carrier the
+//     reader's record establishes (a placement with named parts, the work-class grant, Kibibyte);
+//   a field with no landed source holds ServiceEvidenceOwed, which has NO observed arm, so nothing can
+//     be observed for it until its reader lands and that change gives the field its typed carrier.
+// Values become text only in the wire encoder (service_evidence_entries / service_evidence_entry_json).
+// EvidencePending: the reader's record EXISTS for this attempt and decodes, but is not final (G3: a
+// provisional meter, whose roster is open or whose launches are not all complete). It is not a record
+// not yet written, so it is never read as RecordAbsent, and not a value, so never as Observed.
+// EvidenceNotOwed: the reader establishes that THIS attempt owes no such record (G4: an attempt with
+// no requester owes no result). It is a fact about the attempt, not a record not yet written, so it
+// is never read as RecordAbsent and never as Observed.
+type ServiceEvidenceReading<T>
+  = EvidenceObserved { value: T }
+  | EvidenceRecordAbsent
+  | EvidenceNotOwed { reason: NonEmptyStr }
+  | EvidencePending { reason: NonEmptyStr }
+  | EvidenceRefused { reason: NonEmptyStr }
+
+type ServiceEvidenceOwed
+  = OwedToPendingReader { reader: PendingServiceReader }
+  | OwedToUnbuiltProducer { owner_node: String }
+
+fn pending_reader_owed(reader: PendingServiceReader) -> ServiceEvidenceOwed {
+  OwedToPendingReader { reader: reader }
+}
+
+// A field with no producer anywhere yet is owed to the node that owns building it. Where no other
+// node owns it, that is this node, whose later slices build it.
+fn owed_to(owner_node: String) -> ServiceEvidenceOwed {
+  OwedToUnbuiltProducer { owner_node: owner_node }
+}
+
+fn refusal_reason(reason: String) -> NonEmptyStr {
+  if reason == "" { "the reader refused without a reason" as NonEmptyStr } else { reason as NonEmptyStr }
+}
+
+// G5 (gunbc.roadmap_session_placement). What its grant record ESTABLISHES, and nothing else:
+//   placement        -- host, capacity partition and unit of the granted session;
+//   workload_class   -- the work-class grant the session was admitted under;
+//   resource_request -- the amount the grant admitted (the request as granted), as Kibibyte.
+// It does not establish wait time (no request-enqueued instant is recorded) or seat utilization (no
+// usage against the grant is recorded); those stay owed to this node (service_evidence_readings).
+// Every arm is mapped: Absent and a slot with no grant record yet are a record not yet written;
+// Unreadable, Foreign, an unreadable or foreign grant, and a record naming another (node, attempt)
+// than the binding are refused. None of them can produce an observed reading.
+type PlacementObserved {
+  host: String
+  partition: String
+  unit: String
+}
+
+type WorkloadClassObserved {
+  class_grant: String
+}
+
+// The grant record of THIS attempt, or why there is none: one fold, read by all three G5 fields.
+type SessionGrantOfAttempt
+  = GrantOfAttempt { record: SessionPlacementRecord }
+  | GrantNotYetWritten
+  | GrantRefused { reason: NonEmptyStr }
+
+fn session_grant_of_attempt(i: SessionPlacementInput, binding: AttemptBinding) -> SessionGrantOfAttempt {
+  match i {
+    SessionPlacementRead { observation } =>
+      match observation {
+        SessionPlacementAbsent { unit: _ } => GrantNotYetWritten
+        SessionPlacementUnreadable { unit: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement is unreadable: ", detail], "")) }
+        SessionPlacementForeign { unit: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement is not this attempt's: ", detail], "")) }
+        SessionPlacementObserved { slot: _, grant, returned: _ } =>
+          match grant {
+            SessionGrantNotRecorded { path: _ } => GrantNotYetWritten
+            SessionGrantUnreadable { path: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session grant record is unreadable: ", detail], "")) }
+            SessionGrantForeign { path: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session grant record is not this attempt's: ", detail], "")) }
+            SessionGrantRecorded { record } =>
+              if record.node_id != (binding.node_id as String) || record.attempt_key != (binding.attempt_key as String) {
+                GrantRefused { reason: refusal_reason(reason: join(["the session grant record names ", record.node_id, " attempt ", record.attempt_key, ", not the bound attempt"], "")) }
+              } else {
+                GrantOfAttempt { record: record }
+              }
+          }
+      }
+  }
+}
+
+fn placement_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<PlacementObserved> {
+  match g {
+    GrantOfAttempt { record } => EvidenceObserved { value: PlacementObserved { host: record.host, partition: record.partition, unit: record.unit } }
+    GrantNotYetWritten => EvidenceRecordAbsent
+    GrantRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+fn workload_class_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<WorkloadClassObserved> {
+  match g {
+    GrantOfAttempt { record } => EvidenceObserved { value: WorkloadClassObserved { class_grant: record.class_grant } }
+    GrantNotYetWritten => EvidenceRecordAbsent
+    GrantRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+fn resource_request_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<Kibibyte> {
+  match g {
+    GrantOfAttempt { record } => EvidenceObserved { value: record.amount }
+    GrantNotYetWritten => EvidenceRecordAbsent
+    GrantRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+// G3 (gunbc.roadmap_attempt_metering). Only a FINAL record (MeteringObserved) is the attempt's meter.
+// A Provisional record exists but can still change: it is pending, never observed and never absent.
+// A record not yet written is record-absent; Refused is refused. What a final record ESTABLISHES, and nothing else:
+//   execution_time -- the seat time its launches held, summed (metering_seat_time_total), as Second;
+//   billable_usage -- the input and output tokens its launches consumed (metering_token_total).
+// The record's compute share is a typed absence in the record itself (ComputeNotAttributable), so it
+// is not part of billable_usage. A record naming another (node, attempt) than the binding is refused,
+// whether final or provisional.
+type MeteredTokenUsage {
+  input_tokens: TokenCount
+  output_tokens: TokenCount
+}
+
+type MeterOfAttempt
+  = MeterFinal { record: AttemptMeteringRecord }
+  | MeterProvisional
+  | MeterNotYetWritten
+  | MeterRefused { reason: NonEmptyStr }
+
+data meter_provisional_reason: NonEmptyStr = "the attempt's metering record is provisional: its launch roster is open or a launch's stream or seat is not yet complete" as NonEmptyStr
+
+fn meter_names_binding(record: AttemptMeteringRecord, binding: AttemptBinding) -> Bool {
+  record.node_id == (binding.node_id as String) && record.attempt_key == (binding.attempt_key as String)
+}
+
+fn meter_foreign(record: AttemptMeteringRecord) -> MeterOfAttempt {
+  MeterRefused { reason: refusal_reason(reason: join(["the metering record names ", record.node_id, " attempt ", record.attempt_key, ", not the bound attempt"], "")) }
+}
+
+fn meter_of_attempt(i: MeteringInput, binding: AttemptBinding) -> MeterOfAttempt {
+  match i {
+    MeteringRead { observation } =>
+      match observation {
+        MeteringObserved { record } => if meter_names_binding(record: record, binding: binding) { MeterFinal { record: record } } else { meter_foreign(record: record) }
+        MeteringProvisional { record } => if meter_names_binding(record: record, binding: binding) { MeterProvisional } else { meter_foreign(record: record) }
+        MeteringNotYetWritten => MeterNotYetWritten
+        MeteringRefused { cause } => MeterRefused { reason: refusal_reason(reason: join(["the metering record is refused: ", cause], "")) }
+      }
+  }
+}
+
+fn execution_time_reading(m: MeterOfAttempt) -> ServiceEvidenceReading<Second> {
+  match m {
+    MeterFinal { record } =>
+      match metering_seat_time_total(record: record) {
+        MeteringSeatTimeObserved { held } => EvidenceObserved { value: held }
+        MeteringSeatTimeIncomplete { cause } => EvidenceRefused { reason: refusal_reason(reason: join(["the final metering record's seat time is incomplete: ", cause], "")) }
+      }
+    MeterProvisional => EvidencePending { reason: meter_provisional_reason }
+    MeterNotYetWritten => EvidenceRecordAbsent
+    MeterRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+fn billable_usage_reading(m: MeterOfAttempt) -> ServiceEvidenceReading<MeteredTokenUsage> {
+  match m {
+    MeterFinal { record } =>
+      match metering_token_total(record: record, output: false) {
+        MeteringTokensIncomplete { cause } => EvidenceRefused { reason: refusal_reason(reason: join(["the final metering record's input tokens are incomplete: ", cause], "")) }
+        MeteringTokensObserved { value: input_total } =>
+          match metering_token_total(record: record, output: true) {
+            MeteringTokensIncomplete { cause } => EvidenceRefused { reason: refusal_reason(reason: join(["the final metering record's output tokens are incomplete: ", cause], "")) }
+            MeteringTokensObserved { value: output_total } => EvidenceObserved { value: MeteredTokenUsage { input_tokens: input_total, output_tokens: output_total } }
+          }
+      }
+    MeterProvisional => EvidencePending { reason: meter_provisional_reason }
+    MeterNotYetWritten => EvidenceRecordAbsent
+    MeterRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+// G4 (gunbc.roadmap.roadmap_result_returned). What a returned result ESTABLISHES:
+//   completion_time     -- the instant the result event was recorded (recorded_at);
+//   failure_attribution -- the outcome arm the attempt came to (AttemptResultOutcome, the event log's
+//                          own carrier: published, verification failed with its cause, or handed back
+//                          with its reason).
+// NotReturned is a record not yet written; NotOwed (no requester) is its own standing; Unobserved, a
+// leaked event-log snapshot, and a result or absence naming another (node, attempt) are refused.
+type CompletionTimeObserved {
+  recorded_at: NonEmptyStr
+}
+
+type ResultOfAttempt
+  = ResultOfThisAttempt { outcome: AttemptResultOutcome, recorded_at: NonEmptyStr }
+  | ResultNotYetReturned
+  | ResultOwedToNoOne { reason: NonEmptyStr }
+  | ResultRefused { reason: NonEmptyStr }
+
+fn result_of_observation(o: ResultReturnedObservation, binding: AttemptBinding) -> ResultOfAttempt {
+  match o {
+    ResultReturnedObserved { node, attempt, event: _, claim: _, return_to: _, outcome, recorded_at } =>
+      if (node as String) != (binding.node_id as String) || (attempt as String) != (binding.attempt_key as String) {
+        ResultRefused { reason: refusal_reason(reason: join(["the returned result names ", node as String, " attempt ", attempt as String, ", not the bound attempt"], "")) }
+      } else if recorded_at == "" {
+        ResultRefused { reason: "the returned result carries no recorded_at instant" as NonEmptyStr }
+      } else {
+        ResultOfThisAttempt { outcome: outcome, recorded_at: recorded_at as NonEmptyStr }
+      }
+    ResultNotReturned { attempt_key } =>
+      if attempt_key != (binding.attempt_key as String) {
+        ResultRefused { reason: refusal_reason(reason: join(["the result reader answered for attempt ", attempt_key, ", not the bound attempt"], "")) }
+      } else { ResultNotYetReturned }
+    ResultNotOwed { reason } => ResultOwedToNoOne { reason: refusal_reason(reason: reason) }
+    ResultReturnedUnobserved { step, reason } => ResultRefused { reason: refusal_reason(reason: join(["the returned result could not be read (", step, "): ", reason], "")) }
+  }
+}
+
+fn result_of_attempt(i: ResultReturnedInput, binding: AttemptBinding) -> ResultOfAttempt {
+  match i {
+    ResultReturnedRead { observation, close } =>
+      match close {
+        SnapshotCloseFailed { worktree: _, exit_code: _, stderr } => ResultRefused { reason: refusal_reason(reason: join(["the event-log snapshot the result was read from was not closed: ", stderr], "")) }
+        SnapshotNotOpened => result_of_observation(o: observation, binding: binding)
+        SnapshotClosed => result_of_observation(o: observation, binding: binding)
+      }
+  }
+}
+
+fn completion_time_reading(g: ResultOfAttempt) -> ServiceEvidenceReading<CompletionTimeObserved> {
+  match g {
+    ResultOfThisAttempt { outcome: _, recorded_at } => EvidenceObserved { value: CompletionTimeObserved { recorded_at: recorded_at } }
+    ResultNotYetReturned => EvidenceRecordAbsent
+    ResultOwedToNoOne { reason } => EvidenceNotOwed { reason: reason }
+    ResultRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+fn failure_attribution_reading(g: ResultOfAttempt) -> ServiceEvidenceReading<AttemptResultOutcome> {
+  match g {
+    ResultOfThisAttempt { outcome, recorded_at: _ } => EvidenceObserved { value: outcome }
+    ResultNotYetReturned => EvidenceRecordAbsent
+    ResultOwedToNoOne { reason } => EvidenceNotOwed { reason: reason }
+    ResultRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+// THE POPULATION: exactly the node's 21 fields, one named member each. A record literal must set
+// every member exactly once, so the population is checked by the compiler, not by a count.
+type ServiceEvidenceReadings {
+  workload_class: ServiceEvidenceReading<WorkloadClassObserved>
+  resource_request: ServiceEvidenceReading<Kibibyte>
+  wait_time: ServiceEvidenceOwed
+  execution_time: ServiceEvidenceReading<Second>
+  completion_time: ServiceEvidenceReading<CompletionTimeObserved>
+  cache_hits: ServiceEvidenceOwed
+  cache_misses: ServiceEvidenceOwed
+  cache_shared_misses: ServiceEvidenceOwed
+  cache_corrupt_hit_refusals: ServiceEvidenceOwed
+  placement: ServiceEvidenceReading<PlacementObserved>
+  seat_utilization: ServiceEvidenceOwed
+  artifact_bytes: ServiceEvidenceOwed
+  egress: ServiceEvidenceOwed
+  failure_attribution: ServiceEvidenceReading<AttemptResultOutcome>
+  recovery_action: ServiceEvidenceOwed
+  operator_intervention_time: ServiceEvidenceOwed
+  hardware_health: ServiceEvidenceOwed
+  billable_usage: ServiceEvidenceReading<MeteredTokenUsage>
+  billable_credits: ServiceEvidenceOwed
+  workspace_recovery_point: ServiceEvidenceOwed
+  workspace_recovery_time: ServiceEvidenceOwed
+}
+
+// THE ONE SOURCE AUTHORITY PER FIELD: which input (and so which reader) or which owning node.
+fn service_evidence_readings(r: ServiceEvidenceReceipt) -> ServiceEvidenceReadings {
+  let g5 = session_grant_of_attempt(i: r.inputs.session_placement, binding: r.binding)
+  let g3 = meter_of_attempt(i: r.inputs.metering, binding: r.binding)
+  let g4 = result_of_attempt(i: r.inputs.result_returned, binding: r.binding)
+  ServiceEvidenceReadings {
+    workload_class: workload_class_reading(g: g5),
+    resource_request: resource_request_reading(g: g5),
+    wait_time: owed_to(owner_node: "service-evidence-capture"),
+    execution_time: execution_time_reading(m: g3),
+    completion_time: completion_time_reading(g: g4),
+    cache_hits: pending_reader_owed(reader: PendingSharedComputation),
+    cache_misses: pending_reader_owed(reader: PendingSharedComputation),
+    cache_shared_misses: pending_reader_owed(reader: PendingSharedComputation),
+    cache_corrupt_hit_refusals: pending_reader_owed(reader: PendingSharedComputation),
+    placement: placement_reading(g: g5),
+    seat_utilization: owed_to(owner_node: "service-evidence-capture"),
+    artifact_bytes: pending_reader_owed(reader: PendingSharedComputation),
+    egress: owed_to(owner_node: "service-evidence-capture"),
+    failure_attribution: failure_attribution_reading(g: g4),
+    recovery_action: owed_to(owner_node: "service-evidence-capture"),
+    operator_intervention_time: owed_to(owner_node: "service-evidence-capture"),
+    hardware_health: owed_to(owner_node: "fleet-health-0-live-receipt"),
+    billable_usage: billable_usage_reading(m: g3),
+    billable_credits: owed_to(owner_node: "failure-billing-outcomes"),
+    workspace_recovery_point: owed_to(owner_node: "fabric-storage"),
+    workspace_recovery_time: owed_to(owner_node: "fabric-storage"),
+  }
+}
+
+// THE ONE ORDERED VIEW of the product, read by the wire AND the closing contract (no second list).
+// This is the encoder's view: each typed reading becomes its wire standing here, and a typed value
+// becomes JSON here and nowhere earlier. The language has no record-member iteration, so this
+// enumeration is the one place a member could be repeated or dropped; the witness compares its
+// names, by identity and in order, against the node's list, and a count-preserving
+// duplicate-plus-omission is its discriminating red (rung 2).
+//
+// ReaderRecordAbsent: the reader is on main and has written nothing for this attempt yet.
+type ServiceEvidenceProducer
+  = PendingReader { reader: PendingServiceReader }
+  | ReaderRecordAbsent { reader: ServiceEvidenceReader }
+  | UnbuiltProducer { owner_node: String }
+
+type ServiceEvidenceStanding
+  = StandingObserved { value: JsonValue, source: ServiceEvidenceReader }
+  | StandingOwed { producer: ServiceEvidenceProducer }
+  | StandingNotOwed { source: ServiceEvidenceReader, reason: NonEmptyStr }
+  | StandingPending { source: ServiceEvidenceReader, reason: NonEmptyStr }
+  | StandingRefused { reason: NonEmptyStr }
+
+type ServiceEvidenceEntry {
+  field: String
+  standing: ServiceEvidenceStanding
+}
+
+fn owed_entry(field: String, o: ServiceEvidenceOwed) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, standing: StandingOwed { producer: match o {
+    OwedToPendingReader { reader } => PendingReader { reader: reader }
+    OwedToUnbuiltProducer { owner_node } => UnbuiltProducer { owner_node: owner_node }
+  } } }
+}
+
+// THE FIELDS WITH A TYPED OBSERVED CARRIER today, named once: the ordered view writes them and the
+// snapshot decoder reads their carriers back by the same names.
+data field_placement: String = "placement"
+data field_workload_class: String = "workload_class"
+data field_resource_request: String = "resource_request"
+data field_execution_time: String = "execution_time"
+data field_billable_usage: String = "billable_usage"
+data field_completion_time: String = "completion_time"
+data field_failure_attribution: String = "failure_attribution"
+
+fn placement_json(v: PlacementObserved) -> JsonValue {
+  json_object([
+    json_kv(key: "host", value: json_string(s: v.host)),
+    json_kv(key: "partition", value: json_string(s: v.partition)),
+    json_kv(key: "unit", value: json_string(s: v.unit)),
+  ])
+}
+
+fn workload_class_json(v: WorkloadClassObserved) -> JsonValue {
+  json_object([json_kv(key: "class_grant", value: json_string(s: v.class_grant))])
+}
+
+fn kibibyte_json(v: Kibibyte) -> JsonValue {
+  json_object([json_kv(key: "kib", value: json_int(n: kibibyte_count(k: v)))])
+}
+
+fn second_json(v: Second) -> JsonValue {
+  json_object([json_kv(key: "seconds", value: json_int(n: second_count(s: v)))])
+}
+
+fn metered_token_usage_json(v: MeteredTokenUsage) -> JsonValue {
+  json_object([
+    json_kv(key: "input_tokens", value: json_int(n: token_count_value(t: v.input_tokens))),
+    json_kv(key: "output_tokens", value: json_int(n: token_count_value(t: v.output_tokens))),
+  ])
+}
+
+fn completion_time_json(v: CompletionTimeObserved) -> JsonValue {
+  json_object([json_kv(key: "recorded_at", value: json_string(s: v.recorded_at as String))])
+}
+
+// The event log's own outcome members, under its own outcome word: the one encoding of this carrier.
+fn result_outcome_json(v: AttemptResultOutcome) -> JsonValue {
+  json_object(concat([json_kv(key: "outcome", value: json_string(s: attempt_result_outcome_word(o: v)))], attempt_result_outcome_members(o: v)))
+}
+
+// THE ONE ENTRY RENDERER: a reading whose value is already its carrier's JSON, attributed to the reader
+// that produced it. Each typed field below only encodes its carrier and names its reader.
+fn reading_entry(field: String, source: ServiceEvidenceReader, r: ServiceEvidenceReading<JsonValue>) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, standing: match r {
+    EvidenceObserved { value } => StandingObserved { value: value, source: source }
+    EvidenceRecordAbsent => StandingOwed { producer: ReaderRecordAbsent { reader: source } }
+    EvidenceNotOwed { reason } => StandingNotOwed { source: source, reason: reason }
+    EvidencePending { reason } => StandingPending { source: source, reason: reason }
+    EvidenceRefused { reason } => StandingRefused { reason: reason }
+  } }
+}
+
+fn placement_entry(field: String, r: ServiceEvidenceReading<PlacementObserved>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: SessionPlacementReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: placement_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn workload_class_entry(field: String, r: ServiceEvidenceReading<WorkloadClassObserved>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: SessionPlacementReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: workload_class_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn kibibyte_entry(field: String, r: ServiceEvidenceReading<Kibibyte>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: SessionPlacementReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: kibibyte_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn execution_time_entry(field: String, r: ServiceEvidenceReading<Second>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: MeteringReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: second_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn billable_usage_entry(field: String, r: ServiceEvidenceReading<MeteredTokenUsage>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: MeteringReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: metered_token_usage_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn completion_time_entry(field: String, r: ServiceEvidenceReading<CompletionTimeObserved>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: ResultReturnedReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: completion_time_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn failure_attribution_entry(field: String, r: ServiceEvidenceReading<AttemptResultOutcome>) -> ServiceEvidenceEntry {
+  reading_entry(field: field, source: ResultReturnedReader, r: match r {
+    EvidenceObserved { value } => EvidenceObserved { value: result_outcome_json(v: value) }
+    EvidenceRecordAbsent => EvidenceRecordAbsent
+    EvidenceNotOwed { reason } => EvidenceNotOwed { reason: reason }
+    EvidencePending { reason } => EvidencePending { reason: reason }
+    EvidenceRefused { reason } => EvidenceRefused { reason: reason }
+  })
+}
+
+fn service_evidence_entries(r: ServiceEvidenceReadings) -> List<ServiceEvidenceEntry> {
+  [
+    workload_class_entry(field: field_workload_class, r: r.workload_class),
+    kibibyte_entry(field: field_resource_request, r: r.resource_request),
+    owed_entry(field: "wait_time", o: r.wait_time),
+    execution_time_entry(field: field_execution_time, r: r.execution_time),
+    completion_time_entry(field: field_completion_time, r: r.completion_time),
+    owed_entry(field: "cache_hits", o: r.cache_hits),
+    owed_entry(field: "cache_misses", o: r.cache_misses),
+    owed_entry(field: "cache_shared_misses", o: r.cache_shared_misses),
+    owed_entry(field: "cache_corrupt_hit_refusals", o: r.cache_corrupt_hit_refusals),
+    placement_entry(field: field_placement, r: r.placement),
+    owed_entry(field: "seat_utilization", o: r.seat_utilization),
+    owed_entry(field: "artifact_bytes", o: r.artifact_bytes),
+    owed_entry(field: "egress", o: r.egress),
+    failure_attribution_entry(field: field_failure_attribution, r: r.failure_attribution),
+    owed_entry(field: "recovery_action", o: r.recovery_action),
+    owed_entry(field: "operator_intervention_time", o: r.operator_intervention_time),
+    owed_entry(field: "hardware_health", o: r.hardware_health),
+    billable_usage_entry(field: field_billable_usage, r: r.billable_usage),
+    owed_entry(field: "billable_credits", o: r.billable_credits),
+    owed_entry(field: "workspace_recovery_point", o: r.workspace_recovery_point),
+    owed_entry(field: "workspace_recovery_time", o: r.workspace_recovery_time),
+  ]
+}
+
+// ── THE OBSERVATION the dogfood start receipt requires ──
+type ServiceEvidenceObservation
+  = ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt }
+  | ServiceEvidenceAttemptUnlaunched
+  | ServiceEvidenceRefused { reason: String }
+
+// THE ATTEMPT'S DURABLE BINDING, read from its launch record: the one source of the instance, node,
+// attempt and launch revision a service-evidence snapshot must name.
+fn service_evidence_binding_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptBindingOutcome {
+  service_evidence_bind_attempt(
+    instance_id: instance.instance_id as String,
+    node_id: node_id as String,
+    attempt_key: attempt_key,
+    launch: filesystem_file_observation_of_path(path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)),
+  )
+}
+
+// A pinned snapshot's binding against the attempt's durable binding: all four members must be equal.
+fn service_evidence_binding_defect(instance_id: String, node_id: String, attempt_key: String, launch_revision: String, binding: AttemptBindingOutcome) -> String? {
+  match binding {
+    AttemptUnlaunched => Present { value: "the attempt the pinned evidence names has no launch record" }
+    AttemptBindingRefused { reason } => Present { value: join(["the attempt's launch record cannot bind the pinned evidence: ", reason], "") }
+    AttemptBound { binding: b } =>
+      if instance_id != (b.instance_id as String) { Present { value: "the pinned evidence names another instance" } }
+      else if node_id != (b.node_id as String) || attempt_key != (b.attempt_key as String) { Present { value: "the pinned evidence names another node or attempt" } }
+      else if launch_revision != (b.revision_hex as String) { Present { value: "the pinned evidence names another launch revision than the attempt's launch record" } }
+      else { none }
+  }
+}
+
+fn service_evidence_snapshot_binding_defect(snapshot: ServiceEvidenceSnapshot, binding: AttemptBindingOutcome) -> String? {
+  service_evidence_binding_defect(instance_id: snapshot.instance_id, node_id: snapshot.node_id, attempt_key: snapshot.attempt_key, launch_revision: snapshot.launch_revision, binding: binding)
+}
+
+fn service_evidence_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ServiceEvidenceObservation {
+  match service_evidence_binding_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptUnlaunched => ServiceEvidenceAttemptUnlaunched
+    AttemptBindingRefused { reason } => ServiceEvidenceRefused { reason: reason }
+    AttemptBound { binding } =>
+      ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt { binding: binding, inputs: service_evidence_inputs_for_attempt(instance: instance, binding: binding) } }
+  }
+}
+
+// ── THE CANONICAL WIRE AND ITS DIGEST, what the start receipt pins ──
+// The wire is a function of the receipt (binding + inputs) only: a reading built by hand is not an
+// input to it, so it cannot be serialized or pinned as service evidence.
+fn service_evidence_producer_json(p: ServiceEvidenceProducer) -> JsonValue {
+  match p {
+    PendingReader { reader } => json_object([
+      json_kv(key: "kind", value: json_string(s: "pending_reader")),
+      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: pending_reader(r: reader)))),
+      json_kv(key: "pr", value: json_int(n: reader_pending_pr(r: reader))),
+    ])
+    ReaderRecordAbsent { reader } => json_object([
+      json_kv(key: "kind", value: json_string(s: "reader_record_absent")),
+      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: reader))),
+    ])
+    UnbuiltProducer { owner_node } => json_object([
+      json_kv(key: "kind", value: json_string(s: "unbuilt_producer")),
+      json_kv(key: "owner_node", value: json_string(s: owner_node)),
+    ])
+  }
+}
+
+fn service_evidence_entry_json(x: ServiceEvidenceEntry) -> JsonValue {
+  let field = json_kv(key: "field", value: json_string(s: x.field))
+  match x.standing {
+    StandingObserved { value, source } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "observed")),
+      json_kv(key: "value", value: value),
+      json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
+    ])
+    StandingOwed { producer } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "owed")),
+      json_kv(key: "producer", value: service_evidence_producer_json(p: producer)),
+    ])
+    StandingNotOwed { source, reason } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "not_owed")),
+      json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
+      json_kv(key: "reason", value: json_string(s: reason as String)),
+    ])
+    StandingPending { source, reason } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "pending")),
+      json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
+      json_kv(key: "reason", value: json_string(s: reason as String)),
+    ])
+    StandingRefused { reason } => json_object([field,
+      json_kv(key: "standing", value: json_string(s: "refused")),
+      json_kv(key: "reason", value: json_string(s: reason as String)),
+    ])
+  }
+}
+
+data service_evidence_receipt_schema: String = "service-evidence-receipt/v2"
+
+// THE ONE ENCODER of the wire's top level, used by the receipt and by the snapshot decoder's re-encode.
+fn service_evidence_wire_of(instance_id: String, node_id: String, attempt_key: String, revision_hex: String, entries: List<ServiceEvidenceEntry>) -> String {
+  serialize_json(v: service_evidence_wire_json_of(instance_id: instance_id, node_id: node_id, attempt_key: attempt_key, revision_hex: revision_hex, entries: entries))
+}
+
+// The wire's JSON tree: the one structure the serializer renders and the snapshot decoder compares.
+fn service_evidence_wire_json_of(instance_id: String, node_id: String, attempt_key: String, revision_hex: String, entries: List<ServiceEvidenceEntry>) -> JsonValue {
+  json_object([
+    json_kv(key: "schema", value: json_string(s: service_evidence_receipt_schema)),
+    json_kv(key: "instance_id", value: json_string(s: instance_id)),
+    json_kv(key: "node_id", value: json_string(s: node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+    json_kv(key: "launch_revision", value: json_string(s: revision_hex)),
+    json_kv(key: "fields", value: json_array(map(entries, x => service_evidence_entry_json(x: x)))),
+  ])
+}
+
+fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
+  service_evidence_wire_of(
+    instance_id: r.binding.instance_id as String, node_id: r.binding.node_id as String,
+    attempt_key: r.binding.attempt_key as String, revision_hex: r.binding.revision_hex as String,
+    entries: service_evidence_entries(r: service_evidence_readings(r: r)),
+  )
+}
+
+fn service_evidence_receipt_digest(r: ServiceEvidenceReceipt) -> String {
+  wire_content_hash_to_hex(hash: content_hash_of_value(value: service_evidence_receipt_wire(r: r) as NonEmptyStr))
+}
+
+// ── THE NODE'S CLOSING CONTRACT (roadmap node service-evidence-capture) ──
+//
+// The node closes when EVERY FIELD HAS A LANDED SOURCE: no field is owed to a reader that is not on
+// main or to a producer that does not exist. Runtime standings of a landed reader (its record not yet
+// written, or refused for one attempt) are facts about one attempt, not about the node's capability,
+// so they do not hold the node open. The predicate is evaluated over a probe receipt whose landed
+// readers report no record (the weakest runtime standing), so it measures sources and nothing else.
+// Read from the same ordered view as the wire. RED today: 14 of 21 fields are unsourced (G5 sources 3,
+// G3 and G4 two each).
+fn service_evidence_unsourced_fields(r: ServiceEvidenceReadings) -> List<String> {
+  map(filter(service_evidence_entries(r: r), x => match x.standing {
+    StandingObserved { value: _, source: _ } => false
+    StandingRefused { reason: _ } => false
+    StandingNotOwed { source: _, reason: _ } => false
+    StandingPending { source: _, reason: _ } => false
+    StandingOwed { producer } => match producer {
+      PendingReader { reader: _ } => true
+      UnbuiltProducer { owner_node: _ } => true
+      ReaderRecordAbsent { reader: _ } => false
+    }
+  }), x => x.field)
+}
+
+fn service_evidence_closing_probe() -> ServiceEvidenceReceipt {
+  ServiceEvidenceReceipt {
+    binding: AttemptBinding {
+      instance_id: "closing-contract-probe" as NonEmptyStr,
+      node_id: "service-evidence-capture" as NonEmptyStr,
+      attempt_key: "closing-contract-probe" as NonEmptyStr,
+      revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    },
+    inputs: ServiceEvidenceInputs {
+      session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "closing-contract-probe" } },
+      metering: MeteringRead { observation: MeteringNotYetWritten },
+      result_returned: ResultReturnedRead { observation: ResultNotReturned { attempt_key: "closing-contract-probe" }, close: SnapshotNotOpened },
+    },
+  }
+}
+
+fn service_evidence_capture_acceptance_holds() -> Bool {
+  count(service_evidence_unsourced_fields(r: service_evidence_readings(r: service_evidence_closing_probe()))) == 0
+}
+
+// ── THE PINNED SNAPSHOT: one immutable copy of the canonical wire, and what it establishes ──
+//
+// A consumer that pins this evidence (gunbc.roadmap_dogfood_route's start receipt) persists the
+// canonical wire itself and reads it back only through this decoder, so the digest, the binding and
+// every field's standing are derived from one persisted snapshot and can never be authored apart.
+// The field population is the module's own ordered view, read from the closing probe -- the same
+// service_evidence_entries enumeration the wire is written from -- so there is no second list of names.
+// A snapshot is a qualifying copy only: a refused field, an unknown, missing, duplicated or reordered
+// field, or a wire this module would not write, does not decode.
+type ServiceEvidenceSnapshotStanding
+  = SnapshotFieldObserved
+  | SnapshotFieldPending
+  | SnapshotFieldNotOwed
+  | SnapshotFieldOwed
+
+type ServiceEvidenceSnapshotField {
+  field: String
+  standing: ServiceEvidenceSnapshotStanding
+}
+
+type ServiceEvidenceSnapshot sole_constructor {
+  wire: String
+  digest: String
+  instance_id: String
+  node_id: String
+  attempt_key: String
+  launch_revision: String
+  fields: List<ServiceEvidenceSnapshotField>
+  entries: List<ServiceEvidenceEntry>
+}
+
+type ServiceEvidenceSnapshotDecode
+  = SnapshotDecoded { snapshot: ServiceEvidenceSnapshot }
+  | SnapshotInvalid { reason: String }
+
+// THE SOURCE AUTHORITY, AS ENTRIES: what service_evidence_readings writes for each field when no
+// landed reader has a record (the closing probe). Every field's owed producer is fixed by it, and a
+// field may stand observed only when this entry owes it to a reader's absent record -- and then only
+// from that reader. The snapshot decoder checks each decoded entry against this, field by field.
+data service_evidence_canonical_entries: List<ServiceEvidenceEntry> = service_evidence_entries(r: service_evidence_readings(r: service_evidence_closing_probe()))
+
+data service_evidence_canonical_fields: List<String> = map(service_evidence_canonical_entries, x => x.field)
+
+fn service_evidence_canonical_field_names() -> List<String> {
+  service_evidence_canonical_fields
+}
+
+fn snapshot_string(v: JsonValue, key: String) -> String {
+  match json_field_string(obj: v, key: key) {
+    FieldRead { value: s } => s
+    FieldAbsent => ""
+    FieldMalformed { cause: _ } => ""
+  }
+}
+
+// THE STANDING PAYLOAD, decoded to the typed entry the encoder writes. An observed field must be one
+// of the fields with a typed carrier, carry that carrier's members, and name the reader that produces
+// it; an owed field must carry exactly one producer arm with all its members. The decoded entry is
+// re-encoded by the module's own encoder, and the parsed document must equal, structurally, the JSON
+// tree that encoder builds from the decoded entries, so an extra, missing, reordered or retyped member
+// anywhere refuses. The digest binds the exact persisted bytes.
+data service_evidence_readers: List<ServiceEvidenceReader> = [MeteringReader, SessionPlacementReader, SharedComputationReader, ResultReturnedReader]
+data pending_service_readers: List<PendingServiceReader> = [PendingSharedComputation]
+
+// Which readers' observations carry a not-owed arm: only G4 (ResultNotOwed, an attempt with no
+// requester). A not-owed standing attributed to any other reader is not one its reader can write.
+fn reader_can_establish_not_owed(r: ServiceEvidenceReader) -> Bool {
+  match r {
+    ResultReturnedReader => true
+    MeteringReader => false
+    SessionPlacementReader => false
+    SharedComputationReader => false
+  }
+}
+
+// Which readers' observations carry a present-but-not-final arm: only G3 (MeteringProvisional).
+fn reader_can_establish_pending(r: ServiceEvidenceReader) -> Bool {
+  match r {
+    MeteringReader => true
+    ResultReturnedReader => false
+    SessionPlacementReader => false
+    SharedComputationReader => false
+  }
+}
+
+fn reader_of_wire(w: String) -> ServiceEvidenceReader? {
+  first(filter(service_evidence_readers, r => service_evidence_reader_wire(r: r) == w))
+}
+
+fn pending_of(w: String, pr: Int) -> PendingServiceReader? {
+  first(filter(pending_service_readers, p => service_evidence_reader_wire(r: pending_reader(r: p)) == w && reader_pending_pr(r: p) == pr))
+}
+
+fn snapshot_int(v: JsonValue, key: String) -> Int? {
+  match json_field_int(obj: v, key: key) { FieldRead { value: n } => Present { value: n }  FieldAbsent => none  FieldMalformed { cause: _ } => none }
+}
+
+fn snapshot_member(v: JsonValue, key: String) -> JsonValue? {
+  match json_field(obj: v, key: key) { FieldRead { value: x } => Present { value: x }  FieldAbsent => none  FieldMalformed { cause: _ } => none }
+}
+
+fn snapshot_producer_of(p: JsonValue) -> ServiceEvidenceProducer? {
+  let kind = snapshot_string(v: p, key: "kind")
+  if kind == "pending_reader" {
+    match snapshot_int(v: p, key: "pr") {
+      Absent => none
+      Present { value: pr } => match pending_of(w: snapshot_string(v: p, key: "reader"), pr: pr) { Absent => none  Present { value: r } => Present { value: PendingReader { reader: r } } }
+    }
+  } else if kind == "reader_record_absent" {
+    match reader_of_wire(w: snapshot_string(v: p, key: "reader")) { Absent => none  Present { value: r } => Present { value: ReaderRecordAbsent { reader: r } } }
+  } else if kind == "unbuilt_producer" {
+    let owner = snapshot_string(v: p, key: "owner_node")
+    if owner == "" { none } else { Present { value: UnbuiltProducer { owner_node: owner } } }
+  } else { none }
+}
+
+// The typed carrier of an observed value, re-encoded by that carrier's own encoder.
+fn snapshot_observed_value_of(field: String, v: JsonValue) -> JsonValue? {
+  if field == field_placement {
+    let host = snapshot_string(v: v, key: "host")
+    let partition = snapshot_string(v: v, key: "partition")
+    let unit = snapshot_string(v: v, key: "unit")
+    if host == "" || partition == "" || unit == "" { none } else { Present { value: placement_json(v: PlacementObserved { host: host, partition: partition, unit: unit }) } }
+  } else if field == field_workload_class {
+    let g = snapshot_string(v: v, key: "class_grant")
+    if g == "" { none } else { Present { value: workload_class_json(v: WorkloadClassObserved { class_grant: g }) } }
+  } else if field == field_resource_request {
+    match snapshot_int(v: v, key: "kib") {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else { Present { value: kibibyte_json(v: kibibyte(count: n)) } }
+    }
+  } else if field == field_execution_time {
+    match snapshot_int(v: v, key: "seconds") {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else { Present { value: second_json(v: second(count: n)) } }
+    }
+  } else if field == field_billable_usage {
+    match snapshot_int(v: v, key: "input_tokens") {
+      Absent => none
+      Present { value: i } =>
+        match snapshot_int(v: v, key: "output_tokens") {
+          Absent => none
+          Present { value: o } => if i < 0 || o < 0 { none } else { Present { value: metered_token_usage_json(v: MeteredTokenUsage { input_tokens: token_count(count: i), output_tokens: token_count(count: o) }) } }
+        }
+    }
+  } else if field == field_completion_time {
+    let at = snapshot_string(v: v, key: "recorded_at")
+    if at == "" { none } else { Present { value: completion_time_json(v: CompletionTimeObserved { recorded_at: at as NonEmptyStr }) } }
+  } else if field == field_failure_attribution {
+    match attempt_result_outcome_decode(doc: v) { Absent => none  Present { value: o } => Present { value: result_outcome_json(v: o) } }
+  } else { none }
+}
+
+type SnapshotEntry {
+  entry: ServiceEvidenceEntry
+  field: ServiceEvidenceSnapshotField
+}
+
+fn snapshot_field_of(v: JsonValue) -> SnapshotEntry? {
+  let standing = snapshot_string(v: v, key: "standing")
+  let field = snapshot_string(v: v, key: "field")
+  if field == "" { none }
+  else if standing == "observed" {
+    match snapshot_member(v: v, key: "value") {
+      Absent => none
+      Present { value: raw } =>
+        match snapshot_observed_value_of(field: field, v: raw) {
+          Absent => none
+          Present { value: typed } =>
+            match reader_of_wire(w: snapshot_string(v: v, key: "source")) {
+              Absent => none
+              Present { value: source } => Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingObserved { value: typed, source: source } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldObserved } } }
+            }
+        }
+    }
+  } else if standing == "pending" {
+    let reason = snapshot_string(v: v, key: "reason")
+    if reason == "" { none } else {
+      match reader_of_wire(w: snapshot_string(v: v, key: "source")) {
+        Absent => none
+        Present { value: source } => Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingPending { source: source, reason: reason as NonEmptyStr } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldPending } } }
+      }
+    }
+  } else if standing == "not_owed" {
+    let reason = snapshot_string(v: v, key: "reason")
+    if reason == "" { none } else {
+      match reader_of_wire(w: snapshot_string(v: v, key: "source")) {
+        Absent => none
+        Present { value: source } => Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingNotOwed { source: source, reason: reason as NonEmptyStr } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldNotOwed } } }
+      }
+    }
+  } else if standing == "owed" {
+    match snapshot_member(v: v, key: "producer") {
+      Absent => none
+      Present { value: p } =>
+        match snapshot_producer_of(p: p) {
+          Absent => none
+          Present { value: producer } => Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingOwed { producer: producer } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldOwed } } }
+        }
+    }
+  }
+  else { none }
+}
+
+fn snapshot_fields_of(v: JsonValue) -> List<SnapshotEntry>? {
+  match json_field(obj: v, key: "fields") {
+    FieldRead { value: arr } =>
+      match arr {
+        JsonArray { elements } =>
+          fold(elements, init: Present { value: [] }, f: (acc, e) => match acc {
+            Absent => none
+            Present { value: done } => match snapshot_field_of(v: e) { Absent => none  Present { value: f } => Present { value: concat(done, [f]) } }
+          })
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+// Exactly the canonical names, once each and in canonical order: pairwise equal over equal lengths.
+// One decoded entry against its source-authority entry: the same field; if owed, exactly the producer
+// the authority names; if observed or not owed, only where the authority owes the field to a reader's
+// absent record and only from that reader (and pending or not owed only from a reader whose
+// observation has that arm) -- so a typed value the decoder accepts for one field can
+// stand only as that field's own reader wrote it.
+fn snapshot_entry_follows_its_source(decoded: ServiceEvidenceEntry, canonical: ServiceEvidenceEntry) -> Bool {
+  decoded.field == canonical.field && (match canonical.standing {
+    StandingOwed { producer: expected } =>
+      match decoded.standing {
+        StandingOwed { producer } => producer == expected
+        StandingObserved { value: _, source } =>
+          match expected {
+            ReaderRecordAbsent { reader } => source == reader
+            PendingReader { reader: _ } => false
+            UnbuiltProducer { owner_node: _ } => false
+          }
+        StandingPending { source, reason: _ } =>
+          match expected {
+            ReaderRecordAbsent { reader } => source == reader && reader_can_establish_pending(r: reader)
+            PendingReader { reader: _ } => false
+            UnbuiltProducer { owner_node: _ } => false
+          }
+        StandingNotOwed { source, reason: _ } =>
+          match expected {
+            ReaderRecordAbsent { reader } => source == reader && reader_can_establish_not_owed(r: reader)
+            PendingReader { reader: _ } => false
+            UnbuiltProducer { owner_node: _ } => false
+          }
+        StandingRefused { reason: _ } => false
+      }
+    StandingObserved { value: _, source: _ } => false
+    StandingNotOwed { source: _, reason: _ } => false
+    StandingPending { source: _, reason: _ } => false
+    StandingRefused { reason: _ } => false
+  })
+}
+
+fn snapshot_entries_follow_their_sources(decoded: List<ServiceEvidenceEntry>, canonical: List<ServiceEvidenceEntry>) -> Bool {
+  match first(decoded) {
+    Absent => length(canonical) == 0
+    Present { value: d } =>
+      match first(canonical) {
+        Absent => false
+        Present { value: c } => snapshot_entry_follows_its_source(decoded: d, canonical: c) && snapshot_entries_follow_their_sources(decoded: skip(decoded, 1), canonical: skip(canonical, 1))
+      }
+  }
+}
+
+
+
+fn service_evidence_snapshot_decode(wire: String) -> ServiceEvidenceSnapshotDecode {
+  service_evidence_snapshot_decode_bound(wire: wire, node_id: none, attempt_key: none)
+}
+
+// THE BOUND DECODE: a consumer that knows which node and attempt the evidence must name passes them,
+// and a foreign binding refuses as soon as the document is parsed, before the field payloads are
+// decoded and re-encoded.
+fn service_evidence_snapshot_decode_bound(wire: String, node_id: String?, attempt_key: String?) -> ServiceEvidenceSnapshotDecode {
+  match parse_json_document(s: wire) {
+    JsonDocumentUnreadable { gap: _ } => SnapshotInvalid { reason: "the service evidence snapshot is not a JSON document" }
+    JsonDocumentParsed { value: v } => {
+      let schema = snapshot_string(v: v, key: "schema")
+      let instance = snapshot_string(v: v, key: "instance_id")
+      let node = snapshot_string(v: v, key: "node_id")
+      let attempt = snapshot_string(v: v, key: "attempt_key")
+      let revision = snapshot_string(v: v, key: "launch_revision")
+      let foreign = (match node_id { Absent => false  Present { value: n } => n != node }) || (match attempt_key { Absent => false  Present { value: a } => a != attempt })
+      if schema != service_evidence_receipt_schema {
+        SnapshotInvalid { reason: join(["the service evidence snapshot's schema is not ", service_evidence_receipt_schema], "") }
+      } else if instance == "" || node == "" || attempt == "" {
+        SnapshotInvalid { reason: "the service evidence snapshot names no instance, node or attempt" }
+      } else if foreign {
+        SnapshotInvalid { reason: "the service evidence snapshot names another node or attempt" }
+      } else if !lower_hex_40(value: revision) {
+        SnapshotInvalid { reason: "the service evidence snapshot's launch_revision is not a 40-hex revision" }
+      } else {
+        match snapshot_fields_of(v: v) {
+          Absent => SnapshotInvalid { reason: "the service evidence snapshot has a field whose standing payload is malformed, refused, or not the typed carrier and producer its encoder writes" }
+          Present { value: decoded } =>
+            if !snapshot_entries_follow_their_sources(decoded: map(decoded, d => d.entry), canonical: service_evidence_canonical_entries) {
+              SnapshotInvalid { reason: "the service evidence snapshot's fields are not exactly the canonical population in order, each standing as its source authority (service_evidence_readings) allows" }
+            } else if service_evidence_wire_json_of(instance_id: instance, node_id: node, attempt_key: attempt, revision_hex: revision, entries: map(decoded, d => d.entry)) != v {
+              SnapshotInvalid { reason: "the service evidence snapshot is not structurally the document this module's encoder writes for its own decoded entries (an extra, missing, reordered or retyped member)" }
+            } else {
+              SnapshotDecoded { snapshot: ServiceEvidenceSnapshot {
+                wire: wire,
+                digest: wire_content_hash_to_hex(hash: content_hash_of_value(value: wire as NonEmptyStr)),
+                instance_id: instance,
+                node_id: node,
+                attempt_key: attempt,
+                launch_revision: revision,
+                fields: map(decoded, d => d.field),
+                entries: map(decoded, d => d.entry),
+              } }
+            }
+        }
+      }
+    }
+  }
+}
+
+// The one mint from a live receipt: the canonical wire, read back through the same decoder.
+fn service_evidence_snapshot_of_receipt(r: ServiceEvidenceReceipt) -> ServiceEvidenceSnapshotDecode {
+  service_evidence_snapshot_decode(wire: service_evidence_receipt_wire(r: r))
+}
+
+// ── TYPED PROJECTIONS OF A PINNED SNAPSHOT, for a consumer that requires a stage to be established ──
+//
+// A decoded snapshot's entries already passed the source authority, so an observed entry here is the
+// typed carrier its landed reader writes. These read it back as typed facts; anything not observed --
+// owed, pending, not_owed, record-absent -- yields none, so a consumer that requires the fact refuses.
+fn service_evidence_snapshot_observed(snapshot: ServiceEvidenceSnapshot, field: String) -> JsonValue? {
+  fold(snapshot.entries, init: none, f: (acc, e) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if e.field != field { none }
+      else {
+        match e.standing {
+          StandingObserved { value, source: _ } => Present { value: value }
+          StandingOwed { producer: _ } => none
+          StandingPending { source: _, reason: _ } => none
+          StandingNotOwed { reason: _, source: _ } => none
+          StandingRefused { reason: _ } => none
+        }
+      }
+  })
+}
+
+type SnapshotPublishedResult {
+  pr: String
+  head: String
+  recorded_at: String
+}
+
+// The G4 fields as one published result: failure_attribution observed as the event log's published
+// outcome, and completion_time observed.
+fn service_evidence_snapshot_published_result(snapshot: ServiceEvidenceSnapshot) -> SnapshotPublishedResult? {
+  match service_evidence_snapshot_observed(snapshot: snapshot, field: field_failure_attribution) {
+    Absent => none
+    Present { value: outcome } =>
+      match service_evidence_snapshot_observed(snapshot: snapshot, field: field_completion_time) {
+        Absent => none
+        Present { value: completion } => {
+          let pr = snapshot_string(v: outcome, key: "pr")
+          let head = snapshot_string(v: outcome, key: "head")
+          let at = snapshot_string(v: completion, key: "recorded_at")
+          if snapshot_string(v: outcome, key: "outcome") != "published" || pr == "" || head == "" || at == "" { none }
+          else { Present { value: SnapshotPublishedResult { pr: pr, head: head, recorded_at: at } } }
+        }
+      }
+  }
+}
+
+type SnapshotFinalMetering {
+  seat_time: Second
+  input_tokens: TokenCount
+  output_tokens: TokenCount
+}
+
+// The G3 fields as one Final meter: execution_time and billable_usage both observed (a provisional
+// record is pending, never observed), with both token totals present.
+fn service_evidence_snapshot_final_metering(snapshot: ServiceEvidenceSnapshot) -> SnapshotFinalMetering? {
+  match service_evidence_snapshot_observed(snapshot: snapshot, field: field_execution_time) {
+    Absent => none
+    Present { value: time } =>
+      match service_evidence_snapshot_observed(snapshot: snapshot, field: field_billable_usage) {
+        Absent => none
+        Present { value: usage } =>
+          match snapshot_int(v: time, key: "seconds") {
+            Absent => none
+            Present { value } => {
+              let seconds = value
+              match snapshot_int(v: usage, key: "input_tokens") {
+                Absent => none
+                Present { value } => {
+                  let input = value
+                  match snapshot_int(v: usage, key: "output_tokens") {
+                    Absent => none
+                    Present { value } =>
+                      if seconds < 0 || input < 0 || value < 0 { none }
+                      else { Present { value: SnapshotFinalMetering { seat_time: second(count: seconds), input_tokens: token_count(count: input), output_tokens: token_count(count: value) } } }
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+

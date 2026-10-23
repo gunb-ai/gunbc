@@ -1,0 +1,102 @@
+module gunbc.roadmap_issue_query
+
+import std.types { String, Int, Bool, List }
+import gunbc.roadmap_view_preferences { IssueViewPreferences, ViewSortTerm, ViewAscending }
+import extdeps.google.issue_tracker { issue_results_sort_key_wire }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_array, json_string, json_int }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string_list, json_field_value }
+
+// The observation producer records the complete issue set. Metadata is one short JSON line;
+// rendered HTML is an opaque suffix, never fed through the JSON character-recursive parser.
+// The delimiter is a literal HTML comment; authored text is escaped by the HTML emitter.
+type IssueQueryRow { node_id: String, project: String, band: String, search: String, title: String, assignee: String, priority: Int, status: Int, html: String }
+data issue_query_separator: String = "\n<!-- gunbc-query-row -->\n"
+fn issue_query_fold(text: String) -> String {
+  join(map(text.chars(), cp => from_code_point(if cp >= 65 && cp <= 90 { cp + 32 } else { cp })), "")
+}
+fn issue_query_wire_field(fields: List<String>, position: Int) -> String {
+  match fields.skip(n: position).first() { Present { value } => value Absent => "" }
+}
+fn issue_query_row_wire(row: IssueQueryRow) -> String {
+  let fields = [row.node_id, row.project, row.band, row.search, row.title, row.assignee, to_string(row.priority), to_string(row.status)]
+  join([serialize_json(v: json_object(members: [json_kv(key: "fields", value: json_array(elements: map(fields, s => json_string(s: s))))])), "\n", row.html], "")
+}
+fn issue_query_row_fields(fields: List<String>, html: String) -> IssueQueryRow? {
+  if count(fields) != 8 || html == "" { none } else {
+    match parse_int(s: issue_query_wire_field(fields: fields, position: 6)) {
+      Absent => none
+      Present { value: priority } => match parse_int(s: issue_query_wire_field(fields: fields, position: 7)) {
+        Absent => none
+        Present { value: status } => if priority < 0 || priority > 3 || status < 1 || status > 10 { none } else {
+          Present { value: IssueQueryRow { node_id: issue_query_wire_field(fields: fields, position: 0), project: issue_query_wire_field(fields: fields, position: 1), band: issue_query_wire_field(fields: fields, position: 2), search: issue_query_wire_field(fields: fields, position: 3), title: issue_query_wire_field(fields: fields, position: 4), assignee: issue_query_wire_field(fields: fields, position: 5), priority: priority, status: status, html: html } }
+        }
+      }
+    }
+  }
+}
+fn issue_query_row_of(raw: String) -> IssueQueryRow? {
+  match split(s: raw, delimiter: "\n").first() {
+    Absent => none
+    Present { value: header } => match parse_json_document(s: header) {
+      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentParsed { value: doc } => match json_field_value(r: json_field_string_list(obj: doc, key: "fields")) {
+        Absent => none
+        Present { value: fields } => issue_query_row_fields(fields: fields, html: substring(s: raw, start: string_length(s: header) + 1, end: string_length(s: raw)))
+      }
+    }
+  }
+}
+fn issue_query_rows_of(body: String) -> List<IssueQueryRow>? {
+  let chunks = if body == "" { [] } else { split(s: body, delimiter: issue_query_separator) }
+  let rows: List<IssueQueryRow> = fold(chunks, init: [] as List<IssueQueryRow>, f: (acc, chunk) => match issue_query_row_of(raw: chunk) { Absent => acc Present { value: row } => concat(acc, [row]) })
+  if count(rows) == count(chunks) { Present { value: rows } } else { none }
+}
+fn issue_query_compare(a: IssueQueryRow, b: IssueQueryRow, sorts: List<ViewSortTerm>) -> Int {
+  fold(sorts, init: 0, f: (prior, term) => if prior != 0 { prior } else {
+    let key = issue_results_sort_key_wire(key: term.key)
+    let direction = if term.direction == ViewAscending { 1 } else { -1 }
+    if key == "priority" || key == "status" {
+      let av = if key == "priority" { a.priority } else { a.status }
+      let bv = if key == "priority" { b.priority } else { b.status }
+      (if av == bv { 0 } else if av < bv { -1 } else { 1 }) * direction
+    } else {
+      let av = issue_query_fold(text: if key == "title" { a.title } else if key == "assignee" { a.assignee } else { "" })
+      let bv = issue_query_fold(text: if key == "title" { b.title } else if key == "assignee" { b.assignee } else { "" })
+      if av == bv { 0 } else if av == "" { 1 } else if bv == "" { -1 }
+      else { (if av < bv { -1 } else { 1 }) * direction }
+    }
+  })
+}
+fn issue_query_merge(left: List<IssueQueryRow>, right: List<IssueQueryRow>, sorts: List<ViewSortTerm>) -> List<IssueQueryRow> {
+  match left.first() {
+    Absent => right
+    Present { value: a } => match right.first() {
+      Absent => left
+      Present { value: b } => if issue_query_compare(a: a, b: b, sorts: sorts) <= 0 {
+        concat([a], issue_query_merge(left: left.skip(n: 1), right: right, sorts: sorts))
+      } else { concat([b], issue_query_merge(left: left, right: right.skip(n: 1), sorts: sorts)) }
+    }
+  }
+}
+fn issue_query_sort(rows: List<IssueQueryRow>, sorts: List<ViewSortTerm>) -> List<IssueQueryRow> {
+  if count(rows) < 2 || count(sorts) == 0 { rows } else {
+    let mid = count(rows) / 2
+    issue_query_merge(left: issue_query_sort(rows: rows.take(n: mid), sorts: sorts), right: issue_query_sort(rows: rows.skip(n: mid), sorts: sorts), sorts: sorts)
+  }
+}
+fn issue_query_matches(row: IssueQueryRow, prefs: IssueViewPreferences) -> Bool {
+  (prefs.band == "all" || row.band == prefs.band)
+    && (prefs.project == "" || row.project == prefs.project)
+    && string_contains(s: issue_query_fold(text: row.search), pattern: issue_query_fold(text: prefs.query))
+}
+fn issue_query_response_body(rows: List<IssueQueryRow>, prefs: IssueViewPreferences, offset: Int, snapshot: String) -> String {
+  let selected = issue_query_sort(rows: filter(rows, row => issue_query_matches(row: row, prefs: prefs)), sorts: prefs.sorts)
+  let page = selected.skip(n: offset).take(n: 50)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "snapshot", value: json_string(s: snapshot)),
+    json_kv(key: "html", value: json_string(s: join(map(page, row => row.html), ""))),
+    json_kv(key: "total", value: json_int(n: count(selected))),
+    json_kv(key: "offset", value: json_int(n: offset)),
+    json_kv(key: "next", value: json_int(n: offset + count(page))),
+  ]))
+}

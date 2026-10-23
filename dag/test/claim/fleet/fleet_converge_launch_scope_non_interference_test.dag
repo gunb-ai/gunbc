@@ -1,0 +1,325 @@
+module test.claim.fleet_converge_launch_scope_non_interference
+
+import gunbc.fleet_converge_terminal { fleet_converge_apply_terminal_wire, FullyApplied, PartiallyApplied, AwaitingCapability }
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import product.host_identity { HostIdentity }
+import std.content_hash { serialize_content_hash }
+import std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  CompileDiagnosticCensusRow,
+  census_blocking_rows,
+  census_total_count,
+}
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
+import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
+import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.fleet_converge_plan {
+  FleetConvergeRequest, FullHostConverge, FleetConvergePlanArtifact, fleet_converge_plan_artifact_of_request, fleet_converge_plan_artifact_hash, fleet_converge_apply_terminal, fleet_converge_scope_wire, fleet_converge_desired_caps,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+
+// THE LAUNCH-SCOPE NON-INTERFERENCE WALL AFTER ITS RUNG CLIMB.
+//
+// The compiler once admitted full-host observation families as excess fields on a
+// LaunchEnvironmentConverge literal. The runtime probe in this module consequently constructed a
+// request with a production-shaped runner-slot population and proved that the launch projection
+// discarded it. That was a rung-2 guarantee: the invalid state remained writable and safety
+// depended on the projection continuing to ignore it.
+//
+// gunbc.fleet_converge_plan now gives LaunchEnvironmentConverge exactly two positions -- host and
+// observed_timers. Runner slots have a position on FullHostConverge, not on the launch constructor,
+// so the invalid state is structurally impossible in an Accepted program. DESIGN 4b(4) requires the
+// discriminating RED and its positive control to remain enrolled after that climb. They therefore
+// live here as source handed to the compiler: clean constructors must be accepted, while the same
+// constructors carrying the five relocated fields or an arbitrary sentinel must receive their
+// exact FieldNotFound refusals.
+//
+// This is intentionally production-specific rather than another general payload-arm fixture. The
+// generic field wall is independently exercised by test.claim.infer_record_lit_variant_field_witness;
+// this pair establishes that the canonical LaunchEnvironmentConverge constructor actually has the
+// narrow shape on the live tree. Its subject is the field boundary, not the downstream projection,
+// so the retired runtime equality and its fabricated request do not survive beside the stronger
+// construction wall.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn launch_environment_probe_source(
+  slots: String,
+  activation: String,
+  caps: String,
+  fabric: String,
+  all_once: String,
+  all_terminal: String,
+  all_emission: String,
+  sentinel: String,
+) -> String {
+  join([
+    "module probe_launch_environment_scope\n",
+    "import std.types { NonEmptyStr }\n",
+    "import gunbc.fleet_converge_plan { FleetConvergeRequest, LaunchEnvironmentConverge }\n",
+    "fn slots() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", slots, " } }\n",
+    "fn activation() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", activation, " } }\n",
+    "fn caps() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", caps, " } }\n",
+    "fn fabric() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", fabric, " } }\n",
+    "fn all_once() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", all_once, " } }\n",
+    "fn all_terminal() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", all_terminal, " } }\n",
+    "fn all_emission() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", all_emission, " } }\n",
+    "fn sentinel() -> FleetConvergeRequest { LaunchEnvironmentConverge { host: \"srv1\" as NonEmptyStr, observed_timers: []", sentinel, " } }\n",
+  ], "")
+}
+
+data clean_census: CompileDiagnosticCensus = compile_dag_diagnostic_census(
+  launch_environment_probe_source(
+    slots: "", activation: "", caps: "", fabric: "", all_once: "", all_terminal: "", all_emission: "", sentinel: "",
+  ),
+)
+
+data foreign_axis_census: CompileDiagnosticCensus = compile_dag_diagnostic_census(
+  launch_environment_probe_source(
+      slots: ", observed_slots: []",
+      activation: ", observed_activation_readiness: [], observed_unit_standings: []",
+      caps: ", observed_caps: []",
+      fabric: ", observed_fabric_cells: []",
+      all_once: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
+      all_terminal: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
+      all_emission: ", observed_slots: [], observed_activation_readiness: [], observed_unit_standings: [], observed_caps: [], observed_fabric_cells: []",
+      sentinel: ", __launch_excess_field_probe: []",
+  ),
+)
+
+fn census_rows_or_empty(census: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
+  match census {
+    CensusObserved { rows: rows } => rows
+    CensusNotRunnable { cause: _ } => []
+  }
+}
+
+fn census_ran(census: CompileDiagnosticCensus) -> Bool {
+  match census {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn blocking_count(census: CompileDiagnosticCensus) -> Int {
+  census_total_count(rows: census_blocking_rows(rows: census_rows_or_empty(census: census)))
+}
+
+fn row_identity(row: CompileDiagnosticCensusRow) -> String {
+  join([row.diagnostic_class as String, "|", row.subject_name, "|", to_string(row.blocking)], "")
+}
+
+fn identity_count(census: CompileDiagnosticCensus, wanted: String) -> Int {
+  fold(
+    census_rows_or_empty(census: census),
+    init: 0,
+    f: (count, row) => if row_identity(row: row) == wanted { count + row.count } else { count },
+  )
+}
+
+fn diagnostic_identities(census: CompileDiagnosticCensus) -> List<String> {
+  map(census_rows_or_empty(census: census), row => row_identity(row: row))
+}
+
+// Every identity on either side is compared. This prevents a +1 FieldNotFound from concealing an
+// unrelated diagnostic that disappeared between the two otherwise-identical fixture sources.
+fn only_expected_identity_differs(
+  clean: CompileDiagnosticCensus,
+  refused: CompileDiagnosticCensus,
+  expected_a: String,
+  expected_b: String,
+  expected_c: String,
+  expected_d: String,
+  expected_e: String,
+  expected_f: String,
+) -> Bool {
+  all(
+    concat(diagnostic_identities(census: clean), diagnostic_identities(census: refused)),
+    id => id == expected_a
+      || id == expected_b
+      || id == expected_c
+      || id == expected_d
+      || id == expected_e
+      || id == expected_f
+      || identity_count(census: clean, wanted: id) == identity_count(census: refused, wanted: id),
+  )
+}
+
+data observed_slots_field_not_found: String = "FieldNotFound|observed_slots|true"
+data observed_activation_readiness_field_not_found: String = "FieldNotFound|observed_activation_readiness|true"
+data observed_unit_standings_field_not_found: String = "FieldNotFound|observed_unit_standings|true"
+data observed_caps_field_not_found: String = "FieldNotFound|observed_caps|true"
+data observed_fabric_cells_field_not_found: String = "FieldNotFound|observed_fabric_cells|true"
+data launch_sentinel_field_not_found: String = "FieldNotFound|__launch_excess_field_probe|true"
+
+// Callable diagnostic companion for the single expensive witness below. Keeping the observations
+// in one witness avoids recompiling both fixture closures once per assertion; this report exposes
+// the observed totals when an expected value needs investigation.
+fn launch_environment_census_report() -> String {
+  join([
+    "clean_blocking=", to_string(blocking_count(census: clean_census)),
+    " foreign_blocking=", to_string(blocking_count(census: foreign_axis_census)),
+    " slots=", to_string(identity_count(census: foreign_axis_census, wanted: observed_slots_field_not_found)),
+    " activation=", to_string(identity_count(census: foreign_axis_census, wanted: observed_activation_readiness_field_not_found)),
+    " standings=", to_string(identity_count(census: foreign_axis_census, wanted: observed_unit_standings_field_not_found)),
+    " caps=", to_string(identity_count(census: foreign_axis_census, wanted: observed_caps_field_not_found)),
+    " cells=", to_string(identity_count(census: foreign_axis_census, wanted: observed_fabric_cells_field_not_found)),
+    " sentinel=", to_string(identity_count(census: foreign_axis_census, wanted: launch_sentinel_field_not_found)),
+  ], "")
+}
+
+// Memoization is witness-local, so keep the two expensive fixture compilations in one claim. The
+// clean side is scoped to the six identities under test: the imported closure may carry unrelated
+// blocking diagnostics, and requiring global cleanliness would not measure this constructor wall.
+test fn the_eight_excess_field_constructors_are_refused_at_all_twenty_one_fields() -> Bool {
+  census_ran(census: clean_census)
+    && census_ran(census: foreign_axis_census)
+    && identity_count(census: clean_census, wanted: observed_slots_field_not_found) == 0
+    && identity_count(census: clean_census, wanted: observed_activation_readiness_field_not_found) == 0
+    && identity_count(census: clean_census, wanted: observed_unit_standings_field_not_found) == 0
+    && identity_count(census: clean_census, wanted: observed_caps_field_not_found) == 0
+    && identity_count(census: clean_census, wanted: observed_fabric_cells_field_not_found) == 0
+    && identity_count(census: clean_census, wanted: launch_sentinel_field_not_found) == 0
+    && blocking_count(census: foreign_axis_census) == blocking_count(census: clean_census) + 21
+    && identity_count(census: foreign_axis_census, wanted: observed_slots_field_not_found) == 4
+    && identity_count(census: foreign_axis_census, wanted: observed_activation_readiness_field_not_found) == 4
+    && identity_count(census: foreign_axis_census, wanted: observed_unit_standings_field_not_found) == 4
+    && identity_count(census: foreign_axis_census, wanted: observed_caps_field_not_found) == 4
+    && identity_count(census: foreign_axis_census, wanted: observed_fabric_cells_field_not_found) == 4
+    && identity_count(census: foreign_axis_census, wanted: launch_sentinel_field_not_found) == 1
+    && only_expected_identity_differs(
+      clean: clean_census,
+      refused: foreign_axis_census,
+      expected_a: observed_slots_field_not_found,
+      expected_b: observed_activation_readiness_field_not_found,
+      expected_c: observed_unit_standings_field_not_found,
+      expected_d: observed_caps_field_not_found,
+      expected_e: observed_fabric_cells_field_not_found,
+      expected_f: launch_sentinel_field_not_found,
+    )
+}
+
+// THE OWNING-SCOPE CONTROLS REMAIN RUNTIME CLAIMS. The construction wall proves that foreign axes
+// cannot enter LaunchEnvironmentConverge; these four independently prove that the same populations
+// remain live where FullHostConverge owns them. Without this half, a planner that stopped reading an
+// axis everywhere would be observationally indistinguishable from launch-scope non-interference.
+
+data host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
+
+fn srv1_surplus_slot_names() -> List<String> {
+  [
+    "jit-runner.sh", "runner-liveness-reconcile.sh",
+    "srv1-22", "srv1-23", "srv1-24", "srv1-25", "srv1-26", "srv1-27", "srv1-28", "srv1-29",
+    "srv1-30", "srv1-31", "srv1-32", "srv1-33", "srv1-34", "srv1-35", "srv1-36", "srv1-37",
+    "srv1-38", "srv1-39", "srv1-40", "srv1-41", "srv1-42", "srv1-43", "srv1-44", "srv1-45",
+    "srv1-46", "srv1-47", "srv1-48", "srv1-49", "srv1-50",
+  ]
+}
+
+fn srv1_production_shaped_slots() -> List<RunnerSlotMember> {
+  map(srv1_surplus_slot_names(), nm => runner_slot_member_from_instance_name(instance_name: nm as NonEmptyStr))
+}
+
+fn artifact_signature(a: FleetConvergePlanArtifact) -> String {
+  join(
+    [
+      "host:", a.subject.host as String,
+      "\nscope:", fleet_converge_scope_wire(scope: a.subject.scope),
+      "\nmember_set:", serialize_content_hash(hash: a.subject.member_set_fingerprint) as String,
+      "\nprior_generation:", to_string(a.prior_generation),
+      "\nlease_key:", a.plan_lease.epoch.lease_key as String,
+      "\nlease_resource:", serialize_content_hash(hash: a.plan_lease.epoch.resource_fingerprint) as String,
+      "\nlease_owner:", serialize_content_hash(hash: a.plan_lease.epoch.owner_fingerprint) as String,
+      "\nlease_generation:", to_string(a.plan_lease.epoch.generation),
+      "\nterminal:", fleet_converge_apply_terminal_wire(terminal: a.apply_terminal),
+      "\nbaseline_hex:", a.observed_baseline_hex as String,
+      "\nbundle:", match fleet_converge_plan_artifact_hash(artifact: a) {
+        Present { value: h } => h as String
+        Absent => "UNCOMPUTABLE"
+      },
+      "\nplan_body:\n", a.plan_body,
+      "\napply_shell:\n", a.apply_shell,
+    ],
+    "",
+  )
+}
+
+fn signature_of(request: FleetConvergeRequest) -> String {
+  artifact_signature(
+    a: fleet_converge_plan_artifact_of_request(
+      request: request,
+      prior_generation: 0,
+    ),
+  )
+}
+
+fn projections_differ(a: FleetConvergeRequest, b: FleetConvergeRequest) -> Bool {
+  let sa = signature_of(request: a)
+  string_contains(s: sa, pattern: "# apply-terminal:") && sa != signature_of(request: b)
+}
+
+fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
+  FullHostConverge {
+    host: host_srv1,
+    observed_timers: [],
+    observed_caps: fleet_converge_desired_caps(),
+    observed_slots: slots,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+  }
+}
+
+test fn the_same_thirty_one_slot_population_moves_the_full_host_projection() -> Bool {
+  projections_differ(a: full_host_srv1(slots: []), b: full_host_srv1(slots: srv1_production_shaped_slots()))
+}
+
+test fn the_same_activation_readiness_is_two_refusals_where_it_is_owned() -> Bool {
+  match fleet_converge_apply_terminal(request: full_host_srv1(slots: [])) {
+    FullyApplied => false
+    PartiallyApplied { refused_axis_count: _, detail: d } => string_contains(s: d, pattern: "activation=2")
+    AwaitingCapability { capability: _ } => false
+  }
+}
+
+test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
+  projections_differ(
+    a: full_host_srv1(slots: []),
+    b: FullHostConverge {
+      host: host_srv1,
+      observed_timers: [],
+      observed_caps: [],
+      observed_slots: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+    },
+  )
+}
+
+test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
+  string_contains(
+    s: fleet_converge_plan_artifact_of_request(
+      request: FullHostConverge {
+        host: operator_host_srv3 as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_slots: [],
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+        observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+      },
+      prior_generation: 0,
+    ).plan_body,
+    pattern: "REFUSED-OBSERVATION fabric-cell",
+  )
+}

@@ -1,0 +1,202 @@
+module extdeps.systems.nvidia_gh200
+
+import std.types { NonEmptyStr, List }
+import extdeps.systems.types { CoherentSuperchipCatalogRow, CoherentMemoryTier, CpuCoreCluster }
+import extdeps.gpu.types { GpuModelCatalogRow, Cuda }
+import extdeps.memory.types { MemoryFacts, Hbm, Dram }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.vendor.nvidia { nvidia }
+import std.measure { Volt, volt, hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
+
+import extdeps.external_authority {
+  ExternalAuthority,
+  ExternalModelScope,
+  ExternalSubjectRef,
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// The datasheet the product page links ("Read the Datasheet"), document 3773000, MAR25.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "dam-cdn.nvd.orangelogic.com/AssetLink/tkno03fa645gb7f33w60rf200d330420.pdf"
+  }
+}
+
+// "NVIDIA GH200 Grace Hopper Superchip Architecture" whitepaper, V1.21, Table 1.
+data gh200_architecture_whitepaper_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "dam-cdn.nvd.orangelogic.com/AssetLink/h125m07nuew832vthbov0q6b2rs8ta0q.pdf"
+  }
+}
+
+// The Grace Performance Tuning Guide's `ipmitool fru print` sample for a Grace Hopper machine:
+// "FRU Device Description : PG530 ... Board Part Number : 699-2G530-0206-QS1 ... Product Name :
+// GH200 480GB ... Product Part Number : 900-2G530-0000-000". This is what binds the board designation
+// PG530 and the 699-2G530 part-number family to the 480GB product.
+data grace_tuning_guide_system_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/dccpu/grace-perf-tuning-guide/system.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.nvidia_gh200",
+      decl_name: "nvidia_gh200_480gb_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.systems.nvidia_gh200.extdeps_external_authority_anchor,
+  further_citations: [
+    extdeps.systems.nvidia_gh200.gh200_architecture_whitepaper_authority,
+    extdeps.systems.nvidia_gh200.grace_tuning_guide_system_authority,
+  ]
+}
+
+// GH200-0 (2026-10-03). Every figure below was read from the cited documents by live fetch:
+// datasheet "Product Specifications" -- CPU core count '72 Arm Neoverse V2 cores'; LPDDR5X size
+// '480GB' with '120GB, 240GB' beneath it; memory bandwidth 'Up to 384GB/s' with 'Up to 512GB/s'
+// beneath it; HBM size '96GB HBM3 | 144GB HBM3e'; memory bandwidth 'Up to 4TB/s | Up to 4.9TB/s';
+// 'NVIDIA NVLink-C2C CPU-to-GPU bandwidth 900GB/s'; power 'Configurable 450 to 1000W (Memory + CPU +
+// GPU)'; thermal solution 'Air-cooled or liquid-cooled'. Whitepaper Table 1: 'NVLink-C2C bandwidth
+// (GB/s) 900GB/s total, 450GB/s per direction' -- the row carries the per-direction figure.
+//
+// THE LPDDR5X BANDWIDTH IS A ROW-ALIGNMENT READING, stated as one. The datasheet prints two sizes and
+// two bandwidths in one cell each; 384GB/s is carried for the 480GB tier because it is the line beside
+// '480GB', and the whitepaper's single 'Up to 500GB/s' is a family ceiling that names no size. No
+// consumer in this repository ranks on this figure today; one that does should re-read the cell.
+//
+// CAPACITIES FOLLOW extdeps.systems.nvidia's CONVENTION of carrying a vendor 'GB' label as GiB, so the
+// GH200 and DGX Spark rows compare on one scale. The convention overstates both: the tuning guide's
+// nvidia-smi sample reports '97871MiB' for this GPU, and the Spark host reads ~121.7 GiB. A consumer
+// that needs usable bytes reads a fleet observation, never this row.
+//
+// Fields the documents do not state are none: GPU-only TDP (the power range is the whole MODULE's,
+// carried on the superchip row), boost clock, and compute capability. The lane count is 132 SMs x 128
+// from the whitepaper's Hopper description, the one figure here not printed in the datasheet table.
+data gh200_datasheet_figures_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+data nvidia_gh200_hopper_96gb_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "GH200 Hopper GPU (96GB HBM3)",
+  microarchitecture: "Hopper",
+  execution_lane_count: hardware_thread_count(16896),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+    memory_kind: Hbm,
+  },
+  memory_bandwidth: bandwidth(count: 4000000000000),
+  boost_clock: none,
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+}
+
+data gh200_grace_core_clusters: List<CpuCoreCluster> = [
+  CpuCoreCluster { microarchitecture: "Arm Neoverse V2", core_count: hardware_thread_count(72) },
+]
+
+// THE 480GB PRODUCT. "480GB" names the LPDDR5X tier, not the module: the GPU's own 96 GB of HBM3 sits
+// beside it, so the coherent total is derived by extdeps.systems.types
+// coherent_superchip_coherent_capacity rather than read off the product name. The 144GB HBM3e product
+// is a different row, not a variant of this one, and is not modeled until something consumes it.
+data nvidia_gh200_480gb_catalog: CoherentSuperchipCatalogRow = CoherentSuperchipCatalogRow {
+  vendor: nvidia,
+  model: "NVIDIA GH200 Grace Hopper Superchip 480GB",
+  board_designation: Present { value: "PG530" },
+  cpu_architecture: Aarch64,
+  cpu_core_clusters: gh200_grace_core_clusters,
+  gpu: nvidia_gh200_hopper_96gb_gpu_catalog,
+  cpu_memory: CoherentMemoryTier {
+    memory: MemoryFacts {
+      capacity: gibibyte_to_byte_size(g: gibibyte(count: 480)),
+      memory_kind: Dram,
+    },
+    bandwidth: bandwidth(count: 384000000000),
+  },
+  chip_to_chip_bandwidth_per_direction: bandwidth(count: 450000000000),
+  module_power_floor: watt(count: 450),
+  module_power_ceiling: watt(count: 1000),
+  figure_standing: gh200_datasheet_figures_standing,
+}
+
+// THE 144GB HBM3e PRODUCT, the datasheet's second column cell ('144GB HBM3e', 'Up to 4.9TB/s'). Its
+// LPDDR5X tier is the same 480GB / 384 GB/s pairing as the HBM3 product: NVIDIA's product page gives
+// "up to 624GB of combined CPU and GPU fast memory", which is 144 + 480. Modeled now because a
+// complete server row (extdeps.systems.gigabyte_xh23_vg0_aaj1) lists it as its configuration.
+data nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "GH200 Hopper GPU (144GB HBM3e)",
+  microarchitecture: "Hopper",
+  execution_lane_count: hardware_thread_count(16896),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)),
+    memory_kind: Hbm,
+  },
+  memory_bandwidth: bandwidth(count: 4900000000000),
+  boost_clock: none,
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+}
+
+data nvidia_gh200_624gb_hbm3e_catalog: CoherentSuperchipCatalogRow = CoherentSuperchipCatalogRow {
+  vendor: nvidia,
+  model: "NVIDIA GH200 Grace Hopper Superchip 144GB HBM3e",
+  board_designation: Absent,
+  cpu_architecture: Aarch64,
+  cpu_core_clusters: gh200_grace_core_clusters,
+  gpu: nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog,
+  cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
+  chip_to_chip_bandwidth_per_direction: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth_per_direction,
+  module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
+  module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
+  figure_standing: gh200_datasheet_figures_standing,
+}
+
+// THE PUBLISHED CONFIGURATIONS, as one list: a unit claim that matches none of these contradicts the
+// family, while one that matches a configuration other than the row a consumer selected is a
+// different, valid configuration -- two findings a consumer must not conflate.
+data nvidia_gh200_configurations: List<CoherentSuperchipCatalogRow> = [nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog]
+
+// ── MODULE POWER-RAIL VARIANTS: A LEAD, NOT A CITATION ─────────────────────────────────────────
+//
+// GH200-2 (2026-10-04). Search-indexed text of an EARLIER revision of NVIDIA's firmware update guide
+// appendix "MGX C2 Grace SuperChip and MGX GH200" (docs.nvidia.com/multi-node-nvlink-systems/
+// nvfupd-guide/appendix/mgx-grace-firmware.html) read: early EVT systems "will be deployed with the
+// SKU206 (12V) and SKU215 (54V) variants of MGX GH200", that "these SKUs require different flash
+// images", and that the plan of record is SKU 203/206. The live page, fetched 2026-10-04, no longer
+// carries the passage: it lists the Redfish update paths (SBIOS "BMC > FPGA > CPU EROT", VBIOS "BMC >
+// FPGA > GPU EROT") and nothing about rails. So each row below is a typed bet whose read obligation
+// is the recovery of that revision. Three claims stay apart and only the first is here: that an NVIDIA
+// document tied these SKU numbers to these rails; that a given 699-2G530 part number belongs to a SKU
+// (a product-layer match, made by whoever reads a part number); and what any carrier's connector
+// takes, which no module fact can say.
+type ModuleRailVariant {
+  sku: NonEmptyStr
+  rail: Volt
+  standing: CitedFigureStanding
+}
+
+data rail_variant_read_obligation: NonEmptyStr = "recover the earlier revision (or an archived capture) of NVIDIA's nvfwupd guide appendix 'MGX C2 Grace SuperChip and MGX GH200' that tied SKU206 to 12V and SKU215 to 54V, or firmware applicability metadata binding the SKU to its rail; the live page read 2026-10-04 no longer carries it" as NonEmptyStr
+
+data gh200_rail_variants: List<ModuleRailVariant> = [
+  ModuleRailVariant { sku: "206", rail: volt(count: 12), standing: TranscribedUncited { read_obligation: rail_variant_read_obligation } },
+  ModuleRailVariant { sku: "215", rail: volt(count: 54), standing: TranscribedUncited { read_obligation: rail_variant_read_obligation } },
+]

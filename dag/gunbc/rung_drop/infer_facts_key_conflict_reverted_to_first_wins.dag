@@ -1,0 +1,46 @@
+module gunbc.rung_drop.infer_facts_key_conflict_reverted_to_first_wins
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, OutsideTheLadder }
+
+// THE DECLARED RUNG DROP for v2 infer's facts table (DESIGN 4b(3)), landed with the revert of
+// gunbc#12582 because review 73473 on the revert found the drop undeclared.
+//
+// WHAT IS DROPPED. With #12582, v2.compiler.infer inferred_facts_map_enter refused a facts key that
+// arrived with two DIFFERENT facts (infer_facts_key_conflict, located at the key), on the real
+// acceptance path. The revert restores first-wins: the second, differing fact is dropped with no
+// diagnostic and every consumer reads whichever gather produced first. That is silent wrongness, so
+// the temporary rung is outside the ladder, not a weaker rung.
+//
+// WHY IT WAS DROPPED. The refusal was right about the conflict and wrong to land alone: infer keys
+// facts by STRUCTURAL Node equality, so two different sites whose nodes merely look identical share
+// one key. The childless synthetic Conj that terminates both a qualified-name spine and an int
+// literal's digit list is the measured specimen: `fn kc_g() -> Int { 1 }` beside
+// `fn kc_f() -> Int { kc_g() }` was refused (measured on main c95f906; 5 claims of #12763 red). Under a
+// structural key a wall cannot tell a real conflict (one site, two facts) from two legitimate sites.
+//
+// THE ROUTE BACK (ruling 2026-10-01, neat-boar-16, option B; the earlier list-spine-end-label route
+// is withdrawn because it covered only terminators): infer's facts are keyed by SITE -- the injective
+// edge path, (label, ordinal) per step, from the root of one InferredTree -- declared as its own keying
+// relation at the DESIGN 3b keys home, every facts lookup converted to it, and the refusal re-landed
+// in the same change.
+data infer_facts_key_conflict_reverted_to_first_wins: RungDrop = RungDrop {
+  identity: "infer_facts_key_conflict_reverted_to_first_wins" as NonEmptyStr,
+
+  subject: "v2.compiler.infer inferred_facts_map_enter: a facts key carrying two different facts is admitted first-wins instead of refused infer_facts_key_conflict",
+
+  declared: "2026-10-01",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "infer's facts keyed by site (the injective (edge label, ordinal) path from the root of one InferredTree), declared as a keying relation at the DESIGN 3b keys home, every facts lookup converted to the site key, and the infer_facts_key_conflict refusal re-landed in the same change" },
+    population: [
+      "every v2 infer run whose gather produces two entries under one structural Node key with different facts; the measured specimen is the childless synthetic Conj shared by a qualified-name spine terminator and an int-literal digit-list terminator",
+    ],
+    restoration_trigger: "infer distinguishes every site of one InferredTree in its facts relation: facts keyed by an injective site path (two structurally equal positional siblings get two keys), no facts lookup reading the structural Node key, a site key unusable outside the tree that produced it, and the infer_facts_key_conflict refusal restored on the real path -- one site with two different facts refuses, located; equal facts at two sites are admitted; kc_g/kc_f infers with each of its two equal-looking terminators carrying its own fact (green FOR THAT REASON, not through first-wins). This row retires in that change."
+  }
+}

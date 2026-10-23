@@ -1,0 +1,1739 @@
+module gunbc.review_sheet_projection
+
+import std.types { NonEmptyStr, String, Int, List, Bool, Map }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster {
+  keyed_roster_build,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+}
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+
+// Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
+// keyed by listing identity, every column Derived, OperatorEntered, or ListingStanding. Sheets types
+// do not live here. The Sheets realization maps a ValueRange onto ObservedSheet and binds ensure
+// over classify_review_sheet. judgement_for_listing is the operator-column read that lane binds;
+// until it does, buyer_review_judgement_read_frontier is Scaffold.
+
+type ReviewColumnKind
+  = DerivedField { source_field: NonEmptyStr }
+  | OperatorEntered
+  | ListingStanding
+  | DerivedErasureMark
+
+type ReviewColumn {
+  name: NonEmptyStr
+  kind: ReviewColumnKind
+}
+
+type ReviewSheetSchema {
+  identity_column: NonEmptyStr
+  columns: List<ReviewColumn>
+}
+
+type DerivedCell {
+  column: NonEmptyStr
+  value: String
+}
+
+type ProjectionRow {
+  listing_id: NonEmptyStr
+  derived: List<DerivedCell>
+}
+
+type ReviewSheetProjection {
+  schema: ReviewSheetSchema
+  rows: List<ProjectionRow>
+}
+
+// Derived payload erasure is caller-supplied, never implicit in ListingGone: a listing
+// ending and a person exercising a right are unrelated facts. It writes DerivedField only
+// plus the DerivedErasureMark cell, never OperatorEntered, never a silent row drop;
+// standing stays ListingGone on the apply pass. Located writes or a located refuse;
+// quiet success is refused. Judgement has no deletion arm.
+// identity_column in the intended binding is an eBay item id: a stub that keeps that key
+// still retains eBay data under a broad MAD reading.
+// Blanking DerivedField is a real meaning loss for human re-audit: title and price are why
+// they wrote buy, and a labelled stub does not carry that. The buyer loop still has
+// identity plus the operator cell and can refuse to re-ask. We gave something up; we did
+// not never have it.
+// Durability is the DerivedErasureMark cell written on the authorized pass. A later pass
+// that would restore derived payload reads that mark, not empty DerivedField cells and
+// not a comment telling the caller to re-supply the list.
+type DerivedPayloadErasure {
+  listing_id: NonEmptyStr
+}
+
+type DerivedPayloadErasureDecision
+  = ErasureNotRequested
+  | ErasureAuthorized
+  | ErasureRefused { reason: NonEmptyStr }
+
+type ObservedSheetRow {
+  data_index: Int
+  cells: List<String>
+}
+
+type ObservedSheet {
+  headers: List<String>
+  rows: List<ObservedSheetRow>
+}
+
+type A1Column {
+  letter: NonEmptyStr
+}
+
+type A1Cell {
+  column: A1Column
+  row: Int
+}
+
+type A1RowSpan {
+  start: A1Cell
+  end: A1Cell
+}
+
+// WHY THE CONFLICT CARRIES A CAUSE. Three conditions produced this value and all three discarded
+// what distinguished them: a derived field occupied by a value that is not the desired one, a
+// listing-standing cell holding a token the standing reader does not recognise, and an erasure-mark
+// cell holding a token the mark reader does not recognise. Each decide_*_cell arm BOUND the
+// distinguishing value and threw it away -- two of them literally as StandingForeign { raw: _ } --
+// so every one of them arrived here as the same nullary CellConflict and the renderer called all
+// three "derived cell conflict". Two of the three causes needed no new vocabulary: ListingStandingRead
+// and DerivedErasureMarkRead already carry the foreign token, and this type stops discarding it.
+type ReviewCellConflictCause
+  = DerivedFieldOccupied { observed: String, desired: String }
+  | ListingStandingForeignValue { raw: String }
+  | DerivedErasureMarkForeignValue { raw: String }
+
+type LocatedDerivedConflict {
+  listing_id: NonEmptyStr
+  column: NonEmptyStr
+  a1: A1Cell
+  cause: ReviewCellConflictCause
+}
+
+type DerivedCellWrite {
+  listing_id: NonEmptyStr
+  column: NonEmptyStr
+  a1: A1Cell
+  value: String
+}
+
+type AppendCellRun {
+  a1: A1RowSpan
+  cells: List<String>
+  columns: List<NonEmptyStr>
+}
+
+type AppendListingRow {
+  listing_id: NonEmptyStr
+  sheet_row: Int
+  runs: List<AppendCellRun>
+}
+
+type ReviewSheetWritePlan {
+  patches: List<DerivedCellWrite>
+  appends: List<AppendListingRow>
+}
+
+type ReviewSheetClassification
+  = ReviewSheetConverged
+  | ReviewSheetNeedsWrite { plan: ReviewSheetWritePlan }
+  | ReviewSheetConflict { conflict: LocatedDerivedConflict }
+  | ReviewSheetUnreadable { reason: NonEmptyStr }
+
+type ListingStandingState
+  = StandingObserved
+  | StandingGone
+
+type ListingStandingRead
+  = StandingKnown { state: ListingStandingState }
+  | StandingBlank
+  | StandingForeign { raw: String }
+
+fn listing_standing_label(state: ListingStandingState) -> String {
+  match state {
+    StandingObserved => "Observed"
+    StandingGone => "ListingGone"
+  }
+}
+
+fn listing_standing_eq(a: ListingStandingState, b: ListingStandingState) -> Bool {
+  match a {
+    StandingObserved => match b {
+      StandingObserved => true
+      StandingGone => false
+    }
+    StandingGone => match b {
+      StandingGone => true
+      StandingObserved => false
+    }
+  }
+}
+
+fn read_listing_standing(cell: String) -> ListingStandingRead {
+  if cell == "" {
+    StandingBlank
+  } else {
+    if cell == listing_standing_label(state: StandingObserved) {
+      StandingKnown { state: StandingObserved }
+    } else {
+      if cell == listing_standing_label(state: StandingGone) {
+        StandingKnown { state: StandingGone }
+      } else {
+        StandingForeign { raw: cell }
+      }
+    }
+  }
+}
+
+type DerivedErasureMarkRead
+  = ErasureMarkApplied
+  | ErasureMarkBlank
+  | ErasureMarkForeign { raw: String }
+
+data derived_erasure_applied_label: String = "ErasureApplied"
+
+fn read_derived_erasure_mark(cell: String) -> DerivedErasureMarkRead {
+  if cell == "" {
+    ErasureMarkBlank
+  } else {
+    if cell == derived_erasure_applied_label {
+      ErasureMarkApplied
+    } else {
+      ErasureMarkForeign { raw: cell }
+    }
+  }
+}
+
+type ObservedKindCell
+  = KindCell { value: String }
+  | KindAbsentFromSchema
+  | KindColumnMissingFromHeader { column: NonEmptyStr }
+
+fn first_present_column(acc: ReviewColumn?, next: ReviewColumn?) -> ReviewColumn? {
+  match acc {
+    Present { value: found } => Present { value: found }
+    Absent => next
+  }
+}
+
+fn first_column_where(
+  schema: ReviewSheetSchema,
+  take: fn(ReviewColumn) -> ReviewColumn?,
+) -> ReviewColumn? {
+  fold(schema.columns, init: none, f: fn(acc, col) {
+    first_present_column(acc: acc, next: take(col))
+  })
+}
+
+fn observed_cell_for_column(
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  column: ReviewColumn?,
+) -> ObservedKindCell {
+  match column {
+    Absent => KindAbsentFromSchema
+    Present { value: col } =>
+      match header_by_name.lookup(col.name as String) {
+        Absent => KindColumnMissingFromHeader { column: col.name }
+        Present { value: idx } => KindCell { value: cell_at(cells: row.cells, index: idx) }
+      }
+  }
+}
+
+data a1_column_letters: List<String> = [
+  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+  "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"
+]
+
+fn a1_column_letter(index: Int) -> String? {
+  a1_column_letters.skip(n: index).first()
+}
+
+fn a1_column(index: Int) -> A1Column? {
+  match a1_column_letter(index: index) {
+    Present { value: letter } => Present { value: A1Column { letter: letter as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn a1_column_from_letter(letter: String) -> A1Column? {
+  match filter(a1_column_letters, l => l == letter) |> first {
+    Present { value: enrolled } => Present { value: A1Column { letter: enrolled as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn a1_column_eq(a: A1Column, b: A1Column) -> Bool {
+  (a.letter as String) == (b.letter as String)
+}
+
+fn a1_cell(column_index: Int, sheet_row: Int) -> A1Cell? {
+  if sheet_row < 1 {
+    none
+  } else {
+    match a1_column(index: column_index) {
+      Present { value: column } => Present { value: A1Cell { column: column, row: sheet_row } }
+      Absent => none
+    }
+  }
+}
+
+fn a1_cell_eq(a: A1Cell, b: A1Cell) -> Bool {
+  a1_column_eq(a: a.column, b: b.column) && a.row == b.row
+}
+
+fn a1_origin_cell() -> A1Cell {
+  match a1_cell(column_index: 0, sheet_row: 1) {
+    Present { value: cell } => cell
+    Absent => A1Cell { column: A1Column { letter: "A" as NonEmptyStr }, row: 1 }
+  }
+}
+
+fn a1_cell_wire(cell: A1Cell) -> String {
+  concat(cell.column.letter as String, to_string(cell.row))
+}
+
+fn a1_row_span_cols(sheet_row: Int, start_column: Int, last_column: Int) -> A1RowSpan? {
+  if last_column < start_column {
+    none
+  } else {
+    match a1_cell(column_index: start_column, sheet_row: sheet_row) {
+      Absent => none
+      Present { value: start } =>
+        match a1_cell(column_index: last_column, sheet_row: sheet_row) {
+          Absent => none
+          Present { value: end } => Present { value: A1RowSpan { start: start, end: end } }
+        }
+    }
+  }
+}
+
+fn a1_row_span(sheet_row: Int, cell_count: Int) -> A1RowSpan? {
+  a1_row_span_cols(sheet_row: sheet_row, start_column: 0, last_column: cell_count - 1)
+}
+
+fn a1_row_span_wire(span: A1RowSpan) -> String {
+  concat(a1_cell_wire(cell: span.start), concat(":", a1_cell_wire(cell: span.end)))
+}
+
+fn a1_letter_index(letter: String) -> Int? {
+  a1_column_letters
+    |> enumerate
+    |> filter(pair => pair.second == letter)
+    |> map(pair => pair.first)
+    |> first
+}
+
+fn a1_row_span_includes_letter(span: A1RowSpan, letter: String) -> Bool {
+  match a1_letter_index(letter: span.start.column.letter as String) {
+    Absent => false
+    Present { value: start_i } =>
+      match a1_letter_index(letter: span.end.column.letter as String) {
+        Absent => false
+        Present { value: end_i } =>
+          match a1_letter_index(letter: letter) {
+            Absent => false
+            Present { value: i } => i >= start_i && i <= end_i
+          }
+      }
+  }
+}
+
+type A1WireToken
+  = A1WireOpenColumn { column: A1Column }
+  | A1WireCell { cell: A1Cell }
+  | A1WireUnreadable { reason: NonEmptyStr }
+
+fn a1_from_wire(token: String) -> A1WireToken {
+  if (token == "") || (string_length(s: token) < 1) {
+    A1WireUnreadable { reason: "empty A1 token" as NonEmptyStr }
+  } else {
+    match a1_column_from_letter(letter: substring(s: token, start: 0, end: 1)) {
+      Absent =>
+        A1WireUnreadable { reason: concat("A1 column not in A-Z roster: ", token) as NonEmptyStr }
+      Present { value: column } => {
+        let rest = substring(s: token, start: 1, end: string_length(s: token))
+        if rest == "" {
+          A1WireOpenColumn { column: column }
+        } else {
+          match parse_int(s: rest) {
+            Absent =>
+              A1WireUnreadable { reason: concat("A1 row is not a decimal: ", token) as NonEmptyStr }
+            Present { value: row } =>
+              if row < 1 {
+                A1WireUnreadable { reason: concat("A1 row is not a sheet row: ", token) as NonEmptyStr }
+              } else {
+                A1WireCell { cell: A1Cell { column: column, row: row } }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn sheet_row_number(data_index: Int) -> Int {
+  data_index + 2
+}
+
+fn cell_at(cells: List<String>, index: Int) -> String {
+  match cells.skip(n: index).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn review_sheet_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn keyed_string_map<V>(rows: List<KeyedRow<String, V>>) -> Map<String, V> {
+  fold(rows, init: empty_map(), f: fn(acc, row) {
+    map_insert(acc, row.row_key, row.value)
+  })
+}
+
+fn header_key_rows(headers: List<String>) -> List<KeyedRow<String, Int>> {
+  map(headers |> enumerate, pair => KeyedRow { row_key: pair.second, value: pair.first })
+}
+
+fn projection_key_rows(projection: ReviewSheetProjection) -> List<KeyedRow<String, ProjectionRow>> {
+  map(projection.rows, row => KeyedRow { row_key: row.listing_id as String, value: row })
+}
+
+fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List<KeyedRow<String, Bool>> {
+  sheet.rows
+    |> map(row => cell_at(cells: row.cells, index: identity_index))
+    |> filter(raw => raw != "")
+    |> map(raw => KeyedRow { row_key: raw, value: true })
+}
+
+fn erasure_key_rows(erasures: List<DerivedPayloadErasure>) -> List<KeyedRow<String, DerivedPayloadErasure>> {
+  map(erasures, e => KeyedRow { row_key: e.listing_id as String, value: e })
+}
+
+fn listing_has_erasure(erasure_by_id: Map<String, DerivedPayloadErasure>, listing_id: NonEmptyStr) -> Bool {
+  match erasure_by_id.lookup(listing_id as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn read_row_erasure_mark(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> DerivedErasureMarkRead? {
+  match observed_cell_for_column(
+    header_by_name: header_by_name,
+    row: row,
+    column: first_column_where(schema: schema, take: col => match col.kind {
+      DerivedErasureMark => Present { value: col }
+      DerivedField { source_field: _ } => none
+      OperatorEntered => none
+      ListingStanding => none
+    }),
+  ) {
+    KindAbsentFromSchema => none
+    KindColumnMissingFromHeader { column: _ } => none
+    KindCell { value: cell } => Present { value: read_derived_erasure_mark(cell: cell) }
+  }
+}
+
+fn row_erasure_mark_is_applied(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> Bool {
+  match read_row_erasure_mark(schema: schema, header_by_name: header_by_name, row: row) {
+    Absent => false
+    Present { value: mark_read } =>
+      match mark_read {
+        ErasureMarkApplied => true
+        ErasureMarkBlank => false
+        ErasureMarkForeign { raw: _ } => false
+      }
+  }
+}
+
+fn erasure_still_projected_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure refused while listing still in projection listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_requires_gone_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure requires ListingGone listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_not_on_sheet_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure listing not on sheet listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_missing_standing_column_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure missing ListingStanding column listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_missing_standing_header_reason(listing_id: NonEmptyStr, column: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    "derived payload erasure missing header ",
+    concat(column as String, concat(" listing=", listing_id as String)),
+  ) as NonEmptyStr
+}
+
+fn erasure_has_no_derived_field_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure has no DerivedField column listing=", listing_id as String) as NonEmptyStr
+}
+
+fn erasure_has_no_erasure_mark_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("derived payload erasure has no DerivedErasureMark column listing=", listing_id as String) as NonEmptyStr
+}
+
+fn first_erasure_not_on_sheet(
+  erasures: List<DerivedPayloadErasure>,
+  observed_by_id: Map<String, Bool>,
+) -> NonEmptyStr? {
+  erasures
+    |> filter(e => match observed_by_id.lookup(e.listing_id as String) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    |> map(e => e.listing_id)
+    |> first
+}
+
+fn authorize_derived_payload_erasure(
+  listing_id: NonEmptyStr,
+  in_projection: Bool,
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
+) -> DerivedPayloadErasureDecision {
+  if listing_has_erasure(erasure_by_id: erasure_by_id, listing_id: listing_id) {
+    if in_projection {
+      ErasureRefused { reason: erasure_still_projected_reason(listing_id: listing_id) }
+    } else {
+      match observed_cell_for_column(
+        header_by_name: header_by_name,
+        row: row,
+        column: first_column_where(schema: schema, take: col => match col.kind {
+          ListingStanding => Present { value: col }
+          DerivedField { source_field: _ } => none
+          OperatorEntered => none
+          DerivedErasureMark => none
+        }),
+      ) {
+        KindAbsentFromSchema =>
+          ErasureRefused { reason: erasure_missing_standing_column_reason(listing_id: listing_id) }
+        KindColumnMissingFromHeader { column: n } =>
+          ErasureRefused {
+            reason: erasure_missing_standing_header_reason(listing_id: listing_id, column: n)
+          }
+        KindCell { value: cell } =>
+          match read_listing_standing(cell: cell) {
+            StandingKnown { state: standing_state } =>
+              if listing_standing_eq(a: standing_state, b: StandingGone) {
+                match first_column_where(schema: schema, take: col => match col.kind {
+                  DerivedField { source_field: _ } => Present { value: col }
+                  OperatorEntered => none
+                  ListingStanding => none
+                  DerivedErasureMark => none
+                }) {
+                  Absent =>
+                    ErasureRefused { reason: erasure_has_no_derived_field_reason(listing_id: listing_id) }
+                  Present { value: _ } =>
+                    match first_column_where(schema: schema, take: col => match col.kind {
+                      DerivedErasureMark => Present { value: col }
+                      DerivedField { source_field: _ } => none
+                      OperatorEntered => none
+                      ListingStanding => none
+                    }) {
+                      Absent =>
+                        ErasureRefused { reason: erasure_has_no_erasure_mark_reason(listing_id: listing_id) }
+                      Present { value: _ } => ErasureAuthorized
+                    }
+                }
+              } else {
+                ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+              }
+            StandingBlank =>
+              ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+            StandingForeign { raw: _ } =>
+              ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
+          }
+      }
+    }
+  } else {
+    ErasureNotRequested
+  }
+}
+
+fn erasure_refuse_at_identity_cell(
+  identity_index: Int,
+  data_index: Int,
+  reason: NonEmptyStr,
+) -> ReviewSheetClassification {
+  match a1_cell(column_index: identity_index, sheet_row: sheet_row_number(data_index: data_index)) {
+    Absent =>
+      ReviewSheetUnreadable {
+        reason: concat(
+          reason as String,
+          concat(" at unrepresentable A1 column index ", to_string(identity_index)),
+        ) as NonEmptyStr
+      }
+    Present { value: a1 } =>
+      ReviewSheetUnreadable {
+        reason: concat(reason as String, concat(" cell=", a1_cell_wire(cell: a1))) as NonEmptyStr
+      }
+  }
+}
+
+fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
+  fold(row.derived, init: empty_map(), f: fn(acc, cell) {
+    map_insert(acc, cell.column as String, cell.value)
+  })
+}
+
+fn omitted_derived_column_reason(listing_id: NonEmptyStr, column: NonEmptyStr) -> NonEmptyStr {
+  concat("projection omitted derived column ", col_and_listing(column: column, listing_id: listing_id)) as NonEmptyStr
+}
+
+fn col_and_listing(column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
+  concat(column as String, concat(" listing=", listing_id as String))
+}
+
+fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -> NonEmptyStr? {
+  let derived = derived_by_column(row: row)
+  match first_column_where(schema: schema, take: col => match col.kind {
+    DerivedField { source_field: _ } =>
+      match derived.lookup(col.name as String) {
+        Absent => Present { value: col }
+        Present { value: _ } => none
+      }
+    OperatorEntered => none
+    ListingStanding => none
+    DerivedErasureMark => none
+  }) {
+    Absent => none
+    Present { value: col } => Present { value: col.name }
+  }
+}
+
+// ONE AUTHORITY FOR A REVIEW SHEET'S HEADER ROW, AND IT IS A CONSTRUCTION WALL RATHER THAN A CHECK.
+// The names classify_review_sheet requires an observed sheet to carry are exactly the names a writer
+// of a blank tab must put there, in this order.
+//
+// NO SUCH WRITER IS ON MAIN, AND THAT IS THE POINT OF LANDING THE CARRIER FIRST, not an unstated
+// assumption this annotation is making. Nothing in the corpus today renders a header row: the
+// intended first writer is the parked initializer of gunbc#11613, which is where this wall's
+// finding 3 was raised and which is deliberately not landed here. So the consumer that closes the
+// loop is a DECLARED FRONTIER rather than a present fact, and what IS consumed in this change is
+// the requiring half -- classify_review_sheet, the format actuator's extent and standing position,
+// and the converge CLI. Holding the header row in two places is how a first write occupies a tab
+// with a row the next classification then refuses; a header row cannot be taken back, so header
+// correctness cannot be deferred past the write, and the carrier has to exist before the writer
+// does rather than after it.
+//
+// ValidatedHeaderSchema is sole_constructor and validate_header_schema is its only mint, so a writer
+// that demands the carrier cannot be handed a schema whose header row is malformed: the invalid
+// state has no constructor outside this module (DESIGN 4b rung 4 for the population that takes the
+// carrier).
+//
+// THE RUNG IS STATED AT WHAT THE EVIDENCE HOLDS, and it has TWO limits rather than one. First, the
+// carrier does not claim every consumer takes it: a consumer still holding a bare ReviewSheetSchema
+// is outside the wall, which is why the readers below were moved onto it rather than left beside
+// it. Second, rung 4 holds only while no OTHER function in this module returns the carrier --
+// .dag has no module-private, so such a function would be an exported second mint and the rung
+// would be inflated rather than held. See the obligation stated at header_names_for; it is a
+// standing property of this module that nothing currently enforces.
+//
+// AN IDENTITY COLUMN THAT IS ONE OF THE SCHEMA'S OWN COLUMNS IS LEGITIMATE AND IS RENDERED ONCE, IN
+// PLACE. identity_column says which column keys the rows; it does not declare a second column. The
+// public production schema is the concrete case: ci_prospect keys on "Repository", which IS its
+// column at index 1, and its live header row reads Rank, Repository, Owner, ... -- prepending the
+// identity would both duplicate the name and reorder a sheet that already carries 58 rows.
+//
+// The other shape is a schema whose identity is NOT among its columns; the identity is then
+// prepended and the header row is one wider than the column roster. It is stated as a shape rather
+// than by naming a schema on purpose: the roster-derived schema that inhabits it is private
+// (strategy.buyer_review_projection), so a name cited here would be a citation this repository
+// cannot resolve. test.claim.review_sheet_header_schema_witness carries a generic specimen of that
+// shape and asserts its header order, width and Standing position.
+//
+// The two shapes are one rule: the identity is rendered where the schema puts it, and prepended
+// only when the schema puts it nowhere.
+//
+// EMPTY NAMES ARE NOT CHECKED HERE BECAUSE THEY ARE NOT WRITABLE. ReviewColumn.name and
+// ReviewSheetSchema.identity_column are NonEmptyStr (std.types: String where string_non_empty), so an empty
+// header name is refused at construction of the schema itself, one rung above anything this fold
+// could add. A check for it here would be permanently green and would be cited as coverage
+// (DESIGN 4b: ask whether the RED is authorable before writing the check).
+type ValidatedHeaderSchema sole_constructor {
+  schema: ReviewSheetSchema
+  header_names: List<NonEmptyStr>
+}
+
+// The refusal names the colliding header, not merely the fact of a collision: an operator reading
+// "duplicate column" over a 17-column roster still has to find it.
+type HeaderSchemaRefusal
+  = HeaderSchemaDuplicateColumn { name: NonEmptyStr }
+  | HeaderSchemaIdentityColumnNotDerived { name: NonEmptyStr, kind: ReviewColumnKind }
+
+type HeaderSchemaValidation
+  = HeaderSchemaValidated { validated: ValidatedHeaderSchema }
+  | HeaderSchemaRefused { refusal: HeaderSchemaRefusal, reason: NonEmptyStr }
+
+fn column_name_key_rows(schema: ReviewSheetSchema) -> List<KeyedRow<String, ReviewColumn>> {
+  map(schema.columns, c => KeyedRow { row_key: c.name as String, value: c })
+}
+
+// The identity column looked up in the roster by NAME, through the module's own monomorphic
+// ReviewColumn fold rather than through the generic keyed_string_map. That is deliberate: a
+// user-declared generic in this family has already failed its first live execution when a fifth
+// element type was added to it (gunbc.recurring_failure_mode
+// generic_type_parameter_fixed_only_by_an_untyped_literal, gunbc#11581, this module's own format
+// actuator), and first_column_where says the type.
+fn identity_column_in_roster(schema: ReviewSheetSchema) -> ReviewColumn? {
+  first_column_where(schema: schema, take: col =>
+    if (col.name as String) == (schema.identity_column as String) {
+      Present { value: col }
+    } else {
+      none
+    })
+}
+
+// An identity column carried in the roster must be the column that HOLDS the identity, which is a
+// DerivedField: the append path writes listing_id into the identity header and ignores whatever the
+// column's own kind would have produced, so an OperatorEntered identity would have the writer
+// overwrite the operator's cell, a ListingStanding identity would have it overwrite the standing
+// label, and a DerivedErasureMark identity would have it overwrite the erasure mark -- each of them
+// silently, each of them reported as success.
+fn identity_column_kind_renders_identity(kind: ReviewColumnKind) -> Bool {
+  match kind {
+    DerivedField { source_field: _ } => true
+    OperatorEntered => false
+    ListingStanding => false
+    DerivedErasureMark => false
+  }
+}
+
+fn review_column_kind_label(kind: ReviewColumnKind) -> String {
+  match kind {
+    DerivedField { source_field: _ } => "DerivedField"
+    OperatorEntered => "OperatorEntered"
+    ListingStanding => "ListingStanding"
+    DerivedErasureMark => "DerivedErasureMark"
+  }
+}
+
+// THIS RETURNS THE NAMES, NEVER THE CARRIER, and that distinction is the wall rather than a
+// stylistic one. An earlier revision of this change had a `validated_header_schema(schema,
+// identity_in_columns)` helper returning ValidatedHeaderSchema, which .dag exports like everything
+// else -- so a foreign module could import it, pass identity_in_columns: false for a schema whose
+// identity IS in the roster, and hold a carrier whose header row renders that name twice: exactly
+// the state the mint below refuses. The rung claim was inflated and the probe did not catch it,
+// because the probe exercised the record-literal form only (review 68430, gunbc#11705). The class
+// is rostered: gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress --
+// with no module-private, an admitted wrapper IS an exported unrestricted constructor.
+//
+// So the standing obligation on this module is narrow and mechanical: NO function here may return
+// ValidatedHeaderSchema except validate_header_schema. A helper that shapes the names is safe
+// because a List<NonEmptyStr> is not the carrier and confers nothing; a helper that assembles the
+// carrier is a second mint however carefully it is written. Nothing enforces that today -- there is
+// no lens over "exported function returning a sole_constructor type" -- so it is stated here rather
+// than claimed as covered.
+fn header_names_for(schema: ReviewSheetSchema, identity_in_columns: Bool) -> List<NonEmptyStr> {
+  let column_names = map(schema.columns, c => c.name)
+  if identity_in_columns {
+    column_names
+  } else {
+    concat([schema.identity_column], column_names)
+  }
+}
+
+// THE ONLY MINT. Duplicate column names are found by the same keyed_roster_build that
+// classify_review_sheet already uses on the OBSERVED headers, so the desired row and the observed
+// row are judged unique by one fold rather than by two spellings of uniqueness.
+fn validate_header_schema(schema: ReviewSheetSchema) -> HeaderSchemaValidation {
+  match keyed_roster_build(incomings: column_name_key_rows(schema: schema), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: dup } =>
+      HeaderSchemaRefused {
+        refusal: HeaderSchemaDuplicateColumn { name: dup.value.name },
+        reason: concat("review sheet schema declares two columns named ", d) as NonEmptyStr,
+      }
+    KeyedRosterBuilt { rows: _ } =>
+      match identity_column_in_roster(schema: schema) {
+        Absent =>
+          HeaderSchemaValidated {
+            validated: ValidatedHeaderSchema {
+              schema: schema,
+              header_names: header_names_for(schema: schema, identity_in_columns: false),
+            }
+          }
+        Present { value: col } =>
+          if identity_column_kind_renders_identity(kind: col.kind) {
+            HeaderSchemaValidated {
+              validated: ValidatedHeaderSchema {
+                schema: schema,
+                header_names: header_names_for(schema: schema, identity_in_columns: true),
+              }
+            }
+          } else {
+            HeaderSchemaRefused {
+              refusal: HeaderSchemaIdentityColumnNotDerived { name: col.name, kind: col.kind },
+              reason: concat(
+                concat("review sheet identity column ", col.name as String),
+                concat(" is declared as ", review_column_kind_label(kind: col.kind))
+              ) as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+fn review_sheet_header_names(validated: ValidatedHeaderSchema) -> List<NonEmptyStr> {
+  validated.header_names
+}
+
+fn validated_schema(validated: ValidatedHeaderSchema) -> ReviewSheetSchema {
+  validated.schema
+}
+
+// The header row's width is the header NAME count, never the column count: for a schema whose
+// identity is not among its columns the two differ by one, and a band sized to the column count
+// stops one short of the last header.
+fn review_sheet_header_count(validated: ValidatedHeaderSchema) -> Int {
+  count(validated.header_names)
+}
+
+fn missing_schema_header(validated: ValidatedHeaderSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
+  let needed = review_sheet_header_names(validated: validated)
+  needed |> filter(n => match header_by_name.lookup(n as String) {
+    Present { value: _ } => false
+    Absent => true
+  }) |> first
+}
+
+fn standing_desired(in_projection: Bool) -> ListingStandingState {
+  if in_projection { StandingObserved } else { StandingGone }
+}
+
+fn empty_write_plan() -> ReviewSheetWritePlan {
+  ReviewSheetWritePlan { patches: [], appends: [] }
+}
+
+fn plan_plus_patch(plan: ReviewSheetWritePlan, write: DerivedCellWrite) -> ReviewSheetWritePlan {
+  ReviewSheetWritePlan { patches: concat([write], plan.patches), appends: plan.appends }
+}
+
+fn plan_plus_append(plan: ReviewSheetWritePlan, row: AppendListingRow) -> ReviewSheetWritePlan {
+  ReviewSheetWritePlan { patches: plan.patches, appends: concat([row], plan.appends) }
+}
+
+fn reverse_write_plan(plan: ReviewSheetWritePlan) -> ReviewSheetWritePlan {
+  ReviewSheetWritePlan { patches: reverse(plan.patches), appends: reverse(plan.appends) }
+}
+
+fn write_plan_nonempty(plan: ReviewSheetWritePlan) -> Bool {
+  (plan.patches |> count) > 0 || (plan.appends |> count) > 0
+}
+
+fn write_plan_touches_column(plan: ReviewSheetWritePlan, column: NonEmptyStr) -> Bool {
+  fold(plan.patches, init: false, f: fn(acc, w) { acc || w.column == column })
+    || fold(plan.appends, init: false, f: fn(acc, row) {
+      acc || fold(row.runs, init: false, f: fn(racc, run) {
+        racc || fold(run.columns, init: false, f: fn(cacc, n) { cacc || n == column })
+      })
+    })
+}
+
+fn operator_column_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
+  schema.columns
+    |> filter(c => match c.kind {
+      OperatorEntered => true
+      DerivedField { source_field: _ } => false
+      ListingStanding => false
+      DerivedErasureMark => false
+    })
+    |> map(c => c.name)
+}
+
+fn write_plan_covers_column_letter(plan: ReviewSheetWritePlan, letter: String) -> Bool {
+  fold(plan.patches, init: false, f: fn(acc, w) {
+    acc || (w.a1.column.letter as String) == letter
+  })
+    || fold(plan.appends, init: false, f: fn(acc, row) {
+      acc || fold(row.runs, init: false, f: fn(racc, run) {
+        racc || a1_row_span_includes_letter(span: run.a1, letter: letter)
+      })
+    })
+}
+
+fn write_plan_preserves_operator_columns(schema: ReviewSheetSchema, plan: ReviewSheetWritePlan) -> Bool {
+  all(operator_column_names(schema: schema), n => !write_plan_touches_column(plan: plan, column: n))
+}
+
+type CellDecision
+  = CellSkip
+  | CellWrite { value: String }
+  | CellConflict { cause: ReviewCellConflictCause }
+
+fn decide_standing_cell(observed: String, desired: ListingStandingState) -> CellDecision {
+  match read_listing_standing(cell: observed) {
+    StandingBlank => CellWrite { value: listing_standing_label(state: desired) }
+    StandingForeign { raw: r } => CellConflict { cause: ListingStandingForeignValue { raw: r } }
+    StandingKnown { state: observed_state } =>
+      if listing_standing_eq(a: observed_state, b: desired) {
+        CellSkip
+      } else {
+        CellWrite { value: listing_standing_label(state: desired) }
+      }
+  }
+}
+
+fn decide_derived_field_cell(observed: String, desired: String) -> CellDecision {
+  if observed == desired {
+    CellSkip
+  } else {
+    if observed == "" {
+      CellWrite { value: desired }
+    } else {
+      CellConflict { cause: DerivedFieldOccupied { observed: observed, desired: desired } }
+    }
+  }
+}
+
+fn decide_derived_erasure_cell(observed: String) -> CellDecision {
+  if observed == "" {
+    CellSkip
+  } else {
+    CellWrite { value: "" }
+  }
+}
+
+fn decide_erasure_mark_cell(observed: String, erase_derived: Bool) -> CellDecision {
+  match read_derived_erasure_mark(cell: observed) {
+    ErasureMarkForeign { raw: r } => CellConflict { cause: DerivedErasureMarkForeignValue { raw: r } }
+    ErasureMarkApplied => CellSkip
+    ErasureMarkBlank =>
+      if erase_derived {
+        CellWrite { value: derived_erasure_applied_label }
+      } else {
+        CellSkip
+      }
+  }
+}
+
+fn classification_from_cell_decision(
+  plan: ReviewSheetWritePlan,
+  listing_id: NonEmptyStr,
+  column: NonEmptyStr,
+  column_index: Int,
+  data_index: Int,
+  decision: CellDecision,
+) -> ReviewSheetClassification {
+  match decision {
+    CellSkip => ReviewSheetNeedsWrite { plan: plan }
+    CellWrite { value: v } =>
+      match a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)) {
+        Absent => ReviewSheetUnreadable {
+          reason: concat("unrepresentable A1 column index ", to_string(column_index)) as NonEmptyStr
+        }
+        Present { value: a1 } =>
+          ReviewSheetNeedsWrite {
+            plan: plan_plus_patch(
+              plan: plan,
+              write: DerivedCellWrite {
+                listing_id: listing_id,
+                column: column,
+                a1: a1,
+                value: v,
+              },
+            )
+          }
+      }
+    CellConflict { cause: cause } =>
+      match a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)) {
+        Absent => ReviewSheetUnreadable {
+          reason: concat("unrepresentable A1 column index ", to_string(column_index)) as NonEmptyStr
+        }
+        Present { value: a1 } =>
+          ReviewSheetConflict {
+            conflict: LocatedDerivedConflict {
+              listing_id: listing_id,
+              column: column,
+              a1: a1,
+              cause: cause,
+            }
+          }
+      }
+  }
+}
+
+fn classify_existing_row(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  rows_by_listing: Map<String, ProjectionRow>,
+  identity_index: Int,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
+  plan: ReviewSheetWritePlan,
+) -> ReviewSheetClassification {
+  let listing_raw = cell_at(cells: row.cells, index: identity_index)
+  if listing_raw == "" {
+    match a1_cell(column_index: identity_index, sheet_row: sheet_row_number(data_index: row.data_index)) {
+      Absent => ReviewSheetUnreadable {
+        reason: concat("empty listing identity at unrepresentable A1 column index ", to_string(identity_index)) as NonEmptyStr
+      }
+      Present { value: a1 } =>
+        ReviewSheetUnreadable { reason: concat("empty listing identity at ", a1_cell_wire(cell: a1)) as NonEmptyStr }
+    }
+  } else {
+    let listing_id = listing_raw as NonEmptyStr
+    match rows_by_listing.lookup(listing_raw) {
+      Present { value: prow } =>
+        classify_existing_row_after_erasure_auth(
+          schema: schema,
+          header_by_name: header_by_name,
+          row: row,
+          listing_id: listing_id,
+          identity_index: identity_index,
+          in_projection: true,
+          derived: derived_by_column(row: prow),
+          erasure_by_id: erasure_by_id,
+          plan: plan,
+        )
+      Absent =>
+        classify_existing_row_after_erasure_auth(
+          schema: schema,
+          header_by_name: header_by_name,
+          row: row,
+          listing_id: listing_id,
+          identity_index: identity_index,
+          in_projection: false,
+          derived: empty_map(),
+          erasure_by_id: erasure_by_id,
+          plan: plan,
+        )
+    }
+  }
+}
+
+fn classify_existing_row_after_erasure_auth(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  listing_id: NonEmptyStr,
+  identity_index: Int,
+  in_projection: Bool,
+  derived: Map<String, String>,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
+  plan: ReviewSheetWritePlan,
+) -> ReviewSheetClassification {
+  match authorize_derived_payload_erasure(
+    listing_id: listing_id,
+    in_projection: in_projection,
+    schema: schema,
+    header_by_name: header_by_name,
+    row: row,
+    erasure_by_id: erasure_by_id,
+  ) {
+    ErasureRefused { reason: r } =>
+      erasure_refuse_at_identity_cell(
+        identity_index: identity_index,
+        data_index: row.data_index,
+        reason: r,
+      )
+    ErasureAuthorized =>
+      fold_columns_for_row(
+        schema: schema,
+        header_by_name: header_by_name,
+        row: row,
+        listing_id: listing_id,
+        in_projection: in_projection,
+        derived: derived,
+        erase_derived: true,
+        plan: plan,
+      )
+    ErasureNotRequested =>
+      fold_columns_for_row(
+        schema: schema,
+        header_by_name: header_by_name,
+        row: row,
+        listing_id: listing_id,
+        in_projection: in_projection,
+        derived: derived,
+        erase_derived: row_erasure_mark_is_applied(
+          schema: schema,
+          header_by_name: header_by_name,
+          row: row,
+        ),
+        plan: plan,
+      )
+  }
+}
+
+fn fold_columns_for_row(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+  listing_id: NonEmptyStr,
+  in_projection: Bool,
+  derived: Map<String, String>,
+  erase_derived: Bool,
+  plan: ReviewSheetWritePlan,
+) -> ReviewSheetClassification {
+  fold(schema.columns, init: ReviewSheetNeedsWrite { plan: plan }, f: fn(acc, col) {
+    match acc {
+      ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+      ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+      ReviewSheetConverged => ReviewSheetConverged
+      ReviewSheetNeedsWrite { plan: p } =>
+        match header_by_name.lookup(col.name as String) {
+          Absent => ReviewSheetUnreadable { reason: concat("missing column ", col.name as String) as NonEmptyStr }
+          Present { value: idx } => {
+            let observed = cell_at(cells: row.cells, index: idx)
+            match col.kind {
+              ListingStanding =>
+                classification_from_cell_decision(
+                  plan: p,
+                  listing_id: listing_id,
+                  column: col.name,
+                  column_index: idx,
+                  data_index: row.data_index,
+                  decision: decide_standing_cell(
+                    observed: observed,
+                    desired: standing_desired(in_projection: in_projection),
+                  ),
+                )
+              OperatorEntered => ReviewSheetNeedsWrite { plan: p }
+              DerivedErasureMark =>
+                classification_from_cell_decision(
+                  plan: p,
+                  listing_id: listing_id,
+                  column: col.name,
+                  column_index: idx,
+                  data_index: row.data_index,
+                  decision: decide_erasure_mark_cell(
+                    observed: observed,
+                    erase_derived: erase_derived,
+                  ),
+                )
+              DerivedField { source_field: _ } =>
+                if erase_derived {
+                  classification_from_cell_decision(
+                    plan: p,
+                    listing_id: listing_id,
+                    column: col.name,
+                    column_index: idx,
+                    data_index: row.data_index,
+                    decision: decide_derived_erasure_cell(observed: observed),
+                  )
+                } else {
+                  if in_projection {
+                    match derived.lookup(col.name as String) {
+                      Absent =>
+                        ReviewSheetUnreadable {
+                          reason: omitted_derived_column_reason(listing_id: listing_id, column: col.name)
+                        }
+                      Present { value: desired } =>
+                        classification_from_cell_decision(
+                          plan: p,
+                          listing_id: listing_id,
+                          column: col.name,
+                          column_index: idx,
+                          data_index: row.data_index,
+                          decision: decide_derived_field_cell(observed: observed, desired: desired),
+                        )
+                    }
+                  } else {
+                    classification_from_cell_decision(
+                      plan: p,
+                      listing_id: listing_id,
+                      column: col.name,
+                      column_index: idx,
+                      data_index: row.data_index,
+                      decision: decide_derived_field_cell(observed: observed, desired: observed),
+                    )
+                  }
+                }
+            }
+          }
+        }
+    }
+  })
+}
+
+fn columns_by_name(schema: ReviewSheetSchema) -> Map<String, ReviewColumn> {
+  fold(schema.columns, init: empty_map(), f: fn(acc, c) {
+    map_insert(acc, c.name as String, c)
+  })
+}
+
+fn append_cell_for_column(column: ReviewColumn, derived: Map<String, String>) -> String? {
+  match column.kind {
+    ListingStanding => Present { value: listing_standing_label(state: StandingObserved) }
+    OperatorEntered => none
+    DerivedErasureMark => Present { value: "" }
+    DerivedField { source_field: _ } =>
+      match derived.lookup(column.name as String) {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: "" }
+      }
+  }
+}
+
+fn header_append_cell(
+  listing_id: NonEmptyStr,
+  identity_column: NonEmptyStr,
+  column_by_name: Map<String, ReviewColumn>,
+  derived: Map<String, String>,
+  header: String,
+) -> String? {
+  if header == (identity_column as String) {
+    Present { value: listing_id as String }
+  } else {
+    match column_by_name.lookup(header) {
+      Absent => none
+      Present { value: column } => append_cell_for_column(column: column, derived: derived)
+    }
+  }
+}
+
+type AppendRunAcc {
+  runs: List<AppendCellRun>
+  has_open: Bool
+  open_start: Int
+  open_last: Int
+  open_cells: List<String>
+  open_columns: List<NonEmptyStr>
+}
+
+fn empty_append_run_acc() -> AppendRunAcc {
+  AppendRunAcc {
+    runs: [],
+    has_open: false,
+    open_start: 0,
+    open_last: 0,
+    open_cells: [],
+    open_columns: [],
+  }
+}
+
+fn flushed_append_run_acc(acc: AppendRunAcc, sheet_row: Int) -> AppendRunAcc? {
+  if acc.has_open {
+    match a1_row_span_cols(sheet_row: sheet_row, start_column: acc.open_start, last_column: acc.open_last) {
+      Absent => none
+      Present { value: a1 } =>
+        Present {
+          value: AppendRunAcc {
+            runs: concat(acc.runs, [AppendCellRun { a1: a1, cells: acc.open_cells, columns: acc.open_columns }]),
+            has_open: false,
+            open_start: 0,
+            open_last: 0,
+            open_cells: [],
+            open_columns: [],
+          }
+        }
+    }
+  } else {
+    Present { value: acc }
+  }
+}
+
+fn push_append_cell(
+  acc: AppendRunAcc,
+  sheet_row: Int,
+  column_index: Int,
+  column: NonEmptyStr,
+  value: String,
+) -> AppendRunAcc? {
+  if acc.has_open {
+    if column_index == acc.open_last + 1 {
+      Present {
+        value: AppendRunAcc {
+          runs: acc.runs,
+          has_open: true,
+          open_start: acc.open_start,
+          open_last: column_index,
+          open_cells: concat(acc.open_cells, [value]),
+          open_columns: concat(acc.open_columns, [column]),
+        }
+      }
+    } else {
+      match flushed_append_run_acc(acc: acc, sheet_row: sheet_row) {
+        Absent => none
+        Present { value: flushed } =>
+          Present {
+            value: AppendRunAcc {
+              runs: flushed.runs,
+              has_open: true,
+              open_start: column_index,
+              open_last: column_index,
+              open_cells: [value],
+              open_columns: [column],
+            }
+          }
+      }
+    }
+  } else {
+    Present {
+      value: AppendRunAcc {
+        runs: acc.runs,
+        has_open: true,
+        open_start: column_index,
+        open_last: column_index,
+        open_cells: [value],
+        open_columns: [column],
+      }
+    }
+  }
+}
+
+fn operator_overwrite_reason(
+  observed: ObservedSheet,
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  sheet_row: Int,
+) -> NonEmptyStr? {
+  let data_index = sheet_row - 2
+  match observed.rows |> filter(r => r.data_index == data_index) |> first {
+    Absent => none
+    Present { value: row } =>
+      schema.columns
+        |> filter(c => match c.kind {
+          OperatorEntered => true
+          DerivedField { source_field: _ } => false
+          ListingStanding => false
+          DerivedErasureMark => false
+        })
+        |> filter(c => match header_by_name.lookup(c.name as String) {
+          Absent => false
+          Present { value: idx } => cell_at(cells: row.cells, index: idx) != ""
+        })
+        |> map(c => c.name)
+        |> first
+  }
+}
+
+fn append_overwrite_reason(
+  listing_id: NonEmptyStr,
+  column: NonEmptyStr,
+  sheet_row: Int,
+) -> NonEmptyStr {
+  concat(
+    "append would overwrite operator column ",
+    concat(column as String, concat(" listing=", concat(listing_id as String, concat(" row=", to_string(sheet_row))))),
+  ) as NonEmptyStr
+}
+
+fn append_row_for(
+  projection_row: ProjectionRow,
+  schema: ReviewSheetSchema,
+  headers: List<String>,
+  column_by_name: Map<String, ReviewColumn>,
+  sheet_row: Int,
+) -> AppendListingRow? {
+  let derived = derived_by_column(row: projection_row)
+  match fold(headers |> enumerate, init: Present { value: empty_append_run_acc() }, f: fn(acc, pair) {
+    match acc {
+      Absent => none
+      Present { value: builder } =>
+        match header_append_cell(
+          listing_id: projection_row.listing_id,
+          identity_column: schema.identity_column,
+          column_by_name: column_by_name,
+          derived: derived,
+          header: pair.second,
+        ) {
+          Absent => Present { value: builder }
+          Present { value: cell } => push_append_cell(
+            acc: builder,
+            sheet_row: sheet_row,
+            column_index: pair.first,
+            column: pair.second as NonEmptyStr,
+            value: cell,
+          )
+        }
+    }
+  }) {
+    Absent => none
+    Present { value: builder } =>
+      match flushed_append_run_acc(acc: builder, sheet_row: sheet_row) {
+        Absent => none
+        Present { value: flushed } =>
+          if (flushed.runs |> count) == 0 {
+            none
+          } else {
+            Present {
+              value: AppendListingRow {
+                listing_id: projection_row.listing_id,
+                sheet_row: sheet_row,
+                runs: flushed.runs,
+              }
+            }
+          }
+      }
+  }
+}
+
+fn append_listing_row(
+  observed: ObservedSheet,
+  projection_row: ProjectionRow,
+  schema: ReviewSheetSchema,
+  headers: List<String>,
+  column_by_name: Map<String, ReviewColumn>,
+  sheet_row: Int,
+  plan: ReviewSheetWritePlan,
+) -> ReviewSheetClassification {
+  match keyed_roster_build(incomings: header_key_rows(headers: headers), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+      ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+    KeyedRosterBuilt { rows: header_rows } =>
+      match operator_overwrite_reason(
+        observed: observed,
+        schema: schema,
+        header_by_name: keyed_string_map(rows: header_rows),
+        sheet_row: sheet_row,
+      ) {
+        Present { value: column } =>
+          ReviewSheetUnreadable {
+            reason: append_overwrite_reason(
+              listing_id: projection_row.listing_id,
+              column: column,
+              sheet_row: sheet_row,
+            )
+          }
+        Absent =>
+          match append_row_for(
+            projection_row: projection_row,
+            schema: schema,
+            headers: headers,
+            column_by_name: column_by_name,
+            sheet_row: sheet_row,
+          ) {
+            Absent =>
+              ReviewSheetUnreadable {
+                reason: concat(
+                  "unrepresentable A1 for append listing ",
+                  projection_row.listing_id as String,
+                ) as NonEmptyStr
+              }
+            Present { value: row } => ReviewSheetNeedsWrite { plan: plan_plus_append(plan: plan, row: row) }
+          }
+      }
+  }
+}
+
+fn classify_review_sheet(
+  observed: ObservedSheet,
+  projection: ReviewSheetProjection,
+  erasures: List<DerivedPayloadErasure>,
+) -> ReviewSheetClassification {
+  match validate_header_schema(schema: projection.schema) {
+    HeaderSchemaRefused { refusal: _, reason: r } => ReviewSheetUnreadable { reason: r }
+    HeaderSchemaValidated { validated: validated } =>
+  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+      ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+    KeyedRosterBuilt { rows: header_rows } => {
+      let header_by_name = keyed_string_map(rows: header_rows)
+      match missing_schema_header(validated: validated, header_by_name: header_by_name) {
+    Present { value: missing } =>
+      ReviewSheetUnreadable { reason: concat("missing header ", missing as String) as NonEmptyStr }
+    Absent =>
+      match header_by_name.lookup(projection.schema.identity_column as String) {
+        Absent => ReviewSheetUnreadable { reason: "missing identity column" as NonEmptyStr }
+        Present { value: identity_index } =>
+          match keyed_roster_build(
+            incomings: projection_key_rows(projection: projection),
+            key_eq: review_sheet_key_eq,
+          ) {
+            KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+              ReviewSheetUnreadable { reason: concat("duplicate projection listing ", d) as NonEmptyStr }
+            KeyedRosterBuilt { rows: proj_rows } =>
+              match keyed_roster_build(
+                incomings: observed_identity_key_rows(sheet: observed, identity_index: identity_index),
+                key_eq: review_sheet_key_eq,
+              ) {
+                KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+                  ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d) as NonEmptyStr }
+                KeyedRosterBuilt { rows: obs_rows } =>
+                  match keyed_roster_build(
+                    incomings: erasure_key_rows(erasures: erasures),
+                    key_eq: review_sheet_key_eq,
+                  ) {
+                    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+                      ReviewSheetUnreadable {
+                        reason: concat("duplicate derived payload erasure listing ", d) as NonEmptyStr
+                      }
+                    KeyedRosterBuilt { rows: erasure_rows } => finish_classify(
+                      observed: observed,
+                      projection: projection,
+                      header_by_name: header_by_name,
+                      identity_index: identity_index,
+                      rows_by_listing: keyed_string_map(rows: proj_rows),
+                      observed_by_id: keyed_string_map(rows: obs_rows),
+                      erasures: erasures,
+                      erasure_by_id: keyed_string_map(rows: erasure_rows),
+                    )
+                  }
+              }
+          }
+      }
+      }
+    }
+  }
+  }
+}
+
+fn finish_classify(
+  observed: ObservedSheet,
+  projection: ReviewSheetProjection,
+  header_by_name: Map<String, Int>,
+  identity_index: Int,
+  rows_by_listing: Map<String, ProjectionRow>,
+  observed_by_id: Map<String, Bool>,
+  erasures: List<DerivedPayloadErasure>,
+  erasure_by_id: Map<String, DerivedPayloadErasure>,
+) -> ReviewSheetClassification {
+  let after_existing = fold(observed.rows, init: ReviewSheetNeedsWrite { plan: empty_write_plan() }, f: fn(acc, row) {
+    match acc {
+      ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+      ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+      ReviewSheetConverged => ReviewSheetConverged
+      ReviewSheetNeedsWrite { plan: p } =>
+        classify_existing_row(
+          schema: projection.schema,
+          header_by_name: header_by_name,
+          row: row,
+          rows_by_listing: rows_by_listing,
+          identity_index: identity_index,
+          erasure_by_id: erasure_by_id,
+          plan: p,
+        )
+    }
+  })
+  match after_existing {
+    ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+    ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+    ReviewSheetConverged => ReviewSheetConverged
+    ReviewSheetNeedsWrite { plan: p } =>
+      match first_erasure_not_on_sheet(erasures: erasures, observed_by_id: observed_by_id) {
+        Present { value: missing } =>
+          ReviewSheetUnreadable { reason: erasure_not_on_sheet_reason(listing_id: missing) }
+        Absent => {
+      let start_row = (observed.rows |> count) + 2
+      let column_by_name = columns_by_name(schema: projection.schema)
+      let missing = projection.rows |> filter(r => match observed_by_id.lookup(r.listing_id as String) {
+        Present { value: _ } => false
+        Absent => true
+      })
+      let after_appends = fold(missing |> enumerate, init: ReviewSheetNeedsWrite { plan: p }, f: fn(acc, pair) {
+        match acc {
+          ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+          ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+          ReviewSheetConverged => ReviewSheetConverged
+          ReviewSheetNeedsWrite { plan: accp } =>
+            match first_omitted_derived_column(row: pair.second, schema: projection.schema) {
+              Present { value: col } =>
+                ReviewSheetUnreadable {
+                  reason: omitted_derived_column_reason(listing_id: pair.second.listing_id, column: col)
+                }
+              Absent =>
+                append_listing_row(
+                  observed: observed,
+                  projection_row: pair.second,
+                  schema: projection.schema,
+                  headers: observed.headers,
+                  column_by_name: column_by_name,
+                  sheet_row: start_row + pair.first,
+                  plan: accp,
+                )
+            }
+        }
+      })
+      match after_appends {
+        ReviewSheetNeedsWrite { plan: final_plan } =>
+          if write_plan_nonempty(plan: final_plan) {
+            ReviewSheetNeedsWrite { plan: reverse_write_plan(plan: final_plan) }
+          } else {
+            ReviewSheetConverged
+          }
+        ReviewSheetConflict { conflict: c } => ReviewSheetConflict { conflict: c }
+        ReviewSheetUnreadable { reason: r } => ReviewSheetUnreadable { reason: r }
+        ReviewSheetConverged => ReviewSheetConverged
+      }
+        }
+      }
+  }
+}
+
+fn cell_conflict_cause_text(cause: ReviewCellConflictCause) -> String {
+  match cause {
+    DerivedFieldOccupied { observed: o, desired: d } =>
+      join(["derived field occupied observed=", o, " desired=", d], "")
+    ListingStandingForeignValue { raw: r } =>
+      join(["listing standing value unrecognised raw=", r], "")
+    DerivedErasureMarkForeignValue { raw: r } =>
+      join(["derived erasure mark unrecognised raw=", r], "")
+  }
+}
+
+fn conflict_reason(conflict: LocatedDerivedConflict) -> NonEmptyStr {
+  join(
+    [
+      "derived cell conflict listing=",
+      conflict.listing_id as String,
+      " column=",
+      conflict.column as String,
+      " cell=",
+      a1_cell_wire(cell: conflict.a1),
+      " cause=",
+      cell_conflict_cause_text(cause: conflict.cause),
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+type JudgementRead
+  = JudgementBlank
+  | JudgementEntered { value: NonEmptyStr }
+  | JudgementUnreadable { reason: NonEmptyStr }
+
+fn judgement_for_listing(
+  observed: ObservedSheet,
+  identity_column: NonEmptyStr,
+  judgement_column: NonEmptyStr,
+  listing_id: NonEmptyStr,
+) -> JudgementRead {
+  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+      JudgementUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+    KeyedRosterBuilt { rows: header_rows } => {
+      let header_by_name = keyed_string_map(rows: header_rows)
+      match header_by_name.lookup(identity_column as String) {
+        Absent =>
+          JudgementUnreadable {
+            reason: concat("missing identity column ", identity_column as String) as NonEmptyStr
+          }
+        Present { value: id_idx } =>
+          match header_by_name.lookup(judgement_column as String) {
+            Absent =>
+              JudgementUnreadable {
+                reason: concat("missing judgement column ", judgement_column as String) as NonEmptyStr
+              }
+            Present { value: j_idx } =>
+              match keyed_roster_build(
+                incomings: observed.rows
+                  |> map(row => KeyedRow {
+                    row_key: cell_at(cells: row.cells, index: id_idx),
+                    value: row,
+                  })
+                  |> filter(keyed => keyed.row_key != ""),
+                key_eq: review_sheet_key_eq,
+              ) {
+                KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+                  JudgementUnreadable { reason: concat("duplicate sheet listing ", d) as NonEmptyStr }
+                KeyedRosterBuilt { rows: listing_rows } =>
+                  match keyed_string_map(rows: listing_rows).lookup(listing_id as String) {
+                    Absent =>
+                      JudgementUnreadable {
+                        reason: concat("listing not present ", listing_id as String) as NonEmptyStr
+                      }
+                    Present { value: row } => {
+                      let raw = cell_at(cells: row.cells, index: j_idx)
+                      if raw == "" {
+                        JudgementBlank
+                      } else {
+                        JudgementEntered { value: raw as NonEmptyStr }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+// THE CI PROSPECT SHEET'S COLUMN ROSTER, DECLARED ONCE HERE BECAUSE TWO MODULES WERE ABOUT TO OWN
+// IT. The format actuator carried a bare `column_count = 17` and `standing_column_index = 3`, while
+// this module already owns what a review sheet's columns ARE -- so "how wide is it" and "which
+// column is Standing" had two sources that could answer differently, and the drift would have been
+// silent: the formatter checks frozen rows, header colour and a rule count, never extent or column
+// position. Adding one derived column would have left the header band short and the conditional
+// rule painting a column that is no longer Standing, with every call reporting success.
+//
+// The names are the header row the live sheet already carries, read back from the write that put
+// 58 rows there on 2026-09-16. Standing carries the ListingStanding kind rather than a position,
+// which is what lets a consumer find it after the roster grows. Decision and Note are
+// OperatorEntered: they are the operator's cells, they ship empty from every derived row, and a
+// whole-range rewrite would erase them -- which is why the identity-keyed write path exists and why
+// marking them here is load-bearing rather than descriptive.
+data ci_prospect_derived_columns: List<ReviewColumn> = [
+  ReviewColumn { name: "Rank" as NonEmptyStr, kind: DerivedField { source_field: "rank" as NonEmptyStr } },
+  ReviewColumn { name: "Repository" as NonEmptyStr, kind: DerivedField { source_field: "repository" as NonEmptyStr } },
+  ReviewColumn { name: "Owner" as NonEmptyStr, kind: DerivedField { source_field: "owner" as NonEmptyStr } },
+  ReviewColumn { name: "Standing" as NonEmptyStr, kind: ListingStanding },
+  ReviewColumn { name: "Runner-min/day" as NonEmptyStr, kind: DerivedField { source_field: "runner_minutes_per_day" as NonEmptyStr } },
+  ReviewColumn { name: "Runs/day" as NonEmptyStr, kind: DerivedField { source_field: "runs_per_day" as NonEmptyStr } },
+  ReviewColumn { name: "Median min" as NonEmptyStr, kind: DerivedField { source_field: "median_minutes" as NonEmptyStr } },
+  ReviewColumn { name: "p90 min" as NonEmptyStr, kind: DerivedField { source_field: "p90_minutes" as NonEmptyStr } },
+  ReviewColumn { name: "Success %" as NonEmptyStr, kind: DerivedField { source_field: "success_percent" as NonEmptyStr } },
+  ReviewColumn { name: "Linux %" as NonEmptyStr, kind: DerivedField { source_field: "linux_percent" as NonEmptyStr } },
+  ReviewColumn { name: "Provider" as NonEmptyStr, kind: DerivedField { source_field: "provider" as NonEmptyStr } },
+  ReviewColumn { name: "Stars" as NonEmptyStr, kind: DerivedField { source_field: "stars" as NonEmptyStr } },
+  ReviewColumn { name: "Language" as NonEmptyStr, kind: DerivedField { source_field: "language" as NonEmptyStr } },
+  ReviewColumn { name: "Why" as NonEmptyStr, kind: DerivedField { source_field: "why" as NonEmptyStr } },
+  ReviewColumn { name: "URL" as NonEmptyStr, kind: DerivedField { source_field: "url" as NonEmptyStr } },
+]
+
+// THE IDENTITY IS THE REPOSITORY, not the rank. Rank is a derived ordering that changes every time
+// the census re-ranks, so keying rows on it would make every row a different row on each pass and
+// destroy the operator's cells. A repository full name is stable across re-ranking and across the
+// prospect leaving and re-entering the list.
+data ci_prospect_identity_column: NonEmptyStr = "Repository"
+
+data ci_prospect_operator_columns: List<ReviewColumn> = [
+  ReviewColumn { name: "Decision" as NonEmptyStr, kind: OperatorEntered },
+  ReviewColumn { name: "Note" as NonEmptyStr, kind: OperatorEntered },
+]
+
+fn ci_prospect_sheet_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: ci_prospect_identity_column,
+    columns: concat(ci_prospect_derived_columns, ci_prospect_operator_columns),
+  }
+}
+
+// OPEN OBLIGATION, RE-HOMED OFF THE DELETED PUBLIC BUYER SCHEMA PAIR. gunbc-private
+// strategy.buyer_review_projection already derives the sheet schema from the roster; the public
+// hardcoded Listing/operator pair was a DESIGN section 3 fork and is gone. The remaining gap is a
+// production inhabitance of the TYPED public seam: review_sheet_ensure_assess then
+// review_sheet_ensure_decide, not the prose-flattening compatibility wrapper. A public FrontierRow
+// cannot cite a private declaration; the bind is review_sheet_ensure_assess. live_sheets_transport_frontier
+// is the transport scaffold on review_sheet_ensure, not this consumption obligation.
+data buyer_review_ensure_projection_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_sheets", decl_name: "review_sheet_ensure_assess"),
+    reason: "no production entry yet reads the live buyer sheet whole-tab, preserves the private roster-derived projection outcome structurally, nests ReviewSheetEnsureAssessment via gunbc.review_sheet_sheets review_sheet_ensure_assess, applies policy once via review_sheet_ensure_decide, and lowers only the admitted write plan to BatchUpdateValues; the buyer roster is private, so that production caller cannot live in this repository's public modules",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a production entry reads the live buyer sheet (whole-tab GetValues), preserves the private projection outcome structurally, nests ReviewSheetEnsureAssessment via gunbc.review_sheet_sheets review_sheet_ensure_assess (rows keyed by Browse itemId), applies policy once via review_sheet_ensure_decide, and lowers only the admitted write plan to BatchUpdateValues, with the decision consumed on that production route; a witness that classify_review_sheet or a projection fold exists, or that the composition exists or is itself witnessed, does not fire this; strategy.buyer_review_converge in its current prose-returning form (the transitional wrapper that flattens refusals into UpsertDecision prose) does not fire this either"
+    )
+  )
+]
+
+data buyer_review_judgement_read_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_projection",
+    decl_name: "judgement_for_listing",
+    field: WholeDeclaration
+  }
+}

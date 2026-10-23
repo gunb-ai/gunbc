@@ -1,0 +1,198 @@
+module extdeps.auth.jwks
+
+// JWK AND JWKS PER RFC 7517, the describe layer of the signature verification frontier: the
+// key-set vocabulary, its JSON parse, and key selection BY KEY ID (RFC 7517: a key is identified
+// within one issuer's key set by its kid). THE FETCH IS NOT HERE, and that is a boundary rather
+// than a gap: fetching a key set is a network operation with cache and failure semantics, which
+// is the consumer's realization (the gunbc login realization binds it to Google's endpoint with a
+// cache + TTL), exactly as extdeps.auth.jwt states for its own verification surface — this
+// module answers what a JWKS document IS and which key answers for a kid, given the bytes.
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, json_field, json_field_string, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc7517"
+  }
+}
+
+// GOOGLE'S SIGNATURE SUITE, as a closed coproduct for the same algorithm-confusion reason
+// extdeps.crypto.signature's is closed: the verifier's accepted algorithm is enrolled here,
+// never read from the token beyond an equality check against this row. Google signs ID tokens
+// RS256 today (RSA PKCS#1 v1.5 with SHA-256, RFC 7518 section 3.3); a second suite arrives as a
+// second arm with its own verifier, never as an admitted string.
+type JwksSignatureAlgorithm
+  = | JwksAlgRs256
+
+data jwks_alg_rs256_wire: String = "RS256"
+
+fn jwks_algorithm_of_wire(raw: String) -> JwksSignatureAlgorithm? {
+  if raw == jwks_alg_rs256_wire {
+    Present { value: JwksAlgRs256 }
+  } else {
+    none
+  }
+}
+
+// THE RSA PUBLIC KEY, the JWK members a verifier needs and nothing more: the key id, the
+// modulus, and the exponent, all in JWK's base64url unsigned big-endian spelling (RFC 7518
+// section 6.3.1). kty/use are checked at parse and dropped: they are admission facts, not
+// carried facts.
+type JwkRsaPublicKey {
+  key_id: NonEmptyStr
+  modulus_b64url: NonEmptyStr
+  exponent_b64url: NonEmptyStr
+}
+
+type JwksKeyParse
+  = JwksKeyParsed { key: JwkRsaPublicKey }
+  | JwksKeyRefused { reason: String }
+
+type JwksDocumentParse
+  = JwksDocumentParsed { keys: List<JwkRsaPublicKey> }
+  | JwksDocumentRefused { reason: String }
+
+// THE DOCUMENT PARSE: one JSON object whose "keys" member is an array of key objects. A key
+// that is not an RSA signature key (kty != RSA) is SKIPPED rather than refusing the document —
+// a key set may lawfully carry keys of other kinds for other consumers, and skipping is not
+// fail-open here because SELECTION still refuses an unknown kid. An RSA-shaped key missing a
+// member refuses with the member named; "keys" absent or not an array refuses the document.
+fn jwks_document_of_json(text: String) -> JwksDocumentParse {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } =>
+      JwksDocumentRefused { reason: concat("the JWKS document is not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match json_field(obj: doc, key: "keys") {
+        FieldAbsent => JwksDocumentRefused { reason: "the JWKS document has no keys member" }
+        FieldMalformed { cause: c } => JwksDocumentRefused { reason: concat("the JWKS document's keys member refused: ", c) }
+        FieldRead { value: keys_value } =>
+          match keys_value {
+            JsonArray { elements: elements } => jwks_keys_of_elements(elements: elements, keys: [])
+            JsonNull => JwksDocumentRefused { reason: "the JWKS document's keys member is null" }
+            JsonBool { value: _ } => JwksDocumentRefused { reason: "the JWKS document's keys member is a bool, not an array" }
+            JsonNumber { lexeme: _ } => JwksDocumentRefused { reason: "the JWKS document's keys member is a number, not an array" }
+            JsonString { value: _ } => JwksDocumentRefused { reason: "the JWKS document's keys member is a string, not an array" }
+            JsonObject { members: _ } => JwksDocumentRefused { reason: "the JWKS document's keys member is an object, not an array" }
+          }
+      }
+  }
+}
+
+fn jwks_keys_of_elements(elements: List<JsonValue>, keys: List<JwkRsaPublicKey>) -> JwksDocumentParse {
+  match elements.first() {
+    Absent => JwksDocumentParsed { keys: keys }
+    Present { value: element } =>
+      match jwks_key_of_json(value: element) {
+        JwksKeyParsed { key: k } =>
+          jwks_keys_of_elements(elements: elements.skip(n: 1), keys: list_push(keys, k))
+        JwksKeyRefused { reason: r } =>
+          JwksDocumentRefused { reason: r }
+      }
+  }
+}
+
+// ONE KEY, admitted only as the RSA signature shape this fleet verifies: kty must be "RSA" (a
+// key of another kind belongs to another consumer and is the caller's skip decision — this
+// fold is reached only from the document parse, which skips non-RSA keys; directly handed a
+// non-RSA key the fold refuses, because a fold that silently dropped its input would be a
+// widen), alg — when present — must name the enrolled suite, and kid/n/e must be present,
+// non-empty strings.
+fn jwks_key_of_json(value: JsonValue) -> JwksKeyParse {
+  match value {
+    JsonNull => JwksKeyRefused { reason: "a JWKS key is null, not an object" }
+    JsonBool { value: _ } => JwksKeyRefused { reason: "a JWKS key is a bool, not an object" }
+    JsonNumber { lexeme: _ } => JwksKeyRefused { reason: "a JWKS key is a number, not an object" }
+    JsonString { value: _ } => JwksKeyRefused { reason: "a JWKS key is a string, not an object" }
+    JsonArray { elements: _ } => JwksKeyRefused { reason: "a JWKS key is an array, not an object" }
+    JsonObject { members: _ } =>
+      match json_field_string(obj: value, key: "kty") {
+        FieldAbsent => JwksKeyRefused { reason: "a JWKS key has no kty member" }
+        FieldMalformed { cause: c } => JwksKeyRefused { reason: concat("a JWKS key's kty member refused: ", c) }
+        FieldRead { value: kty } =>
+          if kty != "RSA" {
+            JwksKeyRefused { reason: concat("a JWKS key has kty ", concat(kty, ", not RSA")) }
+          } else {
+            jwks_rsa_key_members(value: value)
+          }
+      }
+  }
+}
+
+fn jwks_rsa_key_members(value: JsonValue) -> JwksKeyParse {
+  match json_field_string(obj: value, key: "alg") {
+    FieldMalformed { cause: c } => JwksKeyRefused { reason: concat("a JWKS key's alg member refused: ", c) }
+    FieldRead { value: alg } =>
+      match jwks_algorithm_of_wire(raw: alg) {
+        Absent => JwksKeyRefused { reason: concat("a JWKS key's alg member names no enrolled suite: ", alg) }
+        Present { value: JwksAlgRs256 } => jwks_rsa_key_identifiers(value: value)
+      }
+    FieldAbsent => jwks_rsa_key_identifiers(value: value)
+  }
+}
+
+fn jwks_required_member(value: JsonValue, key: String) -> JwksKeyMember {
+  match json_field_string(obj: value, key: key) {
+    FieldAbsent => JwksKeyMemberRefused { reason: concat("a JWKS key has no ", concat(key, " member")) }
+    FieldMalformed { cause: c } => JwksKeyMemberRefused { reason: concat(concat("a JWKS key's ", key), concat(" member refused: ", c)) }
+    FieldRead { value: v } =>
+      if v == "" {
+        JwksKeyMemberRefused { reason: concat("a JWKS key's ", concat(key, " member is empty")) }
+      } else {
+        JwksKeyMember { value: v }
+      }
+  }
+}
+
+type JwksKeyMember
+  = JwksKeyMember { value: String }
+  | JwksKeyMemberRefused { reason: String }
+
+fn jwks_rsa_key_identifiers(value: JsonValue) -> JwksKeyParse {
+  match jwks_required_member(value: value, key: "kid") {
+    JwksKeyMemberRefused { reason: r } => JwksKeyRefused { reason: r }
+    JwksKeyMember { value: kid } =>
+      match jwks_required_member(value: value, key: "n") {
+        JwksKeyMemberRefused { reason: r } => JwksKeyRefused { reason: r }
+        JwksKeyMember { value: n } =>
+          match jwks_required_member(value: value, key: "e") {
+            JwksKeyMemberRefused { reason: r } => JwksKeyRefused { reason: r }
+            JwksKeyMember { value: e } =>
+              JwksKeyParsed {
+                key: JwkRsaPublicKey {
+                  key_id: kid as NonEmptyStr,
+                  modulus_b64url: n as NonEmptyStr,
+                  exponent_b64url: e as NonEmptyStr,
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE SELECTION, by kid, the one identification rule RFC 7517 gives: the first key whose kid
+// matches answers; no match is its own refusal carrying the kid the token announced, so a
+// token signed by a key outside the fetched set refuses with WHICH key was asked for, never a
+// fallback to any key in the set.
+type JwksKeySelection
+  = JwksKeySelected { key: JwkRsaPublicKey }
+  | JwksKeyNotFound { key_id: NonEmptyStr }
+
+fn jwks_select_key(keys: List<JwkRsaPublicKey>, key_id: NonEmptyStr) -> JwksKeySelection {
+  match keys.first() {
+    Absent => JwksKeyNotFound { key_id: key_id }
+    Present { value: k } =>
+      if (k.key_id as String) == (key_id as String) {
+        JwksKeySelected { key: k }
+      } else {
+        jwks_select_key(keys: keys.skip(n: 1), key_id: key_id)
+      }
+  }
+}

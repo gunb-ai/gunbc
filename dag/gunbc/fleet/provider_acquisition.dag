@@ -1,0 +1,35 @@
+module gunbc.provider_acquisition
+
+import std.types { NonEmptyStr }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+
+// HOW A PROVIDER RESOURCE CAME TO BE HELD, kept apart from how it is reset. Acquisition is rare,
+// depends on the provider's stock and is often a human act; an incarnation reset is per job and
+// automated. Coupling them would make every job gamble the fleet's capacity on a reorder the provider
+// may not fill (operator, 2026-10-08: CAX stock cannot be relied on), so a held resource is released
+// only by a deliberate acquisition decision and never by a job's lifecycle.
+
+// THE PROVIDER ACCOUNT A RESOURCE IS HELD UNDER, and the one credential that drives it. A provider
+// API credential is scoped to that account (a Hetzner Cloud token to one project), so the account is
+// what decides which credential may touch the resource; the credential is a Secret Manager
+// reference, never a value.
+type ProviderApiAccount {
+  account: NonEmptyStr
+  api_credential: SecretRef
+}
+
+// WHO PERFORMED EACH ACQUISITION STEP. Opening the account, registering its login key and acquiring
+// the resource are steps of one procedure; today the operator performs all of them in the provider's
+// console and relays the result, recorded here as that receipt. Automating a step later changes how
+// that step is realized, not which steps the procedure has, and lands with its first automated
+// producer -- an arm with no producer would be a vocabulary nothing writes.
+type AcquisitionRealization
+  = OperatorPerformed { performed_on: NonEmptyStr, relayed: NonEmptyStr }
+
+type ProviderResourceAcquisition {
+  resource_id: NonEmptyStr
+  account: ProviderApiAccount
+  account_established: AcquisitionRealization
+  login_key_registered: AcquisitionRealization
+  resource_acquired: AcquisitionRealization
+}

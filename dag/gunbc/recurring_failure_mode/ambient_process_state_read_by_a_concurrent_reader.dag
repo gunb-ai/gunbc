@@ -1,0 +1,54 @@
+module gunbc.recurring_failure_mode.ambient_process_state_read_by_a_concurrent_reader
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data ambient_process_state_read_by_a_concurrent_reader: RecurringFailureMode = RecurringFailureMode {
+  identity: "ambient_process_state_read_by_a_concurrent_reader" as NonEmptyStr,
+
+  receipts: [
+    "**ambient process state read by a concurrent reader** (a fact that is really a PARAMETER is instead read from a mutable cell the whole process shares -- the working directory, an env var, a global -- while the runtime schedules concurrent readers of it, so the answer a reader gets depends on which writer last ran and the wrong answer is SILENT: the read succeeds, returns a well-formed value, and is simply about a different subject than the reader meant.",
+
+    "INVALID STATE: any reader resolving a relative name against ambient state that a concurrent writer may move mid-read.",
+
+    "WHY IT SURVIVES REVIEW: each site is locally correct -- it sets the state to the right value before its own work and restores it after -- and the defect exists only in the PRODUCT of sites, which no single diff shows.",
+
+    "SPECIMEN (PR #10024, v1_compiler.cli_run): 38 forward set_current_dir sites in one test binary that cargo runs multi-threaded, with the idiom prior = current_dir(); chdir(ws); work; chdir(prior) -- so one test's RESTORE hands the cwd back while a sibling is mid-read.",
+
+    "The victim population is not the writers, it is every non-ignored test in the binary that resolves a relative path during the window; the file's own entry_admission_tests note already records the measurement, a DIFFERENT pair of tests failing on each run of identical code (4/1 then 3/2).",
+
+    "Seven of the sites were reachable from the required unit lane and in all seven the chdir was DEAD -- every consumer already took an explicit root -- i.e.",
+
+    "residue from an unfinished parameterisation, which is the expected shape once the migration is half done.",
+
+    "THE CENSUS THAT MATTERS IS REACHABILITY, NOT THE LITERAL AND THE RANGE THAT MATTERS IS THE POPULATION'S, NOT THE FILE'S: the first cut of that gate scanned the one file its author was editing while declaring the whole lane as its subject, which is a selection view read as a population and puts the reported rung above the executed evidence (DESIGN section 4b(1) reads a class's rung as the MINIMUM across in-scope paths).",
+
+    "Widening it to every source file of the lane's crate cost a change of input plus a linear-time call extractor -- the per-name matcher is quadratic in lines times declarations and does not survive the wider corpus -- and it surfaced a second trap immediately: resolving cross-file call edges by BARE NAME merges every declaration of a shared spelling, and this crate declares main 18 times, so one production seed bridged into hundreds of unrelated tests.",
+
+    "That arm is the absorbing fallback again, in the guard built to catch it.",
+
+    "What survives is intra-file edges plus cross-file edges only for names declared exactly once, with the ambiguous remainder pinned by IDENTITY rather than assumed empty.",
+
+    "Six forms of the same defect were found in this one guard; they are rostered as their own class at check_subject_narrower_than_its_declared_claim, which this row is a specimen of rather than an authority for: all seven reached the mutation through a helper, so a body-local grep for the call is green over every instance of the class and stays green the moment a writer is moved one call deeper -- the guard must close transitively over call edges.",
+
+    "A SECOND, DISTINCT ARM, kept apart because it has a different remedy: memoizing a value DERIVED from the ambient state (workspace_root's OnceLock over a .git-ancestor walk from cwd) freezes whichever writer won the race for the whole process.",
+
+    "On this specimen that arm's population is EMPTY -- every forward site targets the checkout root and 37 of 38 force the memo from the pristine cwd one line above their own call -- so it is reported UNSUPPORTED rather than disproven (see a_structural_possibility_is_not_an_occurring_phenomenon); ONE chdir to a non-checkout path arms it, and a fixture that runs git init is such a path.",
+
+    "RUNG: found BELOW the ladder, since a redirected read is a silently wrong answer with no typed refusal anywhere.",
+
+    "CEILING 4, structurally impossible, and decidable: state passed as a parameter has no shared cell to race on, so the invalid state has no constructor.",
+
+    "The intermediate rung is a reachability gate over the guarded population (no_gating_test_reaches_a_process_cwd_mutator), which keeps the state ABSENT but not unwritable; its next-rung trigger is the capability that every reader in the population resolves from an explicitly passed root, after which the ambient write has no consumer and the call can be removed rather than merely counted.",
+
+    "REVIEW TELL: a diff that sets shared process state and restores it, in code the runtime may run concurrently -- the restore is the tell, because it is what makes the site look self-contained.",
+
+    "THE GATE WENT RED THE DAY AFTER ITS LANE STOPPED RUNNING, AND STAYED RED UNSEEN (triaged 2026-09-27 at main bcbf7861877). no_gating_test_reaches_a_process_cwd_mutator landed 2026-09-02 (#10033); the rust-unit-tests job was deleted 2026-09-04 (gunbc.rung_drop rust_unit_tests_off_the_merge_path); from 2026-09-05 the gate and its non-vacuity control were both red, and three causes accumulated behind one red, only one of them the class this row describes.",
+
+    "TWO MORE BARE-NAME MERGE ARMS, in the scanner that already refused the cross-file one. (1) A destructor: #10544 added a cwd-restoring impl Drop for RestoreDirectory inside v1_interpreter.rs, so fn drop became a seed and every drop(..) call in that file became an edge -- the closure reached 6073 of 11789 declarations. Rust refuses an explicit destructor call (E0040), so a bare drop(x) is always mem::drop; the destructor is now declared under its type's name, whose tuple-struct construction is the real edge. (2) The LOCAL arm: #10882 gave native_lane_runner.rs its own run(..) test helper, and local edges were keyed by bare name, so its 22 callers merged with pre_push's mutator-reaching run. A name the crate declares more than once is now its own node per file (name@file). Removing the merges also UNMASKED the undecided set: three more ambiguous spellings reach the write (handle_serve, invoke_bound_target_producer, run_native_claim_program), each a binary-dispatch name no --lib test calls, pinned with that reason -- a set the explosion had been hiding, which is the absorbing fallback's cost arm: one defect's red concealed the next one's signal.",
+
+    "THE THIRD CAUSE IS THE CLASS ITSELF, REGROWN: #11256 (2026-09-14) added enter_workspace_cwd in required_floor_runner.rs and 15 non-ignored tests reaching it. Its mutex serializes only its own callers, so every other test thread still reads the moved cwd -- the product-of-sites defect again, with a lock making the site look self-contained where the restore used to. Here the chdir is NOT dead (7 of the 15 refuse without it): v1_compiler.cli_run entry_source_from_index_or_disk opens an index path that repo_relative_path made relative to process_workspace_root against the process cwd instead. That link is the earliest unjustified boundary and the next-rung trigger above, located: the index's paths carry a workspace-relative contract the read does not honour, while the same function also serves CLI entry paths that are cwd-relative, so the repair is to carry which contract a path has, not to guess by trying both.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,671 @@
+module extdeps.cloud.gcp.iam
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpOperation }
+import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
+import v2.std.algebra { filter, fold_list }
+import std.optional { Absent, Present }
+import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/overview"
+  }
+}
+
+// Primary citation for the binding structure: Google's REST reference for Policy#Binding, which defines the binding object as role plus members plus condition.
+data extdeps_external_authority_policy_binding: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/reference/rest/v1/Policy#Binding"
+  }
+}
+
+// Reading: Google's REST reference for Policy#Binding owns the binding structure; type GcpBinding (role, members, condition) transcribes that object field-for-field and is dispatched by the iam_admin route, so the type is the surface that citation owns. The IAM overview (further citation) frames how bindings attach to policies.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.cloud.gcp.iam", decl_name: "GcpBinding", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_policy_binding,
+  further_citations: [extdeps_external_authority_anchor]
+}
+
+type GcpRole {
+  name: String
+  title: String
+  permissions: List<String>?
+  predefined: Bool
+}
+
+data role_secretmanager_secret_accessor: String = "roles/secretmanager.secretAccessor"
+
+data role_secretmanager_secret_version_adder: String = "roles/secretmanager.secretVersionAdder"
+
+// THE CONTAINER READ IS A THIRD ROLE, AND secretAccessor IS NOT IT. roles/secretmanager.secretAccessor
+// carries secretmanager.versions.access -- the PAYLOAD of a version -- and does not carry
+// secretmanager.secrets.get, which reads the secret RESOURCE and nothing secret at all. A caller that
+// must confirm a container exists before writing to it therefore needs viewer beside accessor, and
+// assuming accessor covered it is how a precondition check ends up 403-ing at the moment it is
+// supposed to be protecting an irreversible effect.
+data role_secretmanager_viewer: String = "roles/secretmanager.viewer"
+
+data common_roles: List<GcpRole> = [
+  { name: "roles/viewer", title: "Viewer", permissions: null, predefined: true },
+  { name: "roles/editor", title: "Editor", permissions: null, predefined: true },
+  { name: "roles/owner", title: "Owner", permissions: null, predefined: true },
+  { name: "roles/storage.objectViewer", title: "Storage Object Viewer", permissions: null, predefined: true },
+  { name: "roles/storage.objectAdmin", title: "Storage Object Admin", permissions: null, predefined: true },
+  { name: role_secretmanager_secret_accessor, title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
+  { name: role_secretmanager_secret_version_adder, title: "Secret Manager Secret Version Adder", permissions: null, predefined: true },
+  { name: role_secretmanager_viewer, title: "Secret Manager Viewer", permissions: null, predefined: true },
+  { name: "roles/iam.serviceAccountTokenCreator", title: "Service Account Token Creator", permissions: null, predefined: true },
+  { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
+]
+
+type IamCondition {
+  title: String
+  expression: String
+  description: String?
+}
+
+type GcpBinding {
+  role: String
+  members: List<String>
+  condition: IamCondition?
+}
+
+type GcpPolicy {
+  bindings: List<GcpBinding>
+  etag: String
+  version: Int
+}
+
+// THE WIRE POLICY IS A PROTO3 MESSAGE, so google.iam.v1.Policy omits every field at its default:
+// a resource nobody has bound yet comes back as `{"etag": ...}` with NO bindings key and NO
+// version key. Both absences are cited upstream facts, not gaps: a repeated field with no
+// elements is the empty list, and Google documents that a policy without conditional bindings
+// "may specify any valid value or leave the field unset" for version -- the unset reading is
+// version 1. Declaring the operation outputs non-optional made a fresh secret's first policy read
+// a runtime TypeError instead of an empty policy, which is the one state a first grant always
+// starts from. This is the only place the wire optionality is folded into the GcpPolicy value the
+// reconciler consumes; every consumer of a policy read or write routes through it.
+fn gcp_policy_from_wire(bindings: List<GcpBinding>?, etag: String, version: Int?) -> GcpPolicy {
+  GcpPolicy {
+    bindings: match bindings { Present { value: bs } => bs  Absent => [] },
+    etag: etag,
+    version: match version { Present { value: v } => v  Absent => 1 }
+  }
+}
+
+// A GcpBinding is the WIRE shape: one role carrying a LIST of members. It is the
+// wrong grain to reconcile at, because a diff over bindings answers "did this
+// role's member list change" when the question is always "does THIS principal
+// hold THIS role under THIS condition". Reconciling at binding grain is how a
+// desired binding for one member overwrites the other members sharing its role.
+//
+// GcpIamBindingCell is that same fact at the grain a policy decision is actually
+// made on: one role x one member x one condition. Cells are what a reconcile
+// compares, and the binding list is recovered by grouping cells back by (role,
+// condition) at the wire boundary -- so a cell nobody authored survives the round
+// trip instead of being dropped by a role-level replacement.
+type GcpIamBindingCell {
+  role: String
+  member: String
+  condition: IamCondition?
+}
+
+// POLICY ASSEMBLY LIVES WITH THE POLICY TYPE, not in a consumer. setIamPolicy replaces the whole
+// document, so every caller needs the same read-modify-write; if each one assembled its own, the
+// preserve rule would be re-implemented per site and would drift.
+//
+// ONE RECONCILIATION MECHANISM, at cell grain, for every caller. An earlier revision of this file
+// carried merge_policy_bindings, which replaced the whole member population of every role the
+// caller authored. That was a SECOND semantics beside the cell-grain reconcile the Spark module
+// already had -- the dual representation this work exists to remove -- and its failure mode is
+// concrete: an unrelated member under a role the caller also uses is dropped without a diagnostic,
+// because whole-role replacement cannot see members it does not author. It is deleted rather than
+// kept beside this, and the callers that used it now pass an explicit owned-cell universe.
+type GcpIamOwnedCellUniverse {
+  cells: List<GcpIamBindingCell>
+}
+
+// A POLICY READ AT VERSION 1 THAT CONTAINS CONDITIONS IS NOT A POLICY THIS MODEL MAY RECONCILE.
+//
+// Google renders a conditional binding to a version-1 requester by MANGLING THE ROLE NAME -- the
+// role comes back as `<role>_withcond_<hash>` and the condition object is simply absent. The binding
+// is still there; what is gone is any way to see what restricts it.
+//
+// That representation is load-bearing for the wrong reason. setIamPolicy is a whole-policy replace,
+// so a reconcile against a lossy read does not merely fail to see a condition: it computes that the
+// unconditional cell it wants is MISSING, adds it, and writes back a document in which the original
+// restriction has been replaced by unconditional access. Google documents that exact outcome for
+// tools that read at version 1 and write back. The etag does not help -- it defends against a
+// concurrent writer, not against information the reader never received.
+//
+// So the mangled role is a REFUSAL and never a repair. Stripping `_withcond_` to recover the role
+// name would reconstruct an unconditional binding from a conditional one, which is the data loss
+// itself performed deliberately. The remedy is upstream and structural: request representation
+// version 3 on the read, which extdeps.cloud.gcp.secret_manager GetSecretIamPolicy now does. This
+// arm exists so that a caller who somehow still obtains a version-1 conditional read stops, rather
+// than silently widening somebody's restricted access.
+data conditional_role_marker: String = "_withcond_"
+
+fn binding_role_is_condition_mangled(b: GcpBinding) -> Bool {
+  b.role.contains(conditional_role_marker)
+}
+
+fn condition_mangled_roles(p: GcpPolicy) -> List<String> {
+  fold(p.bindings, init: no_role_names, f: (acc, b) =>
+    if binding_role_is_condition_mangled(b: b) { acc |> list_push(b.role) } else { acc })
+}
+
+data no_role_names: List<String> = []
+
+type GcpPolicyReconciliation
+  = GcpPolicyRepresentationLossy { conditional_roles: List<String> }
+  | GcpPolicyAlreadyConverged { policy: GcpPolicy }
+  | GcpPolicyDeltaRequired {
+      policy: GcpPolicy
+      added: List<GcpIamBindingCell>
+      removed: List<GcpIamBindingCell>
+      preserved: List<GcpIamBindingCell>
+    }
+
+fn gcp_condition_eq(a: IamCondition?, b: IamCondition?) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: ca } =>
+      match b {
+        Absent => false
+        Present { value: cb } => ca.title == cb.title && ca.expression == cb.expression
+      }
+  }
+}
+
+fn gcp_cell_eq(a: GcpIamBindingCell, b: GcpIamBindingCell) -> Bool {
+  a.role == b.role && a.member == b.member && gcp_condition_eq(a: a.condition, b: b.condition)
+}
+
+fn gcp_cell_in(c: GcpIamBindingCell, xs: List<GcpIamBindingCell>) -> Bool {
+  fold(xs, init: false, f: (acc, x) => acc || gcp_cell_eq(a: c, b: x))
+}
+
+data no_gcp_cells: List<GcpIamBindingCell> = []
+
+data no_gcp_bindings: List<GcpBinding> = []
+
+// A wire binding is one role carrying MANY members; a cell is one role and one member. Flattening
+// is what makes the diff answer the question a policy decision is actually made on.
+fn gcp_binding_cells(b: GcpBinding) -> List<GcpIamBindingCell> {
+  fold(b.members, init: no_gcp_cells, f: (acc, m) =>
+    acc |> list_push(GcpIamBindingCell { role: b.role, member: m, condition: b.condition }))
+}
+
+fn gcp_policy_cells(p: GcpPolicy) -> List<GcpIamBindingCell> {
+  fold(p.bindings, init: no_gcp_cells, f: (acc, b) =>
+    fold(gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
+}
+
+// Regroup cells into the wire shape. Cells sharing a (role, condition) rejoin one binding, so a
+// cell nobody authored survives the round trip instead of being dropped by a role-level replace.
+fn gcp_bindings_add_cell(bs: List<GcpBinding>, c: GcpIamBindingCell) -> List<GcpBinding> {
+  let matched = fold(bs, init: false, f: (acc, b) =>
+    acc || (b.role == c.role && gcp_condition_eq(a: b.condition, b: c.condition)))
+  if matched {
+    fold(bs, init: no_gcp_bindings, f: (acc, b) =>
+      if b.role == c.role && gcp_condition_eq(a: b.condition, b: c.condition) {
+        acc |> list_push(GcpBinding { role: b.role, members: b.members |> list_push(c.member), condition: b.condition })
+      } else {
+        acc |> list_push(b)
+      })
+  } else {
+    bs |> list_push(GcpBinding { role: c.role, members: [c.member], condition: c.condition })
+  }
+}
+
+fn gcp_cells_bindings(cs: List<GcpIamBindingCell>) -> List<GcpBinding> {
+  fold(cs, init: no_gcp_bindings, f: (acc, c) => gcp_bindings_add_cell(bs: acc, c: c))
+}
+
+// reconcile_gcp_policy returns GcpPolicyAlreadyConverged as its OWN arm rather than a delta that
+// happens to be empty, so a caller cannot write an unnecessary setIamPolicy and read the resulting
+// etag bump as progress.
+// Ownership is asked per CELL. Owning (member M, role accessor) does not confer authority over
+// (member M, role admin): that grant may exist for a reason this caller cannot see, so it is
+// preserved even though the member is one the caller recognises.
+// THE POLICY VERSION IS A FUNCTION OF WHAT THE POLICY CONTAINS, NOT A FIELD TO COPY FORWARD.
+// Google requires schema version 3 for any setIamPolicy whose document carries a conditional
+// binding, and rejects a policy that contains a condition while declaring version 1. An earlier
+// revision of the reconciler copied observed.version into the assembled policy unconditionally, so
+// adding the first conditional cell to an ordinary version-1 policy produced a document that
+// asserted version 1 and carried a condition -- invalid by construction, and invisible here because
+// nothing in this module had an opinion about the field.
+//
+// THE POPULATION IS final_cells, WHICH INCLUDES PRESERVED FOREIGN CELLS, and that is the case a
+// desired-only scan would miss: a foreign conditional binding we are preserving makes the document
+// conditional even when the cell WE author carries no condition. Reading only our own desired set
+// would then write version 1 over a policy that still contains someone else's condition.
+//
+// THE otherwise ARM IS observed.version AND NOT 1, which is what makes removal of the last
+// conditional binding correct without a second scan over the observation. Removing the final
+// condition from a version-3 policy takes this arm, keeps version 3, and stays valid -- Google's own
+// removal examples preserve version 3 in exactly that situation. Spelling the arm as a literal 1
+// would downgrade that write and is the counterexample this shape avoids rather than repairs.
+//
+// Reads are the other half and are NOT this function's business: a caller that never requests
+// representation version 3 is handed conditions it cannot see, whatever this returns.
+fn gcp_cell_is_conditioned(c: GcpIamBindingCell) -> Bool {
+  match c.condition {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn gcp_policy_version_for(final_cells: List<GcpIamBindingCell>, observed_version: Int) -> Int {
+  if any(final_cells, c => gcp_cell_is_conditioned(c: c)) { 3 } else { observed_version }
+}
+
+fn reconcile_gcp_policy(
+  observed: GcpPolicy,
+  desired_owned: List<GcpIamBindingCell>,
+  owned_universe: GcpIamOwnedCellUniverse
+) -> GcpPolicyReconciliation {
+  let mangled = condition_mangled_roles(p: observed)
+  if count(mangled) > 0 {
+    GcpPolicyRepresentationLossy { conditional_roles: mangled }
+  } else {
+    reconcile_faithful_policy(
+      observed: observed,
+      desired_owned: desired_owned,
+      owned_universe: owned_universe
+    )
+  }
+}
+
+fn reconcile_faithful_policy(
+  observed: GcpPolicy,
+  desired_owned: List<GcpIamBindingCell>,
+  owned_universe: GcpIamOwnedCellUniverse
+) -> GcpPolicyReconciliation {
+  let observed_cells = gcp_policy_cells(p: observed)
+  let added = desired_owned |> filter(c => !gcp_cell_in(c: c, xs: observed_cells))
+  let removed = observed_cells |> filter(c =>
+    gcp_cell_in(c: c, xs: owned_universe.cells) && !gcp_cell_in(c: c, xs: desired_owned))
+  let preserved = observed_cells |> filter(c => !gcp_cell_in(c: c, xs: owned_universe.cells))
+  if count(added) == 0 && count(removed) == 0 {
+    GcpPolicyAlreadyConverged { policy: observed }
+  } else {
+    let kept = observed_cells |> filter(c => !gcp_cell_in(c: c, xs: removed))
+    let final_cells = fold(added, init: kept, f: (acc, c) => acc |> list_push(c))
+    GcpPolicyDeltaRequired {
+      policy: GcpPolicy {
+        bindings: gcp_cells_bindings(cs: final_cells),
+        etag: observed.etag,
+        version: gcp_policy_version_for(final_cells: final_cells, observed_version: observed.version)
+      },
+      added: added,
+      removed: removed,
+      preserved: preserved
+    }
+  }
+}
+
+// The permission set of a predefined role is a GOOGLE-OWNED fact that changes
+// without our involvement, so it is observed from roles.get, never transcribed.
+// There is deliberately no hand-authored permission roster in this module: a
+// role->permission table written from memory is authored data wearing a citation,
+// and it decays silently as Google edits the role.
+type GcpPermissionProbeWire { permissions: List<String>? }
+
+type GcpPredefinedRole {
+  name: String
+  title: String
+  included_permissions: List<String> from "includedPermissions"
+  stage: String
+}
+
+type RolePermissionAuthority
+  = RolePermissionsObserved { role: GcpPredefinedRole, observed_at_revision: NonEmptyStr }
+  | RolePermissionsUnobserved { role_name: NonEmptyStr, cause: NonEmptyStr }
+
+// Whether a role grants a permission is answerable ONLY from an observation. The
+// unobserved arm returns no Bool at all rather than false, because "we did not
+// look" and "the role does not grant it" have different remedies and collapsing
+// them is the absorbing fallback in the direction that under-reports reach.
+type RoleGrantsPermissionVerdict
+  = RoleGrantsPermission
+  | RoleDoesNotGrantPermission
+  | RoleGrantUndetermined { cause: NonEmptyStr }
+
+fn role_grants_permission(authority: RolePermissionAuthority, permission: String) -> RoleGrantsPermissionVerdict {
+  match authority {
+    RolePermissionsUnobserved { cause: c } => RoleGrantUndetermined { cause: c }
+    RolePermissionsObserved { role: r } =>
+      if list_contains_string(xs: r.included_permissions, needle: permission) {
+        RoleGrantsPermission
+      } else {
+        RoleDoesNotGrantPermission
+      }
+  }
+}
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == needle })
+}
+
+type ImpersonationChain {
+  source: String
+  target: String
+  delegates: List<String>
+}
+
+type TokenLifetime {
+  default_seconds: Int
+  max_seconds: Int
+}
+
+data default_token_lifetime: TokenLifetime = {
+  default_seconds: 3600,
+  max_seconds: 43200
+}
+
+type GcpGenerateAccessToken200Body {
+  access_token: Secret from "accessToken"
+  expire_time: String from "expireTime"
+}
+
+// GenerateAccessToken: THE REQUEST BODY IS UPSTREAM'S, and it was missing: projects.serviceAccounts.generateAccessToken
+// (https://cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken)
+// REQUIRES `scope` and takes `lifetime` as a protobuf Duration string ("600s"), so the earlier
+// shape -- no body, lifetime as a bare input nothing sent -- could only ever be answered 400. The
+// default lifetime is upstream's (3600s); the ceiling without the org's lifetime extension is 1h.
+service gcp.IAM {
+  config {
+    endpoint: "https://iamcredentials.googleapis.com"
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation GenerateAccessToken {
+    requires Network
+    input {
+      access_token: Secret
+      target_sa: ServiceAccountEmail
+      scope: List<String> = ["https://www.googleapis.com/auth/cloud-platform"]
+      lifetime: String = "3600s"
+    }
+    output {
+      access_token: Secret from "accessToken"
+      expire_time: String from "expireTime"
+    }
+
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken",
+      body: { scope: scope, lifetime: lifetime }
+    }
+    response {
+      200 => GcpGenerateAccessToken200Body
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+}
+
+// SEPARATE SERVICE, not another operation on gcp.IAM: role reads live on
+// iam.googleapis.com while token minting lives on iamcredentials.googleapis.com.
+// Two hosts are two dependencies, and hanging GetRole off the credentials service
+// would have had it inherit that service's endpoint and silently request the
+// wrong host.
+// GetRole is the citation behind RolePermissionsObserved. Predefined roles are
+// readable without any project scope, so it is the cheapest possible grounding for
+// "what does roles/secretmanager.secretAccessor actually permit" -- and the reason
+// no permission roster is authored in this module.
+service gcp.IamRoles {
+  config { endpoint: "https://iam.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetRole {
+    requires Network
+    input { access_token: Secret, role_name: NonEmptyStr }
+    output {
+      name: String
+      title: String
+      included_permissions: List<String> from "includedPermissions"
+      stage: String
+    }
+    readonly
+    transport rest { method: GET, path: "/v1/\{role_name\}" }
+    response {
+      200 => GcpPredefinedRole
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}
+
+// THE v3 GET RETURNS A DIFFERENT SHAPE FROM THE ESTATE'S GcpProject, and conflating them was a
+// real defect rather than a naming nicety: this operation declared `state` in its output while
+// mapping 200 to GcpProject, which is { project_id, project_number, name } and has no such field.
+// Resource Manager v3 projects.get publishes the project RESOURCE -- projectId, the lifecycle
+// state, and a resource name of the form projects/{number} -- and the lifecycle state is exactly
+// what a converge must read, because a project in DELETE_REQUESTED is neither absent nor usable.
+// GcpProject stays what it is, the estate-observation shape carrying the numeric id as its own
+// field; this type is the wire, and it lives beside the service that returns it exactly as
+// GcpPredefinedRole lives beside gcp.IamRoles. Naming them apart is what keeps the estate's
+// project_number from being read as something this response carries, because it does not.
+// THE LIFECYCLE STATE IS A CLOSED UPSTREAM VOCABULARY AND WAS CROSSING AS A RAW STRING. Resource
+// Manager v3 publishes exactly three values for a project's State, and a consumer was comparing the
+// undecoded string to one literal and carrying every other spelling forward verbatim -- so
+// DELETE_REQUESTED, a typo, and a value this model has never seen were one indistinguishable arm.
+// The sibling in extdeps.cloud.gcp.serviceusage has carried the right shape all along:
+// GcpServiceUsageState is a closed sum with a from_wire fold, and a consumer folds through it
+// rather than string-matching. This is that shape for projects.
+//
+// DELETE_REQUESTED is the state the distinction exists for: a project in it is NEITHER absent NOR
+// usable, so a converge that read it as "not active" and created would collide on a taken id and
+// report a naming failure for a pending deletion nobody mentioned.
+type GcpProjectLifecycleState
+  = ProjectStateUnspecified
+  | ProjectStateActive
+  | ProjectStateDeleteRequested
+
+fn gcp_project_lifecycle_state_wire(s: GcpProjectLifecycleState) -> String {
+  match s {
+    ProjectStateUnspecified => "STATE_UNSPECIFIED"
+    ProjectStateActive => "ACTIVE"
+    ProjectStateDeleteRequested => "DELETE_REQUESTED"
+  }
+}
+
+fn gcp_project_lifecycle_state_from_wire(raw: String) -> GcpProjectLifecycleState? {
+  if raw == gcp_project_lifecycle_state_wire(s: ProjectStateActive) {
+    Present { value: ProjectStateActive }
+  } else {
+    if raw == gcp_project_lifecycle_state_wire(s: ProjectStateDeleteRequested) {
+      Present { value: ProjectStateDeleteRequested }
+    } else {
+      if raw == gcp_project_lifecycle_state_wire(s: ProjectStateUnspecified) {
+        Present { value: ProjectStateUnspecified }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type GcpProjectResourceV3 {
+  parent: String?
+  project_id: GcpProjectId from "projectId"
+  state: String
+  resource_name: String from "name"
+}
+
+// CreateProject DOES NOT RETURN A PROJECT. It returns a long-running Operation, so its response
+// establishes that the request was accepted and nothing about whether the project exists -- which
+// is why its output carries an operation name rather than a GcpProject, and why GetProject is the
+// only thing in this module that may answer "it is there". A 409 means the id is already taken,
+// which for a converge keyed on project_id is the ordinary already-converged answer rather than a
+// failure, and is left for the caller to classify because this module does not know the caller's
+// intent for an id it did not choose.
+type GcpFolderResourceV3 { name: String, parent: String, state: String }
+
+service gcp.ResourceManager {
+  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetFolder {
+    requires Network
+    input { access_token: Secret, folder: NonEmptyStr }
+    output { name: String, parent: String, state: String }
+    readonly
+    transport rest { method: GET, path: "/v3/\{folder\}" }
+    response {
+      200 => GcpFolderResourceV3
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetOrganizationIamPolicy {
+    requires Network
+    input { access_token: Secret, organization: NonEmptyStr }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    readonly
+    transport rest { method: POST, path: "/v3/\{organization\}:getIamPolicy", body: { options: { requestedPolicyVersion: 3 } } }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetOrganizationIamPolicy {
+    requires Network
+    input { access_token: Secret, organization: NonEmptyStr, policy: GcpPolicy }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    transport rest { method: POST, path: "/v3/\{organization\}:setIamPolicy", body: { policy: policy, updateMask: "bindings,etag" } }
+    response {
+      200 => GcpPolicy
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation TestIamPermissions {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetProject {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId }
+    output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", parent: String? }
+    readonly
+    transport rest { method: GET, path: "/v3/projects/\{project_id\}" }
+    response {
+      200 => GcpProjectResourceV3
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateProject {
+    requires Network
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      display_name: NonEmptyStr
+      parent: NonEmptyStr
+    }
+    output { operation_name: String from "name" }
+    transport rest {
+      method: POST,
+      path: "/v3/projects",
+      body: { projectId: project_id, displayName: display_name, parent: parent }
+    }
+    response {
+      200 => GcpOperation
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetIamPolicy {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy", body: { options: { requestedPolicyVersion: 3 } } }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetIamPolicy {
+    requires Network
+    input {
+      access_token: Secret
+      project_id: GcpProjectId
+      policy: GcpPolicy
+    }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy", body: { policy: policy, updateMask: "bindings,etag" } }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

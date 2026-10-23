@@ -1,0 +1,8 @@
+module examples.blackjack.hand
+
+// FILE MARKER FOR THE ONBOARDING PROJECT. Hand evaluation -- Hand, hard_total, hand_value,
+// is_bust, is_blackjack, add_card -- is specified in docs/plans/blackjack-onboarding.md
+// section 4.2 (authority gunbc.plans.blackjack_onboarding). The anchor is the derived value
+// a hand evaluates to; the raw total and the soft flag are distinct facts, which is the
+// first modeling lesson of that section.
+type HandValue { total: Int, soft: Bool }

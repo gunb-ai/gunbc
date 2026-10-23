@@ -1,0 +1,49 @@
+module gunbc.guarantee_stall.fabric_purpose_handover_registration_unobserved_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// A COMMITTED SLOT CHANGING PURPOSE IS A TENANT HANDOVER, AND ONE HALF OF IT IS UNOBSERVABLE.
+//
+// gunbc.runner_slot_allocation fabric_execution_slot_identities reassigns srv3-06, srv3-07, srv4-06
+// and srv4-07 from GitHub Actions to fabric execution, and gunbc.runner_slot_retirement
+// fabric_purpose_retirees_for_host derives the retirement obligation that follows. What retirement
+// proves is local: RunnerRetirementObservation carries a unit, a mask flag, a running flag and a
+// cgroup occupancy, so RetirementComplete establishes that the mask held, the unit stopped and the
+// cgroup emptied.
+//
+// IT DOES NOT ESTABLISH THAT THE FORMER AUTHORITY LET GO. Whether the GitHub Actions registration
+// for a slot identity still exists is read by nothing: ObserveGitHubRunnerRegistration is a
+// gunbc.runner_lifecycle_realize scaffold that provisions nothing and answers NotConverged. So the
+// dangerous state has no detector -- substrate pristine, registration live, GitHub free to dispatch
+// another job onto a slot a fabric cell now owns. A clean directory is no defence against it, and
+// sanitation cannot stand in: gunbc.runner_microvm_cell_readiness is keyed by cell and allocation
+// generation and carries no registration evidence, so making CellReady mean "GitHub has relinquished
+// this identity" would be a meaning fork rather than a join.
+//
+// WHY THIS IS A STALL AND NOT A REFUSAL. An earlier revision of gunbc#11625 modelled the sealed join
+// -- retirement AND registration-absence -- so that a handover whose registration is unobserved
+// could not report relinquished. Nothing consumed it, which DESIGN 3c makes red on its own, and
+// wiring it into the fabric-cell plan would have refused convergence for cells the operator has
+// explicitly admitted: the runners on all four slots are live and their takeover is authorized
+// (operator, 2026-09-19). A guard that contradicts a standing decision is not a guard, so the class
+// is rostered here where it is countable instead of asserted in a fold nothing runs.
+//
+// THE POPULATION IS BOUNDED BY THE FABRIC EXECUTION MEMBERSHIP and grows only with it; srv3-06 has
+// been in it since the canary landed, which is why this stall predates the widening that exposed it.
+data fabric_purpose_handover_registration_unobserved_stall: GuaranteeStall = GuaranteeStall {
+  subject: "committed runner slots reassigned to fabric execution, whose GitHub Actions registration is unobserved so the former authority's relinquishment cannot be established",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "an executed org-roster read that answers whether a slot identity is still registered, bound through gunbc.host_effect HostEffectTransport rather than the gunbc.runner_lifecycle_realize scaffold"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "gunbc.runner_slot_allocation fabric_execution_slot_identities (srv3-06, srv3-07, srv4-06, srv4-07)",
+      tail: Empty {}
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "registration absence is constructible from an executed read, so a purpose handover can require BOTH local retirement and registration relinquishment and refuse when either is unobserved, instead of proving only the local half")
+}

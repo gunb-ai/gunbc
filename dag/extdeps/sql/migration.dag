@@ -1,0 +1,51 @@
+module extdeps.sql.migration
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/76583.html"
+  }
+}
+
+type SqlDialect = Postgres | Mysql | Sqlite
+
+fn sql_dialect_wire_label(dialect: SqlDialect) -> String {
+  match dialect {
+    Postgres => "postgres"
+    Mysql => "mysql"
+    Sqlite => "sqlite"
+  }
+}
+
+type SqlMigrationOperationKind
+  = CreateTable
+  | AlterTable
+  | DropTable
+  | CreateIndex
+  | DropIndex
+  | AddColumn
+  | DropColumn
+
+  | RawSqlStep
+
+type SqlMigrationStep {
+  name: String
+  operation: SqlMigrationOperationKind
+  dialect: SqlDialect
+  statement: String
+  reversible: Bool
+}
+
+type SqlMigrationScript {
+  migration_id: String
+  wraps_transaction: Bool
+  steps: List<SqlMigrationStep>
+}
+
+type SqlMigrationEmissionTarget {
+  database_name: String
+  migrations: List<SqlMigrationScript>
+}

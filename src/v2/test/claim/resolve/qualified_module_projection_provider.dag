@@ -1,0 +1,5 @@
+module v2.test.resolve.qualified_module_projection_provider
+
+type ProviderType = String
+
+type ProviderEnum = TagA | TagB

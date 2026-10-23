@@ -1,0 +1,45 @@
+module test.claim.fabric_state_auth_witness_test
+
+import std.types { Secret }
+import extdeps.crypto.mac { MacKey, HmacSha256 }
+import gunbc.fabric_storage_state_auth { fabric_state_key_id, fabric_state_sign, fabric_state_verify, FabricStateRequestVerified, FabricStateRequestRefused }
+
+fn state_fixture_key() -> MacKey {
+  MacKey { id: fabric_state_key_id, suite: HmacSha256, material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret }
+}
+
+test fn witness_state_authenticated_request_roundtrip() -> Bool {
+  match fabric_state_sign(key: state_fixture_key(), operation: "closure", request: "roadmap-events-v1 100", issued_at: "2026-09-27T12:00:00Z") {
+    Absent => false
+    Present { value: body } => match fabric_state_verify(key: state_fixture_key(), body: body, now: "2026-09-27T12:00:10Z") {
+      FabricStateRequestRefused => false
+      FabricStateRequestVerified { request: admitted } => admitted.operation == "closure" && admitted.request == "roadmap-events-v1 100"
+    }
+  }
+}
+
+test fn witness_state_expired_and_future_proofs_refuse() -> Bool {
+  match fabric_state_sign(key: state_fixture_key(), operation: "head", request: "workspace-owner", issued_at: "2026-09-27T12:00:00Z") {
+    Absent => false
+    Present { value: body } =>
+      match fabric_state_verify(key: state_fixture_key(), body: body, now: "2026-09-27T12:01:01Z") { FabricStateRequestRefused => true _ => false }
+      && match fabric_state_verify(key: state_fixture_key(), body: body, now: "2026-09-27T11:59:59Z") { FabricStateRequestRefused => true _ => false }
+  }
+}
+
+test fn witness_state_tampered_message_refuses() -> Bool {
+  match fabric_state_sign(key: state_fixture_key(), operation: "head", request: "owner-a", issued_at: "2026-09-27T12:00:00Z") {
+    Absent => false
+    Present { value: body } => match fabric_state_verify(key: state_fixture_key(), body: replace(s: body, from: "owner-a", to: "owner-b"), now: "2026-09-27T12:00:10Z") {
+      FabricStateRequestRefused => true
+      FabricStateRequestVerified { request: _ } => false
+    }
+  }
+}
+
+test fn witness_state_raw_request_is_not_authentication() -> Bool {
+  match fabric_state_verify(key: state_fixture_key(), body: "roadmap-events-v1 100", now: "2026-09-27T12:00:10Z") {
+    FabricStateRequestRefused => true
+    FabricStateRequestVerified { request: _ } => false
+  }
+}

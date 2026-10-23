@@ -1,0 +1,520 @@
+module gunbc.roadmap_belt_tick_cli
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.shell
+import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
+import gunbc.host_layout { belt_spawn_workdir_env_var }
+import gunbc.roadmap_belt { roadmap_belt_production_spawn_mode }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
+}
+import gunbc.roadmap_belt_actuate {
+  BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
+  belt_run_once_in,
+  belt_tick_observed_at,
+  belt_tick_receipt_from_result,
+  belt_tick_execution_standing_for_instance,
+  belt_tick_receipt_write_for_instance,
+  belt_tick_result_json_value,
+  belt_review_head_for_instance, belt_review_report_for_instance, belt_review_outcome_json,
+  belt_verify_one_for_instance, BeltVerifyOneResult,
+  VerifyOneVerdictRecorded, VerifyOneAlreadyRecorded, VerifyOneRefused,
+  belt_verify_outcome_json,
+  belt_escalate_one_for_instance, BeltEscalateOneResult,
+  EscalateOneConvened, EscalateOneGateNoOp, EscalateOneNotDue, EscalateOneRefused,
+  belt_integrate_candidate_core_for_instance, BeltIntegrationCoreStep,
+  IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
+  belt_instance_obligation_enqueue, belt_obligation_enqueue_json,
+  belt_attempt_obligations_run, belt_attempt_obligation_receipt_write, belt_attempt_obligation_run_json, belt_attempt_obligation_run_failure,
+  belt_exit_entries_settle, belt_exit_entries_claim, belt_exit_entries_pending_at, BeltExitClaimed, BeltExitClaimRefused, belt_exit_drain_for_instance, belt_exit_drain_json, belt_exit_drain_failures,
+  belt_discover_for_instance, belt_discovery_json, belt_discovery_pass_outcome,
+  belt_metering_attempts_for_instance, belt_metering_pass_outcome_from,
+}
+import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
+import gunbc.roadmap_dogfood_route {
+  dogfood_start_record_for_instance, DogfoodStartRecord,
+  DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
+}
+import gunbc.roadmap.roadmap_result_returned {
+  ResultReturnPass, ResultReturnPassRan, ResultReturnPassWithheld, ResultReturnPassRefused,
+  ResultReturnPassRun, result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
+}
+import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures }
+import gunbc.roadmap.roadmap_belt_obligation {
+  BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation, MeteringObligation,
+  DogfoodStartRecordObligation, SnapshotCensusObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
+  BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
+}
+import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for_instance, belt_tick_exit_with_snapshot_census }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_array }
+import gunbc.roadmap.roadmap_review_function { review_report_json }
+
+// THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
+// imports the belt's observers, so an entry that also writes the observation must sit above both --
+// the import graph's only law is acyclicity (DESIGN 3).
+//
+// The tick is no longer the scheduled pass that produced the belt's artifacts together (dogfood
+// intervention #6). It is the LAUNCH obligation: admission, spawn, teardown and discovery, then it
+// writes its BeltTickReceipt and queues the instance obligations a moved record makes owed (served
+// observation, result return, metering, dogfood start record, snapshot census), each of which runs in
+// its own unit (belt_instance_obligation_cli) so none can hold another or the launch. EXIT
+// SEMANTICS (operator P0, 2026-08-02, unchanged in kind): exit 0 when the tick COMPLETED, PERSISTED
+// its BeltTickReceipt and handed its instance obligations to their units -- spawn failures, recorded
+// refusals and observe_refused on the spawn pass are counted outcomes, not failures to run. Nonzero
+// when the receipt could not be persisted, when GUNBC_BELT_SPAWN_WORKDIR is missing or empty, or when
+// an instance obligation could not be handed to its unit; each instance obligation's own failure is
+// its own unit's exit (belt_instance_obligation_run), named there.
+// systemd therefore distinguishes 'tick crashed' from
+// 'tick ran, work refused'. The stdout JSON (roadmap-belt-tick/v1) remains the per-tick
+// operational receipt for journald; the persisted BeltTickReceipt is what /workflow.json's
+// producer reads, and the persisted served observation is what the dashboard serves.
+//
+// THE SPAWN ROOT IS SUPPLIED BY WHOEVER INVOKES THE TICK; MAKING IT A LITERAL WAS THE DEFECT.
+// belt_actuate_workdir projects srv1_gunbc_repo_root, so a tick ran `git worktree add` into
+// PRODUCTION's tree whichever deployment invoked it — invisible while nothing ticked on a cadence
+// but once a deployment owns a timer the srv1-lab twin would install a unit that actuates
+// production: the failure gunbc.live_deploy.spec's deployment_service_handler_note records for the
+// serve handler, where every path-level check passes and the process operates as production.
+//
+// It enters through the environment for the same reason the node id does
+// (belt_dispatch_node_cli_note): `gunbc run --function` cannot pass an argument, there is no --arg
+// flag. So the deployment's belt unit sets GUNBC_BELT_SPAWN_WORKDIR to ITS instance's repo root and
+// each instance actuates its own tree.
+//
+// FAIL-CLOSED ON THE CHANNEL, more important here than for a node id: defaulting an absent variable
+// to belt_actuate_workdir would silently restore the exact defect for every caller that forgot it —
+// the absorbing fallback DESIGN §5 forbids, with production's tree as the thing absorbed. Missing
+// OR empty refuses; shell.Env.Get returns Present-but-empty for an unset var wet, so both fold into
+// one refusal.
+fn belt_run_once_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR is empty — the spawn root is a per-deployment fact and defaulting it would actuate production's tree (fail-closed)")
+      } else {
+        belt_run_once_cli_in(spawn_workdir: workdir)
+      }
+  }
+}
+
+// The served observation is taken AFTER the tick's own passes, so the surfaces it publishes reflect
+// the sessions this tick spawned or tore down rather than the state a minute before them.
+fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
+      exit_failure(reason: join([
+        "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
+        w,
+      ], ""))
+    DashboardInstanceResolved { instance } => {
+      let t = belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)
+      let observed_at = belt_tick_observed_at()
+      let tick_receipt = belt_tick_receipt_from_result(
+        result: t,
+        observed_at: observed_at,
+        execution: belt_tick_execution_standing_for_instance(
+          instance: instance,
+          mode: roadmap_belt_production_spawn_mode,
+        ),
+      )
+      match belt_tick_receipt_write_for_instance(instance: instance, receipt: tick_receipt) {
+        BeltPassFailed { reason: r } =>
+          exit_failure(reason: join([
+            serialize_json(v: belt_tick_result_json_value(t: t)),
+            "\n",
+            r,
+          ], ""))
+        BeltPassRecorded =>
+          belt_obligations_enqueued_exit(
+            context: "belt launch",
+            enqueues: belt_record_moved_obligation_kinds |> map(k => belt_instance_obligation_enqueue(instance: instance, kind: k)),
+          )
+        BeltPassDeferred { reason: r } =>
+          exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
+        BeltPassRefused { reason: r } =>
+          exit_failure(reason: join(["belt tick receipt write returned refused: ", r], ""))
+      }
+    }
+  }
+}
+
+// THE START RECORD'S EXIT. The recorder runs only after the served observation was written (the
+// match at the tick's tail above makes that a dependency, not an ordering of independent lets), so a
+// slow, failing or terminated recorder can no longer freeze the page; a refused start then fails
+// the tick loudly, and the other outcomes leave it successful.
+fn belt_start_record_exit(start: DogfoodStartRecord) -> ProcessExit {
+  match start {
+    DogfoodStartRefused { reason: r } => exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
+    DogfoodStartRecorded { receipt: _ } => ExitSuccess
+    DogfoodStartAlreadyRecorded => ExitSuccess
+    DogfoodStartNoCompleteAttempt => ExitSuccess
+  }
+}
+
+// AN EVENT-LOG SNAPSHOT THE RESULT RETURN LEFT BEHIND STOPS THE LINE AT THE TICK'S EXIT, pure. The
+// pass's own outcomes are untouched: what was appended stays appended and is reported as it was.
+// The tick is the recurring caller, so a worktree it cannot remove would otherwise accumulate one
+// per tick with nothing saying so; its exit names each one. A tick that already failed keeps its
+// reason and code and gains the leak after it; neither cause replaces the other.
+fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSnapshotClose>) -> ProcessExit {
+  let unclosed = carrier_snapshot_close_failures(closes: closes)
+  if count(unclosed) == 0 {
+    exit
+  } else {
+    let leak = join([to_string(value: count(unclosed)), " roadmap event snapshot(s) were left behind by the result return: ", join(unclosed, "; ")], "")
+    match exit {
+      ExitSuccess => exit_failure(reason: leak)
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: join([reason, "\n", leak], "") }
+    }
+  }
+}
+
+fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
+  match served_observation_observe_and_write_for_instance(instance: instance, observed_at: observed_at) {
+    BeltPassRecorded => ExitSuccess
+    BeltPassFailed { reason: r } => exit_failure(reason: r)
+    BeltPassDeferred { reason: r } =>
+      exit_failure(reason: join(["served observation write returned deferred: ", r], ""))
+    BeltPassRefused { reason: r } =>
+      exit_failure(reason: join(["served observation write returned refused: ", r], ""))
+  }
+}
+
+// OPERATOR ENTRY FOR THE OBSERVATION ALONE. The serve refuses to render live by design (the
+// served-observation module names the absorbing fallback), so when the monolithic pass is too slow
+// to reach its own observation write, the page freezes at the last completed tick's bytes. This
+// entry runs ONLY the observation fold — the smallest affected projection, refreshed on demand —
+// so an operator can republish current state without running the passes. It changes no workflow
+// state: it reads the durable authorities and writes the served-observation documents, exactly as
+// the tick's tail does.
+fn belt_observe_once_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_observe_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the instance root is a per-deployment fact (fail-closed)")
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: "belt_observe_once_cli: GUNBC_BELT_SPAWN_WORKDIR is empty — the instance root is a per-deployment fact (fail-closed)")
+      } else {
+        match dashboard_instance_for_repo_root(repo_root: workdir) {
+          DashboardInstanceRootUnknown { repo_root: w } =>
+            exit_failure(reason: join([
+              "belt_observe_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
+              w,
+            ], ""))
+          DashboardInstanceResolved { instance } =>
+            belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+        }
+      }
+  }
+}
+
+
+// OPERATOR ENTRIES FOR THE REVIEW FUNCTION, for seeing it run on a chosen head without waiting for
+// the belt's own trigger. belt_review_head_cli realizes the plan's calls for an attempt's current head
+// through the same path the tick takes after verification (it does not verify, and it publishes
+// nothing: publication still gates on verification and on the aggregate). belt_review_report_cli
+// writes the aggregate report for that head. Both write a receipt where asked, because no stdout
+// channel is modeled for a run.
+fn belt_review_head_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_review_head_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let outcomes = belt_review_head_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, verification_detail: "operator-invoked review; verification was not consulted for this run")
+      let document = serialize_json(v: json_array(elements: map(outcomes, o => belt_review_outcome_json(o: o))))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_review_head_cli: receipt could not be written: ", w.error, "; outcomes were ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_review_report_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: review_report_json(report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_review_report_cli: receipt could not be written: ", w.error, "; report was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// PER-ITEM OBLIGATION ENTRIES (owner ruling 2026-09-22, "The belt demoted": wake-ups and
+// anti-entropy only). Verify one candidate, convene one lineage's supervisor, integrate one
+// verified candidate -- each on the item's own durable authorities, never the attempts ledger.
+// Each is conditional and idempotent by construction: a repeat over unchanged state is a typed
+// no-op, so a duplicate, lost, or out-of-order wake-up is harmless. The tick's passes run the
+// same cores; these are their independent invocations.
+// ------------------------------------------------------------------------------------------------
+
+fn belt_verify_one_result_json(r: BeltVerifyOneResult) -> JsonValue {
+  match r {
+    VerifyOneVerdictRecorded { outcome } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-verify-one/v1")),
+        json_kv(key: "status", value: json_string(s: "ran")),
+        json_kv(key: "outcome", value: belt_verify_outcome_json(o: outcome)),
+      ])
+    VerifyOneAlreadyRecorded { verdict_key, detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-verify-one/v1")),
+        json_kv(key: "status", value: json_string(s: "already-recorded")),
+        json_kv(key: "verdict", value: json_string(s: verdict_key)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    VerifyOneRefused { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-verify-one/v1")),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+  }
+}
+
+fn belt_verify_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_verify_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_verify_one_result_json(
+        r: belt_verify_one_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_verify_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_escalate_one_result_json(r: BeltEscalateOneResult) -> JsonValue {
+  match r {
+    EscalateOneConvened { unit } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "convened")),
+        json_kv(key: "unit", value: json_string(s: unit)),
+      ])
+    EscalateOneGateNoOp { step, detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "gate-no-op")),
+        json_kv(key: "step", value: json_string(s: step)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    EscalateOneNotDue { detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "not-due")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    EscalateOneRefused { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+  }
+}
+
+fn belt_escalate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_escalate_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_escalate_one_result_json(
+        r: belt_escalate_one_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_escalate_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_integrate_one_result_json(r: BeltIntegrationCoreStep) -> JsonValue {
+  match r {
+    IntegrationCoreIntegrated { project_key } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "integrated")),
+        json_kv(key: "project", value: json_string(s: project_key)),
+      ])
+    IntegrationCoreBlocked { detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "blocked")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    IntegrationCoreDeferred { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "deferred")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+    IntegrationCoreUnreadable { detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "unreadable")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+fn belt_integrate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_integrate_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_integrate_one_result_json(
+        r: belt_integrate_candidate_core_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_integrate_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// THE OBLIGATION ENTRIES (dogfood interventions #6 and #4, gunbc#13124;
+// docs/plans/belt-event-driven-obligations.md). The belt tick is demoted to launch: admission, spawn,
+// teardown and discovery. Everything it used to run after those is an obligation with its own unit,
+// started by the event that made it owed:
+//   - belt_attempt_obligations_cli  one attempt's capture, verify, review, audit and publish
+//                                   (gunbc.roadmap_belt_actuate belt_attempt_obligations_run)
+//   - belt_instance_obligation_cli  one instance fold: launch, served observation, result return,
+//                                   metering, dogfood start record, snapshot census
+//   - belt_exit_drain_cli           hands each recorded unit exit to its attempt's unit
+//   - belt_discover_once_cli        the bounded anti-entropy pass: discovers and queues, never works
+//   - belt_launch_enqueue_cli       what the deployment's belt service runs: queue the one launch
+// Every entry resolves its instance from GUNBC_BELT_SPAWN_WORKDIR, as belt_run_once_cli does and for
+// that function's fail-closed reason.
+// ------------------------------------------------------------------------------------------------
+
+fn belt_instance_from_env(entry: String, then: fn(HostDashboardInstance) -> ProcessExit) -> ProcessExit {
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent => exit_failure(reason: join([entry, ": GUNBC_BELT_SPAWN_WORKDIR not set -- the instance is a per-deployment fact (fail-closed)"], ""))
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: join([entry, ": GUNBC_BELT_SPAWN_WORKDIR is empty -- the instance is a per-deployment fact (fail-closed)"], ""))
+      } else {
+        match dashboard_instance_for_repo_root(repo_root: workdir) {
+          DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join([entry, ": GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ", w], ""))
+          DashboardInstanceResolved { instance } => then(instance)
+        }
+      }
+  }
+}
+
+// A QUEUE HAND-OFF THAT WAS REFUSED FAILS THE CALLER, LOCATED; started and held succeed.
+fn belt_obligations_enqueued_exit(context: String, enqueues: List<BeltObligationEnqueue>) -> ProcessExit {
+  let refused = enqueues |> flat_map(e => match e {
+    BeltObligationEnqueueRefused { unit, reason } => [join([unit as String, ": ", reason], "")]
+    BeltObligationStarted { unit: _ } => [] as List<String>
+    BeltObligationHeld { unit: _ } => [] as List<String>
+  })
+  if count(refused) == 0 { ExitSuccess } else { exit_failure(reason: join([context, ": ", to_string(value: count(refused)), " obligation(s) could not be handed to their unit: ", join(refused, "; ")], "")) }
+}
+
+// ONE PASS IS: CLAIM the attempt's queued exits, RUN, WRITE the receipt that names the claim, SETTLE
+// exactly that claim. A pass that left an unclaimed arrival queued runs again -- bounded, so a
+// hot attempt cannot hold its unit forever; what the bound leaves queued is the queued level's, which
+// starts the drain, whose sweep hands the attempt to a new run once this unit is gone.
+data belt_attempt_obligation_pass_bound: Int = 3
+
+fn belt_attempt_obligations_pass(instance: HostDashboardInstance, node_id: String, attempt_key: String, passes_left: Int) -> List<String> {
+  match belt_exit_entries_claim(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    BeltExitClaimRefused { reason } => [reason]
+    BeltExitClaimed { entries: claimed } => {
+      let observed_at = belt_tick_observed_at()
+      let run = belt_attempt_obligations_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+      match belt_attempt_obligation_receipt_write(instance: instance, run: run, node_id: node_id, attempt_key: attempt_key, observed_at: observed_at, claimed: claimed) {
+        BeltPassFailed { reason } => [join([serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at, claimed: claimed)), "\n", reason], "")]
+        BeltPassDeferred { reason } => [reason]
+        BeltPassRefused { reason } => [reason]
+        BeltPassRecorded => {
+          let unsettled = belt_exit_entries_settle(instance: instance, claimed: claimed)
+          let own = match belt_attempt_obligation_run_failure(run: run) { Present { value: f } => [f] Absent => [] as List<String> }
+          let failures = concat(own, unsettled |> map(u => join(["exit entry not settled: ", u], "")))
+          if count(failures) > 0 || passes_left <= 1 {
+            failures
+          } else {
+            match belt_exit_entries_pending_at(root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key) {
+              BeltExitClaimRefused { reason } => [reason]
+              BeltExitClaimed { entries: pending } =>
+                if count(pending) == 0 { failures } else { belt_attempt_obligations_pass(instance: instance, node_id: node_id, attempt_key: attempt_key, passes_left: passes_left - 1) }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn belt_attempt_obligations_cli(node_id: String, attempt_key: String) -> ProcessExit {
+  belt_instance_from_env(entry: "belt_attempt_obligations_cli", then: instance => {
+    let run_failures = belt_attempt_obligations_pass(instance: instance, node_id: node_id, attempt_key: attempt_key, passes_left: belt_attempt_obligation_pass_bound)
+    let tail = belt_obligations_enqueued_exit(
+      context: "after the attempt's obligations",
+      enqueues: belt_record_moved_obligation_kinds |> map(k => belt_instance_obligation_enqueue(instance: instance, kind: k)),
+    )
+    let failures = concat(run_failures, match tail { ExitSuccess => [] as List<String> ExitFailure { code: _, reason } => [reason] })
+    if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join(failures, "\n")) }
+  })
+}
+
+fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
+  match belt_instance_obligation_kind_of_key(key: kind) {
+    Absent => exit_failure(reason: join(["belt_instance_obligation_cli: no instance obligation is named ", kind], ""))
+    Present { value: k } =>
+      belt_instance_from_env(entry: "belt_instance_obligation_cli", then: instance => belt_instance_obligation_run(instance: instance, kind: k))
+  }
+}
+
+fn belt_instance_obligation_run(instance: HostDashboardInstance, kind: BeltInstanceObligationKind) -> ProcessExit {
+  let observed_at = belt_tick_observed_at()
+  match kind {
+    LaunchObligation => belt_run_once_cli_in(spawn_workdir: instance.repo_root as String)
+    ServedObservationObligation => belt_served_observation_exit(instance: instance, observed_at: observed_at)
+    ResultReturnObligation => {
+      let returned = result_return_attempts_for_instance(instance: instance, recorded_at: observed_at)
+      belt_tick_exit_with_snapshot_closes(exit: result_return_pass_exit(pass: returned.pass), closes: returned.closes)
+    }
+    MeteringObligation =>
+      match belt_metering_pass_outcome_from(outcomes: belt_metering_attempts_for_instance(instance: instance)) {
+        BeltPassRecorded => ExitSuccess
+        BeltPassFailed { reason } => exit_failure(reason: reason)
+        BeltPassDeferred { reason } => exit_failure(reason: reason)
+        BeltPassRefused { reason } => exit_failure(reason: reason)
+      }
+    DogfoodStartRecordObligation => belt_start_record_exit(start: dogfood_start_record_for_instance(instance: instance))
+    SnapshotCensusObligation => belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: roadmap_snapshot_census_for_instance(instance: instance, observed_at: observed_at))
+  }
+}
+
+fn belt_exit_drain_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "belt_exit_drain_cli", then: instance => {
+    let drained = belt_exit_drain_for_instance(instance: instance)
+    let failures = belt_exit_drain_failures(d: drained)
+    if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join([serialize_json(v: belt_exit_drain_json(d: drained)), "\n", join(failures, "\n")], "")) }
+  })
+}
+
+fn belt_discover_once_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "belt_discover_once_cli", then: instance => {
+    let discovered = belt_discover_for_instance(instance: instance)
+    match belt_discovery_pass_outcome(discovery: discovered) {
+      BeltPassRecorded => ExitSuccess
+      BeltPassFailed { reason } => exit_failure(reason: join([serialize_json(v: belt_discovery_json(discovery: discovered)), "\n", reason], ""))
+      BeltPassDeferred { reason } => exit_failure(reason: reason)
+      BeltPassRefused { reason } => exit_failure(reason: reason)
+    }
+  })
+}
+
+fn belt_launch_enqueue_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "belt_launch_enqueue_cli", then: instance =>
+    belt_obligations_enqueued_exit(context: "belt_launch_enqueue_cli", enqueues: [belt_instance_obligation_enqueue(instance: instance, kind: LaunchObligation)]))
+}

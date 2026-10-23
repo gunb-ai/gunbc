@@ -1,0 +1,19 @@
+module tools.parse_witness_transport
+
+import tools.host_prelude { WitnessBin, run_witness_bin_program }
+
+fn parse_witness_bin() -> WitnessBin {
+  WitnessBin {
+    var_name: "PARSE_WITNESS",
+    bin_name: "parse_witness",
+    features: "text_lookup_work_counter"
+  }
+}
+
+fn run_parse_witness_floor() -> Bool {
+  run_witness_bin_program(invoke: parse_witness_bin(), prereqs: [], args: ["--suite", "floor"])
+}
+
+fn run_parse_witness_perf() -> Bool {
+  run_witness_bin_program(invoke: parse_witness_bin(), prereqs: [], args: ["--suite", "perf"])
+}

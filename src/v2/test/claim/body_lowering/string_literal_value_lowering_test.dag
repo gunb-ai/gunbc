@@ -1,0 +1,196 @@
+module v2.test.claim.body_lowering.string_literal_value_lowering
+
+import std.types { List }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  dag_node_is_string_literal_atom,
+  dag_string_literal_node_from_lexeme,
+  dag_string_literal_value_optional
+}
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A STRING LITERAL CARRIES ITS DECODED VALUE THROUGH PARSE AND NORMALIZE.
+//
+// THE SUBJECT IS normalize over one module's source, the producers called directly
+// (tokenize -> parse -> normalize). Before this change every string literal parsed to one childless
+// ^dag_token_string_literal atom, so the four literals below were four copies of one node and their
+// values were gone. v2.compiler.parse parse_expr_terminal now builds each class-stamped string
+// terminal through v2.extdeps.languages.dag dag_string_literal_node_from_lexeme: the class atom
+// carrying its decoded value as its one named payload. The claims read the payloads in preorder and
+// require EXACTLY the authored values, including an escape, a tab and the empty string, and no
+// string-literal atom without a value. MUTATION RECEIPTS (both run, see the PR): reverting the
+// parse arm to the payload-less class stamp reds the value claims on the payload list and the
+// bare count; a lowering that rebuilds the literal as a bare atom at its occurrence reds them too.
+//
+// The fixture's own text, as the tokenizer reads it:
+//   data sv_plain: String = "alpha"
+//   data sv_escaped: String = "a\"b"
+//   data sv_empty: String = ""
+//   fn sv_body() -> String { "t\tx" }
+//   fn sv_list() -> List<String> { ["alpha", "\{\}\\"] }
+//   data sv_numeric: String = "\u{e9}\x41"
+data string_values_source: String = "module chunk\n\ndata sv_plain: String = \"alpha\"\n\ndata sv_escaped: String = \"a\\\"b\"\n\ndata sv_empty: String = \"\"\n\nfn sv_body() -> String {\n  \"t\\tx\"\n}\n\nfn sv_list() -> List<String> {\n  [\"alpha\", \"\\{\\}\\\\\"]\n}\n\ndata sv_numeric: String = \"\\u\{e9\}\\x41\"\n"
+
+type StringValueVerdict {
+  outcome: Symbol
+  values: List<String>
+  bare_literals: Int
+}
+
+fn slv_values(nodes: List<Node>) -> List<String> {
+  match nodes {
+    Empty => []
+    Cons { head: n, tail: rest } =>
+      match dag_string_literal_value_optional(node: n) {
+        Present { value: v } => concat([v], slv_values(nodes: rest))
+        Absent => slv_values(nodes: rest)
+      }
+  }
+}
+
+fn slv_is_bare_literal(n: Node) -> Bool {
+  dag_node_is_string_literal_atom(node: n)
+    && match dag_string_literal_value_optional(node: n) {
+         Present { value: _ } => false
+         Absent => true
+       }
+}
+
+fn slv_bare_count(nodes: List<Node>) -> Int {
+  match nodes {
+    Empty => 0
+    Cons { head: n, tail: rest } =>
+      if slv_is_bare_literal(n: n) { 1 + slv_bare_count(nodes: rest) } else { slv_bare_count(nodes: rest) }
+  }
+}
+
+fn slv_verdict_of(outcome: Symbol, tree: Node) -> StringValueVerdict {
+  let nodes = node_subtree_nodes(root: tree)
+  StringValueVerdict { outcome: outcome, values: slv_values(nodes: nodes), bare_literals: slv_bare_count(nodes: nodes) }
+}
+
+fn slv_marker(marker: Symbol) -> StringValueVerdict {
+  StringValueVerdict { outcome: marker, values: [], bare_literals: 0 }
+}
+
+// Both stages' verdicts: the parse tree the literal is built in, and the normalized tree it must
+// survive. One producer, pure over this module's data, enrolled warm in
+// v2.workflow.floor_pure_producer_share.
+type StringValueVerdicts {
+  parsed: StringValueVerdict
+  normalized: StringValueVerdict
+}
+
+fn slv_verdicts() -> StringValueVerdicts {
+  let lm = dag_language_model()
+  match tokenize(text: string_values_source, file: ^string_literal_value_lowering_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      StringValueVerdicts { parsed: slv_marker(marker: ^slv_tokenize_refused), normalized: slv_marker(marker: ^slv_tokenize_refused) }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } =>
+          StringValueVerdicts { parsed: slv_marker(marker: ^slv_parse_refused), normalized: slv_marker(marker: ^slv_parse_refused) }
+        Accepted { value: artifact, diagnostics: _ } =>
+          StringValueVerdicts {
+            parsed: slv_verdict_of(outcome: ^slv_accepted, tree: artifact.tree),
+            normalized: match normalize(parse_tree: artifact.tree) {
+              Rejected { diagnostics: d } => slv_marker(marker: diagnostics_fatal_reason(d: d))
+              Accepted { value: normalized, diagnostics: _ } => slv_verdict_of(outcome: ^slv_accepted, tree: normalized.root)
+            }
+          }
+      }
+  }
+}
+
+fn slv_expected_values() -> List<String> {
+  ["alpha", "a\"b", "", "t\tx", "alpha", "\{\}\\", "\u{e9}A"]
+}
+
+fn slv_carries_expected(v: StringValueVerdict) -> Bool {
+  (v.outcome == ^slv_accepted) && (v.values == slv_expected_values()) && (v.bare_literals == 0)
+}
+
+// THE ROUTE: the real parser builds each literal carrying its value.
+test fn every_parsed_string_literal_carries_its_decoded_value() -> Bool {
+  slv_carries_expected(v: slv_verdicts().parsed)
+}
+
+// THE SURVIVAL: normalize keeps every value, none reduced to a bare atom.
+test fn every_normalized_string_literal_keeps_its_decoded_value() -> Bool {
+  slv_carries_expected(v: slv_verdicts().normalized)
+}
+
+// ---- the decoder's interface, over supplied lexemes -------------------------------------------
+
+fn slv_decode_value(lexeme: String) -> String {
+  match dag_string_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } =>
+      match dag_string_literal_value_optional(node: n) {
+        Present { value: v } => v
+        Absent => "<no value payload>"
+      }
+    Rejected { diagnostics: _ } => "<refused>"
+  }
+}
+
+fn slv_decode_refusal(lexeme: String) -> Symbol {
+  match dag_string_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: _, diagnostics: _ } => ^slv_decode_accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+// Each of the eight dag_string_escapes rows decodes to its code point, with the quotes removed.
+test fn every_string_escape_decodes_to_its_scalar() -> Bool {
+  slv_decode_value(lexeme: "\"\\\"\\\\\\0\\n\\r\\t\\{\\}\"") == "\"\\\0\n\r\t\{\}"
+}
+
+// The two numeric forms: exactly two hex digits after \x, one to six naming a scalar inside \u{}.
+test fn numeric_string_escapes_decode_to_their_code_points() -> Bool {
+  slv_decode_value(lexeme: "\"\\x41\\x7a\\u\{e9\}\\u\{1F600\}\"") == "Az\u{e9}\u{1F600}"
+}
+
+test fn malformed_numeric_string_escapes_refuse() -> Bool {
+  (slv_decode_refusal(lexeme: "\"\\x4g\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\x4\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{d800\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{1234567\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u12\"") == ^dag_string_literal_escape_malformed)
+}
+
+test fn two_different_string_literals_are_two_different_nodes() -> Bool {
+  match dag_string_literal_node_from_lexeme(lexeme: "\"a\"", occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: a, diagnostics: _ } =>
+      match dag_string_literal_node_from_lexeme(lexeme: "\"b\"", occurrence_id: OccurrenceSynthetic) {
+        Accepted { value: b, diagnostics: _ } => !(a == b)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A backslash followed by a character with no escape row refuses; it is never carried raw.
+test fn an_unknown_string_escape_refuses_as_malformed() -> Bool {
+  slv_decode_refusal(lexeme: "\"a\\qb\"") == ^dag_string_literal_escape_malformed
+}
+
+// A backslash with nothing after it before the closing quote refuses the same way.
+test fn a_trailing_string_escape_refuses_as_malformed() -> Bool {
+  slv_decode_refusal(lexeme: "\"a\\\"") == ^dag_string_literal_escape_malformed
+}
+
+test fn an_unquoted_lexeme_refuses_as_unframed() -> Bool {
+  slv_decode_refusal(lexeme: "alpha") == ^dag_string_literal_lexeme_unframed
+}

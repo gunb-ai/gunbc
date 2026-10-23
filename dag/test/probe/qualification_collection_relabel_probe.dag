@@ -1,0 +1,19 @@
+module test.probe.qualification_collection_relabel_probe
+
+// THIS MODULE MUST NOT RESOLVE. Collecting outside the token join is minting a collection the join
+// never admitted: relabel another collection's run and floor job as dispatch d's. The carrier is
+// sealed, so the one function that mints it -- gunbc.runner.runner_qualification_dispatch
+// collect_qualification_run, whose reads sit in the arm the token join admits -- is the only route.
+// Reached only through test.claim.runner_qualification_delivery_rewrap_witness.
+
+import gunbc.runner.runner_qualification_dispatch { DispatchedQualificationRun, CollectedQualificationRun }
+
+fn relabel(d: DispatchedQualificationRun, c: CollectedQualificationRun) -> CollectedQualificationRun {
+  CollectedQualificationRun {
+    dispatched: d,
+    run: c.run,
+    floor_job: c.floor_job,
+    conclusion: c.conclusion,
+    instruments_unextracted: c.instruments_unextracted,
+  }
+}

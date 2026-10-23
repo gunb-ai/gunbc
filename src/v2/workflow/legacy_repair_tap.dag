@@ -1,0 +1,260 @@
+module v2.workflow.legacy_repair_tap
+
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.decl_ref { decl_ref }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
+import std.occurrence_identity {
+  ValidatedOccurrenceTransport,
+  OccurrenceTransport,
+  OccurrenceId
+}
+import v2.workflow.legacy_repair_observation {
+  RepairSite,
+  RepairSiteRoster,
+  LegacyRepairObservation,
+  LegacyRepairObservationRow,
+  LegacyRepairObservationSubject,
+  repair_site_roster_identity
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject
+}
+import v2.workflow.legacy_baseline_capture {
+  BridgeRowSpellingEmpty,
+  CheckoutMaterialization,
+  LegacyBaselineCaptureOutcome,
+  LegacyBaselineExecutionRefused,
+  MalformedBridgeRow,
+  RepairCensusPhase,
+  TreeDerivedSubjectReceipt,
+  capture_legacy_baseline,
+  capture_legacy_baseline_from_observed_transport
+}
+import tools.reference_occurrence_binding_census {
+  ReferenceOccurrenceBindingRow,
+  ReferenceOccurrenceBindingDisposition
+}
+import gunbc.reference_derived_candidate {
+  ReferenceDerivedCandidateDisposition,
+  ReferenceDerivedCandidateRow
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  persist_legacy_baseline,
+  PersistAdmission,
+  PersistRefusedNotCaptured
+}
+
+// XL-1 LIVE REPAIR TAP. Sole consumer of the seed builtin emit_rust_reference_derived_rows_bridge.
+// Roster-from-same-rows is a declared tautology (parent 2026-09-12): checkable, not structurally
+// independent of answering. The arm is never enrolled on a required-floor path; one offline run
+// per pinned base stores the observation. Deleted with v1.compiler.emit_rust / the interpreter.
+
+type Xl1PrimaryRootTap
+  = Xl1PrimaryRootObserved {
+      primary_root: String
+      repair_rows: List<ReferenceDerivedCandidateRow>
+      occurrence_transport: OccurrenceTransport
+      binding_rows: List<ReferenceOccurrenceBindingRow>
+    }
+  | Xl1PrimaryRootRefused { cause: String }
+
+
+// ONE FOLD ADMITS THE BRIDGE ROWS OR REFUSES THEM; nothing is dropped. A row whose spelling is
+// empty is a defect of the seed encoder, and a fold that skipped it would shrink the roster and
+// the observation together while the roster digest still attested a census (review 66826 on
+// gunbc#11461; DESIGN 5 - refuse, never widen). The refusal travels as the located row list, the
+// same shape the reference-site collector uses for unreadable roots.
+type BridgeRowsFold {
+  sites: List<RepairSite>
+  rows: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>
+  malformed: List<MalformedBridgeRow>
+  next_index: Int
+}
+
+type BridgeRowsAdmission
+  = BridgeRowsAdmitted {
+      roster: RepairSiteRoster,
+      rows: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>
+    }
+  | BridgeRowsRefused { malformed: List<MalformedBridgeRow> }
+
+fn fold_bridge_row(acc: BridgeRowsFold, row: ReferenceDerivedCandidateRow) -> BridgeRowsFold {
+  if row.module_name == "" || row.name == "" {
+    BridgeRowsFold {
+      sites: acc.sites,
+      rows: acc.rows,
+      malformed: concat(acc.malformed, [MalformedBridgeRow {
+        index: acc.next_index,
+        module_name: row.module_name,
+        name: row.name
+      }]),
+      next_index: acc.next_index + 1
+    }
+  } else {
+    let site = RepairSite {
+      module_name: row.module_name as NonEmptyStr,
+      name: row.name as NonEmptyStr
+    }
+    BridgeRowsFold {
+      sites: concat(acc.sites, [site]),
+      rows: concat(acc.rows, [LegacyRepairObservationRow { site: site, outcome: row.disposition }]),
+      malformed: acc.malformed,
+      next_index: acc.next_index + 1
+    }
+  }
+}
+
+fn admit_bridge_rows(rows: List<ReferenceDerivedCandidateRow>) -> BridgeRowsAdmission {
+  let folded = fold(
+    rows,
+    init: BridgeRowsFold { sites: [], rows: [], malformed: [], next_index: 0 },
+    f: fold_bridge_row
+  )
+  if list_length(items: folded.malformed) == 0 {
+    BridgeRowsAdmitted { roster: RepairSiteRoster { sites: folded.sites }, rows: folded.rows }
+  } else {
+    BridgeRowsRefused { malformed: folded.malformed }
+  }
+}
+
+fn repair_observation_from_admitted_rows(
+  admitted_rows: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>,
+  roster: RepairSiteRoster,
+  tree: LegacyBindingObservationSubject
+) -> LegacyRepairObservation<ReferenceDerivedCandidateDisposition> {
+  LegacyRepairObservation {
+    subject: LegacyRepairObservationSubject {
+      semantic_source_digest: tree.semantic_source_digest,
+      source_set_digest: tree.source_set_digest,
+      compiler_artifact_digest: tree.compiler_artifact_digest,
+      repairer_identity: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_reference_derived_rows"),
+      repair_site_roster_digest: repair_site_roster_identity(roster: roster),
+      resolution_registry_digest: tree.declaration_index_digest
+    },
+    rows: admitted_rows
+  }
+}
+
+fn bridge_rows_refused_outcome<O>(
+  malformed: List<MalformedBridgeRow>
+) -> LegacyBaselineCaptureOutcome<O, ReferenceDerivedCandidateDisposition> {
+  LegacyBaselineExecutionRefused {
+    phase: RepairCensusPhase,
+    cause: BridgeRowSpellingEmpty { malformed: malformed }
+  }
+}
+
+fn persist_capture_from_bridge_rows<O>(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  observation: LegacyBindingObservation<O>,
+  transport: ValidatedOccurrenceTransport,
+  rows: List<ReferenceDerivedCandidateRow>
+) -> PersistAdmission<O, ReferenceDerivedCandidateDisposition> {
+  match admit_bridge_rows(rows: rows) {
+    BridgeRowsRefused { malformed: m } =>
+      persist_legacy_baseline(outcome: bridge_rows_refused_outcome(malformed: m))
+    BridgeRowsAdmitted { roster: roster, rows: admitted } =>
+      persist_legacy_baseline(
+        outcome: capture_legacy_baseline(
+          materialization: materialization,
+          tree_subject: tree_subject,
+          observation: observation,
+          transport: transport,
+          repair_observation: repair_observation_from_admitted_rows(admitted_rows: admitted, roster: roster, tree: tree_subject.subject),
+          repair_roster: roster
+        )
+      )
+  }
+}
+
+fn binding_observation_from_tap_rows(
+  subject: LegacyBindingObservationSubject,
+  rows: List<ReferenceOccurrenceBindingRow>
+) -> LegacyBindingObservation<ReferenceOccurrenceBindingDisposition> {
+  LegacyBindingObservation {
+    subject: subject,
+    rows: rows |> map(r => LegacyBindingObservationRow {
+      occurrence: OccurrenceId { value: r.occurrence },
+      outcome: r.disposition
+    })
+  }
+}
+
+// THE NAMED-BASE CAPTURE ENTRY. CheckoutMaterialization.requested is the GitObjectId the capture
+// will bind; the tap is the only producer of live repair rows and of the occurrence transport those
+// rows were taken with. Caller-supplied binding observations are not this entry: they can mint
+// without the tap. persist_capture_from_bridge_rows is the fixture injection (validated transport
+// plus rows, no live builtin). Empty source_roots refuse inside the seed arm.
+fn persist_named_base_from_primary_root_tap(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  source_roots: List<String>
+) -> PersistAdmission<ReferenceOccurrenceBindingDisposition, ReferenceDerivedCandidateDisposition> {
+  match emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
+    Xl1PrimaryRootRefused { cause: _ } => PersistRefusedNotCaptured
+    Xl1PrimaryRootObserved {
+      repair_rows: rows,
+      occurrence_transport: ot,
+      binding_rows: bindings,
+      primary_root: _
+    } =>
+      match admit_bridge_rows(rows: rows) {
+        BridgeRowsRefused { malformed: m } =>
+          persist_legacy_baseline(outcome: bridge_rows_refused_outcome(malformed: m))
+        BridgeRowsAdmitted { roster: roster, rows: admitted } =>
+          persist_legacy_baseline(
+            outcome: capture_legacy_baseline_from_observed_transport(
+              materialization: materialization,
+              tree_subject: tree_subject,
+              observation: binding_observation_from_tap_rows(subject: tree_subject.subject, rows: bindings),
+              observed_transport: ot,
+              repair_observation: repair_observation_from_admitted_rows(admitted_rows: admitted, roster: roster, tree: tree_subject.subject),
+              repair_roster: roster
+            )
+          )
+      }
+  }
+}
+
+fn append_unique_module(acc: List<String>, n: String) -> List<String> {
+  if n == "" || (acc |> any(x => x == n)) {
+    acc
+  } else {
+    concat(acc, [n])
+  }
+}
+
+fn repair_emitted_module_names(rows: List<ReferenceDerivedCandidateRow>) -> List<String> {
+  fold(rows, init: [], f: (acc, row) => append_unique_module(acc: acc, n: row.module_name))
+}
+
+fn never_emitted_declared_modules(
+  declared_modules: List<String>,
+  emitted_modules: List<String>
+) -> List<String> {
+  declared_modules |> filter(d => !(emitted_modules |> any(e => e == d)))
+}
+
+type Xl1LiveRepairTapCensus
+  = Xl1LiveRepairTapRows { count: Int }
+  | Xl1LiveRepairTapUnavailable { cause: String }
+
+// The census is a fold over a TAP VALUE so a prepared (floor-acquired) tap serves it without a
+// second compile; the source-roots entry composes the live bridge with it.
+fn xl1_live_repair_tap_census_of(tap: Xl1PrimaryRootTap) -> Xl1LiveRepairTapCensus {
+  match tap {
+    Xl1PrimaryRootRefused { cause: c } => Xl1LiveRepairTapUnavailable { cause: c }
+    Xl1PrimaryRootObserved { repair_rows: rows, primary_root: _, occurrence_transport: _, binding_rows: _ } =>
+      Xl1LiveRepairTapRows { count: list_length(items: rows) }
+  }
+}
+
+fn xl1_live_repair_tap_census(source_roots: List<String>) -> Xl1LiveRepairTapCensus {
+  xl1_live_repair_tap_census_of(
+    tap: emit_rust_reference_derived_rows_bridge(source_roots, whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path())
+  )
+}

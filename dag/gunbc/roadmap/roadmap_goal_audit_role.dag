@@ -1,0 +1,51 @@
+module gunbc.roadmap.roadmap_goal_audit_role
+
+import std.types { String, Bool, List }
+import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence, review_reconcile, review_all_approved, ReviewReconciliation }
+
+// THE GOAL AUDIT REUSES THE REVIEW'S VERDICT CARRIER AND RECONCILIATION -- same JSON shape, same
+// decoder, same standing fold over a one-element roster -- because a verdict about a head is one
+// concept whatever role wrote it (DESIGN section 2). What differs is the question and the evidence
+// (gunbc.harness.harness_goal_audit_guidance), the brief below, and where the file lives.
+data goal_audit_criterion_key: String = "goal-audit"
+
+fn goal_audit_reconcile(evidence: List<CriterionReviewEvidence>) -> ReviewReconciliation {
+  review_reconcile(evidence: evidence)
+}
+
+fn goal_audit_approved(evidence: List<CriterionReviewEvidence>) -> Bool {
+  review_all_approved(evidence: evidence)
+}
+
+// THE BRIEF CARRIES THE NODE'S PURPOSE, NEVER THE WORKER'S INSTRUCTIONS. Headline and boundary are the
+// approved goal; displaced cost is why it exists; handback is what the node itself said should stop
+// the work; the acceptance command and the belt's verification detail are the evidence the goal was
+// measured by; the review reconciliation is what the design reviewers concluded. The worker's
+// first_slice is deliberately absent, so the audit cannot inherit a narrowing the brief introduced.
+fn goal_audit_brief(
+  node_id: String,
+  headline: String,
+  boundary: String,
+  displaced_cost: String,
+  handback: String,
+  acceptance_command: String,
+  verification_detail: String,
+  review_detail: String,
+  base_sha: String,
+  head_sha: String,
+  verdict_path: String,
+) -> String {
+  join([
+    "Goal audit of node ", node_id, ".\n",
+    "Approved goal: ", headline, "\n",
+    "Boundary: ", boundary, "\n",
+    "Cost this goal exists to displace: ", displaced_cost, "\n",
+    "Hand-back conditions the node declared: ", handback, "\n",
+    "Acceptance command: ", acceptance_command, "\n",
+    "What the belt's own run of it said about this head: ", verification_detail, "\n",
+    "What the design reviewers concluded about this head: ", review_detail, "\n",
+    "Change under audit: git diff ", base_sha, "..", head_sha, " (the worktree is at ", head_sha, ")\n",
+    "Answer two questions: does this change discharge the approved goal and displace that cost; and is the acceptance command adequate evidence of that, or could it pass with the goal unmet? approve only if both answers are yes.\n",
+    "Write your verdict to ", verdict_path, " in the shape given in your instructions.\n",
+  ], "")
+}

@@ -1,0 +1,40 @@
+module test.claim.parse_test_marker_channel
+
+import test.claim.parse_test_declaration_choice_route { route_parse_at }
+import v2.test.claim.parse.test_marker_channel {
+  test_marker_find_emitted,
+  test_marker_inner_declaration,
+  test_marker_lowered_pair_agrees
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TEST MARKER'S GRAMMAR ROUTE CONTROL AT top_level_item (gunbc#13126). One marked declaration is
+// parsed AT the item production, and the real readers of v2.test.claim.parse.test_marker_channel
+// consume that parse: the marked shell lowers to the identical semantic projection as the declaration
+// inside it (DESIGN 4c). This is the production-grain subject; the module-grain capture and projection
+// claims stay in v2.test.claim.parse.test_marker_channel, unchanged and off the gate (their per-token
+// parse and lowering cost exceeds the new-witness budget until 02_parse's slope work lands).
+data marked_declaration_source: String = "test data w: Bool = true\n"
+
+fn marked_item_shell_agrees_with_its_declaration() -> Optional<Bool> {
+  match route_parse_at(text: marked_declaration_source, production: ^dag_production_top_level_item) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match test_marker_find_emitted(n: tree, emitted: ^dag_surface_test_fn_decl) {
+        Absent => optional_absent()
+        Present { value: shell } =>
+          match test_marker_inner_declaration(shell: shell) {
+            Absent => optional_absent()
+            Present { value: inner } => test_marker_lowered_pair_agrees(left: shell, right: inner)
+          }
+      }
+  }
+}
+
+test fn a_marked_item_shares_one_semantic_projection_with_its_declaration_holds() -> Bool {
+  match marked_item_shell_agrees_with_its_declaration() {
+    Present { value: agrees } => agrees
+    Absent => false
+  }
+}

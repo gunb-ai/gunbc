@@ -1,0 +1,69 @@
+module gunbc.boot_artifact
+
+import std.types { NonEmptyStr }
+import std.content_hash { ContentHash }
+import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
+
+// THE ARTIFACT IS ITS OWN AUTHORITY, NOT A FACT ABOUT DELIVERY. It lived inside
+// gunbc.boot_artifact_delivery while delivery was its only consumer, which read
+// as a fact about how it is delivered rather than what it is. It now has a
+// second consumer -- nonce issuance in gunbc.machine_intake_receipt, which must
+// bind the artifact it minted a token for -- and the two cannot both reach it
+// from the delivery module, because delivery already imports the receipt layer
+// and the import graph's one structural law is acyclicity (DESIGN section 4).
+//
+// So this is an ordinary single-authority relocation: one concept, one home,
+// both consumers importing it. A copy of the digest and architecture on the
+// issuance side would have been the alternative, and it is exactly the fork
+// DESIGN section 3 forbids -- two places answering "which artifact is this",
+// free to disagree.
+// What the artifact is FOR is data the same delivery mechanism accepts, never
+// a reason to fork the mechanism.
+type BootPurpose
+  = FastMemoryDiagnostic
+  | IntakeLinuxEnvironment
+  | OperatingSystemInstaller
+  | FirmwareUtility
+
+type BootArtifactFormat
+  = IsoImage
+  | EfiApplication
+  | KernelInitrdPair
+  | FirmwareCapsule
+
+type BootArtifact {
+  purpose: BootPurpose
+  architecture: Architecture
+  digest: ContentHash
+  format: BootArtifactFormat
+  entrypoint: NonEmptyStr
+  build_identity: NonEmptyStr
+}
+
+// 'The same ISO serves both architectures' is NOT an invariant. The set names
+// one artifact per architecture; the two may resolve to one digest when that is
+// genuinely true, and otherwise the per-architecture selection stays explicit.
+type IntakeArtifactSet {
+  x86_64: BootArtifact
+  aarch64: BootArtifact
+}
+
+type IntakeArtifactSelection
+  = IntakeArtifactSelected { artifact: BootArtifact }
+  | IntakeArtifactNoneForArchitecture { architecture: Architecture }
+
+fn intake_artifact_for(set: IntakeArtifactSet, architecture: Architecture) -> IntakeArtifactSelection {
+  match architecture {
+    X86_64 => IntakeArtifactSelected { artifact: set.x86_64 }
+    Aarch64 => IntakeArtifactSelected { artifact: set.aarch64 }
+    X86 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Arm => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Armv7 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mips => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mipsel => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mips64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mips64el => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Riscv64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Wasm32 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+  }
+}

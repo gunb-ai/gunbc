@@ -1,0 +1,164 @@
+module v2.test.emit.bind_tail_is_an_expression
+
+import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.dag { dag_value_expression_projection }
+import v2.extdeps.languages.typescript { ts_binding_spellings, ts_source_text_authority, ts_fn_add_lex_rules }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal, node_locus }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.node {
+  Arrow,
+  Bind,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge,
+}
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
+  TargetModel,
+  TargetValueExpression,
+  target_model_emit_transforms_empty,
+  target_operator_realizations_catalog_node,
+  target_project_arrow_body_to_value_expression,
+  value_expr_projection_bundle_node
+}
+import v2.std.compilers.lexing { ModeledLexRules }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BIND TAIL IS AN EXPRESSION. v2.compiler.body_lowering_fold lowers a statement-let block to
+// lower_bind(key, value, <rest of the block>), so `let a = x; let b = x; b` is a Bind whose tail is a
+// Bind. target_project_bind_let read that tail as a binding atom and refused every other shape with
+// transform_shape_invalid -- the gen-two refusal of dag/std/key_relation.dag, whose
+// key_relation_scoped_key and keyed_resource_subject_value_eq each end two lets in a non-name tail.
+// The inputs are supplied at that one interface; the gen-two emit of std.key_relation is the
+// inhabitance check that the real route reaches it.
+
+fn probe_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn probe_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn probe_positional(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn probe_bind(key: Symbol, value: Node, tail: Node) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      probe_positional(target: probe_atom(id: key)),
+      probe_positional(target: value),
+      probe_positional(target: tail)
+    ]
+  )
+}
+
+fn probe_fn(param: Symbol, body: Node) -> Node {
+  let signature = declared_signature(
+    params: [binder_edge(name: param, type_node: probe_atom(id: ^fold_call_type_int))],
+    source: probe_atom(id: ^fold_call_type_int)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      probe_positional(target: probe_atom(id: ^fold_call_type_int)),
+      signature.order,
+      core_edge(marker: ArrowBodyEdge, target: body)
+    ]
+  )
+}
+
+data bind_tail_probe_param: Node = probe_atom(id: ^dag_token_kw_true)
+
+fn probe_target_model() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        probe_named(
+          name: ^target_model_edge_value_expression_projection,
+          target: value_expr_projection_bundle_node(projection: dag_value_expression_projection())
+        ),
+        probe_named(
+          name: ^target_model_edge_operator_realizations,
+          target: target_operator_realizations_catalog_node(rows: [])
+        )
+      ]
+    ),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
+    binding_spellings: ts_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: ts_source_text_authority(),
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn probe_project(bind: Node) -> Outcome<TargetValueExpression> {
+  target_project_arrow_body_to_value_expression(
+    arrow: probe_fn(param: ^bind_tail_probe_x, body: bind),
+    target: probe_target_model(),
+    source_bool_form: dag_value_expression_projection().bool_literal_form,
+    handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
+  )
+}
+
+fn probe_projects(bind: Node) -> Bool {
+  match probe_project(bind: bind) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The positive control: a let ending in a name projected before this change and still does.
+test fn a_bind_with_a_name_tail_projects() -> Bool {
+  probe_projects(
+    bind: probe_bind(key: ^bind_tail_probe_a, value: bind_tail_probe_param, tail: probe_atom(id: ^bind_tail_probe_a))
+  )
+}
+
+// The discriminating red: two lets. The outer tail is the inner Bind, which the atom-only read
+// refused with transform_shape_invalid located at the inner Bind.
+test fn a_bind_whose_tail_is_a_bind_projects() -> Bool {
+  probe_projects(
+    bind: probe_bind(
+      key: ^bind_tail_probe_a,
+      value: bind_tail_probe_param,
+      tail: probe_bind(key: ^bind_tail_probe_b, value: bind_tail_probe_param, tail: probe_atom(id: ^bind_tail_probe_b))
+    )
+  )
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER. A function value ending a function's lets is that function's
+// returned closure, so it must reach target_project_realized_closure at the item-return position
+// (the FunctionValueBody path). This probe's target wires no function-type rows, so that path
+// refuses function_type_position_unrealized AT THE CLOSURE -- a refusal only the returned-closure
+// route produces; the atom-only read refused transform_shape_invalid there instead.
+data bind_tail_probe_closure: Node = probe_fn(param: ^bind_tail_probe_y, body: probe_atom(id: ^bind_tail_probe_y))
+
+test fn a_function_value_tail_reaches_the_returned_closure_route() -> Bool {
+  match probe_project(
+    bind: probe_bind(key: ^bind_tail_probe_a, value: bind_tail_probe_param, tail: bind_tail_probe_closure)
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^target_value_expr_reason_function_type_position_unrealized
+        && diagnostics_fatal(d: d).at == node_locus(node: bind_tail_probe_closure)
+  }
+}

@@ -1,0 +1,149 @@
+module product.printed_chassis.print_workflow
+import product.printed_chassis.preparation_identity {PreparedSlot,read_prepared_slots}
+
+import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
+import std.process {ExitFailure}
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import product.printing.runtime_dependencies {check}
+import product.printing.runtime_converge {converge}
+import gunbc.fleet.printer_federation {printer_lan_host_identity}
+import extdeps.tools.hostname
+import std.algebra {trim}
+import std.types {String,NonEmptyStr,List,FilePath,Bool}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import std.bytes {bytes_octets,utf8_encode_bytes}
+import extdeps.crypto.sha2 {sha256_hex}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.shell
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field_string,FieldRead}
+import extdeps.languages.json.emit {json_object,json_kv,json_string,json_array,serialize_json}
+import product.printed_chassis.print_batch_plan {parse_plan,PrinterSpec,PlateSpec}
+import product.printed_chassis.print_preparation {prepare}
+import product.printed_chassis.cad_check_run {check_residential_cad}
+import gunbc.fleet.printer_batch {BatchPlate,PrinterQueue,queues_valid,initialize,drive}
+import gunbc.fleet.printer_execution_hold {with_execution_hold}
+import gunbc.auth.access_token_source {read_supplied_access_token,SuppliedTokenReady,SuppliedTokenUnavailable,OperatorSuppliedToken}
+import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
+import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory }
+import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+
+
+// A single invocation prepares every requested plate, then hands the whole fleet
+// population to the round-robin controller. Nothing is approved/started if any
+// source, CAD realization, slicing or readback stage refuses.
+type QueuePrepared = QueueReadyForApproval {queue:PrinterQueue} | QueuePreparationRefused {reason:String}
+fn plate_path(output:String,printer:PrinterSpec,plate:PlateSpec) -> String {
+ let key=serialize_json(v:json_array(elements:[json_string(s:printer.printer as String),json_string(s:plate.attempt)]))
+ join([output,"/",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:key))) as String,".3mf"],"")
+}
+fn prepare_queue(spec:PrinterSpec,output:String,appimage:String,machine:String,filament:String,process:String) -> QueuePrepared {
+ let results=map(spec.plates,p=>{
+  let path=plate_path(output:output,printer:spec,plate:p)
+  match prepare(cad:concat(output,"/cad"),plan:p.plan,output:path,appimage:appimage,machine:machine,filament:filament,process:process) {
+   ExitSuccess=>{
+    let read=Filesystem.Read(path:concat(path,".readback.json"))
+    let digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>d FieldAbsent=>"" FieldMalformed {cause:_}=>""} JsonDocumentUnreadable {gap:_}=>""}} else {""}
+    if digest=="" {none} else {Present {value:BatchPlate {path:path,digest:digest,attempt:p.attempt}}}
+   }
+   ExitFailure {code:_,reason:_}=>none
+  }
+ })
+ if any(results,r=>match r {Absent=>true Present {value:_}=>false}) {QueuePreparationRefused {reason:"A plate failed CAD packing, pinned slicing or required readback; no printer start admitted"}}
+ else {QueueReadyForApproval {queue:PrinterQueue {printer:spec.printer,version:spec.version,plates:flat_map(results,r=>match r {Present {value:p}=>[p] Absent=>[]})}}}
+}
+fn run(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,mode:String) -> ProcessExit {
+ if mode!="prepare" && mode!="print" {return exit_failure(reason:"Workflow mode must be prepare or print")}
+ let read=Filesystem.Read(path:plan_file)
+ if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
+ let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Preparation output must be an absolute writable directory")}
+ match check(appimage:appimage,receipt:concat(output,"/runtime.json")) {ExitSuccess=>{} runtime_refusal=>return runtime_refusal}
+ match check_residential_cad(output:concat(output,"/cad")) {ExitSuccess=>{} cad_refusal=>return cad_refusal}
+ let results=map(specs,s=>prepare_queue(spec:s,output:output,appimage:appimage,machine:machine,filament:filament,process:process))
+ if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true QueueReadyForApproval {queue:_}=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; no approvals or printer starts sent")}
+ let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] QueuePreparationRefused {reason:_}=>[]})
+ if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
+ let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
+ if !Filesystem.WriteCreateNew(path:concat(output,"/prepared-queues.json"),content:receipt).success {return exit_failure(reason:"Prepared queue receipt already exists or is not writable")}
+ if mode=="prepare" {return ExitSuccess}
+ match read_supplied_access_token() {
+  SuppliedTokenUnavailable {cause:c}=>exit_failure(reason:c as String)
+  SuppliedTokenReady {token:t}=>{
+   let token_source=OperatorSuppliedToken {token:t}
+   match initialize(queues:queues,token_source:token_source) {
+    Absent=>exit_failure(reason:"Cannot bind a pinned credential session for every printer")
+    Present {value:lanes}=>with_execution_hold(owner:sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:receipt))) as NonEmptyStr,use:h=>drive(hold:h,lanes:lanes,token_source:token_source,remaining:8640))
+   }
+  }
+ }
+}
+
+// Explicit dependency-provisioning phase. The print phase only observes; callers
+// request convergence through this same workflow root when the host needs setup.
+fn converge_runtime(receipt:String) -> ProcessExit {converge(receipt:receipt)}
+
+// Explicitly requested provisioning followed by ordinary preparation and printing.
+// This composes the existing phases in one invocation; the default run remains
+// observe-only with respect to host packages. A convergence refusal stops here.
+fn provision_and_run(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,mode:String) -> ProcessExit {
+ let runtime_host=os.Hostname.ReadShort()
+ if !runtime_host.success || trim(s:runtime_host.value)!=(printer_lan_host_identity() as String) {return exit_failure(reason:"Provision-and-print must run on the modeled printer LAN host")}
+ if mode!="prepare" && mode!="print" {return exit_failure(reason:"Workflow mode must be prepare or print")}
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Provisioning receipt needs an absolute writable output directory")}
+ let plan_read=Filesystem.Read(path:plan_file)
+ if !plan_read.success {return exit_failure(reason:"Cannot read print plan before provisioning")}
+ match parse_plan(text:plan_read.content) {Absent=>return exit_failure(reason:"Invalid print plan before provisioning") Present {value:_}=>{}}
+ match converge_runtime(receipt:concat(output,"/runtime-convergence.txt")) {
+  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:mode)
+  provisioning_refusal=>provisioning_refusal
+ }
+}
+
+
+// Preparation is the revision authority. No operator-authored revision labels are admitted.
+fn selected_prepared_slots(prepared_output:String) -> List<PreparedSlot>? {
+ let bindings=match read_prepared_slots(output:prepared_output) {Present {value:b}=>b Absent=>return none}
+ let desired=match residential_assembly() {ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>required_printed_parts(parts:p,bindings:bindings) ResidentialAssemblyRefused {reason:_}=>return none}
+ if any(bindings,b=>!any(desired,d=>d.slot==b.slot)) {none} else {Present {value:bindings}}
+}
+fn preparation_refused() -> CliWireResponse {CliWirePrintable {bytes:"Prepared projects, CAD binding or assembly membership refused",exit:exit_failure(reason:"Preparation identity refused")}}
+
+// Shadow reconciliation consumes an independent inventory capture and verified preparation.
+fn plan_remaining(inventory_file:String,prepared_output:String) -> CliWireResponse {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
+ match residential_assembly() {
+  ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+  ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>inventory_report(parts:p,bindings:bindings,path:inventory_file)
+ }
+}
+
+// Explicit inventory import initializes once; subsequent changes are fenced transitions.
+fn inventory_initialize(capture_file:String) -> ProcessExit {
+ let read=Filesystem.Read(path:capture_file)
+ if !read.success {exit_failure(reason:"Inventory capture unreadable")} else {initialize_inventory(capture:read.content)}
+}
+fn record_inspection(prepared_output:String,baseline:String,receipt:String,slot:String,attempt:String,physical_item:String,observed_at:String,accepted:Bool) -> CliWireResponse {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
+ let binding=match filter(bindings,b=>b.slot==slot && b.attempt==attempt).first() {Present {value:b}=>b Absent=>return preparation_refused()}
+ match mutate_inventory(mutation:InspectPart {baseline:baseline,next_snapshot:receipt,part:RequiredPart {slot:slot,revision:Present {value:binding.revision}},attempt:binding.attempt,physical_item:physical_item,evidence:InspectionEvidence {reference:receipt,observed_at:observed_at},accepted:accepted}) {
+ ExitSuccess=>plan_remaining_stored(prepared_output:prepared_output)
+ ExitFailure {code:_,reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ }
+}
+
+// Reservations consume generated, byte-verified queues. This verb sends no start command.
+fn reserve_plan(prepared_output:String,baseline:String,receipt:String) -> ProcessExit {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return exit_failure(reason:"Preparation identity refused")}
+ let requests=map(bindings,b=>PartReservation {part:RequiredPart {slot:b.slot,revision:Present {value:b.revision}},attempt:b.attempt})
+ mutate_inventory(mutation:ReserveParts {baseline:baseline,next_snapshot:receipt,reservations:requests})
+}
+
+fn plan_remaining_stored(prepared_output:String) -> CliWireResponse {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
+ let captured=match observe_stored_inventory() {ObservationEstablished {observed:c}=>c ObservationRefused {cause:InventoryUnread {reason:r}}=>return CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
+ match residential_assembly() {
+ ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
+ ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>captured_inventory_report(parts:p,bindings:bindings,capture:captured)
+ }
+}

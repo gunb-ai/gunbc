@@ -1,0 +1,36 @@
+{
+  "source_commit": "8e121f28e7",
+  "validation": "local source parsing and interpreter checks; not a claim of green PR CI",
+  "orientation_witnesses": [
+    "upright_cradle_rotation_is_refused",
+    "upright_grille_rotation_is_refused",
+    "modeled_plane_preserves_packing_rotation",
+    "inverted_unqualified_part_is_refused"
+  ],
+  "kernel_controls_entry": "test.claim.print_preparation_kernel_validation.run",
+  "kernel_controls_exit_code": 0,
+  "kernel_controls": [
+    "leading-dot extrusion",
+    "full-circle arc bounds",
+    "per-object deposited Z",
+    "support/support-interface centerlines separate from functional paths",
+    "reject disabled or mismatched support policy",
+    "reject malformed motion, unsupported radius arcs, multiple plates, incorrect membership, scaling, bad checksum, out-of-envelope deposition, support in declared support-free object"
+  ],
+  "compiler_sha256": "109530d85a51ef94b540a63ff5cb104db2206f13efa8f60750cf7d22b135b45f",
+  "runtime": "CadQuery 2.8.0; pinned Orca artifact verified by the workflow before execution",
+  "remaining": "Build-stage adhesion/stiffness/nozzle-contact qualification is not implemented. Flat orientation is not a guarantee of successful printing.",
+  "runtime_dependency_commit": "669682e4b1",
+  "runtime_dependency_checks": {
+    "local_import_and_pinned_orca_probe_exit_code": 0,
+    "srv1_modeled_package_convergence_exit_code": 0,
+    "witnesses": [
+      "unsupported_distro_cannot_use_ubuntu_provider",
+      "ambiguous_os_identity_is_refused",
+      "absent_python_dependency_is_refused"
+    ]
+  },
+  "full_preparation_source_commit": "e746c85470",
+  "full_preparation": "passed on srv1 through print_workflow.provision_and_run; runtime packages, import versions, pinned Orca execution, CAD, slicing and readback",
+  "print_start": "not attempted: operator token rejected before controller initialization"
+}

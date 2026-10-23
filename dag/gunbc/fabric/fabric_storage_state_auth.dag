@@ -1,0 +1,106 @@
+module gunbc.fabric_storage_state_auth
+
+import gunbc.fabric_storage_state_location { fabric_state_key_host_path }
+
+import std.types { String, NonEmptyStr, Timestamp, Bool }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSigned, MacKeyMaterialNotHex, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed, mac_sign, mac_verify }
+import extdeps.languages.json.emit { JsonValue, JsonString, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+
+// This key is a distinct service authority: it cannot mint approval capabilities. Custody must
+// provision it to the admitted website/controller processes before state migration is activated.
+// No fallback to approval keys, a tailnet login, or unauthenticated state access is admitted.
+data fabric_state_key_path: NonEmptyStr = fabric_state_key_host_path
+data fabric_state_key_id: MacKeyId = "fabric-state-writer/1" as MacKeyId
+
+fn fabric_state_operation(operation: String) -> Bool {
+  operation == "head" || operation == "closure" || operation == "advance" || operation == "put"
+}
+
+type FabricStateAuthenticatedRequest { operation: String, request: String }
+type FabricStateRequestReading = FabricStateRequestVerified { request: FabricStateAuthenticatedRequest } | FabricStateRequestRefused
+
+fn fabric_state_message(operation: String, request: String, issued_at: Timestamp) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "audience", value: json_string(s: "gunbc/fabric-state/v1")),
+    json_kv(key: "operation", value: json_string(s: operation)),
+    json_kv(key: "request", value: json_string(s: request)),
+    json_kv(key: "issued_at", value: json_string(s: issued_at)),
+  ])) as NonEmptyStr
+}
+
+fn fabric_state_sign(key: MacKey, operation: String, request: String, issued_at: Timestamp) -> String? {
+  if key.id != fabric_state_key_id || !utc_instant_is_canonical(t: issued_at) || !fabric_state_operation(operation: operation) { none }
+  else {
+    let message = fabric_state_message(operation: operation, request: request, issued_at: issued_at)
+    match mac_sign(key: key, message: message) {
+      MacKeyMaterialNotHex { key_id: _ } => none
+      MacSigned { tag } => Present { value: serialize_json(v: json_object(members: [
+        json_kv(key: "message", value: json_string(s: message as String)),
+        json_kv(key: "tag", value: json_string(s: tag.hex as String)),
+      ])) }
+    }
+  }
+}
+
+fn fabric_state_string(value: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: value, key: key) {
+    JsonMemberFound { value: JsonString { value: text } } => Present { value: text }
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+// Verify exact bytes first, then interpret. Replays cannot bypass the existing head CAS;
+// the short proof lifetime also prevents indefinite reuse of captured read requests.
+fn fabric_state_verify(key: MacKey, body: String, now: Timestamp) -> FabricStateRequestReading {
+  if key.id != fabric_state_key_id || !utc_instant_is_canonical(t: now) { FabricStateRequestRefused }
+  else { match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => FabricStateRequestRefused
+    JsonDocumentParsed { value: envelope } => match fabric_state_string(value: envelope, key: "message") {
+      Absent => FabricStateRequestRefused
+      Present { value: message } => match fabric_state_string(value: envelope, key: "tag") {
+        Absent => FabricStateRequestRefused
+        Present { value: tag } => if message == "" || tag == "" { FabricStateRequestRefused } else {
+          match mac_verify(key: key, message: message as NonEmptyStr, tag_hex: tag as NonEmptyStr) {
+            MacVerified { verified: _ } => fabric_state_decode_verified(message: message, now: now)
+            MacTagMismatch { key_id: _ } => FabricStateRequestRefused
+            MacKeyUnknown { key_id: _ } => FabricStateRequestRefused
+            MacKeyRetired { key_id: _, retired_at: _ } => FabricStateRequestRefused
+            MacSuiteMismatch { expected: _, key_suite: _ } => FabricStateRequestRefused
+            MacTagMalformed { octets_declared: _, octets_expected: _ } => FabricStateRequestRefused
+          }
+        }
+      }
+    }
+  } }
+}
+
+fn fabric_state_decode_verified(message: String, now: Timestamp) -> FabricStateRequestReading {
+  match parse_json_document(s: message) {
+    JsonDocumentUnreadable { gap: _ } => FabricStateRequestRefused
+    JsonDocumentParsed { value: document } => match fabric_state_string(value: document, key: "audience") {
+      Present { value: "gunbc/fabric-state/v1" } => match fabric_state_string(value: document, key: "operation") {
+        Absent => FabricStateRequestRefused
+        Present { value: op } => match fabric_state_string(value: document, key: "request") {
+          Absent => FabricStateRequestRefused
+          Present { value: payload } => match fabric_state_string(value: document, key: "issued_at") {
+            Absent => FabricStateRequestRefused
+            Present { value: issued } => {
+              let age = if utc_instant_is_canonical(t: issued) { utc_instant_seconds_after(later: now, earlier: issued) } else { -1 }
+              if age >= 0 && age <= 60 && fabric_state_operation(operation: op)
+                && message == (fabric_state_message(operation: op, request: payload, issued_at: issued) as String) {
+                FabricStateRequestVerified { request: FabricStateAuthenticatedRequest { operation: op, request: payload } }
+              } else { FabricStateRequestRefused }
+            }
+          }
+        }
+      }
+      Present { value: _ } => FabricStateRequestRefused
+      Absent => FabricStateRequestRefused
+    }
+  }
+}

@@ -1,0 +1,26 @@
+module gunbc.closure_edge_demand_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Admission and production have different demands. The pool-wide ambiguity wall must
+// execute even for an unrelated entry; only a visited source needs outgoing edges.
+// Ruling: sunny-tern-813, message msg_a15ee2cf-4059-4a41-887b-ffc96a617fc5.
+// The controlled non-closure ambiguity in closure_edge_demand_tests distinguishes those
+// obligations: deleting eager production alone silently accepts it.
+data closure_edge_demand_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "extend_sources_via_demanded_edges", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "admit_pool_bare_references", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "visit_bare_reference_providers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "whole_pool_closure_edge_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "tree_census_nodes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "closure_name_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "closure_edge_demand_tests", field: WholeDeclaration }
+  ],
+  reason: "This repairs the memory shape of the v1 seed path that compiles v2 entries. Namespace semantics remain owned by v1.compiler.infer_env global_bare_chain_candidates and v1.compiler.infer build_symbol_index_census_raw_nodes. Admission and edge production consume one existing bare resolver predicate; admission discards selected providers without expanding import closures, while the BFS materializes only visited rows. The raw heads census preserves corpus item/variant gating and candidate multiplicity. Signature upgrading is not demanded by name/kind lookup; its resolved census remains with typechecking. Rust is still required because these consumers construct the seed closure needed to evaluate a substrate orchestration, the same bootstrap ordering boundary as gunbc.reference_closure_binder_seed_growth. This is maintenance supporting v2 self host, not a new language feature, compatibility mode, or escape hatch. The heads module projection consumes v1.compiler.compile census_heads_module_node directly, with its generated mirror inherited from frontier (a) model commit f6581910ab2; this lane creates no second strip.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these orchestration items when v2 derives the reference closure and pool admission without first evaluating through the v1 closure being constructed. Preserve the non-closure ambiguity, demanded-edge population, and reverse-walk controls at that replacement boundary.",
+  current_boundary: "Seed-retained cli_run orchestration only. whole_pool_closure_edge_index has explicit consumers required_regen_host regen_module_edges and floor warm_bare_reference_edge_index. The existing build_both_closure_edge_index, bare_reference_pull_paths_for_source, tree_bare_census_for_root, source loaders, and MultiEntryIndex constructor are modified, not netted against additions. closure_edge_demand_tests is the containing enumeration unit for its fixture type, methods and controls. Production retains heads lookup inputs and a pool admission verdict; it never treats partial edge coverage as a full reverse graph. The previous resolved whole-pool census survives only under test/instrumentation configuration as a differential oracle, not a production fallback. No compile census-fold signature, full-body parse wall, budget row or generated mirror is edited by this change."
+}

@@ -1,0 +1,55 @@
+module gunbc.uefi_shell_over_sol
+
+import std.types { NonEmptyStr, String, Int, List }
+import extdeps.bmc.serial_console {
+  SolConsoleSendIntent,
+  IpmiSol,
+  sol_console_send_script,
+}
+import extdeps.firmware.uefi_shell { UefiShellCommand, uefi_shell_command_line }
+import gunbc.uefi_boot_config {
+  DesiredBootSource,
+  uefi_boot_config_commands,
+  srv4_uefi_install_boot,
+}
+
+fn uefi_shell_serial_input(commands: List<UefiShellCommand>) -> String {
+  fold(
+    commands,
+    init: "",
+    f: (acc, cmd) => concat(acc, concat(uefi_shell_command_line(cmd: cmd), "\\r"))
+  )
+}
+
+fn uefi_boot_config_sol_send_intent(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  desired: DesiredBootSource,
+) -> SolConsoleSendIntent {
+  SolConsoleSendIntent {
+    bmc_host: bmc_host,
+    transport: IpmiSol,
+    username: username,
+    input: uefi_shell_serial_input(commands: uefi_boot_config_commands(desired: desired)),
+    settle_seconds: 3,
+    read_timeout_seconds: 5,
+  }
+}
+
+fn uefi_boot_config_sol_send_script(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  desired: DesiredBootSource,
+) -> String {
+  sol_console_send_script(intent: uefi_boot_config_sol_send_intent(
+    bmc_host: bmc_host,
+    username: username,
+    desired: desired,
+  ))
+}
+
+data srv4_uefi_boot_config_sol_send_intent: SolConsoleSendIntent = uefi_boot_config_sol_send_intent(
+  bmc_host: "192.168.1.195",
+  username: "root",
+  desired: srv4_uefi_install_boot,
+)

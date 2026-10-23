@@ -1,0 +1,64 @@
+module gunbc.bmc_custody_read
+
+import std.types { NonEmptyStr, Secret, String }
+import extdeps.cloud.gcp.secret_manager {
+  decode_sm_access_version_secret_wire,
+  SmAccessVersionSecretDecoded,
+  SmAccessVersionSecretDecodeRefused,
+}
+import extdeps.transports.rest {
+  classify_rest_refusal,
+  RestResult,
+  RestAnswered,
+  RestRefused,
+  RestExchangeCommitAmbiguous,
+  RestExchangeRefusal,
+  RestExchangeStatusRefused,
+  RestExchangeUndecodable,
+  RestExchangeUnreached,
+  RestReadExchange,
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+
+// READING ONE BMC CREDENTIAL OUT OF CUSTODY, AND NOTHING ELSE. It is its own module so that a
+// read-only consumer -- the fleet health collector, which may hold only the health-reader
+// credential -- can read custody without importing gunbc.tools.bmc_onboard, whose closure mints,
+// stores and rotates credentials. The onboarding and reader-account flows import it from here too.
+
+// THREE ANSWERS, NOT A MAYBE. A 404 is the store saying the secret does not exist; a refused status,
+// an unreached call or an undecodable payload says nothing about existence and is carried as the
+// read failure it is (reviews 67836, 67848). Collapsing them would tell an operator to create a secret that
+// may be sitting there behind a permission they lack.
+type CustodyCredentialRead
+  = CustodyCredentialHeld { password: String }
+  | CustodyCredentialAbsent
+  | CustodyCredentialUnreadable { cause: String }
+
+fn custody_read_refusal_cause(performance: RestExchangeRefusal) -> CustodyCredentialRead {
+  match performance {
+    RestExchangeStatusRefused { status: status, body: body } =>
+      if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } }
+    RestExchangeCommitAmbiguous { detail: d } => CustodyCredentialUnreadable { cause: d as String }
+    RestExchangeUnreached { cause: c } => CustodyCredentialUnreadable { cause: c as String }
+    RestExchangeUndecodable { status: _, cause: c } => CustodyCredentialUnreadable { cause: c as String }
+  }
+}
+
+// ONE MATCH OVER THE RESULT (review 67867): an answer decodes the payload, a refusal is the arm
+// custody_read_refusal_cause names for it. The payload exists only in the answered arm.
+fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCredentialRead
+{
+  return match gcp.SecretManager.AccessVersion(
+    access_token: token,
+    project_id: fleet_secrets_gcp_project,
+    secret: secret_id,
+    version: "latest"
+  ) {
+    RestRefused { refusal } =>
+      custody_read_refusal_cause(performance: classify_rest_refusal(standing: RestReadExchange { refusal: refusal }))
+    RestAnswered { answer } => match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
+      SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
+      SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
+    }
+  }
+}

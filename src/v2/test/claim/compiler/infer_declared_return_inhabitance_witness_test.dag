@@ -1,0 +1,290 @@
+module v2.test.claim.compiler.infer_declared_return_inhabitance_witness_test
+
+import v2.compiler.infer { infer }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  InhabitanceUndecidable,
+  Inhabits,
+  declared_type_inhabitance,
+  inhabitance_undecidable_reason_symbol,
+  position_declared_return
+}
+import v2.extdeps.languages.dag {
+  dag_int_literal_fixture_one,
+  dag_type_atom_node
+}
+import v2.std.arrow_signature { declared_signature }
+import v2.std.list_introduction { list_introduction_head_path, lower_list_introduction }
+import v2.std.qualified_name { declaration_reference_node }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
+import v2.std.type_binder { type_binder_set_children, type_params_edge }
+import std.algebra { list_snoc_item }
+import v2.std.node_query { binder_edge }
+import v2.std.node {
+  Arrow,
+  Conj,
+  Edge,
+  Instantiation,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+}
+
+// WHAT THIS FILE ESTABLISHES: a fn's body is judged at its declared return. v2.compiler.infer
+// infer_arrow_declared_return_check builds a DeclaredTypeObligation at PositionDeclaredReturn for
+// every Arrow carrying an ^arrow_body_edge and hands it to v2.std.inhabitance
+// declared_type_inhabitance -- the relation an argument meets at its formal, so there is one
+// relation and two producers. Each red here has a positive control that differs from it only in
+// the body (or the declared return), so a red cannot be satisfied by a check that refuses
+// everything.
+//
+// WHY TREES AND NOT SOURCE TEXT. The fixtures are the Arrow body lowering produces
+// (v2.compiler.body_lowering_fold body_lower_fn_decl_arrow: domain, return, return, declared order,
+// body), handed to `infer`. A source-text v2 acceptance harness that admits the fixture's peer
+// roots does not exist yet (test.claim.named_argument_binding_two_route_witness_test records that
+// v2's standalone driver refuses its own positive control); that harness is this file's next-rung
+// trigger, at which point these arms gain source-text twins.
+//
+// WHY THE GENERIC DISCRIMINATOR AT INFER IS A LIST LITERAL. The only Instantiation-typed value v2
+// infer derives is the FreeMonoid introduction (v2.compiler.infer infer_freemonoid_type_of); an
+// application's result type stays GroundingNotDerived, so a body `Outcome<Record>` produced by a
+// call is counted UndecidableArgumentTypeNotDerived at the return, not decided. The
+// `Outcome<Node>` / `Outcome<Record>` pair is therefore established on the relation directly, and
+// through infer with `List<Bool>` declared against a `[1]` body.
+
+fn dr_empty_domain() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+// ONE DECLARED PARAMETER, NOT NONE. Every node here is OccurrenceSynthetic, and a childless product
+// derives the childless synthetic node as its evidence -- itself -- so an empty domain is refused
+// grounding_evidence_is_source (v2.std.constraints canonical_grounding_from_derived_type) before any
+// return is judged. A lowered domain carries its fn's occurrence id and cannot meet that state; this
+// fixture is shaped like test.claim.compiler.infer_arrow_elimination_witness_test ae_domain instead.
+fn dr_domain() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^dr_param_x, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))
+    ]
+  )
+}
+
+fn dr_arrow(return_type: Node, body: Node) -> Node {
+  let signature = declared_signature(params: dr_domain().children, source: dr_domain())
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge { label: Positional, target: return_type },
+      Edge { label: Positional, target: return_type },
+      signature.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+    ]
+  )
+}
+
+fn dr_generic_arrow(type_param: Symbol, return_type: Node, body: Node) -> Node {
+  let arrow = dr_arrow(return_type: return_type, body: body)
+  node_synthetic(
+    kind: arrow.kind,
+    children: list_snoc_item(
+      xs: arrow.children,
+      item: type_params_edge(
+        conj: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: type_binder_set_children(binders: [
+            Edge { label: Authored { name: type_param }, target: dag_type_atom_node(identity: type_param) }
+          ], source: dag_type_atom_node(identity: type_param))
+        )
+      )
+    )
+  )
+}
+
+fn dr_int() -> Node {
+  dag_type_atom_node(identity: ^dag_binding_type_int)
+}
+
+fn dr_bool() -> Node {
+  dag_type_atom_node(identity: ^bool_node_symbol)
+}
+
+fn dr_bool_literal() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_true)
+}
+
+fn dr_applied(head: Node, argument: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: head },
+      Edge { label: Positional, target: argument }
+    ]
+  )
+}
+
+fn dr_list_of(element: Node) -> Node {
+  dr_applied(
+    head: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic),
+    argument: element
+  )
+}
+
+fn dr_outcome_of(argument: Node) -> Node {
+  dr_applied(head: dag_type_atom_node(identity: ^dr_type_outcome), argument: argument)
+}
+
+fn dr_refuses_at_return(tree: Node) -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
+      diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^arrow_body_does_not_inhabit_declared_return)
+  }
+}
+
+fn dr_admits(tree: Node) -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn declared_return_int_with_a_bool_body_refuses_holds() -> Bool {
+  dr_refuses_at_return(tree: dr_arrow(return_type: dr_int(), body: dr_bool_literal()))
+}
+
+test fn declared_return_int_with_an_int_body_admits_holds() -> Bool {
+  dr_admits(tree: dr_arrow(return_type: dr_int(), body: dag_int_literal_fixture_one()))
+}
+
+test fn declared_return_bool_with_an_int_body_refuses_holds() -> Bool {
+  dr_refuses_at_return(tree: dr_arrow(return_type: dr_bool(), body: dag_int_literal_fixture_one()))
+}
+
+test fn declared_return_list_of_bool_with_an_int_list_body_refuses_holds() -> Bool {
+  dr_refuses_at_return(
+    tree: dr_arrow(
+      return_type: dr_list_of(element: dr_bool()),
+      body: lower_list_introduction(elements: [dag_int_literal_fixture_one()], source: dr_empty_domain())
+    )
+  )
+}
+
+test fn declared_return_list_of_int_with_an_int_list_body_admits_holds() -> Bool {
+  dr_admits(
+    tree: dr_arrow(
+      return_type: dr_list_of(element: dr_int()),
+      body: lower_list_introduction(elements: [dag_int_literal_fixture_one()], source: dr_empty_domain())
+    )
+  )
+}
+
+// THE DECLARED SIDE IS READ AT ITS DENOTATION. `Bool` as written is not the value type `true`
+// derives (v2.std.logic bool_node); comparing the spelling would refuse every Bool-returning fn.
+test fn declared_return_bool_with_a_bool_body_admits_holds() -> Bool {
+  dr_admits(tree: dr_arrow(return_type: dr_bool(), body: dr_bool_literal()))
+}
+
+test fn declared_return_list_of_bool_with_a_bool_list_body_admits_holds() -> Bool {
+  dr_admits(
+    tree: dr_arrow(
+      return_type: dr_list_of(element: dr_bool()),
+      body: lower_list_introduction(elements: [dr_bool_literal()], source: dr_empty_domain())
+    )
+  )
+}
+
+// A RETURN THE BINDING JOIN DOES NOT DENOTE IS COUNTED, NOT REFUSED AND NOT SILENT. Before this
+// relation judged returns, such an Arrow was admitted with no diagnostic at all.
+test fn declared_return_undenoted_atom_is_counted_formal_unresolved_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dr_arrow(return_type: dag_type_atom_node(identity: ^dr_type_undenoted), body: dr_bool_literal()))) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+  }
+}
+
+// A RETURN SPELLED AS THE FN'S OWN TYPE VARIABLE IS COUNTED, NOT COMPARED. `fn f<T>() -> T { 1 }`
+// must not refuse because the Atom `T` is not the Atom `Int`; the relation holds no instance for T,
+// so the obligation is UndecidableGenericFormal on the Accepted path.
+test fn declared_return_type_variable_is_counted_generic_formal_holds() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: dr_generic_arrow(
+        type_param: ^dr_type_param_t,
+        return_type: dag_type_atom_node(identity: ^dr_type_param_t),
+        body: dag_int_literal_fixture_one()
+      )
+    )
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
+}
+
+fn dr_return_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_declared_return(),
+    parameter_identity: ^declared_return,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: dr_empty_domain(),
+    type_variables: type_variables
+  }
+}
+
+// THE CLASS #12441 REPAIRS ON THE SEED, DECIDED BY THE ONE v2 RELATION: two instantiations of one
+// generic coproduct at distinct type arguments are distinct types.
+test fn relation_refuses_outcome_of_record_at_outcome_of_node_holds() -> Bool {
+  match declared_type_inhabitance(
+    obligation: dr_return_obligation(
+      declared: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_node)),
+      produced: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_record)),
+      type_variables: []
+    )
+  ) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    Inhabits { homomorphism: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+test fn relation_admits_outcome_of_node_at_outcome_of_node_holds() -> Bool {
+  match declared_type_inhabitance(
+    obligation: dr_return_obligation(
+      declared: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_node)),
+      produced: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_node)),
+      type_variables: []
+    )
+  ) {
+    Inhabits { homomorphism: _ } => true
+    InhabitanceRefused { find_witness_reason: _ } => false
+    InhabitanceUndecidable { reason: _ } => false
+  }
+}
+
+test fn relation_counts_outcome_of_a_type_variable_as_generic_formal_holds() -> Bool {
+  match declared_type_inhabitance(
+    obligation: dr_return_obligation(
+      declared: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_param_t)),
+      produced: dr_outcome_of(argument: dag_type_atom_node(identity: ^dr_type_node)),
+      type_variables: [^dr_type_param_t]
+    )
+  ) {
+    InhabitanceUndecidable { reason: reason } =>
+      inhabitance_undecidable_reason_symbol(reason: reason) == ^inhabitance_undecidable_generic_formal
+    Inhabits { homomorphism: _ } => false
+    InhabitanceRefused { find_witness_reason: _ } => false
+  }
+}

@@ -1,0 +1,20 @@
+module test.fixture.dissolution_live_discriminator.subject
+
+// THE INDEPENDENTLY AUTHORED SUBJECT PAIR for
+// test.claim.dissolution_census_mechanism_witness_test's live discriminator. One
+// declaration is authored here and one name is deliberately NOT, so the resolver's two
+// answers — present and absent — are facts about this file rather than about whatever
+// the corpus happens to contain on the day the witness runs.
+//
+// It is a fixture pool rather than a production pool root because the subject under test
+// is the RESOLVER's behaviour, and scanning a production directory to establish it would
+// price the mechanism at that directory's breadth. Measured: pointing the discriminator
+// at dag/std cost a 2.6s index fill and the witness was budget-refused at 5510ms against
+// the 5000ms deadline, undecided rather than failed.
+//
+// The absent half has no declaration by construction: `absent_subject_declaration` is
+// named by the witness and authored nowhere, so adding it here would silently convert
+// the discriminator's second arm into a duplicate of its first.
+fn present_subject_declaration() -> Bool {
+  true
+}

@@ -1,0 +1,390 @@
+// caller_admission_native_wall_test -- HERMETIC WALL WITNESSES for the former drop
+// gunbc.rung_drop.admit_callers_discarded_on_the_native_route.
+//
+// The wall's contract is judged over VALUES, so these claims build the roster records, the marker
+// atoms, and the caller coordinates by hand (the parameter_reference_test idiom: minted occurrence
+// identities, Node literals) and call the wall's pure entry points directly. No claim here runs the
+// ingest pipeline; the ONE real-path inhabitance claim -- the native route refusing an outside
+// cross-module call end to end -- lives in the long home
+// (src/v2/test/claim/long/caller_admission_native_wall_red_test.dag): it runs the real
+// parse -> assemble -> lower -> infer pipeline over a two-module source, so it is withheld from
+// the required floor's charged clock by its typed v2.workflow.floor_cost_debt row and
+// verdict-proven in the changed-witness lane; deleting the carrier or the consumer turns it red.
+//
+// THE RECORD SHAPE these claims build is the image the lowering's carrier hangs: a left-named
+// roster spine (each node a conj with one @left record edge and one @right rest edge, the empty
+// conj root ending it), each record carrying the authored operator edge (name ^decl_ref, target the
+// ^decl_ref atom) and the two string lexemes as authored edges (module_path, decl_name). An entry
+// that reads but is not such a call lowers to a MARKER record whose single edge names the entry
+// refusal (^infer_reason_admit_callers_entry_not_decl_ref); a clause whose spine does not read
+// lowers to the clause-fallback marker (^infer_reason_admit_callers_entries_unreadable). The claims
+// pin both failure arms and the positive direction, so:
+//   - deleting the judge or its refusal arm turns (1) red, and (2) red if it refuses everything;
+//   - dropping an uninterpretable entry turns (3) red;
+//   - accepting a non-conj roster (silently narrowing the roster) turns (4) red;
+//   - breaking the record reader's coordinates turns (5) red.
+//
+// THE SEAM CLAIMS close the fail-open review found (side chat review 5439746794): a callee marked
+// as a declaration reference whose declaration is unavailable refuses (typed, located) rather than
+// falling out of the lookup as "absent"; an unmarked callee is not judged at all. The marker
+// closed-list control -- the codec decoding AdmitCallersEdge -- lives in the codec's own witness
+// (dag/test/claim/scm/scm_object_table_json_witness_test.dag), where the decode idiom already
+// stands; hand-building the codec's sealed records here is not possible outside their defining
+// module.
+
+module v2.test.claim.caller_admission_native_wall
+
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
+import v2.compiler.infer { InferAdmissionCallerKey, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags, infer_caller_admission_judged_diags }
+import v2.std.node_query { declaration_reference_path_optional }
+import v2.std.symbol_index { empty_symbol_index, symbol_index_insert }
+import std.optional { optional_absent, optional_present }
+import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored, StructuralLabel, CoreMarker, DeclarationReferenceEdge, Positional }
+import std.optional { Absent, Present }
+
+// ---------------------------------------------------------------------------
+// Hand-built values: the lowering's roster record image, plus the two markers.
+// ---------------------------------------------------------------------------
+
+// The application locus: the judge reports the refused call at its call site. Any node carries a
+// locus; the atom below is the wall's witness spelling for one.
+data wall_call_site_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 910 } }
+data wall_record_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 911 } }
+data wall_marker_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 912 } }
+data wall_roster_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 913 } }
+data wall_clause_fallback_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 914 } }
+
+data wall_application: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^wall_call_site } },
+  children: [],
+  occurrence_id: wall_call_site_locus
+}
+
+// ONE RECORD: the image of `decl_ref(module_path: "<mp>", decl_name: "<dn>")` -- the authored
+// operator edge naming the ^decl_ref atom, the lexemes as authored edges.
+fn wall_record(mp: Symbol, dn: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^decl_ref },
+        target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+      },
+      Edge {
+        label: Authored { name: ^module_path },
+        target: Node { kind: TypeNode { connective: Atom { identity: mp } }, children: [], occurrence_id: OccurrenceSynthetic }
+      },
+      Edge {
+        label: Authored { name: ^decl_name },
+        target: Node { kind: TypeNode { connective: Atom { identity: dn } }, children: [], occurrence_id: OccurrenceSynthetic }
+      }
+    ],
+    occurrence_id: wall_record_locus
+  }
+}
+
+// THE UNINTERPRETABLE-ENTRY MARKER: what the carrier hangs for an entry that reads but is not a
+// decl_ref(module_path, decl_name) call -- a record conj whose single edge names the refusal.
+data wall_marker_entry: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^infer_reason_admit_callers_entry_not_decl_ref },
+      target: Node { kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+    }
+  ],
+  occurrence_id: wall_marker_locus
+}
+
+// THE CLAUSE-FALLBACK MARKER: what the carrier hangs under AdmitCallersEdge when the authored
+// spine does not read.
+data wall_clause_fallback: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable } },
+  children: [],
+  occurrence_id: wall_clause_fallback_locus
+}
+
+// A ROSTER SPINE with one well-formed record: the record rides the grammar's
+// sequence-left projection edge, the empty conj root rides the sequence-right one — the declared
+// sequence-pair shape (sugar_sequence_pair_optional reads exactly these symbols).
+data wall_roster_single: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^grammar_sequence_left_node_projection },
+      target: wall_record(mp: ^bcb, dn: ^listed_caller)
+    },
+    Edge {
+      label: Authored { name: ^grammar_sequence_right_node_projection },
+      target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+    }
+  ],
+  occurrence_id: wall_roster_locus
+}
+
+// ---------------------------------------------------------------------------
+// (1) THE RED: a call from a declaration outside the list refuses.
+// ---------------------------------------------------------------------------
+
+test fn the_wall_refuses_a_call_from_a_declaration_outside_the_list_holds() -> Bool {
+  match infer_admission_judge_entries(
+    application: wall_application,
+    entries: [wall_record(mp: ^bcb, dn: ^listed_caller)],
+    caller: InferAdmissionCallerKey { decl_name: ^outside_caller },
+    module_symbol: ^bcb
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_caller_admission_refused)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (2) THE CONTROL: the listed declaration is admitted -- the judge's positive direction.
+// ---------------------------------------------------------------------------
+test fn the_wall_admits_a_call_from_the_listed_declaration_holds() -> Bool {
+  match infer_admission_judge_entries(
+    application: wall_application,
+    entries: [wall_record(mp: ^bcb, dn: ^listed_caller)],
+    caller: InferAdmissionCallerKey { decl_name: ^listed_caller },
+    module_symbol: ^bcb
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (3) THE ENTRY-SHAPE RED: an entry that is not a decl_ref call refuses at the entry and is
+// reported beside the refusal -- never dropped from the roster.
+// ---------------------------------------------------------------------------
+
+test fn an_entry_that_is_not_a_decl_ref_call_refuses_at_the_entry_holds() -> Bool {
+  match infer_admission_judge_entries(
+    application: wall_application,
+    entries: [wall_marker_entry],
+    caller: InferAdmissionCallerKey { decl_name: ^outside_caller },
+    module_symbol: ^bcb
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_admit_callers_entry_not_decl_ref)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (4) THE CLAUSE-FALLBACK RED: a clause the carrier could not read refuses at the clause as
+// entries_unreadable -- a malformed clause is never a shorter roster.
+// ---------------------------------------------------------------------------
+
+test fn a_clause_the_carrier_cannot_read_refuses_as_entries_unreadable_holds() -> Bool {
+  match infer_admit_clause_entries(roster: wall_clause_fallback) {
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_admit_callers_entries_unreadable)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (5) THE READER'S POSITIVE CONTROL: a well-formed roster reads as exactly the authored
+// coordinates -- one record, spelling bcb.listed_caller.
+// ---------------------------------------------------------------------------
+
+test fn a_well_formed_roster_reads_as_the_authored_coordinates_holds() -> Bool {
+  match infer_admit_clause_entries(roster: wall_roster_single) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: records, diagnostics: _ } =>
+      match records {
+        Empty => false
+        Cons { head: record, tail: tail } =>
+          match tail {
+            Empty =>
+              match infer_admit_record_check(record: record) {
+                Absent => false
+                Present { value: coords } =>
+                  if symbol_eq(a: coords.module_path, b: ^bcb) {
+                    symbol_eq(a: coords.decl_name, b: ^listed_caller)
+                  } else {
+                    false
+                  }
+              }
+            Cons { head: _, tail: _ } => false
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (6) FAIL CLOSED: a DECLARED callee whose arrow cannot be read refuses with a typed,
+// located cause carrying the looked-up key -- never an admit. The declaration is present in
+// resolved_declarations (keyed by the reference's own qualified path) but is not an Arrow, so
+// the arrow read fails: undetermined check, refusal. The boundary: a child not marked as a
+// declaration reference is no judgment (the ordinary grounding machinery owns it); a child
+// MARKED as a declaration reference with no index entry is unresolved and refuses (the seam
+// claims below pin that boundary).
+// ---------------------------------------------------------------------------
+
+data wall_decl_ref_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 915 } }
+
+fn wall_decl_ref_target() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^fold_list_node_head },
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: ^wall_callee } },
+                children: [],
+                occurrence_id: wall_call_site_locus
+              }
+            },
+            Edge {
+              label: Authored { name: ^fold_list_node_tail },
+              target: Node {
+                kind: TypeNode { connective: Conj },
+                children: [],
+                occurrence_id: wall_call_site_locus
+              }
+            }
+          ],
+          occurrence_id: wall_call_site_locus
+        }
+      }
+    ],
+    occurrence_id: wall_decl_ref_locus
+  }
+}
+
+fn wall_unreadable_callee_application() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: wall_decl_ref_target() }],
+    occurrence_id: wall_call_site_locus
+  }
+}
+
+// THE INDEX FOR THE FAIL-CLOSED WITNESS: the declaration IS present — keyed by the very qualified
+// path the callee reference yields — but the declared node is not an Arrow, so the arrow read
+// cannot succeed. This pins the refusal's true scope: a DECLARED callee whose arrow is unreadable
+// refuses (fail closed); a callee that names no declaration at all is not judged (the ordinary
+// grounding machinery owns it).
+fn wall_index_with_unreadable_arrow() -> SymbolIndex {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => empty_symbol_index()
+    Present { value: qn } =>
+      symbol_index_insert(
+        index: empty_symbol_index(),
+        qualified_path: qn,
+        resolved: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      )
+  }
+}
+
+test fn a_declared_callee_whose_arrow_is_unreadable_refuses_holds() -> Bool {
+  match infer_caller_admission_application_diags(
+    application: wall_unreadable_callee_application(),
+    caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
+    module_symbol: optional_present(value: ^bcb),
+    entries: [],
+    declarations: wall_index_with_unreadable_arrow()
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_caller_admission_callee_unreadable)
+        && match d.head.correction {
+          Suggested { node: key } =>
+            match key.occurrence_id {
+              OccurrenceMinted { id: kid } => kid.value == 915
+              OccurrenceProjected { id: kid, caused_by: _ } => kid.value == 915
+              OccurrencePending { caused_by: _ } => false
+              OccurrenceSynthetic => false
+            }
+          Unavailable { reason: _ } => false
+        }
+  }
+}
+
+// THE SEAM CONTROLS (side chat review 5439746794): a callee marked as a declaration reference
+// whose declaration is unavailable is NOT "not declared" -- it is a grounding failure, and the
+// call refuses with a typed, located cause. A callee that is not marked as a declaration
+// reference at all stays outside the judgment: no marker, no admit list to consult.
+
+test fn a_marked_callee_whose_declaration_is_unavailable_refuses_holds() -> Bool {
+  match infer_caller_admission_application_diags(
+    application: wall_unreadable_callee_application(),
+    caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
+    module_symbol: optional_present(value: ^bcb),
+    entries: [],
+    declarations: empty_symbol_index()
+  ) {
+    None => false
+    Some { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_caller_admission_callee_unresolved)
+  }
+}
+
+fn wall_unmarked_application() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: Node {
+      kind: TypeNode { connective: Atom { identity: ^wall_not_a_declaration } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    } }],
+    occurrence_id: wall_call_site_locus
+  }
+}
+
+test fn an_unmarked_callee_is_not_judged_holds() -> Bool {
+  match infer_caller_admission_application_diags(
+    application: wall_unmarked_application(),
+    caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
+    module_symbol: optional_present(value: ^bcb),
+    entries: [],
+    declarations: empty_symbol_index()
+  ) {
+    None => true
+    Some { diagnostics: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// (8) THE FACTS-PRESENT DISCRIMINATOR (side chat review 5442100127): the wrapper's first branch
+// (facts Absent) refuses on its own; the JUDGED path must refuse too when the facts DO supply a
+// callee Arrow -- one that carries no carrier edge -- and the resolved-declarations index lacks
+// the marked callee. The shared judged helper is called in exactly that state: roster lookup
+// Absent (no edge on the arrow), child0 marked, declaration missing -> RosterLookupUnresolved ->
+// the typed refusal. Collapsing RosterLookupUnresolved back into RosterLookupAbsent (the
+// fail-open seam) turns exactly this claim red.
+// ---------------------------------------------------------------------------
+fn wall_arrow_without_the_carrier_edge() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn a_facts_arrow_without_the_carrier_edge_and_an_unresolved_declaration_refuses_holds() -> Bool {
+  diagnostics_has_reason(
+    d: infer_caller_admission_judged_diags(
+      application: wall_unreadable_callee_application(),
+      caller: optional_present(value: InferAdmissionCallerKey { decl_name: ^outside_caller }),
+      module_symbol: optional_present(value: ^bcb),
+      arrow: wall_arrow_without_the_carrier_edge(),
+      declarations: empty_symbol_index()
+    ),
+    reason: ^infer_reason_caller_admission_callee_unresolved
+  )
+}

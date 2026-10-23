@@ -1,0 +1,33 @@
+module std.verification
+
+import std.measure { Nanosecond, nanosecond_count }
+
+type AssertKind
+  = AssertEqual
+  | AssertTrue
+  | AssertSome
+  | AssertNone
+
+type AssertionClaim {
+  kind: AssertKind
+  label: String
+}
+
+type TestCase {
+  name: String
+  claims: List<AssertionClaim>
+  ignored: Bool
+}
+
+type TestNodeRef
+  = TestCaseNode(TestCase)
+
+type TestNodeCostDimension {
+  node: TestNodeRef
+  budget_time: Nanosecond
+  measured_time: Nanosecond
+}
+
+fn test_node_cost_within_budget(fact: TestNodeCostDimension) -> Bool {
+  nanosecond_count(n: fact.measured_time) <= nanosecond_count(n: fact.budget_time)
+}

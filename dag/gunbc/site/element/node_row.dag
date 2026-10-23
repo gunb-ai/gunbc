@@ -1,0 +1,325 @@
+module gunbc.site.element.node_row
+
+import std.types { Bool, Int, List, String }
+import std.markup { Fragment, Attribute, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_is_closed,
+  RelationRowChildren, RowChildrenNotCarried, RowChildrenExpandable,
+}
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
+import gunbc.design.scale { ScaleToken, scale_var, scale_pair, scale_border, space_0, space_2, space_8, border_2 }
+import gunbc.site.element.tokens {
+  height_relation_row, height_grid_row, relation_cell_padding, relation_row_line, relation_level_indent,
+}
+import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotText, SlotTextDim, SlotBorder, SlotAction, SlotClosedRow }
+import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
+import gunbc.site.element.chip { Chip, chip }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_label_inset }
+import gunbc.roadmap_priority { issue_priority_explanation }
+import gunbc.site.element.status_chip { status_chip, status_chip_of, StatusChipAccepted, StatusChipWithheld }
+import gunbc.site.element.touch_target { touch_target_rule, TouchTargetCentredLink }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, BorderBottom, Color, CustomProperty, Display, Flex, Gap, Height,
+  MinWidth, Outline, Padding, TextAlign, TextDecoration, VerticalAlign,
+  WhiteSpace, Width, RawProperty,
+}
+
+// NodeRow: the one row a node is shown as, wherever a list of nodes is shown. It takes the node's
+// canonical presentation (gunbc.roadmap.roadmap_hierarchy_view NodePresentation) and renders it;
+// it derives nothing. The title links to the node's route, the priority is the PriorityMark, the
+// slug is a Chip and the status is the StatusChip, so each of those has one drawing here and
+// everywhere else. A status the producer could not derive is said to be unavailable, with the
+// producer's reason, and is never drawn as a status.
+//
+// A row is a table row, and the header row is built here from the same column roster, so a
+// heading and the cells under it cannot fall out of step.
+
+// How tall the row is: the relation tables' density, or the results grid's. Both are arms of one
+// type because a row is one element at two heights (owner ruling R3). The relation tables use the
+// table density today; the grid density is drawn on the specimen and is what the results grid
+// takes when it adopts this row.
+type NodeRowDensity
+  = NodeRowDensityTable
+  | NodeRowDensityGrid
+
+data node_row_densities: List<NodeRowDensity> = [NodeRowDensityTable, NodeRowDensityGrid]
+
+fn node_row_density_key(density: NodeRowDensity) -> String {
+  match density {
+    NodeRowDensityTable => "table"
+    NodeRowDensityGrid => "grid"
+  }
+}
+
+fn node_row_density_height(density: NodeRowDensity) -> ScaleToken {
+  match density {
+    NodeRowDensityTable => height_relation_row
+    NodeRowDensityGrid => height_grid_row
+  }
+}
+
+// Where the row stands in a tree. A flat row is a row of a relation that carries no reference to
+// its rows' children. A tree row is indented one step per level below the table's own rows and
+// says what the view says about its children. The hierarchy view refers to a row's sub-issues by
+// count and does not load them (RelationRowChildren), so the row cannot open them in place: it
+// states the count as a link to the node's own page, where they are listed. A count of zero is a
+// node with no sub-issues and adds nothing to the row.
+type NodeRowPlace
+  = NodeRowFlat
+  | NodeRowInTree { depth: Int, children: RelationRowChildren }
+
+type NodeRow {
+  node: NodePresentation
+  place: NodeRowPlace
+  density: NodeRowDensity
+}
+
+type NodeRowColumn
+  = NodeRowColumnTitle
+  | NodeRowColumnPriority
+  | NodeRowColumnId
+  | NodeRowColumnStatus
+
+data node_row_columns: List<NodeRowColumn> = [NodeRowColumnTitle, NodeRowColumnPriority, NodeRowColumnId, NodeRowColumnStatus]
+
+fn node_row_column_key(column: NodeRowColumn) -> String {
+  match column {
+    NodeRowColumnTitle => "title"
+    NodeRowColumnPriority => "priority"
+    NodeRowColumnId => "id"
+    NodeRowColumnStatus => "status"
+  }
+}
+
+fn node_row_column_heading(column: NodeRowColumn) -> String {
+  match column {
+    NodeRowColumnTitle => "Title"
+    NodeRowColumnPriority => "P"
+    NodeRowColumnId => "Id"
+    NodeRowColumnStatus => "Status"
+  }
+}
+
+fn node_row_column_count() -> Int {
+  count(node_row_columns)
+}
+
+data node_row_class: String = "el-node-row"
+data node_row_head_class: String = "el-node-row-head"
+data node_row_cell_class: String = "el-node-row-cell"
+data node_row_heading_class: String = "el-node-row-heading"
+data node_row_lead_class: String = "el-node-row-lead"
+data node_row_indent_class: String = "el-node-row-indent"
+data node_row_children_class: String = "el-node-row-children"
+data node_row_link_class: String = "el-node-row-link"
+data node_row_status_unavailable_class: String = "el-node-row-status-unavailable"
+data node_row_density_attribute: String = "data-node-density"
+data node_row_state_attribute: String = "data-node-state"
+data node_row_depth_attribute: String = "data-node-depth"
+data node_row_column_attribute: String = "data-node-column"
+data node_row_children_attribute: String = "data-node-children"
+data node_row_height_property: String = "el-node-row-height"
+
+data node_row_status_unavailable_text: String = "Status unavailable"
+
+fn node_row_state_key(closed: Bool) -> String {
+  if closed { "closed" } else { "open" }
+}
+
+fn node_row_indents(depth: Int) -> List<Fragment> {
+  if depth <= 0 {
+    []
+  } else {
+    concat([el_attrs("span", [attr(name: "class", value: node_row_indent_class), attr(name: "aria-hidden", value: "true")], [])], node_row_indents(depth: depth - 1))
+  }
+}
+
+fn node_row_children_text(n: Int) -> String {
+  if n == 1 { "1 sub-issue" } else { join([to_string(n), " sub-issues"], "") }
+}
+
+// The reference to a row's sub-issues: a plain link to the node's page, labelled with the count.
+fn node_row_children_nodes(node: NodePresentation, children: RelationRowChildren) -> List<Fragment> {
+  match children {
+    RowChildrenNotCarried => []
+    RowChildrenExpandable { count: n } =>
+      if n == 0 {
+        []
+      } else {
+        [el_attrs("a", [
+          attr(name: "class", value: node_row_children_class),
+          attr(name: "href", value: node.route),
+          attr(name: node_row_children_attribute, value: to_string(n)),
+        ], [txt(node_row_children_text(n: n))])]
+      }
+  }
+}
+
+fn node_row_place_indents(place: NodeRowPlace) -> List<Fragment> {
+  match place {
+    NodeRowFlat => []
+    NodeRowInTree { depth, children: _ } => node_row_indents(depth: depth)
+  }
+}
+
+fn node_row_place_children(node: NodePresentation, place: NodeRowPlace) -> List<Fragment> {
+  match place {
+    NodeRowFlat => []
+    NodeRowInTree { depth: _, children } => node_row_children_nodes(node: node, children: children)
+  }
+}
+
+fn node_row_place_depth(place: NodeRowPlace) -> Int {
+  match place {
+    NodeRowFlat => 0
+    NodeRowInTree { depth, children: _ } => depth
+  }
+}
+
+fn node_row_status_nodes(status: NodeStatus) -> List<Fragment> {
+  match status {
+    NodeStatusDerived { status: derived, closed: _ } => [status_chip(status: derived)]
+    NodeStatusAccepted => [status_chip_of(subject: StatusChipAccepted)]
+    NodeStatusWithheld => [status_chip_of(subject: StatusChipWithheld)]
+    NodeStatusUnavailable { reason } => [
+      el_attrs("span", [
+        attr(name: "class", value: node_row_status_unavailable_class),
+        attr(name: "title", value: reason),
+        attr(name: "aria-label", value: join([node_row_status_unavailable_text, ": ", reason], "")),
+      ], [txt(node_row_status_unavailable_text)]),
+    ]
+  }
+}
+
+fn node_row_cell_nodes(input: NodeRow, column: NodeRowColumn) -> List<Fragment> {
+  match column {
+    NodeRowColumnTitle => [
+      el_attrs("div", [attr(name: "class", value: node_row_lead_class)], concat(node_row_place_indents(place: input.place), concat([
+        el_attrs("a", [attr(name: "class", value: node_row_link_class), attr(name: "href", value: input.node.route)], [txt(input.node.title)]),
+      ], node_row_place_children(node: input.node, place: input.place)))),
+    ]
+    NodeRowColumnPriority => [priority_mark(input: PriorityMark { priority: input.node.priority.priority, explanation: Present { value: issue_priority_explanation(value: input.node.priority) } })]
+    NodeRowColumnId => [chip(input: Chip { text: input.node.slug })]
+    NodeRowColumnStatus => node_row_status_nodes(status: input.node.status)
+  }
+}
+
+fn node_row_cell_attributes(class_name: String, column: NodeRowColumn) -> List<Attribute> {
+  [attr(name: "class", value: class_name), attr(name: node_row_column_attribute, value: node_row_column_key(column: column))]
+}
+
+fn node_row(input: NodeRow) -> Fragment {
+  el_attrs("tr", [
+    attr(name: "class", value: node_row_class),
+    attr(name: node_row_density_attribute, value: node_row_density_key(density: input.density)),
+    attr(name: node_row_state_attribute, value: node_row_state_key(closed: node_status_is_closed(status: input.node.status))),
+    attr(name: node_row_depth_attribute, value: to_string(node_row_place_depth(place: input.place))),
+  ], map(node_row_columns, c => el_attrs("td", node_row_cell_attributes(class_name: node_row_cell_class, column: c), node_row_cell_nodes(input: input, column: c))))
+}
+
+fn node_row_header(density: NodeRowDensity) -> Fragment {
+  el_attrs("tr", [
+    attr(name: "class", value: node_row_head_class),
+    attr(name: node_row_density_attribute, value: node_row_density_key(density: density)),
+  ], map(node_row_columns, c => el_attrs("th", concat(node_row_cell_attributes(class_name: node_row_heading_class, column: c), [attr(name: "scope", value: "col")]), [txt(node_row_column_heading(column: c))])))
+}
+
+fn node_row_attribute_selector(class_name: String, attribute: String, value: String) -> String {
+  join([".", class_name, "[", attribute, "=\"", value, "\"]"], "")
+}
+
+fn node_row_height_var() -> String {
+  join(["var(--", node_row_height_property, ")"], "")
+}
+
+fn node_row_density_rule(class_name: String, density: NodeRowDensity) -> BuildRule {
+  StaticRule { selector: RawSelector { text: node_row_attribute_selector(class_name: class_name, attribute: node_row_density_attribute, value: node_row_density_key(density: density)) }, decls: [
+    decl(prop: CustomProperty { name: node_row_height_property }, value: scale_var(t: node_row_density_height(density: density))),
+  ] }
+}
+
+fn node_row_cell_decls() -> List<CssDecl> {
+  [
+    decl(prop: Height, value: node_row_height_var()),
+    decl(prop: Padding, value: scale_pair(a: space_0, b: relation_cell_padding)),
+    decl(prop: BorderBottom, value: scale_border(w: relation_row_line, color_var: palette_var(slot: SlotBorder))),
+    decl(prop: VerticalAlign, value: "middle"),
+    decl(prop: TextAlign, value: "left"),
+    decl(prop: WhiteSpace, value: "nowrap"),
+  ]
+}
+
+fn node_row_title_column_selector(class_name: String) -> String {
+  node_row_attribute_selector(class_name: class_name, attribute: node_row_column_attribute, value: node_row_column_key(column: NodeRowColumnTitle))
+}
+
+fn node_row_closed_selector() -> String {
+  node_row_attribute_selector(class_name: node_row_class, attribute: node_row_state_attribute, value: node_row_state_key(closed: true))
+}
+
+fn node_row_rules() -> List<BuildRule> {
+  concat(
+    concat(
+      map(node_row_densities, d => node_row_density_rule(class_name: node_row_class, density: d)),
+      map(node_row_densities, d => node_row_density_rule(class_name: node_row_head_class, density: d))),
+    [
+      StaticRule { selector: ClassSelector { name: node_row_cell_class }, decls: concat(node_row_cell_decls(), element_text_decls(role: ElementBody)) },
+      StaticRule { selector: ClassSelector { name: node_row_heading_class }, decls: concat(node_row_cell_decls(), element_text_decls(role: ElementLabel)) },
+      StaticRule { selector: RawSelector { text: node_row_title_column_selector(class_name: node_row_cell_class) }, decls: [
+        decl(prop: Width, value: "100%"),
+        decl(prop: WhiteSpace, value: "normal"),
+      ] },
+      StaticRule { selector: RawSelector { text: node_row_attribute_selector(class_name: node_row_heading_class, attribute: node_row_column_attribute, value: node_row_column_key(column: NodeRowColumnPriority)) }, decls: [
+        decl(prop: RawProperty { name: "padding-left" }, value: join(["calc(", scale_var(t: relation_cell_padding), " + ", priority_mark_label_inset(), ")"], "")),
+      ] },
+      StaticRule { selector: RawSelector { text: node_row_title_column_selector(class_name: node_row_heading_class) }, decls: [
+        decl(prop: Width, value: "100%"),
+      ] },
+      StaticRule { selector: RawSelector { text: join([node_row_closed_selector(), " .", node_row_cell_class], "") }, decls: [
+        decl(prop: Background, value: palette_var(slot: SlotClosedRow)),
+        decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+      ] },
+      StaticRule { selector: ClassSelector { name: node_row_lead_class }, decls: [
+        decl(prop: Display, value: "flex"),
+        decl(prop: AlignItems, value: "center"),
+        decl(prop: Gap, value: scale_var(t: space_8)),
+        decl(prop: MinWidth, value: scale_var(t: space_0)),
+      ] },
+      StaticRule { selector: ClassSelector { name: node_row_indent_class }, decls: [
+        decl(prop: Flex, value: "none"),
+        decl(prop: Width, value: scale_var(t: relation_level_indent)),
+      ] },
+      StaticRule { selector: ClassSelector { name: node_row_children_class }, decls: concat(element_text_decls(role: ElementLabel), [
+        decl(prop: Flex, value: "none"),
+        decl(prop: Color, value: palette_action_ink_var()),
+        decl(prop: TextDecoration, value: "none"),
+        decl(prop: WhiteSpace, value: "nowrap"),
+      ]) },
+      StaticRule { selector: ClassSelector { name: node_row_link_class }, decls: [
+        decl(prop: Color, value: palette_var(slot: SlotText)),
+        decl(prop: TextDecoration, value: "none"),
+      ] },
+      StaticRule { selector: RawSelector { text: join([node_row_closed_selector(), " .", node_row_link_class], "") }, decls: [
+        decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+      ] },
+      StaticRule { selector: ClassSelector { name: node_row_status_unavailable_class }, decls: element_text_decls(role: ElementLabel) },
+      ResponseRule { subject: ClassSelector { name: node_row_link_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: TextDecoration, value: "underline"),
+      ] },
+      ResponseRule { subject: ClassSelector { name: node_row_children_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: TextDecoration, value: "underline"),
+      ] },
+      ResponseRule { subject: ClassSelector { name: node_row_children_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+        decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
+      ] },
+      ResponseRule { subject: ClassSelector { name: node_row_link_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+        decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+        decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
+      ] },
+      touch_target_rule(selector: ClassSelector { name: node_row_children_class }, shape: TouchTargetCentredLink),
+      touch_target_rule(selector: ClassSelector { name: node_row_link_class }, shape: TouchTargetCentredLink),
+    ])
+}

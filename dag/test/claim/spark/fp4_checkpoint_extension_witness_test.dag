@@ -1,0 +1,95 @@
+module test.claim.spark.fp4_checkpoint_extension_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { token_count, basis_point, gibibyte_count }
+import std.optional { Present, Absent }
+import v2.std.algebra { length }
+import extdeps.vllm.engine_args { PrefixCachingExplicit, VllmKvCacheDtypeRequest, KvNvfp4, IndexerKvDtypeOmitted }
+import extdeps.vllm.source_build { vllm_8d09804_sm121_recipe }
+import extdeps.vllm.kv_dtype_capability {
+  kv_runtime, kv_capability_verdict, KvCapabilitySubject, FlashInferMlaSparseSm120, DsaSparseIndexer, upstream_kv_main_dtype_rows,
+  KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
+}
+import gunbc.spark.serving_arm { GlmNativeEngineDerived8d09804, glm_native_engine_build_image,
+  ServingCheckpoint, Glm53FlashNvidiaNvfp4, Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
+  ServingLaunchProfile, glm53_flash_nvidia_nvfp4_launch_policy, ModelLaunchPolicy, serving_checkpoint_row, glm_derived_flashinfer_sm120_row,
+}
+import gunbc.spark.serving_capacity_intent {
+  uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+import gunbc.spark.serving_performance_subject { serving_subject_for_launch, serving_subject_axis_value, AxisWeightQuantization, AxisCheckpoint }
+import gunbc.spark.arm_memory_fit { arm_memory_fit_subject_for_launch, ArmMemorySubjectReady, ArmMemorySubjectRefused, arm_memory_fit_verdict }
+import gunbc.spark.serving_compatibility { AdmitsBoundedExperimentOnly }
+import gunbc.spark.serving_promotion {
+  serving_promotion_standing, serving_promotion_policy, promotion_evidence, no_promotion_receipts,
+  PromotionAdmitsNormalServing, PromotionMeasurementServeOnly, PromotionRefused,
+}
+
+// THE PROGRAM'S EXTENSION CHECK (deforking): adding NVIDIA's NVFP4 GLM-5.3-Flash was a checkpoint row,
+// its wire, its launch-policy entry and its extdeps module -- no edit to the scheduler envelope, the
+// memory wall, the runner, the launch transaction or promotion. This witness drives the new checkpoint
+// through each of those unchanged and asserts each derives an answer for it: if any step needed an
+// edit to stand for this checkpoint, this claim is where that would have shown.
+fn w_profile(policy: ModelLaunchPolicy) -> ServingLaunchProfile? {
+      match uniform_cold_seats(each: token_count(count: 262144), seats: 8, max_batched_tokens: token_count(count: 2048)) {
+        ServingCapacityIntentRefused { cause: _ } => none
+        ServingCapacityIntentAdmitted { intent: i } => Present { value: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: i), policy: policy,
+          decided_gpu_memory_basis_points: basis_point(count: 8567), serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr, prefix_caching: PrefixCachingExplicit { enabled: true }) }
+      }
+}
+
+test fn w_the_fp4_checkpoint_derives_a_profile_a_subject_a_fit_subject_and_a_promotion_standing() -> Bool {
+  match w_profile(policy: glm53_flash_nvidia_nvfp4_launch_policy) {
+    Absent => false
+    Present { value: p } => {
+      let subject = serving_subject_for_launch(
+        checkpoint_revision: Present { value: "da920bb0b9f4a06727223a349e55468e38352348" as NonEmptyStr },
+        runtime: GunbcGlm53DerivedKvplanV2Gb10, runtime_image_reference: "fixture@sha256:0" as NonEmptyStr,
+        topology: FourSparkTp4, profile: p, deployment_env: [] as List<DockerEnvAssignment>, collective_transport: none)
+      (serving_subject_axis_value(s: subject, a: AxisWeightQuantization) as String) == "modelopt"
+        && (match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53DerivedKvplanV2Gb10, topology: FourSparkTp4, profile: p) {
+          ArmMemorySubjectRefused { cause: _ } => false
+          ArmMemorySubjectReady { subject: mem } =>
+            match serving_promotion_standing(subject: subject, policy: serving_promotion_policy,
+              evidence: promotion_evidence(compatibility: AdmitsBoundedExperimentOnly, memory: arm_memory_fit_verdict(subject: mem), receipts: no_promotion_receipts)) {
+              PromotionMeasurementServeOnly { missing: ms } => length(ms) >= 4
+              PromotionAdmitsNormalServing => false
+              PromotionRefused { cause: _ } => false
+            }
+        })
+    }
+  }
+}
+
+// THE ROW SAYS WHAT FP4 BUYS, FROM ITS OWN BYTES: the NVFP4 checkpoint's weights are smaller than the
+// native FP8 checkpoint's, so the same fit derivation charges each rank less.
+test fn w_the_fp4_checkpoint_carries_fewer_weight_bytes_than_the_native_one() -> Bool {
+  match serving_checkpoint_row(c: Glm53FlashNvidiaNvfp4) {
+    Absent => false
+    Present { value: fp4 } =>
+      match serving_checkpoint_row(c: Glm53NativeFp8) {
+        Absent => false
+        Present { value: fp8 } => gibibyte_count(g: fp4.weight_gib) < gibibyte_count(g: fp8.weight_gib)
+      }
+  }
+}
+
+// THE CHECKPOINT'S KV REQUEST IS ANSWERED BY THE CAPABILITY JOIN, which can refuse: on the GLM derived
+// build's backend (sm_12x) its request is admitted, and an nvfp4 KV request on the same backend is
+// refused -- the red the policy's own row cannot reach by comparing a string with itself.
+fn w_kv_admitted(main: VllmKvCacheDtypeRequest) -> Bool {
+  match kv_capability_verdict(
+    subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_8d09804_sm121_recipe.source), device_major: 12, main: main, indexer_kind: Present { value: DsaSparseIndexer }, indexer: IndexerKvDtypeOmitted },
+    rows: concat(upstream_kv_main_dtype_rows, [glm_derived_flashinfer_sm120_row])) {
+    KvCombinationAdmitted { bases: _ } => true
+    KvCombinationRefused { cause: _, basis: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  }
+}
+
+test fn w_the_fp4_checkpoints_kv_request_is_admitted_by_the_capability_join() -> Bool {
+  w_kv_admitted(main: glm53_flash_nvidia_nvfp4_launch_policy.kv_cache_dtype) && !w_kv_admitted(main: KvNvfp4)
+}

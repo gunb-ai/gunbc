@@ -1,0 +1,181 @@
+module v2.test.execution.dag_emit_interface
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.dag {
+  dag_emit_class_terminal_spelling,
+  dag_emit_parse_tree_with_root,
+  dag_float_literal_node_from_lexeme,
+  dag_int_literal_node_from_lexeme,
+  dag_lex,
+  dag_string_literal_decoded_text,
+  dag_string_literal_encoded,
+  dag_string_literal_node
+}
+import std.types { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.grammar { AfterLineBreak, GrammarExpr, Choice, GrammarProduction, GrammarRoot, Nonterminal, RefuseOnMatch, Sequence, grammar_atom, grammar_expr_terminal, grammar_expr_terminal_lexeme }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Conj, Authored, Edge, Node, Symbol, TypeNode, symbol_intern_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DAG EMIT, CLAIMED AT ITS OWN INTERFACES (DESIGN section 3, a witness discriminates at one
+// interface). Each claim supplies its input instead of parsing a source: a parse of any construct
+// larger than a one-line data declaration exceeds the new-witness budget on its own, and the
+// parse is not this module's subject. The real route -- parse, emit, re-ingest -- is the
+// inhabitance claim in v2.test.execution.dag_grammar_backward_round_trip, which also carries the
+// missing-production red over the real grammar.
+
+// SPELLING: a decoded string value re-encodes to a lexeme the decoder reads back as that value. The
+// encoder and decoder share dag_string_escapes, so a value carrying every escape row's scalar is the
+// discriminating input: writing it raw, or unquoted, does not decode to it.
+fn ei_string_survives(value: String) -> Bool {
+  match dag_string_literal_decoded_text(lexeme: dag_string_literal_encoded(value: value), occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: back, diagnostics: _ } => back == value
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ei_spelled(token_class: Symbol, captured: Node) -> Outcome<String> {
+  dag_emit_class_terminal_spelling(lex: dag_lex(), token_class: token_class, captured: captured)
+}
+
+fn ei_spelled_is(token_class: Symbol, captured: Node, expected: String) -> Bool {
+  match ei_spelled(token_class: token_class, captured: captured) {
+    Accepted { value: s, diagnostics: _ } => s == expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_string_with_every_escape_row_survives_encode_then_decode_holds() -> Bool {
+  ei_string_survives(value: "q\"b\\s\nt\tz\r\0\{\}")
+}
+
+test fn a_string_with_a_non_ascii_scalar_and_a_control_survives_holds() -> Bool {
+  ei_string_survives(value: "\u{e9}A\x01")
+}
+
+test fn a_string_literal_node_is_spelled_quoted_and_escaped_holds() -> Bool {
+  ei_spelled_is(token_class: ^dag_token_string_literal, captured: dag_string_literal_node(value: "a\"b", occurrence_id: OccurrenceSynthetic), expected: "\"a\\\"b\"")
+}
+
+test fn an_int_literal_is_spelled_by_its_magnitude_holds() -> Bool {
+  match dag_int_literal_node_from_lexeme(lexeme: "4096", occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } => ei_spelled_is(token_class: ^dag_token_int_literal, captured: n, expected: "4096")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_float_literal_is_spelled_by_its_lexeme_holds() -> Bool {
+  ei_spelled_is(token_class: ^dag_token_float_literal, captured: dag_float_literal_node_from_lexeme(lexeme: "2.5", occurrence_id: OccurrenceSynthetic), expected: "2.5")
+}
+
+test fn the_caret_is_spelled_by_its_lex_rule_holds() -> Bool {
+  ei_spelled_is(token_class: ^dag_token_caret, captured: grammar_atom(identity: ^dag_token_caret), expected: "^")
+}
+
+test fn a_literal_without_its_payload_refuses_by_name_holds() -> Bool {
+  match ei_spelled(token_class: ^dag_token_string_literal, captured: grammar_atom(identity: ^dag_token_string_literal)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => ds.head.reason == ^dag_emit_string_literal_value_missing
+  }
+}
+
+// THE KEY'S KIND IS ITS PRODUCTION. A supplied two-production grammar mirrors the real key choice: a
+// bare key is a lexeme-stamped identifier, a quoted key the class-stamped string terminal. The same
+// text, `Node`, emits bare under one stamp and quoted under the other, because the walk selects by
+// the stamp and never by the spelling.
+fn ei_edge(name: Symbol, target: Node) -> Edge { Edge { label: Authored { name: name }, target: target } }
+
+fn ei_conj(children: List<Edge>) -> Node { Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic } }
+
+fn ei_wrap(emitted: Symbol, captured: Node) -> Node {
+  ei_conj(children: [
+    ei_edge(name: ^grammar_production_identity_node_projection, target: grammar_atom(identity: emitted)),
+    ei_edge(name: ^grammar_production_captured_node_projection, target: captured)
+  ])
+}
+
+fn ei_key_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^ei_key,
+    productions: [
+      GrammarProduction {
+        name: ^ei_key,
+        expression: Choice { left: Nonterminal { production: ^ei_bare_key }, right: Nonterminal { production: ^ei_quoted_key } },
+        emitted: grammar_atom(identity: ^ei_key_emitted)
+      },
+      GrammarProduction { name: ^ei_bare_key, expression: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), emitted: grammar_atom(identity: ^ei_bare_key_emitted) },
+      GrammarProduction { name: ^ei_quoted_key, expression: grammar_expr_terminal(token_class: ^dag_token_string_literal), emitted: grammar_atom(identity: ^ei_quoted_key_emitted) }
+    ],
+    sync_tokens: []
+  }
+}
+
+fn ei_key_emits(tree: Node, expected: String) -> Bool {
+  match dag_emit_parse_tree_with_root(root: ei_key_root(), tree: tree) {
+    Accepted { value: text, diagnostics: _ } => text == expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_quoted_key_spelled_like_an_identifier_emits_quoted_holds() -> Bool {
+  ei_key_emits(
+    tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_quoted_key_emitted, captured: dag_string_literal_node(value: "Node", occurrence_id: OccurrenceSynthetic))),
+    expected: "\"Node\""
+  )
+}
+
+test fn a_bare_key_emits_bare_holds() -> Bool {
+  ei_key_emits(
+    tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_bare_key_emitted, captured: grammar_atom(identity: symbol_intern_lexeme(lexeme: "Node")))),
+    expected: "Node"
+  )
+}
+
+test fn an_escaped_quoted_key_emits_escaped_holds() -> Bool {
+  ei_key_emits(
+    tree: ei_wrap(emitted: ^ei_key_emitted, captured: ei_wrap(emitted: ^ei_quoted_key_emitted, captured: dag_string_literal_node(value: "a\"b", occurrence_id: OccurrenceSynthetic))),
+    expected: "\"a\\\"b\""
+  )
+}
+
+// LAYOUT THE GRAMMAR REQUIRES IS EMITTED, AND A REFUSAL ROW IS NEVER SELECTED. A one-production
+// grammar reads `a` then, after a line break, `b`; its tree must emit with the break, or re-ingest
+// would refuse the second token. A choice whose first arm is a `RefuseOnMatch` row emits through the
+// second arm, because a refusal row derives no tree.
+fn ei_single_production_root(expression: GrammarExpr) -> GrammarRoot {
+  GrammarRoot {
+    start: ^ei_layout,
+    productions: [GrammarProduction { name: ^ei_layout, expression: expression, emitted: grammar_atom(identity: ^ei_layout_emitted) }],
+    sync_tokens: []
+  }
+}
+
+fn ei_emits_under(root: GrammarRoot, captured: Node, expected: String) -> Bool {
+  match dag_emit_parse_tree_with_root(root: root, tree: ei_wrap(emitted: ^ei_layout_emitted, captured: captured)) {
+    Accepted { value: text, diagnostics: _ } => text == expected
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_required_line_break_is_emitted_as_one_holds() -> Bool {
+  ei_emits_under(
+    root: ei_single_production_root(expression: Sequence { left: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), right: AfterLineBreak { element: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident) } }),
+    captured: ei_conj(children: [
+      ei_edge(name: ^grammar_sequence_left_node_projection, target: grammar_atom(identity: symbol_intern_lexeme(lexeme: "a"))),
+      ei_edge(name: ^grammar_sequence_right_node_projection, target: grammar_atom(identity: symbol_intern_lexeme(lexeme: "b")))
+    ]),
+    expected: "a\nb"
+  )
+}
+
+test fn a_refusal_row_is_never_selected_backward_holds() -> Bool {
+  ei_emits_under(
+    root: ei_single_production_root(expression: Choice { left: RefuseOnMatch { element: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident), reason: DataValueMissingAfterEq }, right: grammar_expr_terminal_lexeme(token_class: ^dag_token_ident) }),
+    captured: grammar_atom(identity: symbol_intern_lexeme(lexeme: "x")),
+    expected: "x"
+  )
+}

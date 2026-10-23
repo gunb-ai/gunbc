@@ -1,0 +1,331 @@
+module product.training.execution_control
+
+import product.training.readback { TrainingRunSubject, training_run_subject_eq }
+import product.training.attempt_graph { TrainingRunAttemptGraph, graph_admits_attempt }
+import product.training.composition { TrainingRunEvidenceComposition }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.execution { ExecutionGrant }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+}
+import std.types { NonEmptyStr, List, Bool, Int }
+
+// AN ATTEMPT MUST BE DURABLY CLAIMED BEFORE A TRAINER PROCESS EXISTS, and the claim is committed by
+// a control-plane transaction rather than by the actuator. The actuator only REALIZES an
+// already-committed claim, so a controller that dies between commitment and launch leaves a claim
+// that can be resumed, and one that dies between launch and recording the receipt redelivers
+// against the same occurrence instead of creating a second.
+//
+// THE EXCLUSION KEY IS THE TRANSITION, NOT THE ATTEMPT IDENTITY, and that correction is the whole
+// point of this module. A uniqueness constraint on the attempt identity does not exclude anything:
+// two convergence passes that both read "execution required" choose attempt-A and attempt-B, the
+// identities differ, and both commit. What must be unique is the SEMANTIC TRANSITION being claimed
+// -- this demand, this work, this cause -- so the second pass compare-and-sets an occupied slot and
+// receives the first pass's claim rather than minting a rival one.
+type TrainingStartCause<P>
+  = ClaimInitialAttempt
+  | ClaimInfrastructureRetry {
+      prior_attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      cause_receipt: ObservationReceiptRef,
+    }
+  | ClaimCapabilityEscalation {
+      prior_attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      cause_receipt: ObservationReceiptRef,
+    }
+  | ClaimRequestedReexecution { request_receipt: ObservationReceiptRef }
+
+type TrainingStartTransitionKey<P> {
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  cause: TrainingStartCause<P>
+}
+
+fn start_cause_material<P>(c: TrainingStartCause<P>) -> NonEmptyStr {
+  match c {
+    ClaimInitialAttempt => "initial"
+    ClaimInfrastructureRetry { prior_attempt: p, cause_receipt: r } =>
+      join(["infrastructure-retry", p.key as NonEmptyStr, r as NonEmptyStr], "\u{1f}") as NonEmptyStr
+    ClaimCapabilityEscalation { prior_attempt: p, cause_receipt: r } =>
+      join(["capability-escalation", p.key as NonEmptyStr, r as NonEmptyStr], "\u{1f}") as NonEmptyStr
+    ClaimRequestedReexecution { request_receipt: r } =>
+      join(["requested-reexecution", r as NonEmptyStr], "\u{1f}") as NonEmptyStr
+  }
+}
+
+fn transition_slot<P>(k: TrainingStartTransitionKey<P>) -> NonEmptyStr {
+  join(
+    [k.demand.key as NonEmptyStr, k.work.key as NonEmptyStr, start_cause_material(c: k.cause)],
+    "\u{1e}",
+  ) as NonEmptyStr
+}
+
+fn transition_key_eq<P>(a: TrainingStartTransitionKey<P>, b: TrainingStartTransitionKey<P>) -> Bool {
+  fabric_identity_eq(left: a.demand, right: b.demand)
+    && fabric_identity_eq(left: a.work, right: b.work)
+    && transition_slot(k: a) == transition_slot(k: b)
+}
+
+// THE CLAIM IS THE DURABLE PRE-EFFECT FACT. It names the transition it occupies, the attempt it
+// commits, the grant that authorizes it, and the control-ledger generation it was written at. A
+// dispatch receipt is SEPARATE and optional, because "committed but never dispatched" and
+// "dispatched, process not yet observed" are different states with different remedies: the first
+// re-dispatches the same claim, the second waits for the observer.
+type TrainingExecutionClaim<P> sole_constructor {
+  transition: TrainingStartTransitionKey<P>
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  grant: ExecutionGrant<P>
+  committed_generation: Int
+  dispatch: ObservationReceiptRef?
+}
+
+fn training_execution_claim_seal<P>(
+  transition: TrainingStartTransitionKey<P>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  grant: ExecutionGrant<P>,
+  committed_generation: Int,
+  dispatch: ObservationReceiptRef?,
+) -> TrainingExecutionClaim<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.execution_control", decl_name: "admit_start_claim"),
+    decl_ref(module_path: "product.training.execution_control", decl_name: "record_claim_dispatch"),
+  ]
+  = TrainingExecutionClaim {
+      transition: transition,
+      attempt: attempt,
+      grant: grant,
+      committed_generation: committed_generation,
+      dispatch: dispatch,
+    }
+
+// DISPATCH IS RECORDED AFTER THE CLAIM COMMITS, NEVER BESIDE IT. There is no route that mints a
+// claim already carrying a dispatch receipt, so "dispatched" cannot be asserted about an occurrence
+// that was never durably claimed -- which is the ordering the whole module exists to hold.
+fn record_claim_dispatch<P>(
+  claim: TrainingExecutionClaim<P>,
+  dispatch: ObservationReceiptRef,
+) -> TrainingExecutionClaim<P> {
+  training_execution_claim_seal(
+    transition: claim.transition,
+    attempt: claim.attempt,
+    grant: claim.grant,
+    committed_generation: claim.committed_generation,
+    dispatch: Present { value: dispatch },
+  )
+}
+
+// ALREADY-COMMITTED IS A SUCCESS, NOT A REFUSAL. The losing pass of a race has not done anything
+// wrong: it observed a real state and lost a compare-and-set, and the correct answer is the winner's
+// claim so it can proceed to dispatch the SAME occurrence. Returning a refusal here would make a
+// benign race look like a defect and invite a caller to retry into a second mint.
+//
+// SNAPSHOT-STALE IS DIFFERENT AND MUST NOT BE FOLDED INTO IT: the control ledger moved under the
+// caller, so what the caller believes about the world is unreliable and the remedy is to re-observe
+// rather than to proceed with either claim.
+type TrainingStartClaimAdmission<P>
+  = TrainingStartClaimCommitted { claim: TrainingExecutionClaim<P> }
+  | TrainingStartClaimAlreadyCommitted { claim: TrainingExecutionClaim<P> }
+  | TrainingStartClaimSnapshotStale { expected_generation: Int, observed_generation: Int }
+  | TrainingStartClaimRefused { cause: NonEmptyStr }
+
+fn claim_for_transition<P>(
+  claims: List<TrainingExecutionClaim<P>>,
+  k: TrainingStartTransitionKey<P>,
+) -> TrainingExecutionClaim<P>? {
+  claims.filter(c => transition_key_eq(a: c.transition, b: k)).first()
+}
+
+// THE COMPARE-AND-SET IS MODELLED AS A PURE DECISION OVER AN OBSERVED LEDGER GENERATION. The store
+// performs the actual atomic swap; what is decided here is what the transaction MEANS, so the
+// realization cannot invent a fourth answer. A caller whose observed generation differs from the
+// ledger's is stale by construction and never reaches the occupancy test.
+fn admit_start_claim<P>(
+  observed_generation: Int,
+  ledger_generation: Int,
+  existing: List<TrainingExecutionClaim<P>>,
+  transition: TrainingStartTransitionKey<P>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  grant: ExecutionGrant<P>,
+) -> TrainingStartClaimAdmission<P> {
+  if observed_generation != ledger_generation {
+    TrainingStartClaimSnapshotStale {
+      expected_generation: observed_generation,
+      observed_generation: ledger_generation,
+    }
+  } else {
+    match claim_for_transition(claims: existing, k: transition) {
+      Present { value: held } => TrainingStartClaimAlreadyCommitted { claim: held }
+      none =>
+        if !fabric_identity_eq(left: grant.context.attempt, right: attempt) {
+          TrainingStartClaimRefused { cause: "grant does not name the attempt being claimed" }
+        } else {
+          if !fabric_identity_eq(left: grant.context.demand, right: transition.demand) {
+            TrainingStartClaimRefused { cause: "grant does not name the claimed demand" }
+          } else {
+            if !fabric_identity_eq(left: grant.context.work, right: transition.work) {
+              TrainingStartClaimRefused { cause: "grant does not name the claimed work" }
+            } else {
+              TrainingStartClaimCommitted {
+                claim: training_execution_claim_seal(
+                  transition: transition,
+                  attempt: attempt,
+                  grant: grant,
+                  committed_generation: ledger_generation,
+                  dispatch: none,
+                ),
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// CONTROL STATE IS COMPOSED, NOT SUPPLIED BESIDE THE EVIDENCE. Passing an independent claim or
+// grant list into reconciliation would be the FOURTH instance of one defect this lane has removed:
+// a manifest beside evidence it could disagree with, a contract beside a manifest, a cut beside the
+// populations it never observed, and now a control record beside a graph it never described.
+type TrainingRunExecutionControl<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  graph: TrainingRunAttemptGraph<P>
+  active_claims: List<TrainingExecutionClaim<P>>
+  ledger_generation: Int
+  observation: ObservationReceiptRef
+}
+
+type TrainingControlRefusal<P>
+  = ClaimAttemptOutsideGraph { attempt: FabricIdentity<P, ExecutionAttemptKey> }
+  | ClaimGrantAttemptMismatch {
+      claim_attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      grant_attempt: FabricIdentity<P, ExecutionAttemptKey>,
+    }
+  | DuplicateTransitionClaim { slot: NonEmptyStr }
+
+type TrainingControlAdmission<P>
+  = TrainingControlAdmitted { control: TrainingRunExecutionControl<P> }
+  | TrainingControlRefused {
+      first: TrainingControlRefusal<P>,
+      more: List<TrainingControlRefusal<P>>,
+    }
+
+fn control_seal<P>(
+  subject: TrainingRunSubject<P>,
+  graph: TrainingRunAttemptGraph<P>,
+  active_claims: List<TrainingExecutionClaim<P>>,
+  ledger_generation: Int,
+  observation: ObservationReceiptRef,
+) -> TrainingRunExecutionControl<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.execution_control", decl_name: "admit_execution_control"),
+  ]
+  = TrainingRunExecutionControl {
+      subject: subject,
+      graph: graph,
+      active_claims: active_claims,
+      ledger_generation: ledger_generation,
+      observation: observation,
+    }
+
+type ControlSplit<P> {
+  head_taken: Bool
+  more: List<TrainingControlRefusal<P>>
+}
+
+fn control_refusals_after_head<P>(
+  rs: List<TrainingControlRefusal<P>>,
+) -> List<TrainingControlRefusal<P>> {
+  rs
+    .fold(
+      ControlSplit { head_taken: false, more: [] },
+      (acc, r) =>
+        if acc.head_taken {
+          ControlSplit { head_taken: true, more: [acc.more, [r]].flat_map(x => x) }
+        } else {
+          ControlSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+// TWO ACTIVE CLAIMS ON ONE TRANSITION SLOT IS THE STATE THE EXCLUSION KEY EXISTS TO PREVENT, so the
+// composition refuses it rather than letting a downstream fold pick one. If it is ever observed, the
+// compare-and-set did not hold and no conclusion drawn from this control record is trustworthy.
+fn admit_execution_control<P>(
+  graph: TrainingRunAttemptGraph<P>,
+  active_claims: List<TrainingExecutionClaim<P>>,
+  ledger_generation: Int,
+  observation: ObservationReceiptRef,
+) -> TrainingControlAdmission<P> {
+  let refusals =
+    [
+      active_claims
+        .filter(c => !graph_admits_attempt(graph: graph, attempt: c.attempt))
+        .map(c => ClaimAttemptOutsideGraph { attempt: c.attempt }),
+      active_claims
+        .filter(c => !fabric_identity_eq(left: c.grant.context.attempt, right: c.attempt))
+        .map(c =>
+          ClaimGrantAttemptMismatch {
+            claim_attempt: c.attempt,
+            grant_attempt: c.grant.context.attempt,
+          }),
+      active_claims.flat_map(c =>
+        if active_claims.filter(o => transition_key_eq(a: o.transition, b: c.transition)).length() > 1 {
+          [DuplicateTransitionClaim { slot: transition_slot(k: c.transition) }]
+        } else {
+          []
+        }),
+    ].flat_map(x => x)
+  match refusals.first() {
+    Present { value: head } =>
+      TrainingControlRefused { first: head, more: control_refusals_after_head(rs: refusals) }
+    none =>
+      TrainingControlAdmitted {
+        control: control_seal(
+          subject: graph.subject,
+          graph: graph,
+          active_claims: active_claims,
+          ledger_generation: ledger_generation,
+          observation: observation,
+        ),
+      }
+  }
+}
+
+// THE CONVERGENCE INPUT JOINS THE TWO ADMITTED COMPOSITIONS ON ONE SUBJECT. Reconciliation consumes
+// this and nothing else, so no caller can hand it evidence about one run beside control state about
+// another.
+type TrainingRunConvergenceInput<P> sole_constructor {
+  evidence: TrainingRunEvidenceComposition<P>
+  control: TrainingRunExecutionControl<P>
+}
+
+type TrainingConvergenceInputAdmission<P>
+  = TrainingConvergenceInputAdmitted { input: TrainingRunConvergenceInput<P> }
+  | TrainingConvergenceInputSubjectMismatch {
+      evidence_subject: TrainingRunSubject<P>,
+      control_subject: TrainingRunSubject<P>,
+    }
+
+fn convergence_input_seal<P>(
+  evidence: TrainingRunEvidenceComposition<P>,
+  control: TrainingRunExecutionControl<P>,
+) -> TrainingRunConvergenceInput<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.execution_control", decl_name: "admit_convergence_input"),
+  ]
+  = TrainingRunConvergenceInput { evidence: evidence, control: control }
+
+fn admit_convergence_input<P>(
+  evidence: TrainingRunEvidenceComposition<P>,
+  control: TrainingRunExecutionControl<P>,
+) -> TrainingConvergenceInputAdmission<P> {
+  if training_run_subject_eq(left: evidence.readback.subject, right: control.subject) {
+    TrainingConvergenceInputAdmitted {
+      input: convergence_input_seal(evidence: evidence, control: control),
+    }
+  } else {
+    TrainingConvergenceInputSubjectMismatch {
+      evidence_subject: evidence.readback.subject,
+      control_subject: control.subject,
+    }
+  }
+}

@@ -1,0 +1,105 @@
+module v2.lens.discrimination
+
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.std.witness { Holds, Violates, Witness }
+
+
+type WitnessPolarity
+  = AssertsGreen
+  | AssertsRed
+
+type DiscriminatingWitness {
+  unit: List<TestClaim>
+}
+
+fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {
+  match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      AssertsGreen
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      AssertsGreen
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      AssertsGreen
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      AssertsGreen
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      AssertsRed
+  }
+}
+
+fn claim_asserts_green(c: TestClaim) -> Bool {
+  match test_claim_polarity(c: c) {
+    AssertsGreen => true
+    AssertsRed => false
+  }
+}
+
+fn claim_asserts_red(c: TestClaim) -> Bool {
+  match test_claim_polarity(c: c) {
+    AssertsRed => true
+    AssertsGreen => false
+  }
+}
+
+fn unit_greens(unit: List<TestClaim>) -> List<TestClaim> {
+  filter(xs: unit, predicate: claim_asserts_green)
+}
+
+fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
+  filter(xs: unit, predicate: claim_asserts_red)
+}
+
+fn red_coincides_with_a_green(unit: List<TestClaim>) -> Bool {
+  any(
+    xs: unit_reds(unit: unit),
+    predicate: fn(r) {
+      any(
+        xs: unit_greens(unit: unit),
+        predicate: fn(g) {
+          test_claim_input(c: r) == test_claim_input(c: g)
+        }
+      )
+    }
+  )
+}
+
+fn unit_has_perturbation(unit: List<TestClaim>) -> Bool {
+  !red_coincides_with_a_green(unit: unit)
+}
+
+fn discrimination_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: ^discrimination_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn discrimination_lens(unit: List<TestClaim>) -> Witness<DiscriminatingWitness> {
+  if is_empty(xs: unit_greens(unit: unit)) {
+    Violates {
+      diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_positive)
+    }
+  } else if is_empty(xs: unit_reds(unit: unit)) {
+    Violates {
+      diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_no_discriminating_negative)
+    }
+  } else if !unit_has_perturbation(unit: unit) {
+    Violates {
+      diagnostic: discrimination_diagnostic(reason: ^discrimination_reason_negative_not_perturbed)
+    }
+  } else {
+    Holds { value: DiscriminatingWitness { unit: unit } }
+  }
+}
+
+fn unit_is_discriminating(unit: List<TestClaim>) -> Bool {
+  match discrimination_lens(unit: unit) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}

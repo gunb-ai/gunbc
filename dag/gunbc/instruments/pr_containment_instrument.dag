@@ -1,0 +1,1057 @@
+module tools.pr_containment_instrument
+
+import std.types { Bool, FilePath, GitRef, Int, List, Map, NonEmptyStr, String }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.git { ThreeDot }
+import extdeps.git.inspect {
+  ConfigSet,
+  ConfigUnset,
+  ConfigUnreadable,
+  MergeTreeClean,
+  MergeTreeConflicted,
+  MergeTreeRefused,
+  merge_tree_outcome,
+  config_reading
+}
+import extdeps.github.pulls
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonNumber,
+  JsonString,
+  JsonArray,
+  JsonObject
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_document_gap_text,
+  json_object_unique_member,
+  parse_json_document
+}
+
+// THE PR CONTAINMENT INSTRUMENT.
+//
+// WHAT IT ANSWERS. For every open pull request, does its branch propose anything the base branch
+// does not already carry? A squash merge rewrites the landed commits, so the source branch still
+// looks unmerged to any commit-graph check. Two components read that graph and both conclude the
+// work is new: whatever opens pull requests re-proposes it, and the scheduled reviewer re-reviews
+// it. That is ONE FALSE PREMISE WITH TWO CONSUMERS, not two blind components, so the containment
+// question is answered ONCE here rather than patched in each of them.
+//
+// MEASURED POPULATION THAT JUSTIFIES BUILDING IT (2026-08-28, gunb-ai/gunbc): six of sixty open
+// pull requests contributed nothing to main. Two more had already been found by two lanes on the
+// same night, each by accident while doing something else -- gunbc#9579 and gunbc#9522. Ten percent
+// of the open population, each member burning a CI run and a scheduled review on landed code.
+//
+// IT REPORTS. IT CLOSES NOTHING. The honest form of that claim is what this module CALLS, not what
+// it imports: `extdeps.github.pulls` is imported for its roster operation and that import carries
+// its whole service, `SquashMergeExactHead` and `CreateReview` included, so the import list is not
+// the wall and saying it was would be an overclaim. What is true is that the only GitHub operation
+// invoked anywhere below is `ListOpenJson`, which is `readonly`, and no disposition is consumed by
+// anything -- `measure` writes a report and returns. The reason this matters is asymmetric: a
+// partially-landed stack misread as contained would have its UNLANDED work closed, and that work is
+// not recoverable from the closed pull request. A reviewer checking this claim should grep this
+// module for a `github.` CALL and find exactly one, `github.CliPulls.ListOpenJson`.
+//
+// THE CONSUMER IS A TRIAGING LANE, NOT THE PR-OPENING COMPONENT. Nobody in this repository can
+// identify who opens these pull requests -- the author is `app/gunbai-bot` and its logic is not in
+// this tree -- so a containment check wired INTO the opener is a change to a component we cannot
+// see. A lane reading this report can act on it today, and if the opener is ever identified this
+// module is the fact it should consume rather than re-derive.
+
+// ---------------------------------------------------------------------------------------------
+// THE TWO MEASURES, AND WHY NEITHER ALONE IS THE ANSWER.
+//
+// MEASURE ONE, TREE GRAIN: `git merge-tree --write-tree base branch` returning base's own tree.
+// Merging changes nothing, so the branch demonstrably contributes nothing. This is CERTAIN and it
+// is the only measure that is.
+//
+// It has a MEASURED FALSE NEGATIVE, which is the finding this module is built around. gunbc#9522 at
+// head aff2c4ba: merge-tree reported a tree differing from main's, yet all 92 of its added lines
+// were already on main. The branch had authored one identical declaration at a different POSITION,
+// so the merge registered an addition. Merge-tree answers "does merging change the tree"; the
+// question asked is "is this content already there", and in module-scope declarations, where
+// position is free, those diverge.
+//
+// MEASURE TWO, LINE GRAIN: the fraction of the branch's added lines already present in the base's
+// copy of the same file. It catches gunbc#9522 at 1.00.
+//
+// It OVERCOUNTS, and by more than a little. Four pull requests scored 0.86-0.94 and were NOT
+// duplicates: gunbc#9528, #9569, #9476 and #9550 are partially-landed STACKS whose earlier commits
+// merged while real new work sits on top -- two DESIGN.md paragraphs, live v1_compiler_infer.rs
+// code, an emit-rust authority. Reporting on this measure alone would have named ten, four of them
+// falsely.
+//
+// SO THE RULE IS: tree grain decides CONTAINED; line grain only ever raises a CANDIDATE whose
+// residue a person must read. There is deliberately no disposition meaning "duplicate by ratio".
+// The instrument's own measurement is what forbids it.
+
+// THE CANDIDATE THRESHOLD IS DEFENDED BY ITS POWERLESSNESS, NOT BY THE DISTRIBUTION BEHIND IT.
+//
+// The measured distribution is bimodal -- 1.00 for the contained members, then a gap to 0.94 -- and
+// 850 sits at the low end of that gap. That MOTIVATED the number and JUSTIFIES NOTHING, which is
+// stated in exactly those terms because the alternative is worse than vague: if the distribution
+// were the defense then the distribution is also the attack, and the next reader improves the
+// number with more data until a reading order has quietly become an oracle over content. Nobody has
+// to be careless for that to happen (raised by eager-owl-431, and it is right).
+//
+// So the defense is a property of the CARRIER rather than of the number. A threshold selecting
+// which pull requests a person looks at FIRST is a policy budget over attention; a threshold
+// selecting which ones ARE duplicates is an oracle over content, and DESIGN section 5 forbids the
+// second. This one is the first BY CONSTRUCTION: no disposition is consumed by anything, the
+// candidate arm carries residue for a person to read rather than a verdict, and no code path leads
+// from any arm to an action on a pull request. The number decides nothing, so its weakness is
+// BOUNDED by that powerlessness rather than repaired by more data.
+//
+// ONE NUMBER IS ANSWERING TWO QUESTIONS HERE, AND THAT IS THE KNOWN DEFECT IN THIS ROW rather than
+// a property of it (eager-owl-431, refining their own objection after I answered it):
+//
+//   where does a reader START     -- continuous, total, needs no cut at all. Ordering by ratio
+//                                    answers it strictly better and with no cliff.
+//   which rows CARRY THE RESIDUE  -- a payload bound. This one genuinely needs a cut, and the cut
+//                                    is a cost decision about report size, not about content.
+//
+// The two have different justifications and will move for different reasons, so fusing them means
+// any future argument about either is an argument about both -- and the reading-order half has no
+// defensible number behind it, so it would be settled by whoever cares more about the payload half.
+// A SECOND DECLARED FUSION, MEASURED AND NOT YET SPLIT (eager-owl-431, third pass). The conflicted
+// arm fuses two states with opposite remedies: git could not reconcile AUTHORED content (rebase),
+// and this repository's own merge driver refused a DERIVED projection (regenerate). Measured over
+// 67 open pull requests against one base: 12 conflict and 12 do not among branches touching a
+// generated artifact, while ZERO of the 42 touching none conflict at all -- so touching a generated
+// artifact is a NECESSARY condition for conflict in this population. Of the 12, five are
+// generated-only and flip to a clean merge when the driver is neutralised, seven are mixed. So
+// nearly half the arm's population is not a merge problem in the sense a reader will assume.
+//
+// It is declared rather than split here for the same reason the ordering change is deferred: the
+// split needs a `.gitattributes`-derived membership test this module does not have, and landing it
+// unmeasured inside a change that already repairs two defects is how a good idea arrives untested.
+// The arm is also NOT exceptional -- main regenerates constantly, so it stays populated permanently.
+//
+// The follow-up is therefore NOT "sort by ratio": it is order by ratio, free and total, and keep a
+// cut ONLY as the residue payload bound, justified as a report-size budget and named as one. That
+// is deliberately not done here, because an unmeasured presentation change landing inside one that
+// repairs two real defects is how a good idea arrives untested.
+//
+// AND THE HAZARD RUNS IN BOTH DIRECTIONS, which is why the report counts what the threshold
+// EXCLUDED. Closing the "candidate read as contained" direction is only half of it: if a reader
+// takes the candidate set as the rows worth looking at, the threshold has silently decided what
+// NOBODY reads, and the frequency of that deficit is zero by construction -- the absorbing shape
+// one level out. The remainder is therefore reported as a counted, named population rather than as
+// silence, so the size of what the number pushed out of view is visible beside what it pulled in.
+//
+// AND THE RATIO ITSELF IS CONVENTION-DEPENDENT AND SOFT NEAR THE CUT, which is recorded here so
+// nobody later reads three significant figures as precision and tightens the threshold on them.
+// Measured by eager-owl-431 reviewing #9590: of the lines counted PRESENT, 21% are punctuation or
+// three characters or fewer across all three live candidates, and for one of them 53% occur twenty
+// or more times in the base file. Counting only substantive lines moves 9569 from 918 to 881 (stays
+// a candidate) but 9550 from 858 to 739 and 9476 from 882 to 843 -- BOTH CROSS OUT. Two of three
+// candidates are in the set on boilerplate.
+//
+// The finding is NOT that 739 is the right number: a "substantive lines" rule has no more authority
+// than this one. The finding is that two defensible conventions disagree about two of three rows.
+// The principled repair was tested and REFUTED rather than left untried -- matching contiguous runs
+// instead of lines, which keeps position-independence, measures 918/858/882, identical, because
+// short boilerplate runs match contiguously too.
+//
+// This is the strongest argument for the design above rather than against it: the number is weakest
+// exactly where it is used, which is why the residue read is mandatory and why no arm may decide.
+//
+// Expressed per-mille to keep the arithmetic in Int.
+data containment_candidate_threshold_per_mille: Int = 850
+
+data containment_ratio_scale: Int = 1000
+
+// ---------------------------------------------------------------------------------------------
+// THE SUBJECT. Every disposition is relative to a base observed at a moment, so the base's commit
+// and tree are established BEFORE any branch is classified and travel with the report. A report
+// that named no base would be unjoinable with any later one: "contained" is not a property of a
+// branch, it is a relation to a tree that moves every time something merges.
+//
+// AND ONE OPERAND IS NOT IN THE COMMITS AT ALL, which is why the subject carries a git config value
+// (eager-owl-431, third review pass on #9590, measured). `.gitattributes` binds generated-artifact
+// paths to `merge=generated-artifact`, and this repository's driver REFUSES when both sides changed
+// such a path -- so `merge-tree` exits 1 for a reason that is a property of the READER'S CLONE, not
+// of the two commits. Control, same branches, driver neutralised with
+// `-c merge.generated-artifact.driver=true`: five generated-only branches flip exit 1 to exit 0
+// while a mixed branch with real authored conflicts stays at 1. DESIGN records that clones skipping
+// the one-time `core.hooksPath` setup degrade to vanilla text-merge for exactly those paths, so two
+// people can run this instrument on the same commits, get different reports, and neither can tell
+// from the report which one they are holding.
+//
+// THIS IS THE SAME CLASS AS NAMING THE REVISIONS, ONE STEP OUT: a reading is reproducible only if
+// every operand that changes the answer is named, and an operand outside the commits is the one a
+// reader will never think to check. Recording it costs one readonly config read.
+//
+// THE HALF-LIFE RULE, which the head commit on every disposition already serves and which is stated
+// here because the connection was not obvious until warm-tern-34 named it: a measurement of another
+// lane's UNMERGED BRANCH has a half-life set by THAT lane's push cadence, not by ours. So a row must
+// carry the head it was measured at, or it is a claim with an invisible expiry that nobody but its
+// author can re-derive. Two sessions hit that in one night on two different subjects.
+// `base_paths` IS THE BASE'S PATH SET, READ ONCE. It is carried here rather than re-derived per
+// file because it is what makes "this path is absent at the base" a STRUCTURAL fact rather than an
+// inference from a failed read -- see `base_file_reading` below for why that distinction is the
+// difference between a measurement and a fabricated one.
+type ContainmentSubject {
+  base_ref: String
+  base_commit: String
+  base_tree: String
+  remote: String
+  merge_driver: String
+  base_paths: Map<String, Bool>
+}
+
+type ContainmentSubjectRead
+  = SubjectEstablished { subject: ContainmentSubject }
+  | SubjectUnreadable { cause: String }
+
+// An unset driver is reported as the word `unset` rather than as an empty field, because an empty
+// field reads as "not measured" and this value decides how to read every conflicted row below.
+fn observed_merge_driver() -> String {
+  let read = git.Inspect.ConfigGet(key: "merge.generated-artifact.driver")
+  match config_reading(exit_code: read.exit_code, stdout: read.value, stderr: read.stderr) {
+    ConfigSet { value: v } => v
+    ConfigUnset => "unset -- generated-artifact paths merge as vanilla text in this clone"
+    ConfigUnreadable { exit_code: code, stderr: _ } =>
+      concat("unreadable -- git config --get exited ", to_string(code))
+  }
+}
+
+fn base_path_set(paths_nul: String) -> Map<String, Bool> {
+  fold(
+    filter(split(s: paths_nul, delimiter: from_code_point(0)), p => p != ""),
+    init: empty_map(),
+    f: (acc, p) => map_insert(acc, p, true)
+  )
+}
+
+fn establish_containment_subject(base_ref: String, remote: String) -> ContainmentSubjectRead {
+  let commit = git.Inspect.ResolveRefCommit(ref: base_ref as GitRef)
+  if !commit.success {
+    SubjectUnreadable {
+      cause: concat("could not resolve the base ref ", concat(base_ref, concat(": ", commit.stderr)))
+    }
+  } else {
+    let tree = git.Inspect.ShowTree(ref: base_ref as GitRef)
+    if !tree.success {
+      SubjectUnreadable {
+        cause: concat("could not read the base tree at ", concat(base_ref, concat(": ", tree.stderr)))
+      }
+    } else {
+      let listed = git.Inspect.ListTreePathsAtRevision(ref: base_ref as GitRef)
+      if !listed.success {
+        SubjectUnreadable {
+          cause: concat("could not list the base tree paths at ", concat(base_ref, concat(": ", listed.stderr)))
+        }
+      } else {
+        SubjectEstablished {
+          subject: ContainmentSubject {
+            base_ref: base_ref,
+            base_commit: trim(s: commit.sha as String),
+            base_tree: trim(s: tree.tree),
+            remote: remote,
+            merge_driver: observed_merge_driver(),
+            base_paths: base_path_set(paths_nul: listed.paths_nul)
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE LINE-GRAIN MEASURE.
+//
+// An added line counts only if it is non-empty after trimming: blank lines carry no content and a
+// branch that adds fifty of them is not fifty percent landed. Comparison is on the TRIMMED text, so
+// a line re-indented into a different block still reads as present -- deliberately, because the
+// measure exists to answer "is this content there", and indentation is position.
+type AddedLine {
+  path: String
+  text: String
+}
+
+type AddedLineScan {
+  current_path: String
+  lines: List<AddedLine>
+}
+
+// The unified-diff fold. `+++ b/<path>` opens a file; `---`/`+++` framing, hunk headers and removed
+// lines are skipped; every other `+` line is content. The `/dev/null` new-side of a pure deletion
+// never opens a file, so a deleted file contributes no added lines rather than an empty path.
+fn added_line_scan_step(acc: AddedLineScan, line: String) -> AddedLineScan {
+  if starts_with(s: line, prefix: "+++ b/") {
+    AddedLineScan {
+      current_path: substring(s: line, start: 6, end: string_length(s: line)),
+      lines: acc.lines
+    }
+  } else if starts_with(s: line, prefix: "+++ ") || starts_with(s: line, prefix: "--- ") {
+    AddedLineScan { current_path: "", lines: acc.lines }
+  } else if starts_with(s: line, prefix: "diff --git ") {
+    AddedLineScan { current_path: "", lines: acc.lines }
+  } else if acc.current_path == "" {
+    acc
+  } else if starts_with(s: line, prefix: "@@") {
+    acc
+  } else if !starts_with(s: line, prefix: "+") {
+    acc
+  } else {
+    let text = trim(s: substring(s: line, start: 1, end: string_length(s: line)))
+    if text == "" {
+      acc
+    } else {
+      AddedLineScan {
+        current_path: acc.current_path,
+        lines: append(acc.lines, AddedLine { path: acc.current_path, text: text })
+      }
+    }
+  }
+}
+
+fn added_lines_of_diff(diff_text: String) -> List<AddedLine> {
+  fold(
+    split(s: diff_text, delimiter: "\n"),
+    init: AddedLineScan { current_path: "", lines: [] },
+    f: (acc, line) => added_line_scan_step(acc: acc, line: line)
+  ).lines
+}
+
+// ABSENCE AND UNREADABILITY ARE DIFFERENT STATES, AND AN EARLIER REVISION OF THIS FUNCTION MADE
+// THEM ONE. It read `git show <base>:<path>` and answered the EMPTY LINE SET whenever the read
+// failed, with a comment above it asserting that the empty answer was correct because a branch
+// adding a new file adds every one of its lines. The first half of that is true. The second half
+// is the defect: `git show` exits 128 for a path that is not at the base AND for a ref it cannot
+// read, so a failure that meant "I could not observe this" was rendered as "the base carries none
+// of these lines" -- which drives `present` to zero, the ratio to zero, and the row to
+// ContributesNewContent, while the report still says `measured`. That is the empty-observation
+// narrow this repository catalogues: not a widen that costs time, a NARROW that is silently wrong,
+// and it fabricates exactly the disposition a triaging lane reads as "leave this PR alone".
+// Found by codex/gpt-5.6-sol in review 57213 on gunbc#9590.
+//
+// THE REPAIR IS CONSTRUCTION, NOT A CHECK, and the reason is measured rather than assumed: both
+// states exit 128 and differ only in stderr TEXT, so no exit-code test separates them and a
+// stderr-substring test would be a second, positional naming scheme for a fact git already carries
+// structurally. So absence is decided BEFORE the read, against the base's own path set (listed once
+// on the subject): a path outside that set is absent by construction and is never read at all, and
+// a read that then fails is unreadable with no absent arm to be confused with. The conflation has
+// no spelling left rather than being detected.
+type BaseFileReading
+  = BaseFileAbsent
+  | BaseFileLines { lines: Map<String, Bool> }
+  | BaseFileUnreadable { path: String, cause: String }
+
+fn base_file_reading(subject: ContainmentSubject, path: String) -> BaseFileReading {
+  if !map_contains_key(subject.base_paths, path) {
+    BaseFileAbsent
+  } else {
+    let shown = git.Core.Show(ref: subject.base_ref as GitRef, path: path as FilePath)
+    if !shown.success {
+      BaseFileUnreadable {
+        path: path,
+        cause: concat(
+          concat("git show ", concat(subject.base_ref, concat(":", path))),
+          concat(" failed for a path the base tree lists: ", shown.stderr)
+        )
+      }
+    } else {
+      BaseFileLines {
+        lines: fold(
+          split(s: shown.content, delimiter: "\n"),
+          init: empty_map(),
+          f: (acc, line) => map_insert(acc, trim(s: line), true)
+        )
+      }
+    }
+  }
+}
+
+type ContainmentTally {
+  added: Int
+  present: Int
+  residue: List<AddedLine>
+}
+
+// Counted per FILE so the base's copy is read once per file rather than once per line. The residue
+// -- the added lines the base does not carry -- travels with the tally because a candidate is
+// useless without it: the whole point of the candidate arm is that a person reads what is left.
+// THE UNREADABLE STATE PROPAGATES RATHER THAN BEING ABSORBED. A tally is a measurement, and a
+// measurement one of whose files could not be observed is not a smaller measurement -- it is not a
+// measurement. So the accumulator carries the refusal and every later file is skipped: the run
+// reports the branch as unobserved with the failing path named, and no ratio is computed from a
+// denominator nobody read.
+type TallyReading
+  = TallyRead { tally: ContainmentTally }
+  | TallyUnreadable { path: String, cause: String }
+
+fn tally_counted_lines(acc: ContainmentTally, base_lines: Map<String, Bool>, lines: List<AddedLine>) -> ContainmentTally {
+  fold(
+    lines,
+    init: acc,
+    f: (state, added) =>
+      if map_contains_key(base_lines, added.text) {
+        ContainmentTally { added: state.added + 1, present: state.present + 1, residue: state.residue }
+      } else {
+        ContainmentTally {
+          added: state.added + 1,
+          present: state.present,
+          residue: append(state.residue, added)
+        }
+      }
+  )
+}
+
+fn tally_file(acc: TallyReading, subject: ContainmentSubject, path: String, lines: List<AddedLine>) -> TallyReading {
+  match acc {
+    TallyUnreadable { path: p, cause: c } => TallyUnreadable { path: p, cause: c }
+    TallyRead { tally: tally } =>
+      match base_file_reading(subject: subject, path: path) {
+        BaseFileUnreadable { path: p, cause: c } => TallyUnreadable { path: p, cause: c }
+        BaseFileAbsent =>
+          TallyRead { tally: tally_counted_lines(acc: tally, base_lines: empty_map(), lines: lines) }
+        BaseFileLines { lines: base_lines } =>
+          TallyRead { tally: tally_counted_lines(acc: tally, base_lines: base_lines, lines: lines) }
+      }
+  }
+}
+
+fn distinct_added_paths(lines: List<AddedLine>) -> List<String> {
+  sorted_map_keys(
+    fold(lines, init: empty_map(), f: (acc, added) => map_insert(acc, added.path, true))
+  )
+}
+
+fn tally_added_lines(subject: ContainmentSubject, lines: List<AddedLine>) -> TallyReading {
+  fold(
+    distinct_added_paths(lines: lines),
+    init: TallyRead { tally: ContainmentTally { added: 0, present: 0, residue: [] } },
+    f: (acc, path) =>
+      tally_file(
+        acc: acc,
+        subject: subject,
+        path: path,
+        lines: filter(lines, added => added.path == path)
+      )
+  )
+}
+
+// Per-mille, floor division, and the zero-added case is NOT a ratio. A branch with no added lines
+// has nothing to be a fraction of, and answering 1000 there would report a pure deletion as fully
+// landed content.
+fn containment_per_mille(tally: ContainmentTally) -> Int {
+  if tally.added == 0 {
+    0
+  } else {
+    (tally.present * containment_ratio_scale) / tally.added
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DISPOSITIONS.
+//
+// Five states, and the split between the first three is the whole content of the instrument.
+//
+// ContentContained          -- tree grain says merging changes nothing. CERTAIN.
+// PositionOnlyDivergence    -- every added line is on the base, yet merging still changes the tree.
+//                              This is gunbc#9522's shape: the same content authored at a different
+//                              position. It is NOT reported as contained, because it is not -- the
+//                              merge really would add a duplicate declaration -- and it is not
+//                              reported as new either. It is the state where the two measures
+//                              disagree, and a reader is told so rather than handed a resolution.
+// ResidueCandidate          -- at or above the threshold, with residue lines to read. NEVER a
+//                              verdict: four of these were partially-landed stacks with real work.
+// ContributesNewContent     -- below the threshold. Ordinary.
+// BranchUnobserved          -- the branch ref, diff or merge-tree could not be read. A refusal,
+//                              never an assumption in either direction: an unreadable branch is not
+//                              contained and it is not new, it is unmeasured.
+type ContainmentDisposition
+  = ContentContained { head_commit: String, merged_tree: String, added: Int }
+  | PositionOnlyDivergence { head_commit: String, merged_tree: String, added: Int }
+  | ResidueCandidate { head_commit: String, per_mille: Int, added: Int, present: Int, residue: List<AddedLine> }
+  | MergeDidNotCompleteReading {
+      head_commit: String
+      per_mille: Int
+      added: Int
+      present: Int
+      residue: List<AddedLine>
+    }
+  | ContributesNewContent { head_commit: String, per_mille: Int, added: Int, present: Int }
+  | BranchUnobserved { branch_ref: String, cause: String }
+
+type PullRequestContainment {
+  number_lexeme: String
+  branch: String
+  disposition: ContainmentDisposition
+}
+
+// The tree-grain measure runs FIRST because it is the certain one, and the line-grain measure runs
+// only where it did not settle the question. Ordering them the other way would spend a diff and a
+// file read per pull request to reach an answer the cheaper certain measure already had.
+// THE BRANCH REF IS QUALIFIED BY A REMOTE, AND A BARE NAME IS REFUSED RATHER THAN RESOLVED.
+// `headRefName` is a name in the REMOTE's namespace, not a ref in this checkout. The first execution
+// of this instrument passed it bare, and the result was not a clean failure: 37 of 65 branches did
+// not resolve at all, while others resolved to STALE LOCAL HEADS left behind by earlier fetches --
+// gunbc#9522 was measured at aff2c4ba, three commits behind the branch's real head, and the report
+// said nothing about which commit it had read. That is a WRONG ANSWER wearing the shape of a right
+// one, which is worse than the unresolved arm beside it, so the ref is composed here and the
+// resolved head travels in every disposition that observed one.
+fn branch_ref_of(remote: String, branch: String) -> String {
+  concat(remote, concat("/", branch))
+}
+
+fn classify_branch(subject: ContainmentSubject, remote: String, branch: String) -> ContainmentDisposition {
+  let ref_text = branch_ref_of(remote: remote, branch: branch)
+  let head = git.Inspect.ResolveRefCommit(ref: ref_text as GitRef)
+  if !head.success {
+    BranchUnobserved {
+      branch_ref: ref_text,
+      cause: concat("could not resolve ", concat(ref_text, " -- fetch the remote before measuring"))
+    }
+  } else {
+    let head_commit = trim(s: head.sha as String)
+    let merged = git.Inspect.MergeTreeWriteTree(
+      left: subject.base_ref as GitRef,
+      right: ref_text as GitRef
+    )
+    match merge_tree_outcome(exit_code: merged.exit_code, stdout: merged.stdout, stderr: merged.stderr) {
+      MergeTreeRefused { exit_code: code, stderr: err } =>
+        BranchUnobserved {
+          branch_ref: ref_text,
+          cause: concat(
+            concat("git merge-tree refused for ", ref_text),
+            concat(" (exit ", concat(to_string(code), concat("): ", err)))
+          )
+        }
+      MergeTreeClean { tree_hex: tree } =>
+        classify_against_tree(
+          subject: subject,
+          branch_ref: ref_text,
+          head_commit: head_commit,
+          tree_answer: MergeCompleted { merged_tree: tree }
+        )
+      MergeTreeConflicted { tree_hex: _ } =>
+        classify_against_tree(
+          subject: subject,
+          branch_ref: ref_text,
+          head_commit: head_commit,
+          tree_answer: MergeDidNotComplete
+        )
+    }
+  }
+}
+
+// THE TREE-GRAIN ANSWER IS A TYPE, NOT A STRING, AND THAT IS THE REPAIR OF A REAL DEFECT.
+//
+// An earlier revision of this module passed the merged tree oid down as a bare String and compared
+// it to the base's tree WHATEVER the exit code said, on the argument that "a merge which conflicts
+// but resolves to the base's own tree has still added nothing". That argument is wrong, and the
+// error is the strongest one this module could make.
+//
+// Measured, in a scratch repository rather than from git's manual: `git merge-tree --write-tree`
+// exits 1 on conflict and STILL PRINTS A VALID TREE OID on its first line, with the stage 1/2/3
+// entries beneath it. So the tree is always there and only the EXIT CODE says whether a merge
+// happened. Exit 1 means git could not complete the merge -- and "merging this branch changes
+// nothing" is a claim about a COMPLETED merge. Deciding it from a tree git built while failing
+// answers ContentContained, the one disposition a reader is entitled to act on, about a merge that
+// never happened.
+//
+// The repair is construction rather than a check: MergeDidNotComplete carries no tree, so
+// ContentContained has no constructible path from a conflicted merge. Nothing compares an exit
+// code here; the arm simply does not exist. Found by eager-owl-431 against real git, and it is
+// exactly the class the stale-ref finding above belongs to -- a wrong answer wearing the shape of
+// a right one, invisible to a compile.
+//
+// A CONFLICT IS NOT "CONTRIBUTES NEW CONTENT" EITHER. The line-grain measure does not depend on
+// merging, so it still runs and can still raise a candidate; what it can never do is report the
+// certain arm.
+type TreeGrainAnswer
+  = MergeCompleted { merged_tree: String }
+  | MergeDidNotComplete
+fn classify_against_tree(
+  subject: ContainmentSubject,
+  branch_ref: String,
+  head_commit: String,
+  tree_answer: TreeGrainAnswer
+) -> ContainmentDisposition {
+  let diff = git.Core.DiffUnified0(
+    base: subject.base_ref as GitRef,
+    head: branch_ref as GitRef,
+    range: ThreeDot
+  )
+  if !diff.success {
+    BranchUnobserved {
+      branch_ref: branch_ref,
+      cause: concat("git diff -U0 ", concat(subject.base_ref, concat("...", concat(branch_ref, " failed"))))
+    }
+  } else {
+    match tally_added_lines(subject: subject, lines: added_lines_of_diff(diff_text: diff.diff)) {
+      TallyUnreadable { path: _, cause: c } =>
+        BranchUnobserved { branch_ref: branch_ref, cause: c }
+      TallyRead { tally: tally } =>
+        containment_disposition_of(
+          base_tree: subject.base_tree,
+          head_commit: head_commit,
+          tree_answer: tree_answer,
+          tally: tally
+        )
+    }
+  }
+}
+
+// THE DECISION IS SEPARATED FROM THE OBSERVATIONS THAT FEED IT, and the separation is what makes the
+// rule testable: this function touches no repository, so a witness can hand it the exact tree and
+// tally combinations that distinguish the arms -- including the one no live corpus is guaranteed to
+// contain on any given day, a branch at ratio 1000 whose merged tree still differs. An instrument
+// whose only path to its own rule runs a git command has no authorable RED for that rule.
+//
+// THE ORDER OF THE ARMS IS THE RULE. Tree grain is asked first because it is the certain measure;
+// the line-grain arms are reached only where it did not settle the question, and neither of them can
+// ever return ContentContained.
+fn containment_disposition_of(
+  base_tree: String,
+  head_commit: String,
+  tree_answer: TreeGrainAnswer,
+  tally: ContainmentTally
+) -> ContainmentDisposition {
+  match tree_answer {
+    MergeCompleted { merged_tree: tree } =>
+      containment_disposition_of_completed_merge(
+        base_tree: base_tree,
+        head_commit: head_commit,
+        merged_tree: tree,
+        tally: tally
+      )
+    MergeDidNotComplete =>
+      MergeDidNotCompleteReading {
+        head_commit: head_commit,
+        per_mille: containment_per_mille(tally: tally),
+        added: tally.added,
+        present: tally.present,
+        residue: residue_within_payload_bound(tally: tally)
+      }
+  }
+}
+
+fn containment_disposition_of_completed_merge(
+  base_tree: String,
+  head_commit: String,
+  merged_tree: String,
+  tally: ContainmentTally
+) -> ContainmentDisposition {
+  if merged_tree == base_tree {
+    ContentContained { head_commit: head_commit, merged_tree: merged_tree, added: tally.added }
+  } else {
+    containment_disposition_by_line_grain(
+      head_commit: head_commit,
+      merged_tree: merged_tree,
+      tally: tally
+    )
+  }
+}
+
+// THE RESIDUE PAYLOAD BOUND, applied at one site so both readings use the same rule. Below the cut
+// the residue is omitted rather than emptied of meaning: the report would otherwise carry the whole
+// diff, which is the cost this bound exists to hold.
+fn residue_within_payload_bound(tally: ContainmentTally) -> List<AddedLine> {
+  if containment_per_mille(tally: tally) >= containment_candidate_threshold_per_mille {
+    tally.residue
+  } else {
+    []
+  }
+}
+
+// THE LINE-GRAIN ARMS FOR A COMPLETED MERGE THAT CHANGED THE TREE. The merged tree is a parameter
+// rather than a sentinel, and that is the repair of a defect review found in the FIRST repair:
+// removing the tree from MergeDidNotComplete closed the type, and then this function was called with
+// `merged_tree: ""`, which put the sentinel straight back at the call site. PositionOnlyDivergence
+// printed it as an empty field while its note asserted "yet merging changes the tree" -- a claim only
+// the completed path establishes, since a conflict established that merging FAILED. So this function
+// is now reachable ONLY from a completed merge, and the conflicted reading has its own arm above.
+//
+// WHY THAT ARM IS NOT A DETAIL: measured on the live run, ALL THREE candidates conflicted. Every
+// residue-candidate row in that report came from a merge that did not complete, and the report could
+// not say so. A clean merge at 858 and a conflicting branch at 858 need different actions -- the
+// second cannot be assessed as mostly-landed until it is rebased (eager-owl-431, reviewing #9590).
+fn containment_disposition_by_line_grain(
+  head_commit: String,
+  merged_tree: String,
+  tally: ContainmentTally
+) -> ContainmentDisposition {
+  let ratio = containment_per_mille(tally: tally)
+  if tally.added > 0 && ratio == containment_ratio_scale {
+    PositionOnlyDivergence { head_commit: head_commit, merged_tree: merged_tree, added: tally.added }
+  } else if tally.added > 0 && ratio >= containment_candidate_threshold_per_mille {
+    ResidueCandidate {
+      head_commit: head_commit,
+      per_mille: ratio,
+      added: tally.added,
+      present: tally.present,
+      residue: tally.residue
+    }
+  } else {
+    ContributesNewContent {
+      head_commit: head_commit,
+      per_mille: ratio,
+      added: tally.added,
+      present: tally.present
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROSTER.  `gh pr list --json` is the only enumeration of open pull requests; it is read
+// through the existing readonly operation rather than re-spelled here.
+//
+// THE DECODE REFUSES RATHER THAN SHRINKING. A roster this instrument could not fully decode is a
+// roster whose missing members would be reported as "not a duplicate" by being absent from the
+// report -- the empty-observation narrow DESIGN names, where an observation that could not be read
+// renders as the verdict "nothing is affected". So a member that does not decode stops the read.
+//
+// THE PULL-REQUEST NUMBER IS CARRIED AS ITS LEXEME, not decoded to Int, and that is a scope
+// statement rather than a shortcut: this instrument IDENTIFIES pull requests and never computes
+// with their numbers. Decoding would mint a second numeric authority beside extdeps.languages.json
+// for no consumer that needs one.
+type RosterEntry {
+  number_lexeme: String
+  branch: String
+}
+
+type RosterRead
+  = RosterDecoded { entries: List<RosterEntry> }
+  | RosterUnreadable { cause: String }
+
+fn open_pull_request_roster(repo: String) -> RosterRead {
+  let listed = github.CliPulls.ListOpenJson(repo: repo as NonEmptyStr)
+  if !listed.success {
+    RosterUnreadable {
+      cause: concat("gh pr list refused for ", concat(repo, concat(": ", listed.stderr)))
+    }
+  } else {
+    match parse_json_document(s: listed.stdout) {
+      JsonDocumentUnreadable { gap: g } =>
+        RosterUnreadable {
+          cause: concat(
+            concat("could not decode the gh pr list document for ", repo),
+            concat(" -- ", json_document_gap_text(gap: g))
+          )
+        }
+      JsonDocumentParsed { value: v } => roster_of_json(value: v)
+    }
+  }
+}
+
+fn roster_of_json(value: JsonValue) -> RosterRead {
+  match value {
+    JsonArray { elements: es } =>
+      fold(
+        es,
+        init: RosterDecoded { entries: [] },
+        f: (acc, element) => roster_with_member(acc: acc, element: element)
+      )
+    JsonNull => RosterUnreadable { cause: "gh pr list did not return a JSON array" }
+    JsonBool { value: _ } => RosterUnreadable { cause: "gh pr list did not return a JSON array" }
+    JsonNumber { lexeme: _ } => RosterUnreadable { cause: "gh pr list did not return a JSON array" }
+    JsonString { value: _ } => RosterUnreadable { cause: "gh pr list did not return a JSON array" }
+    JsonObject { members: _ } => RosterUnreadable { cause: "gh pr list did not return a JSON array" }
+  }
+}
+
+// A duplicated or absent field REFUSES the whole roster rather than skipping the member, per the
+// note above: a skipped member is a pull request this instrument silently never measured.
+fn roster_member_field(element: JsonValue, key: String) -> String {
+  match json_object_unique_member(v: element, key: key) {
+    JsonMemberFound { value: v } => json_scalar_text(value: v)
+    JsonMemberAbsent => ""
+    JsonMemberDuplicated { count: _ } => ""
+    JsonMemberNotAnObject => ""
+  }
+}
+
+fn json_scalar_text(value: JsonValue) -> String {
+  match value {
+    JsonString { value: sv } => sv
+    JsonNumber { lexeme: lx } => lx as String
+    JsonNull => ""
+    JsonBool { value: _ } => ""
+    JsonArray { elements: _ } => ""
+    JsonObject { members: _ } => ""
+  }
+}
+
+fn roster_with_member(acc: RosterRead, element: JsonValue) -> RosterRead {
+  match acc {
+    RosterUnreadable { cause: c } => RosterUnreadable { cause: c }
+    RosterDecoded { entries: es } => {
+      let number = roster_member_field(element: element, key: "number")
+      let branch = roster_member_field(element: element, key: "headRefName")
+      if number == "" || branch == "" {
+        RosterUnreadable {
+          cause: "a pull request entry carries no readable number or headRefName -- refusing the whole roster rather than measuring a subset"
+        }
+      } else {
+        RosterDecoded {
+          entries: append(es, RosterEntry { number_lexeme: number, branch: branch })
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REPORT.
+//
+// Every row names the base it was measured against, because a disposition without one is unjoinable
+// with any later report: "contained" is a relation to a tree that moves whenever anything merges.
+//
+// THE REPORT IS THE PRODUCT. There is no verdict line, no count of duplicates presented as a
+// finding, and no exit status that depends on what was found -- the exit status reports whether the
+// INSTRUMENT ran, exactly as tools.emission_entry_instrument's does, because any other mapping makes
+// a broken instrument indistinguishable from a clean population.
+// THE COUNTED REMAINDER. Every disposition is counted, including the one the threshold excluded
+// from the candidate set, so a reader learns the SIZE of what they are not being pointed at rather
+// than inferring it from an absence.
+fn disposition_count(rows: List<PullRequestContainment>, name: String) -> Int {
+  count(filter(rows, r => disposition_name(d: r.disposition) == name))
+}
+
+fn containment_count_rows(rows: List<PullRequestContainment>) -> List<String> {
+  [
+    concat("count\ttotal\t", to_string(count(rows))),
+    concat("count\tcontent-contained\t", to_string(disposition_count(rows: rows, name: "content-contained"))),
+    concat(
+      "count\tposition-only-divergence\t",
+      to_string(disposition_count(rows: rows, name: "position-only-divergence"))
+    ),
+    concat("count\tresidue-candidate\t", to_string(disposition_count(rows: rows, name: "residue-candidate"))),
+    concat(
+      "count\tmerge-did-not-complete\t",
+      to_string(disposition_count(rows: rows, name: "merge-did-not-complete"))
+    ),
+    concat(
+      "count\tbelow-threshold-not-pointed-at\t",
+      concat(
+        to_string(disposition_count(rows: rows, name: "contributes-new-content")),
+        "\tthe threshold excluded these from the candidate set; every one is listed in full below"
+      )
+    ),
+    concat("count\tbranch-unobserved\t", to_string(disposition_count(rows: rows, name: "branch-unobserved")))
+  ]
+}
+
+fn containment_subject_rows(subject: ContainmentSubject) -> List<String> {
+  [
+    concat("base_ref\t", subject.base_ref),
+    concat("base_commit\t", subject.base_commit),
+    concat("base_tree\t", subject.base_tree),
+    concat("candidate_threshold_per_mille\t", to_string(containment_candidate_threshold_per_mille)),
+    concat("branch_remote\t", subject.remote),
+    concat("merge_generated_artifact_driver\t", subject.merge_driver)
+  ]
+}
+
+fn disposition_name(d: ContainmentDisposition) -> String {
+  match d {
+    ContentContained { head_commit: _, merged_tree: _, added: _ } => "content-contained"
+    PositionOnlyDivergence { head_commit: _, merged_tree: _, added: _ } => "position-only-divergence"
+    ResidueCandidate { head_commit: _, per_mille: _, added: _, present: _, residue: _ } => "residue-candidate"
+    MergeDidNotCompleteReading { head_commit: _, per_mille: _, added: _, present: _, residue: _ } =>
+      "merge-did-not-complete"
+    ContributesNewContent { head_commit: _, per_mille: _, added: _, present: _ } => "contributes-new-content"
+    BranchUnobserved { branch_ref: _, cause: _ } => "branch-unobserved"
+  }
+}
+
+fn containment_rows(pr: PullRequestContainment) -> List<String> {
+  let prefix = concat(
+    concat("pr\t", pr.number_lexeme),
+    concat("\t", concat(pr.branch, concat("\t", disposition_name(d: pr.disposition))))
+  )
+  match pr.disposition {
+    ContentContained { head_commit: head, merged_tree: tree, added: added } =>
+      [
+        concat(
+          prefix,
+          concat(
+            "\thead\t",
+            concat(head, concat("\tmerged_tree\t", concat(tree, concat("\tadded\t", to_string(added)))))
+          )
+        ),
+        "  note\tmerging this branch changes nothing in the base tree -- CERTAIN"
+      ]
+    PositionOnlyDivergence { head_commit: head, merged_tree: tree, added: added } =>
+      [
+        concat(
+          prefix,
+          concat(
+            "\thead\t",
+            concat(head, concat("\tmerged_tree\t", concat(tree, concat("\tadded\t", to_string(added)))))
+          )
+        ),
+        "  note\tevery added line is already on the base, yet merging changes the tree -- the same content authored at a different position; read it before acting"
+      ]
+    ResidueCandidate { head_commit: head, per_mille: ratio, added: added, present: present, residue: residue } =>
+      concat(
+        [
+          concat(
+            prefix,
+            concat(
+              "\thead\t",
+              concat(
+                head,
+                concat(
+                  "\tper_mille\t",
+                  concat(
+                    to_string(ratio),
+                    concat("\tadded\t", concat(to_string(added), concat("\tpresent\t", to_string(present))))
+                  )
+                )
+              )
+            )
+          ),
+          "  note\tCANDIDATE ONLY -- a person must read the residue below; four members of this class were partially-landed stacks carrying real work"
+        ],
+        map(residue, r => concat("  residue\t", concat(r.path, concat("\t", r.text))))
+      )
+    MergeDidNotCompleteReading { head_commit: head, per_mille: ratio, added: added, present: present, residue: residue } =>
+      concat(
+        [
+          concat(
+            prefix,
+            concat(
+              "\thead\t",
+              concat(
+                head,
+                concat(
+                  "\tper_mille\t",
+                  concat(
+                    to_string(ratio),
+                    concat("\tadded\t", concat(to_string(added), concat("\tpresent\t", to_string(present))))
+                  )
+                )
+              )
+            )
+          ),
+          "  note\tthe merge did NOT complete, so no tree-grain answer exists for this branch. READ THE DRIVER LINE ABOVE BEFORE ACTING: where merge.generated-artifact.driver is configured, a refusal over a GENERATED path is this repository's driver declining a derived projection, whose remedy is REGENERATE, not rebase -- measured, five of twelve such branches carry no authored conflict at all and flip to a clean merge when the driver is neutralised. This arm does not yet separate the two, which is a declared fusion rather than a discovered one"
+        ],
+        map(residue, r => concat("  residue\t", concat(r.path, concat("\t", r.text))))
+      )
+    ContributesNewContent { head_commit: head, per_mille: ratio, added: added, present: present } =>
+      [
+        concat(
+          prefix,
+          concat(
+            "\thead\t",
+            concat(
+              head,
+              concat(
+                "\tper_mille\t",
+                concat(
+                  to_string(ratio),
+                  concat("\tadded\t", concat(to_string(added), concat("\tpresent\t", to_string(present))))
+                )
+              )
+            )
+          )
+        )
+      ]
+    BranchUnobserved { branch_ref: ref_text, cause: c } =>
+      [concat(prefix, concat("\tref\t", concat(ref_text, concat("\tcause\t", c))))]
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE MEASUREMENT.
+type ContainmentReport
+  = ContainmentMeasured { subject: ContainmentSubject, rows: List<PullRequestContainment> }
+  | ContainmentUnreached { cause: String }
+
+fn measure_open_pull_request_containment(repo: String, base_ref: String, remote: String) -> ContainmentReport {
+  match establish_containment_subject(base_ref: base_ref, remote: remote) {
+    SubjectUnreadable { cause: c } => ContainmentUnreached { cause: c }
+    SubjectEstablished { subject: subject } =>
+      match open_pull_request_roster(repo: repo) {
+        RosterUnreadable { cause: c } => ContainmentUnreached { cause: c }
+        RosterDecoded { entries: entries } =>
+          ContainmentMeasured {
+            subject: subject,
+            rows: map(
+              entries,
+              e => PullRequestContainment {
+                number_lexeme: e.number_lexeme,
+                branch: e.branch,
+                disposition: classify_branch(subject: subject, remote: remote, branch: e.branch)
+              }
+            )
+          }
+      }
+  }
+}
+
+fn containment_report_text(report: ContainmentReport) -> String {
+  match report {
+    ContainmentUnreached { cause: c } =>
+      concat("outcome\tunreached\ncause\t", concat(c, "\n"))
+    ContainmentMeasured { subject: subject, rows: rows } =>
+      concat(
+        join(
+          concat(
+            concat(
+              concat(["outcome\tmeasured"], containment_subject_rows(subject: subject)),
+              containment_count_rows(rows: rows)
+            ),
+            flat_map(rows, r => containment_rows(pr: r))
+          ),
+          "\n"
+        ),
+        "\n"
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLI SURFACE.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/pr_containment_instrument.dag --function measure \
+//     --arg repo=gunb-ai/gunbc --arg base=origin/main --arg remote=origin \
+//     --arg report=/tmp/containment.tsv
+//
+// The branches must be fetched before the run: an unresolvable ref is reported as BranchUnobserved
+// rather than fetched here, because a measuring instrument that mutates the repository it measures
+// can change its own answer between runs.
+//
+// THE EXIT STATUS REPORTS THE INSTRUMENT, NOT THE POPULATION. A run that finds twenty contained
+// pull requests exits zero; a run whose base could not be resolved exits nonzero having found
+// nothing wrong with anything.
+fn measure(repo: String, base: String, remote: String, report: String) -> ProcessExit {
+  if repo == "" {
+    exit_failure(reason: "measure: --arg repo=<owner/name> is required")
+  } else if report == "" {
+    exit_failure(reason: "measure: --arg report=<path> is required -- the measurement is written, not printed")
+  } else {
+    let base_ref = if base == "" { "origin/main" } else { base }
+    let branch_remote = if remote == "" { "origin" } else { remote }
+    let measured = measure_open_pull_request_containment(
+      repo: repo,
+      base_ref: base_ref,
+      remote: branch_remote
+    )
+    let write = Filesystem.Write(path: report, content: containment_report_text(report: measured))
+    if !write.success {
+      exit_failure(reason: concat("measure: could not write the report to ", report))
+    } else {
+      match measured {
+        ContainmentMeasured { subject: _, rows: _ } => ExitSuccess
+        ContainmentUnreached { cause: c } =>
+          exit_failure(reason: concat("measure: the instrument did not complete -- ", c))
+      }
+    }
+  }
+}

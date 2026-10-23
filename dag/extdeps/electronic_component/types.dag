@@ -1,0 +1,57 @@
+module extdeps.electronic_component.types
+
+import std.types { List, NonEmptyStr }
+import std.measure { Volt, Ampere }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Electronic_component"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.types",
+      decl_name: "ElectronicComponentRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE SHAPE A BOARD READING NEEDS FROM A PART'S DATASHEET. A photograph of a populated board shows
+// top markings; a datasheet binds a marking to an ordering code and to ratings. The one rating a
+// power-path reading consumes is the MAXIMUM VOLTAGE the part tolerates, and its meaning differs by
+// part kind, so the kind is carried with the figure rather than left implicit: a MOSFET's
+// drain-source maximum is a breakdown limit, a fuse's rated voltage is the highest it can safely
+// interrupt, a capacitor's is its rated working voltage. Each one bounds the rail the part sits on
+// from above; none of them says what that rail IS. vendor_application_statements are the vendor's
+// own words, verbatim: a part designed for one application is weak evidence of the circuit it sits
+// in, and the evidence is the vendor's sentence rather than a summary of it.
+type VoltageRatingKind
+  = DrainSourceMaximum
+  | FuseInterruptRating
+  | CapacitorRatedVoltage
+
+type ComponentVoltageRating {
+  kind: VoltageRatingKind
+  maximum: Volt
+}
+
+type ElectronicComponentRow {
+  vendor: Vendor<Hardware>
+  ordering_code: NonEmptyStr
+  package: NonEmptyStr
+  top_marking: NonEmptyStr
+  voltage_rating: ComponentVoltageRating
+  current_rating: Ampere
+  vendor_application_statements: List<NonEmptyStr>
+}

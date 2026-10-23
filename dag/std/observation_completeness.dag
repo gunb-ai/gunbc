@@ -1,0 +1,80 @@
+module std.observation_completeness
+
+import std.types { Bool, Int, List }
+
+// THE ONE IDENTITY JOIN BETWEEN A QUESTION SET AND AN ANSWER SET, KEY-GENERIC.
+//
+// An observation is a set of answers. Whether it is COMPLETE is a question about how that set
+// stands against the set of questions its subject owed answers for, and the question has exactly
+// one right shape regardless of what a key is: nothing expected may be missing, nothing observed
+// may be foreign, and nothing expected may be answered twice.
+//
+// IT LIVES HERE RATHER THAN BESIDE ITS FIRST CONSUMER BECAUSE THERE IS NOW A SECOND ONE, and a
+// second copy of this fold is the failure DESIGN section 3 names: one concept, two authorities,
+// free to disagree, with the disagreement invisible because nothing compares them.
+// v2.workflow.legacy_binding_observation joins reference-occurrence ids;
+// v2.workflow.legacy_repair_observation joins repair sites keyed on two names. Those are different
+// KEYS, not different JOINS -- so the key and its equality are parameters and the law is one.
+//
+// WHY key_eq IS A PARAMETER RATHER THAN A BARE `==`. The keys this join ranges over are not all
+// scalars: a repair site is a pair of names, and its equality lives beside its own declaration.
+// Taking the equality from the caller keeps the key's authority where the key is declared, which is
+// the same reason std.keyed_roster takes one.
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the three refusals below are why.
+//
+// A count equality passes when an observation answers for N keys that are not the subject's -- the
+// exact oracle failure DESIGN section 5 forbids, and it fails in the direction that reads as
+// success. So the law is stated in every direction it can be broken. Nothing expected may be
+// missing and nothing observed may be foreign: either alone is satisfiable by a wrong answer set of
+// the right size. AND ONE KEY MAY BE ANSWERED FOR ONCE, which membership alone does not say --
+// observed [11, 11, 22, 33] against expected [11, 22, 33] has every expected key present and no
+// foreign one, so a two-direction MEMBERSHIP check calls it complete while the artifact carries two,
+// possibly conflicting, outcomes for 11. That is the one-outcome-per-key grain a consumer declares,
+// admitted as a writable state by the very law that was supposed to enforce it.
+//
+// AND A FOURTH REFUSAL, WHICH IS ABOUT THE DENOMINATOR RATHER THAN THE OBSERVATION.
+// The three above all judge the ANSWER set. None of them judges the QUESTION set, and an
+// ill-formed question set defeats all three at once: expected [A, A] against observed [A] has
+// nothing missing (A is present, so BOTH expected entries are filtered out), nothing foreign, and
+// nothing repeated (A is observed once, and the repeat test counts OBSERVED occurrences). So the
+// join returned ObservationComplete over a denominator that asked for A twice and got one answer.
+//
+// THE DIRECTION IS WHAT MAKES IT SERIOUS: a duplicate in the expected list makes the join MORE
+// permissive, and it certifies exactness while the roster is malformed -- the fabricated-plausible
+// -output failure aimed at the very property this module exists to establish. Note the near miss
+// that hides it: expected [A, A] against observed [A, A] DOES refuse as repeated-observed, so the
+// hole is only the single-answer case and a fixture that duplicated both sides would have found
+// nothing.
+//
+// IT IS CHECKED FIRST, BEFORE ANY ARM ABOVE, because the other three are statements ABOUT a
+// question set and are meaningless when there is no well-formed one to be about. Reporting
+// "missing" or "foreign" against a malformed denominator would name the observation as the defect
+// when the defect is the roster, and a consumer would go and fix the wrong artifact.
+type ObservationCompleteness<K>
+  = ObservationComplete
+  | ObservationRepeatedExpected { keys: List<K> }
+  | ObservationMissingExpected { keys: List<K> }
+  | ObservationForeignObserved { keys: List<K> }
+  | ObservationRepeatedObserved { keys: List<K> }
+
+// THE JOIN TAKES TWO DERIVED LISTS, NOT THE CARRIERS THEY CAME FROM, AND THE SPLIT IS DELIBERATE.
+// Two facts sit at every consumer: WHAT the subject's questions are (a derivation the consumer
+// owns, because only it knows its own transport) and WHETHER an answer set matches them exactly
+// (this join). Folding the derivation in would leave the join testable only through a hand-built
+// transport, and would let a change to either half hide behind the other.
+fn observation_completeness<K>(
+  expected: List<K>,
+  observed: List<K>,
+  key_eq: fn(K, K) -> Bool,
+) -> ObservationCompleteness<K> {
+  let repeated_expected = expected |> filter(k => (expected |> filter(e => key_eq(e, k)) |> count) > 1)
+  let missing = expected |> filter(k => !(observed |> any(o => key_eq(o, k))))
+  let foreign = observed |> filter(k => !(expected |> any(e => key_eq(e, k))))
+  let repeated = expected |> filter(k => (observed |> filter(o => key_eq(o, k)) |> count) > 1)
+  if (repeated_expected |> count) > 0 { ObservationRepeatedExpected { keys: repeated_expected } }
+  else if (missing |> count) > 0 { ObservationMissingExpected { keys: missing } }
+  else if (foreign |> count) > 0 { ObservationForeignObserved { keys: foreign } }
+  else if (repeated |> count) > 0 { ObservationRepeatedObserved { keys: repeated } }
+  else { ObservationComplete }
+}

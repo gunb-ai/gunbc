@@ -1,0 +1,66 @@
+module extdeps.colo.stafford_associates
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
+  CabinetDensityClaim, DensityUnread,
+  RetailGrainStanding, SingleCabinetOffered,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.staffordnet.com/hosting_colocation.php"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.stafford_associates",
+      decl_name: "stafford_setauket",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE FINEST PUBLISHED RETAIL GRAIN FOUND ANYWHERE IN THIS REGION: one rack unit. That matters
+// more than it looks. A census whose cheapest published product is a full cabinet cannot price a
+// two-node experiment at all, and every Westchester, Rockland and Hudson Valley operator surveyed
+// on 2026-09-08 sells cabinets upward. This operator and Vastnet are the two exceptions, and both
+// are on Long Island.
+data stafford_setauket: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "Stafford Associates",
+  facility_label: "Stafford Technology Center (Long Island)",
+  address: AddressListed {
+    street: "21 Bennetts Road, Suite 200, East Setauket, NY 11733",
+    citation: "stafforddatacenter.com home page and staffordnet.com colocation page, both read 2026-09-08",
+  },
+  municipality: "East Setauket",
+  region_code: "NY",
+  facility_note: "Suffolk County, on the north shore roughly 55 road miles from Manhattan. The operator markets 'one rack to multi-megawatt deployments', redundant power feeds with diesel generators and UPS, and compliance standing (SSAE 16 Type II, PCI, HIPAA, SOC) with a 100% availability SLA. Its network wording is dated: the colocation page still describes a redundant 100 Mbps full-duplex Fast Ethernet feed, which for a fleet sized in gigabits is a live question rather than a footnote.",
+}
+
+// A SECONDARY SOURCE ASSERTS 6 kW PER RACK HERE AND THIS ROW REFUSES TO CARRY IT. A colocation
+// marketplace listing for a 'Long Island DC 2' under this operator's name states up to 6 kW per
+// rack with N+1 UPS and N+2 cooling. Neither operator page read on 2026-09-08 states any per-rack
+// or per-cabinet power figure. The marketplace is not the operator, and the census's rule is that
+// a density is a reading of the operator's own surface or it is unread.
+data stafford_density: CabinetDensityClaim = DensityUnread {
+  obligation: "Neither staffordnet.com/hosting_colocation.php nor stafforddatacenter.com states watts, kilowatts or amps per rack (read 2026-09-08). Obtain the per-cabinet allocation in writing, and specifically test the unconfirmed 6 kW-per-rack figure that a colocation marketplace listing attributes to this operator's second Long Island hall - including whether a second hall exists and whether the 1U product is sold in it.",
+}
+
+data stafford_retail_grain: RetailGrainStanding = SingleCabinetOffered {
+  wording: "1u, 2u, 1/4, 1/2 to a full locking cabinet, to customized cages",
+  citation: "staffordnet.com colocation page, read 2026-09-08 and confirmed against raw HTML 2026-09-09, where the full sentence reads: Sizes include 1u, 2u, 1/4, 1/2 to a full locking cabinet, to customized cages. The fraction glyphs on the page are rendered here as ASCII fractions; the enumeration is otherwise the page's own.",
+}
+
+data stafford_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "staffordnet.com contact form, or the Setauket office",
+  obligation: "Product grain is published to 1U but no price is published for any of it (read 2026-09-08). Because this is the finest grain in the region, its price is the one that decides whether a small reversible Long Island footprint exists at all - ask for the 1U, 2U and full-cabinet monthly with the power allocation stated in watts at a stated voltage.",
+}

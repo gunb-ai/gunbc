@@ -1,0 +1,48 @@
+module extdeps.exec.xargs
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/xargs.html"
+  }
+}
+
+data xargs_null_delimited_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/xargs.1.html"
+  }
+}
+
+// TWO AUTHORITIES BECAUSE `-0` IS NOT POSIX. POSIX xargs (anchor above) reads a
+// whitespace-delimited, quote-honouring argument stream and defines no null-delimited mode; `-0` /
+// `--null` is a GNU findutils extension (second anchor, xargs(1)), also present in BSD xargs.
+// Citing only POSIX would name an authority that lacks the option this module spells, so both are
+// named and the extension attributed to the spec defining it (DESIGN §3 — keep the real upstream's
+// names and say which spec a flag comes from).
+//
+// WHY NULL DELIMITING IS THE ONLY MODE MODELED HERE. Under default delimiting a path containing a
+// space, tab, newline, or quote is silently split or de-quoted into wrong arguments, producing
+// operations against paths never in the input set — the fabricated-plausible-output arm §5
+// forbids. So the whitespace mode is absent, not offered and warned about: the producer must emit
+// NUL-separated records (git's `-z`, find's `-print0`) and this shape consumes exactly that. A
+// caller wanting the POSIX default mode asks for the unsafe reading and is refused, not
+// accommodated.
+
+// WHAT XARGS IS FOR, AND WHY IT LIVES BESIDE exec_arg_limit. execve(2) bounds how much argv one
+// spawn may carry; xargs batches a long input stream into as many sink invocations as the limit
+// requires. extdeps.exec.exec_arg_limit models the per-argument ceiling (MAX_ARG_STRLEN) of that
+// same boundary, so both are facts about one host interface and share this folder. This module
+// does NOT re-derive a batch size: xargs computes its own from the live limit, and a copy here
+// would be a §3 fork of a number the tool owns — hence no `-s` / `-n` operand below.
+fn xargs_null_delimited_args() -> List<String> {
+  ["xargs", "-0"]
+}
+
+fn shape_xargs_null_delimited_argv(sink_argv: List<String>) -> List<String> {
+  concat(xargs_null_delimited_args(), sink_argv)
+}

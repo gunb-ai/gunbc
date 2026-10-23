@@ -1,0 +1,58 @@
+module gunbc.process_environment_model
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { second }
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
+  ShellObserved, operation_input_text,
+}
+import extdeps.transports.shell { ShellProcessExited }
+
+// A MODELED PROCESS ENVIRONMENT: the variables a scenario's worker was started with, answered through
+// the realization's own contract for extdeps.shell shell.Env.Get (printenv): a set variable prints its
+// value and exits 0; an unset one prints nothing and exits 1, which the operation's optional output
+// projects to Absent -- exactly as a real printenv does. A variable set to the empty string is SET, and
+// prints an empty line, so the consumer's own set-but-empty refusal is exercised rather than bypassed.
+type ModeledVariable {
+  name: String
+  value: String
+}
+
+data shell_env_get_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/shell.dag",
+  service: "shell.Env",
+  operation: "Get",
+}
+
+fn modeled_variable(variables: List<ModeledVariable>, name: String) -> ModeledVariable? {
+  fold(variables, init: none, f: fn(acc, v) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if v.name == name { Present { value: v } } else { none }
+    }
+  })
+}
+
+fn environment_binding<S>(get: fn(S) -> List<ModeledVariable>) -> OperationBinding<S> {
+  OperationBinding {
+    at: shell_env_get_operation,
+    handler: fn(state, call) {
+      match operation_input_text(invocation: call.invocation, name: "name") {
+        Absent => OperationHarnessFault { reason: "an environment read was dispatched without a name" as NonEmptyStr }
+        Present { value: name } => match modeled_variable(variables: get(state), name: name) {
+          Present { value: v } => OperationObserved {
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(v.value, "\n"), stderr: "" } },
+            state: state,
+            elapsed: second(count: 0),
+          }
+          Absent => OperationObserved {
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "" } },
+            state: state,
+            elapsed: second(count: 0),
+          }
+        }
+      }
+    },
+  }
+}

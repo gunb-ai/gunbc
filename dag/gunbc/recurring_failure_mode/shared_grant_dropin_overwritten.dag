@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.shared_grant_dropin_overwritten
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data shared_grant_dropin_overwritten: RecurringFailureMode = RecurringFailureMode {
+  identity: "shared_grant_dropin_overwritten" as NonEmptyStr,
+
+  receipts: [
+    "**one drop-in file for a parameterized grant, so each install overwrites the last** (every InspectServingContainer grant was written to /etc/sudoers.d/gunbc-docker-inspect, so granting a second container revoked the first, and each install's readback confirmed only its own line).",
+
+    "INVALID STATE: gunbc.spark.managed_grant_reconcile spark_managed_grant_dropin_name mapped every InspectServingContainer { container } to one name, so the file a grant writes did not vary with the grant's parameter.",
+
+    "HARM: Group A srv5, fleet-converge run 37166203531: the pair, native and staircase inspect grants all wrote the same file; only the last container stayed inspectable, and serving observation for the others refused for want of a grant the receipts said had been installed. Group B (srv9..srv12) still reads in the shared shape on 2026-10-04 22:53Z: the shared file present and no per-container file, so exactly one container is grantable there and which one is unread.",
+
+    "CONVERGENCE RECEIPT: fleet-converge run 37263427207 (mode spark_grants_observe, head 32e7818d of gunbc#13322, 2026-10-05 ~04:37Z, receipt target/spark-exact-grant-probe-receipt.txt) read sudo -n -l as gunbc-automation on all eight procured Sparks. srv7, srv8: per-container drop-ins only, every grant held (converged). srv5, srv6: every grant held, but the retired shared file is still present beside the per-container files (residue). srv9..srv12 (Group B): the shared file ALONE; of the three inspect grants only the glm-native-tp4 one is held, and the gunbc-spark-pair and glm53-staircase inspect grants are NOT held; ethtool-module-info is held on srv9 and srv11 and not on srv10 and srv12. The bootstrap principal's rows read Permission denied (publickey,password) on Group B and a password demand on Group A, as that principal is a password-only account.",
+
+    "FIRST CONVERGE ON GROUP B: fleet-converge run 37265086320 (mode spark_grants, target srv9, from main, 2026-10-05, operator-approved) installed gunbc-docker-inspect-gunbc-spark-pair and gunbc-docker-inspect-gunbc-glm53-stair-tp4 (visudo-validated, installed, each read back held by the grantee's own sudo listing) and removed nothing -- so the administrator password session reaches Group B -- while glm-native-tp4 stayed held only through the shared file, which is why the removal is a separate decision taken on a fresh reading (gunbc.spark.managed_grant_install spark_retired_dropin_converge, admitted by gunbc.spark.grant_privileged_operation admit_retired_dropin_removal).",
+
+    "DISTINGUISHING FACTS: a parameterized grant whose drop-in name omits the parameter; sudo's own listing cannot attribute an entry to a file, so the shape is read from the drop-in NAMES (gunbc.spark.managed_grant_reconcile spark_inspect_dropin_shape_of_names).",
+
+    "RUNG: found at 1. Now 3 for the install: the drop-in name carries the container (gunbc#13040), so two grants writing one file has no constructor. The ON-HOST state left by the old shape is a coverage obligation, not assumed: gunbc.fleet_multi_principal_probe spark_standing_hosts is DERIVED from the procured Spark roster (operator approval 2026-10-05), so every procured Spark's grant listing and drop-in shape is read by every run of the probe and none can be omitted. CEILING 3 for the residue too. The converge is now modeled: gunbc.spark.managed_grant_install spark_grant_install_host relocates the inspect grants observed HELD while the shared file is present (re-installing them under their own file; a not-held, unread or unadmitted grant never enters through that route), and the removal runs only through gunbc.spark.grant_privileged_operation run_retired_dropin_removal, which consumes a sealed RetiredDropinRemovalAdmission minted only from sealed install receipts covering every modeled inspect grant's own file; host and lease derive from the admission, and a fresh readback confirms the file gone with every grant held (two side-chat reviews of gunbc#13373). NEXT-RUNG TRIGGER: spark_grants run on every procured Spark still in the shared shape (srv5, srv6, srv9..srv12), SUFFICIENT FOR spark_grants_observe reading no procured Spark in SharedInspectDropinShape.",
+  ],
+
+  evidence: [],
+}

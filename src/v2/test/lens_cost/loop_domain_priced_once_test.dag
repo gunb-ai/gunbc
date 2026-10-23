@@ -1,0 +1,82 @@
+module v2.test.lens_cost.loop_domain_priced_once
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.cost { ConstantCost, LinearCost, SumCost, cost_lens }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Succ, Zero }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Authored,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  LoopBoundEdge,
+  LoopDomainEdge,
+  core_edge_label,
+}
+import v2.std.witness { Holds }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A Loop's ^loop_domain_edge is evaluated once, beside the iteration (v2.std.node
+// cost_edge_role CostEdgePricedOnce). Body and domain are each one Transform (unit cost), so the only answer is
+// linear(bound) + 1. Multiplying the domain into the iteration collapses to linear(bound) (a product
+// with a unit factor), and dropping it gives the same, so both wrong arms fail the SumCost shape.
+
+data loop_domain_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^loop_domain_priced_once_leaf } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data loop_domain_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^loop_domain_priced_once_measure } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data loop_domain_unit_work: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [Edge { label: Positional, target: loop_domain_leaf }],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data loop_domain_last: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [
+    Edge { label: Positional, target: loop_domain_unit_work },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data loop_domain_first: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work },
+    Edge { label: Positional, target: loop_domain_unit_work },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn loop_domain_is_linear_plus_one(n: Node) -> Bool {
+  match cost_lens(n: n) {
+    Holds { value: SumCost { lhs: LinearCost { variable: sv }, rhs: ConstantCost { value: Succ { prev: Zero } } } } =>
+      sv.source == loop_domain_measure
+    _ => false
+  }
+}
+
+test fn loop_domain_is_priced_once_beside_the_iteration() -> Bool {
+  loop_domain_is_linear_plus_one(n: loop_domain_last)
+}
+
+test fn loop_domain_price_is_independent_of_edge_placement() -> Bool {
+  loop_domain_is_linear_plus_one(n: loop_domain_first)
+}

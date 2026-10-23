@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.unmarked_workaround
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unmarked_workaround: RecurringFailureMode = RecurringFailureMode {
+  identity: "unmarked_workaround" as NonEmptyStr,
+
+  receipts: [
+    "unmarked workaround (an author-side absorbing fallback — routing around an obstacle with no dissolution trigger; the line-stop signal, never a landing state)",
+  ],
+
+  evidence: [],
+}

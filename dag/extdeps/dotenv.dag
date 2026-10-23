@@ -1,0 +1,26 @@
+module extdeps.dotenv
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, MayContainSecrets }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/motdotla/dotenv"
+  }
+}
+
+// WORKSPACE FOOTPRINT. The dotenv convention stores environment-specific configuration —
+// commonly credentials — in .env files that must never be committed.
+fn dotenv_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "Secrets and local config", upstream: "github.com/motdotla/dotenv" },
+    artifacts: [
+      WorkspaceArtifact { pattern: ".env", meaning: "environment-specific configuration, commonly secrets", reason: MayContainSecrets },
+      WorkspaceArtifact { pattern: ".env.local", meaning: "local override of .env", reason: MayContainSecrets },
+      WorkspaceArtifact { pattern: ".env.*.local", meaning: "per-environment local overrides", reason: MayContainSecrets }
+    ]
+  }
+}

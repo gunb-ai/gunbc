@@ -1,0 +1,9 @@
+module extdeps.fixture.external_authority_file_anchor
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "local/spec.pdf"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "operation": "git.Inspect.MergeBase",
+  "input_hash": "7be9704682d60499",
+  "inputs": [
+    {
+      "name": "repository_path",
+      "value": {
+        "__tag": "Str",
+        "value": "target/test-fixtures/not-a-repository"
+      }
+    },
+    {
+      "name": "left",
+      "value": {
+        "__tag": "Str",
+        "value": "3ad80d79bd1f64a7f75e121d7323aed053a81f0b"
+      }
+    },
+    {
+      "name": "right",
+      "value": {
+        "__tag": "Str",
+        "value": "d0d3a7f6e323428bd771a32b1a19554481e1ae7c"
+      }
+    }
+  ],
+  "response": {
+    "__tag": "Record",
+    "__type": "MergeBase",
+    "fields": {
+      "exit_code": {
+        "__tag": "Int",
+        "value": 128
+      },
+      "sha": {
+        "__tag": "Str",
+        "value": ""
+      },
+      "stderr": {
+        "__tag": "Str",
+        "value": "fatal: Not a valid commit name 3ad80d79bd1f64a7f75e121d7323aed053a81f0b"
+      },
+      "success": {
+        "__tag": "Bool",
+        "value": false
+      }
+    }
+  },
+  "recorded_at": 1787332539
+}

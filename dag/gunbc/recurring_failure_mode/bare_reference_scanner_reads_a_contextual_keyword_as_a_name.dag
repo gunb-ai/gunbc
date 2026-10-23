@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.bare_reference_scanner_reads_a_contextual_keyword_as_a_name
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bare_reference_scanner_reads_a_contextual_keyword_as_a_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "bare_reference_scanner_reads_a_contextual_keyword_as_a_name" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the loader's bare-reference candidate set contains a spelling that the grammar parses as a contextual keyword, not as a name. `v1_compiler.cli_run` `bare_identifier_candidates` is a byte scanner over the annotation-erased text. It knows string literals, `^symbol` literals, binder keywords and destructuring spans, but it does not know the service-operation member keywords of the `.dag` grammar (`response`, `input`, `output`, `idempotent`, `exit`, ...). The parser reads `response { 200 => T }` through the production `v2.extdeps.languages.dag` `dag_grammar_response_block_expr`, which emits `^dag_surface_response_block`, and the scanner still reports `response` as a bare candidate. While no top-level declaration spells a keyword, the census resolves nothing for it and the error is latent. The moment one does, every block using that keyword becomes a reference to it.",
+
+    "HARM: the candidate set feeds both `visit_bare_reference_providers` routes, so the false reference is acted on twice. On the loader route, a zero-import file with a `response` block bare-PULLS the declaring module into its closure, which silently adds an unrelated passenger module (a test module, in the specimen). On the gate route, `unimported_bare_providers` refuses every import-bearing file with such a block as `UnimportedBareProvider` once the file is touched, and tells the author to import a test helper into an extdeps interface. That remedy is a layer inversion. Following it would make the false reference load-bearing.",
+
+    "SPECIMEN, gunbc#12421 (2026-09-27): `test.claim.namecheap_hosts_witness_test` declared a top-level `fn response(result: String) -> String`, a test fixture builder. On main after it landed, 42 `.dag` files carry a service-operation `response { ... }` block (`git grep -lE '^\\s*response \\{' -- '*.dag'`). #12421 touched none of them, so its own floor stayed green, and the defect surfaced on the next PR that did. gunbc#12381 edited only the import lines of `extdeps.cloud.gcp.gcp`, `extdeps.cloud.gcp.secret_manager` and `extdeps.github.app`, and required run 36377883118 refused all three (`phase=unimported-bare-provider-gate touched_paths=163 refusals=3`, `cause=UnimportedBareProvider Unrostered dag/extdeps/cloud/gcp/gcp.dag#response ... provider=dag/test/claim/namecheap_hosts_witness_test.dag`, adjudicated BLOCKING). The same PR's earlier run on the pre-#12421 base had `refusals=0` over the same touched set. That pair is the discriminator: the files did not change, only the census did. MITIGATION, not the repair: #12381 renames the helper to `namecheap_api_response`, which removes today's collision and leaves the scanner as it was.",
+
+    "RUNG FOUND AT: 1, mitigatable, and only by accident. The gate refuses loudly, but it names the wrong fact (a missing import, where the truth is a keyword misread as a name), and the loader-route pull is silent. Nothing prevents the next top-level `input`, `output` or `idempotent` from reopening it. The review tell: an `UnimportedBareProvider` refusal whose `name` is a grammar keyword, or a closure that gains an unrelated module after a declaration was added elsewhere.",
+
+    "ATTAINABLE CEILING: 3, structurally guaranteed. Whether a token is a reference is decided by the parse, and the parse is available. The byte scanner is a heuristic standing where a decided fact exists (DESIGN section 4: in a closed system a heuristic is never necessary). CEILING TRIGGER, at capability grain: the bare-reference candidate set is derived from the PARSED reference occurrences of the file, replacing `v1_compiler.cli_run` `bare_identifier_candidates` on BOTH routes, the loader pull and the unimported-bare-provider gate, so that a keyword position can never enter it. A keyword stoplist added to the scanner is not this trigger. It would be a second copy of the grammar's keyword set that drifts the first time a member keyword is added, and it would move the class to rung 2 at best. Adding one is allowed only as a declared interim step with this trigger beside it. Root fix routed to neat-boar-16 (2026-09-28).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_response_block_expr", field: WholeDeclaration },
+  ],
+}

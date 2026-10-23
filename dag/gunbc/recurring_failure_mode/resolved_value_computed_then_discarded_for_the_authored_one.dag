@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.resolved_value_computed_then_discarded_for_the_authored_one
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data resolved_value_computed_then_discarded_for_the_authored_one: RecurringFailureMode = RecurringFailureMode {
+  identity: "resolved_value_computed_then_discarded_for_the_authored_one" as NonEmptyStr,
+
+  receipts: [
+    "**a phase computes the resolved form of a value, keeps only a by-product of it (its diagnostics), and rebuilds its output from the AUTHORED input** (the phase's result is structurally indistinguishable from a resolved one, so every consumer downstream reads an unresolved value as if the phase had run on it).",
+
+    "**SPECIMEN, 2026-09-17 (CARRIER-KEY-1, tidy-bee-696).** `v1.compiler.infer_resolve` `resolve_item_types`, in its record (Conj) and coproduct (Disj) field arms, computes `tr = resolve_node(n: authored_type)` for each field. It then rebuilds the field with `children: child.children` and `inferred: child.inferred`, keeping only `tr.diagnostics` and `tr.resolved.properties`. The resolved type is thrown away. Its sibling `resolve_field`, which does carry the resolved type, has no callers.",
+
+    "**THE CONSEQUENCE IS A MIS-KEYED IDENTITY, NOT A CRASH.** A field-position type reference reaches emission unresolved and carrying its own span. So `v1.std.core` `type_reference_provenance` keys it on the file the REFERENCE sits in. On the typed tree, the same kernel `String`, `Int` and `Bool` are keyed correctly as function parameters, which go through a path that keeps the resolved node, and wrongly as record fields. Re-derived by `v1.tests.claim.carrier_realization_census` over a closure: join `position_kind` to `split_identity`.",
+
+    "**THE SYMPTOM WAS ALREADY PATCHED ONE LINK DOWNSTREAM**, which is `symptom_link_patched_without_the_earliest_unjustified_boundary` exactly. `v1.compiler.emit_rust` `type_reference_provenance_in_env` re-resolves an unresolved leaf through the environment because `field type exprs are not inferred`. That note states the upstream fact as a given instead of naming it as the defect.",
+
+    "**RECOGNITION RULE.** A phase that calls the resolving function and reads only `.diagnostics` from its result, or rebuilds its output from the input it was handed. Ask what field of the result is dropped, and who downstream compensates for it. A second function that keeps the result and has no callers is the tell that the keeping version was written and then routed around.",
+
+    "**NOT REPAIRED WHERE FOUND.** Carrying the resolved type into the field changes what every renderer sees at every field position, so it is measured under the step-3 renderer reroute of docs/plans/carrier-realization-arbiter-repair-design.md, not landed as a local fix. The interim is `gunbc.rung_drop` `type_reference_location_fallback_keys_production_realization`. Rung found at: outside the ladder (silent). Ceiling: structurally impossible, since the phase's output can carry the resolved node as its only type. Next trigger: the field arms keep `tr.resolved`, `resolve_field` is either their single route or deleted, and the downstream env re-resolution in `type_reference_provenance_in_env` is removed in the same change.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.infer_resolve", decl_name: "resolve_item_types"),
+    decl_ref(module_path: "v1.compiler.infer_resolve", decl_name: "resolve_field"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "type_reference_provenance_in_env"),
+    decl_ref(module_path: "v1.std.core", decl_name: "type_reference_identity"),
+  ],
+}

@@ -1,0 +1,57 @@
+module test.claim.bmc_readback_target_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.tools.bmc_onboard {
+  BmcReadbackTarget,
+  BmcReadbackAddressed,
+  BmcReadbackUnaddressable,
+  bmc_readback_target,
+}
+
+// THE ORACLE IS THE AUTHORED VERSION SEGMENT, NOT A SECOND READING OF THE PROJECTION. Each row below
+// states the version it expects because a human wrote that segment into the name, so the row would
+// still be wrong if the projection were changed to agree with itself. The discriminating property is
+// not merely that SOME version comes back -- it is that the version came from the WRITE's returned
+// name, so a row asserting "latest" is the shape that must never pass.
+data addressable_name: String = "projects/gunbai-secrets/secrets/bmc-witness-secret/versions/7"
+
+test fn a_returned_version_name_addresses_that_exact_version() -> Bool {
+  match bmc_readback_target(stored_name: addressable_name) {
+    BmcReadbackAddressed { identity: _, version: v } => (v as String) == "7"
+    BmcReadbackUnaddressable { supplied: _ } => false
+  }
+}
+
+// THE ROW THAT WOULD HAVE PASSED BEFORE THIS CHANGE AND MUST NOT NOW. "latest" was the version this
+// call site sent regardless of what AddVersion returned; asserting the projection never yields it is
+// what makes the read-back's target derived rather than constant.
+test fn the_addressed_version_is_never_the_moving_alias() -> Bool {
+  match bmc_readback_target(stored_name: addressable_name) {
+    BmcReadbackAddressed { identity: _, version: v } => (v as String) != "latest"
+    BmcReadbackUnaddressable { supplied: _ } => false
+  }
+}
+
+test fn the_addressed_identity_is_the_name_the_write_returned() -> Bool {
+  match bmc_readback_target(stored_name: addressable_name) {
+    BmcReadbackAddressed { identity: id, version: _ } => (id as String) == addressable_name
+    BmcReadbackUnaddressable { supplied: _ } => false
+  }
+}
+
+// THE REFUSAL RED. A name that is not a version resource leaves this run with no version to address.
+// The arm under test is that it REFUSES rather than falling back to the moving alias, because a
+// fallback there would silently restore the behaviour this change removes.
+test fn a_name_that_is_not_a_version_resource_refuses() -> Bool {
+  match bmc_readback_target(stored_name: "not-a-version-resource") {
+    BmcReadbackUnaddressable { supplied: s } => s == "not-a-version-resource"
+    BmcReadbackAddressed { identity: _, version: _ } => false
+  }
+}
+
+test fn a_secret_without_a_version_segment_refuses() -> Bool {
+  match bmc_readback_target(stored_name: "projects/gunbai-secrets/secrets/bmc-witness-secret") {
+    BmcReadbackUnaddressable { supplied: _ } => true
+    BmcReadbackAddressed { identity: _, version: _ } => false
+  }
+}

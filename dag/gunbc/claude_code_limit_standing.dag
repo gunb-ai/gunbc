@@ -1,0 +1,288 @@
+module gunbc.claude_code_limit_standing
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.measure { basis_point_count, basis_point_unity_count }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import extdeps.llm.claude_code_stream_json {
+  ClaudeCodeStreamLine,
+  ClaudeCodeRateLimitEventLine,
+  ClaudeCodeResultLine,
+  ClaudeCodeOtherLine,
+  ClaudeCodeLineUnreadable,
+  ClaudeCodeRateLimitInfo,
+  ClaudeCodeRateLimitWindow,
+  ClaudeCodeTurnResult,
+  ClaudeCodeStreamLineGap,
+  StreamLineNotJson,
+  StreamLineMemberMissing,
+  StreamLineMemberMalformed,
+  claude_code_stream_line,
+  claude_code_rate_limit_status_rejected,
+}
+import gunbc.provider_standing {
+  ProviderStandingBundle,
+  ProviderAuthenticationStanding,
+  ProviderEntitlementObservation,
+  ProviderLimitObservation,
+  ProviderTurnOutcome,
+  ProviderToolEnvironmentStanding,
+  ProviderLimitCredentialIdentity,
+  LimitCredentialLabel,
+  ProviderLimitSubject,
+  ProviderAccountLimit,
+  ProviderNativeLimitBucket,
+  ProviderNativeLimitCause,
+  NativeCauseReported,
+  ProviderLimitReset,
+  LimitResetAt,
+  LimitResetInstantUnobserved,
+  InstallationReady,
+  AuthenticationAuthenticated,
+  AuthenticationRefreshFailed,
+  AuthenticationStandingUnobserved,
+  EntitlementObservedAvailable,
+  EntitlementObservationUnobserved,
+  LimitObservationUnobserved,
+  LimitObservedAvailable,
+  LimitWarning,
+  LimitUnavailableUntilReset,
+  LimitExhausted,
+  TurnSucceeded,
+  TurnFailed,
+  TurnOutcomeUnobserved,
+}
+
+// ONE CLAUDE CODE TRIP, READ AS A STANDING. A headless `claude -p --output-format stream-json`
+// turn under one credential reports two things the dispatch selector needs and has never had for
+// Claude: whether the upstream accepted the credential (the terminal `result` line), and where
+// each rolling usage window of that credential stands (the `rate_limit_event` line). This module
+// projects those lines onto gunbc.provider_standing's vocabulary and invents nothing: a window the
+// line did not name is not observed, a trip with no rate_limit_event leaves limits Unobserved
+// (which blocks every draw), and an unreadable line refuses the whole reading rather than being
+// skipped -- a skipped rate_limit_event line would read as "no limit reported", the best possible
+// answer on no evidence.
+//
+// THE SUBJECT IS PER CREDENTIAL. Each window becomes a ProviderNativeLimitBucket keyed by the
+// credential's label and the CLI's own window name (five_hour, seven_day, ...). A label rather than
+// an account identity because the corpus never carries the account's email; the label is the
+// credential roster's key (gunbc.claude_code_credential). An exhausted credential therefore blocks
+// only draws on that credential, which is what lets a future second credential be selected while
+// the first waits out its window, rather than the turn failing.
+//
+// WHICH WINDOW A REJECTION CONCERNS. The line's top-level status/resetsAt describe the window named
+// by rateLimitType. A rejection whose rateLimitType names no reported window, or names none at all,
+// cannot be attributed to a bucket, so it is carried as an ACCOUNT-scope rejection on the
+// credential: it blocks every draw on that credential, never a guessed bucket.
+
+type ClaudeCodeTripReading
+  = ClaudeCodeTripRead {
+      result: ClaudeCodeTurnResult?
+      rate_limit: ClaudeCodeRateLimitInfo?
+    }
+  | ClaudeCodeTripUnreadable { line_index: Int, gap: ClaudeCodeStreamLineGap }
+
+type ClaudeTripFold {
+  index: Int
+  reading: ClaudeCodeTripReading
+}
+
+fn claude_code_trip_reading(stdout: String) -> ClaudeCodeTripReading {
+  let folded = fold(
+    split(s: stdout, separator: "\n"),
+    init: ClaudeTripFold { index: 0, reading: ClaudeCodeTripRead { result: Absent, rate_limit: Absent } },
+    f: (acc, line) =>
+      match acc.reading {
+        ClaudeCodeTripUnreadable { line_index: _, gap: _ } => acc
+        ClaudeCodeTripRead { result: r, rate_limit: l } =>
+          if trim(s: line) == "" {
+            ClaudeTripFold { index: acc.index + 1, reading: acc.reading }
+          } else {
+            match claude_code_stream_line(line: line) {
+              ClaudeCodeRateLimitEventLine { info } =>
+                ClaudeTripFold { index: acc.index + 1, reading: ClaudeCodeTripRead { result: r, rate_limit: Present { value: info } } }
+              ClaudeCodeResultLine { result } =>
+                ClaudeTripFold { index: acc.index + 1, reading: ClaudeCodeTripRead { result: Present { value: result }, rate_limit: l } }
+              ClaudeCodeOtherLine { event_type: _ } =>
+                ClaudeTripFold { index: acc.index + 1, reading: acc.reading }
+              ClaudeCodeLineUnreadable { gap } =>
+                ClaudeTripFold { index: acc.index + 1, reading: ClaudeCodeTripUnreadable { line_index: acc.index, gap: gap } }
+            }
+          }
+      },
+  )
+  folded.reading
+}
+
+fn claude_window_subject(credential: ProviderLimitCredentialIdentity, w: ClaudeCodeRateLimitWindow) -> ProviderLimitSubject {
+  ProviderNativeLimitBucket { credential: credential, native_key: w.name }
+}
+
+fn claude_window_reset(w: ClaudeCodeRateLimitWindow) -> ProviderLimitReset {
+  match w.resets_at {
+    Present { value: at } => LimitResetAt { at: at }
+    Absent => LimitResetInstantUnobserved
+  }
+}
+
+fn claude_info_names_window(info: ClaudeCodeRateLimitInfo, w: ClaudeCodeRateLimitWindow) -> Bool {
+  match info.rate_limit_type {
+    Present { value: t } => t == w.name
+    Absent => false
+  }
+}
+
+fn claude_window_observation(
+  credential: ProviderLimitCredentialIdentity,
+  info: ClaudeCodeRateLimitInfo,
+  w: ClaudeCodeRateLimitWindow,
+) -> ProviderLimitObservation {
+  let subject = claude_window_subject(credential: credential, w: w)
+  let status = info.status as String
+  let named = claude_info_names_window(info: info, w: w)
+  if named && status == claude_code_rate_limit_status_rejected {
+    LimitUnavailableUntilReset {
+      subject: subject,
+      cause: NativeCauseReported { token: info.status },
+      reset: claude_window_reset(w: w),
+      reason: join(["claude code reported status ", info.status as String, " for window ", w.name as String], "") as NonEmptyStr,
+    }
+  } else {
+    if basis_point_count(bp: w.utilization) >= basis_point_unity_count() {
+      LimitExhausted { subject: subject, native_token: w.name }
+    } else {
+      if named && status != "allowed" {
+        LimitWarning { subject: subject, native_token: info.status, utilization_basis_points: w.utilization }
+      } else {
+        LimitObservedAvailable { subject: subject }
+      }
+    }
+  }
+}
+
+fn claude_unattributed_rejection(
+  credential: ProviderLimitCredentialIdentity,
+  info: ClaudeCodeRateLimitInfo,
+) -> List<ProviderLimitObservation> {
+  let status = info.status as String
+  if status != claude_code_rate_limit_status_rejected {
+    []
+  } else {
+    if any(info.windows, w => claude_info_names_window(info: info, w: w)) {
+      []
+    } else {
+      [
+        LimitUnavailableUntilReset {
+          subject: ProviderAccountLimit { credential: credential },
+          cause: NativeCauseReported { token: info.status },
+          reset: match info.resets_at {
+            Present { value: at } => LimitResetAt { at: at }
+            Absent => LimitResetInstantUnobserved
+          },
+          reason: "claude code reported a rejection that names no reported window; held at account scope" as NonEmptyStr,
+        },
+      ]
+    }
+  }
+}
+
+fn claude_limit_observations(
+  credential: ProviderLimitCredentialIdentity,
+  info: ClaudeCodeRateLimitInfo?,
+) -> List<ProviderLimitObservation> {
+  match info {
+    Absent => [LimitObservationUnobserved { reason: "the claude code trip emitted no rate_limit_event line" as NonEmptyStr }]
+    Present { value: i } =>
+      if list_length(items: i.windows) == 0 {
+        concat(
+          [LimitObservationUnobserved { reason: "the claude code rate_limit_event reported no unifiedWindows" as NonEmptyStr }],
+          claude_unattributed_rejection(credential: credential, info: i),
+        )
+      } else {
+        concat(
+          map(i.windows, w => claude_window_observation(credential: credential, info: i, w: w)),
+          claude_unattributed_rejection(credential: credential, info: i),
+        )
+      }
+  }
+}
+
+data claude_code_unauthorized_status: Int = 401
+
+fn claude_authentication_standing(result: ClaudeCodeTurnResult?) -> ProviderAuthenticationStanding {
+  match result {
+    Absent => AuthenticationStandingUnobserved { reason: "the claude code trip emitted no result line" as NonEmptyStr }
+    Present { value: r } =>
+      if !r.is_error {
+        AuthenticationAuthenticated
+      } else {
+        match r.api_error_status {
+          Present { value: code } =>
+            if code == claude_code_unauthorized_status {
+              AuthenticationRefreshFailed { reason: "claude code reported api_error_status 401: the upstream rejected the OAuth token" as NonEmptyStr }
+            } else {
+              AuthenticationStandingUnobserved { reason: join(["claude code turn failed with api_error_status ", to_string(value: code), "; authentication is not established either way"], "") as NonEmptyStr }
+            }
+          Absent => AuthenticationStandingUnobserved { reason: "claude code turn failed with no api_error_status; authentication is not established either way" as NonEmptyStr }
+        }
+      }
+  }
+}
+
+fn claude_turn_outcome(result: ClaudeCodeTurnResult?) -> ProviderTurnOutcome {
+  match result {
+    Absent => TurnOutcomeUnobserved { reason: "the claude code trip emitted no result line" as NonEmptyStr }
+    Present { value: r } =>
+      if r.is_error {
+        TurnFailed { reason: join(["claude code result subtype ", r.subtype as String, " with is_error true"], "") as NonEmptyStr }
+      } else {
+        TurnSucceeded
+      }
+  }
+}
+
+// A completed, non-error turn on the subscription IS the entitlement observation: the upstream
+// served a model turn to this credential. Anything less leaves entitlement unobserved.
+fn claude_entitlement(result: ClaudeCodeTurnResult?) -> ProviderEntitlementObservation {
+  match result {
+    Present { value: r } =>
+      if r.is_error {
+        EntitlementObservationUnobserved { reason: "the claude code turn did not complete" as NonEmptyStr }
+      } else {
+        EntitlementObservedAvailable
+      }
+    Absent => EntitlementObservationUnobserved { reason: "the claude code trip emitted no result line" as NonEmptyStr }
+  }
+}
+
+type ClaudeCodeStandingReading
+  = ClaudeCodeStandingRead { bundle: ProviderStandingBundle }
+  | ClaudeCodeStandingUnreadable { line_index: Int, gap: ClaudeCodeStreamLineGap }
+
+// The tool environment is NOT observed by the trip -- the trip runs in a scratch directory, not in
+// the worktree the dispatched worker will get -- so the caller supplies it from its own admission
+// rather than this projection asserting it.
+fn claude_code_standing_from_trip(
+  credential_label: NonEmptyStr,
+  stdout: String,
+  tool_environment: ProviderToolEnvironmentStanding,
+) -> ClaudeCodeStandingReading {
+  match claude_code_trip_reading(stdout: stdout) {
+    ClaudeCodeTripUnreadable { line_index, gap } =>
+      ClaudeCodeStandingUnreadable { line_index: line_index, gap: gap }
+    ClaudeCodeTripRead { result, rate_limit } =>
+      ClaudeCodeStandingRead {
+        bundle: ProviderStandingBundle {
+          installation: InstallationReady,
+          authentication: claude_authentication_standing(result: result),
+          entitlement: claude_entitlement(result: result),
+          limits: claude_limit_observations(
+            credential: LimitCredentialLabel { label: credential_label },
+            info: rate_limit,
+          ),
+          turn: claude_turn_outcome(result: result),
+          tool_environment: tool_environment,
+        },
+      }
+  }
+}

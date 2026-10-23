@@ -1,0 +1,24 @@
+module v2.std.test_claim_falsification
+
+import std.types { List }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.host_run { EmitHostRunReceipt, ValueDiff }
+import v2.std.node { Symbol }
+
+type InterpreterTrace {
+  pinned_eval_call: Symbol
+  diagnostics: List<Diagnostic>
+}
+
+type ExecutionEvidence
+  = Host { receipt: EmitHostRunReceipt }
+  | Interpreter { trace: InterpreterTrace }
+  | EvidenceNone
+
+type FalsificationReceipt<Subj, A> {
+  subject: Subj
+  expected: A
+  actual: A
+  divergence: ValueDiff<A>
+  evidence: ExecutionEvidence
+}

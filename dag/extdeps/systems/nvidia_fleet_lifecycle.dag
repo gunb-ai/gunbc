@@ -1,0 +1,113 @@
+module extdeps.systems.nvidia_fleet_lifecycle
+
+import std.types { NonEmptyStr, List, Int, Bool }
+import std.types { Timestamp, Milliseconds }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/dgx/dgx-spark/enterprise-fleet-lifecycle.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.nvidia_fleet_lifecycle",
+      decl_name: "FleetLifecycleOperation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.systems.nvidia_fleet_lifecycle.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// SPARK-0 (2026-08-05), live-fetched from the cited page. This models the OPERATION SHAPE only (DESIGN §3: 'the interface shape ... is what extdeps owns'; transport -- SSH execution of these Python entry points -- and business policy -- which host, which maintenance window -- are realization and workflow facts respectively, owned elsewhere, never here). Quoted verbatim: the common envelope carries 'tool' (stable identifier), 'ts' (UTC timestamp), 'host' (target identity used by the orchestrator), 'status', 'rc' (exit code), 'duration_ms', 'summary' (bounded, indexable), 'warnings' (optional non-fatal issues), 'artifacts' (optional artifact pointers). Failure is classified into exactly four named classes: 'Transport/auth -- SSH could not connect or authenticate; device unreachable; key or policy issue.'; 'Privilege -- Command requires sudo or access to privileged system interfaces.'; 'Tool execution -- Missing dependency, unexpected OS state, or tool internal error.'; 'Endpoint degraded -- Tool ran successfully but returned warning or failure status due to device health signals.'
+// Operations split into two safety classes: 'Collectors are read-only tools safe to run frequently and at high concurrency.' vs 'Controllers change state and must be gated by changing windows, rings or waves, and validation.' spark_updatectl.py (the sole documented Controller) has a maintenance-window shape of three phases -- 'Pre-check -- Build identity + health', 'Update control -- spark_updatectl.py', 'Post-check -- Build identity + health' -- modeled here as the requirement that a controller invocation is only ever evaluated inside that shape, never the concrete window/ring/wave values (those are workflow policy). The document names seven tools; reset_reason_reporter.py is explicitly informational-only ('None documented; informational signals only') and is modeled as a Collector with no failure-class distinction beyond the shared four.
+type FleetLifecycleOperationClass = Collector | Controller
+
+type FleetLifecycleOperation
+  = DeviceIdentity
+  | HardwareConfig
+  | OsBuildIdentity
+  | FirmwareReport
+  | UpdateControl
+  | DiagPostureL1
+  | DiagBundleL2
+  | ResetReasonReport
+
+fn fleet_lifecycle_operation_class(op: FleetLifecycleOperation) -> FleetLifecycleOperationClass {
+  match op {
+    DeviceIdentity => Collector
+    HardwareConfig => Collector
+    OsBuildIdentity => Collector
+    FirmwareReport => Collector
+    UpdateControl => Controller
+    DiagPostureL1 => Collector
+    DiagBundleL2 => Collector
+    ResetReasonReport => Collector
+  }
+}
+
+fn fleet_lifecycle_operation_tool_name(op: FleetLifecycleOperation) -> NonEmptyStr {
+  match op {
+    DeviceIdentity => "device_identity.py"
+    HardwareConfig => "hardware_config.py"
+    OsBuildIdentity => "os_build_identity.py"
+    FirmwareReport => "firmware_reporter.py"
+    UpdateControl => "spark_updatectl.py"
+    DiagPostureL1 => "spark_diagctl.py"
+    DiagBundleL2 => "spark_diagctl.py"
+    ResetReasonReport => "reset_reason_reporter.py"
+  }
+}
+
+fn fleet_lifecycle_requires_change_window(op: FleetLifecycleOperation) -> Bool {
+  match fleet_lifecycle_operation_class(op: op) {
+    Collector => false
+    Controller => true
+  }
+}
+
+type FleetLifecycleStatus = StatusOk | StatusWarning | StatusError
+
+type ArtifactPointer { locator: NonEmptyStr }
+
+type FleetLifecycleEnvelope {
+  tool: NonEmptyStr
+  ts: Timestamp
+  host: NonEmptyStr
+  status: FleetLifecycleStatus
+  rc: Int
+  duration_ms: Milliseconds
+  summary: NonEmptyStr
+  warnings: List<NonEmptyStr>
+  artifacts: List<ArtifactPointer>
+}
+
+type FleetLifecycleFailureClass
+  = TransportAuthFailure { detail: NonEmptyStr }
+  | PrivilegeFailure { detail: NonEmptyStr }
+  | ToolExecutionFailure { detail: NonEmptyStr }
+  | EndpointDegradedFailure { detail: NonEmptyStr }
+
+type FleetLifecycleRequest {
+  operation: FleetLifecycleOperation
+  target_host: NonEmptyStr
+}
+
+type FleetLifecycleOutcome
+  = FleetLifecycleObserved { envelope: FleetLifecycleEnvelope }
+  | FleetLifecycleRefused { class: FleetLifecycleFailureClass }
+
+type MaintenanceWindowPhase = PreCheck | UpdateControlPhase | PostCheck
+
+type SparkUpdateEvidence {
+  precheck: FleetLifecycleEnvelope
+  postcheck: FleetLifecycleEnvelope?
+  rollback_available: Bool
+}

@@ -1,0 +1,369 @@
+module test.claim.runner.runner_browser_toolchain_real_execution
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, List, list_length }
+import std.algebra { trim, list_append }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.ldd { ldd_command }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.posix.test_utility { test_exists_command }
+import extdeps.automation.playwright { playwright_1_62_1_npm_tarball }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.verified_archive_install {
+  ArchiveSha256, ArchiveNpmIntegrity, ArchiveDigestPin,
+  verified_archive_install, verify_archive_digest,
+  ArchiveInstalled, ArchiveDigestMismatched, ArchiveDigestMatches, ArchiveDigestMismatch,
+}
+import gunbc.runner_browser_toolchain {
+  library_readback_wet, HostLibrariesResolved,
+  RunnerBrowserToolchainLocation, runner_browser_toolchain_location_at, runner_browser_toolchain_readback_at_wet,
+  tree_sha256_wet, TreeDigestObserved, TreeDigestUnobservable, TreeAdmitted, TreeContentMismatch,
+  place_toolchain_wet, ToolchainAlreadyAdmitted, ToolchainPlacementRefused,
+  observe_superseded_trees_wet, SupersededTreesObserved, runner_browser_toolchain_system_path, runner_browser_toolchain_ready,
+}
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SHARED FETCH-VERIFY-INSTALL FOLD, RUN FOR REAL. Every fn here creates a temporary directory,
+// writes a fixture, FETCHES it with curl over a file:// URL (the same curl_download_command the
+// converge uses against the CDN, so the fetch leg is the production argv), verifies it with the
+// real sha256sum or sha512sum, and runs a real install command only when the verdict allows it. No
+// network, no remote host, no Cargo: the local-repo wet lane's subject. The full-toolchain
+// converge-then-readback, including headless Chromium rendering a local page, is the
+// RunnerBrowserToolchainConverge dispatch on a pool host; these are its discriminating controls
+// on the fold every archive goes through.
+
+data fixture_content: String = "gunbc-browser-toolchain-archive-fixture\n"
+
+data wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000"
+
+fn exists(path: String) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+}
+
+fn install_fixture(dir: String, pin: ArchiveDigestPin) -> Bool {
+  let source = concat(dir, "/source")
+  let archive = concat(dir, "/archives/fixture")
+  let installed = concat(dir, "/installed")
+  let outcome = verified_archive_install(
+    fetch: [mkdir_parents_command(path: concat(dir, "/archives")), curl_download_command(url: concat("file://", source), destination: archive)],
+    archive: archive as NonEmptyStr,
+    pin: pin,
+    install: [mkdir_parents_command(path: installed)],
+  )
+  match outcome { ArchiveInstalled => true  _ => false }
+}
+
+// CONVERGE THEN READ BACK, GREEN: the pin is an INDEPENDENT reading of the source bytes (sha256sum
+// over the source file, before any fetch), the fold installs, the install's product exists, and a
+// readback of the RETAINED archive verifies against the same pin -- the readback the converge's
+// standing is built from.
+test fn a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let result = match sha256sum_file_digest_via_shell(path: concat(d, "/source") as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: dg } => {
+      let pin = ArchiveSha256 { hex: dg.hex }
+      install_fixture(dir: d, pin: pin)
+        && exists(path: concat(d, "/installed"))
+        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin) { ArchiveDigestMatches => true  _ => false })
+    }
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && result
+}
+
+// A DIGEST MISMATCH REFUSES AND INSTALLS NOTHING. The fetch succeeds -- the archive is on disk --
+// and the install command is never run: its product does not exist afterwards.
+test fn a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let outcome = verified_archive_install(
+    fetch: [mkdir_parents_command(path: concat(d, "/archives")), curl_download_command(url: concat("file://", concat(d, "/source")), destination: concat(d, "/archives/fixture"))],
+    archive: concat(d, "/archives/fixture") as NonEmptyStr,
+    pin: ArchiveSha256 { hex: wrong_sha256 },
+    install: [mkdir_parents_command(path: concat(d, "/installed"))],
+  )
+  let refused = match outcome { ArchiveDigestMismatched { archive: _ } => true  _ => false }
+  let fetched = exists(path: concat(d, "/archives/fixture"))
+  let installed = exists(path: concat(d, "/installed"))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && refused && fetched && installed == false
+}
+
+// THE NPM ARM: a well-formed SRI of OTHER bytes (Playwright's published integrity) against the
+// fixture is a MISMATCH, not unverifiable -- the decoder accepted the wire and sha512sum read the
+// file, so the answer is about the bytes. Nothing is installed.
+test fn an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let outcome = verified_archive_install(
+    fetch: [mkdir_parents_command(path: concat(d, "/archives")), curl_download_command(url: concat("file://", concat(d, "/source")), destination: concat(d, "/archives/fixture"))],
+    archive: concat(d, "/archives/fixture") as NonEmptyStr,
+    pin: ArchiveNpmIntegrity { wire: playwright_1_62_1_npm_tarball.integrity },
+    install: [mkdir_parents_command(path: concat(d, "/installed"))],
+  )
+  let refused = match outcome { ArchiveDigestMismatched { archive: _ } => true  _ => false }
+  let installed = exists(path: concat(d, "/installed"))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && refused && installed == false
+}
+
+// A RETAINED ARCHIVE WHOSE BYTES CHANGED AFTER IT VERIFIED READS BACK AS A MISMATCH -- the readback
+// hashes the bytes on disk now, it does not remember the check that passed.
+test fn a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
+  let result = match sha256sum_file_digest_via_shell(path: concat(d, "/source") as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    Sha256FileDigest { digest: dg } => {
+      let pin = ArchiveSha256 { hex: dg.hex }
+      let placed = install_fixture(dir: d, pin: pin)
+      let altered = Filesystem.Write(path: concat(d, "/archives/fixture"), content: "altered after verification\n")
+      placed && altered.success
+        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin) { ArchiveDigestMismatch => true  _ => false })
+    }
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && wrote.success && result
+}
+
+// THE LIBRARY READBACK'S ROUTE: real ldd over a real dynamically linked binary on the runner reads
+// back resolved. The refusal arm, with its location, is discriminated on measured ldd output in
+// test.claim.runner.runner_browser_toolchain_witness.
+test fn the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution() -> Bool {
+  match library_readback_wet(binary: "/bin/sh", run_as: ldd_command(binary: "/bin/sh")) {
+    HostLibrariesResolved { binary: b } => (b as String) == "/bin/sh"
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE INSTALLED TREE (side-chat review of gunbc#12500, finding 2)
+// ---------------------------------------------------------------------------------------------
+
+// A fixture tree in the toolchain layout under a temporary base: an "inert candidate" node that,
+// if ever executed, writes a marker file -- so whether readback executed anything is a fact on
+// disk, not an inference from its verdict.
+fn fixture_location(dir: String) -> RunnerBrowserToolchainLocation {
+  runner_browser_toolchain_location_at(base: dir, recipe: "fixture-recipe")
+}
+
+fn fixture_marker(dir: String) -> String {
+  concat(dir, "/candidate-executed")
+}
+
+fn plant_fixture_tree(dir: String) -> Bool {
+  plant_fixture_tree_with(dir: dir, candidate_body: "")
+}
+
+// The inert candidate records its environment OUTSIDE the tree; a candidate_body line may add a write
+// INSIDE it, which is the runtime-writer shape run 36469030109 found (Playwright's marker file).
+fn plant_fixture_tree_with(dir: String, candidate_body: String) -> Bool {
+  let loc = fixture_location(dir: dir)
+  let bin = concat(loc.root as String, "/node/bin")
+  process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: bin), transport: LocalExec))
+    && process_outcome_admitted(outcome: run_shell_command_capture(command: mkdir_parents_command(path: concat(loc.root as String, "/node_modules/playwright")), transport: LocalExec))
+    && Filesystem.Write(path: loc.node_binary as String, content: join(["#!/bin/sh\n{ /usr/bin/env; echo '--- end of invocation'; } >> '", fixture_marker(dir: dir), "'\n", candidate_body, "echo v24.21.0\n"], "")).success
+    && Filesystem.Write(path: concat(loc.playwright_module as String, "/index.js"), content: "module.exports = {};\n").success
+    && process_outcome_admitted(outcome: run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0755", path: loc.node_binary as String), transport: LocalExec))
+}
+
+fn fixture_digest(dir: String) -> String {
+  let loc = fixture_location(dir: dir)
+  let scratch = shell.Mktemp.Dir()
+  let digest = match tree_sha256_wet(tree: loc.root as String, manifest_path: concat(scratch.path as String, "/fixture.manifest")) {
+    TreeDigestObserved { hex: h } => h as String
+    TreeDigestUnobservable { reason: _ } => ""
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: scratch.path)
+  if scratch.success { digest } else { "" }
+}
+
+// ALTERED OR DELETED EXTRACTED CODE CHANGES THE TREE DIGEST WHILE EVERY ARCHIVE IS UNTOUCHED -- the
+// reviewer's reproduction, now discriminated: the digest is a reading of the tree, so it moves with
+// the content and returns when the content is restored. A deleted file is the partial-extraction
+// shape: a tree missing any file cannot reproduce the pin.
+test fn altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let original = fixture_digest(dir: d)
+  let altered = Filesystem.Write(path: concat(loc.playwright_module as String, "/index.js"), content: "module.exports = { altered: true };\n")
+  let after_alter = fixture_digest(dir: d)
+  let restored = Filesystem.Write(path: concat(loc.playwright_module as String, "/index.js"), content: "module.exports = {};\n")
+  let after_restore = fixture_digest(dir: d)
+  let deleted = run_shell_command_capture(command: rm_recursive_force_command(path: concat(loc.playwright_module as String, "/index.js")), transport: LocalExec)
+  let after_delete = fixture_digest(dir: d)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && altered.success && restored.success
+    && original != "" && after_alter != "" && after_delete != ""
+    && original != after_alter
+    && original == after_restore
+    && original != after_delete
+}
+
+// A TREE THAT IS NOT ADMITTED IS NEVER EXECUTED: readback over the fixture with a pin it does not
+// reproduce refuses with the observed digest and the inert candidate's marker does not exist. The
+// positive control is the same fixture under its own digest: admission holds and the candidate DOES
+// run (the marker appears) -- without it the red is satisfied by a readback that never executes.
+test fn a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let refused = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: "0000000000000000000000000000000000000000000000000000000000000000")
+  let refused_ok = match refused.tree { TreeContentMismatch { tree: _, expected: _, observed: o } => (o as String) == pin  _ => false }
+  let not_executed = exists(path: fixture_marker(dir: d)) == false
+  let admitted = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let admitted_ok = match admitted.tree { TreeAdmitted => true  _ => false }
+  let executed = exists(path: fixture_marker(dir: d))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && refused_ok && not_executed && admitted_ok && executed
+}
+
+// THE NO-OP REPEAT, AND A STAGED TREE THAT FAILS ADMISSION NEVER TOUCHES THE PUBLISHED ONE. Under
+// its own digest the published fixture is already admitted and placement does nothing. Under a pin
+// it does not reproduce, placement stages (here: nothing to stage), the staged tree is not admitted,
+// placement refuses -- and the published tree is still there, byte for byte.
+test fn an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let repeat_ok = match place_toolchain_wet(location: loc, archives: [], pinned: pin as NonEmptyStr) { ToolchainAlreadyAdmitted => true  _ => false }
+  let refused_ok = match place_toolchain_wet(location: loc, archives: [], pinned: "0000000000000000000000000000000000000000000000000000000000000000") {
+    ToolchainPlacementRefused { archives: _, cause: _ } => true
+    _ => false
+  }
+  let intact = fixture_digest(dir: d) == pin
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && repeat_ok && refused_ok && intact
+}
+
+// EVERY CANDIDATE INVOCATION SEES ONLY THE DECLARED ENVIRONMENT, AND EACH ONE IS CHECKED (side-chat
+// review 5336109370): the fixture's inert node APPENDS the environment it was started with, one record
+// per invocation, so a later clean call cannot overwrite an earlier inherited one. Every record must
+// carry PATH equal to the declared system path, the declared HOME and PLAYWRIGHT_BROWSERS_PATH, and at
+// most a handful of lines -- this process's own environment runs to dozens -- and there must be one
+// record per node invocation the readback made (node --version and the two package-version reads).
+fn env_records_of(text: String) -> List<String> {
+  fold(split(text, "--- end of invocation"), init: [], f: (acc, r) => if trim(s: r) == "" { acc } else { list_append(left: acc, right: [trim(s: r)]) })
+}
+
+fn env_record_is_declared(record: String) -> Bool {
+  let lines = split(record, "\n")
+  fold(lines, init: false, f: (acc, l) => acc || trim(s: l) == concat("PATH=", runner_browser_toolchain_system_path))
+    && string_contains(s: record, pattern: "PLAYWRIGHT_BROWSERS_PATH=")
+    && string_contains(s: record, pattern: "HOME=")
+    && fold(lines, init: false, f: (acc, l) => acc || trim(s: l) == "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1")
+    && list_length(lines) <= 6
+}
+
+test fn every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let admitted = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let seen = Filesystem.Read(path: fixture_marker(dir: d))
+  let records = env_records_of(text: seen.content)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && seen.success
+    && list_length(records) >= 3
+    && fold(records, init: true, f: (acc, r) => acc && env_record_is_declared(record: r))
+}
+
+// OTHER RECIPES' TREES ARE OBSERVED AND RETAINED, NEVER REMOVED (side-chat review 5336109370): a
+// fixture base holding the current tree, the archives, another converge's stage, a pre-recipe tree
+// and an older recipe reports exactly the last two as superseded -- and afterwards every entry is
+// still there and the current tree's content is unchanged.
+test fn superseded_trees_are_reported_and_retained_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let others = run_ok_local(command: mkdir_parents_command(path: concat(d, "/archives")))
+    && run_ok_local(command: mkdir_parents_command(path: concat(d, "/staging.inflight")))
+    && run_ok_local(command: mkdir_parents_command(path: concat(d, "/playwright-1.62.1-node-v24.21.0-linux-arm64/node")))
+    && run_ok_local(command: mkdir_parents_command(path: concat(d, "/0123456789abcdef")))
+  let reported = match observe_superseded_trees_wet(location: loc) {
+    SupersededTreesObserved { entries: es } => es == ["0123456789abcdef", "playwright-1.62.1-node-v24.21.0-linux-arm64"]
+    _ => false
+  }
+  let retained = exists(path: concat(d, "/playwright-1.62.1-node-v24.21.0-linux-arm64/node")) && exists(path: concat(d, "/0123456789abcdef"))
+    && exists(path: concat(d, "/archives")) && exists(path: concat(d, "/staging.inflight")) && fixture_digest(dir: d) == pin
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && others && pin != "" && reported && retained
+}
+
+// A CONTESTED TREE IS NOT REPLACED: with a tree at the recipe path whose content is not the pin,
+// placement refuses as ContestedTreeNotReplaced before staging anything, and the tree is untouched.
+test fn a_contested_tree_is_refused_not_replaced_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let refused = match place_toolchain_wet(location: loc, archives: [], pinned: "0000000000000000000000000000000000000000000000000000000000000000") {
+    ToolchainPlacementRefused { archives: _, cause: c } => string_contains(s: c, pattern: "ContestedTreeNotReplaced")
+    _ => false
+  }
+  let intact = fixture_digest(dir: d) == pin
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && refused && intact
+}
+
+fn run_ok_local(command: ArgvCommand) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+}
+
+// A CANDIDATE THAT WRITES INSIDE THE TREE IS CAUGHT ON THE RUN THAT WROTE (eager-owl-205, after run
+// 36469030109): the fixture's candidate also creates a file inside the admitted tree, the shape of
+// Playwright's DEPENDENCIES_VALIDATED marker. The tree is admitted before execution, and the
+// post-execution admission reads TreeContentMismatch, so the standing is not ready. The positive
+// control is the same readback over a candidate that writes only outside the tree: the tree is
+// admitted before AND after.
+test fn a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree_with(dir: d, candidate_body: join([": > '", loc.root as String, "/node/DEPENDENCIES_VALIDATED'\n"], ""))
+  let pin = fixture_digest(dir: d)
+  let st = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let before_ok = match st.tree { TreeAdmitted => true  _ => false }
+  let after_refused = match st.after { TreeContentMismatch { tree: _, expected: _, observed: _ } => true  _ => false }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && before_ok && after_refused && runner_browser_toolchain_ready(s: st) == false
+}
+
+test fn a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let d = dir.path as String
+  let loc = fixture_location(dir: d)
+  let planted = plant_fixture_tree(dir: d)
+  let pin = fixture_digest(dir: d)
+  let st = runner_browser_toolchain_readback_at_wet(host: "fixture", location: loc, pinned: pin as NonEmptyStr)
+  let executed = exists(path: fixture_marker(dir: d))
+  let both = (match st.tree { TreeAdmitted => true  _ => false }) && (match st.after { TreeAdmitted => true  _ => false })
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && planted && pin != "" && executed && both
+}
+

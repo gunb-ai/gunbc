@@ -1,0 +1,9 @@
+module test.fixture.demand_closure.entry
+
+import std.types { Int }
+import test.fixture.demand_closure.mid { demand_closure_mid_value }
+import test.fixture.demand_closure.excluded.gate { demand_closure_gate_value }
+
+fn demand_closure_entry_value() -> Int {
+  demand_closure_mid_value() + demand_closure_gate_value()
+}

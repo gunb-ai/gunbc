@@ -1,0 +1,538 @@
+module v2.program
+
+import std.types { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
+import v2.compiler.eval {
+  EvalContext,
+  effect_io_roundtrip_transform,
+  eval_context_with_effect_io,
+  eval_diagnostic,
+  eval_with_context,
+  inputs_root_only
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_pick_if_body_from_arms,
+  dag_type_atom_node
+}
+import v2.extdeps.runtimes.v2_effect_io_pure {
+  FileResourceBackend,
+  effect_io_pure_empty_fixture_store,
+  effect_io_pure_unit_type_node
+}
+import v2.std.cardinality { RankingComponent, TerminationProof }
+import v2.std.collection {
+  Map,
+  list_at_optional
+}
+import std.optional {
+  Optional,
+  Absent,
+  Present,
+  optional_present,
+  optional_absent
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  invariant_port_locus
+}
+import std.algebra { Empty }
+import v2.std.algebra { length }
+import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.workflow.runtime_run {
+  RuntimeRunBlocked,
+  RuntimeRunComplete,
+  runtime_run
+}
+
+fn program_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn program_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn program_bool_type() -> Node {
+  program_atom(s: ^program_bool_type_sym)
+}
+
+fn program_i64_type() -> Node {
+  program_atom(s: ^program_i64_sym)
+}
+
+fn program_unit_type() -> Node {
+  effect_io_pure_unit_type_node()
+}
+
+fn program_bool_value(is_true: Bool) -> RuntimeValue {
+  if is_true {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: program_bool_type(),
+        bytes: [program_byte()]
+      }
+    }
+  } else {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: program_bool_type(),
+        bytes: Empty
+      }
+    }
+  }
+}
+
+fn program_int_one_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: program_i64_type(),
+      bytes: [program_byte()]
+    }
+  }
+}
+
+fn program_unit_value() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue {
+      unit_type: program_unit_type()
+    }
+  }
+}
+
+fn program_literal_one() -> Node {
+  dag_type_atom_node(identity: ^dag_pick_lit_one)
+}
+
+fn program_literal_two() -> Node {
+  dag_type_atom_node(identity: ^dag_pick_lit_two)
+}
+
+fn program_kw_true() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_true)
+}
+
+fn program_kw_false() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_false)
+}
+
+data program_locator_literal: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data program_payload_literal: Node = Node {
+  kind: ComputationNode { behavior: Value },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data program_effect_io_roundtrip: Node = effect_io_roundtrip_transform(
+  locator: program_locator_literal,
+  payload: program_payload_literal
+)
+
+data program_pick_if_branch_with_effect_io: Node = dag_pick_if_body_from_arms(
+  condition: program_kw_true(),
+  then_arm: program_effect_io_roundtrip,
+  else_arm: program_literal_two()
+)
+
+fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
+  v2.std.cardinality.TerminationProof {
+    non_increasing: [],
+    strict: v2.std.cardinality.RankingComponent { measured: ^program_descent_dimension }
+  }
+}
+
+fn program_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == program_literal_one() {
+    Accepted { value: program_int_one_value(), diagnostics: None }
+  } else if node == program_literal_two() {
+    Accepted {
+      value: RuntimePrimitive {
+        value: RuntimePrimitiveValue {
+          primitive_type: program_i64_type(),
+          bytes: [program_byte(), program_byte()]
+        }
+      },
+      diagnostics: None
+    }
+  } else if node == program_kw_true() {
+    Accepted { value: program_bool_value(is_true: true), diagnostics: None }
+  } else if node == program_kw_false() {
+    Accepted { value: program_bool_value(is_true: false), diagnostics: None }
+  } else if node == program_locator_literal || node == program_payload_literal {
+    Accepted { value: program_unit_value(), diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: eval_diagnostic(reason: ^program_allocate_rejected, node: node)
+      )
+    }
+  }
+}
+
+fn program_nth_child(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm } =>
+          Accepted { value: arm, diagnostics: None }
+      }
+    Absent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: ^program_branch_shape_rejected, node: node)
+        )
+      }
+  }
+}
+
+fn program_choose_branch(
+  node: Node,
+  condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if count(node.children) == 3 {
+    if program_runtime_bool_true(value: condition) {
+      program_nth_child(node: node, wanted: 1)
+    } else if program_runtime_bool_false(value: condition) {
+      program_nth_child(node: node, wanted: 2)
+    } else {
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: eval_diagnostic(reason: ^program_branch_condition_rejected, node: node)
+        )
+      }
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: eval_diagnostic(reason: ^program_branch_shape_rejected, node: node)
+      )
+    }
+  }
+}
+
+fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == program_bool_type()) && (count(p.bytes) == 1)
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
+  }
+}
+
+fn program_runtime_bool_false(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == program_bool_type()) && (count(p.bytes) == 0)
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
+  }
+}
+
+fn program_reject_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: ^program_primitive_rejected, node: node)
+    )
+  }
+}
+
+fn program_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: ^program_primitive_rejected, node: node)
+    )
+  }
+}
+
+fn program_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn program_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: program_allocate_literal, identity: ^program_allocate_literal },
+    transform: TransformInterpreter { call_primitive: program_reject_primitive, identity: ^program_reject_primitive },
+    branch: BranchInterpreter { choose_branch: program_choose_branch, identity: ^program_choose_branch },
+    loop: LoopInterpreter { step_loop: program_step_loop, identity: ^program_step_loop },
+    bind: BindInterpreter { bind_value: program_bind_value, identity: ^program_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+  }
+}
+
+fn program_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^program_allocate_literal,
+    call_primitive: ^program_reject_primitive,
+    choose_branch: ^program_choose_branch,
+    step_loop: ^program_step_loop,
+    bind_value: ^program_bind_value,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn program_context_with_effect_io() -> EvalContext {
+  eval_context_with_effect_io(
+    runtime_identity: ^program_runtime_id,
+    interpretation: program_interpretation(),
+    structure_witness: program_structure_witness(),
+    backend: FileResourceBackend,
+    store: effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
+  )
+}
+
+fn program_facts_for(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: program_unit_type(),
+    descent: Holds { value: program_termination_proof() }
+  )
+}
+
+fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
+  if node == program_pick_if_branch_with_effect_io {
+    optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
+  } else if node == program_effect_io_roundtrip {
+    optional_present(value: program_facts_for(node: program_effect_io_roundtrip))
+  } else if node == program_locator_literal {
+    optional_present(value: program_facts_for(node: program_locator_literal))
+  } else if node == program_payload_literal {
+    optional_present(value: program_facts_for(node: program_payload_literal))
+  } else if node == program_kw_true() {
+    optional_present(value: program_facts_for(node: program_kw_true()))
+  } else if node == program_literal_two() {
+    optional_present(value: program_facts_for(node: program_literal_two()))
+  } else {
+    optional_absent()
+  }
+}
+
+fn program_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: PartialFunction { lookup: program_facts_lookup }
+  }
+}
+
+fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
+  eval_with_context(
+    tree: program_tree(root: root),
+    context: program_context_with_effect_io(),
+    inputs: inputs_root_only(root: root)
+  )
+}
+
+// The Unavailable arm carries the reason the model could not decide the comparison. Routing it to
+//'false' here would answer a question the model declined to answer, and would discard the only
+// fact that distinguishes "the run produced a different value" from "these values are not
+// comparable" -- v2.lens.undecidable_verdict_collapse refuses that arm at compile.
+fn program_equality_undecided_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(
+      port: ^program_runtime_value_equality,
+      invariant: ^runtime_value_equality_decides
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn program_branch_effect_io_holds() -> Witness<Bool> {
+  match program_eval_root(root: program_pick_if_branch_with_effect_io) {
+    Accepted { value: v, diagnostics: None } =>
+      match runtime_value_equality(a: v, b: program_unit_value()) {
+        RuntimeValuesEqual => Holds { value: true }
+        RuntimeValuesDiffer => Holds { value: false }
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
+      }
+    Accepted { value: _, diagnostics: _ } => Holds { value: false }
+    Rejected { diagnostics: _ } => Holds { value: false }
+  }
+}
+
+fn program_pick_if_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Positional, target: callee }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
+      resolved: node,
+      algebra: program_i64_type(),
+      descent: Holds { value: program_termination_proof() }
+    ))
+}
+
+fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
+  InferredTree {
+    root: callee,
+    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup }
+  }
+}
+
+fn program_pick_if_arrow_holds() -> Witness<Bool> {
+  match ingested_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } => {
+      let call = program_pick_if_call(callee: arrow)
+      match eval_with_context(
+        tree: program_pick_if_arrow_tree(callee: arrow),
+        context: program_context_with_effect_io(),
+        inputs: inputs_root_only(root: call)
+      ) {
+        Accepted { value: v, diagnostics: None } =>
+          match runtime_value_equality(a: v, b: program_int_one_value()) {
+            RuntimeValuesEqual => Holds { value: true }
+            RuntimeValuesDiffer => Holds { value: false }
+            RuntimeValueEqualityUnavailable { reason: r } =>
+              Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
+          }
+        Accepted { value: _, diagnostics: _ } => Holds { value: false }
+        Rejected { diagnostics: _ } => Holds { value: false }
+      }
+    }
+    Rejected { diagnostics: _ } => Holds { value: false }
+  }
+}
+
+data program_run_branch_gate: Node = program_kw_true()
+
+data program_run_io_step: Node = program_effect_io_roundtrip
+
+data program_run_branch_to_io: DependencyView = DependencyView {
+  source: program_run_branch_gate,
+  dependent: program_run_io_step,
+  kind: DataDependsOn,
+  usage_site: program_run_io_step
+}
+
+data program_run_nodes: List<Node> = [program_run_branch_gate, program_run_io_step]
+
+data program_run_dependencies: List<DependencyView> = [program_run_branch_to_io]
+
+fn program_runtime_run_holds() -> Witness<Bool> {
+  match runtime_run(
+    nodes: program_run_nodes,
+    dependencies: program_run_dependencies,
+    tree: program_tree(root: program_effect_io_roundtrip),
+    context: program_context_with_effect_io()
+  ) {
+    RuntimeRunComplete { log: log, scheduled: scheduled } =>
+      match program_branch_effect_io_holds() {
+        Holds { value: equal } =>
+          Holds {
+            value: length(xs: log.entries) == 2
+              && length(xs: scheduled) == 2
+              && equal
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
+      Holds { value: false }
+  }
+}
+
+fn witness_conjunction(left: Witness<Bool>, right: Witness<Bool>) -> Witness<Bool> {
+  match left {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: l } =>
+      match right {
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Holds { value: r } => Holds { value: l && r }
+      }
+  }
+}
+
+fn program_runs_witness() -> Witness<Bool> {
+  witness_conjunction(
+    left: witness_conjunction(
+      left: program_branch_effect_io_holds(),
+      right: program_pick_if_arrow_holds()
+    ),
+    right: program_runtime_run_holds()
+  )
+}
+
+// THE DECLARED RESIDUAL (DESIGN 4b(3)). Every arm above threads the undecidability reason as a
+// located Diagnostic. It dies HERE, because v2.std.verification's BoolWitness carries only
+// { entry, function } and the harness reads a Bool -- so a claim can fail, but cannot say why.
+// This is the one sanctioned collapse, in one place, rather than four open-coded ones.
+// RETIRED BY: a diagnostic-carrying witness modality beside BoolWitnessClaim, which is the
+// CAPABILITY that lets a failing claim report its reason. No lesser artifact retires it.
+fn program_runs_holds() -> Bool {
+  match program_runs_witness() {
+    Holds { value: b } => b
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data unified_claim_program_runs: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/program.dag",
+    function: program_runs_holds
+  }
+}

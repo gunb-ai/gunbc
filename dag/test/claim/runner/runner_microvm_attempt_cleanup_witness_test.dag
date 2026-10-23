@@ -1,0 +1,59 @@
+module test.claim.runner.runner_microvm_attempt_cleanup_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, MountPointsUndecodable }
+import gunbc.runner_microvm_lifecycle {
+  StoppedGracefully, StoppedByForce, StopFoundAlreadyQuiescent,
+  ForceStopBoundExceeded, ForceNotAsked, ForceStopOutcomeUnobservable,
+}
+import gunbc.runner_microvm_lifecycle_realize { stop_admits_cleanup, attempt_mounts_deepest_first, mount_point_is_within }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Two lines in proc_pid_mountinfo(5)'s own layout: an optional field ("shared:1") and the "-"
+// separator sit AFTER the mount point, so field 5 is the mount point whatever follows.
+data mountinfo_sample: String = "22 1 8:1 / / rw,relatime shared:1 - ext4 /dev/sda1 rw\n40 22 0:34 / /srv/jail/firecracker/a1/root/dev rw - devtmpfs udev rw\n"
+
+fn points(content: String) -> String {
+  match mountinfo_mount_points(content: content) {
+    MountPointsRead { mount_points: ps } => join(ps, ",")
+    MountPointsUndecodable { line: _, cause: _ } => "undecodable"
+  }
+}
+
+// THE MOUNT POINT IS FIELD 5, and a line whose mount point carries a kernel octal escape refuses the
+// whole reading rather than being compared in its escaped spelling -- a cleanup that missed a mount
+// named "a\040b" would delete through it. A line too short to name a mount point refuses too.
+test fn the_mount_table_reads_field_five_and_refuses_what_it_cannot_decode() -> Bool {
+  points(content: mountinfo_sample) == "/,/srv/jail/firecracker/a1/root/dev"
+    && points(content: "41 22 0:35 / /srv/jail/a\\040b rw - tmpfs t rw") == "undecodable"
+    && points(content: "41 22 0:35") == "undecodable"
+    && points(content: "") == ""
+}
+
+// ONLY WHAT IS AT OR UNDER THE JAIL IS THE ATTEMPT'S, and a sibling whose name merely shares the
+// prefix is not: /srv/jail/a10 is not under /srv/jail/a1. Order is deepest first -- the reverse of
+// mountinfo's mount order, which lists a parent before what is mounted under it.
+test fn only_mounts_within_the_jail_are_selected_deepest_first() -> Bool {
+  mount_point_is_within(mount_point: "/srv/jail/a1", root: "/srv/jail/a1")
+    && mount_point_is_within(mount_point: "/srv/jail/a1/root/dev", root: "/srv/jail/a1")
+    && !mount_point_is_within(mount_point: "/srv/jail/a10", root: "/srv/jail/a1")
+    && !mount_point_is_within(mount_point: "/", root: "/srv/jail/a1")
+    && join(attempt_mounts_deepest_first(
+         mount_points: ["/", "/srv/jail/a1/root", "/srv/jail/a10", "/srv/jail/a1/root/dev"],
+         jail: "/srv/jail/a1",
+       ), ",") == "/srv/jail/a1/root/dev,/srv/jail/a1/root"
+}
+
+// A STOP THAT MAY HAVE LEFT A PROCESS RUNNING DOES NOT ADMIT A CLEANUP. Deleting a jail under a live
+// VMM is the case this gate exists for; the three arms that did not establish quiescence all refuse,
+// and the readbacks then find the resources present and quarantine the cell.
+test fn only_a_quiescent_stop_admits_the_cleanup() -> Bool {
+  stop_admits_cleanup(stop: StoppedGracefully)
+    && stop_admits_cleanup(stop: StoppedByForce)
+    && stop_admits_cleanup(stop: StopFoundAlreadyQuiescent)
+    && !stop_admits_cleanup(stop: ForceStopBoundExceeded { survivors: [4242] })
+    && !stop_admits_cleanup(stop: ForceNotAsked { reason: "x" as NonEmptyStr })
+    && !stop_admits_cleanup(stop: ForceStopOutcomeUnobservable { reason: "x" as NonEmptyStr })
+}

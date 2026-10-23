@@ -1,0 +1,125 @@
+module extdeps.iso.iso_273
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { Micrometer, micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread }
+
+// ISO 273 -- FASTENERS: CLEARANCE HOLES FOR BOLTS AND SCREWS. The standard answers exactly one
+// question this repository needs: given a metric thread, what hole diameter is a bolt of that
+// thread SUPPOSED to pass through? It publishes three series per thread, from tightest to loosest.
+//
+// WHY THIS MATTERS MORE THAN IT LOOKS. A printed-hole measurement taken on this machine can only be
+// compared against something that did not come out of this machine. Before this module the fit
+// ladder's only reference was the ladder itself, which makes "the third rung passes" a statement
+// about the coupon and nothing else. ISO 273 supplies the INDEPENDENT TARGET -- the diameter the
+// feature was supposed to have -- so a reading becomes a statement about the PROCESS.
+data iso_273_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/4183.html"
+  }
+}
+
+data iso_273_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.iso.iso_273",
+      decl_name: "IsoClearanceHoleRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: iso_273_authority,
+  further_citations: []
+}
+
+data iso_273_edition: NonEmptyStr = "ISO 273:1979"
+
+// The three published series. The names are the standard's own.
+type IsoClearanceSeries
+  = FineSeries
+  | MediumSeries
+  | CoarseSeries
+
+// HOW STRONGLY THE NUMBER IS KNOWN, CARRIED ON EVERY ROW RATHER THAN ASSERTED ONCE IN PROSE.
+//
+// No copy of ISO 273 is archived in this repository. The rows below are RELAYED FROM SECONDARY
+// KNOWLEDGE OF THE STANDARD, not transcribed from a document anyone here can open, and that is a
+// materially weaker provenance than the ATX and vendor specs which are anchored to archived PDFs.
+//
+// The distinction is load-bearing rather than decorative. A relayed table is exactly as usable for
+// DESIGN work and exactly as unusable for adjudicating a dispute, and a consumer that cannot tell
+// the two apart will eventually cite one as the other. So the strength travels with the value.
+//
+// Its dissolution is a single act: obtain the document, transcribe the table, and re-mark the rows
+// VerifiedAgainstArchivedCopy naming the archived artifact. Until then no row here may be presented
+// as a transcription.
+type StandardTextProvenance
+  = RelayedFromStandardText { relay: NonEmptyStr }
+  | VerifiedAgainstArchivedCopy { artifact: NonEmptyStr }
+
+type IsoClearanceHoleRow {
+  thread: FastenerThread
+  series: IsoClearanceSeries
+  diameter: Micrometer
+  provenance: StandardTextProvenance
+}
+
+data iso_273_relay: StandardTextProvenance = RelayedFromStandardText {
+  relay: "relayed from secondary knowledge of ISO 273:1979; no archived copy of the standard is held in this repository, so these rows are not a transcription",
+}
+
+data m3_thread: FastenerThread = MetricCoarseThread { designation: "M3" }
+data m4_thread: FastenerThread = MetricCoarseThread { designation: "M4" }
+data m5_thread: FastenerThread = MetricCoarseThread { designation: "M5" }
+data m6_thread: FastenerThread = MetricCoarseThread { designation: "M6" }
+
+// Micrometer throughout, for the same reason the fan pattern is: the fine series for M3 is 3.2 mm,
+// and a whole-millimetre carrier would round it to 3 and silently destroy the value the whole
+// comparison turns on.
+data iso_273_clearance_rows: List<IsoClearanceHoleRow> = [
+  IsoClearanceHoleRow { thread: m3_thread, series: FineSeries,   diameter: micrometer(count: 3200), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m3_thread, series: MediumSeries, diameter: micrometer(count: 3400), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m3_thread, series: CoarseSeries, diameter: micrometer(count: 3600), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m4_thread, series: FineSeries,   diameter: micrometer(count: 4300), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m4_thread, series: MediumSeries, diameter: micrometer(count: 4500), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m4_thread, series: CoarseSeries, diameter: micrometer(count: 4800), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m5_thread, series: FineSeries,   diameter: micrometer(count: 5300), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m5_thread, series: MediumSeries, diameter: micrometer(count: 5500), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m5_thread, series: CoarseSeries, diameter: micrometer(count: 5800), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m6_thread, series: FineSeries,   diameter: micrometer(count: 6400), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m6_thread, series: MediumSeries, diameter: micrometer(count: 6600), provenance: iso_273_relay },
+  IsoClearanceHoleRow { thread: m6_thread, series: CoarseSeries, diameter: micrometer(count: 7000), provenance: iso_273_relay },
+]
+
+// A LOOKUP THAT REFUSES BY NAME RATHER THAN RETURNING A PLAUSIBLE NEIGHBOUR.
+//
+// The tempting shape is "return the closest published row", which would answer an M8 query with the
+// M6 diameter and read as a successful lookup. The table is a closed published set: a thread it does
+// not publish is a fact this module does not have, and saying so is the whole obligation.
+type IsoClearanceLookup
+  = IsoClearanceFound { diameter: Micrometer, provenance: StandardTextProvenance }
+  | IsoClearanceThreadNotPublished { requested: FastenerThread, series: IsoClearanceSeries }
+
+type IsoClearanceScan sole_constructor {
+  hit: Micrometer
+  found: Bool
+}
+
+fn iso_273_clearance_hole(thread: FastenerThread, series: IsoClearanceSeries) -> IsoClearanceLookup {
+  let scan = fold(iso_273_clearance_rows, init: IsoClearanceScan { hit: micrometer(count: 0), found: false },
+    f: fn(acc, row) {
+      if acc.found == false && row.thread == thread && row.series == series {
+        IsoClearanceScan { hit: row.diameter, found: true }
+      } else {
+        acc
+      }
+    })
+  if scan.found {
+    IsoClearanceFound { diameter: scan.hit, provenance: iso_273_relay }
+  } else {
+    IsoClearanceThreadNotPublished { requested: thread, series: series }
+  }
+}

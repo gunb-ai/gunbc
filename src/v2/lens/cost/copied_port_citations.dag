@@ -1,0 +1,289 @@
+module v2.lens.cost.copied_port_citations
+
+import std.types { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.node_query { binder_edge }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.algebra { Cons, Empty }
+import v2.lens.cost.copied_port_derivation {
+  CombinerArrowCitation,
+  derive_copied_port_fact,
+  copied_port_index_from_registry
+}
+import v2.std.algebra { CopiedPortFact, fold_list }
+import v2.std.collection { optional_absent, optional_present }
+import std.optional {
+  Absent,
+  Optional,
+  Present
+}
+import v2.std.integer { Int }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
+}
+
+// Cited combiner Arrow bodies for per-op derivation (Wave 1 Gate 1 C1). Each row pairs a combiner
+// symbol with a FAITHFUL lowered Arrow shape on ^arrow_body_edge (Loop bound = the combiner's
+// carrier-size axis — right operand for list_append, because concat copies the appended side;
+// left spine for list_snoc_item; overlay for map_merge — NOT rigged to the target index).
+// derive_copied_port_index_from_arrow recovers the copied-port index from
+// body cost. 🟡 dissolve-on: copied_port_citation_frontier_dissolution_note — citation-retained rows
+// retire when Stage D general body producer emits ingested Arrow bodies for these combiners.
+
+data copied_port_citation_frontier_dissolution_note: String = "See copied_port_citation_frontier_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
+
+data copied_port_citation_frontier_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: CopiedPortCitationRetained rows in copied_port_citation_frontier_rows() stand in for producer-ingested combiner Arrow bodies (Wave 1 Gate 1 C1 interim). DISSOLVES WHEN the general body producer emits ingested Arrow bodies for list_append, list_snoc_item, and map_merge (Stage D) — citations delete, derivation runs on real producer output, copied_port_citation_retained_count() reaches 0.")
+
+type CopiedPortCitationFrontierDisposition
+  = CopiedPortCitationRetained { combiner: Symbol, migration_trigger: Symbol }
+  | CopiedPortProducerIngested
+
+type CopiedPortCitationFrontierRow {
+  combiner: Symbol
+  disposition: CopiedPortCitationFrontierDisposition
+  semantics_note: String
+}
+
+data copied_port_citation_frontier_row_list_append: CopiedPortCitationFrontierRow = CopiedPortCitationFrontierRow {
+  combiner: ^list_append,
+  disposition: CopiedPortCitationRetained {
+    combiner: ^list_append,
+    migration_trigger: ^migrate_when_general_body_producer_lands
+  },
+  semantics_note: "Faithful citation: two-param Arrow, Loop body linear in the right operand (concat copies the appended side) — matches list_append's executing copy axis."
+}
+
+data copied_port_citation_frontier_row_list_snoc_item: CopiedPortCitationFrontierRow = CopiedPortCitationFrontierRow {
+  combiner: ^list_snoc_item,
+  disposition: CopiedPortCitationRetained {
+    combiner: ^list_snoc_item,
+    migration_trigger: ^migrate_when_general_body_producer_lands
+  },
+  semantics_note: "Faithful citation: two-param Arrow, Loop body linear in left spine — matches list_snoc_item accumulator-copy axis."
+}
+
+data copied_port_citation_frontier_row_map_merge: CopiedPortCitationFrontierRow = CopiedPortCitationFrontierRow {
+  combiner: ^map_merge,
+  disposition: CopiedPortCitationRetained {
+    combiner: ^map_merge,
+    migration_trigger: ^migrate_when_general_body_producer_lands
+  },
+  semantics_note: "Faithful citation: two-param Arrow, Loop body linear in overlay only (base is not the size carrier) — map_merge copied port is overlay by semantics, not tiebreak."
+}
+
+fn copied_port_citation_frontier_rows() -> List<CopiedPortCitationFrontierRow> {
+  Cons {
+    head: copied_port_citation_frontier_row_list_append,
+    tail: Cons {
+      head: copied_port_citation_frontier_row_list_snoc_item,
+      tail: Cons {
+        head: copied_port_citation_frontier_row_map_merge,
+        tail: Empty
+      }
+    }
+  }
+}
+
+fn copied_port_citation_retained_count() -> Int {
+  fold(copied_port_citation_frontier_rows(), init: 0, f: fn(count, row) {
+    match row.disposition {
+      CopiedPortCitationRetained { combiner: _, migration_trigger: _ } => count + 1
+      CopiedPortProducerIngested => count
+    }
+  })
+}
+
+fn citation_conj_measure(left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn citation_arrow_multi_linear_ambiguous(left_sym: Symbol, right_sym: Symbol) -> Node {
+  citation_arrow_two_param_loop(
+    left_sym: left_sym,
+    right_sym: right_sym,
+    measure: citation_conj_measure(
+      left: citation_param_ref(sym: left_sym),
+      right: citation_param_ref(sym: right_sym)
+    )
+  )
+}
+
+fn citation_param_ref(sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn citation_loop_body_linear_in(measure: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: ComputationNode { behavior: Transform },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn citation_arrow_two_param_loop(
+  left_sym: Symbol,
+  right_sym: Symbol,
+  measure: Node
+) -> Node {
+  let left = citation_param_ref(sym: left_sym)
+  let right = citation_param_ref(sym: right_sym)
+  let signature = declared_signature(
+    params: [binder_edge(name: left_sym, type_node: left), binder_edge(name: right_sym, type_node: right)],
+    source: left
+  )
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^copied_port_citation_return_type } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      },
+      signature.order,
+      Edge {
+        label: core_edge_label(marker: ArrowBodyEdge),
+        target: citation_loop_body_linear_in(measure: measure)
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCitation {
+  combiner: ^list_append,
+  declaration: optional_present(value: "std.algebra.list_append"),
+  arrow: citation_arrow_two_param_loop(
+    left_sym: ^left,
+    right_sym: ^right,
+    measure: citation_param_ref(sym: ^right)
+  )
+}
+
+data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowCitation {
+  combiner: ^list_snoc_item,
+  declaration: optional_present(value: "std.algebra.list_snoc_item"),
+  arrow: citation_arrow_two_param_loop(
+    left_sym: ^xs,
+    right_sym: ^item,
+    measure: citation_param_ref(sym: ^xs)
+  )
+}
+
+data copied_port_citation_map_merge: CombinerArrowCitation = CombinerArrowCitation {
+  combiner: ^map_merge,
+  declaration: optional_absent(),
+  arrow: citation_arrow_two_param_loop(
+    left_sym: ^copied_port_citation_map_merge_base,
+    right_sym: ^copied_port_citation_map_merge_overlay,
+    measure: citation_param_ref(sym: ^copied_port_citation_map_merge_overlay)
+  )
+}
+
+data copied_port_combiner_arrow_citations: List<CombinerArrowCitation> = [
+  copied_port_citation_list_append,
+  copied_port_citation_list_snoc_item,
+  copied_port_citation_map_merge
+]
+
+fn copied_port_fact_list_prepend(row: CopiedPortFact, xs: List<CopiedPortFact>) -> List<CopiedPortFact> {
+  Cons { head: row, tail: xs }
+}
+
+fn copied_port_derived_registry_rows() -> List<CopiedPortFact> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: Empty,
+    cons: fn(acc, cite) {
+      match derive_copied_port_fact(combiner: cite.combiner, arrow: cite.arrow) {
+        Absent => acc
+        Present { value: row } => copied_port_fact_list_prepend(row: row, xs: acc)
+      }
+    }
+  )
+}
+
+// THE CITED ARROW OF A COMBINER, the declared signature a call to it binds against. Its parameter labels
+// are the real declaration's (std.algebra list_append(left, right), list_snoc_item(xs, item)), so a named
+// actual binds to the parameter it names through v2.std.arrow_signature application_binding_plan.
+// map_merge has no .dag declaration to take names from; its citation keeps its own labels, so a NAMED
+// call to it binds no parameter and refuses rather than binding a guessed one.
+fn copied_port_citation_arrow_of(combiner: Symbol) -> Optional<Node> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: optional_absent(),
+    cons: fn(acc, cite) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => if cite.combiner == combiner { optional_present(value: cite.arrow) } else { acc }
+      }
+    }
+  )
+}
+
+// THE CITED COMBINER A QUALIFIED CALLEE DENOTES, BY DECLARATION IDENTITY: Present only when the
+// callee's dotted path IS a citation's declaration. A callee that merely shares a cited leaf answers
+// Absent, so it is never priced by another declaration's contract.
+fn copied_port_citation_combiner_for_declaration(dotted: String) -> Optional<Symbol> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: optional_absent(),
+    cons: fn(acc, cite) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match cite.declaration {
+            Present { value: d } => if d == dotted { optional_present(value: cite.combiner) } else { acc }
+            Absent => acc
+          }
+      }
+    }
+  )
+}
+
+fn copied_port_index_of(combiner: Symbol) -> Optional<Int> {
+  copied_port_index_from_registry(
+    rows: copied_port_derived_registry_rows(),
+    combiner: combiner
+  )
+}

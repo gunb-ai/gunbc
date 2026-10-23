@@ -1,0 +1,13 @@
+module v2.test.lens_structural_resolution.claim_carrier
+
+
+type LensStructuralResolutionClaim {
+  input: InferredTree
+  expected: StructuralResolutionFact
+}
+
+fn lens_structural_resolution_actual(
+  claim: LensStructuralResolutionClaim
+) -> Witness<StructuralResolutionFact> {
+  v2.lens.structural_resolution.at(tree: claim.input)
+}

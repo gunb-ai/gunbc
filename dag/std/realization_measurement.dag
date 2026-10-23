@@ -1,0 +1,329 @@
+module std.realization_measurement
+
+import std.types { Bool, String, List, Int }
+import std.content_hash { ContentHash }
+import std.nat { Nat, nat_max }
+import std.measure {
+  Measure,
+  Time,
+  Nano,
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
+  time_measure,
+  measure_count,
+  measure_scale_fraction_ceil,
+  ByteSize,
+  byte_size,
+  Watt,
+  watt,
+}
+import std.realization_schedule {
+  CostAccount,
+  CostAxis,
+  CostAxisMeasured,
+  CostAxisPredicted,
+  CostAxisUnestablished,
+  CostTimeAxis,
+  CostTimeMeasured,
+  CostTimePredicted,
+  CostTimeUnestablished,
+  cost_time_axis_established,
+
+  cost_account_measured,
+  cost_account_time_count,
+}
+import std.optional { Absent, Present }
+
+// PEAK AND CURRENT ARE DIFFERENT QUESTIONS AND ONLY ONE OF THEM CAN SEE A RELEASE.
+//
+// VmHWM is monotone: once a phase has touched a page the high-water mark keeps it for the life of
+// the process, so a sequence of phases each reports the same number and none of them reports what
+// it is HOLDING. A phase inventory needs the opposite reading -- what is resident AT the boundary --
+// because the fact under test is whether a phase released what it built. Peak answers `how close
+// did this process come to its budget`; current answers `what does this phase still own`, and an
+// inventory that used peak for both would report every boundary as the maximum and find no phase
+// responsible for anything.
+//
+// ALLOCATOR RESIDENCY IS A THIRD FACT, and it is the one that decides whether a structural census
+// can close. Bytes the allocator has freed but not returned to the kernel are resident to the
+// process and owned by NO semantic population, so a census that counted only live objects would
+// leave that difference as an unexplained heap and invite the wrong repair. Asking the allocator
+// separately is what makes the residual explicit rather than mysterious.
+//
+// AN UNOBSERVABLE AXIS REFUSES (DESIGN section 5, and section 2.7's supply rule applied to
+// measurement): a realization that cannot answer for allocator residency must say so, never report
+// zero. Zero is a reading; absence is not.
+type RealizationMeasureEffect
+  = ObserveElapsedAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+  | ObservePeakResidentAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+  | ObserveCurrentResidentAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+  | ObserveAllocatorResidencyAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+  | ObserveThreadCpuAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+
+// THE OBSERVATION, TYPED SO ABSENCE CANNOT READ AS A QUANTITY. A residency reading either holds a
+// byte count or names why it could not be taken; there is no arm carrying a number the realization
+// did not observe.
+type ResidencyObservation
+  = ResidencyObserved { bytes: ByteSize }
+  | ResidencyUnobservable { axis: String, reason: String }
+
+fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
+  match o {
+    ResidencyObserved { bytes: b } => Present { value: b }
+    ResidencyUnobservable { axis: _, reason: _ } => none
+  }
+}
+
+// A BOUNDARY IS NAMED BY THE PHASE IT CLOSES, not by an ordinal, because an inventory is read by
+// asking which phase holds what and an ordinal cannot answer that. The five the native route has:
+// the context fold, the resolution context it builds, the engine's own seal, and the two stage
+// demands that are actually admitted for a refusing module.
+type NativeResidencyBoundary
+  = ResidencyAtContextFinish
+  | ResidencyAtResolutionContext
+  | ResidencyAtEngineSealed
+  | ResidencyAtResolveSettled
+  | ResidencyAtInferSettled
+
+fn native_residency_boundary_label(b: NativeResidencyBoundary) -> String {
+  match b {
+    ResidencyAtContextFinish => "context_finish"
+    ResidencyAtResolutionContext => "resolution_context"
+    ResidencyAtEngineSealed => "engine_sealed"
+    ResidencyAtResolveSettled => "resolve_settled"
+    ResidencyAtInferSettled => "infer_settled"
+  }
+}
+
+type NativeResidencySample {
+  boundary: NativeResidencyBoundary
+  current: ResidencyObservation
+  peak: ResidencyObservation
+  allocator: ResidencyObservation
+}
+
+// Space composes as time's DUAL (witness-realization plan P1 / memory-control audit F4): sequential
+// steps RELEASE, so seq peak = max; concurrent steps CO-RESIDE, so par peak = add. The earlier
+// receipt rollup summed space over a sequential list - the parallel rule applied to the serial axis
+// - and the keystone witness enshrined the sum; both corrected with this landing. Realized
+// observation: the observed_peak_resident_bytes host builtin (VmHWM, fail-closed when unavailable)
+// is ObservePeakResidentAtSubject's realization seam.
+
+// ObserveElapsedAtSubject realization seam: observed_monotonic_nanos(boundary) reads nanoseconds
+// since a process-local monotonic epoch. Callers use distinct start/end boundary labels and
+// subtract the observations around the modeled subject; the labels prevent pure-call memoization
+// from collapsing two observations but are never cache or bundle identity material. The absolute
+// reading is neither calendar time nor identity material. The native-selected-witness bundle
+// receipt uses this seam to compare the same selected population through interpreter and native
+// execution.
+
+// ObserveThreadCpuAtSubject realization seam: observed_thread_cpu_nanos(boundary) reads the calling
+// thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId). ELAPSED AND CPU ARE
+// DIFFERENT QUESTIONS, the same way peak and current residency are: elapsed answers `how long did
+// the subject take on this host`, CPU answers `how much work did the subject itself perform`. Only
+// the second is a property of the subject -- an elapsed span also contains every interval the host
+// descheduled the thread -- so a VERDICT over a partition of a thread's own work (the native
+// driver's std.compiler_entry native_driver_cost_account) is judged on CPU, and elapsed stays an
+// observation beside it. A host without the clock REFUSES; substituting the monotonic reading would
+// hand the verdict back to host load.
+
+// HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in
+// v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject
+// effect, not a new decision authority. Lane: v1-hand-queue-drain. Concrete ROADMAP row: 'Get
+// hand-written Rust in this repository down to zero' (authority dag/gunbc/v1/v1_deletion_plan.dag).
+// Dissolve-on: the emitted runtime owns the host monotonic-observation realization and
+// v1-interpreter-delete removes this seed arm; the .dag effect and receipts remain. Until then the
+// arm is counted here, covered by the selected-witness bundle's monotonic positive control, and
+// exercised by the cold/warm plus interpreter/native execution receipts.
+
+fn space_measure_seq(a: ByteSize, b: ByteSize) -> ByteSize {
+  byte_size(count: nat_max(a: measure_count(m: a), b: measure_count(m: b)))
+}
+
+fn space_measure_par(a: ByteSize, b: ByteSize) -> ByteSize {
+  byte_size(count: measure_count(m: a) + measure_count(m: b))
+}
+
+fn space_measure_list_seq(spaces: List<ByteSize>) -> ByteSize {
+  fold(spaces, init: byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
+}
+
+// THE BASIS MEET OVER AN AXIS, HOMED WITH THE CARRIER RATHER THAN WITH ITS FIRST CONSUMER.
+// review 61736: these were authored in a fleet product module because that is where the first
+// rollup needed them, but they are the semantic core of the axis -- a total is only as established
+// as its weakest term -- and DESIGN section 3 puts a fact in its LAYER, not in the file that first
+// wanted it. Left there, the next consumer that needs to add two axes re-mints the meet. They sit
+// here rather than in realization_schedule because the space meet consumes space_measure_seq,
+// which this module owns, and realization_schedule is upstream of it.
+fn cost_axis_add_time(
+  acc: CostTimeAxis<Nano>,
+  term: CostTimeAxis<Nano>,
+) -> CostTimeAxis<Nano> {
+  match acc {
+    CostTimeUnestablished => CostTimeUnestablished
+    CostTimeMeasured { value: a } =>
+      match term {
+        CostTimeUnestablished => CostTimeUnestablished
+        CostTimeMeasured { value: t } =>
+          CostTimeMeasured { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+        CostTimePredicted { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+      }
+    CostTimePredicted { value: a } =>
+      match term {
+        CostTimeUnestablished => CostTimeUnestablished
+        CostTimeMeasured { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+        CostTimePredicted { value: t } =>
+          CostTimePredicted { value: nanosecond(count: nanosecond_count(n: a) + measure_count(m: t)) }
+      }
+  }
+}
+
+fn cost_axis_peak_space(acc: CostAxis<ByteSize>, term: CostAxis<ByteSize>) -> CostAxis<ByteSize> {
+  match acc {
+    CostAxisUnestablished => CostAxisUnestablished
+    CostAxisMeasured { value: a } =>
+      match term {
+        CostAxisUnestablished => CostAxisUnestablished
+        CostAxisMeasured { value: t } => CostAxisMeasured { value: space_measure_seq(a: a, b: t) }
+        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+      }
+    CostAxisPredicted { value: a } =>
+      match term {
+        CostAxisUnestablished => CostAxisUnestablished
+        CostAxisMeasured { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+        CostAxisPredicted { value: t } => CostAxisPredicted { value: space_measure_seq(a: a, b: t) }
+      }
+  }
+}
+
+fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
+  cost_account_measured(time: time)
+}
+
+fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, space: ByteSize) -> CostAccount<S> {
+  CostAccount {
+    time: CostTimeMeasured { value: time }
+    space: CostAxisMeasured { value: space }
+    power: CostAxisUnestablished
+  }
+}
+
+fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+  time_measure(
+    count: fold(times, init: 0, f: (acc, t) => acc + measure_count(m: t))
+  )
+}
+
+type ConcurrentMemoryPeakSample {
+  peak: ByteSize
+  concurrency: Int
+}
+
+fn concurrent_memory_peak_per_share(sample: ConcurrentMemoryPeakSample) -> ByteSize {
+
+  let shares = if sample.concurrency <= 0 { 1 } else { sample.concurrency }
+  measure_scale_fraction_ceil(m: sample.peak, num: 1, den: shares)
+}
+
+fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
+  let sample = ConcurrentMemoryPeakSample { peak: byte_size(8400113664), concurrency: 4 }
+  let degenerate = ConcurrentMemoryPeakSample { peak: byte_size(2100028416), concurrency: 0 }
+  let indivisible = ConcurrentMemoryPeakSample { peak: byte_size(10), concurrency: 4 }
+  measure_count(m: concurrent_memory_peak_per_share(sample: sample)) == 2100028416
+    && measure_count(m: concurrent_memory_peak_per_share(sample: degenerate)) == 2100028416
+    && measure_count(m: concurrent_memory_peak_per_share(sample: indivisible)) == 3
+}
+
+fn time_measure_is_zero<S>(d: Measure<Time, S, Nat>) -> Bool {
+  measure_count(m: d) == 0
+}
+
+fn time_measure_seq<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Measure<Time, S, Nat> {
+  if time_measure_is_zero(d: a) {
+    b
+  } else if time_measure_is_zero(d: b) {
+    a
+  } else {
+    time_measure(
+      count: measure_count(m: a) + measure_count(m: b)
+    )
+  }
+}
+
+fn time_measure_par<S>(a: Measure<Time, S, Nat>, b: Measure<Time, S, Nat>) -> Measure<Time, S, Nat> {
+  if time_measure_is_zero(d: a) {
+    b
+  } else if time_measure_is_zero(d: b) {
+    a
+  } else {
+    time_measure(
+      count: nat_max(a: measure_count(m: a), b: measure_count(m: b))
+    )
+  }
+}
+
+fn time_measure_list_par<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+  fold(
+    times,
+    init: time_measure(count: 0),
+    f: (acc, t) => time_measure_par(a: acc, b: t)
+  )
+}
+
+fn schedule_batch_critical_path<S>(batch_times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
+  time_measure_list_par(times: batch_times)
+}
+
+fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, Nat>>>) -> Measure<Time, S, Nat> {
+  fold(
+    batch_times,
+    init: time_measure(count: 0),
+    f: (acc, batch) => time_measure_seq(
+      a: acc,
+      b: schedule_batch_critical_path(batch_times: batch)
+    )
+  )
+}
+
+fn cost_account_measured_from_schedule_critical_path<S>(
+  batch_times: List<List<Measure<Time, S, Nat>>>
+) -> CostAccount<S> {
+  cost_account_measured_from_time(time: schedule_critical_path_time(batch_times: batch_times))
+}
+
+fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, Nat>>) -> CostAccount<S> {
+  cost_account_measured_from_time(time: time_measure_list_total(times: times))
+}
+
+fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Time, S, Nat>) -> Bool {
+  if measure_count(m: wall_time) == 0 {
+    false
+  } else {
+    match cost_account_time_count(
+      account: cost_account_measured_from_time(time: wall_time)
+    ) {
+      Present { value: measured_count } =>
+        measured_count != 0
+          && measured_count == measure_count(m: wall_time)
+      Absent => false
+    }
+  }
+}

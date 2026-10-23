@@ -1,0 +1,140 @@
+module test.claim.roadmap.roadmap_belt_recapture_witness_test
+
+// RECAPTURE ADMISSION AT ITS OWN INTERFACE (DESIGN §3). The dirty-worktree, missing-head,
+// unobservable-base and head-address capture refusals are decided from supplied observations --
+// porcelain, a typed head, a typed spawn base, a typed SubmissionCaptureObservation -- because
+// those claims are about those preconditions, not about git. The real recapture path is the wet
+// inhabitance test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap_belt_actuate {
+  belt_scm_recapture_preconditions,
+  RecaptureAdmitted, RecaptureWorktreeDirty, RecaptureHasNoCommittedRevision, RecaptureBaseUnobservable,
+  WorktreeHeadObserved, WorktreeHeadUnobserved,
+  BaseShaObserved, BaseShaUnobserved,
+  belt_capture_standing, CaptureOnBase, CaptureBaseStale, CaptureStandingUnderivable,
+  belt_scm_recapture_capture_gate,
+  RecaptureCaptureProceeds, RecaptureCaptureRefused, RecaptureCapturePoisoned,
+  recapture_capture_absent_detail,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound,
+  CaptureForHead, CaptureAbsent, CaptureUnreadable,
+}
+import gunbc.scm.repository_envelope { RepositoryCommit }
+import test.fixture.legacy_intake_scene { legacy_corrective_scene, legacy_unconverted, legacy_ref }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn a_dirty_worktree_refuses_recapture() -> Bool {
+  match belt_scm_recapture_preconditions(
+    porcelain_nul: " M src/a.dag\0",
+    head: WorktreeHeadObserved { revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr },
+    base: BaseShaObserved { base_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  ) {
+    RecaptureWorktreeDirty => true
+    RecaptureAdmitted { head_sha: _, base_sha: _ } => false
+    RecaptureHasNoCommittedRevision { detail: _ } => false
+    RecaptureBaseUnobservable { detail: _ } => false
+  }
+}
+
+test fn a_missing_committed_revision_refuses_recapture() -> Bool {
+  match belt_scm_recapture_preconditions(
+    porcelain_nul: "",
+    head: WorktreeHeadUnobserved { reason: "unborn HEAD" },
+    base: BaseShaObserved { base_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  ) {
+    RecaptureHasNoCommittedRevision { detail } => detail == "unborn HEAD"
+    RecaptureWorktreeDirty => false
+    RecaptureAdmitted { head_sha: _, base_sha: _ } => false
+    RecaptureBaseUnobservable { detail: _ } => false
+  }
+}
+
+test fn an_unobservable_spawn_base_refuses_recapture() -> Bool {
+  match belt_scm_recapture_preconditions(
+    porcelain_nul: "",
+    head: WorktreeHeadObserved { revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr },
+    base: BaseShaUnobserved { reason: "spawn origin unreadable" },
+  ) {
+    RecaptureBaseUnobservable { detail } => detail == "spawn origin unreadable"
+    RecaptureWorktreeDirty => false
+    RecaptureHasNoCommittedRevision { detail: _ } => false
+    RecaptureAdmitted { head_sha: _, base_sha: _ } => false
+  }
+}
+
+test fn a_clean_committed_tree_with_a_recorded_base_is_admitted() -> Bool {
+  match belt_scm_recapture_preconditions(
+    porcelain_nul: "",
+    head: WorktreeHeadObserved { revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr },
+    base: BaseShaObserved { base_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  ) {
+    RecaptureAdmitted { head_sha, base_sha } =>
+      head_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && base_sha == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    RecaptureWorktreeDirty => false
+    RecaptureHasNoCommittedRevision { detail: _ } => false
+    RecaptureBaseUnobservable { detail: _ } => false
+  }
+}
+
+fn standing_tag(commits: List<RepositoryCommit>, ordinal: Int) -> String {
+  match belt_capture_standing(commits: commits, candidate: legacy_ref(ordinal: ordinal)) {
+    CaptureOnBase => "fresh"
+    CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } => "not_fresh"
+    CaptureStandingUnderivable { detail: _ } => "poisoned"
+  }
+}
+
+test fn a_fresh_recapture_and_a_stale_capture_are_distinct_freshness_arms() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } =>
+      standing_tag(commits: scene.commits, ordinal: 5) == "fresh"
+        && standing_tag(commits: scene.commits, ordinal: 1) == "not_fresh"
+  }
+}
+
+test fn an_underivable_standing_poisons_rather_than_reporting_not_fresh() -> Bool {
+  match legacy_unconverted() {
+    Absent => false
+    Present { value: legacy } => standing_tag(commits: legacy.commits, ordinal: 1) == "poisoned"
+  }
+}
+
+fn recorded_capture(head: String) -> SubmissionCapture {
+  SubmissionCapture {
+    head_sha: head,
+    scm_repository: "/r.json",
+    scm_commit_ordinal: 1,
+    scm_root_locator: SubmissionCaptureRootBound { locator: "loc" },
+    digest: "d",
+    submission: WorkerSubmission { readiness: SubmissionReady, explanation: "e", limitations: "l" },
+  }
+}
+
+test fn a_capture_at_this_heads_address_proceeds() -> Bool {
+  match belt_scm_recapture_capture_gate(observation: CaptureForHead { capture: recorded_capture(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") }) {
+    RecaptureCaptureProceeds { capture } => capture.head_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    RecaptureCaptureRefused { detail: _ } => false
+    RecaptureCapturePoisoned { detail: _ } => false
+  }
+}
+
+test fn an_absent_capture_at_this_heads_address_refuses() -> Bool {
+  match belt_scm_recapture_capture_gate(observation: CaptureAbsent) {
+    RecaptureCaptureRefused { detail } => detail == recapture_capture_absent_detail
+    RecaptureCaptureProceeds { capture: _ } => false
+    RecaptureCapturePoisoned { detail: _ } => false
+  }
+}
+
+test fn an_unreadable_capture_at_this_heads_address_poisons_and_is_not_absence() -> Bool {
+  match belt_scm_recapture_capture_gate(observation: CaptureUnreadable { reason: "envelope damaged" }) {
+    RecaptureCapturePoisoned { detail } => detail == "envelope damaged"
+    RecaptureCaptureProceeds { capture: _ } => false
+    RecaptureCaptureRefused { detail: _ } => false
+  }
+}

@@ -1,0 +1,33 @@
+
+PICMG HPM.1 Upgrade Agent 1.0.9: 
+
+Setting large buffer to 8196
+Validating firmware image integrity...OK
+Performing preparation stage...
+    Invalid image file for product 516
+
+    Image Information
+        Device Id : 0x20
+        Prod   Id : 0x0082
+        Manuf  Id : 0x00cd3a
+    Board Information
+        Device Id : 0x20
+        Prod   Id : 0x0204
+        Manuf  Id : 0x000000
+ Continue ignoring DeviceID/ProductID/ManufacturingID (Y/N): 
+Services may be affected during upgrade. Do you wish to continue? (y/n): OK
+
+Performing upgrade stage:
+
+-------------------------------------------------------------------------------
+|ID  | Name        |                     Versions                        | %  |
+|    |             |      Active     |      Backup     |      File       |    |
+|----|-------------|-----------------|-----------------|-----------------|----|
+|*  6|BOOTFW       |   0.00 00000000 | ---.-- -------- |   2.10 26012320 |  0%|  3%|  6%|  9%| 12%| 15%| 18%| 21%| 25%| 28%| 31%| 34%| 37%| 40%| 43%| 47%| 50%| 53%| 56%| 59%| 62%| 65%| 69%| 72%| 75%| 78%| 81%| 84%| 87%| 90%| 94%| 97%|100%|
+|    |Upload Time: 00:00             | Image Size:  261136 bytes              |
+-------------------------------------------------------------------------------
+(*) Component requires Payload Cold Reset
+
+Firmware upgrade procedure successful
+
+EXIT=0

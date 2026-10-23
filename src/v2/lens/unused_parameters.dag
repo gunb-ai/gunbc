@@ -1,0 +1,165 @@
+module v2.lens.unused_parameters
+
+
+type UseRelation
+  = IsUseOfDeclaration
+  | IsStructuralComposition
+  | IsNonUseDependency
+  | RequiresResolutionWitness
+
+type UseClassificationFact {
+  uses: List<ClassifiedDependencyView<UseRelation>>
+}
+
+type UnusedParameterFact {
+  declaration: Node
+}
+
+type UnusedParametersFact {
+  unused: List<UnusedParameterFact>
+}
+
+fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRelation> {
+  DependencyKindClassifier {
+    contains: IsStructuralComposition,
+    binds_to: IsUseOfDeclaration,
+    type_depends_on: IsNonUseDependency,
+    data_depends_on: IsNonUseDependency,
+    effect_depends_on: IsNonUseDependency,
+    resource_depends_on: IsNonUseDependency,
+    module_depends_on: IsNonUseDependency,
+    barrier_before: IsNonUseDependency,
+    placement_depends_on: IsNonUseDependency,
+    model_depends_on: IsNonUseDependency,
+    projection_depends_on: IsNonUseDependency,
+    generated_from: RequiresResolutionWitness,
+    verified_by: RequiresResolutionWitness,
+    promoted_by: RequiresResolutionWitness,
+    bootstrap_depends_on: RequiresResolutionWitness
+  }
+}
+
+fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
+
+  classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
+}
+
+fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
+  UseClassificationFact {
+    uses: fold(dependencies, init: [], f: fn(acc, view) {
+      list_snoc_item(xs: acc, item: use_classify(view: view))
+    })
+  }
+}
+
+fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UseClassificationFact> {
+  Holds {
+    value: use_classification_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
+  match relation {
+    IsUseOfDeclaration => true
+    RequiresResolutionWitness => true
+    IsStructuralComposition => false
+    IsNonUseDependency => false
+  }
+}
+
+fn declaration_has_use_or_unresolved(uses: List<ClassifiedDependencyView<UseRelation>>, declaration: Node) -> Bool {
+  fold(uses, init: false, f: fn(acc, classified) {
+    if acc {
+      acc
+    } else {
+      (classified.dependency.source == declaration) && use_relation_blocks_unused(relation: classified.classification)
+    }
+  })
+}
+
+fn unused_parameter_for_declaration(declaration: Node) -> UnusedParameterFact {
+  UnusedParameterFact {
+    declaration: declaration
+  }
+}
+
+fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bool {
+  fold(unused, init: false, f: fn(acc, entry) {
+    acc || (entry.declaration == declaration)
+  })
+}
+
+fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
+  UnusedParametersFact {
+    unused: fold(use_fact.uses, init: std.algebra.Empty, f: fn(acc, classified) {
+      if use_relation_eq(a: classified.classification, b: IsStructuralComposition) {
+        let candidate = classified.dependency.dependent
+        if already_in_unused(unused: acc, declaration: candidate) {
+          acc
+        } else {
+          if declaration_has_use_or_unresolved(uses: use_fact.uses, declaration: candidate) {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: unused_parameter_for_declaration(declaration: candidate))
+          }
+        }
+      } else {
+        acc
+      }
+    })
+  }
+}
+
+fn unused_parameters_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
+  rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies))
+}
+
+fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UnusedParametersFact> {
+  Holds {
+    value: unused_parameters_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn use_relation_eq(a: UseRelation, b: UseRelation) -> Bool {
+  match a {
+    IsUseOfDeclaration => match b {
+      IsUseOfDeclaration => true
+      _ => false
+    }
+    IsStructuralComposition => match b {
+      IsStructuralComposition => true
+      _ => false
+    }
+    IsNonUseDependency => match b {
+      IsNonUseDependency => true
+      _ => false
+    }
+    RequiresResolutionWitness => match b {
+      RequiresResolutionWitness => true
+      _ => false
+    }
+  }
+}
+
+fn use_classification_classified_eq(
+  a: ClassifiedDependencyView<UseRelation>,
+  b: ClassifiedDependencyView<UseRelation>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: use_relation_eq)
+}
+
+fn use_classification_fact_eq(a: UseClassificationFact, b: UseClassificationFact) -> Bool {
+  bag_eq(xs: a.uses, ys: b.uses, eq: use_classification_classified_eq)
+}
+
+fn unused_parameter_fact_eq(a: UnusedParameterFact, b: UnusedParameterFact) -> Bool {
+  a.declaration == b.declaration
+}
+
+fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -> Bool {
+  bag_eq(xs: a.unused, ys: b.unused, eq: unused_parameter_fact_eq)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

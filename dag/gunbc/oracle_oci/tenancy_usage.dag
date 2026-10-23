@@ -1,0 +1,242 @@
+module gunbc.oracle_oci.tenancy_usage
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.resources { Network }
+import std.measure { Gigabyte, gigabyte, measure_add }
+import std.decimal { ExactDecimal, decimal_pow10 }
+import std.optional { Absent, Present }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse { json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
+import extdeps.languages.json.number {
+  read_json_number_value, JsonNumberValueRead, JsonValueIsNotANumber,
+  JsonNumberExact, JsonNumberOutsideExactFragment, json_number_fragment_refusal_text,
+}
+import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, oci_shape_wire_name }
+import product.supplier.oracle_oci { OciOtherUsage }
+import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import gunbc.oracle_oci.api {
+  OciListRead, OciListed, OciListInaccessible, OciListRefused,
+  OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text,
+  oci_list, oci_iaas_host, oci_identity_host, oci_tenancy_ocid,
+}
+
+// WHAT THE WHOLE TENANCY ALREADY USES OF THE ALWAYS FREE ALLOWANCE (review 76384 on gunbc#13351).
+//
+// The allowance is tenancy-wide: the A1 OCPU and memory pool, the micro count, and the 200 GB of boot
+// and block volumes combined are shared by everything in every compartment. So before the instance
+// converge launches anything, it reads what is already there, in the root compartment and in every
+// active compartment beneath it:
+//   - live instances: each E2.1.Micro counts one micro, each A1.Flex adds its shapeConfig OCPUs and memory;
+//   - boot volumes that are not terminated, including those left behind by terminated instances, read
+//     per availability domain;
+//   - block volumes that are not terminated.
+// The plan's not-yet-launched members are then fitted beside that total. An instance that is stopped
+// is counted, because it still holds its allocation and its boot volume.
+//
+// Every list is a complete, admitted read (gunbc.oracle_oci.api), and one refusal anywhere refuses the
+// whole observation, because a usage total missing a compartment is an undercount, and an undercount
+// is exactly the error this exists to prevent.
+//
+// NOT CARRIED: A1 consumption is metered monthly (1,500 OCPU-hours and 9,000 GB-hours, extdeps.cloud.
+// oracle_oci). This observation is the steady-state allocation, which bounds that meter only when
+// the allocation has been held all month. A tenancy that ran more earlier in the month is not seen
+// here. That is the remaining gap product.supplier.oracle_oci oci_tenancy_allocation_unread_obligation
+// names.
+
+type OciTenancyUsageRead
+  = TenancyUsageObserved { usage: OciOtherUsage, compartments: Int }
+  | TenancyUsageRefused { line: String }
+
+// A WHOLE NUMBER FROM A JSON NUMERAL, read exactly through extdeps.languages.json.number. Oracle
+// writes ocpus and memoryInGBs as floats ("2.0"). A fractional value refuses rather than being
+// rounded, because a rounded allocation is a wrong allocation.
+type OciWhole
+  = OciWholeValue { value: Int }
+  | OciWholeRefused { cause: String }
+
+fn oci_whole_of(d: ExactDecimal) -> OciWhole {
+  let scale = decimal_pow10(exponent: d.fraction_digits)
+  if d.units % scale == 0 { OciWholeValue { value: d.units / scale } } else { OciWholeRefused { cause: "is not a whole number" } }
+}
+
+fn oci_whole_member(obj: JsonValue, key: String) -> OciWhole {
+  match json_member_presence(obj: obj, key: key) {
+    JsonMemberValue { value } => match read_json_number_value(v: value) {
+      JsonValueIsNotANumber => OciWholeRefused { cause: concat(key, " is not a number") }
+      JsonNumberValueRead { reading } => match reading {
+        JsonNumberOutsideExactFragment { lexeme, refusal } => OciWholeRefused { cause: join([key, " ", lexeme, ": ", json_number_fragment_refusal_text(r: refusal) as String], "") }
+        JsonNumberExact { value: d } => match oci_whole_of(d: d) {
+          OciWholeValue { value: n } => OciWholeValue { value: n }
+          OciWholeRefused { cause } => OciWholeRefused { cause: join([key, " ", cause], "") }
+        }
+      }
+    }
+    JsonMemberMissing => OciWholeRefused { cause: concat(key, " is missing") }
+    JsonMemberNull => OciWholeRefused { cause: concat(key, " is null") }
+    JsonMemberUnreadable { cause } => OciWholeRefused { cause: join([key, " is unreadable: ", cause], "") }
+  }
+}
+
+fn oci_shape_config_whole(row: JsonValue, key: String) -> OciWhole {
+  match json_member_presence(obj: row, key: "shapeConfig") {
+    JsonMemberValue { value } => oci_whole_member(obj: value, key: key)
+    JsonMemberMissing => OciWholeRefused { cause: "shapeConfig is missing" }
+    JsonMemberNull => OciWholeRefused { cause: "shapeConfig is null" }
+    JsonMemberUnreadable { cause } => OciWholeRefused { cause: concat("shapeConfig is unreadable: ", cause) }
+  }
+}
+
+// ── ONE COMPARTMENT'S CONTRIBUTION (PURE OVER ADMITTED ROWS) ──────────────────────────────────
+
+type OciUsagePart
+  = UsagePart { a1_ocpus: Int, a1_memory: Gigabyte, micros: Int, block: Gigabyte }
+  | UsagePartRefused { line: String }
+
+fn oci_usage_part_add(a: OciUsagePart, b: OciUsagePart) -> OciUsagePart {
+  match a {
+    UsagePartRefused { line } => a
+    UsagePart { a1_ocpus: o1, a1_memory: m1, micros: c1, block: g1 } => match b {
+      UsagePartRefused { line } => b
+      UsagePart { a1_ocpus: o2, a1_memory: m2, micros: c2, block: g2 } =>
+        UsagePart { a1_ocpus: o1 + o2, a1_memory: measure_add(a: m1, b: m2), micros: c1 + c2, block: measure_add(a: g1, b: g2) }
+    }
+  }
+}
+
+data oci_usage_zero: OciUsagePart = UsagePart { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 0, block: gigabyte(count: 0) }
+
+// One instance row, admitted on id, lifecycleState and shape. A terminated instance holds nothing. A
+// live A1 must carry whole shapeConfig numbers; any other shape counts nothing toward these pools.
+fn oci_instance_usage(row: JsonValue) -> OciUsagePart {
+  let state = oci_admitted_text(row: row, key: "lifecycleState")
+  let shape = oci_admitted_text(row: row, key: "shape")
+  let id = oci_admitted_text(row: row, key: "id")
+  if state == "TERMINATED" {
+    oci_usage_zero
+  } else if shape == (oci_shape_wire_name(shape: VmStandardE21Micro) as String) {
+    UsagePart { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 1, block: gigabyte(count: 0) }
+  } else if shape == (oci_shape_wire_name(shape: VmStandardA1Flex) as String) {
+    match oci_shape_config_whole(row: row, key: "ocpus") {
+      OciWholeRefused { cause } => UsagePartRefused { line: join(["instance ", id, " ", cause], "") }
+      OciWholeValue { value: ocpus } => match oci_shape_config_whole(row: row, key: "memoryInGBs") {
+        OciWholeRefused { cause } => UsagePartRefused { line: join(["instance ", id, " ", cause], "") }
+        OciWholeValue { value: memory } => UsagePart { a1_ocpus: ocpus, a1_memory: gigabyte(count: memory), micros: 0, block: gigabyte(count: 0) }
+      }
+    }
+  } else {
+    oci_usage_zero
+  }
+}
+
+// One boot or block volume row, admitted on id and lifecycleState. Every state but TERMINATED holds
+// storage.
+fn oci_volume_usage(row: JsonValue) -> OciUsagePart {
+  if oci_admitted_text(row: row, key: "lifecycleState") == "TERMINATED" {
+    oci_usage_zero
+  } else {
+    match oci_whole_member(obj: row, key: "sizeInGBs") {
+      OciWholeRefused { cause } => UsagePartRefused { line: join(["volume ", oci_admitted_text(row: row, key: "id"), " ", cause], "") }
+      OciWholeValue { value: gb } => UsagePart { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 0, block: gigabyte(count: gb) }
+    }
+  }
+}
+
+fn oci_rows_usage(operation: String, read: OciListRead, keys: List<String>, each: fn(JsonValue) -> OciUsagePart) -> OciUsagePart {
+  match read {
+    OciListRefused { cause } => UsagePartRefused { line: join([operation, " refused: ", cause as String], "") }
+    OciListInaccessible { status, body } => UsagePartRefused { line: join([operation, " refused by OCI (", to_string(status), "): ", body], "") }
+    OciListed { items } => match oci_admit_rows(operation: operation, rows: items, keys: keys) {
+      OciRowRefused { cause } => UsagePartRefused { line: cause as String }
+      OciRowsAdmitted { rows } => fold(rows, init: oci_usage_zero, f: (acc, r) => oci_usage_part_add(a: acc, b: each(r)))
+    }
+  }
+}
+
+// ── NAMES, AND THE AVAILABILITY DOMAINS ───────────────────────────────────────────────────────
+//
+// One admitted text field from every row of a list, or the list's refusal. The availability domains
+// are read here because both this module (boot volumes are domain-local) and
+// gunbc.oracle_oci.instance_ensure (micro placement, A1 retry) need them, and this module is the one
+// both can import.
+type OciNamesRead
+  = OciNamesListed { names: List<String> }
+  | OciNamesRefused { line: String }
+
+fn oci_names_of(read: OciListRead, operation: String, key: String) -> OciNamesRead {
+  match read {
+    OciListed { items } => match oci_admit_rows(operation: operation, rows: items, keys: [key]) {
+      OciRowRefused { cause } => OciNamesRefused { line: cause as String }
+      OciRowsAdmitted { rows } => OciNamesListed { names: map(rows, r => oci_admitted_text(row: r, key: key)) }
+    }
+    OciListInaccessible { status, body } => OciNamesRefused { line: join([operation, " refused by OCI (", to_string(status), "): ", body], "") }
+    OciListRefused { cause } => OciNamesRefused { line: join([operation, " refused: ", cause as String], "") }
+  }
+}
+
+fn oci_availability_domains() -> OciNamesRead uses net: Network {
+  oci_names_of(
+    read: oci_list(operation: "ListAvailabilityDomains", host: oci_identity_host, path_and_query: join(["/20160918/availabilityDomains?compartmentId=", oci_tenancy_ocid as String], "") as NonEmptyStr),
+    operation: "ListAvailabilityDomains",
+    key: "name",
+  )
+}
+
+// ── THE EFFECTFUL HALF ────────────────────────────────────────────────────────────────────────
+
+// BOOT VOLUMES ARE LISTED PER AVAILABILITY DOMAIN (review 78198). Oracle's Listing Boot Volumes page
+// says to "specify the availabilityDomain and compartmentId attributes", while its SDK marks the
+// domain optional. A per-domain read is correct under either reading: it cannot hard-fail on a missing
+// parameter, and it cannot silently undercount domains a domain-less list leaves out. Every domain's
+// read must answer, and one refusal refuses the compartment's usage.
+fn oci_boot_volume_usage(compartment: String, domains: List<String>) -> OciUsagePart uses net: Network {
+  fold(domains, init: oci_usage_zero, f: (acc, d) => oci_usage_part_add(a: acc, b: oci_boot_volume_usage_in(compartment: compartment, domain: d)))
+}
+
+fn oci_boot_volume_usage_in(compartment: String, domain: String) -> OciUsagePart uses net: Network {
+  match uri_percent_encode_component(value: domain as NonEmptyStr) {
+    UriPercentComponentRefused { cause } => UsagePartRefused { line: join(["ListBootVolumes for ", domain, " not sent: the domain name does not percent-encode"], "") }
+    UriPercentComponentEncoded(wire) => oci_rows_usage(operation: join(["ListBootVolumes in ", domain], ""), read: oci_list(operation: "ListBootVolumes", host: oci_iaas_host, path_and_query: join(["/20160918/bootVolumes?availabilityDomain=", wire as String, "&compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState"], each: r => oci_volume_usage(row: r))
+  }
+}
+
+fn oci_compartment_usage(compartment: String, domains: List<String>) -> OciUsagePart uses net: Network {
+  let instances = oci_rows_usage(operation: "ListInstances", read: oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState", "shape"], each: r => oci_instance_usage(row: r))
+  let boot = oci_boot_volume_usage(compartment: compartment, domains: domains)
+  let block = oci_rows_usage(operation: "ListVolumes", read: oci_list(operation: "ListVolumes", host: oci_iaas_host, path_and_query: join(["/20160918/volumes?compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState"], each: r => oci_volume_usage(row: r))
+  oci_usage_part_add(a: oci_usage_part_add(a: instances, b: boot), b: block)
+}
+
+// The root compartment is the tenancy itself. ListCompartments with compartmentIdInSubtree and
+// accessLevel=ANY returns every compartment beneath it.
+fn oci_tenancy_compartments() -> OciListRead uses net: Network {
+  oci_list(operation: "ListCompartments", host: oci_identity_host, path_and_query: join(["/20160918/compartments?compartmentId=", oci_tenancy_ocid as String, "&compartmentIdInSubtree=true&accessLevel=ANY&lifecycleState=ACTIVE"], "") as NonEmptyStr)
+}
+
+fn oci_usage_of_part(part: OciUsagePart, compartments: Int) -> OciTenancyUsageRead {
+  match part {
+    UsagePartRefused { line } => TenancyUsageRefused { line: concat("tenancy usage not observed: ", line) }
+    UsagePart { a1_ocpus, a1_memory, micros, block } =>
+      TenancyUsageObserved {
+        usage: OciOtherUsage { a1_ocpus: a1_ocpus, a1_memory: a1_memory, e2_micro_instances: micros, block: block },
+        compartments: compartments,
+      }
+  }
+}
+
+fn oci_tenancy_usage() -> OciTenancyUsageRead uses net: Network {
+  match oci_tenancy_compartments() {
+    OciListRefused { cause } => TenancyUsageRefused { line: concat("tenancy usage not observed: ListCompartments refused: ", cause as String) }
+    OciListInaccessible { status, body } => TenancyUsageRefused { line: join(["tenancy usage not observed: ListCompartments refused by OCI (", to_string(status), "): ", body], "") }
+    OciListed { items } => match oci_admit_rows(operation: "ListCompartments", rows: items, keys: ["id"]) {
+      OciRowRefused { cause } => TenancyUsageRefused { line: concat("tenancy usage not observed: ", cause as String) }
+      OciRowsAdmitted { rows } => match oci_availability_domains() {
+        OciNamesRefused { line } => TenancyUsageRefused { line: concat("tenancy usage not observed: ", line) }
+        OciNamesListed { names: domains } => {
+          let ids = concat([oci_tenancy_ocid as String], map(rows, r => oci_admitted_text(row: r, key: "id")))
+          oci_usage_of_part(part: fold(ids, init: oci_usage_zero, f: (acc, c) => oci_usage_part_add(a: acc, b: oci_compartment_usage(compartment: c, domains: domains))), compartments: ids.length())
+        }
+      }
+    }
+  }
+}

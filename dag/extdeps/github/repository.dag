@@ -1,0 +1,74 @@
+module extdeps.github.repository
+
+import std.types { String, Bool }
+import extdeps.github.github { Repository }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/repos/repos#get-a-repository"
+  }
+}
+
+// THE SINGLE AUTHORITY FOR WHETHER A GITHUB REPOSITORY IS WORLD-READABLE, cited to the
+// `visibility` field of the repository object at the anchor above. It was previously forked:
+// extdeps.github.actions_token declared RepositoryVisibility = PublicRepository | PrivateRepository
+// for the fork-token rule, and extdeps.github.hosted_runners declared
+// RepoVisibility = PublicRepo | PrivateRepo for the runner hardware tables — one concept, two
+// spellings, free to disagree (DESIGN §3 nicknaming). Both now import this type.
+//
+// TWO FURTHER SPELLINGS OF THE SAME FACT SURVIVE AND ARE NOT CONSOLIDATED HERE, stated rather
+// than left silent: extdeps.github.github Repository carries `private: Bool` and
+// extdeps.github.code_search CodeSearchRepository carries `private: Bool`. Those are the same
+// upstream fact spelled as the API's boolean alias, they have a consumer set two orders larger
+// than the two coproducts unified here, and folding them in is its own change.
+//
+// GitHub's `visibility` field admits a third value, `internal`, for repositories inside an
+// enterprise account. It is NOT modeled, because no row in this corpus observes one and an arm
+// nothing constructs would be a state no evidence supports (DESIGN §4d). What it would take is an
+// observed internal repository plus a decision per consumer — the fork-token rule and the runner
+// hardware tables each treat public and private differently and neither publishes an internal row.
+
+type RepositoryVisibility
+  = PublicRepository
+  | PrivateRepository
+
+// WORLD-READABLE IS THE PREDICATE EVERY CONSUMER ACTUALLY ASKS, so it is spelled once here rather
+// than as a match at each site. A consumer that needs the asymmetry itself matches the coproduct.
+fn visibility_is_world_readable(visibility: RepositoryVisibility) -> Bool {
+  match visibility {
+    PublicRepository => true
+    PrivateRepository => false
+  }
+}
+
+// GitHub's own spelling of the value, for rendering into a projection that a human reads.
+fn repository_visibility_label(visibility: RepositoryVisibility) -> String {
+  match visibility {
+    PublicRepository => "public"
+    PrivateRepository => "private"
+  }
+}
+
+// THE BRIDGE BETWEEN THE UPSTREAM'S TWO SPELLINGS OF ONE FACT, which is where the consolidation
+// named above actually begins rather than being promised. GitHub's repository object carries BOTH
+// `visibility` and the older boolean `private`, and extdeps.github.github Repository models the
+// boolean because that is what the API returns. A consumer that wants the typed answer asks here
+// instead of matching on a Bool at its own site, so the mapping exists ONCE.
+//
+// This is deliberately a function over the EXISTING Repository rather than a second instance type.
+// An earlier draft of this module minted a RepositoryVisibilityStanding carrying owner, name and
+// visibility, and gunbc.repo_identity authored a row of it for gunb-ai/gunbc -- which was a SIXTH
+// spelling of an instance fact gunbc.repository gunbc_repository already owns, in a change whose
+// whole thesis is de-forking. gunbc.repository's own note anticipates the move in as many words:
+// the answer to five nicknames is not a sixth carrying a promise to consolidate later, it is one
+// authority the others CONSUME. The type is deleted and its consumers read Repository.
+fn repository_visibility(repository: Repository) -> RepositoryVisibility {
+  if repository.private { PrivateRepository } else { PublicRepository }
+}
+
+fn repository_is_world_readable(repository: Repository) -> Bool {
+  visibility_is_world_readable(visibility: repository_visibility(repository: repository))
+}

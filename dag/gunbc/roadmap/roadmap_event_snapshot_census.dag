@@ -1,0 +1,366 @@
+module gunbc.roadmap.roadmap_event_snapshot_census
+
+import std.types { String, Int, Bool, List, Map }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.algebra { trim }
+import std.list { first_duplicate_by_key }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_string, json_array, json_object, json_kv }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.git.worktree_enumeration {
+  GitWorktreeSetObservation, GitWorktreeSetObserved, GitWorktreeSetReadRefused, GitWorktreeSetUndecodable,
+  git_worktree_set_observation_of,
+}
+import gunbc.host_layout { instance_receipts_dir }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_snapshot_namespace, roadmap_event_snapshot_path_owned,
+  carrier_exec, CarrierExecOk, CarrierExecFailed,
+}
+
+// THE CENSUS OF ONE INSTANCE'S EVENT-LOG SNAPSHOT WORKTREES. Every carrier operation works in a
+// private worktree created under its layout's namespace
+// (gunbc.roadmap.roadmap_event_carrier roadmap_event_snapshot_namespace) and removes it. This
+// census reads the repository's own registry of worktrees and keeps the ones whose whole path is
+// a snapshot path of ONE layout's namespace (roadmap_event_snapshot_path_owned), so its subject is
+// one instance: its receipt is per instance and so is the population
+// it describes, even where two instances share a repository.
+//
+// WHAT IT ESTABLISHES, AND WHAT IT DOES NOT. It establishes which of the instance's snapshots are
+// registered now, and which of those were also registered at the previous census. It does NOT
+// establish that any of them leaked. A snapshot present at two censuses may belong to an operation
+// still running: carrier commands carry no deadline, and nothing here observes whether the owning
+// operation has ended. So that population is named present_across_censuses and is a diagnostic
+// candidate for a person to look at. It is never sufficient evidence to remove a worktree.
+//
+// It is also not an account of failed removals. A caller that received SnapshotCloseFailed and has
+// no surface for it leaves no record here; if the worktree is removed or pruned before the next
+// census, that failure appears nowhere.
+//
+// It removes nothing.
+type RoadmapSnapshotCensus
+  = SnapshotCensusRead { snapshots: List<String> }
+  | SnapshotCensusUnreadable { reason: String }
+
+fn roadmap_snapshot_census_of(namespace: String, observation: GitWorktreeSetObservation) -> RoadmapSnapshotCensus {
+  match observation {
+    GitWorktreeSetObserved { primary: _, linked } =>
+      SnapshotCensusRead { snapshots: map(filter(linked, w => roadmap_event_snapshot_path_owned(namespace: namespace, path: w.path)), w => w.path) }
+    GitWorktreeSetReadRefused { exit_code, stderr } =>
+      SnapshotCensusUnreadable { reason: join(["git worktree list exited ", to_string(value: exit_code), ": ", trim(stderr)], "") }
+    GitWorktreeSetUndecodable { entry_index, raw_entry: _, reason } =>
+      SnapshotCensusUnreadable { reason: join(["git worktree list entry ", to_string(value: entry_index), " could not be decoded: ", reason], "") }
+  }
+}
+
+fn roadmap_snapshot_census_read(layout: RoadmapEventCarrierLayout) -> RoadmapSnapshotCensus {
+  match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
+    CarrierExecOk { stdout } => roadmap_snapshot_census_of(namespace: roadmap_event_snapshot_namespace(layout: layout), observation: git_worktree_set_observation_of(raw: stdout, exit_code: 0, stderr: ""))
+    CarrierExecFailed { exit_code, stderr } => SnapshotCensusUnreadable { reason: join(["git worktree list exited ", to_string(value: exit_code), ": ", trim(stderr)], "") }
+  }
+}
+
+// WHAT THE PREVIOUS CENSUS READS AS. Read carries the population it held. Absent is no receipt
+// file at all: a first census. Unreadable is everything else, including a file that exists and is
+// empty -- with no previous population nothing can be said to be present across censuses, and the
+// receipt this census writes says it was blind and why.
+type SnapshotCensusPrior
+  = SnapshotCensusPriorRead { snapshots: List<String> }
+  | SnapshotCensusPriorAbsent
+  | SnapshotCensusPriorUnreadable { reason: String }
+
+// THE RECEIPT. Every member is a fact stated once: the namespace the census selected, the
+// population registered now, the previous population as it was read, and the part of the current
+// population the previous one also held. There are no counts; a count is the length of its list.
+type RoadmapSnapshotCensusReceipt {
+  observed_at: String
+  namespace: String
+  snapshots: List<String>
+  present_across_censuses: List<String>
+  prior: SnapshotCensusPrior
+}
+
+fn snapshot_census_path_index(paths: List<String>) -> Map<String, Bool> {
+  fold(paths, init: empty_map(), f: (acc, p) => map_insert(acc, p, true))
+}
+
+fn snapshot_census_present_across(snapshots: List<String>, prior: SnapshotCensusPrior) -> List<String> {
+  match prior {
+    SnapshotCensusPriorRead { snapshots: before } => {
+      let held = snapshot_census_path_index(paths: before)
+      filter(snapshots, s => match map_get(held, s) { Present { value: _ } => true  Absent => false })
+    }
+    SnapshotCensusPriorAbsent => []
+    SnapshotCensusPriorUnreadable { reason: _ } => []
+  }
+}
+
+fn roadmap_snapshot_census_receipt(observed_at: String, namespace: String, snapshots: List<String>, prior: SnapshotCensusPrior) -> RoadmapSnapshotCensusReceipt {
+  RoadmapSnapshotCensusReceipt {
+    observed_at: observed_at,
+    namespace: namespace,
+    snapshots: snapshots,
+    present_across_censuses: snapshot_census_present_across(snapshots: snapshots, prior: prior),
+    prior: prior,
+  }
+}
+
+// WHETHER A RECEIPT IS ONE THIS CENSUS COULD HAVE WRITTEN FOR THIS NAMESPACE, as the sentence that
+// says why not, and none when it is. A receipt for another namespace, a path that is not a
+// snapshot path of the namespace,
+// a path listed twice, and a present-across list that is not exactly the current population the
+// previous one also held are each refused: a file that disagrees with itself is not a census.
+fn snapshot_census_population_fault(label: String, namespace: String, paths: List<String>) -> String? {
+  match filter(paths, p => !roadmap_event_snapshot_path_owned(namespace: namespace, path: p)).first() {
+    Present { value: outside } => Present { value: join(["the snapshot census receipt ", label, " holds ", outside, ", which is not a snapshot path of the namespace ", namespace], "") }
+    Absent =>
+      match first_duplicate_by_key(paths, p => p) {
+        Present { value: twice } => Present { value: join(["the snapshot census receipt ", label, " holds ", twice, " more than once"], "") }
+        Absent => none
+      }
+  }
+}
+
+fn snapshot_census_receipt_fault(receipt: RoadmapSnapshotCensusReceipt, namespace: String) -> String? {
+  if receipt.namespace != namespace {
+    Present { value: join(["the snapshot census receipt is for the namespace ", receipt.namespace, ", not ", namespace], "") }
+  } else {
+    match snapshot_census_population_fault(label: "snapshots", namespace: namespace, paths: receipt.snapshots) {
+      Present { value: fault } => Present { value: fault }
+      Absent =>
+        match (match receipt.prior {
+          SnapshotCensusPriorRead { snapshots: before } => snapshot_census_population_fault(label: "prior snapshots", namespace: namespace, paths: before)
+          SnapshotCensusPriorAbsent => none
+          SnapshotCensusPriorUnreadable { reason: _ } => none
+        }) {
+          Present { value: fault } => Present { value: fault }
+          Absent =>
+            if receipt.present_across_censuses != snapshot_census_present_across(snapshots: receipt.snapshots, prior: receipt.prior) {
+              Present { value: "the snapshot census receipt present_across_censuses is not the current snapshots its prior population also held" }
+            } else {
+              none
+            }
+        }
+    }
+  }
+}
+
+data roadmap_snapshot_census_schema: String = "roadmap-event-snapshot-census/v2"
+
+fn snapshot_census_prior_json(prior: SnapshotCensusPrior) -> JsonValue {
+  match prior {
+    SnapshotCensusPriorRead { snapshots } => json_object(members: [
+      json_kv(key: "standing", value: json_string(s: "read")),
+      json_kv(key: "snapshots", value: json_array(elements: map(snapshots, s => json_string(s: s)))),
+    ])
+    SnapshotCensusPriorAbsent => json_object(members: [json_kv(key: "standing", value: json_string(s: "absent"))])
+    SnapshotCensusPriorUnreadable { reason } => json_object(members: [
+      json_kv(key: "standing", value: json_string(s: "unreadable")),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])
+  }
+}
+
+fn roadmap_snapshot_census_receipt_json(receipt: RoadmapSnapshotCensusReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: roadmap_snapshot_census_schema)),
+    json_kv(key: "observed_at", value: json_string(s: receipt.observed_at)),
+    json_kv(key: "namespace", value: json_string(s: receipt.namespace)),
+    json_kv(key: "snapshots", value: json_array(elements: map(receipt.snapshots, s => json_string(s: s)))),
+    json_kv(key: "present_across_censuses", value: json_array(elements: map(receipt.present_across_censuses, s => json_string(s: s)))),
+    json_kv(key: "prior", value: snapshot_census_prior_json(prior: receipt.prior)),
+  ])
+}
+
+type SnapshotCensusText = SnapshotCensusTextRead { value: String } | SnapshotCensusTextUnreadable { reason: String }
+
+fn snapshot_census_text_member(doc: JsonValue, key: String) -> SnapshotCensusText {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value } } => SnapshotCensusTextRead { value: value }
+    JsonMemberFound { value: _ } => SnapshotCensusTextUnreadable { reason: join(["the snapshot census receipt ", key, " is not a string"], "") }
+    JsonMemberAbsent => SnapshotCensusTextUnreadable { reason: join(["the snapshot census receipt ", key, " is missing"], "") }
+    JsonMemberDuplicated { count: _ } => SnapshotCensusTextUnreadable { reason: join(["the snapshot census receipt ", key, " is duplicated"], "") }
+    JsonMemberNotAnObject => SnapshotCensusTextUnreadable { reason: join(["the snapshot census receipt has no object to read ", key, " from"], "") }
+  }
+}
+
+type SnapshotCensusPaths = SnapshotCensusPathsRead { paths: List<String> } | SnapshotCensusPathsUnreadable { reason: String }
+
+fn snapshot_census_paths_member(doc: JsonValue, key: String) -> SnapshotCensusPaths {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonArray { elements } } =>
+      fold(elements, init: SnapshotCensusPathsRead { paths: [] }, f: (acc, e) => match acc {
+        SnapshotCensusPathsUnreadable { reason } => SnapshotCensusPathsUnreadable { reason: reason }
+        SnapshotCensusPathsRead { paths } => match e {
+          JsonString { value: path } => SnapshotCensusPathsRead { paths: concat(paths, [path]) }
+          JsonNull => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " holds a non-string"], "") }
+          JsonBool { value: _ } => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " holds a non-string"], "") }
+          JsonNumber { lexeme: _ } => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " holds a non-string"], "") }
+          JsonArray { elements: _ } => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " holds a non-string"], "") }
+          JsonObject { members: _ } => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " holds a non-string"], "") }
+        }
+      })
+    JsonMemberFound { value: _ } => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " is not an array"], "") }
+    JsonMemberAbsent => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " is missing"], "") }
+    JsonMemberDuplicated { count: _ } => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt ", key, " is duplicated"], "") }
+    JsonMemberNotAnObject => SnapshotCensusPathsUnreadable { reason: join(["the snapshot census receipt has no object to read ", key, " from"], "") }
+  }
+}
+
+// The prior member has two readings that must not be confused: a receipt that RECORDED an
+// unreadable prior, and a prior member that cannot be decoded. The first is a value; the second
+// refuses the receipt.
+type SnapshotCensusPriorDecode
+  = SnapshotCensusPriorDecoded { prior: SnapshotCensusPrior }
+  | SnapshotCensusPriorUndecodable { reason: String }
+
+fn snapshot_census_prior_decode(doc: JsonValue) -> SnapshotCensusPriorDecode {
+  match snapshot_census_text_member(doc: doc, key: "standing") {
+    SnapshotCensusTextUnreadable { reason } => SnapshotCensusPriorUndecodable { reason: concat(reason, " (in prior)") }
+    SnapshotCensusTextRead { value: standing } =>
+      if standing == "absent" { SnapshotCensusPriorDecoded { prior: SnapshotCensusPriorAbsent } }
+      else if standing == "read" {
+        match snapshot_census_paths_member(doc: doc, key: "snapshots") {
+          SnapshotCensusPathsRead { paths } => SnapshotCensusPriorDecoded { prior: SnapshotCensusPriorRead { snapshots: paths } }
+          SnapshotCensusPathsUnreadable { reason } => SnapshotCensusPriorUndecodable { reason: concat(reason, " (in prior)") }
+        }
+      } else if standing == "unreadable" {
+        match snapshot_census_text_member(doc: doc, key: "reason") {
+          SnapshotCensusTextRead { value: reason } => SnapshotCensusPriorDecoded { prior: SnapshotCensusPriorUnreadable { reason: reason } }
+          SnapshotCensusTextUnreadable { reason } => SnapshotCensusPriorUndecodable { reason: concat(reason, " (in prior)") }
+        }
+      } else {
+        SnapshotCensusPriorUndecodable { reason: concat("the snapshot census receipt prior standing is unknown: ", standing) }
+      }
+  }
+}
+
+// THE WHOLE RECEIPT IS DECODED, OR IT IS NOT A RECEIPT. Every member the encoder writes is read
+// back, and the result is checked against the namespace it is being read for
+// (snapshot_census_receipt_fault).
+type SnapshotCensusReceiptRead
+  = SnapshotCensusReceiptDecoded { receipt: RoadmapSnapshotCensusReceipt }
+  | SnapshotCensusReceiptUndecodable { reason: String }
+
+fn snapshot_census_receipt_decode(raw: String, namespace: String) -> SnapshotCensusReceiptRead {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap } => SnapshotCensusReceiptUndecodable { reason: concat("the snapshot census receipt is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
+      match snapshot_census_text_member(doc: doc, key: "schema") {
+        SnapshotCensusTextUnreadable { reason } => SnapshotCensusReceiptUndecodable { reason: reason }
+        SnapshotCensusTextRead { value: schema } =>
+          if schema != roadmap_snapshot_census_schema { SnapshotCensusReceiptUndecodable { reason: concat("the snapshot census receipt schema is unknown: ", schema) } }
+          else { match snapshot_census_text_member(doc: doc, key: "observed_at") {
+            SnapshotCensusTextUnreadable { reason } => SnapshotCensusReceiptUndecodable { reason: reason }
+            SnapshotCensusTextRead { value: observed_at } => match snapshot_census_text_member(doc: doc, key: "namespace") {
+              SnapshotCensusTextUnreadable { reason } => SnapshotCensusReceiptUndecodable { reason: reason }
+              SnapshotCensusTextRead { value: receipt_namespace } => match snapshot_census_paths_member(doc: doc, key: "snapshots") {
+                SnapshotCensusPathsUnreadable { reason } => SnapshotCensusReceiptUndecodable { reason: reason }
+                SnapshotCensusPathsRead { paths: snapshots } => match snapshot_census_paths_member(doc: doc, key: "present_across_censuses") {
+                  SnapshotCensusPathsUnreadable { reason } => SnapshotCensusReceiptUndecodable { reason: reason }
+                  SnapshotCensusPathsRead { paths: present_across } => match json_object_unique_member(v: doc, key: "prior") {
+                    JsonMemberAbsent => SnapshotCensusReceiptUndecodable { reason: "the snapshot census receipt prior is missing" }
+                    JsonMemberDuplicated { count: _ } => SnapshotCensusReceiptUndecodable { reason: "the snapshot census receipt prior is duplicated" }
+                    JsonMemberNotAnObject => SnapshotCensusReceiptUndecodable { reason: "the snapshot census receipt is not an object" }
+                    JsonMemberFound { value: prior_doc } => match snapshot_census_prior_decode(doc: prior_doc) {
+                      SnapshotCensusPriorUndecodable { reason } => SnapshotCensusReceiptUndecodable { reason: reason }
+                      SnapshotCensusPriorDecoded { prior } => {
+                        let receipt = RoadmapSnapshotCensusReceipt {
+                          observed_at: observed_at,
+                          namespace: receipt_namespace,
+                          snapshots: snapshots,
+                          present_across_censuses: present_across,
+                          prior: prior,
+                        }
+                        match snapshot_census_receipt_fault(receipt: receipt, namespace: namespace) {
+                          Present { value: fault } => SnapshotCensusReceiptUndecodable { reason: fault }
+                          Absent => SnapshotCensusReceiptDecoded { receipt: receipt }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } }
+      }
+  }
+}
+
+fn snapshot_census_prior_of_read(namespace: String, success: Bool, content: String, error_kind: String, error: String) -> SnapshotCensusPrior {
+  if success {
+    if trim(content) == "" {
+      SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt exists and is empty" }
+    } else {
+      match snapshot_census_receipt_decode(raw: content, namespace: namespace) {
+        SnapshotCensusReceiptDecoded { receipt } => SnapshotCensusPriorRead { snapshots: receipt.snapshots }
+        SnapshotCensusReceiptUndecodable { reason } => SnapshotCensusPriorUnreadable { reason: reason }
+      }
+    }
+  } else if error_kind == "not_found" {
+    SnapshotCensusPriorAbsent
+  } else {
+    SnapshotCensusPriorUnreadable { reason: concat("the snapshot census receipt could not be read: ", error) }
+  }
+}
+
+// Per-instance by construction, in the directory the service principal owns
+// (gunbc.roadmap_belt_actuate belt_tick_receipt_path_for_instance records why that directory).
+fn roadmap_snapshot_census_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
+  join([instance_receipts_dir(instance_root: instance.instance_root as String), "/roadmap-event-snapshot-census.json"], "")
+}
+
+// THE CENSUS PASS. Recorded is a census read and its receipt written. Refused is a census that
+// could not be read, or a receipt that could not be written -- in either case nothing is reported,
+// so the tick refuses, naming the step. A snapshot present across censuses is not a refusal.
+type RoadmapSnapshotCensusPass
+  = SnapshotCensusRecorded { receipt: RoadmapSnapshotCensusReceipt }
+  | SnapshotCensusRefused { step: String, reason: String }
+
+// The pass over one layout and one receipt path: the previous receipt read, the registry listed,
+// the receipt written. The instance entry below supplies both from the instance and adds nothing.
+fn roadmap_snapshot_census_at(layout: RoadmapEventCarrierLayout, receipt_path: String, observed_at: String) -> RoadmapSnapshotCensusPass {
+  match roadmap_snapshot_census_read(layout: layout) {
+    SnapshotCensusUnreadable { reason } => SnapshotCensusRefused { step: "worktree-list", reason: reason }
+    SnapshotCensusRead { snapshots } => {
+      let namespace = roadmap_event_snapshot_namespace(layout: layout)
+      let before = Filesystem.Read(path: receipt_path)
+      let receipt = roadmap_snapshot_census_receipt(
+        observed_at: observed_at,
+        namespace: namespace,
+        snapshots: snapshots,
+        prior: snapshot_census_prior_of_read(namespace: namespace, success: before.success, content: before.content, error_kind: before.error_kind, error: before.error),
+      )
+      let write = Filesystem.Write(path: receipt_path, content: serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt)))
+      if write.success { SnapshotCensusRecorded { receipt: receipt } } else { SnapshotCensusRefused { step: "receipt-write", reason: write.error } }
+    }
+  }
+}
+
+fn roadmap_snapshot_census_for_instance(instance: HostDashboardInstance, observed_at: String) -> RoadmapSnapshotCensusPass {
+  roadmap_snapshot_census_at(
+    layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+    receipt_path: roadmap_snapshot_census_receipt_path_for_instance(instance: instance),
+    observed_at: observed_at,
+  )
+}
+
+// THE CENSUS JOINED TO THE TICK'S EXIT, pure. A recorded census leaves the exit exactly as it was,
+// whatever it holds: its findings are on its receipt and none of them is a failure of the tick. A
+// census that could not be taken fails the tick naming the step; a tick that already failed keeps
+// its code and reason and gains the census refusal after it.
+fn belt_tick_exit_with_snapshot_census(exit: ProcessExit, census: RoadmapSnapshotCensusPass) -> ProcessExit {
+  match census {
+    SnapshotCensusRecorded { receipt: _ } => exit
+    SnapshotCensusRefused { step, reason } => {
+      let refusal = join(["roadmap event snapshot census could not be taken (", step, "): ", reason], "")
+      match exit {
+        ExitSuccess => exit_failure(reason: refusal)
+        ExitFailure { code, reason: earlier } => ExitFailure { code: code, reason: join([earlier, "\n", refusal], "") }
+      }
+    }
+  }
+}

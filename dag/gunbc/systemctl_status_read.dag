@@ -1,0 +1,58 @@
+module gunbc.systemctl_status_read
+
+import std.algebra { trim }
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.host_effect { HostEffectTransport }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.host_operation_exec {
+  HostOperationObserved,
+  HostOperationRefused,
+  host_operation_exec,
+  host_operation_materialize_argv,
+  SystemctlStatus,
+}
+
+type UnitStatusCapture =
+    UnitStatusCaptured { text: String }
+  | UnitStatusCaptureRefused { reason: String }
+
+fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatusCapture {
+  if refusal != "" {
+    UnitStatusCaptureRefused { reason: refusal }
+  } else {
+    let trimmed = trim(stdout)
+    if trimmed == "" {
+      UnitStatusCaptureRefused { reason: "systemctl status returned empty stdout" }
+    } else {
+      UnitStatusCaptured { text: trimmed }
+    }
+  }
+}
+
+// One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
+// commented in full; this file carries only its operation row and its decoder.
+fn systemctl_status_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitStatusCapture {
+  match host_operation_exec(transport: transport, operation: SystemctlStatus { unit: unit }) {
+    HostOperationObserved { stdout: out, success: _, stderr: _ } =>
+      unit_status_capture_from_stdout(stdout: out, refusal: "")
+    HostOperationRefused { operation: _, reason: why } =>
+      UnitStatusCaptureRefused { reason: why }
+  }
+}
+
+fn unit_status_capture_text(capture: UnitStatusCapture) -> String {
+  match capture {
+    UnitStatusCaptured { text: t } => t
+    UnitStatusCaptureRefused { reason: why } =>
+      concat("unit diagnosis capture failed: ", why)
+  }
+}
+
+fn systemctl_status_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
+  let authority = ["systemctl", "status", "--no-pager", "--full", unit as String]
+  match host_operation_materialize_argv(operation: SystemctlStatus { unit: unit }) {
+    ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
+}

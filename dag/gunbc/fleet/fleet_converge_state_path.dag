@@ -1,0 +1,5 @@
+module gunbc.fleet_converge_state_path
+import std.types { NonEmptyStr }
+
+// Shared by exact sudo grants, lease storage and allocation invocation data publication.
+data fleet_converge_state_root: NonEmptyStr = "/var/lib/gunbc/fleet-converge" as NonEmptyStr

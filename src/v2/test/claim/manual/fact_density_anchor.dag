@@ -1,0 +1,39 @@
+module v2.test.manual.fact_density_anchor
+
+data fact_density_anchor_hollow_alias: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+data fact_density_anchor_fact_bundle: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    binder_edge(
+      name: ^fact_density_anchor_width_field,
+      type_node: fact_density_anchor_hollow_alias
+    ),
+    binder_edge(
+      name: ^fact_density_anchor_signedness_field,
+      type_node: fact_density_anchor_hollow_alias
+    )
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data fact_density_anchor_kernel_ambient_bool: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn anchor_hollow_alias_read() -> SourceSpecReadFact {
+  carrier_spec_fact(carrier: fact_density_anchor_hollow_alias)
+}
+
+fn anchor_fact_bundle_read() -> SourceSpecReadFact {
+  carrier_spec_fact(carrier: fact_density_anchor_fact_bundle)
+}
+
+fn anchor_kernel_ambient_bool_read() -> SourceSpecReadFact {
+  carrier_spec_fact(carrier: fact_density_anchor_kernel_ambient_bool)
+}

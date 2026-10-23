@@ -1,0 +1,54 @@
+module test.claim.belt_pass_outcome_decode_witness
+
+import std.types { Bool, String }
+import gunbc.roadmap_belt_actuate {
+  belt_pass_outcome_from_json,
+  BeltPassOutcomeDecoded,
+  BeltPassOutcomeUnreadable,
+  BeltPassRecorded,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_object,
+  json_kv,
+  json_string,
+  json_int,
+}
+
+// AN OUTCOME MEMBER THAT IS NOT A STRING IS UNREADABLE, WHICH IS THE ONLY THING THIS DECODER
+// EVER SAYS WHEN IT CANNOT READ. Missing, duplicated, not-an-object and an unrecognised string
+// all produce BeltPassOutcomeUnreadable with a reason naming the specific gap; a member present
+// but carrying a number is the same class of gap and gets its own reason rather than being folded
+// into an existing one, so the receipt still says WHICH way the document was wrong.
+//
+// The alternative -- treating a non-string outcome as an unknown outcome -- would have been a
+// second representation of two different defects under one sentence.
+
+fn decode_reason(doc: JsonValue) -> String {
+  match belt_pass_outcome_from_json(doc: doc) {
+    BeltPassOutcomeUnreadable { reason: r } => r
+    BeltPassOutcomeDecoded { outcome: _ } => ""
+  }
+}
+
+test fn a_non_string_outcome_is_unreadable_and_says_so() -> Bool {
+  decode_reason(
+    doc: json_object(members: [json_kv(key: "outcome", value: json_int(n: 3))]),
+  ) == "belt tick pass outcome is not a string"
+}
+
+test fn a_recorded_outcome_still_decodes() -> Bool {
+  match belt_pass_outcome_from_json(
+    doc: json_object(members: [json_kv(key: "outcome", value: json_string(s: "recorded"))]),
+  ) {
+    BeltPassOutcomeDecoded { outcome: BeltPassRecorded } => true
+    BeltPassOutcomeDecoded { outcome: _ } => false
+    BeltPassOutcomeUnreadable { reason: _ } => false
+  }
+}
+
+test fn an_unknown_outcome_string_keeps_its_own_reason() -> Bool {
+  decode_reason(
+    doc: json_object(members: [json_kv(key: "outcome", value: json_string(s: "wobble"))]),
+  ) == "belt tick pass outcome is unknown"
+}

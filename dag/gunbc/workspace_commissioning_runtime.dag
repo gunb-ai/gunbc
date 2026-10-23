@@ -1,0 +1,141 @@
+module gunbc.workspace_commissioning_runtime
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import gunbc.live_deploy.release_environment { installed_release_unit }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import std.algebra { trim }
+import gunbc.auth.approval_broker_cutover { BrokerTreeReceiptRead, observe_broker_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable }
+import std.measure { byte_size_count }
+import extdeps.systemd { MemoryMax, MemorySwapMax }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }
+import gunbc.runner_slot_allocation { identity_is_workspace_execution_member, microvm_controller_slice_memory_max }
+import gunbc.runner_microvm_slot_unit {
+  microvm_controller_root, microvm_controller_gunbc_binary, microvm_controller_slice_unit_name,
+  microvm_slot_reserve_unit_name, microvm_slot_unit_path, microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec,
+}
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.fabric_cell_acquire { fabric_cell_read_boundary, fabric_cell_boundary_address_probe, fabric_cell_read_boundary_property, PropertyRead, PropertyReadRefused }
+import gunbc.fabric_cell_observe { AddressStateRead, AddressStateReadRefused }
+import gunbc.fabric_cell_converge { fabric_cell_desired_state_digest, FabricCellResourceBoundaryAddress }
+import gunbc.ci_runner_placement { runner_deployment_plan, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused }
+import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
+import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
+
+// This is observation, not installation. All expected identities come from the reviewed
+// commissioning subject; the root locus, cell boundary, image and tools are read independently.
+// No failed or stopped slot unit substitutes for any of these readings.
+fn workspace_commissioning_runtime_refusal(provenance: WorkspaceCommissioningProvenance,
+  release_dir: NonEmptyStr, login: NonEmptyStr) -> String? {
+  let slot = provenance.slot
+  let expected_release = approval_broker_release_dir(root: microvm_controller_root,
+    revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha })
+  if (release_dir as String) != expected_release {
+    Present { value: "commissioning source revision does not name this installed controller locus" }
+  } else if !identity_is_workspace_execution_member(identity: slot) {
+    Present { value: "shared fleet sanction has not designated this cell for workspace execution" }
+  } else if !workspace_commissioning_host_budget_admitted(slot: slot) {
+    Present { value: "the host's existing allocation authority does not conserve its commitments" }
+  } else if !workspace_commissioning_cell_boundary_matches(slot: slot) {
+    Present { value: "installed cell limits differ from the existing exclusive slot budget" }
+  } else if !workspace_commissioning_controller_boundary_matches() {
+    Present { value: "the separately accounted controller boundary is not installed exactly" }
+  } else if !workspace_commissioning_locus_matches(provenance: provenance, release_dir: release_dir) {
+    Present { value: "controller custody, digest or unit file differs from the reviewed runtime" }
+  } else if !workspace_commissioning_prior_broker_withdrawn() {
+    Present { value: "the prior CI reservation unit is still installed or unreadable; withdraw it through convergence" }
+  } else { match workspace_installed_image(release_dir: release_dir as String, identity: provenance.guest_image_digest) {
+    WorkspaceImageVerified { image: _ } => match workspace_observe_tools(release_dir: release_dir, login: login) {
+      WorkspaceToolsReady { observation: _ } => none
+      WorkspaceToolsUnobserved { reason: _ } => Present { value: "installed Firecracker/jailer or current KVM access is not established" }
+    }
+    WorkspaceImageRefused { reason: _ } => Present { value: "workspace image and pinned kernel have not passed installed digest/custody readback" }
+  } }
+}
+
+// A derived host deployment is downstream of the existing conservation verdict, including the
+// whole shakedown cell and separate controller charge. Do not author another memory calculation.
+fn workspace_commissioning_host_budget_admitted(slot: RunnerSlotIdentity) -> Bool {
+  count(filter(runner_deployment_plan().hosts, standing => match standing {
+    HostRunnerDeploymentDerived { deployment } => deployment.identity == slot.host
+    HostRunnerDeploymentRefused { refusal: _ } => false
+  })) == 1
+}
+
+fn workspace_commissioning_cell_boundary_matches(slot: RunnerSlotIdentity) -> Bool {
+  match fabric_cell_boundary_address_probe(slot: slot, reading: fabric_cell_read_boundary(slot: slot)) {
+    AddressStateRead { state_digest } => state_digest == fabric_cell_desired_state_digest(slot: slot, address: FabricCellResourceBoundaryAddress)
+    AddressStateReadRefused { cause: _ } => false
+  }
+}
+
+fn workspace_commissioning_controller_boundary_matches() -> Bool {
+  let memory = fabric_cell_read_boundary_property(unit: microvm_controller_slice_unit_name, property: MemoryMax)
+  let swap = fabric_cell_read_boundary_property(unit: microvm_controller_slice_unit_name, property: MemorySwapMax)
+  (match memory { PropertyRead { value } => (value as String) == to_string(byte_size_count(b: microvm_controller_slice_memory_max())) PropertyReadRefused { cause: _ } => false })
+    && (match swap { PropertyRead { value } => (value as String) == "0" PropertyReadRefused { cause: _ } => false })
+}
+
+fn workspace_commissioning_locus_matches(provenance: WorkspaceCommissioningProvenance, release_dir: NonEmptyStr) -> Bool {
+  let binary = microvm_controller_gunbc_binary(release_dir: release_dir as String)
+  let unit_path = microvm_slot_unit_path()
+  (match read_store_ownership(path: release_dir as String) { OwnershipRead { ownership: StoreRootOwned } => true OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false OwnershipUnread { reason: _ } => false })
+    && (match read_store_ownership(path: binary) { OwnershipRead { ownership: StoreRootOwned } => true OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false OwnershipUnread { reason: _ } => false })
+    && (match sha256sum_file_digest_via_shell(path: binary as NonEmptyStr) {
+      Sha256FileDigest { digest } => (digest.hex as String) == (provenance.controller_digest as String)
+      Sha256FileDigestUnavailable { path: _, reason: _ } => false
+    })
+    && (match read_store_ownership(path: unit_path as String) { OwnershipRead { ownership: StoreRootOwned } => true OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false OwnershipUnread { reason: _ } => false })
+    && workspace_commissioning_unit_bytes_match(release_dir: release_dir)
+    && workspace_commissioning_installed_tree_matches(provenance: provenance)
+}
+
+fn workspace_commissioning_unit_bytes_match(release_dir: NonEmptyStr) -> Bool {
+  let unit = Filesystem.Read(path: microvm_slot_unit_path() as String)
+  unit.success && unit.content == serialize_systemd_unit_file(file: installed_release_unit(
+    file: microvm_slot_unit_file(release_dir: release_dir as String, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
+    release_dir: release_dir as String))
+}
+
+// The first commissioning cut requires the old reservation service to be absent, not merely
+// stopped. The shared sanction rejects CI demand in the installed source; this read also
+// refuses an old installed broker which could still submit acquisition work.
+fn workspace_commissioning_prior_broker_withdrawn() -> Bool {
+  let loaded = systemd.Systemctl.ShowProperty(unit: microvm_slot_reserve_unit_name, property: "LoadState")
+  let active = systemd.Systemctl.ShowProperty(unit: microvm_slot_reserve_unit_name, property: "ActiveState")
+  let pid = systemd.Systemctl.ShowProperty(unit: microvm_slot_reserve_unit_name, property: "MainPID")
+  loaded.success && active.success && pid.success
+    && trim(s: loaded.value) == "not-found" && trim(s: active.value) == "inactive" && trim(s: pid.value) == "0"
+}
+
+
+// A revision-shaped directory and the gunbc binary do not identify the interpreted DAG tree.
+// Consume the installer's root-owned tree receipt and bind both recorded fields to the plan.
+fn workspace_commissioning_installed_tree_matches(provenance: WorkspaceCommissioningProvenance) -> Bool {
+  let path = approval_broker_tree_receipt_path_for(root: microvm_controller_root,
+    revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha })
+  match read_store_ownership(path: path) {
+    OwnershipRead { ownership: StoreRootOwned } => {
+      let read = Filesystem.Read(path: path)
+      workspace_commissioning_tree_receipt_matches(provenance: provenance,
+        receipt: observe_broker_tree_receipt(success: read.success, body: read.content,
+          error: "installed controller tree receipt is unreadable" as NonEmptyStr))
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
+  }
+}
+
+fn workspace_commissioning_tree_receipt_matches(provenance: WorkspaceCommissioningProvenance,
+  receipt: BrokerTreeReceiptRead) -> Bool {
+  match receipt {
+    TreeReceiptObserved { revision, installed_digest } => revision == provenance.source_revision
+      && installed_digest == provenance.installed_tree_digest
+    TreeReceiptUnreadable { detail: _ } => false
+    TreeReceiptMalformed { detail: _ } => false
+  }
+}

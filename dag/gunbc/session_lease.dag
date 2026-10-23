@@ -1,0 +1,129 @@
+module gunbc.session_lease
+
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UpsertDecision,
+  UpsertClassification,
+  Noop,
+  Apply,
+  Refuse,
+}
+
+
+
+type ProcessPortScope {
+  listen_port: Int
+  expected_owner_label: NonEmptyStr
+  expected_process_fingerprint: NonEmptyStr
+}
+
+type ProcessPortObservation
+  = PortAbsent
+  | PortObserved {
+      observed_port: Int
+      pid: Int
+      cmdline: NonEmptyStr
+      process_fingerprint: NonEmptyStr
+    }
+  | PortObservedStaleExpected {
+      observed_port: Int
+      pid: Int
+      cmdline: NonEmptyStr
+      process_fingerprint: NonEmptyStr
+      stale_reason: NonEmptyStr
+    }
+  | PortInaccessible
+  | PortObservationRefused { reason: NonEmptyStr }
+
+// A PLAN IS WHAT `Apply` EXECUTES, SO A REFUSAL IS NOT ONE. Refusing because a foreign
+// process owns the port is a DECISION, and decision_for_process_port_verdict already
+// answers it on the `Refuse` arm with the reason attached. Carrying a refusal here as
+// well gave one fact two representations, and made `Apply { plan: RefuseForeignOwner }`
+// -- execute the refusal -- a state every consumer had to answer for and no producer
+// could reach.
+type ProcessLeasePlan
+  = Start
+  | DrainMatchingStaleThenStart
+
+fn classify_process_port(
+  scope: ProcessPortScope,
+  obs: ProcessPortObservation,
+) -> ObservationVerdict {
+  match obs {
+    PortAbsent => Absent
+    PortInaccessible => Inaccessible
+    PortObservationRefused { reason: _ } => UnknownRefused
+    PortObserved {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+    } =>
+      if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Converged
+        } else {
+          Conflict
+        }
+      }
+    PortObservedStaleExpected {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+      stale_reason: _,
+    } =>
+      if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Drifted
+        } else {
+          Conflict
+        }
+      }
+  }
+}
+
+fn decision_for_process_port_verdict(
+  verdict: ObservationVerdict,
+) -> UpsertDecision<ProcessLeasePlan> {
+  match verdict {
+    Converged => Noop
+    Absent => Apply { plan: Start }
+    Drifted => Apply { plan: DrainMatchingStaleThenStart }
+    Conflict => Refuse { reason: "foreign process owns port" as NonEmptyStr }
+    Inaccessible => Refuse { reason: "port inaccessible or wrong listen port" as NonEmptyStr }
+    UnknownRefused => Refuse { reason: "port observation refused" as NonEmptyStr }
+  }
+}
+
+// PortObservationRefused carries the real refusal reason from the observe leg (e.g. "systemctl
+// is-active refused ..."); decision_for_process_port_verdict only sees the verdict, so the
+// UnknownRefused arm there answers with a fixed fallback string. Threading the real reason means
+// this fn cannot build the decision purely from the verdict for this one observation shape --
+// routing through the verdict here would erase the reason a second time.
+fn classify_process_port_upsert(
+  scope: ProcessPortScope,
+  obs: ProcessPortObservation,
+) -> std.upsert_decision.UpsertClassification<ProcessLeasePlan> {
+  let verdict = classify_process_port(scope: scope, obs: obs)
+  match obs {
+    PortObservationRefused { reason: why } =>
+      UpsertClassification { verdict: verdict, decision: Refuse { reason: why } }
+    _ =>
+      UpsertClassification {
+        verdict: verdict,
+        decision: decision_for_process_port_verdict(verdict: verdict),
+      }
+  }
+}

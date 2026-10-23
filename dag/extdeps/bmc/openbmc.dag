@@ -1,0 +1,27 @@
+module extdeps.bmc.openbmc
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.endpoint { BmcProtocol, Redfish, Ipmi }
+import std.credentials { FactoryLogin }
+import std.types { List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/openbmc"
+  }
+}
+
+data openbmc_factory_login: FactoryLogin = FactoryLogin {
+  username: "root",
+  published_password: "0penBmc",
+}
+
+data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
+
+type RedfishHostStorageVisibility =
+    HostStorageEnumerable
+  | HostStorageBlind
+
+data openbmc_redfish_host_storage_visibility: RedfishHostStorageVisibility = HostStorageBlind

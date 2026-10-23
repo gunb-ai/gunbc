@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.verified_candidate_installed_as_a_subset_before_rebuild
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data verified_candidate_installed_as_a_subset_before_rebuild: RecurringFailureMode = RecurringFailureMode {
+  identity: "verified_candidate_installed_as_a_subset_before_rebuild" as NonEmptyStr,
+
+  receipts: [
+    "A transaction verifies a coherent candidate set then installs a subset before rebuilding. The regen round's INSTALL step partitioned changed mirrors by generation role (PromoteGenerationInputs vs InstallSeedCompatibilityCut) and rebuilt the seed after the first cut. Generation role answers whether a mirror produces the NEXT emit; cargo compiles the CURRENT seed as one crate graph. When a GenerationInput mirror re-exported a symbol only a GenerationSubject sibling introduced, the first rebuild saw the import without the definition — error[E0432] at round.rebuild_from_installed, checkpoint restored. Executed specimens (three): royal-hawk-241 instrument.ZPOD7I (head 8321c11f8fa), instrument.odPcpu (95505db29228), and D42vz4; changed_paths=[std_compiler_entry.rs, v1_compiler_emit_rust.rs]; candidate pair coherent; single-mirror transactions the same night succeeded. Invalid state: verified candidate set C, installed I, I ⊂ C, rebuild against I. Remedy: install ALL changed seed-embedded mirrors, then rebuild ONCE. Discriminating RED: v2.test.claim.regen_convergence_transaction_witness_test mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild; host: required_regen_host mixed_role_two_mirror_candidate_installs_all_then_rebuilds_once. Positive control: single_generation_input_still_promotes_alone. Checkpoint restore on a genuine failing rebuild is unchanged.",
+  ],
+
+  evidence: [],
+}

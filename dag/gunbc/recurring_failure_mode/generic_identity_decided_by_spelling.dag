@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.generic_identity_decided_by_spelling
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_identity_decided_by_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_identity_decided_by_spelling" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: `v1.compiler.infer` decides whether a type node IS a generic parameter by its SPELLING at three sites -- `unify_generics` binds a bare formal leaf by its label, `substitute_generics_apply` replaces any bare node whose label is a substitution key, and that function's self-binding guard compares the bound node's label with the variable's id. A node that merely spells a parameter's name is taken for the parameter.",
+
+    "WHERE THE SPELLING COLLIDES: the kernel container type names its element child after its OWN template parameter, so every `List<M>` carries a child spelled T and resolved to M (`make_container_type`, read through `list_kernel_ty_from_element`). Any generic whose parameter is also spelled T -- `v2.std.algebra` `fold_list<T, A>`, a `head_of<T>` -- collides with it. Two failure shapes, both measured: (1) VALID CODE REFUSED. A list literal's element child, spelled T and resolved to the element type, is bound to the call's T and then discarded by the self-binding guard as T bound to itself, so T stays unbound and a lambda reading it has no method surface. SPECIMEN: test.claim.srv3_websocat_sequence_witness the_readback_never_runs_after_a_failed_step, `fold_list(xs: [..], .., cons: fn(acc, labels) { .. join(labels, \",\") .. })`, refused `function 'join' not found in scope`. (2) WRONG CODE ACCEPTED. `take_s(s: head_of(xs: [1], d: 2))`, with `take_s(s: String)`, is Accepted, while the same call with `xs: ints()` refuses Int at String.",
+
+    "BISECT AND AGE (executed 2026-10-01, the real witness file at each sha): the srv3 refusal begins at #10146 (ccc874c840, 'Carry declaration-bound direct-call formal authority'); its parent 75e1cf68b3 resolves the module and the claim returns true, as does every sampled sha back to #8747, where the line was authored. #12791 and #12566, the first suspects, fail identically at their merges and their parents. Shape (2) is OLDER: the `head_of(xs: [1])` probe is silent on a seed built at 75e1cf68b3 too. The srv3 module has failed to resolve on main since 2026-09-04 with no lane reporting it.",
+
+    "WHY NEITHER REPAIR LANDED, measured in order. (a) Keying only the self-binding guard on identity restores srv3 and makes its census rows depart, and newly refuses four rows in src/v2/compiler/00_compile.dag (the native-lane universe's nested `fold_list`, `no field 'declarations' on type 'Unit'`): the spelling-keyed bare-name substitution then rewrites the kept binding into List's own element child. (b) Reading the TypeVariable mark at all three sites makes the compiler's next generation refuse its own sources (`expected Primitive(K), got Coproduct(KeySource)` x3 in dag/std/effects.dag, generic record literals whose field is declared `key_source: K`): field types reach the record-literal path without that mark. (c) The `Node.declaration` TypeParameter mark written by `v1.compiler.resolve` `binder_marked_type` (#12690) does not reach most inputs either.",
+
+    "THE INVENTORY, at identity grain (constructors, not counts). An instrumented seed over the whole-corpus compile tagged each event in which the existing paths bound or substituted a generic with whether the node carried `Node.declaration` TypeParameter. The events whose node carried no declaration came from these v1.compiler.infer constructors: infer_call_arguments_generic_pass, build_call_application_plan, record_lit_instantiated_fields, infer_record_lit_structural, alias_chain_target_after_args, expand_alias_chain_for_field_access, infer_expr_body, unify_record_lit_field_walk, unify_record_lit_generics, callable_leaf_substitution, callable_component_ground_mismatch. They are the nodes infer BUILDS after resolution -- substituted and instantiated types, call-plan formals -- and the binder mark does not reach them. The magnitudes are not recorded here (DESIGN section 6: an instrument is named, its output is not transcribed); the instrument that re-derives them is the `gunbc test` label named as step 2's first task in docs/plans/derived-node-identity-design.md. That run did not cover the src/v1 population.",
+
+    "RUNG FOUND AT: outside the ladder (silent) for shape (2), and a false refusal outside every judged set for shape (1). RUNG NOW: unchanged; nothing in this row is repaired. The srv3 witness stays red on main and is counted here as this row's specimen.",
+
+    "ATTAINABLE CEILING: 3. NEXT-RUNG TRIGGER, named as the capability: declaration identity carried through every node-copying constructor in infer, each constructor naming its cause, modeled in docs/plans/derived-node-identity-design.md and landed as that plan's step 2 (the infer implementation across the node-copying paths). With identity carried, the three sites read it and their name branches are deleted; after that the substitution map is re-keyed by the TypeParameter declaration (owner, declaration, name) so two owners' parameters spelled alike cannot share a key, which is the residual a name-keyed map keeps."
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,62 @@
+module gunbc.baseboard_dimm_figure
+
+import std.types { List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
+import std.optional { Present, Absent }
+import extdeps.board_authority { BoardAuthorityRef, BoardAuthorityLookup, board_facts_authority, board_authority_ref_eq }
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmFigureBank, MtCollinsChassisFigureOrientation, dimm_figure_banks, chassis_figure_orientation,
+}
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow, mt_collins_channel_connector_pairs, mt_collins_population_rows,
+}
+
+// WHICH CITED DIMM FIGURE A BASEBOARD HAS, and nothing else. A consumer-layer dispatch over the
+// closed (extdeps.board_authority) (DESIGN §3: the dispatch that selects among upstream
+// authorities is not a fact of any one of them, so it lives here and never in extdeps). An arm names
+// the board's own cited model and carries that model's external authority; it carries no rows, so
+// the figure is read from its extdeps authority at every use and never restated beside it. A board with no cited figure in this repository refuses
+// BoardFigureUnmodeled: no figure is authored to fill the arm, and none may be modeled from a document
+// carrying a proprietary notice.
+type BaseboardDimmFigure
+  = MtCollinsGettingStartedGuideFigures { guide: ExternalAuthority }
+
+type BaseboardDimmFigureStanding
+  = BaseboardDimmFigureOf { board: BoardAuthorityRef, figure: BaseboardDimmFigure }
+  | BoardFigureUnmodeled { board: BoardAuthorityLookup }
+
+// A figure is a board FACT, so only an evidence-bound lookup can reach one; a name-only, unbound,
+// ambiguous or unread board is BoardFigureUnmodeled carrying the lookup that refused it.
+fn baseboard_dimm_figure(board: BoardAuthorityLookup) -> BaseboardDimmFigureStanding {
+  match board_facts_authority(lookup: board) {
+    Present { value: a } =>
+      if board_authority_ref_eq(a: a, b: mt_collins_board_authority) {
+        BaseboardDimmFigureOf { board: a, figure: MtCollinsGettingStartedGuideFigures { guide: mt_collins_gsg_authority } }
+      } else {
+        BoardFigureUnmodeled { board: board }
+      }
+    Absent => BoardFigureUnmodeled { board: board }
+  }
+}
+
+// The Mt. Collins Getting Started Guide's Figure 9 banks, by reference.
+fn figure_banks(figure: BaseboardDimmFigure) -> List<MtCollinsDimmFigureBank> {
+  match figure { MtCollinsGettingStartedGuideFigures { guide: _ } => dimm_figure_banks }
+}
+
+// The product brief's Tables 12-13 channel/connector join, by reference.
+fn figure_channel_pairs(figure: BaseboardDimmFigure) -> List<MtCollinsChannelConnectorPair> {
+  match figure { MtCollinsGettingStartedGuideFigures { guide: _ } => mt_collins_channel_connector_pairs }
+}
+
+// The product brief's Table 11 population rows, by reference.
+fn figure_population_rows(figure: BaseboardDimmFigure) -> List<MtCollinsDimmPopulationRow> {
+  match figure { MtCollinsGettingStartedGuideFigures { guide: _ } => mt_collins_population_rows }
+}
+
+// The Getting Started Guide's Figure 10 chassis landmarks, by reference.
+fn figure_chassis_orientation(figure: BaseboardDimmFigure) -> MtCollinsChassisFigureOrientation {
+  match figure { MtCollinsGettingStartedGuideFigures { guide: _ } => chassis_figure_orientation }
+}

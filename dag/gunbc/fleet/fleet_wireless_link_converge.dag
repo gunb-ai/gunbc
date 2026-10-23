@@ -1,0 +1,114 @@
+module gunbc.fleet_wireless_link_converge
+
+import std.types { String, Bool, NonEmptyStr, Secret }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_openssh_trust_policy_of,
+}
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli, spark_remote_argv_run }
+import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused, spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fleet_wireless_link {
+  WirelessLinkDesired, wireless_link_desired_for, wireless_link_converge, wireless_link_converged, wireless_link_receipt_body,
+}
+
+// THE WET ENTRY OF THE spark_wireless_link_converge MODE. It runs where the Spark administrator
+// credential is materialized (the fleet-converge job's prelude), because `iw set` and
+// `nmcli connection modify` on these hosts need root and the only modeled route to root on a Spark
+// is gunbc.spark.model_snapshot_materialize spark_remote_run's `sudo -S` password leg.
+//
+// IT DOES NOT ADMIT THE HOST THROUGH gunbc.spark.host_commitment, a stated divergence: that seam
+// fences hosts whose serving or training occupancy a lane's effect would disturb. This effect
+// disturbs neither -- `iw set power_save` changes the radio's sleep policy without dropping the
+// association, and `nmcli connection modify` edits the stored profile without reactivating it --
+// so the serving pair is a legitimate target, and fencing it would leave the hosts whose link most
+// needs the setting unconvergeable.
+//
+// ONE HOST PER RUN, AND AN UNSET TARGET REFUSES: this mode mutates, so it never fans out.
+data wireless_link_ci_attempt_raw: String = "spark-wireless-link-converge-ci"
+data wireless_link_ci_receipt_path: String = "target/spark-wireless-link-converge-receipt.txt"
+
+fn wireless_link_receipt_exit(at: String, executor: String, anchor_receipt: String, desired: WirelessLinkDesired, body: String, converged: Bool) -> ProcessExit {
+  let receipt = join([
+    join(["probed_at=", at, " executor=", executor, "\n"], ""),
+    body,
+    anchor_receipt,
+  ], "")
+  let w = Filesystem.Write(path: wireless_link_ci_receipt_path, content: receipt)
+  if !w.success {
+    exit_failure(reason: join(["wireless link receipt write failed: ", w.error], ""))
+  } else if converged {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["wireless link did not converge on ", desired.host as String, ":\n", receipt], ""))
+  }
+}
+
+fn spark_wireless_link_converge_ci_wet() -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode changes one host's wireless link, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      match wireless_link_desired_for(host: target_host) {
+        Absent => exit_failure(reason: join(["no wireless link row is declared for ", target_host as String, " in gunbc.fleet_wireless_link wireless_link_desired_rows, so there is nothing to converge it to"], ""))
+        Present { value: desired } =>
+          match observe_executor_reach() {
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_wireless_link_converge: ", c], ""))
+            ExecutorReachKnown { short_hostname: executor, path: path } =>
+              match read_bootstrap_credential() {
+                BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                BootstrapCredentialReady { secret: administrator } =>
+                  match fleet_ssh_attempt_identity(raw: wireless_link_ci_attempt_raw) {
+                    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                    Present { value: attempt } => {
+                      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                      match fleet_openssh_trust_policy_of(outcome: materialization) {
+                        Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                        Present { value: trust } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-spark-wireless-link-converge-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              let ctx = SparkMaterializeContext {
+                                host: target_host,
+                                trust: trust,
+                                path: path,
+                                admin_credential: administrator as Secret,
+                                admin_credential_file: file,
+                                executor: HostCli,
+                              }
+                              let outcome = wireless_link_converge(desired: desired, run: fn(argv) { spark_remote_argv_run(ctx: ctx, argv: argv) })
+                              wireless_link_receipt_exit(
+                                at: probed_at_word(reading: now) as String,
+                                executor: executor,
+                                anchor_receipt: known_hosts_materialization_receipt(outcome: materialization),
+                                desired: desired,
+                                body: wireless_link_receipt_body(desired: desired, outcome: outcome),
+                                converged: wireless_link_converged(o: outcome),
+                              )
+                            },
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: exit } => exit
+                          }
+                      }
+                    }
+                  }
+              }
+          }
+      }
+  }
+}

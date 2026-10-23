@@ -1,0 +1,89 @@
+module v2.test.git_import_authority
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.git_use_authority
+import gunbc.git_use_census.roster { git_use_rows }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Policy controls only. The source/index-to-required-lane controls, including host mutations,
+// remain owed by the separately admitted host wiring. These do not establish the wall's rung.
+fn git_policy_is_clean(v: GitImportAuthorityVerdict) -> Bool {
+  match v {
+    GitImportAuthorityClean { modules_checked: _, imports_checked: _, rust_uses_uncovered: _, dag_process_uses_uncovered: _ } => true
+    GitImportAuthorityRefused { findings: _, rust_uses_uncovered: _, dag_process_uses_uncovered: _ } => false
+  }
+}
+
+fn publication_import_population() -> ParsedGitImportPopulation {
+  ParsedGitImportsAvailable { expected_source_paths: ["dag/gunbc/roadmap/roadmap_publish_actuate.dag"], modules: [ParsedGitModuleImports {
+    source_path: "dag/gunbc/roadmap/roadmap_publish_actuate.dag",
+    module_name: "gunbc.roadmap.roadmap_publish_actuate",
+    imports: ["extdeps.git", "extdeps.github.pulls"]
+  }] }
+}
+
+test fn policy_refuses_unrostered_production_import() -> Bool {
+  !git_policy_is_clean(v: git_import_authority_verdict(rows: git_use_rows(), population: ParsedGitImportsAvailable {
+    expected_source_paths: ["dag/gunbc/planted.dag"], modules: [ParsedGitModuleImports { source_path: "dag/gunbc/planted.dag", module_name: "gunbc.planted", imports: ["extdeps.git"] }]
+  }))
+}
+
+test fn policy_accepts_rostered_publication_and_refuses_withdrawal() -> Bool {
+  git_policy_is_clean(v: git_import_authority_verdict(rows: git_use_rows(), population: publication_import_population()))
+    && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: publication_import_population()))
+}
+
+test fn policy_refuses_unavailable_incomplete_and_empty_populations() -> Bool {
+  !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsUnavailable { reason: "index unavailable" as NonEmptyStr }))
+    && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsIncomplete { missing_modules: ["gunbc.missing"] }))
+    && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsAvailable { expected_source_paths: [], modules: [] }))
+}
+
+// THE FIXTURE ROW CITES A DECLARATION THAT EXISTS: this one. An earlier shape cited a plausible
+// but invented bootstrap module, which no module declares -- the declarations gate refused it as
+// CITED-MODULE-ABSENT, and it was right to. A DeclarationRef is a citation whether it appears in
+// production or in a fixture, so inventing a module name to stand in for "some bootstrap adapter"
+// forks the namespace with a symbol nothing can resolve (DESIGN 3). The row is hypothetical in
+// its CLASSIFICATION, which is the thing under test; its consumer identity does not have to be,
+// and the honest resolvable identity for a fixture row is the fixture that builds it. The
+// synthetic parsed-import population names this same module so the policy's consumer/module join
+// still holds -- that population is a fact handed TO the policy, never a claim about what this
+// module imports.
+fn bootstrap_control_row(classification: GitUseClassification) -> GitUseRow {
+  GitUseRow {
+    consumer: decl_ref(module_path: "v2.test.git_import_authority", decl_name: "bootstrap_control_row"),
+    surface: ParsedDagGitDependency { imported_module: "extdeps.git" as NonEmptyStr },
+    classification: classification,
+    bridge_disposition: "Import with explicit Git provenance and identity mapping." as NonEmptyStr,
+    cutover_disposition: "Retain explicit external baseline import; never a native refusal fallback." as NonEmptyStr
+  }
+}
+
+test fn policy_accepts_adapter_and_refuses_misclassification() -> Bool {
+  let population = ParsedGitImportsAvailable { expected_source_paths: ["src/v2/test/claim/git_import_authority_test.dag"], modules: [ParsedGitModuleImports {
+    source_path: "src/v2/test/claim/git_import_authority_test.dag", module_name: "v2.test.git_import_authority", imports: ["extdeps.git"]
+  }] }
+  git_policy_is_clean(v: git_import_authority_verdict(rows: [bootstrap_control_row(classification: ClassifiedGitUse {
+    role: GitBootstrapImport, authorization: NamedBootstrapImportAdapter
+  })], population: population))
+    && !git_policy_is_clean(v: git_import_authority_verdict(rows: [bootstrap_control_row(classification: ClassifiedGitUse {
+      role: GitProposalReviewPublication, authorization: NamedBootstrapImportAdapter
+    })], population: population))
+}
+
+test fn policy_refuses_unclassified_use() -> Bool {
+  !git_policy_is_clean(v: git_import_authority_verdict(rows: [bootstrap_control_row(classification: UnclassifiedGitUse {
+    reason: "No evidenced role for this use" as NonEmptyStr
+  })], population: publication_import_population()))
+}
+
+// Equal cardinality cannot hide a missing identity behind an unrelated replacement source.
+test fn policy_refuses_equal_count_source_substitution() -> Bool {
+  !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsAvailable {
+    expected_source_paths: ["dag/gunbc/expected.dag"],
+    modules: [ParsedGitModuleImports { source_path: "dag/gunbc/substitute.dag", module_name: "gunbc.substitute", imports: [] }]
+  }))
+}

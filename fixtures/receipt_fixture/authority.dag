@@ -1,0 +1,22 @@
+module receipt.fixture
+
+import std.types { Int }
+import std.logic { Bool }
+
+type Band = Low | Mid | High
+
+fn band_of(level: Int) -> Band {
+  if level < 10 { Low } else { if level < 100 { Mid } else { High } }
+}
+
+fn escalate(band: Band, urgent: Bool) -> Band {
+  if urgent {
+    match band {
+      Low => Mid
+      Mid => High
+      High => High
+    }
+  } else {
+    band
+  }
+}

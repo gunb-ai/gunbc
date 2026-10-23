@@ -1,0 +1,76 @@
+module test.claim.product_inhabitance_class_by_shape_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// ReadsLiveTree: the imported pair resolves v2.compiler.inferred_tree from the live checkout.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A Product that fails to inhabit the type it crosses into is refused under a class fixed by the
+// SHAPE of the crossing: TypeMismatch at a return position, DeclaredTypeNotInhabited at a direct
+// call argument. gunbc.recurring_failure_mode.probe_keys_a_diagnostic_class_its_fixture_shape_does_not_emit
+// records the miss this pins: an argument-position probe keyed on TypeMismatch read 0 while
+// `gunbc compile` refused, and the census path was blamed. Each red is asserted in the class it
+// emits, and the OTHER class is asserted absent, so a reclassification is a red here rather than a
+// silently-vacuous probe elsewhere.
+
+fn blocking_of_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data local_return_red_source: String = "module probe_product_return_red\ntype A { x: Int }\ntype B { y: Int }\nfn h(t: A) -> B { t }\n"
+data local_return_green_source: String = "module probe_product_return_green\ntype A { x: Int }\ntype B { y: Int }\nfn h(t: B) -> B { t }\n"
+data local_argument_red_source: String = "module probe_product_argument_red\ntype A { x: Int }\ntype B { y: Int }\nfn needs(b: B) -> Int { 0 }\nfn c(t: A) -> Int { needs(b: t) }\n"
+data local_argument_green_source: String = "module probe_product_argument_green\ntype A { x: Int }\ntype B { y: Int }\nfn needs(b: B) -> Int { 0 }\nfn c(t: B) -> Int { needs(b: t) }\n"
+
+// The imported pair crosses a module import into a v2 compiler carrier, the shape gunbc#12375's
+// obligated-tree bypass has. Its GREEN is asserted wholly clean: before v2.std.cardinality spelled
+// its imported Nat by the bound name, this closure carried census-only blocking UnresolvedType
+// rows (the N1a arm), so the green was not clean on this path and a revert of that repair turns
+// this row red.
+data imported_argument_red_source: String = "module v2.probe_product_argument_imported_red\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn needs(tree: InferredTree) -> Int { 0 }\nfn b(t: InferredFacts) -> Int { needs(tree: t) }\n"
+data imported_argument_green_source: String = "module v2.probe_product_argument_imported_green\nimport v2.compiler.inferred_tree { InferredTree, InferredFacts }\nfn needs(tree: InferredTree) -> Int { 0 }\nfn b(t: InferredTree) -> Int { needs(tree: t) }\n"
+
+test fn product_return_mismatch_refuses_as_type_mismatch() -> Bool {
+  blocking_of_class(source: local_return_red_source, wanted: "TypeMismatch") == 1
+    && blocking_of_class(source: local_return_red_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+test fn product_return_green_is_clean() -> Bool {
+  blocking_total(source: local_return_green_source) == 0
+}
+
+test fn product_argument_mismatch_refuses_as_declared_type_not_inhabited() -> Bool {
+  blocking_of_class(source: local_argument_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+    && blocking_of_class(source: local_argument_red_source, wanted: "TypeMismatch") == 0
+}
+
+test fn product_argument_green_is_clean() -> Bool {
+  blocking_total(source: local_argument_green_source) == 0
+}
+
+test fn imported_product_argument_mismatch_refuses_as_declared_type_not_inhabited() -> Bool {
+  blocking_of_class(source: imported_argument_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+}
+
+test fn imported_product_argument_green_is_clean() -> Bool {
+  blocking_total(source: imported_argument_green_source) == 0
+}

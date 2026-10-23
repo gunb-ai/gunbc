@@ -1,0 +1,13 @@
+module algebra_length_homonym_probe
+
+import std.types { String, Int }
+
+// A user `length` whose leaf is the algebra op's leaf and whose owner is not v2.std.algebra.
+// Lives under fixtures/ so the accepted corpus (dag + src/v2) never grows a second `fn length`
+// (floor: every bare `length` would then be an unimported two-declarer). Compiled only by
+// test.claim.infer_algebra_length_homonym_witness.
+fn length(xs: String) -> Int { 99 }
+
+fn probe() -> Int {
+  length(xs: "abc")
+}

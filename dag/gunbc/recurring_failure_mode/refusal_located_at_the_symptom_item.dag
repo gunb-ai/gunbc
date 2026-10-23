@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.refusal_located_at_the_symptom_item
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data refusal_located_at_the_symptom_item: RecurringFailureMode = RecurringFailureMode {
+  identity: "refusal_located_at_the_symptom_item" as NonEmptyStr,
+
+  receipts: [
+    "**a refusal located where the enclosing construct BEGAN rather than where the input stopped being admissible** (a backtracking parser whose outer `repeat` ends at a failed item reports the first LEFTOVER token. That token is real and the refusal is real, but the locus names the item that contained the failure, not the construct no production could consume.",
+
+    "SPECIMEN, the gen-two census of v2.compiler.compile (probe/neat-boar-16-gen2-census, census head a9c3b5617e): all 387 `parse_g0_tokens_remain` refusals were located at the first token of a top-level item -- `test` 204, `fn` 117, `service` 41, `pattern` 8 -- so the census could rank files by ITEM KIND and could not name one missing production. A regex pass over the failing items produced only hypothesis-grade candidates, which is the §6b shape: the number was read at the symptom link and underdetermined the chain.",
+
+    "WHY IT HIDES: every signal is correct. The reason symbol is right, the file is right, the offset lands on a real token boundary. A reader who knows the grammar reads past the item start to the construct and never notices that the diagnostic did not do it for them.",
+
+    "REPAIR, v2.compiler.parse parse_g0_tokens_remain_diagnostic_at: the locus is the furthest token any rejected alternative reached (a join over token order, end of input beating every token), and each parse memo entry carries its own subparse's record so a served entry cannot change the locus. Controls: v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus.",
+
+    "RUNG FOUND AT: MITIGATABLE (a human re-reads the item). RUNG AFTER THE REPAIR: MECHANICALLY PREVENTABLE, not structurally guaranteed. The production route derives the locus from the parse's own furthest record, and the controls in v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus red when it does not. But the first-leftover constructor parse_g0_tokens_remain_diagnostic stays callable -- the void-grammar arm and the no-deeper-rejection fallback use it -- so a new call site could still write the symptom locus. NEXT-RUNG TRIGGER: the tokens_remain diagnostic constructible only from a ParseFurthestFailure plus the leftover stream, sufficient for no caller to locate the refusal from the leftover stream alone.",
+
+    "NAMED FRONTIER, NOT CLOSED: THE EXPECTED SET. The locus says WHERE; it does not say WHAT the grammar would have admitted there. v2.std.diagnostic Diagnostic is `{ reason, at, correction }` with no payload that could carry the expected FirstKey set at the furthest token, so a reader still derives the missing production by reading the grammar at that token. NEXT-RUNG TRIGGER: a Diagnostic carrier that admits a typed detail payload, sufficient for `parse_g0_tokens_remain` to report the expected terminal set at its locus and for a census to group refusals by that set without reading source.",
+
+    "ADJACENT DEFECT, CLOSED BY gunbc#12285: the offsets were code points labelled `ByteRange`; tokenize now counts UTF-8 octets. The control tokens_remain_offset_unit_is_octets_as_lexed pins the octet unit and goes red if the lexer counts code points again.",
+  ],
+
+  evidence: [],
+}

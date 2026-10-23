@@ -1,0 +1,13 @@
+module std.filesystem.types
+
+type EntryKind
+  = RegularFile
+  | Directory
+  | Symlink
+  | Missing
+  | Other
+
+type SymlinkTarget
+  = TargetFile
+  | TargetDir
+  | Broken

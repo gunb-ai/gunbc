@@ -1,0 +1,41 @@
+module gunbc.floor_population_projection_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the floor-population projection: the required floor folding the one
+// modeled discovery authority (v2.workflow.floor_discovery_producer) over preparation's FULL
+// module index and joining every DECLARED witness identity to exactly one disposition through
+// reconcile_identity_population. The modeled authority is the producer's per-file fold plus
+// v2.workflow.required_floor required_floor_site_disposition; the Rust below transports values
+// between them and decides nothing.
+//
+// THE ITEM DELTA IS ONE AND THE LINE DELTA IS NOT, the same split gunbc.floor_cost_debt_seed_growth
+// records and for the same reason: quoting only items understates the review surface (~480 diff
+// lines across v1_compiler.cli_run and its required-floor runner), quoting only lines misreports
+// what the admission join measures. At item grain the change RENAMES AND GENERALIZES
+// reconcile_terminal_ledger into reconcile_identity_population -- the old name is deleted in the
+// same change, so the seam count of identity joins stays one -- and everything else is arms and
+// fields inside declarations that already existed (DeclinedDiscoveryExcluded and
+// DeclinedOutsideGateClosure on RequiredFloorDisposition, full_inventory and discovery_exclusions
+// on PreparedRepository/PreparedSubject, the fold-and-classify body inside run_required_floor),
+// which gunbc.seed_growth_admission classifies ExistingSeedItemModified. Test scope adds the
+// calibration pair (a_dropped_identity_replaced_by_a_duplicate_is_caught_while_the_count_partition_holds,
+// a_disposition_for_an_undeclared_identity_is_foreign) and two test-local helpers, enumerated here
+// in prose because they live inside a cfg(test) module and are evidence, not production surface.
+//
+// THE REWORK AFTER review 57430 NETS THE SEED SMALLER AT THIS BOUNDARY: FloorDiscoverySource, the
+// intermediate transport struct that Rc-cloned every full-index view into a second vector, is
+// DELETED -- the discovery fold consumes the prepared full-index views directly and drops them
+// inside its own phase, whose completion line measures the release
+// (full_inventory_release_rss_kb_before / _trim_reclaimed_kb / _rss_kb_after).
+data floor_population_projection_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "reconcile_identity_population", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed, and the seam this change repairs is the seed's own projection of the modeled discovery fold into disposition rows -- a Rust-to-Rust seam the substrate cannot yet observe, because no emitted workflow performs repository acquisition or invokes the producer over the full index. The count-equality check it replaces was Rust; the identity join that replaces it must stand at the same boundary or the boundary keeps the weaker check. reconcile_identity_population is reconcile_terminal_ledger generalized from one seam's row type to identities, so the terminal-ledger join and the disposition join are one function asked at two seams rather than two loops that can drift (DESIGN section 3); the old name is deleted in the same change.\n\nWHAT IS NOT GROWN: no discovery policy, no roster, no status vocabulary. The declared population comes from v2.workflow.floor_discovery_producer's per-file fold over preparation's full module index; the two new decline arms are variants on the pre-existing RequiredFloorDisposition enum; the decline counters are derived from the rows rather than accumulated beside them.\n\nRETENTION, BOUNDED AND MEASURED (review 57430): the full-index source views are moved out of the prepared repository before the guard is installed and consumed by value inside the discovery-authority phase; the intermediate FloorDiscoverySource vector is deleted rather than scoped; and the phase's completion line prints rss before the drop, the malloc_trim reclaim, and rss after, through the floor's existing statm/trim instruments -- so the run itself states that the outside-closure bytes end with the phase, against v2.workflow.required_floor RequiredFloorGrowthBudgetStanding rather than silently beside it.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. The floor's partition check was a count equality over a universe that had already narrowed -- the exact silent-wrongness class DESIGN section 5 names (completeness is an identity join, not a count equality) -- and the floor is the instrument the self-host program gates on. No language behavior, no compatibility route, no escape hatch, no seed feature, no emitted public surface.\n\nHAND-ITEM DELTA: +1/-1 production (the generalization above), -1 in the rework (FloorDiscoverySource deleted), +4 test-scope (the calibration pair and its two local helpers). HAND-LOC DELTA AT THIS RECEIPT: src/v1/stage0/src/cli_run.rs and src/v1/stage0/src/cli_run/required_floor_runner.rs roughly +480 net against origin/main, src/v1/stage0/src/bin/claim_executor.rs +16/-9 adding no declaration. The item observation producer named by gunbc.seed_growth_admission is not invoked by any required phase, so these diff-derived figures are review evidence rather than a mechanically joined admission, and this receipt says so rather than presenting them as measured by the join.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the seed declaration when the self-emitted workflow performs repository acquisition and invokes v2.workflow.floor_discovery_producer over the full index itself, so the declared-population join is the modeled reconciliation consuming modeled rows and the hand transport disappears with the v1 floor bridge (docs/plans/cli-run-hollowing-plan.md reaching the required-floor orchestration phase). NOT retired by the join going green on any number of runs: a green join still needs the seam it guards, and only the seam moving into the substrate ends the obligation.",
+  current_boundary: "v2.workflow.floor_discovery_producer discover_floor_rows_for_source -> v1_compiler.cli_run run_required_floor (fold, classify, disposition rows) -> v1_compiler.cli_run reconcile_identity_population -> v2.workflow.required_floor required_floor_site_disposition"
+}

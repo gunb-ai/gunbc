@@ -1,0 +1,22 @@
+module std.emit_model
+
+import std.decl_ref { DeclarationRef }
+
+
+type PlaceholderConvention
+  = IndexedArgs
+  | NamedArg
+
+type SimpleMethodSpec {
+  method_name: String
+  template: String
+  wraps_result: Bool
+}
+
+type MethodTemplateContract {
+  dag_method: DeclarationRef
+  runtime_template: String
+  emit_template: String
+  wraps_result: Bool
+  placeholder_convention: PlaceholderConvention
+}

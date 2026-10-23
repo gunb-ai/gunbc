@@ -1,0 +1,376 @@
+module test.claim.payload_arm_excess_field_admission
+
+import std.types { String, Bool, Int, List }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
+  CompileDiagnosticCensusRow, census_blocking_rows, census_total_count, census_rows_of_class,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// A SUBSTRATE CHARACTERIZATION MATRIX FOR EXCESS FIELDS ON A PAYLOAD-CARRYING COPRODUCT ARM.
+// THIS FILE IS NOT A WALL AND MUST NOT BE CITED AS ONE.
+//
+// WHAT IT ESTABLISHES. A record literal constructing a payload-carrying coproduct arm receives NO
+// unknown-field judgment: arbitrary nowhere-declared fields are admitted with no diagnostic at all,
+// while the SAME excess field on an ordinary product literal yields FieldNotFound. An omitted
+// REQUIRED field still reds, so the absence of judgment is specific to unknown fields rather than a
+// dead harness, and an admitted field's initializer is still semantically analysed even though the
+// field itself is discarded.
+//
+// THE MECHANISM, cited rather than re-derived because a second derivation of one fact is a second
+// authority for it: infer_env's variant arm type projection projects only NULLARY arms; a payload
+// arm falls through to the owning Disj, the record-literal construction field-name lookup answers
+// none, and the unknown-field arm's Absent case is silence. Measured on origin/main by
+// sharp-otter-269 (dashboard adhoc-0f99c6bc-193), which owns the class.
+//
+// WHY THE SUBJECT IS A FIXTURE ARM AND NOT A PRODUCTION TYPE. An earlier cut of this matrix pointed
+// every probe at gunbc.fleet_converge_plan's LaunchEnvironmentConverge, which made each probe
+// compile that module's entire production closure. The required floor refused all eight probes on
+// its per-witness wall budget, so they reached no verdict and established nothing -- an inert
+// mechanism cited as coverage, which DESIGN 5 rates worse than an absent one. The compiler does not
+// know that any production type is special: this is a SUBSTRATE fact about payload-carrying arms,
+// and pinning it to a production type was an accident of where it was first written rather than a
+// property of its layer (DESIGN 3). The probes now import a small fixture carrier and execute.
+//
+// WHAT THIS GRAIN CANNOT SEE, STATED IN THE SAME BREATH. A fixture-grain matrix establishes the
+// compiler's behaviour on a payload-carrying arm; it does NOT establish anything about which fields
+// a particular production constructor supplies, nor that any specific production type is
+// excess-field-free. Two further limits are structural rather than incidental. First, the matrix
+// says nothing about NAME RESOLUTION: variant spellings resolve corpus-wide here, and a same-spelled
+// arm declared in another module is a case this matrix does not construct and cannot report on --
+// the sibling fixture family test.fixture.record_construction_census models that homonym case
+// deliberately, and this one does not. Second, the carrier declares TWO arms and one payload shape;
+// an arm shape this fixture does not express is outside what these rows measure. The subject here is
+// field judgment on a literal, not resolution and not shape coverage.
+//
+// THE PROBE IS TWO MODULES ON PURPOSE. The arm is declared in
+// test.fixture.payload_arm_excess_field.carrier and constructed in a synthetic probe module that
+// imports it, so declaration and literal live in different modules -- the configuration a real
+// construction site has. A single-module probe would have measured the local-declaration resolution
+// path and reported a rung for a path production does not use.
+//
+// WHERE THE LAUNCH-SPECIFIC GUARANTEE LIVES, since it is no longer even gestured at here:
+// test.claim.fleet_converge_launch_scope_non_interference, which executes the launch-environment
+// projection over smuggled foreign populations and requires every output to be identical.
+//
+// RESTORATION TRIGGER: the seed's variant-local unknown-field wall. When it lands, the admission
+// rows below flip from zero to a refusal and this file becomes the regression control for that wall
+// rather than its characterization. The rows do not retire on that climb.
+
+// THIS CARRIER READS THE LIVE TREE AND SAYS SO. compile_dag_diagnostic_census resolves its synthetic
+// source against the live checkout's module index, so ReadsLiveTree is the truthful declaration and
+// a SubstrateInputsOnly relabel would be a fabricated fact about a live-tree read.
+//
+// WHY AND EXACTLY HOW THIS EXECUTES, because an earlier cut of this comment stopped one step short
+// and recreated the conflation the whole file exists to disprove. That cut declined to enroll the
+// probe because the required floor DECLINED every ReadsLiveTree identity, then -- when
+// v2.workflow.required_floor deleted the DeclinedLiveTree arm at the root -- concluded "so these
+// identities are routed and executed". The premise is true and the conclusion does not follow.
+// ReadsLiveTree no longer causes the decline, but this module's PREFIX is still outside
+// required_gate_prefixes, which admits only compiler-oriented prefixes and does not admit this
+// module's prefix. A module outside those prefixes is DeclinedOutsideRequiredGate on an ordinary run.
+//
+// WHAT ACTUALLY MAKES IT RUN is the changed-witness projection: a new or changed witness identity
+// outside the static gate prefixes is selected and reaches a semantic verdict, with disposition
+// PlannedAsChangedWitness rather than the ordinary decline. So this file executes on the PR that
+// introduces or changes it, and an UNCHANGED witness here is not thereby guaranteed to execute on
+// every future PR. It is a characterization that holds against THIS TREE and carries an expiry; it
+// is NOT a standing post-merge wall, and must not be cited as one.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ---------------------------------------------------------------------------
+// ONE SOURCE BUILDER, PARAMETERIZED ONLY BY THE MUTATION.
+//
+// Every payload-arm probe below is built by this single function, so module name, imports,
+// surrounding source and entry are IDENTICAL across the matrix and the only thing that varies is
+// the text inserted into the literal. Authoring each probe as its own string was how the earlier
+// cut of this file left room for an accidental second difference -- a stray import, a different
+// module name -- to explain a delta that was being attributed to the field.
+fn payload_arm_probe_source(fields: String) -> String {
+  join([
+    "module probe_payload_arm\n",
+    "import test.fixture.payload_arm_excess_field.carrier { PayloadArmExcessFieldCarrier, PayloadArmProbeSubject }\n",
+    "import std.types { NonEmptyStr }\n",
+    "fn build() -> PayloadArmExcessFieldCarrier {\n",
+    "  PayloadArmProbeSubject { ", fields, " }\n",
+    "}\n",
+  ], "")
+}
+
+data valid_fields: String = "probe_carrier_host: \"h\" as NonEmptyStr, probe_carrier_members: []"
+// EVERY EXCESS FIELD IS GIVEN THE SAME TRIVIAL INITIALIZER, and that is a correctness requirement
+// rather than laziness. Because the compiler ANALYSES an admitted excess field's initializer, a
+// probe whose initializer is a call or a cast contributes that expression's own diagnostics, and
+// the delta would then be measuring the EXPRESSION rather than the FIELD -- an earlier cut of this
+// matrix went red on exactly that, with the fabric probe's cast adding an inhabitance row. Holding
+// the initializer fixed at [] isolates the field, which is the subject. The field TYPES are
+// irrelevant here precisely because the field is unjudged; a well-typed payload for each axis is
+// what the EXECUTION matrix supplies, and it supplies production-shaped ones.
+// THE CENSUSES ARE HOISTED INTO data INITIALIZERS so each source is compiled ONCE for the whole
+// module rather than once per assertion. Every row below reads these same values, which is also
+// what makes "the same matrix execution" true rather than merely intended.
+data census_valid: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: valid_fields))
+data census_one_excess: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", excess_alpha: []"], "")))
+data census_second_excess: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", excess_beta: []"], "")))
+data census_third_excess: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", excess_gamma: []"], "")))
+data census_fourth_excess: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", excess_delta: []"], "")))
+data census_four_at_once: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", excess_alpha: [], excess_beta: [], excess_gamma: [], excess_delta: []"], "")))
+data census_sentinel: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", __payload_arm_excess_field_probe: []"], "")))
+data census_missing_required: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: "probe_carrier_host: \"h\" as NonEmptyStr"))
+data census_undefined_initializer: CompileDiagnosticCensus = compile_dag_diagnostic_census(payload_arm_probe_source(fields: join([valid_fields, ", __payload_arm_excess_field_probe: totally_undefined_fn_zz()"], "")))
+
+data plain_product_with_sentinel_source: String = "module probe_plain_product\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }\nimport std.types { NonEmptyStr }\nfn build() -> CompileDiagnosticCensusRow {\n  CompileDiagnosticCensusRow { diagnostic_class: \"x\" as NonEmptyStr, subject_name: \"s\", blocking: false, count: 0, __payload_arm_excess_field_probe: 1 }\n}\n"
+data plain_product_clean_source: String = "module probe_plain_product_clean\nimport gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }\nimport std.types { NonEmptyStr }\nfn build() -> CompileDiagnosticCensusRow {\n  CompileDiagnosticCensusRow { diagnostic_class: \"x\" as NonEmptyStr, subject_name: \"s\", blocking: false, count: 0 }\n}\n"
+
+data census_plain_product_sentinel: CompileDiagnosticCensus = compile_dag_diagnostic_census(plain_product_with_sentinel_source)
+data census_plain_product_clean: CompileDiagnosticCensus = compile_dag_diagnostic_census(plain_product_clean_source)
+
+// ---------------------------------------------------------------------------
+// THE COMPARISON IS A MULTISET OF DIAGNOSTIC IDENTITIES, NOT A TOTAL.
+//
+// Net counts alone are not sufficient: a +1 and a -1 cancel, so a matrix built on totals could go
+// green while the inserted field grew its own diagnostic and something unrelated lost one. The
+// identity carries kind, subject and severity -- everything the census reports that is stable under
+// inserting text into a literal -- and the comparison requires the added and removed multisets to
+// be EMPTY, which detects a new diagnostic naming the inserted field even at an unchanged total.
+// ---------------------------------------------------------------------------
+fn row_identity(r: CompileDiagnosticCensusRow) -> String {
+  join([r.diagnostic_class as String, "|", r.subject_name, "|", to_string(r.blocking)], "")
+}
+
+fn census_rows_or_empty(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
+  match c {
+    CensusObserved { rows: rows } => rows
+    CensusNotRunnable { cause: _ } => []
+  }
+}
+
+fn census_ran(c: CompileDiagnosticCensus) -> Bool {
+  match c {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn count_of_identity(rows: List<CompileDiagnosticCensusRow>, id: String) -> Int {
+  fold(rows, init: 0, f: (acc, r) => if row_identity(r: r) == id { acc + r.count } else { acc })
+}
+
+fn identities_of(rows: List<CompileDiagnosticCensusRow>) -> List<String> {
+  map(rows, r => row_identity(r: r))
+}
+
+// Every identity occurring on EITHER side is examined, so a row present on one side only is caught
+// as a count difference against a zero rather than being skipped for having no partner.
+fn identity_deltas_empty_except(a: CompileDiagnosticCensus, b: CompileDiagnosticCensus, except_id: String) -> Bool {
+  let ra = census_rows_or_empty(c: a)
+  let rb = census_rows_or_empty(c: b)
+  all(
+    concat(identities_of(rows: ra), identities_of(rows: rb)),
+    id => id == except_id || count_of_identity(rows: ra, id: id) == count_of_identity(rows: rb, id: id),
+  )
+}
+
+fn identity_deltas_empty(a: CompileDiagnosticCensus, b: CompileDiagnosticCensus) -> Bool {
+  identity_deltas_empty_except(a: a, b: b, except_id: "")
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn total_count(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn class_count(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE EXACT IDENTITY THE COMPILER WOULD REPORT IF THE INSERTED FIELD WERE JUDGED. Each row names its
+// own, so the assertion is about THE FIELD IT INSERTED rather than about the class as a whole.
+fn field_not_found_identity(field: String) -> String {
+  join(["FieldNotFound|", field, "|true"], "")
+}
+
+// THE EXCESS-FIELD ROW SHAPE, ONCE.
+//
+// A CLASS-WIDE `FieldNotFound == 0` WOULD BE THE WRONG ASSERTION HERE, and an earlier cut made it.
+// These probes compile against the LIVE TREE, so a future unrelated corpus diagnostic of that class
+// would redden a row that has nothing to do with it -- an assertion about the corpus wearing the
+// name of an assertion about this field. What the row must establish is narrower and stronger: the
+// exact identity naming THE INSERTED FIELD is absent, and the added/removed identity multiset
+// against the same-run baseline is empty, which catches a new diagnostic naming that field even at
+// an unchanged total (a +1 and a -1 cancel).
+fn admitted_with_no_diagnostic_change(c: CompileDiagnosticCensus, inserted_field: String) -> Bool {
+  census_ran(c: c)
+    && census_ran(c: census_valid)
+    && total_count(c: c) == total_count(c: census_valid)
+    && blocking_total(c: c) == blocking_total(c: census_valid)
+    && count_of_identity(
+         rows: census_rows_or_empty(c: c),
+         id: field_not_found_identity(field: inserted_field),
+       ) == 0
+    && identity_deltas_empty(a: census_valid, b: c)
+}
+
+// ---------------------------------------------------------------------------
+// (ii) HARNESS SIGHT -- ASSERTED FIRST, because every row after it is conditional on it.
+//
+// THE ONLY ABSOLUTE THIS PAIR CAN HONESTLY CARRY IS THE BLOCKING ONE. An earlier cut asserted the
+// clean census total at zero and the mutant's at one. That is FALSE and was measured false: this
+// source's closure contributes a common population of NONBLOCKING rows -- inhabitance-undecided and
+// unenforced-refinement rows belonging to the census module itself -- to BOTH sides. The count is
+// deliberately not written here; it is whatever compile_dag_diagnostic_census reports for these two
+// sources, and freezing it as prose would make an acceptance number out of a corpus property.
+//
+// SO THE RESIDUE IS PINNED BY DIFFERENCE. Blocking is 0 clean and 1 mutated, the exact sentinel
+// identity is absent clean and present exactly once mutated, the total is clean + 1 exactly, and
+// every OTHER diagnostic identity's multiplicity is required EQUAL across the pair. Together those
+// establish that the inserted field causes exactly one new blocking diagnostic and that nothing
+// unrelated appeared, disappeared, or cancelled numerically.
+//
+// WHAT THAT IS AND IS NOT. It is stronger than a net-count comparison, and it is the strongest
+// SUBJECT-RELATIVE control available under a shared nonblocking closure residue. It is NOT stronger
+// than a genuinely clean absolute would be: a true total-zero-versus-total-one pair would also prove
+// the ABSENCE of all common residue, which this pair cannot and does not claim. The earlier wording
+// here said "strictly stronger than the absolute", which overstated it in exactly the direction that
+// flatters the author.
+// ---------------------------------------------------------------------------
+data sentinel_field_not_found_identity: String = field_not_found_identity(field: "__payload_arm_excess_field_probe")
+
+// THE EXACT IDENTITY AN UNRESOLVED INITIALIZER PRODUCES, measured rather than guessed: the census
+// reports it as InternalError naming the function. Naming it here is what turns "one more blocking
+// diagnostic appeared" into "the diagnostic that appeared is the one about this initializer".
+data undefined_initializer_identity: String = "InternalError|function:totally_undefined_fn_zz|true"
+
+test fn the_census_can_see_fieldnotfound_on_a_plain_product_literal() -> Bool {
+  census_ran(c: census_plain_product_sentinel)
+    && blocking_total(c: census_plain_product_sentinel) == 1
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_plain_product_sentinel),
+         id: sentinel_field_not_found_identity,
+       ) == 1
+    && total_count(c: census_plain_product_sentinel) == total_count(c: census_plain_product_clean) + 1
+}
+
+// AND THE PAIRED CLEAN PRODUCT, so the row above is the FIELD and not the probe module refusing for
+// a reason of its own.
+test fn the_same_plain_product_without_the_field_carries_nothing_blocking() -> Bool {
+  census_ran(c: census_plain_product_clean)
+    && blocking_total(c: census_plain_product_clean) == 0
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_plain_product_clean),
+         id: sentinel_field_not_found_identity,
+       ) == 0
+    && identity_deltas_empty_except(
+         a: census_plain_product_clean,
+         b: census_plain_product_sentinel,
+         except_id: sentinel_field_not_found_identity,
+       )
+}
+
+// ---------------------------------------------------------------------------
+// (iii) THE MISSING-FIELD DIRECTION -- THE CONTROL THAT PINS THE ASYMMETRY. Without it the matrix
+// would show a broad variant blind spot but would not establish that this exact payload-variant
+// construction path is judged AT ALL. Presence checking reads the selected arm through
+// variant_owner_node and has no such hole: the literal refuses a MISSING field and admits an
+// INVENTED one, and that asymmetry IS the defect, stated as a measurement.
+//
+// The added identity is named exactly, and every OTHER identity is required to be unchanged -- so
+// this row cannot be satisfied by some unrelated diagnostic appearing in MissingField's place.
+// ---------------------------------------------------------------------------
+data missing_member_identity: String = "MissingField|probe_carrier_members|true"
+
+test fn omitting_a_required_field_adds_exactly_one_missing_field_and_nothing_else() -> Bool {
+  census_ran(c: census_missing_required)
+    && total_count(c: census_missing_required) == total_count(c: census_valid) + 1
+    && blocking_total(c: census_missing_required) == blocking_total(c: census_valid) + 1
+    && count_of_identity(rows: census_rows_or_empty(c: census_valid), id: missing_member_identity) == 0
+    && count_of_identity(rows: census_rows_or_empty(c: census_missing_required), id: missing_member_identity) == 1
+    && identity_deltas_empty_except(a: census_valid, b: census_missing_required, except_id: missing_member_identity)
+}
+
+// ---------------------------------------------------------------------------
+// (i) THE LAUNCH ARM -- every row a measured admission with an EMPTY diagnostic delta,
+// characterizing the absence of any excess-field judgment for payload-carrying variant literals.
+// These are NOT walls. The four named-axis rows and the all-four row are retained as SPECIMENS of
+// the broad class; the sentinel row is the one that characterizes the class, because it uses a name
+// declared on no type anywhere and so cannot be explained by any sibling arm.
+//
+// Each is an exact equality rather than a bound, so the arrival of the compiler-floor repair turns
+// them RED and forces the wording in this file to be rewritten, rather than letting a new wall pass
+// unnoticed.
+// ---------------------------------------------------------------------------
+test fn the_admissible_payload_arm_constructor_is_accepted() -> Bool {
+  census_ran(c: census_valid)
+    && class_count(c: census_valid, wanted: "FieldNotFound") == 0
+    && class_count(c: census_valid, wanted: "MissingField") == 0
+}
+
+test fn a_payload_arm_literal_carrying_one_excess_field_is_admitted_with_no_diagnostic_change() -> Bool {
+  admitted_with_no_diagnostic_change(c: census_one_excess, inserted_field: "excess_alpha")
+}
+
+test fn a_second_distinct_excess_field_name_is_admitted_the_same_way() -> Bool {
+  admitted_with_no_diagnostic_change(c: census_second_excess, inserted_field: "excess_beta")
+}
+
+test fn a_third_distinct_excess_field_name_is_admitted_the_same_way() -> Bool {
+  admitted_with_no_diagnostic_change(c: census_third_excess, inserted_field: "excess_gamma")
+}
+
+test fn a_fourth_distinct_excess_field_name_is_admitted_the_same_way() -> Bool {
+  admitted_with_no_diagnostic_change(c: census_fourth_excess, inserted_field: "excess_delta")
+}
+
+test fn four_excess_fields_at_once_are_admitted_with_no_diagnostic_change() -> Bool {
+  admitted_with_no_diagnostic_change(c: census_four_at_once, inserted_field: "excess_alpha")
+    && count_of_identity(rows: census_rows_or_empty(c: census_four_at_once), id: field_not_found_identity(field: "excess_beta")) == 0
+    && count_of_identity(rows: census_rows_or_empty(c: census_four_at_once), id: field_not_found_identity(field: "excess_gamma")) == 0
+    && count_of_identity(rows: census_rows_or_empty(c: census_four_at_once), id: field_not_found_identity(field: "excess_delta")) == 0
+}
+
+test fn an_arbitrary_nowhere_declared_field_on_the_payload_arm_is_also_admitted() -> Bool {
+  admitted_with_no_diagnostic_change(c: census_sentinel, inserted_field: "__payload_arm_excess_field_probe")
+}
+
+// ---------------------------------------------------------------------------
+// (iv) THE INITIALIZER-ANALYSIS DISCRIMINATOR -- and it settles the PR's wording.
+//
+// The excess field is admitted, but its INITIALIZER is not ignored: an initializer calling a
+// function declared nowhere adds exactly one blocking diagnostic naming that function, while the
+// field itself still draws none. So the compiler ANALYSES an admitted excess-field initializer and
+// discards only the resulting FIELD. The PR therefore may not say the excess field is "inert", that
+// the initializer is "ignored", or that the field is dropped "without processing". Whether an
+// analysed initializer is additionally EVALUATED at runtime is a separate question, discriminated
+// in test.claim.fleet_converge_launch_scope_non_interference.
+// ---------------------------------------------------------------------------
+test fn an_excess_field_initializer_is_analysed_even_though_the_field_is_discarded() -> Bool {
+  census_ran(c: census_undefined_initializer)
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_undefined_initializer),
+         id: field_not_found_identity(field: "__payload_arm_excess_field_probe"),
+       ) == 0
+    && total_count(c: census_undefined_initializer) == total_count(c: census_valid) + 1
+    && blocking_total(c: census_undefined_initializer) == blocking_total(c: census_valid) + 1
+    && count_of_identity(rows: census_rows_or_empty(c: census_valid), id: undefined_initializer_identity) == 0
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_undefined_initializer),
+         id: undefined_initializer_identity,
+       ) == 1
+    && identity_deltas_empty_except(
+         a: census_valid,
+         b: census_undefined_initializer,
+         except_id: undefined_initializer_identity,
+       )
+}

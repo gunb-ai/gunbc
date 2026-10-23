@@ -1,0 +1,309 @@
+module v2.workflow.orchestration_emit_test
+
+import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import extdeps.communication.medium { Medium }
+import v2.std.orchestration {
+  Run,
+  PipelineStep,
+  Do,
+  If,
+  Pipeline,
+  FailFast,
+  EnvSet,
+  EnvUnset,
+  Exit,
+  Predicate,
+  ExitZero
+}
+import std.optional { Optional, Present }
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn orch_pipeline_step1() -> PipelineStep {
+  Do {
+    run: Run {
+      command: "cargo build -p v1-compiler --release --bins",
+      env: Empty,
+      redirect: Absent,
+      capture: Absent
+    }
+  }
+}
+
+fn orch_pipeline_step2() -> PipelineStep {
+  Do {
+    run: Run {
+      command: "cargo test --workspace",
+      env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+      redirect: Absent,
+      capture: Absent
+    }
+  }
+}
+
+fn orch_pipeline_two_steps() -> Pipeline {
+  Pipeline {
+    steps: [orch_pipeline_step1(), orch_pipeline_step2()],
+    on_failure: FailFast
+  }
+}
+
+fn orch_pipeline_one_step() -> Pipeline {
+  Pipeline {
+    steps: [orch_pipeline_step1()],
+    on_failure: FailFast
+  }
+}
+
+test fn orch_pipeline_single_step_is_run_holds() -> Bool {
+  match orch_emit_pipeline(p: orch_pipeline_one_step(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "cargo build -p v1-compiler --release --bins") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_pipeline_two_steps_expected() -> String {
+  "cargo build -p v1-compiler --release --bins\nCARGO_BUILD_JOBS=1 cargo test --workspace"
+}
+
+fn orch_pipeline_two_steps_space_joined_wrong() -> String {
+  "cargo build -p v1-compiler --release --bins CARGO_BUILD_JOBS=1 cargo test --workspace"
+}
+
+test fn orch_pipeline_two_steps_newline_joined_holds() -> Bool {
+  match orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == orch_pipeline_two_steps_expected()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_pipeline_join_has_teeth_holds() -> Bool {
+  match orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: src, diagnostics: _ } =>
+      src.carried != orch_pipeline_two_steps_space_joined_wrong()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
+  match orch_emit_run(
+    r: Run { command: "cargo build", env: Empty, redirect: Absent, capture: Absent },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "cargo build") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_env_prefixed_structured_holds() -> Bool {
+  match orch_emit_run(
+    r: Run {
+      command: "cargo test --workspace",
+      env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+      redirect: Absent,
+      capture: Absent
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "CARGO_BUILD_JOBS=1 cargo test --workspace") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_if_cond() -> Predicate {
+  ExitZero {
+    run: Run { command: "[ -z \"$1\" ]", env: Empty, redirect: Absent, capture: Absent }
+  }
+}
+
+fn orch_do_step(command: String) -> PipelineStep {
+  Do { run: Run { command: command, env: Empty, redirect: Absent, capture: Absent } }
+}
+
+fn orch_pipeline_exit_step() -> PipelineStep {
+  Exit { status: "1" }
+}
+
+fn orch_pipeline_with_exit() -> Pipeline {
+  Pipeline {
+    steps: [orch_do_step("rm -f \"$ORCH_TMP\""), orch_pipeline_exit_step()],
+    on_failure: FailFast
+  }
+}
+
+fn orch_pipeline_with_exit_expected() -> String {
+  "rm -f \"$ORCH_TMP\"\nexit 1"
+}
+
+// WITNESS (quick-eagle-786): the Exit arm's carried unwrap. The bind over orch_emit_exit_step
+// receives a Medium<String>; the carried slot wants its .carried text. Red without the unwrap --
+// the script line renders the carried struct itself ("Medium { carried: exit 1, fidelity:
+// Lossless }"), which is exactly the fleet-converge.yml drift this witness pins at the fixture
+// level. Positive control: the claim passes with the unwrap in place.
+test fn orch_pipeline_exit_line_is_bare_statement_holds() -> Bool {
+  match orch_emit_pipeline(p: orch_pipeline_with_exit(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == orch_pipeline_with_exit_expected()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_if_then_one_step() -> Pipeline {
+  Pipeline { steps: [orch_do_step(command: "verdict=absent")], on_failure: FailFast }
+}
+
+fn orch_if_then_two_steps() -> Pipeline {
+  Pipeline {
+    steps: [orch_do_step(command: "verdict=absent"), orch_do_step(command: "echo \"$verdict\"")],
+    on_failure: FailFast
+  }
+}
+
+fn orch_if_else_one_step() -> Pipeline {
+  Pipeline { steps: [orch_do_step(command: "verdict=present")], on_failure: FailFast }
+}
+
+fn orch_if_else_two_steps() -> Pipeline {
+  Pipeline {
+    steps: [orch_do_step(command: "verdict=present"), orch_do_step(command: "echo \"$verdict\"")],
+    on_failure: FailFast
+  }
+}
+
+fn orch_if_pipeline(then_: Pipeline, else_: Optional<Pipeline>) -> Pipeline {
+  Pipeline {
+    steps: [If { cond: orch_if_cond(), then_: then_, else_: else_ }],
+    on_failure: FailFast
+  }
+}
+
+test fn orch_if_single_step_no_else_byte_identical_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Absent),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then verdict=absent; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_single_step_with_else_byte_identical_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_else_one_step() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else verdict=present; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_multi_step_then_no_else_block_form_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: Absent),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nfi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_multi_step_then_and_else_block_form_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_two_steps(), else_: Present { value: orch_if_else_two_steps() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\necho \"$verdict\"\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_else_two_steps() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then\nverdict=absent\nelse\nverdict=present\necho \"$verdict\"\nfi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_if_empty_pipeline() -> Pipeline {
+  Pipeline { steps: Empty, on_failure: FailFast }
+}
+
+test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Absent),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then :; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_empty_then_with_nonempty_else_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Present { value: orch_if_else_one_step() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then :; else verdict=present; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_nonempty_then_with_empty_else_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_then_one_step(), else_: Present { value: orch_if_empty_pipeline() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then verdict=absent; else :; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_both_arms_empty_noop_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: orch_if_pipeline(then_: orch_if_empty_pipeline(), else_: Present { value: orch_if_empty_pipeline() }),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "if [ -z \"$1\" ]; then :; else :; fi") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
+  match orch_emit_run(
+    r: Run {
+      command: "cargo test --workspace",
+      env: [
+        EnvUnset { name: "RUSTC_WRAPPER" },
+        EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
+      ],
+      redirect: Absent,
+      capture: Absent
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo test --workspace")
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}

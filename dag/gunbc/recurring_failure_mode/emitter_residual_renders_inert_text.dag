@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.emitter_residual_renders_inert_text
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emitter_residual_renders_inert_text: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitter_residual_renders_inert_text" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a dispatcher's residual arm renders input it could not classify as text that is INERT IN THE TARGET LANGUAGE -- a comment, a docstring, a blank -- rather than refusing. The emitted artifact is well-formed and silently INCOMPLETE: the declaration the input carried is simply not there. This is DESIGN section 5's fabricated-plausible-output with the failure arm widening instead of stopping, and it is worse in an emitter than elsewhere, because the consumer of the omission is a downstream COMPILER that has no way to know a declaration was expected.",
+
+    "RECEIPT, 2026-09-04, in v1.compiler.emit_python emit_py_typed_item. Its else arm rendered `concat(\"# unhandled node: \", item_text)`. An item claimed by none of the shape predicates was dropped from the emitted module with no diagnostic, no exit code and no counter. The SAME residual position in the two sibling emitters did stop: v1.compiler.emit_rust rendered compile_error! (a stop at the target compiler) and v1.compiler.emit_go rendered a panicking init() (a stop at target runtime). One dispatcher out of three fails open, and the three sit in files that are read as a family.",
+
+    "HOW IT STAYED INVISIBLE, which is the distinguishing fact rather than an aside. It was found by a REFUSAL CENSUS taken for a different purpose -- enumerating what each emit-side item shape predicate refuses, before deleting the family in favour of a carried item kind. Nothing was watching this arm: it produced valid Python, so no target compiler complained; it produced no diagnostic, so no gate counted it; and the population that reaches it was empty in the accepted corpus, so no output differed. A defect whose only symptom is a MISSING declaration in a target nobody compiles in CI has no observable, and its recorded frequency without this row is ZERO.",
+
+    "WHY IT IS FILED AT THE MOMENT IT DISAPPEARS. The repair that surfaced it also removes it: the three dispatchers become total matches over v1.std.core ParsedModuleItemKind, so the residual position no longer exists for the five real item kinds, and the two remaining arms -- ModuleItemUnrecognized and NotAModuleItem -- refuse in all three targets. A silently repaired defect that is never rostered cannot rank for a wall, and the next emitter added to the family would reproduce it with nothing to consult.",
+
+    "RECOGNITION RULE: for every dispatcher that RENDERS INTO A TARGET LANGUAGE, read its residual arm and ask what the target does with the bytes. If the answer is 'nothing' -- a comment, whitespace, an empty string -- the arm is not a refusal however it is worded, and the emitted artifact is a fabricated plausible output. Compare siblings: a family of emitters that stop differently in the same position is the tell, because the divergence is invisible from inside any one of them. The generalisation beyond emitters: an arm whose output is VALID IN ITS DESTINATION but carries none of the input's meaning fails open while looking like it handled the case.",
+
+    "CEILING AND NEXT-RUNG TRIGGER. Ceiling STRUCTURALLY IMPOSSIBLE, DESIGN section 4b rung 4, and the mechanism is total dispatch: when the dispatched-on subject is a closed variant, the residual arm HAS NO CONSTRUCTOR and the inert-text arm cannot be written. Where a residual must remain -- input that is genuinely outside the modeled variant set -- the class drops to MECHANICALLY PREVENTABLE and the trigger is a refusal helper per target that the residual arm is obliged to call, so the stopping behaviour is one authority rather than a per-dispatcher spelling. As of this row the three .dag emitters are at rung 4 for item dispatch and no other emitter dispatcher has been censused; that uncensused population is the class's open coverage obligation, not a claim of absence.",
+  ],
+
+  evidence: [],
+}

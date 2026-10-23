@@ -1,0 +1,156 @@
+module v2.test.name_resolve.explicit_fn_import_binds
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_test_resolve_module,
+  native_module_resolve_verdict,
+  native_lane_file_refusal_index,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveImportTargetFileRefused,
+  NativeModuleResolveRefused,
+  NativeModuleResolveAccepted
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+// AN EXPLICIT IMPORT BINDS ON THE NATIVE PREPARE ROUTE, AND A MODULE WHOSE IMPORT TARGET WAS REFUSED AT
+// INGEST IS TOLD WHICH FILE REFUSED. Measured on the native seven (quiet-hawk-702, 2026-09-29): every
+// test importing v2.compiler.tokenize { tokenize } refused `resolve_reason_unbound_symbol @ tokenize`,
+// and the cause was v2.compiler.tokenize's own file, refused by body lowering before it reached the
+// index. The fixtures are SUPPLIED reads run through the real prepare route
+// (v2.compiler.compile native_test_context_from_ingest, native_module_resolve_verdict), so they
+// discriminate at the route's interface and not through the corpus's current refusal set.
+
+data same_name_decl_source: String = "module v2.test.efib.probe\n\nimport std.types { Bool }\n\nfn probe() -> Bool { true }\n"
+
+data rival_b_source: String = "module v2.test.efib.rival_b\n\ntype Shade = | Light | Dark\n"
+
+data rival_c_source: String = "module v2.test.efib.rival_c\n\ntype Shade = | Bright | Dim\n"
+
+// A FILE THE FRONT END REFUSES. It declares its module on its header line, which is what attribution reads.
+data refused_decl_source: String = "module v2.test.efib.broken\n\nimport std.types { Bool }\n\nfn broken_value( -> Bool { true }\n"
+
+data same_name_user_source: String = "module v2.test.efib.user\n\nimport std.types { Bool }\nimport v2.test.efib.probe { probe }\n\nfn uses() -> Bool { probe() }\n"
+
+data rival_user_source: String = "module v2.test.efib.rival_user\n\nimport v2.test.efib.rival_b { Shade, Light }\n\nfn pick() -> Shade { Light }\n"
+
+data refused_target_user_source: String = "module v2.test.efib.refused_user\n\nimport std.types { Bool }\nimport v2.test.efib.broken { broken_value }\n\nfn uses() -> Bool { broken_value() }\n"
+
+data undeclared_user_source: String = "module v2.test.efib.undeclared_user\n\nimport std.types { Bool }\n\nfn uses() -> Bool { nowhere_declared() }\n"
+
+fn efib_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+// THE SHARE POINT: every claim below asks one question of the same context, so it is built once.
+fn efib_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    efib_read(text: same_name_decl_source, id: ^efib_probe, path: "src/v2/test/fixture/efib/probe.dag"),
+    efib_read(text: rival_b_source, id: ^efib_rival_b, path: "src/v2/test/fixture/efib/rival_b.dag"),
+    efib_read(text: rival_c_source, id: ^efib_rival_c, path: "src/v2/test/fixture/efib/rival_c.dag"),
+    efib_read(text: refused_decl_source, id: ^efib_broken, path: "src/v2/test/fixture/efib/broken.dag"),
+    efib_read(text: same_name_user_source, id: ^efib_user, path: "src/v2/test/fixture/efib/user.dag"),
+    efib_read(text: rival_user_source, id: ^efib_rival_user, path: "src/v2/test/fixture/efib/rival_user.dag"),
+    efib_read(text: refused_target_user_source, id: ^efib_refused_user, path: "src/v2/test/fixture/efib/refused_user.dag"),
+    efib_read(text: undeclared_user_source, id: ^efib_undeclared_user, path: "src/v2/test/fixture/efib/undeclared_user.dag")
+  ])
+}
+
+// THE SHARE POINT: every claim below reads one verdict of ONE context, so the context and all four
+// verdicts are built once by this nullary producer, enrolled warm in
+// v2.workflow.floor_pure_producer_share for the reason v2.test.native_decl_selection
+// collision_resolved is: eight supplied reads through tokenize/parse/normalize/resolve cost more
+// than one claim's budget. A context the fixtures cannot build answers Absent, and every claim reads
+// Absent as false: a fixture failing is never a pass.
+type EfibVerdicts {
+  refused_user: NativeModuleResolveVerdict
+  undeclared_user: NativeModuleResolveVerdict
+  user: NativeModuleResolveVerdict
+  rival_user: NativeModuleResolveVerdict
+}
+
+fn efib_verdicts() -> Optional<EfibVerdicts> {
+  match efib_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        optional_present(value: EfibVerdicts {
+          refused_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.refused_user", path: ^efib_refused_user).verdict,
+          undeclared_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.undeclared_user", path: ^efib_undeclared_user).verdict,
+          user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.user", path: ^efib_user).verdict,
+          rival_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.efib.rival_user", path: ^efib_rival_user).verdict
+        })
+      }
+  }
+}
+
+fn efib_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn efib_attributed_to(v: NativeModuleResolveVerdict, path: Symbol, module: QualifiedName) -> Bool {
+  match v {
+    NativeModuleResolveImportTargetFileRefused { target: t, first: _, rest: _, observation: _ } =>
+      t.path == path && (match t.module { Present { value: m } => m == module  Absent => false })
+    _ => false
+  }
+}
+
+fn efib_plain_resolve_refusal(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveRefused { first: _, rest: _, observation: _ } => true
+    _ => false
+  }
+}
+
+// THE RED. The imported module's file was refused at ingest, so the verdict must name that refusal,
+// with the refused module read from the file's header -- not only the unbound `broken_value`.
+test fn an_import_of_a_refused_module_is_attributed_to_its_file_refusal() -> Bool {
+  match efib_verdicts() {
+    Absent => false
+    Present { value: vs } => efib_attributed_to(v: vs.refused_user, path: ^efib_broken, module: [^v2, ^test, ^efib, ^broken])
+  }
+}
+
+// THE DISCRIMINATOR. A reference that is unbound for an ordinary reason imports no refused module,
+// so it keeps the plain resolve refusal: attribution fires only where an import target was refused.
+test fn an_ordinary_unbound_reference_is_not_attributed_to_a_file_refusal() -> Bool {
+  match efib_verdicts() {
+    Absent => false
+    Present { value: vs } => efib_plain_resolve_refusal(v: vs.undeclared_user)
+  }
+}
+
+// THE POSITIVE CONTROLS. A fn named like its own module binds through an explicit import, and an
+// explicit type import binds the imported declaration although another module in the closure,
+// not imported, declares the same name.
+test fn fn_import_named_like_its_module_binds() -> Bool {
+  match efib_verdicts() {
+    Absent => false
+    Present { value: vs } => efib_accepted(v: vs.user)
+  }
+}
+
+test fn explicit_type_import_beats_an_unimported_same_name_declaration() -> Bool {
+  match efib_verdicts() {
+    Absent => false
+    Present { value: vs } => efib_accepted(v: vs.rival_user)
+  }
+}

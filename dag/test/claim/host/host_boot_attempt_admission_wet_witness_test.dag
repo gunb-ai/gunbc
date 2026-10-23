@@ -1,0 +1,144 @@
+module test.claim.host_boot_attempt_admission_wet_witness
+
+import extdeps.shell
+import std.types { Bool, NonEmptyStr, String }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
+}
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import extdeps.crypto.hash { Digest }
+import gunbc.host_boot_attempt_admission {
+  SlotConsumption, SlotConsumed, SlotRefused,
+  AttemptReceiptRefusal, AttemptAlreadyConsumed, ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing,
+  ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe, ReceiptPathOutsideReceipts, ReceiptFileUnreadable, ReceiptNotJson,
+  ReceiptNotTracked, ReceiptNotRegularFile, ReceiptDigestUnavailable, ReceiptCpusNotTheExpectedSockets, ReceiptDimmUnknownSlot, ReceiptDimmOnWrongSocket, ReceiptDimmSlotOmitted,
+  ReceiptSchemaMismatch, ReceiptFieldUnreadable, ReceiptTimeUnreadable, ReceiptSubjectMismatch, ReceiptAttemptMismatch, ReceiptPlanMismatch,
+  ReceiptOrderingViolated, AttemptSlotKeyNotAddressable, AttemptSlotPreconditionIncoherent, AttemptSlotStoreRefused,
+  consume_attempt_slot, attempt_slot_key,
+}
+
+// WET CONTROLS FOR THE CREATE-ONCE ATTEMPT SLOT, against a throwaway temp directory (no network, no
+// remote host): the real file CAS decides each answer. Enrolled on the local-repo wet lane.
+// Concurrent creates of one slot name are decided by the store's exclusive create, executed at
+// write_file_create_new_tests concurrent_same_target_creates_produce_one_winner_and_no_residue; the
+// repeated attempt below exercises the same occupied arm through consume_attempt_slot itself.
+fn consumed(c: SlotConsumption) -> Bool {
+  match c {
+    SlotConsumed { slot: _ } => true
+    SlotRefused { cause: _ } => false
+  }
+}
+
+fn already_consumed(c: SlotConsumption) -> Bool {
+  match c {
+    SlotConsumed { slot: _ } => false
+    SlotRefused { cause: r } => refused_as_consumed(cause: r)
+  }
+}
+
+fn refused_as_consumed(cause: AttemptReceiptRefusal) -> Bool {
+  match cause {
+    AttemptAlreadyConsumed { slot: _, consumed_by: _ } => true
+    ReceiptHostHasNoRoute { host: _ } => false
+    ReceiptExecutorForAnotherHost { executor_host: _, bound: _ } => false
+    ReceiptExecutorNotOnStoreHost { reason: _ } => false
+    ReceiptHostUnbound { detail: _ } => false
+    ReceiptNonceMissing { variable: _, detail: _ } => false
+    ReceiptNonceNotSlotSafe { nonce: _ } => false
+    ReceiptHostNotSlotSafe { host: _ } => false
+    ReceiptPathOutsideReceipts { path: _ } => false
+    ReceiptNotTracked { path: _, commit: _ } => false
+    ReceiptNotRegularFile { path: _, mode: _, kind: _ } => false
+    ReceiptDigestUnavailable { path: _, reason: _ } => false
+    ReceiptCpusNotTheExpectedSockets { expected: _, recorded: _ } => false
+    ReceiptDimmUnknownSlot { label: _ } => false
+    ReceiptDimmOnWrongSocket { label: _, recorded: _, roster: _ } => false
+    ReceiptDimmSlotOmitted { label: _ } => false
+    ReceiptFileUnreadable { path: _, detail: _ } => false
+    ReceiptNotJson { path: _, detail: _ } => false
+    ReceiptSchemaMismatch { observed: _ } => false
+    ReceiptFieldUnreadable { field: _, cause: _ } => false
+    ReceiptTimeUnreadable { field: _, rendering: _ } => false
+    ReceiptSubjectMismatch { receipt: _, bound: _ } => false
+    ReceiptAttemptMismatch { receipt: _, dispatched: _ } => false
+    ReceiptPlanMismatch { field: _, plan: _, inspection: _ } => false
+    ReceiptOrderingViolated { fixed_at: _, completed_at: _ } => false
+    AttemptSlotKeyNotAddressable { slot: _ } => false
+    AttemptSlotPreconditionIncoherent { slot: _ } => false
+    AttemptSlotStoreRefused { slot: _, cause: _ } => false
+  }
+}
+
+// THE UNIT HOLD IS TAKEN AND RELEASED IN THE SAME DIRECTORY, keyed by the same host: even co-located,
+// a release frees only the hold's own slot.
+fn hold_taken_and_released(root: NonEmptyStr) -> Bool {
+  let owner = "boot-run:wet-witness" as DurableHoldOwnerRef
+  match file_hold_acquire(root: root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: owner) {
+    FileHoldAcquired { slot_key: k, owner: o, generation: g } =>
+      match file_hold_release_assess(root: root, slot_key: k, owner: o, acquired_generation: g, released_by: "boot-run:wet-witness" as DurableHoldReleaseRef) {
+        FileHoldReleasePlanned { plan: p } =>
+          match file_hold_release_commit(plan: p) {
+            FileHoldReleased { slot_key: _, generation: _ } => true
+            FileHoldReleaseLost { slot_key: _ } => false
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+          }
+        FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+      }
+    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => false
+    FileHoldAcquireLost { slot_key: _ } => false
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => false
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => false
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => false
+  }
+}
+
+// THE FIVE CONTROLS IN ONE ORDERED RUN over one store: the first A is consumed; a repeated A refuses
+// as already consumed; B is then consumed; A still refuses after B; and after a unit hold on the same
+// host is taken and released in the same directory, A still refuses.
+fn attempt_slot_controls(root: NonEmptyStr) -> Bool {
+  let a = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-a")
+  let b = attempt_slot_key(host: operator_host_mtcollins1, nonce: "nonce-b")
+  let first_a = consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
+  let repeated_a = already_consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
+  let then_b = consumed(c: consume_attempt_slot(root: root, key: b, payload: "consumed by receipt-b"))
+  let a_after_b = already_consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
+  let released = hold_taken_and_released(root: root)
+  let a_after_release = already_consumed(c: consume_attempt_slot(root: root, key: a, payload: "consumed by receipt-a"))
+  first_a && repeated_a && then_b && a_after_b && released && a_after_release
+}
+
+test fn an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_boot_attempt.XXXXXX").path
+  let held = attempt_slot_controls(root: root_path as NonEmptyStr)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  held && removed.success
+}
+
+// THE RECEIPT'S EVIDENCE IS THE SHA-256 OF ITS BYTES, taken by the same authority admission uses: one
+// changed byte changes it, and the same bytes give the same digest.
+fn digest_of(content: String) -> Digest? {
+  match sha256sum_stdin_digest_via_shell(content: content) {
+    Sha256FileDigest { digest: d } => Present { value: d }
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+  }
+}
+
+test fn one_changed_byte_changes_the_receipt_digest_by_real_execution() -> Bool {
+  match digest_of(content: "{\"schema\":\"gunbc.boot_attempt_receipt.v1\"}") {
+    Absent => false
+    Present { value: a } =>
+      match digest_of(content: "{\"schema\":\"gunbc.boot_attempt_receipt.v2\"}") {
+        Absent => false
+        Present { value: b } =>
+          match digest_of(content: "{\"schema\":\"gunbc.boot_attempt_receipt.v1\"}") {
+            Absent => false
+            Present { value: a2 } => (a.hex as String) != (b.hex as String) && (a.hex as String) == (a2.hex as String)
+          }
+      }
+  }
+}

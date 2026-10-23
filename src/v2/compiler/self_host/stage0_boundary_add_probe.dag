@@ -1,0 +1,30 @@
+module stage0_boundary_add_probe
+
+// THE COMMITTED SPECIMEN FOR THE STORAGE-READ SEAM, AND ONLY THAT SEAM.
+//
+// What this file is read by is v2.test.self_host.stage0_production_target's read claim: the path
+// reaches source_ref_for_observed_storage_path, source_root_ingest_from_source_refs verifies the
+// bytes against the ref's content hash, and the claim asserts that the source the ingest carries
+// contains this declaration. Its discriminating sibling reads a path no file occupies and requires
+// a refusal rather than an answer, which is why this file's own content is not that claim's
+// subject and editing the prose around this declaration cannot break it. The door's own
+// specimen carries its module source inline (direct_rust_door_fixture
+// direct_rust_door_dag_module_source), so nothing else in the corpus exercises that route over a
+// file actually on disk.
+//
+// IT IS NOT INGESTED, ASSEMBLED, INFERRED OR EMITTED BY ANY CLAIM, and this sentence is here
+// because an earlier revision of it said otherwise. That revision was true when written -- the
+// three emission claims did run the full disk-to-emit walk over this file -- and stopped being
+// true when those claims moved onto the door's warm-shared resolved specimen to fit the floor's
+// per-claim ceiling. An annotation describing a route no claim executes is the
+// specification-without-execution DESIGN section 5 names, so the two facts are now separate on
+// purpose: the READ is claimed here over a real file, and the two stage0 target-profile
+// SELECTIONS are claimed over the shared specimen. Neither claim covers the other, and the file
+// carries the fact it is actually the subject of.
+//
+// The declaration is deliberately the shape the production composition admits (one arrow), so
+// that if a future change wants the composed route back it can take this file whole. What this
+// specimen is NOT is the acceptance subject for the production flip: that is the real corpus
+// module gunbc.rust_decl_type_overlay, and it does not emit yet.
+
+fn probe_add(x: Int, y: Int) -> Int { x + y }

@@ -1,0 +1,11 @@
+module test.manual.workspace_commissioning_typecheck
+
+import gunbc.runner_microvm_slot_controller { workspace_initial_sanitation_observe_wet }
+import gunbc.workspace_commissioning_controller { workspace_commissioning_reconcile }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text }
+import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
+import gunbc.workspace_offer_producer { workspace_host_offer_admit }
+import std.process { ProcessExit, ExitSuccess }
+
+// Closure qualification only: no host observation, readiness publication or commissioning claim.
+fn workspace_commissioning_typecheck() -> ProcessExit { ExitSuccess }

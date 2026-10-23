@@ -1,0 +1,26 @@
+{
+  "base_commit": "c4e934309e",
+  "source_sha256": {
+    "dag/gunbc/product/printing/deposited_geometry.dag": "a8d1b10591e424828b072cf122304f060a6f2d1bdeec1668e198249c0df5b5b4",
+    "dag/gunbc/product/printed_chassis/print_preparation_kernel.dag": "16eaf7b0875eda750a150f87229f137366abaea5cdbab694a642913640afdbf5",
+    "dag/gunbc/product/printed_chassis/print_preparation.dag": "60531630419f9a1f8733f42590d04a6112a7a5bf8f07b30147168979da2a6912",
+    "dag/test/claim/print_preparation_kernel_validation.dag": "8be8b8701ff905061a10260713d0510cda06d3035a21781efb46b18f75190ab7"
+  },
+  "validation_entry": "test.claim.print_preparation_kernel_validation.run",
+  "validation_exit_code": 0,
+  "validation_log": "/tmp/retraction-validation-v2-20261005.log",
+  "production_entry": "product.printed_chassis.print_preparation.observe_process_batch",
+  "production_exit_code": 0,
+  "production_log": "/tmp/print-process-observation-20261005.log",
+  "checks": [
+    "archive and policy refusal controls retained",
+    "absolute/relative extrusion equivalence",
+    "recovery across G92 and layer boundaries",
+    "split wiping retractions form one episode",
+    "modal feed and deposited full-circle timing",
+    "unknown feed and firmware retraction explicitly reported",
+    "raw settings including nil overrides preserved",
+    "admission and retrospective outputs agree"
+  ],
+  "limits": "No new physical pass/fail threshold, measured layer time, geometric island classification, calibration or retraction override. No claim of green PR CI."
+}

@@ -1,0 +1,20 @@
+module test.claim.roadmap_issue_query_witness
+import std.types { String, Int, List }
+import gunbc.roadmap_issue_query { IssueQueryRow, issue_query_sort, issue_query_matches, issue_query_row_wire, issue_query_rows_of, issue_query_separator }
+import gunbc.roadmap_view_preferences { IssueViewPreferences, default_issue_view_preferences }
+fn query_fixture(id: String, priority: Int, status: Int) -> IssueQueryRow {
+  IssueQueryRow { node_id: id, project: "project", band: "ready", search: id, title: id, assignee: "", priority: priority, status: status, html: "<li>row</li>" }
+}
+test fn global_order_precedes_page_selection_and_retains_ties() -> Bool {
+  let rows = [query_fixture(id: "low", priority: 3, status: 10), query_fixture(id: "blocked", priority: 1, status: 4), query_fixture(id: "high", priority: 1, status: 10), query_fixture(id: "tie", priority: 1, status: 10)]
+  let sorted = issue_query_sort(rows: rows, sorts: default_issue_view_preferences().sorts)
+  map(sorted, r => r.node_id) == ["high", "tie", "low", "blocked"]
+    && map(sorted.skip(n: 1).take(n: 2), r => r.node_id) == ["tie", "low"]
+}
+test fn complete_snapshot_roundtrips_and_filter_intersects() -> Bool {
+  let row = query_fixture(id: "Hidden issue", priority: 2, status: 4)
+  let prefs = IssueViewPreferences { sorts: [], query: "HIDDEN", band: "ready", project: "project", selected: "", expanded: false }
+  issue_query_rows_of(body: issue_query_row_wire(row: row)) == Present { value: [row] }
+    && issue_query_matches(row: row, prefs: prefs)
+    && issue_query_rows_of(body: "malformed") == none
+}

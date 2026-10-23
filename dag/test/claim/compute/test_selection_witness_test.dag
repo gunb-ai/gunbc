@@ -1,0 +1,97 @@
+module test.claim.compute.test_selection_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import extdeps.bazel.label { render_label }
+import extdeps.bazel.target_pattern {
+  TargetPattern, SingleTarget, PackageTargets, SubtreeTargets, TargetPatternParsed, TargetPatternRefused,
+  parse_target_pattern, target_pattern_matches, render_target_pattern,
+}
+import gunbc.compute.test_selection {
+  witness_label_of_path, select_witness_files, test_function_names, module_path_of, classify_witness_module,
+  WitnessModuleSelected, WitnessModuleNotAWitness, WitnessPlanned, WitnessDeclined,
+}
+
+fn parsed(text: String) -> TargetPattern? {
+  match parse_target_pattern(text: text) {
+    TargetPatternParsed { pattern } => Present { value: pattern }
+    TargetPatternRefused { cause: _ } => none
+  }
+}
+
+fn refused(text: String) -> Bool {
+  match parse_target_pattern(text: text) { TargetPatternRefused { cause: _ } => true  TargetPatternParsed { pattern: _ } => false }
+}
+
+// The three set forms parse and render canonically; relative, repository-qualified, dotted and
+// :all-targets forms refuse (DISCRIMINATING against a parser that reads a pattern as a label).
+test fn the_pattern_grammar_admits_three_set_forms_and_refuses_the_rest() -> Bool {
+  (match parsed(text: "//dag/test/claim/roadmap/...") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap/..."  Absent => false })
+    && (match parsed(text: "//dag/test/claim/roadmap:all") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap:all"  Absent => false })
+    && (match parsed(text: "//dag/test/claim/roadmap:*") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap:all"  Absent => false })
+    && (match parsed(text: "//...") { Present { value: p } => render_target_pattern(pattern: p) == "//..."  Absent => false })
+    && (match parsed(text: "//dag/test/claim/roadmap:roadmap_launch_admission_witness_test") { Present { value: p } => render_target_pattern(pattern: p) == "//dag/test/claim/roadmap:roadmap_launch_admission_witness_test"  Absent => false })
+    && refused(text: "dag/test/claim/roadmap/...")
+    && refused(text: "@repo//dag/test:all")
+    && refused(text: "//dag/../test/...")
+    && refused(text: "//dag/test:all-targets")
+}
+
+data corpus: List<String> = [
+  "dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_verify_witness_test.dag",
+  "dag/test/claim/harness_chat_shape_test.dag",
+  "dag/test/claim/compute/work_request_witness_test.dag",
+  "dag/gunbc/roadmap/roadmap_serve.dag",
+  "README.md",
+]
+
+fn selected_paths(text: String) -> List<String> {
+  match parsed(text: text) {
+    Absent => []
+    Present { value: p } => map(select_witness_files(pattern: p, paths: corpus), f => f.path)
+  }
+}
+
+// Selection follows the pattern: a subtree takes its packages and their children, :all takes exactly
+// one package, a single target takes one file; a non-.dag path is never a target and a sibling
+// package is never swept in by a shared prefix (RED against substring matching).
+test fn selection_follows_the_pattern_and_never_a_shared_prefix() -> Bool {
+  selected_paths(text: "//dag/test/claim/roadmap/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag"]
+    && selected_paths(text: "//dag/test/claim:all") == ["dag/test/claim/harness_chat_shape_test.dag"]
+    && selected_paths(text: "//dag/test/claim/...") == ["dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag", "dag/test/claim/roadmap/roadmap_verify_witness_test.dag", "dag/test/claim/harness_chat_shape_test.dag", "dag/test/claim/compute/work_request_witness_test.dag"]
+    && selected_paths(text: "//dag/test/claim/roadmap:roadmap_verify_witness_test") == ["dag/test/claim/roadmap/roadmap_verify_witness_test.dag"]
+    && selected_paths(text: "//dag/test/cla/...") == []
+    && count(selected_paths(text: "//...")) == 5
+    && (match witness_label_of_path(path: "README.md") { Absent => true  Present { value: _ } => false })
+    && (match witness_label_of_path(path: "dag/test/claim/x_test.dag") { Present { value: l } => render_label(l: l) == "//dag/test/claim:x_test"  Absent => false })
+}
+
+data specimen: String = "module test.claim.roadmap.roadmap_specimen_test\n\nimport std.types { Bool }\n\ntest fn first_holds() -> Bool {\n  true\n}\n\n// test fn commented_out() -> Bool { false }\ndata note: String = \"test fn in_a_string() -> Bool\"\ntest fn second_holds() -> Bool { true }\n"
+
+// Test functions are read from declarations only; the module path from the module line; the floor's
+// own home policy classifies each function, and a required-gate module under test.claim is planned.
+test fn functions_and_module_are_read_from_declarations_and_classified_by_the_floor() -> Bool {
+  test_function_names(content: specimen) == ["first_holds", "second_holds"]
+    && (match module_path_of(content: specimen) { Present { value: m } => m == "test.claim.roadmap.roadmap_specimen_test"  Absent => false })
+    && (match module_path_of(content: "import std.types { Bool }\n") { Absent => true  Present { value: _ } => false })
+    && (match parsed(text: "//dag/test/claim/roadmap:roadmap_specimen_test") {
+      Absent => false
+      Present { value: p } =>
+        match select_witness_files(pattern: p, paths: ["dag/test/claim/roadmap/roadmap_specimen_test.dag"]).first() {
+          Absent => false
+          Present { value: f } =>
+            match classify_witness_module(file: f, content: specimen) {
+              WitnessModuleSelected { path: _, label: _, module_path, planned, declined } => module_path == "test.claim.roadmap.roadmap_specimen_test" && planned == ["first_holds", "second_holds"] && count(declined) == 0
+              WitnessModuleNotAWitness { path: _, label: _, reason: _ } => false
+            }
+        }
+    })
+    && (match parsed(text: "//dag/x:y") {
+      Absent => false
+      Present { value: p } =>
+        match select_witness_files(pattern: p, paths: ["dag/x/y.dag"]).first() {
+          Absent => false
+          Present { value: f } => match classify_witness_module(file: f, content: "module gunbc.x.y\nfn f() -> Bool { true }\n") { WitnessModuleNotAWitness { path: _, label: _, reason } => reason == "no test fn declarations"  WitnessModuleSelected { path: _, label: _, module_path: _, planned: _, declined: _ } => false }
+        }
+    })
+}

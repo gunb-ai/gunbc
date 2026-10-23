@@ -1,0 +1,313 @@
+module v2.compiler.resolution_provenance
+
+import std.types { List }
+
+import std.algebra { Empty, FreeMonoid, list_snoc_item }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
+import v2.std.algebra {
+  contains,
+  fold_list,
+  is_empty,
+  length,
+  list_map,
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol, EdgeLabel, label_sort_key }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_last_segment,
+  qualified_name_owning_module
+}
+import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
+  SymbolIndex,
+  symbol_index_global_unique_lookup,
+  symbol_index_lexical_lookup,
+  symbol_index_lookup
+}
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+
+// THIS MODULE IS A SECOND RESOLVER, AND IT IS NOW DELETABLE. It was written because resolution knew
+// which declaration answered a name and threw the answer's PATH away -- lookup_symbol_index_atom_identity
+// kept only a canonical Symbol, so nothing downstream could say which module supplied a binding, and
+// dependency edges were matched from the reference SPELLING against declared module paths, a
+// syntactic guess DESIGN section 4 rules out. So this module re-ran the lookup and kept the path.
+// Since fierce-wren-487 (2026-09-22) resolution itself carries the path: v2.compiler.resolve
+// resolved_reference_node mints every corpus declaration reference as its declaring QualifiedName
+// (a qualified-name spine, read back by v2.std.qualified_name declaration_reference_path_optional).
+// One fact, two resolvers, is the fork DESIGN section 3 names; this module's answers are the second.
+// It is kept, frozen, until its consumers read the resolved tree -- the row below is the trigger.
+
+// WHERE A MENTION SITS is the chain of edge labels above it, structural and authored, so a reader
+// asking whether a mention sits inside a grammar production (v2.lens.module_graph
+// site_is_import_syntax_mention) matches the production's arm rather than a spelling an authored
+// name could share. Lexical lookup reads the chain as a name path (reference_site_scope_path).
+type ReferenceSite {
+  position: List<EdgeLabel>
+  spelling: QualifiedName
+}
+
+// The position read as a name path for lexical scope lookup: each label contributes the Symbol it
+// is canonically ordered by. This is a SCOPE PATH, not an identity: no reader decides what a label
+// IS from it.
+fn reference_site_scope_path(site: ReferenceSite) -> QualifiedName {
+  list_map(xs: site.position, f: fn(label) { label_sort_key(label: label) })
+}
+
+type ResolutionProvenance
+  = ProvenanceResolved { site: ReferenceSite, target: QualifiedName, owner: QualifiedName }
+  | ProvenanceOwnerless { site: ReferenceSite, target: QualifiedName }
+  | ProvenanceAmbiguous { site: ReferenceSite }
+  | ProvenanceUnbound { site: ReferenceSite }
+
+// TWO results, carried together so neither can be taken without the other.
+// `answers` holds one record per MENTION and never collapses -- two mentions of
+// one target stay two records naming their own sites. `dependencies` is the
+// distinct set of owning modules and collapses exactly once, here and nowhere
+// else. `unresolved` keeps the mentions that produced no owner, so a name the
+// resolver could not place is a counted refusal rather than a missing edge.
+type FileDependencyProvenance {
+  answers: FreeMonoid<ResolutionProvenance>
+  dependencies: FreeMonoid<QualifiedName>
+  unresolved: FreeMonoid<ResolutionProvenance>
+}
+
+fn provenance_qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
+fn module_roster_from_roots(roots: FreeMonoid<Node>) -> FreeMonoid<QualifiedName> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, root) {
+      match qualified_name_from_module_node(root: root) {
+        Accepted { value: module_qn, diagnostics: _ } =>
+          if contains(xs: acc, item: module_qn, eq: provenance_qualified_name_eq) {
+            acc
+          } else {
+            list_snoc_item(xs: acc, item: module_qn)
+          }
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+// The owner rule's single home is v2.std.qualified_name qualified_name_owning_module; this module
+// is frozen, so it delegates rather than keeping a second copy.
+fn provenance_owner_of_target(
+  roster: FreeMonoid<QualifiedName>,
+  target: QualifiedName
+) -> Optional<QualifiedName> {
+  qualified_name_owning_module(roster: roster, target: target)
+}
+
+fn provenance_from_target(
+  site: ReferenceSite,
+  roster: FreeMonoid<QualifiedName>,
+  target: QualifiedName
+) -> ResolutionProvenance {
+  match provenance_owner_of_target(roster: roster, target: target) {
+    Present { value: owner } =>
+      ProvenanceResolved { site: site, target: target, owner: owner }
+    Absent => ProvenanceOwnerless { site: site, target: target }
+  }
+}
+
+// Same selection order as the live NamespaceOnlyY resolver
+// (lookup_symbol_index_atom_identity): a qualified spelling is an exact index
+// lookup, a bare name walks the containment chain from its position and then
+// falls to the globally unique binding. What differs is only that the answer
+// keeps its path.
+fn resolve_reference_provenance(
+  index: SymbolIndex,
+  roster: FreeMonoid<QualifiedName>,
+  site: ReferenceSite
+) -> ResolutionProvenance {
+  if length(xs: site.spelling) > 1 {
+    match symbol_index_lookup(index: index, qualified_path: site.spelling) {
+      Present { value: _ } =>
+        provenance_from_target(site: site, roster: roster, target: site.spelling)
+      Absent => ProvenanceUnbound { site: site }
+    }
+  } else {
+    match qualified_name_last_segment(qn: site.spelling) {
+      Absent => ProvenanceUnbound { site: site }
+      Present { value: name } =>
+        match symbol_index_lexical_lookup(
+          index: index,
+          position: reference_site_scope_path(site: site),
+          name: name
+        ) {
+          LexicalHit { node: _, path: path } =>
+            provenance_from_target(site: site, roster: roster, target: path)
+          LexicalAmbiguous { candidates: _ } => ProvenanceAmbiguous { site: site }
+          LexicalUnbound =>
+            match symbol_index_global_unique_lookup(index: index, name: name) {
+              GlobalBareHit { node: _, path: path } =>
+                provenance_from_target(site: site, roster: roster, target: path)
+              GlobalBareLookupAmbiguous { paths: _ } => ProvenanceAmbiguous { site: site }
+              GlobalBareLookupUnbound => ProvenanceUnbound { site: site }
+            }
+        }
+    }
+  }
+}
+
+fn resolve_reference_sites(
+  index: SymbolIndex,
+  roster: FreeMonoid<QualifiedName>,
+  sites: FreeMonoid<ReferenceSite>
+) -> FreeMonoid<ResolutionProvenance> {
+  fold_list(
+    xs: sites,
+    empty: Empty,
+    cons: fn(acc, site) {
+      list_snoc_item(
+        xs: acc,
+        item: resolve_reference_provenance(index: index, roster: roster, site: site)
+      )
+    }
+  )
+}
+
+fn empty_file_dependency_provenance(
+  answers: FreeMonoid<ResolutionProvenance>
+) -> FileDependencyProvenance {
+  FileDependencyProvenance {
+    answers: answers,
+    dependencies: Empty,
+    unresolved: Empty
+  }
+}
+
+fn file_dependency_provenance_snoc_unresolved(
+  acc: FileDependencyProvenance,
+  answer: ResolutionProvenance
+) -> FileDependencyProvenance {
+  FileDependencyProvenance {
+    answers: acc.answers,
+    dependencies: acc.dependencies,
+    unresolved: list_snoc_item(xs: acc.unresolved, item: answer)
+  }
+}
+
+fn file_dependency_provenance_snoc_owner(
+  acc: FileDependencyProvenance,
+  module_qn: QualifiedName,
+  owner: QualifiedName
+) -> FileDependencyProvenance {
+  if owner == module_qn {
+    acc
+  } else if contains(xs: acc.dependencies, item: owner, eq: provenance_qualified_name_eq) {
+    acc
+  } else {
+    FileDependencyProvenance {
+      answers: acc.answers,
+      dependencies: list_snoc_item(xs: acc.dependencies, item: owner),
+      unresolved: acc.unresolved
+    }
+  }
+}
+
+// Answers alone: no tree, no import list and no reference spelling reaches this
+// fold -- its only inputs are the resolution answers and the module's own name,
+// so a dependency it reports cannot have come from anything but a resolved
+// target's containment owner.
+fn module_dependencies_from_provenance(
+  answers: FreeMonoid<ResolutionProvenance>,
+  module_qn: QualifiedName
+) -> FileDependencyProvenance {
+  fold_list(
+    xs: answers,
+    empty: empty_file_dependency_provenance(answers: answers),
+    cons: fn(acc, answer) {
+      match answer {
+        ProvenanceResolved { site: _, target: _, owner: owner } =>
+          file_dependency_provenance_snoc_owner(
+            acc: acc,
+            module_qn: module_qn,
+            owner: owner
+          )
+        ProvenanceOwnerless { site: _, target: _ } =>
+          file_dependency_provenance_snoc_unresolved(acc: acc, answer: answer)
+        ProvenanceAmbiguous { site: _ } =>
+          file_dependency_provenance_snoc_unresolved(acc: acc, answer: answer)
+        ProvenanceUnbound { site: _ } =>
+          file_dependency_provenance_snoc_unresolved(acc: acc, answer: answer)
+      }
+    }
+  )
+}
+
+fn module_dependencies_from_sites(
+  index: SymbolIndex,
+  roster: FreeMonoid<QualifiedName>,
+  module_qn: QualifiedName,
+  sites: FreeMonoid<ReferenceSite>
+) -> FileDependencyProvenance {
+  module_dependencies_from_provenance(
+    answers: resolve_reference_sites(index: index, roster: roster, sites: sites),
+    module_qn: module_qn
+  )
+}
+
+fn file_dependency_provenance_is_total(provenance: FileDependencyProvenance) -> Bool {
+  is_empty(xs: provenance.unresolved)
+}
+
+// The per-mention half, asked at mention grain: which declaration answered THIS
+// site. Collapsing happens only in `dependencies`, so this stays a function of
+// the individual answer and never of the file's set.
+fn answer_owner_optional(answer: ResolutionProvenance) -> Optional<QualifiedName> {
+  match answer {
+    ProvenanceResolved { site: _, target: _, owner: owner } => optional_present(value: owner)
+    ProvenanceOwnerless { site: _, target: _ } => optional_absent()
+    ProvenanceAmbiguous { site: _ } => optional_absent()
+    ProvenanceUnbound { site: _ } => optional_absent()
+  }
+}
+
+fn answer_site(answer: ResolutionProvenance) -> ReferenceSite {
+  match answer {
+    ProvenanceResolved { site: site, target: _, owner: _ } => site
+    ProvenanceOwnerless { site: site, target: _ } => site
+    ProvenanceAmbiguous { site: site } => site
+    ProvenanceUnbound { site: site } => site
+  }
+}
+
+fn answer_target_optional(answer: ResolutionProvenance) -> Optional<QualifiedName> {
+  match answer {
+    ProvenanceResolved { site: _, target: target, owner: _ } => optional_present(value: target)
+    ProvenanceOwnerless { site: _, target: target } => optional_present(value: target)
+    ProvenanceAmbiguous { site: _ } => optional_absent()
+    ProvenanceUnbound { site: _ } => optional_absent()
+  }
+}
+
+// DISSOLVE-ON, AT CAPABILITY GRAIN: when every consumer of ResolutionProvenance -- the dependency
+// derivation in this module, v2.compiler.repair_input_origin_roster (whose own frontier row,
+// repair_input_declared_binding_frontier_dissolve_on, names the same capability) and
+// v2.compiler.declaring_identity_spelling_census -- derives the declaring path of a mention from the
+// RESOLVED TREE the production resolver emits (v2.std.qualified_name declaration_reference_path_optional
+// over v2.compiler.resolve output) rather than from resolve_reference_provenance re-running the
+// lookup, this module is DELETED together with this row. What makes it deletable is already true:
+// the resolved tree carries the path. What has not happened is the consumers reading it; a carrier
+// nothing consumes would satisfy a merge-shaped trigger while the second resolver stayed the only
+// thing answering (DESIGN section 4b(3)), so the trigger is the consumers' route, by execution.
+data resolution_provenance_second_resolver_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: every consumer of ResolutionProvenance derives a mention's declaring path from the resolved tree (v2.std.qualified_name declaration_reference_path_optional over v2.compiler.resolve output) by execution; then delete this module and this row." as NonEmptyStr)

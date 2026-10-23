@@ -1,0 +1,19 @@
+module v2.std.occurrence_id
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceIdAllocResult,
+  authored_token_ordinal_space_from_allocator,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
+  occurrence_id_eq,
+  occurrence_id_allocator_advance_to,
+}
+
+// Source-compatible v2 facade over std.occurrence_identity while existing v2 consumers still import
+// v2.std.occurrence_id. It contains no allocator body or identity rule.
+
+data occurrence_identity_v2_facade_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.occurrence_id import census reaches zero after consumers import std.occurrence_identity directly; then delete this facade.")

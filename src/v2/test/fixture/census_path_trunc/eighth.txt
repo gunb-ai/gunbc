@@ -1,0 +1,83 @@
+module v1.compiler.tokenize
+
+import std.types { SourceSpan }
+import v1.std.core {
+  make_file_span,
+  Token, TokenShape,
+  ShKeyword,
+  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
+  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
+  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
+  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
+  ShQuestion, ShNullCoalesce, ShCaret, ShPipe, ShPipeArrow,
+  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
+  ShStrBegin, ShStrMid, ShStrEnd,
+  ShNewline, ShEof, ShUnknown
+}
+
+import extdeps.languages.dag.syntax { dag_keyword_set }
+import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
+
+fn is_keyword_text(text: String) -> Bool {
+  match lookup(dag_keyword_set, key: text) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data single_punct: Map<String, TokenShape> = {
+  "(": ShLParen, ")": ShRParen,
+  "[": ShLBracket, "]": ShRBracket,
+  ":": ShColon, ",": ShComma, ".": ShDot,
+  "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash,
+  "^": ShCaret
+}
+
+type TokenizerState {
+  pos: Int
+  tokens: List<Token>
+  interp_depth: List<Int>
+}
+
+type TokPos {
+  pos: Int
+  interp_depth: List<Int>
+}
+
+type ScanResult {
+  pos: Int
+  token: Token
+  interp_depth: List<Int>
+}
+
+type SourceRef {
+  file: String
+  text: String
+  source_chars: List<Int>
+}
+
+fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
+  Token { text: text, span: span, shape: shape }
+}
+
+fn source_char(source: SourceRef, pos: Int) -> String {
+  from_code_point(cp: source.source_chars[pos])
+}
+
+fn source_code_point(source: SourceRef, pos: Int) -> Int {
+  let _ = record_source_chars_index_lookup()
+  source.source_chars[pos]
+}
+
+fn source_len(source: SourceRef) -> Int {
+  count(source.source_chars)
+}
+
+fn source_substring(source: SourceRef, start: Int, end: Int) -> String {
+  chars_to_string(chars: source.source_chars, start: start, end: end)
+}
+
+fn source_scan_while(source: SourceRef, start: Int, pred: fn(Int) -> Bool) -> Int {
+  if start >= source_len(source: source) { source_len(source: source) }
+  else if pred(ch: source.source_chars[start]) {
+    source_scan_while(source

@@ -1,0 +1,374 @@
+module gunbc.merge_lifecycle
+
+import std.types { CommitSha, String, List, Bool, Int }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural }
+import extdeps.github.checks { Success }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id, GitSha1ObjectId }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  AdmissionPolicy,
+  policy_admits,
+  mint_merge_admission_receipt,
+  GateRosterHash,
+  merge_admission_fixture_git_tree_from_tagged,
+}
+
+// Lifecycle DYNAMICS over the gunbc.merge_admission authority — no second admission predicate
+// (DESIGN 2: derive, never restate). gunbc.merge_admission owns the static question (is THIS
+// receipt admissible against THIS target tree and roster); this module owns the temporal one (does
+// a merge PROCESS whose merge step consults policy_admits ever advance main to a tree the process
+// never verified). Squash semantics per gunbc.plans.branch_merge_admission_model section 1: the
+// landed tree is the PR applied to CURRENT main at merge time (squash_result_tree), never the base
+// the receipt recorded — which is exactly why staleness is expressible at all. Trees and rosters
+// are symbolic fixture identities (content_hash_atom roots advanced by content_hash_tagged,
+// injective in tag x payload), the same fixture idiom test.claim.merge_admission_witness already
+// uses for its b0/b1/r0/r1 hashes.
+
+// Grounding incident (2026-07-16, the #6663 x #6686 main-red): PR #6663 went green on run
+// 29459154549 against a pre-#6686 base; #6686 landed during that window; the squash union — never
+// tested — reddened every main push at floor resolve with 28 missing-field errors (first red: run
+// 29461044828) until the root fix #6701. In this module's vocabulary: RunPrCi(#6663) minted a
+// receipt at tip0; MergePr(#6686) advanced the tip; MergePr(#6663) then landed
+// squash_result_tree(#6663, tip1) with only a tip0 receipt — admitted under PerPrGateOnly, refused
+// under KeyedReceipt as MergeDeniedStaleBase. THIS PARAGRAPH USED TO CALL PerPrGateOnly THE LIVE
+// POLICY AND THAT IS WITHDRAWN: `gunbc.merge_admission` `ReportedContextsAtMergeInstant` is the
+// live one, and it is weaker on the absent-receipt input. The withdrawal is a correction to this
+// module's account of the LIVE SYSTEM and not to its account of THIS INCIDENT, whose receipt
+// existed. The incident trace is the permanent RED fixture in
+// test.claim.merge_lifecycle_interleaving_witness.
+
+// SEMANTIC MERGE BREAKS ARE KNOWINGLY ACCEPTED DEBT, NOT AN UNOWNED GAP (operator ruling,
+// 2026-08-27, relayed through the parent lane). THE CLASS: one PR widens a closed coproduct,
+// another adds or holds a match total over it, neither touches the other lines. Git merges clean
+// because MERGEABLE is a claim about TEXT, and the composed tree then carries a non-exhaustive
+// match that neither source branch contained. Silent at textual integration, loud at semantic
+// acceptance -- the closed coproduct and the total match do their job, but only after the merge is
+// irreversible. THE INCIDENT NOTE ABOVE IS THE SAME LIFECYCLE SHAPE with a different break kind:
+// 2026-07-16 landed 28 missing-field errors by the identical route, so the staleness this module
+// models is not specific to exhaustiveness. Two further instances, both verified rather than
+// relayed: gunbc PR 9343 (merged 2026-08-26, MAIN WENT RED -- 9227 adds a match over
+// ClaimDisposition, 9263 widens ClaimDisposition, both green, both clean, refused at strict
+// preparation the moment they met) and gunbc PR 9283 (caught pre-merge only because the merge
+// touched a file the author also changed, which is a habit rather than a mechanism). IN THIS MODULE
+// VOCABULARY the class is exactly lifecycle_admits_unverified_tip: MergePr advances the tip, a
+// later MergePr lands squash_result_tree against a receipt minted at the older tip. PerPrGateOnly
+// admits it; KeyedReceipt refuses it as MergeDeniedStaleBase. So the remedy is already modeled here
+// and is simply not the live policy. THAT SENTENCE IS TRUE AND UNDERSTATES THE GAP, which is why
+// the paragraph below exists rather than a reworded clause here: the live policy is weaker than
+// PerPrGateOnly as well as weaker than KeyedReceipt, so a reader who priced this debt as "we ship
+// the first row of the table" priced it one row too high. WHY IT IS DEBT RATHER THAN A DEFECT TO FIX NOW: the required
+// run is about 50 minutes, so a pre-merge current-base rerun would serialize the merge queue behind
+// a full floor for every PR, and the operator expects the better answer to come from technology
+// under construction -- SCM giving real ancestry and v2 lenses giving cheaper corpus questions --
+// rather than from another pre-merge gate. That is a priced decision, not an oversight. THE RUNG IS
+// HONEST ONLY IF THE DIVERGENCE IS STATED: merge_admission_enforcement_policy declares
+// KeyedReceipt, its only consumer in the corpus is a witness asserting that it equals KeyedReceipt,
+// and merge-admission stamping sits on the DESIGN unguarded list after the floor cut. So the
+// declared policy is not the enforced one, and a reader must not take the declaration as evidence
+// that stale bases are refused. NEXT INSTANCE: add a line here rather than escalating. The class is
+// owned, the remedy is named, and re-escalation costs a lane its afternoon to reach this same
+// ruling.
+//
+// NEXT INSTANCE, ADDED AS THIS PARAGRAPH INSTRUCTS (2026-09-03): gunbc#9981. Its `witnesses` run on
+// its own head COMPLETED SUCCESSFULLY at 20:26:54Z and it merged at 20:29:53Z, so it is emphatically
+// NOT the absent-receipt class below -- it had its receipt. That run was CREATED at 19:37:37Z,
+// twelve minutes before cfe19ea7 landed at 19:49:43Z, so the receipt was minted against a base that
+// had ceased to be the tip, and the squash landed on a tree already refusing at resolve. RunPrCi at
+// tip0, MergePr advancing the tip, MergePr(#9981) landing squash_result_tree against a tip0 receipt:
+// admitted under PerPrGateOnly, refused under KeyedReceipt as MergeDeniedStaleBase.
+//
+// THE TWO HOLES EACH TOOK ONE COMMIT THAT NIGHT, FORTY MINUTES APART, and separating them is the
+// point of recording it. #10236 landed through the absent-receipt hole and #9981 through this one.
+// A reader who counts two broken merges and reaches for one cause gets the remedy wrong for one of
+// them: a merge queue closes both, blocking unreported contexts closes only the first, and a
+// current-base rerun closes only the second.
+
+// THE MERGE STEP CAN RUN BEFORE ANY EVIDENCE EXISTS, AND THAT IS A THIRD CLASS, NOT A SHARPER
+// TELLING OF THE STALE-BASE ONE (measured 2026-09-03, gunbc#10236). The two paragraphs above are
+// both about a receipt that EXISTS and is stale in the tree axis or the roster axis. This one is
+// about a merge admitted with NO receipt for the head at all. gunbc#10236 pushed head d8cd3034 at
+// 19:49:33Z, GitHub created its `witnesses` run at 19:49:40Z, and the pull request merged at
+// 19:49:43Z -- three seconds after run creation, before any job reported. The run then concluded
+// with `required-witnesses-build` and `required-witnesses-floor` both FAILURE, so the head that
+// landed on main as cfe19ea7 is one the required floor had already refused by the time anyone
+// could read it. Across the forty most recently merged pull requests, six had no `witnesses` run
+// that completed successfully on their own head before `merged_at`.
+//
+// THE RULESET IS CONVERGED AND THAT IS THE POINT. `gunbc.repo_ruleset` `desired_ruleset_rules`
+// reads back from ruleset 16178731 with no divergence at all -- active, default-branch-scoped, one
+// required context, no bypass visible to the reading token. So this is not drift to reconcile: the
+// DESIRED state admits the merge, because GitHub's required-status-checks rule decides on the
+// check runs that have REPORTED at the instant of the merge call and a context that has not
+// reported is `expected` rather than `failing`. `gunbc.repo_ruleset` `observe_repo_ruleset` already
+// refuses exactly this narrow one level down -- a ruleset that could not be read is not a ruleset
+// with no rules -- and the same narrow is open one level up, where an unreported required context
+// is not a required context that passed.
+//
+// WHY IT IS MODELED HERE RATHER THAN ESCALATED, per this module's own standing instruction. The
+// class is `lifecycle_admits_unverified_tip` again, reached by a shorter path: a bare `MergePr`
+// with no preceding `RunPrCi` at that head. It was UNREACHABLE in this model until now, because
+// `merge_enabled` seeded its fold with `false` and thereby answered the absent-receipt question for
+// every policy with a caller-local constant. `policy_admits` now takes an OPTIONAL receipt, so that
+// verdict is an arm of the admission decision itself, and
+// `test.claim.merge_lifecycle_interleaving_witness` now carries the discriminating
+// pair: the one-event sequence latches an unverified tip under `ReportedContextsAtMergeInstant` and
+// does not latch under `PerPrGateOnly`.
+//
+// THE RED THAT DID NOT BLOCK IS THE RED THAT IS CURRENTLY BREAKING MAIN, and this is the receipt
+// that moves the class from a window someone could get unlucky in to a landed cost. The head this
+// paragraph names, cfe19ea7, added two declarations to `gunbc.recurring_failure_mode` that
+// duplicate names already declared in that module -- `absence_classifier_default_bucket` and
+// `green_reported_over_a_population_the_instrument_does_not_own` -- so every consumer of that
+// module now refuses at resolve, and main has been refusing since it landed. The required floor
+// had reported FAILURE on exactly that head. It reported it AFTER the merge, which under the live
+// policy is the same as not reporting it at all. WHICH LANE REDDENED IS PART OF THE RECORD: on the
+// post-merge main run at cfe19ea7 the duplicates reddened `required-witnesses-build` while
+// `required-witnesses-floor` was GREEN, so this break is cleanly separable from the cost class the
+// paragraph below names and is not more floor variance.
+//
+// THE REQUIRED LANE DETECTED IT CORRECTLY AND REPORTED TWENTY MINUTES TOO LATE, which is the whole
+// of the gap and is cleaner than the reading this paragraph carried first. There is no routing
+// question and no conditional lane: `required-witnesses-build` refused the duplicates exactly as it
+// should have -- `generated-artifact CarrierRefused cause=resolve`, the authority declining to
+// answer -- and its job completed at 20:04:14Z against a merge at 19:49:43Z. TWENTY MINUTES AND
+// THIRTY-ONE SECONDS OF UNADJUDICATED INTERVAL. The detection is not the defect; the interval in
+// which the merge is admissible without it is.
+//
+// A RETRACTION, KEPT RATHER THAN QUIETLY EDITED OUT. An earlier revision of this paragraph said the
+// catching lane was `heal-generated-artifacts` and that it was event-conditional, because heal
+// FAILED on the pull-request run and was SKIPPED on the main run of identical content. THAT IS
+// REFUTED BY THE JOB GRAPH: heal's step record shows it died at step 2, `Checkout triggering branch
+// head`, at 19:52:01Z, with `Regenerate every committed generated artifact` SKIPPED -- the
+// regenerator never executed, so heal detected nothing. It failed because the merge had deleted the
+// branch head it wanted, three seconds after the run was created. That is a DOWNSTREAM CONSEQUENCE
+// OF THE MERGE being read as a detection of the defect, and it is recorded here because the
+// misreading survived four readers passing a narrative around and was caught only by someone
+// reading the job graph instead. The failure mode is `gunbc.recurring_failure_mode`
+// `green_reported_over_a_population_the_instrument_does_not_own` seen from the other side: a job's
+// CONCLUSION is not evidence about the subject it is named for unless its step record shows it
+// reached the step that judges.
+//
+// THE TWO KNOWN MAIN FLAKES COMPOSE HERE RATHER THAN BEING INDEPENDENT, which is worth stating
+// because each was dispatched separately. `gunbc.rung_drop`
+// `floor_cost_claim_qualification_unavailable` records that a required-floor verdict can be
+// FloorRefused with `claims_failed=0` and `unexpected_failures=0` -- refused on cost, on a basis
+// that is not a stable property of the tree. A gate that refuses for reasons unrelated to the
+// change teaches its readers that a red required floor is noise; a gate that can be merged past
+// before it reports means the belief costs nothing to act on. Neither half alone lands a broken
+// tree on main. Together they did.
+//
+// THE REMEDY IS THE ONE ALREADY NAMED AND IT IS NOT A NEW GATE. A merge queue closes this by
+// construction -- nothing merges without the queue's own run on the queued ref -- and it is the
+// same construction `gunbc.repo_ruleset` `desired_strict_required_status_checks_policy` already
+// records as the reason strict is false. Measured today: zero `merge_group` runs exist for
+// `witnesses.yml`, so the queue is not configured.
+//
+// AND IT IS NOT BEING BUILT, BY RULING RATHER THAN BY OMISSION (2026-09-03). Escalated with three
+// options -- enable the queue, make unreported required contexts blocking, or hold the hole open --
+// and the operator ruled the third: "Leave the hole open for now - i know merging is not sound."
+// The class is therefore carried as `gunbc.guarantee_stall.merge_admission_terminal_verdict_stall`
+// with the capability as its trigger, an informed acceptance rather than an unowned gap. A STALL
+// AND NOT A `gunbc.rung_drop` ROW: 4b(3) asserts a regression, and nothing regressed here.
+
+// The interleaving witness enumerates EVERY event sequence of exact length 4 over its alphabet (no
+// sampling, no silent cap — the witness asserts the full count so truncation cannot read as
+// coverage, DESIGN 5). The alphabet includes the same PR number at two different heads: the
+// ordinary auto-heal transition where generated artifacts are committed after an earlier head
+// earned evidence. The violation flag LATCHES in LifecycleState, so every shorter lifecycle is
+// covered as a prefix of some length-4 sequence. 4 suffices for the grounded incident (4 events),
+// for the roster axis (3 events: RunPrCi, RosterBump, MergePr), and for the heal axis (2 events:
+// RunPrCi(old head), MergePr(healed head)); widening the window or alphabet is priced only when a
+// concrete interleaving class needs it (DESIGN 6).
+
+type PrIdentity {
+  number: Int
+  head_sha: CommitSha
+  squash_tag: String
+}
+
+type LifecycleEvent
+  = RunPrCi { pr: PrIdentity }
+  | MergePr { pr: PrIdentity }
+  | RosterBump
+
+type VerifiedRun {
+  tree: GitObjectId
+  roster: GateRosterHash
+}
+
+type LifecycleState {
+  main_tip: GitObjectId
+  current_roster: GateRosterHash
+  verified: List<VerifiedRun>
+  receipts: List<MergeAdmissionReceipt>
+  unverified_tip_seen: Bool
+}
+
+fn squash_result_tree(pr: PrIdentity, base: GitObjectId) -> GitObjectId {
+  merge_admission_fixture_git_tree_from_tagged(tag: pr.squash_tag as NonEmptyStr, base: base)
+}
+
+fn initial_lifecycle_state() -> LifecycleState {
+  let tip0 = match git_sha1_object_id(hex: "0000000000000000000000000000000000000001") {
+    Present { value: oid } => oid
+    Absent =>
+      GitSha1ObjectId {
+        digest: Sha1Digest {
+          hex: "0000000000000000000000000000000000000001" as Sha1DigestHex,
+        },
+      }
+  }
+  let roster0 = content_hash_atom(value: "merge-lifecycle-roster-0")
+  LifecycleState {
+    main_tip: tip0,
+    current_roster: roster0,
+    verified: [VerifiedRun { tree: tip0, roster: roster0 }],
+    receipts: [],
+    unverified_tip_seen: false,
+  }
+}
+
+fn receipt_is_for_pr_head(r: MergeAdmissionReceipt, pr: PrIdentity) -> Bool {
+  match r.pr_number {
+    Present { value } => value == pr.number && r.head_sha == pr.head_sha
+    Absent => false
+  }
+}
+
+fn latest_receipt_for(receipts: List<MergeAdmissionReceipt>, pr: PrIdentity) -> MergeAdmissionReceipt? {
+  fold(receipts, init: Absent, f: fn(acc, r) {
+    match receipt_is_for_pr_head(r: r, pr: pr) {
+      true => Present { value: r }
+      false => acc
+    }
+  })
+}
+
+// latest_receipt_for keeps the LAST minted receipt for the exact (PR number, head SHA) pair. GitHub
+// required checks attach evidence to a commit, not to a mutable PR number: after auto-heal pushes a
+// new head, the old head's green is historical evidence and the new head has no admissible receipt
+// until CI re-runs. Joining on number alone admitted RunPrCi(old head) then MergePr(healed head),
+// the exact stale-evidence class the heal transition creates.
+
+// THE EMPTY CASE IS THE POLICY'S TO ANSWER AND IT IS NOW AN ARM OF THE ONE ADMISSION DECISION.
+// This function used to fold `policy_admits` over a singleton-or-empty LIST from `init: false`, and
+// the seed was the entire absent-receipt verdict -- one caller-local constant answering for all
+// four policies, not because any policy said so. `ReportedContextsAtMergeInstant` differs from
+// `PerPrGateOnly` on EXACTLY that input and on no other, so the seed collapsed the two into one arm
+// and no sequence in the enumerator could discriminate them.
+//
+// THE REPAIR IS A TYPE, NOT A SECOND PREDICATE (codex review 59477). `latest_receipt_for` KEEPS AT
+// MOST ONE receipt -- it always did, folding to `[r]` or `[]` -- so the list was carrying an
+// optional's job and the caller paid for it with an emptiness test. Returning
+// `MergeAdmissionReceipt?` makes the singularity structural, and `policy_admits` taking an optional
+// receipt makes the empty case an arm of the admission decision itself. No fold, no seed, no
+// emptiness branch, and no `AdmissionPolicy -> Bool` accessor standing beside the coproduct.
+fn merge_enabled(
+  policy: AdmissionPolicy,
+  receipts: List<MergeAdmissionReceipt>,
+  pr: PrIdentity,
+  tip: GitObjectId,
+  roster: GateRosterHash,
+) -> Bool {
+  policy_admits(
+    policy: policy,
+    receipt: latest_receipt_for(receipts: receipts, pr: pr),
+    merge_target_tree_hash: tip,
+    current_roster_hash: roster,
+  )
+}
+
+fn verified_contains(xs: List<VerifiedRun>, probe: VerifiedRun) -> Bool {
+  fold(xs, init: false, f: fn(acc, v) {
+    acc || (v.tree == probe.tree && v.roster == probe.roster)
+  })
+}
+
+fn apply_lifecycle_event(policy: AdmissionPolicy, state: LifecycleState, ev: LifecycleEvent) -> LifecycleState {
+  match ev {
+    RunPrCi { pr } =>
+      let tested = squash_result_tree(pr: pr, base: state.main_tip)
+      let receipt = mint_merge_admission_receipt(
+        pr_number: Present { value: pr.number },
+        head_sha: pr.head_sha,
+        base_tree_hash: state.main_tip,
+        gate_roster_hash: state.current_roster,
+        conclusion: Success,
+      )
+      LifecycleState {
+        main_tip: state.main_tip,
+        current_roster: state.current_roster,
+        verified: concat(state.verified, [VerifiedRun { tree: tested, roster: state.current_roster }]),
+        receipts: concat(state.receipts, [receipt]),
+        unverified_tip_seen: state.unverified_tip_seen,
+      }
+    MergePr { pr } =>
+      if merge_enabled(policy: policy, receipts: state.receipts, pr: pr, tip: state.main_tip, roster: state.current_roster) {
+        let landed = squash_result_tree(pr: pr, base: state.main_tip)
+        LifecycleState {
+          main_tip: landed,
+          current_roster: state.current_roster,
+          verified: state.verified,
+          receipts: state.receipts,
+          unverified_tip_seen: state.unverified_tip_seen
+            || !verified_contains(xs: state.verified, probe: VerifiedRun { tree: landed, roster: state.current_roster }),
+        }
+      } else {
+        state
+      }
+    RosterBump =>
+      LifecycleState {
+        main_tip: state.main_tip,
+        current_roster: content_hash_tagged_structural(
+          tag: "merge-lifecycle-roster-bump",
+          payload: state.current_roster
+        ),
+        verified: state.verified,
+        receipts: state.receipts,
+        unverified_tip_seen: state.unverified_tip_seen,
+      }
+  }
+}
+
+// The unverified_tip_seen latch is checked ONLY where main ADVANCES (an admitted MergePr): the quantified property is that the merge step never lands a tree unverified under the roster current at landing. A RosterBump alone does not latch — criteria drift over a standing tip is the stale-ROSTER admission question the static gunbc.merge_admission witnesses already discriminate, not a merge-step fault; a disabled merge is a refusal, and a refusal is never a violation.
+fn simulate_lifecycle(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> LifecycleState {
+  fold(events, init: initial_lifecycle_state(), f: fn(acc, ev) {
+    apply_lifecycle_event(policy: policy, state: acc, ev: ev)
+  })
+}
+
+fn lifecycle_admits_unverified_tip(policy: AdmissionPolicy, events: List<LifecycleEvent>) -> Bool {
+  simulate_lifecycle(policy: policy, events: events).unverified_tip_seen
+}
+
+fn singleton_sequences(alphabet: List<LifecycleEvent>) -> List<List<LifecycleEvent>> {
+  fold(alphabet, init: [], f: fn(acc, ev) { concat(acc, [[ev]]) })
+}
+
+fn extend_event_sequences(seqs: List<List<LifecycleEvent>>, alphabet: List<LifecycleEvent>) -> List<List<LifecycleEvent>> {
+  fold(seqs, init: [], f: fn(acc, seq) {
+    concat(acc, fold(alphabet, init: [], f: fn(acc2, ev) {
+      concat(acc2, [concat(seq, [ev])])
+    }))
+  })
+}
+
+fn event_sequences_of_length_4(alphabet: List<LifecycleEvent>) -> List<List<LifecycleEvent>> {
+  extend_event_sequences(
+    seqs: extend_event_sequences(
+      seqs: extend_event_sequences(
+        seqs: singleton_sequences(alphabet: alphabet),
+        alphabet: alphabet,
+      ),
+      alphabet: alphabet,
+    ),
+    alphabet: alphabet,
+  )
+}
+
+fn count_unverified_admitting_sequences(policy: AdmissionPolicy, seqs: List<List<LifecycleEvent>>) -> Int {
+  fold(seqs, init: 0, f: fn(acc, seq) {
+    if lifecycle_admits_unverified_tip(policy: policy, events: seq) { acc + 1 } else { acc }
+  })
+}

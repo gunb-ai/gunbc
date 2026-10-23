@@ -1,0 +1,56 @@
+module gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall
+
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// THE COMPILE-POOL PROVISION LANE IS WIRED BUT UNREACHABLE, AND FROZEN AWAITING FABRIC COMPUTE.
+// The standing facts, measured on origin/main 2026-10-04 by session witty-wren-554 during DP-M2:
+// provision_compile_pool (dag/gunbc/host/host_compile_pool_provision.dag) has ZERO callers across
+// dag/, src/ and .github/ -- the only references anywhere are its own module and the routing
+// witnesses that pin the dispatch shape (host_toolchain_ensure_effect maps CompilePool =>
+// EnsureCompilePoolSlice; the entry point selects the same effect; the HostOs cell resolves it; the
+// BmcController cell refuses it). The chain below the entry point is complete -- realize dispatch,
+// admission, compile_pool_slice_install_step's typed staging fold, transport runners -- and every
+// DECISION that chain makes is pinned by hermetic witnesses over supplied outcomes. But no lane,
+// instrument, workflow or wet-schedule row executes it: fleet-converge.yml's closed choice list
+// does not name compile pool, the local-repo wet schedule carries no compile-pool claim, and no
+// witness or control would fail because a real host stopped converging, because none ever converged
+// through it. That is a standing state, not an event: nothing fell, so this is a stall, not a drop.
+//
+// WHY THE BLOCKER IS AWAITS-ONE-GROUNDING AND NOT UNBUILT. The operator ruled 2026-10-04 that this
+// lane is OLD and will be reorganized under fabric compute: compile pool is a capacity class under
+// the DESIGN 3b fabric/compute row (gunbc.fabric_executor_class CapacityClassAdmission,
+// gunbc.compute.work_provider_local ComputeLayout, gunbc.fabric_control_plane CellReservation),
+// whose real consumer is gunbc.ci_runner_placement -- whose CompilePoolInRunnerSlots arm refuses to
+// emit a quota today. The lane is a frozen X pending that reorganization: DESIGN 3's
+// replacement-migration rule forbids new investment in it, which is why the DP-M2 lane proposed --
+// and the operator declined -- a parameterized install site and a wet integration receipt for it.
+// What the lane waits on is one grounding, named below; a lane whose ceiling is reachable only
+// after that grounding is not "climbable but unbuilt", it is awaiting.
+//
+// WHAT THE HERMETIC WITNESSES DO AND DO NOT CLAIM, because the gap must outlive the conversation
+// that measured it. They pin the typed fold's decisions only: given supplied outcomes, which
+// operations run next, what the report says (including the coproduct's refused-before-execution
+// arm), and which conformance a designed slice name gets. They make NO real-execution claim --
+// nothing here is evidence that dd/install/systemctl run on any host, and this row is the standing
+// record that none does.
+//
+// THE CEILING is an executing route with an execution control: a caller that really dispatches
+// provision_compile_pool against a rostered target and a control that fails if that integration
+// stops executing. Below that grounding the lane must not gain one, so the stall stands.
+data compile_pool_provision_wired_but_unreachable_stall: GuaranteeStall = GuaranteeStall {
+  subject: "The compile-pool provision lane (provision_compile_pool -> host_toolchain_EnsureCompilePoolSlice -> realize_ensure_compile_pool_slice -> compile_pool_slice_install_step) is fully wired and hermetically witnessed at every decision, but has zero callers and no executing route: no workflow, instrument or wet-schedule row dispatches it, and no control fails if a real host stops converging through it, because none ever did.",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "The operator's 2026-10-04 ruling froze this lane pending its reorganization under fabric compute; no investment (parameterized sites, wet receipts, new dispatch routes) is permitted in it until then.",
+  },
+  population: BoundedPopulation { members: [
+    "gunbc.host_compile_pool_provision.provision_compile_pool",
+    "gunbc.host.host_toolchain_ensure CompilePool arm",
+    "gunbc.host.host_effect_realize.realize_ensure_compile_pool_slice",
+    "gunbc.host.host_effect_realize.compile_pool_slice_install_step",
+    "gunbc.ci_runner_placement CompilePoolInRunnerSlots refusal to emit a quota",
+  ] },
+  next_rung_trigger: climbs_when(capability: "compile-pool capacity is admitted as a fabric capacity class and charged in the host allocation, at which point provision_compile_pool either gains that admission as its caller or is deleted."),
+}

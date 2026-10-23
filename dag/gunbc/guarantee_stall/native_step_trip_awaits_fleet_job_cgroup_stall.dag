@@ -1,0 +1,43 @@
+module gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall
+
+import std.types { String, List }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// A STALL, NOT A DROP (DESIGN section 4b(2) against 4b(3)): the per-step compiler trip the
+// 2026-10-09 ruling asked for -- the step's own cgroup bound at gunbc.emitted_subject_build_gate
+// native_step_memory_trip, under the fleet slot's throttle line, with a receipt at that grain --
+// was never held on the required path. main's witnesses.yml never carried the bind input, and the
+// first required run that passed it (38002497388 on gunbc#13658) refused in four seconds:
+// MemoryCgroupBindRefused, because memory_governor apply_memory_cgroup_bind creates its leaf at the
+// cgroup ROOT (a design for a process that is root of its own cgroup namespace, which the
+// remote-build containers are and a systemd-managed fleet host is not) and a fleet job runs as the
+// setpriv'd job user under a root unit (gunbc.runner_host_deploy). Nothing fell, so no drop's
+// previous rung is honest; what exists is a class below its ceiling with a named grounding.
+//
+// WHAT HOLDS MEANWHILE, and why `current` is Mitigatable rather than silence: every subject step
+// REQUIRES the slot's envelope (gunbc.emitted_subject_build_gate native_step_memory_envelope_env_name,
+// decided by gunbc.memory_envelope) -- gunbc test refuses a run that no cgroup with a numeric
+// memory.max binds, and refuses a run that was OOM-killed or charged swap inside that cgroup, from
+// readings taken before the producer and at exit -- and the slot's own MemoryMax with
+// MemorySwapMax=0 (gunbc.runner_slot_desired) is the hard maximum once converged.
+//
+// THE SWITCH is the fleet fact gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership:
+// the gate's native_step_memory_inputs withholds the bind input while a job owns no bounded cgroup
+// and passes it the day the fact flips, with no other edit.
+data native_step_trip_awaits_fleet_job_cgroup_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a required subject step outgrows its memory envelope: the compiler trips at native_step_memory_trip inside the step's own cgroup, under the slot's throttle line, with a receipt at that grain",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "a job-owned, memory-bounded cgroup on every fleet runner: the runner unit delegated (Delegate=yes with DelegateSubgroup= so the unit's own processes leave the delegated root), a per-job cgroup staged at native_step_memory_trip with no swap by the root JIT wrapper before setpriv (gunbc.runner_lifecycle runner_lifecycle_jit_wrapper_path), and the governor's UnnecessaryLimitAlreadyBinds arm reading that bound as the step's own -- or the job user able to create the leaf itself. Applied to hosts by converge, which is the operator's effect; the fact that flips is gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership"
+  },
+  population: BoundedPopulation {
+    members: [
+      "the per-step trip on `emit and build //gunbc/instruments:self-host`: the step's own cgroup bound at native_step_memory_trip, so the compiler trips before the slot's throttle line and the runner process is never the kernel's candidate",
+      "the per-step trip on `emit and build //gunbc/instruments:v2-native-cli`, the same",
+      "the step-grain MEMORY RECEIPT: a peak_bytes that is this step's alone (the slot-grain receipt reports the OOM kills, high and max events the step added, swap at exit and whether the swap peak rose, and a peak since the slot's cgroup started)",
+    ]
+  },
+  next_rung_trigger: climbs_when(capability: "on every fleet runner, a required subject step runs inside a memory-bounded cgroup at native_step_memory_trip with per-step peak, OOM and swap counters of its own, observed as gunbc test's bind arm reporting Applicable or UnnecessaryLimitAlreadyBinds at the trip in a required run's log on each host class")
+}

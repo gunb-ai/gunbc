@@ -1,0 +1,133 @@
+module v2.extdeps.coordination
+
+import std.types { List }
+import std.nat { Nat }
+import v2.std.network { NetworkAddress }
+import v2.std.node { Symbol }
+
+type LanguageRef {
+  identity: Symbol
+}
+
+type FrameworkRef {
+  identity: Symbol
+}
+
+type FrameworkBinding
+  = HostedByFramework { framework: FrameworkRef }
+  | NoFramework
+
+type EndpointRef {
+  identity: Symbol
+}
+
+type Endpoint {
+  identity: EndpointRef,
+  address: NetworkAddress,
+  language: LanguageRef,
+  framework: FrameworkBinding
+}
+
+type SettleBound {
+  steps: std.nat.Nat
+}
+
+type ConvergeBound {
+  steps: std.nat.Nat
+}
+
+type RequiredSettleBound {}
+
+type RequiredConvergeBound {}
+
+type ExchangePattern
+  = RequestReply
+  | FireAndForget
+  | StreamExchange
+  | PublishSubscribe
+
+type SettlementGuarantee<Bound>
+  = ImmediateSettlement
+  | SettlesWithin { bound: Bound }
+
+type ConsistencyGuarantee<Bound>
+  = NoReplicaConvergence
+  | EventuallyConsistent { bound: Bound }
+
+type CoordinationEffectKind
+  = Http
+  | Queue
+  | Stream
+  | PubSub
+
+type CoordinationEffectObligation {
+  effect: CoordinationEffectKind,
+  required_exchange: ExchangePattern,
+  required_settlement: SettlementGuarantee<RequiredSettleBound>,
+  required_consistency: ConsistencyGuarantee<RequiredConvergeBound>
+}
+
+fn coordination_effect_obligation(effect: CoordinationEffectKind) -> CoordinationEffectObligation {
+  match effect {
+    Http => CoordinationEffectObligation {
+      effect: Http,
+      required_exchange: RequestReply,
+      required_settlement: ImmediateSettlement,
+      required_consistency: NoReplicaConvergence
+    }
+    Queue => CoordinationEffectObligation {
+      effect: Queue,
+      required_exchange: FireAndForget,
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
+    }
+    Stream => CoordinationEffectObligation {
+      effect: Stream,
+      required_exchange: StreamExchange,
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
+    }
+    PubSub => CoordinationEffectObligation {
+      effect: PubSub,
+      required_exchange: PublishSubscribe,
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
+    }
+  }
+}
+
+fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
+  [
+    coordination_effect_obligation(effect: Http),
+    coordination_effect_obligation(effect: Queue),
+    coordination_effect_obligation(effect: Stream),
+    coordination_effect_obligation(effect: PubSub)
+  ]
+}
+
+type BindRef {
+  identity: Symbol
+}
+
+type CoordinationBind {
+  bind: BindRef,
+  effect: CoordinationEffectKind
+}
+
+type WireContractFacts {
+  from: EndpointRef,
+  to: EndpointRef,
+  exchange: ExchangePattern,
+  settlement: SettlementGuarantee<SettleBound>,
+  consistency: ConsistencyGuarantee<ConvergeBound>
+}
+
+type WireContract {
+  facts: WireContractFacts,
+  bind: CoordinationBind
+}
+
+type DeploymentUnit {
+  endpoints: List<Endpoint>,
+  wire_contracts: List<WireContract>
+}

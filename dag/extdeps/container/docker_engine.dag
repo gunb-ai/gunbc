@@ -1,0 +1,39 @@
+module extdeps.container.docker_engine
+
+import extdeps.container.engine { ContainerEngine, RootfulDaemon, RootlessDaemon }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.docker_inc { docker_inc }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/security/rootless/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.docker_engine",
+      decl_name: "docker_engine",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.container.docker_engine.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Docker Engine as a PRODUCT. Its Ubuntu apt distribution is a separate fact and keeps its own
+// module (extdeps.container.docker_ce): how you install it is not what it is.
+//
+// Both privilege modes are cited: the rootless mode is documented at the anchor above as a
+// supported way to run the daemon and the CLI as a non-root user, and the default installation is
+// the rootful daemon that same page contrasts it with. The fleet runs the rootless mode, and that
+// is recorded where the fleet is described, not here.
+data docker_engine: ContainerEngine = ContainerEngine {
+  vendor: docker_inc,
+  product_name: "Docker Engine",
+  privilege_modes: [RootfulDaemon, RootlessDaemon],
+}

@@ -1,0 +1,79 @@
+module test.claim.measure_grain_rounding_witness_test
+
+import std.types { Bool, Int }
+import std.measure {
+  FiniteByteSize, byte_size, byte_size_count, finite_byte_size, positive_measure_count,
+  gibibyte_grain, gibibyte_scale_factor_bytes, round_up_to_grain, GrainRounded, GrainUnrepresentable,
+}
+import std.checked_arithmetic { int_inclusive_max, IntegerAdd, BinaryOperands, UnaryOperand }
+
+// THE SUBJECT IS std.measure round_up_to_grain AND NOTHING BENEATH IT. Its grain is a declared
+// input, so the claims here vary the grain -- the gibibyte binding in gunbc.floor_demand keeps its
+// own witnesses (test.claim.floor_demand_witness_test) and they are not restated.
+
+fn grain_of(n: Int) -> FiniteByteSize {
+  finite_byte_size(count: positive_measure_count(predecessor: n - 1))
+}
+
+fn rounded(n: Int, grain: Int) -> Int {
+  match round_up_to_grain(bytes: byte_size(n), grain: grain_of(n: grain)) {
+    GrainRounded { bytes: b } => byte_size_count(b: b)
+    GrainUnrepresentable { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_declared_grain_rounds_up_and_leaves_a_multiple_alone() -> Bool {
+  rounded(n: 1, grain: 4096) == 4096
+    && rounded(n: 4096, grain: 4096) == 4096
+    && rounded(n: 4097, grain: 4096) == 8192
+    && rounded(n: 0, grain: 4096) == 0
+    && rounded(n: 7, grain: 1) == 7
+}
+
+// THE DISCRIMINATOR AGAINST THE CHECKED-ADD FORM THIS REPLACED, AND WHY ITS GRAIN IS 1000. The
+// former `n + (grain - 1)` pre-check refuses every count above max - (grain - 1). For a power-of-two
+// grain no aligned count lies there (2^63 is a multiple of it), so at the gibibyte the checked and
+// subtraction forms refuse the same set and a gibibyte claim cannot tell them apart -- measured:
+// the checked form passed a gibibyte-aligned probe at the bound. At grain 1000 the largest aligned
+// count is max - 807, which is above max - 999: its ceiling is itself and fits, the checked add
+// refused it, and this rounder must not. A rounder that refuses this input has restored the add.
+test fn an_aligned_count_at_the_bound_is_its_own_ceiling() -> Bool {
+  let g = 1000
+  let aligned = int_inclusive_max() - (int_inclusive_max() % g)
+  match round_up_to_grain(bytes: byte_size(aligned), grain: grain_of(n: g)) {
+    GrainRounded { bytes: b } => byte_size_count(b: b) == aligned
+    GrainUnrepresentable { cause: _ } => false
+  }
+}
+
+// THE POWER-OF-TWO CONTROL: at the gibibyte the last aligned count is exactly max - (g - 1), so
+// both forms accept it; this claim is the positive control for the gibibyte binding's own red in
+// test.claim.floor_demand_witness_test, not a discriminator.
+test fn a_gibibyte_aligned_count_at_the_bound_is_its_own_ceiling() -> Bool {
+  let g = gibibyte_scale_factor_bytes()
+  let aligned = int_inclusive_max() - (int_inclusive_max() % g)
+  match round_up_to_grain(bytes: byte_size(aligned), grain: gibibyte_grain()) {
+    GrainRounded { bytes: b } => byte_size_count(b: b) == aligned
+    GrainUnrepresentable { cause: _ } => false
+  }
+}
+
+// THE RED: one past that aligned count has a ceiling the machine cannot hold, and the refusal
+// names the operation it declined to perform -- the add of the count and its pad -- rather than a
+// cause copied from a guard that never ran.
+test fn a_count_past_the_last_aligned_multiple_refuses_and_names_the_add() -> Bool {
+  let g = gibibyte_scale_factor_bytes()
+  let past = int_inclusive_max() - (int_inclusive_max() % g) + 1
+  match round_up_to_grain(bytes: byte_size(past), grain: gibibyte_grain()) {
+    GrainUnrepresentable { cause: c } =>
+      match c.operation {
+        IntegerAdd =>
+          match c.operands {
+            BinaryOperands { lhs: l, rhs: r } => l == past && r == g - 1
+            UnaryOperand { value: _ } => false
+          }
+        _ => false
+      }
+    GrainRounded { bytes: _ } => false
+  }
+}

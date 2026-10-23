@@ -1,0 +1,109 @@
+module gunbc.source_integration_claim_evidence
+
+import std.types { NonEmptyStr, RunKey }
+import std.syntax { SyntaxSpec }
+import std.occurrence_binding { OccurrenceBinding }
+import std.occurrence_identity { OccurrenceId }
+import std.claim_evidence {
+  RecordedFactId,
+  RecordedFact,
+  Claim,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceLink,
+  EvidenceInference,
+}
+import extdeps.languages.dag.syntax { dag_syntax_spec }
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeInert,
+}
+import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
+import v2.compiler.source_authority { DagSourceReadWitness }
+
+type SourceBindingFact {
+  bound: RunKey
+  source_read: DagSourceReadWitness
+  binding: OccurrenceBinding<OccurrenceId>
+}
+
+type SourceIntegrationProposition
+  = SourceBindingCaptured
+  | SourceBindingAdmissible
+
+type SourceIntegrationClaim = Claim<OccurrenceBinding<OccurrenceId>, DagSourceReadWitness, SourceIntegrationProposition, SyntaxSpec, RunKey>
+
+type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
+
+type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
+
+data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
+  label: "decode one authored source binding",
+  subject: "the binding captured for one proposal occurrence",
+  effect_on_subject: ProbeInert,
+}
+
+fn source_binding_captured_claim(
+  fact: SourceBindingFact,
+) -> SourceIntegrationClaim {
+  Claim {
+    id: "source-binding-captured",
+    subject: fact.binding,
+    target: fact.source_read,
+    proposition: SourceBindingCaptured,
+    scope: dag_syntax_spec,
+    bound: fact.bound,
+  }
+}
+
+fn source_binding_admissible_claim(
+  fact: SourceBindingFact,
+) -> SourceIntegrationClaim {
+  Claim {
+    id: "source-binding-admissible",
+    subject: fact.binding,
+    target: fact.source_read,
+    proposition: SourceBindingAdmissible,
+    scope: dag_syntax_spec,
+    bound: fact.bound,
+  }
+}
+
+fn source_binding_capture_inference(
+  fact_id: RecordedFactId,
+  fact: SourceBindingFact,
+) -> SourceIntegrationEvidenceInference {
+  let claim = source_binding_captured_claim(
+    fact: fact,
+  )
+  infer_probe_evidence(
+    fact: RecordedFact {
+      id: fact_id,
+      value: fact,
+    },
+    direction: EvidenceSupports,
+    inference_rule: "decoded-binding-supports-capture-only",
+    authority: dag_syntax_spec,
+    provenance: EvidenceProvenance {
+      entity: "decoded-source-binding",
+      activity: "decode-authored-proposal",
+      agent: "dag-source-decoder",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "binding was decoded for the named proposal attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: SourceBindingCaptured,
+      losses: [
+        "capture does not prove semantic compatibility",
+        "capture does not prove authorization or admission",
+      ],
+    },
+    probe: source_binding_capture_probe,
+  )
+}
+
+data source_integration_evidence_humility_note: NonEmptyStr = "This P−1 consumer records one typed OccurrenceBinding observed from one DagSourceReadWitness and deliberately does not introduce a proposal identity before the P0 transformation carrier exists. The source grammar is the inference authority and the decoder is only provenance. A decoded binding can support SourceBindingCaptured and no stronger conclusion. SourceBindingAdmissible remains neither supported nor challenged until semantic, authorization, and policy evidence enters through its own claim links."

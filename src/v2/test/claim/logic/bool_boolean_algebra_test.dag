@@ -1,0 +1,37 @@
+module v2.test.claim.logic.bool_boolean_algebra_test
+
+import v2.std.logic { bool_boolean_algebra }
+
+// THE ONE BOOL, EXERCISED AS A BOOLEAN ALGEBRA. After the Bool de-fork, v2.std.logic
+// bool_boolean_algebra is a BooleanAlgebra over std.types Bool (the only Bool), and the ten
+// extdeps.languages <target>_bool_grounding rows are that value at their declared type. These rows
+// run its operations on every input rather than asserting it exists, so a meet/join/complement that
+// stopped agreeing with the host connectives -- or an arm lowered to the wrong value -- turns red.
+test fn meet_is_conjunction_on_every_input() -> Bool {
+  bool_boolean_algebra.meet(true, true) == true
+    && bool_boolean_algebra.meet(true, false) == false
+    && bool_boolean_algebra.meet(false, true) == false
+    && bool_boolean_algebra.meet(false, false) == false
+}
+
+test fn join_is_disjunction_on_every_input() -> Bool {
+  bool_boolean_algebra.join(true, true) == true
+    && bool_boolean_algebra.join(true, false) == true
+    && bool_boolean_algebra.join(false, true) == true
+    && bool_boolean_algebra.join(false, false) == false
+}
+
+test fn complement_is_negation_and_bounds_are_the_values() -> Bool {
+  bool_boolean_algebra.complement(true) == false
+    && bool_boolean_algebra.complement(false) == true
+    && bool_boolean_algebra.top == true
+    && bool_boolean_algebra.bottom == false
+}
+
+// A CONSTRUCTED ARM IS THE HOST VALUE. With the one Bool, a bare `True`/`False` value can only mean
+// std.types Bool's arm, and the interpreter constructs it as the host bool
+// (v1.compiler.interpreter native_variant_reading over the same rows the emitter reads). Before the
+// cut a bare arm resolved to v2.std.logic's structural Bool, so this row belongs with the cut.
+test fn a_constructed_bool_arm_is_the_host_value() -> Bool {
+  True == true && False == false && bool_boolean_algebra.meet(True, False) == false
+}

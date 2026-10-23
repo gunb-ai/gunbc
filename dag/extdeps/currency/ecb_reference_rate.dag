@@ -1,0 +1,85 @@
+module extdeps.currency.ecb_reference_rate
+
+import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
+import std.types { Bool, Int, NonEmptyStr, List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/eurofxref-graph-usd.en.html"
+  }
+}
+
+data ecb_reference_rate_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+// THE EURO FOREIGN EXCHANGE REFERENCE RATES, published by the European Central Bank once each
+// working day. This module exists because a comparison between a euro price and a dollar cost was
+// being made in this repository with no rate at all - the two magnitudes were subtracted as though
+// the field name carried the unit.
+//
+// AN EXCHANGE RATE IS AN OBSERVATION AND NOT A CONSTANT, which is the whole reason this is a dated
+// row rather than a number. The ECB itself publishes these as reference rates "for information
+// purposes" based on a daily concertation at 14:15 CET; they are not tradeable rates, and nobody
+// transacts at them. A conversion through this row is therefore an ESTIMATE OF COMPARABILITY and
+// never a price anyone was charged. Where a real transaction exists - a card statement, an
+// invoice, a settled wire - that transaction's own realised rate is the authority and this row is
+// not.
+//
+// The rate is stored as micro-units of the quote currency per ONE WHOLE unit of the base currency,
+// which keeps it in the same micro representation as every money figure in this tree and avoids a
+// second scale nobody would remember to divide by.
+
+type FxReferenceRateRow {
+  base: CurrencyCode
+  quote: CurrencyCode
+  quote_per_base_unit: MoneyAmountMicro
+  observed_date: NonEmptyStr
+  authority: ExternalAuthority
+  basis: NonEmptyStr
+}
+
+data ecb_eur_usd_2026_09_04: FxReferenceRateRow = FxReferenceRateRow {
+  base: Eur,
+  quote: Usd,
+  quote_per_base_unit: money_amount_micro(count: 1162200),
+  observed_date: "2026-09-04",
+  authority: ecb_reference_rate_authority,
+  basis: "ECB euro foreign exchange reference rate, US dollar, read from the anchor page on 2026-09-05 and dated by the publisher 2026-09-04. Reference rate, not a tradeable or transacted rate.",
+}
+
+fn ecb_reference_rates() -> List<FxReferenceRateRow> {
+  [ ecb_eur_usd_2026_09_04 ]
+}
+
+// CONVERSION REFUSES RATHER THAN APPROXIMATING WHEN THE PAIR DOES NOT MATCH THE ROW. A rate row is
+// directional - this one converts euros to dollars and not the reverse - because inverting a
+// published reference rate produces a figure the publisher never published, and the two directions
+// are not the same number once any spread exists.
+type FxConversion
+  = FxConverted { amount: MoneyAmountMicro, through: NonEmptyStr }
+  | FxPairUnavailable { obligation: NonEmptyStr }
+
+fn convert_money(
+  amount: MoneyAmountMicro,
+  from: CurrencyCode,
+  to: CurrencyCode,
+  rate: FxReferenceRateRow,
+) -> FxConversion {
+  if currency_code_eq(a: from, b: to) {
+    FxConverted { amount: amount, through: "no conversion required - one currency" }
+  } else if currency_code_eq(a: from, b: rate.base) && currency_code_eq(a: to, b: rate.quote) {
+    FxConverted {
+      amount: money_amount_micro(
+        count: money_amount_micro_count(m: amount) * money_amount_micro_count(m: rate.quote_per_base_unit) / 1000000,
+      ),
+      through: rate.observed_date,
+    }
+  } else {
+    FxPairUnavailable {
+      obligation: "no cited rate row converts this pair in this direction. Add a dated ECB row for it rather than inverting an existing one, because an inverted reference rate is a figure the publisher did not publish.",
+    }
+  }
+}

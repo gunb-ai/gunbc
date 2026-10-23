@@ -1,0 +1,332 @@
+module gunbc.fleet_intent_network
+
+import std.types { NonEmptyStr }
+import gunbc.fleet_tailnet { fleet_tailnet_domain }
+import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
+import gunbc.fleet_asset_identity { printer_01, printer_02 }
+import product.network_topology {
+  NetworkAttachmentRole,
+  NetworkEndpoint,
+  NetworkSegment,
+  NetworkTopology,
+  HostOperatingSystem,
+  BmcOutOfBand,
+  ContainerBridgeDefault,
+  ContainerBridgeSecondary,
+  TailscaleEndpoint,
+  LanGateway,
+  FabricationAppliance,
+  NetworkEndpointSubject,
+  EndpointHost,
+  EndpointAsset,
+  EndpointSubjectUnregistered,
+  Lan,
+  Loopback,
+  Internet,
+  WslNat,
+  WslBridged,
+  DockerBridge,
+  TailscaleOverlay,
+}
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_mtcollins1,
+}
+
+
+// 🟡 dissolve-on: the NetworkEndpoint.address / NetworkSegment.cidr / gateway literals in this file
+// are still bare `"192.168.1.x"` / CIDR strings even though this same lane grounded the address
+// leaves (extdeps.network.ipv4 Ipv4Address = 4 bounded Octets, extdeps.network.address IpAddress =
+// IpV4|IpV6, and the DHCP lease rows migrated to the ipv4_address constructor). The octet
+// decomposition is half-consumed here: product.network_topology.NetworkEndpoint.address is typed
+// String, so grounding these sites means re-typing that field to extdeps.network.address.IpAddress
+// (and cidr/gateway to their grounded carriers) and migrating every NetworkEndpoint/NetworkSegment
+// consumer — a product-layer field change, not a gunbc-local edit, so it is deliberately deferred
+// rather than half-done. DISSOLVES WHEN NetworkEndpoint.address re-grounds onto IpAddress; until
+// then these literals are the §3 residual the reach lane closes, tracked here so the loop is
+// visible rather than silently forked. The grounded rows the reach lane already built —
+// gunbc.fleet_reach.srv2_lan_ipv4 / srv3_lan_ipv4 (extdeps.network.ipv4.Ipv4Address, consumed by
+// srv3_reach) — are the CONVERGENCE TARGET these bare strings dissolve onto, not an independent
+// second grounding: srv2/srv3's address becomes those rows when the field re-types, so the
+// transitional dual representation is marked debt heading toward one authority, not a permanent
+// fork.
+
+data operator_lan_segment: NetworkSegment = NetworkSegment {
+  cidr: "192.168.1.0/24",
+  gateway: Present { value: "192.168.1.1" },
+  locality: Lan,
+}
+
+data operator_docker_bridge_default_segment: NetworkSegment = NetworkSegment {
+  cidr: "172.17.0.0/16",
+  gateway: none,
+  locality: DockerBridge,
+}
+
+data operator_docker_bridge_secondary_srv1_segment: NetworkSegment = NetworkSegment {
+  cidr: "172.18.0.0/16",
+  gateway: none,
+  locality: DockerBridge,
+}
+
+data srv1_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv1-host-lan",
+  subject: EndpointHost { host: operator_host_srv1 },
+  address: "192.168.1.185",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv2_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv2-host-lan",
+  subject: EndpointHost { host: operator_host_srv2 },
+  address: "192.168.1.188",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv1_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv1-bmc",
+  subject: EndpointHost { host: operator_host_srv1 },
+  address: "192.168.1.183",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv2_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv2-bmc",
+  subject: EndpointHost { host: operator_host_srv2 },
+  address: "192.168.1.184",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv3_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-bmc",
+  subject: EndpointHost { host: operator_host_srv3 },
+  address: "192.168.1.192",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv4_bmc_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv4-bmc",
+  subject: EndpointHost { host: operator_host_srv4 },
+  address: "192.168.1.195",
+  role: BmcOutOfBand,
+  locality: Lan,
+}
+
+data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv4-host-lan",
+  subject: EndpointHost { host: operator_host_srv4 },
+  address: "192.168.1.196",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+// srv3's HOST OS endpoint, absent from this topology until 2026-07-24 — only srv3_bmc_endpoint
+// (192.168.1.192) was modeled, so the model could name srv3's out-of-band controller but not the
+// machine itself. Observed live from the operator's DHCP table (192.168.1.221, MAC
+// 48:21:0B:81:C7:1D) and confirmed addressable by probe (sshd answers on :22). REACHABLE via the
+// srv2 hop (corrected 2026-07-25): ubuntu@srv3 runs commands today authenticated by srv2's local
+// node-orch key (proven live — hostname=srv3, aarch64, 128 cores). What is NOT yet present is the
+// FLEET identity: the fleet-automation-ssh-key is authorized for no user on srv3 (born Jul 13 with
+// ssh.authorized-keys EMPTY, hand-keyed post-install with node-orch@srv2 / briansrls@srv1 / macbook
+// only), the B2 runner-user + A1 secret-materialization gap in
+// gunbc.plans.fleet_subsumption_manual_gaps — a one-time host_authorized_keys_reconcile upsert over
+// the working node-orch hop, not a networking fact and not an unreachable host. LEASE STATUS: as of
+// 2026-07-24 the operator converted this to a STATIC reservation (192.168.1.221 ↔ MAC
+// 48:21:0B:81:C7:1D), so the literal is now a fact rather than a lease-lifetime observation —
+// matching the srv1/srv2 hosts and the srv1/srv2/srv3 BMCs. STILL DYNAMIC and therefore
+// provisional: srv4's host (192.168.1.196) and srv4's BMC (192.168.1.195); those two literals
+// remain only as stable as their leases until the operator reserves them. The DHCP-reservation act
+// itself is an unmodeled manual step for srv1..4 — a static-lease intent (MAC ↔ address binding on
+// the operator's router) has no carrier for those hosts; see
+// gunbc.plans.fleet_subsumption_manual_gaps for where that gap is tracked. PARTIAL CLOSURE
+// (SPARK-LANE-A, 2026-08-07): gunbc.spark.dgx_procurement's DgxSparkRouterBinding is that carrier
+// for srv5/srv6, holding the cited extdeps.router.verizon_cr1000a reservation row Optionally and
+// refusing deployment admission while it is Absent — and the two reservations the operator authored
+// for the DGX Spark units ARE modeled there as observed router rows, held apart from the slot
+// bindings until the operator states which box serves which slot. It is deliberately NOT
+// retrofitted to srv1..4 in the same change: those four hosts are already reserved and enrolled, so
+// a binding row for them would be authored from the live router rather than ahead of arrival, and
+// that is a read-transport question (the cr1000a lease-table transport is itself an open extdeps
+// frontier row) rather than the pre-arrival intent question srv5/srv6 pose.
+
+data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv3-host-lan",
+  subject: EndpointHost { host: operator_host_srv3 },
+  address: "192.168.1.221",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv9_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv9-host-lan",
+  subject: EndpointHost { host: operator_host_srv9 },
+  address: "192.168.1.236",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv10_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv10-host-lan",
+  subject: EndpointHost { host: operator_host_srv10 },
+  address: "192.168.1.237",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv11_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv11-host-lan",
+  subject: EndpointHost { host: operator_host_srv11 },
+  address: "192.168.1.238",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv12_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv12-host-lan",
+  subject: EndpointHost { host: operator_host_srv12 },
+  address: "192.168.1.239",
+  role: HostOperatingSystem,
+  locality: Lan,
+}
+
+data srv1_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv1-tailscale",
+  subject: EndpointHost { host: operator_host_srv1 },
+  address: "100.69.18.126",
+  role: TailscaleEndpoint,
+  locality: TailscaleOverlay,
+}
+
+data srv2_tailscale_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "srv2-tailscale",
+  subject: EndpointHost { host: operator_host_srv2 },
+  address: "100.73.169.40",
+  role: TailscaleEndpoint,
+  locality: TailscaleOverlay,
+}
+
+data operator_lan_gateway_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "operator-lan-gateway",
+  subject: EndpointSubjectUnregistered,
+  address: "192.168.1.1",
+  role: LanGateway,
+  locality: Lan,
+}
+
+// THE PRINTER IS AN APPLIANCE ON THE OPERATOR LAN, NOT A HOST. `host` is absent because no
+// HostIdentity names it and inventing one would be a second name for printer_01. Its reachability
+// zone is HostLan, which network_reachability already says ContainerRunner cannot reach -- so every
+// route from this repo to this address is brokered through a host on the segment, by the model and
+// not by a workaround.
+data printer_01_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "printer-01-lan",
+  subject: EndpointAsset { asset: printer_01 },
+  address: "192.168.1.234",
+  role: FabricationAppliance,
+  locality: Lan,
+}
+
+// BOTH PRINTER RESERVATIONS, TRANSCRIBED FROM THE OPERATOR'S LIVE CR1000A TABLE ON 2026-09-04. The
+// table reports Static, Active and expiry Never for both bindings. These rows carry MAC and status;
+// each endpoint projects the same address into the topology until NetworkEndpoint.address reaches
+// the grounded IpAddress carrier named by the dissolve-on row.
+data printer_01_lan_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "68:EE:8F:66:2A:28" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 234),
+  lease: StaticDhcpReservation {
+    reservation_label: "printer-01" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data printer_02_lan_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "68:EE:8F:60:AC:14" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 235),
+  lease: StaticDhcpReservation {
+    reservation_label: "printer-02" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data printer_02_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
+  label: "printer-02-lan",
+  subject: EndpointAsset { asset: printer_02 },
+  address: "192.168.1.235",
+  role: FabricationAppliance,
+  locality: Lan,
+}
+
+data fleet_intent_network: NetworkTopology = NetworkTopology {
+  tailnet_domain: fleet_tailnet_domain,
+  segments: [
+    operator_lan_segment,
+    operator_docker_bridge_default_segment,
+    operator_docker_bridge_secondary_srv1_segment,
+  ],
+  endpoints: [
+    operator_lan_gateway_endpoint,
+    srv1_host_lan_endpoint,
+    srv2_host_lan_endpoint,
+    srv3_host_lan_endpoint,
+    srv4_host_lan_endpoint,
+    srv1_bmc_endpoint,
+    srv2_bmc_endpoint,
+    srv3_bmc_endpoint,
+    srv4_bmc_endpoint,
+    srv1_tailscale_endpoint,
+    srv2_tailscale_endpoint,
+    printer_01_lan_endpoint,
+    printer_02_lan_endpoint,
+  ],
+}
+
+fn fleet_intent_network_topology() -> NetworkTopology {
+  fleet_intent_network
+}
+
+// A HOST'S LAN ADDRESS, READ FROM THE TOPOLOGY RATHER THAN NAMED BY A CONSUMER. The first consumer is
+// the harness replica roster (gunbc.harness.harness_wire), which used to carry a Spark address as a
+// bare literal and went stale when the pair heads moved; now it names hosts and asks here. Absent
+// when the host has no HostOperatingSystem endpoint on the LAN -- a typed hole the consumer refuses
+// on, never a fabricated address. This is a LAN answer, not a fabric one: which path a caller should
+// take to reach a host is the fabric's question (see the harness roster's annotation).
+fn host_lan_address(host: HostIdentity) -> NonEmptyStr? {
+  fold(fleet_intent_network.endpoints, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match e.subject {
+          EndpointHost { host: h } =>
+            if host_identity_eq(a: h, b: host) && endpoint_is_host_lan(e: e) { Present { value: e.address } } else { none }
+          EndpointAsset { asset: _ } => none
+          EndpointSubjectUnregistered => none
+        }
+    })
+}
+
+fn endpoint_is_host_lan(e: NetworkEndpoint) -> Bool {
+  (match e.role {
+    HostOperatingSystem => true
+    BmcOutOfBand => false
+    ContainerBridgeDefault => false
+    ContainerBridgeSecondary => false
+    TailscaleEndpoint => false
+    LanGateway => false
+    FabricationAppliance => false
+  }) && (match e.locality {
+    Lan => true
+    Loopback => false
+    Internet => false
+    WslNat => false
+    WslBridged => false
+    DockerBridge => false
+    TailscaleOverlay => false
+  })
+}

@@ -1,0 +1,23 @@
+module gunbc.fleet.printer_operator_run
+
+import std.types { String }
+import std.process { ProcessExit, exit_failure }
+import gunbc.fleet.printer_workflow_run {observe_credential_with_source}
+import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
+import gunbc.auth.access_token_source {
+  read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable, OperatorSuppliedToken,
+}
+
+// Explicit local operator route. It never labels an operator token as WIF or invents
+// an Actions run. Observation only: reads an existing credential, prints no credential,
+// changes no IAM or secret state, and sends nothing to the physical printer.
+fn observe(printer: String) -> ProcessExit {
+  match select_printer(name: printer) {
+    PrinterSelectionRefused => exit_failure(reason: "Unknown printer")
+    PrinterSelected { printer: p } => match read_supplied_access_token() {
+      SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+      SuppliedTokenReady { token: t } =>
+        observe_credential_with_source(printer: p, token_source: OperatorSuppliedToken { token: t })
+    }
+  }
+}

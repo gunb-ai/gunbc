@@ -1,0 +1,110 @@
+module v2.compiler.body_producer
+
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node {
+  Arrow,
+  ComputationNode,
+  Edge,
+  Authored,
+  Node,
+  Symbol,
+  TypeNode,
+  node_rebuild,
+  well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
+}
+import std.algebra { list_snoc_item }
+
+fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn attach_arrow_body_malformed(arrow: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_producer_diagnostic(
+      reason: ^body_producer_reason_malformed_attachment,
+      n: arrow
+    )
+  )
+}
+
+fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      outcome_accepted(
+        value: node_rebuild(
+          n: arrow,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: Edge {
+              label: core_edge_label(marker: ArrowBodyEdge),
+              target: body
+            }
+          )
+        )
+      )
+    TypeNode { connective: Atom { identity: _ } } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Conj } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Disj } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Cardinality } => attach_arrow_body_malformed(arrow: arrow)
+    TypeNode { connective: Instantiation } => attach_arrow_body_malformed(arrow: arrow)
+    ComputationNode { behavior: _ } => attach_arrow_body_malformed(arrow: arrow)
+  }
+}
+
+fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
+  if well_formed(n: body) {
+    outcome_accepted(value: body)
+  } else {
+    outcome_rejected(
+      d: body_producer_diagnostic(
+        reason: ^body_producer_reason_post_produce_not_well_formed,
+        n: body
+      )
+    )
+  }
+}
+
+fn body_producer_structured_body_shape_rejected(body: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_producer_diagnostic(
+      reason: ^body_producer_reason_resolved_shape,
+      n: body
+    )
+  )
+}
+
+fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
+  match body.kind {
+    ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
+    TypeNode { connective: Atom { identity: _ } } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Conj } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Disj } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Arrow } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Cardinality } => body_producer_structured_body_shape_rejected(body: body)
+    TypeNode { connective: Instantiation } => body_producer_structured_body_shape_rejected(body: body)
+  }
+}
+
+fn produce_arrow_with_structured_body(signature: Node, structured_body: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_producer_dispatch_structured_body(body: structured_body),
+    f: fn(validated) {
+      attach_arrow_body(arrow: signature, body: validated)
+    }
+  )
+}

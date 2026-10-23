@@ -1,0 +1,3 @@
+module probe.brc.bare_alias_consumer
+
+type BrcAliasCarrier { id: BrcAliasId }

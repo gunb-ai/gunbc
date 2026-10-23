@@ -1,0 +1,191 @@
+module test.claim.codex_initialize_result_disposition_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, FilePath }
+import std.content_hash { as_content_hash_sha512, sha512_hex_digest, Sha512Digest }
+import std.measure { byte_size }
+import gunbc.codex_app_server_press {
+  disposition_from_initialize_result,
+  codex_initialize_result_user_agent_key,
+  parse_account_trip_stdout_for_tests,
+  account_standing_projection,
+  account_standing_summary_from_evidence,
+  outcome_from_standing_receipt,
+  codex_press_outcome_wire_status,
+  CodexAccountStandingReceipt,
+  CodexPressAccountReady,
+  CodexPressLoginRequired,
+  CodexPressRefused,
+  CodexPressUnavailable,
+  ProviderProcessReceipt,
+  ProviderProcessObservationFailed,
+  AccountStandingAuthenticatedRateLimitsReadable,
+  AccountStandingLoginRequired,
+  AccountStandingQuotaReached,
+  AccountStandingInitializeMissing,
+  AccountStandingInitializeUnusable,
+  AccountStandingIncomplete,
+  AccountTripResultOk,
+  AccountTripLoginRequiredSignal,
+  AccountTripQuotaSignal,
+  AccountTripMissing,
+  AccountTripResultUnusable,
+  AccountTripNativeCauseUnknown,
+  AccountTripNativeCauseNumericCode,
+  AccountTripNativeCauseMessageUnreadable,
+}
+import test.claim.codex_app_server_press_witness_test { fixture_preflight_subject }
+import gunbc.provider_wire_evidence {
+  ProviderWireEvidenceReceipt,
+  PrivateEvidenceRef,
+  ProcessExitObservation,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_object,
+  json_kv,
+  json_string,
+  json_int,
+}
+
+// A PRESENT INITIALIZE RESULT WHOSE userAgent IS NOT A STRING IS MALFORMED, NOT MISSING. The two
+// were one disposition until review 59089 traced where the conflation goes: AccountTripMissing
+// reaches AccountStandingInitializeMissing, which renders and actuates the refusal reason
+// "codex app-server trip missing initialize result" -- a false sentence about a response that
+// arrived and parsed. The frame-level assertion this module used to make would have stayed green
+// through all of that, because the lie is downstream of the frame.
+//
+// So these witnesses assert the FINAL classification, the operator projection, and the actuated
+// refusal reason. The pair discriminates: absence and malformed-presence differ only in whether
+// the initialize frame is on the wire, so a green on one cannot be explained by the other.
+
+fn initialize_result_with(value: JsonValue) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: codex_initialize_result_user_agent_key as String, value: value),
+    ],
+  )
+}
+
+data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
+
+data stdout_present_but_numeric_user_agent: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":7}}\n"
+
+data stdout_no_initialize_frame_at_all: String = "{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"message\":\"boom\"}}\n"
+
+data stdout_real_user_agent: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"codex-cli/1.2.3\"}}\n"
+
+// THE SUBJECT COMES FROM THE SIBLING WITNESS MODULE RATHER THAN A SECOND COPY OF IT. Building a
+// CodexRuntimeBundle and a ProviderInterfaceBinding here would be forty lines restating a fixture
+// that already exists, and outcome_from_standing_receipt never reads the subject on any refusing
+// arm -- it hands the receipt back unchanged. What this witness needs from the receipt is a
+// classification and a present wire evidence, which is what is built below.
+fn refusal_reason_for_stdout(stdout: String) -> String {
+  match fixture_preflight_subject() {
+    Absent => "fixture subject unavailable"
+    Present { value: subject } => {
+      let receipt = CodexAccountStandingReceipt {
+        subject: subject,
+        standing: account_standing_summary_from_evidence(
+          evidence: parse_account_trip_stdout_for_tests(stdout: stdout),
+        ),
+        wire_evidence: Present {
+          value: ProviderWireEvidenceReceipt {
+            private_ref: PrivateEvidenceRef {
+              root: "/tmp/gunbc-wire-fixture" as FilePath,
+              content_address_hex: fixture_digest_hex as NonEmptyStr,
+            },
+            content_digest: as_content_hash_sha512(
+              digest: Sha512Digest { hex: fixture_digest_hex },
+            ),
+            byte_count: byte_size(count: 0),
+            process_exit: ProcessExitObservation {
+              success: true,
+              exit_code: Present { value: 0 },
+            },
+            stderr_ref: none,
+          },
+        },
+        process: ProviderProcessReceipt {
+          exit: ProviderProcessObservationFailed,
+          wire: none,
+        },
+      }
+      match outcome_from_standing_receipt(receipt: receipt) {
+        CodexPressRefused { reason, receipt: _ } => reason as String
+        CodexPressAccountReady { receipt: _ } => "account_ready"
+        CodexPressLoginRequired { reason: _, receipt: _ } => "login_required"
+        CodexPressUnavailable { reason: _, process: _ } => "unavailable"
+      }
+    }
+  }
+}
+
+test fn a_present_result_with_a_non_string_user_agent_is_unusable_not_missing() -> Bool {
+  match disposition_from_initialize_result(
+    result: initialize_result_with(value: json_int(n: 7)),
+  ) {
+    AccountTripResultUnusable => true
+    AccountTripMissing => false
+    AccountTripResultOk => false
+    AccountTripLoginRequiredSignal => false
+    AccountTripQuotaSignal => false
+    AccountTripNativeCauseUnknown { message: _ } => false
+    AccountTripNativeCauseNumericCode { code: _ } => false
+    AccountTripNativeCauseMessageUnreadable => false
+  }
+}
+
+test fn a_real_user_agent_string_is_still_ok() -> Bool {
+  match disposition_from_initialize_result(
+    result: initialize_result_with(value: json_string(s: "codex-cli/1.2.3")),
+  ) {
+    AccountTripResultOk => true
+    AccountTripResultUnusable => false
+    AccountTripMissing => false
+    AccountTripLoginRequiredSignal => false
+    AccountTripQuotaSignal => false
+    AccountTripNativeCauseUnknown { message: _ } => false
+    AccountTripNativeCauseNumericCode { code: _ } => false
+    AccountTripNativeCauseMessageUnreadable => false
+  }
+}
+
+test fn a_malformed_initialize_result_classifies_as_unusable_not_initialize_missing() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: stdout_present_but_numeric_user_agent,
+  )
+  match evidence.classification {
+    AccountStandingInitializeUnusable =>
+      account_standing_projection(classification: evidence.classification)
+        == "initialize_present_unreadable"
+    AccountStandingInitializeMissing => false
+    AccountStandingAuthenticatedRateLimitsReadable => false
+    AccountStandingLoginRequired => false
+    AccountStandingQuotaReached => false
+    AccountStandingIncomplete => false
+  }
+}
+
+test fn an_absent_initialize_frame_still_classifies_as_initialize_missing() -> Bool {
+  let evidence = parse_account_trip_stdout_for_tests(
+    stdout: stdout_no_initialize_frame_at_all,
+  )
+  match evidence.classification {
+    AccountStandingInitializeMissing =>
+      account_standing_projection(classification: evidence.classification)
+        == "initialize_missing"
+    AccountStandingInitializeUnusable => false
+    AccountStandingAuthenticatedRateLimitsReadable => false
+    AccountStandingLoginRequired => false
+    AccountStandingQuotaReached => false
+    AccountStandingIncomplete => false
+  }
+}
+
+test fn the_actuated_refusal_reason_does_not_call_a_present_result_missing() -> Bool {
+  let malformed = refusal_reason_for_stdout(stdout: stdout_present_but_numeric_user_agent)
+  let absent = refusal_reason_for_stdout(stdout: stdout_no_initialize_frame_at_all)
+  malformed == "codex app-server initialize result arrived without a readable userAgent"
+    && absent == "codex app-server trip missing initialize result"
+    && malformed != absent
+}

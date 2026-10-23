@@ -1,0 +1,222 @@
+module gunbc.workspace_slot_mutation
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { CasGeneration, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldSlotUndecodable, HoldSlotAbsent }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
+  FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable, file_hold_release_assess, FileHoldReleasePlanned,
+  file_hold_release_commit, FileHoldReleased, observe_file_hold, FileHoldReleaseKeyNotSlotAddressable, FileHoldReleaseLost, FileHoldReleaseNotEligible, FileHoldReleaseStoreUnavailable,
+}
+
+// The existing exclusive-hold/CAS authority serializes workspace slot mutations. This is a
+// distinct key in the protected commissioning store, never a reservation generation. It has no
+// clock expiry: a cancelled actor leaves exclusion outstanding until explicit recovery.
+type WorkspaceSlotMutationHeld sole_constructor {
+  key: NonEmptyStr
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+}
+
+type WorkspaceSlotMutationLease
+  = WorkspaceSlotMutationNotApplicable
+  | WorkspaceSlotMutationLeaseHeld { held: WorkspaceSlotMutationHeld }
+
+type WorkspaceSlotMutationAdmission
+  = WorkspaceSlotMutationAdmitted { lease: WorkspaceSlotMutationLease }
+  | WorkspaceSlotMutationRefused { reason: NonEmptyStr }
+
+fn workspace_slot_mutation_required(slot_key: NonEmptyStr) -> Bool {
+  workspace_execution_slot_identities().any(slot => runner_slot_instance_name(slot: slot) == slot_key)
+}
+
+fn workspace_slot_mutation_key(slot_key: NonEmptyStr) -> NonEmptyStr {
+  concat("mutation-", slot_key as String) as NonEmptyStr
+}
+
+fn workspace_slot_mutation_acquire(slot_key: NonEmptyStr, owner: DurableHoldOwnerRef) -> WorkspaceSlotMutationAdmission {
+  if !workspace_slot_mutation_required(slot_key: slot_key) {
+    WorkspaceSlotMutationAdmitted { lease: WorkspaceSlotMutationNotApplicable }
+  } else {
+    let root = workspace_commissioning_store_location as NonEmptyStr
+    match read_store_ownership(path: root as String) {
+      OwnershipRead { ownership: StoreRootOwned } => {
+        let key = workspace_slot_mutation_key(slot_key: slot_key)
+        match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
+          FileHoldAcquired { slot_key: _, owner: holder, generation } => WorkspaceSlotMutationAdmitted {
+            lease: WorkspaceSlotMutationLeaseHeld { held: WorkspaceSlotMutationHeld {
+              key: key, owner: holder, generation: generation,
+            } },
+          }
+          FileHoldOccupied { slot_key: _, holder: _, generation: _ } => WorkspaceSlotMutationRefused {
+            reason: "workspace slot mutation exclusion is occupied; recover the existing actor instead of acquiring again",
+          }
+          FileHoldAcquireLost { slot_key: _ } => WorkspaceSlotMutationRefused { reason: "workspace mutation acquisition raced; reobserve the exclusion" }
+          FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => WorkspaceSlotMutationRefused { reason: "workspace mutation store is unavailable; occupancy is unknown" }
+          FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => WorkspaceSlotMutationRefused { reason: "workspace mutation record is undecodable; occupancy is unknown" }
+          FileHoldKeyNotSlotAddressable { slot_key: _ } => WorkspaceSlotMutationRefused { reason: "workspace mutation key is not addressable" }
+        }
+      }
+      OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceSlotMutationRefused { reason: "workspace slot mutation store is outside protected custody or unreadable" }
+      OwnershipUnread { reason: _ } => WorkspaceSlotMutationRefused { reason: "workspace slot mutation store is outside protected custody or unreadable" }
+    }
+  }
+}
+
+// Releasing one guard cannot free another incarnation. A failed release or readback remains an
+// outstanding obligation; it must never be described as a free slot or successful fleet apply.
+fn workspace_slot_mutation_release(lease: WorkspaceSlotMutationLease) -> Bool {
+  match lease {
+    WorkspaceSlotMutationLeaseHeld { held } => if starts_with(s: held.owner as String, prefix: "workspace-commissioning:") { false }
+      else { workspace_slot_mutation_release_fenced(lease: lease) }
+    WorkspaceSlotMutationNotApplicable => true
+  }
+}
+
+fn workspace_slot_mutation_release_fenced(lease: WorkspaceSlotMutationLease) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_slot_mutation", decl_name: "workspace_slot_mutation_release"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_finish"),
+  ]
+{
+  match lease {
+    WorkspaceSlotMutationNotApplicable => true
+    WorkspaceSlotMutationLeaseHeld { held } => {
+      let root = workspace_commissioning_store_location as NonEmptyStr
+      let reason = concat("mutation-completed:", held.owner as String) as DurableHoldReleaseRef
+      match read_store_ownership(path: root as String) {
+        OwnershipRead { ownership: StoreRootOwned } => match file_hold_release_assess(root: root,
+          slot_key: held.key, owner: held.owner, acquired_generation: held.generation, released_by: reason) {
+          FileHoldReleasePlanned { plan } => match file_hold_release_commit(plan: plan) {
+            FileHoldReleased { slot_key: _, generation } => match observe_file_hold(root: root, key: held.key) {
+              HoldSlotFree { generation: observed, released_by } => observed == generation && released_by == reason
+              HoldSlotAbsent => false
+              HoldSlotHeld { generation: _, owner: _ } => false
+              HoldSlotUndecodable { generation: _, detail: _ } => false
+              HoldObservationUnavailable { cause: _ } => false
+            }
+            FileHoldReleaseLost { slot_key: _ } => false
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
+          }
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+        }
+        OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+        OwnershipUnread { reason: _ } => false
+      }
+    }
+  }
+}
+
+fn workspace_commissioning_mutation_owner(plan_hash: NonEmptyStr) -> DurableHoldOwnerRef {
+  concat("workspace-commissioning:", plan_hash as String) as DurableHoldOwnerRef
+}
+
+fn workspace_commissioning_mutation_held(slot_key: NonEmptyStr, plan_hash: NonEmptyStr) -> Bool {
+  let root = workspace_commissioning_store_location as NonEmptyStr
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key)) {
+      HoldSlotHeld { generation: _, owner } => owner == workspace_commissioning_mutation_owner(plan_hash: plan_hash)
+      HoldSlotAbsent => false
+      HoldSlotFree { generation: _, released_by: _ } => false
+      HoldSlotUndecodable { generation: _, detail: _ } => false
+      HoldObservationUnavailable { cause: _ } => false
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
+  }
+}
+
+// A committed controller journal is not exposed while its enclosing mutation is outstanding.
+// Missing or unreadable exclusion history is not evidence that commissioning completed.
+fn workspace_slot_mutation_supply_open(slot_key: NonEmptyStr) -> Bool {
+  let root = workspace_commissioning_store_location as NonEmptyStr
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key)) {
+      HoldSlotFree { generation: _, released_by: _ } => true
+      HoldSlotAbsent => false
+      HoldSlotHeld { generation: _, owner: _ } => false
+      HoldSlotUndecodable { generation: _, detail: _ } => false
+      HoldObservationUnavailable { cause: _ } => false
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
+  }
+}
+
+fn workspace_slot_mutation_still_owned(held: WorkspaceSlotMutationHeld) -> Bool {
+  let root = workspace_commissioning_store_location as NonEmptyStr
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: held.key) {
+      HoldSlotHeld { generation, owner } => generation == held.generation && owner == held.owner
+      HoldSlotAbsent => false
+      HoldSlotFree { generation: _, released_by: _ } => false
+      HoldSlotUndecodable { generation: _, detail: _ } => false
+      HoldObservationUnavailable { cause: _ } => false
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
+  }
+}
+
+type WorkspaceMutationRecoveryStanding
+  = WorkspaceMutationRecoveryHeld
+  | WorkspaceMutationRecoveryReleased
+  | WorkspaceMutationRecoveryRefused
+
+// Recovery uses the acquired generation recorded by the enclosing transaction. A free key
+// from another transition, even with the same plan owner, cannot settle this transaction.
+fn workspace_mutation_recovery_standing(observed: DurableHoldObservation,
+  owner: DurableHoldOwnerRef, acquired: CasGeneration) -> WorkspaceMutationRecoveryStanding {
+  match observed {
+    HoldSlotHeld { generation, owner: holder } => if generation == acquired && holder == owner {
+      WorkspaceMutationRecoveryHeld
+    } else { WorkspaceMutationRecoveryRefused }
+    HoldSlotFree { generation, released_by } => match cas_generation_successor(g: acquired) {
+      CasSuccessorGeneration { generation: expected } => if generation == expected
+        && released_by == (concat("mutation-completed:", owner as String) as DurableHoldReleaseRef) {
+        WorkspaceMutationRecoveryReleased
+      } else { WorkspaceMutationRecoveryRefused }
+      CasSuccessorExhausted { head: _ } => WorkspaceMutationRecoveryRefused
+    }
+    HoldSlotAbsent => WorkspaceMutationRecoveryRefused
+    HoldSlotUndecodable { generation: _, detail: _ } => WorkspaceMutationRecoveryRefused
+    HoldObservationUnavailable { cause: _ } => WorkspaceMutationRecoveryRefused
+  }
+}
+
+type WorkspaceCommissioningMutationRecovery
+  = WorkspaceCommissioningMutationRetained { lease: WorkspaceSlotMutationLease }
+  | WorkspaceCommissioningMutationReleased
+  | WorkspaceCommissioningMutationRecoveryRefused
+
+// Only completed-controller recovery can reconstruct a commissioning lease. This does not
+// acquire a new generation and grants no permission to start another invocation.
+fn workspace_commissioning_mutation_recover(slot_key: NonEmptyStr, plan_hash: NonEmptyStr,
+  acquired: CasGeneration) -> WorkspaceCommissioningMutationRecovery
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_apply_readback", decl_name: "workspace_commissioning_apply_recover_completed")]
+{
+  let root = workspace_commissioning_store_location as NonEmptyStr
+  let key = workspace_slot_mutation_key(slot_key: slot_key)
+  let owner = workspace_commissioning_mutation_owner(plan_hash: plan_hash)
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match workspace_mutation_recovery_standing(
+      observed: observe_file_hold(root: root, key: key), owner: owner, acquired: acquired) {
+      WorkspaceMutationRecoveryHeld => WorkspaceCommissioningMutationRetained {
+        lease: WorkspaceSlotMutationLeaseHeld { held: WorkspaceSlotMutationHeld {
+          key: key, owner: owner, generation: acquired,
+        } },
+      }
+      WorkspaceMutationRecoveryReleased => WorkspaceCommissioningMutationReleased
+      WorkspaceMutationRecoveryRefused => WorkspaceCommissioningMutationRecoveryRefused
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningMutationRecoveryRefused
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningMutationRecoveryRefused
+  }
+}

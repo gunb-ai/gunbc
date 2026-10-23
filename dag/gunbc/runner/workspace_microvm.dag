@@ -1,0 +1,266 @@
+module gunbc.workspace_microvm
+
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_owner_enrollment }
+import extdeps.ssh { ssh_public_key_line }
+import std.optional { Absent, Present }
+import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
+import std.algebra { trim }
+import std.resources { Filesystem }
+import extdeps.exec.command { LocalExec }
+import extdeps.ssh.openssh_client_commands { ssh_keygen_fingerprint_command }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead, StatFieldUnread }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import std.measure { byte_size_count, gibibyte_to_byte_size }
+import product.fabric.identity { fabric_identity_eq }
+import product.fabric.memory_grant { MemoryGrant, memory_grant_bytes }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label }
+import gunbc.workspace_allocation { WorkspaceReservation, WorkspaceProfile, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_bound_seconds }
+import gunbc.build_cache_instance { runner_slot_identity_equal }
+import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
+import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
+import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, MicroVmAttempt, runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property }
+import gunbc.runner_microvm_lifecycle { AttemptIdentity }
+import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload }
+import gunbc.workspace_guest_image { VerifiedWorkspaceImage }
+import gunbc.runner_microvm { gunbc_runner_microvm_declared_realization_allowance, jit_drive_newline_sector, jit_drive_utf8_size, runner_microvm_network_interfaces }
+import gunbc.runner_microvm_network { runner_slot_network, runner_slot_network_as_microvm_networking, runner_slot_guest_network_boot_args }
+import gunbc.runner_attempt_launch {
+  AttemptGround, GroundClear, GroundOccupied, AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedPriorResources,
+  LaunchAuthorizedByWorkspaceReservation, WorkspaceLaunchPayload, BootstrapDeviceStaging,
+  attempt_jail_chroot_root, jail_kernel_path, jail_rootfs_path, jail_workspace_path, jail_config_path,
+  attempt_unprivileged_uid, attempt_unprivileged_gid, host_busybox_bin,
+}
+import extdeps.virtualization.firecracker {
+  FirecrackerVmConfig, FirecrackerBootSource, FirecrackerDrive, FirecrackerMachineConfig,
+  firecracker_jailer_run_command, firecracker_requires_kvm_device, firecracker_block_sector_size,
+}
+import extdeps.tools.gnu_coreutils { cp_command, install_empty_file_command, install_file_owned_command, timeout_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.e2fsprogs { dumpe2fs_superblock_command }
+import extdeps.systemd { MemoryMax, MemorySwapMax, CPUQuota }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+
+// A public-key reference is resolved by administrator-owned configuration. The browser cannot
+// supply a host path or smuggle authorized_keys options into the bootstrap record.
+type WorkspacePublicKeyText sole_constructor { reference: NonEmptyStr, line: NonEmptyStr }
+type WorkspacePublicKeyTextAdmission = WorkspacePublicKeyTextAdmitted { key: WorkspacePublicKeyText } | WorkspacePublicKeyRefused
+
+type WorkspacePublicKey sole_constructor { reference: NonEmptyStr, line: NonEmptyStr }
+
+type WorkspacePublicKeyAdmission = WorkspacePublicKeyAdmitted { key: WorkspacePublicKey } | WorkspacePublicKeyNotAdmitted { reason: String }
+
+// Guest access is the request owner's enrolled key and nothing else: the request's server-supplied
+// reference must be the one the policy enrolls for that owner, and it must name exactly one catalog
+// key of the admitted policy, whose algorithm, material and comment admission already checked. A
+// reference enrolled for another owner -- including the one the previous
+// incarnation of a reused slot carried -- is refused before any bootstrap record is written.
+fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy,
+  owner: PrincipalRef, reference: NonEmptyStr) -> WorkspacePublicKeyAdmission {
+  match workspace_owner_enrollment(policy: policy, owner: owner) {
+    Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace owner is not enrolled for guest access" }
+    Present { value: enrollment } => if (enrollment.public_key_ref as String) != (reference as String) {
+      WorkspacePublicKeyNotAdmitted { reason: "workspace key reference is not the one enrolled for this owner" }
+    } else {
+      let rows = filter(policy.catalog, k => (k.reference as String) == (reference as String))
+      if count(rows) != 1 { WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" } }
+      else { match rows.first() {
+        Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" }
+        Present { value: row } => WorkspacePublicKeyAdmitted { key: WorkspacePublicKey { reference: reference, line: ssh_public_key_line(k: row.key) as NonEmptyStr } }
+      } }
+    }
+  }
+}
+
+fn workspace_public_key(reference: NonEmptyStr, text: String) -> WorkspacePublicKeyTextAdmission {
+  let line = trim(s: text)
+  if !starts_with(s: line, prefix: "ssh-ed25519 ") || string_contains(s: line, pattern: "\n") || string_contains(s: line, pattern: "\r") {
+    WorkspacePublicKeyRefused
+  } else { WorkspacePublicKeyTextAdmitted { key: WorkspacePublicKeyText { reference: reference, line: line as NonEmptyStr } } }
+}
+
+// Key files are resolved by the administrator catalog, never from a submitted filesystem path.
+// OpenSSH validates the actual key encoding; text-prefix admission alone cannot promise login.
+fn workspace_public_key_from_file(reference: NonEmptyStr, path: String) -> WorkspacePublicKeyAdmission {
+  let uid = stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec))
+  let mode = stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec))
+  let owned = match uid { StatFieldRead { value: value } => value == "0" StatFieldUnread { detail: _ } => false }
+  let restricted = match mode { StatFieldRead { value: value } => value == "400" || value == "600" || value == "644" StatFieldUnread { detail: _ } => false }
+  if !owned || !restricted { WorkspacePublicKeyNotAdmitted { reason: "workspace public-key catalog file is not root-owned and protected against other writers" } }
+  else {
+    let read = Filesystem.Read(path: path)
+    if !read.success { WorkspacePublicKeyNotAdmitted { reason: "workspace public-key catalog file is unreadable" } }
+    else { match workspace_public_key(reference: reference, text: read.content) {
+      WorkspacePublicKeyRefused => WorkspacePublicKeyNotAdmitted { reason: "workspace public key contains options, extra records or an unsupported algorithm" }
+      WorkspacePublicKeyTextAdmitted { key: text } => {
+        let checked = run_shell_command_capture(command: ssh_keygen_fingerprint_command(key_file: path), transport: LocalExec)
+        let again = Filesystem.Read(path: path)
+        if !process_outcome_admitted(outcome: checked) || !again.success || again.content != read.content {
+          WorkspacePublicKeyNotAdmitted { reason: "OpenSSH refused the public key or its catalog content changed during admission" }
+        } else { WorkspacePublicKeyAdmitted { key: WorkspacePublicKey { reference: reference, line: text.line } } }
+      }
+    } }
+  }
+}
+
+// The launch carrier joins the reread cell reservation to the stored request, grant, image,
+// bootstrap key and lease. Launch arguments cannot substitute another request's resource grant.
+type WorkspaceLaunchBinding sole_constructor {
+  reservation: WorkspaceReservation
+  attempt: MicroVmAttempt
+  image: VerifiedWorkspaceImage
+  public_key: WorkspacePublicKey
+  bootstrap_identity: NonEmptyStr
+  lease_expires_unix: Int
+}
+
+type WorkspaceLaunchAdmission
+  = WorkspaceLaunchBound { binding: WorkspaceLaunchBinding }
+  | WorkspaceLaunchRefused { reason: String }
+
+fn bind_workspace_launch(
+  reservation: WorkspaceReservation, snapshot: RequiredBuildCellSnapshot,
+  attempt: MicroVmAttempt, image: VerifiedWorkspaceImage, public_key: WorkspacePublicKey, now_unix: Int,
+) -> WorkspaceLaunchAdmission {
+  if !runner_slot_identity_equal(a: reservation.slot, b: attempt.slot)
+    || (snapshot.cell as String) != (fabric_cell_id_for_slot(slot: attempt.slot) as String)
+    || snapshot.generation != reservation.generation
+    || !fabric_identity_eq(left: snapshot.work, right: reservation.work)
+    || !fabric_identity_eq(left: snapshot.demand, right: reservation.demand)
+    || !fabric_identity_eq(left: snapshot.offer, right: reservation.offer) {
+    WorkspaceLaunchRefused { reason: "workspace request and live reservation disagree on work, cell, offer or generation" }
+  } else if !fabric_identity_eq(left: reservation.grant.work, right: reservation.work)
+    || (reservation.grant.attempt.key as String) != (attempt.attempt_id.value as String)
+    || (reservation.grant.attempt.principal as String) != (reservation.work.principal as String)
+    || (reservation.work.principal as String) != principal_ref_label(p: reservation.request.owner) {
+    WorkspaceLaunchRefused { reason: "memory grant is not bound to this owner's work and attempt" }
+  } else if byte_size_count(b: memory_grant_bytes(g: reservation.grant)) != byte_size_count(b: workspace_profile_memory(profile: reservation.request.profile)) {
+    WorkspaceLaunchRefused { reason: "committed guest RAM differs from the selected workspace profile" }
+  } else if (image.identity as String) != (reservation.request.image as String)
+    || (public_key.reference as String) != (reservation.request.public_key_ref as String) {
+    WorkspaceLaunchRefused { reason: "workspace image or public key differs from the admitted request" }
+  } else if string_contains(s: attempt.attempt_id.value as String, pattern: "\n") || string_contains(s: attempt.attempt_id.value as String, pattern: "\r") {
+    WorkspaceLaunchRefused { reason: "workspace bootstrap identity cannot contain a record separator" }
+  } else {
+    bind_workspace_launch_lease(reservation: reservation, attempt: attempt, image: image, public_key: public_key, now_unix: now_unix)
+  }
+}
+
+fn bind_workspace_launch_lease(
+  reservation: WorkspaceReservation, attempt: MicroVmAttempt, image: VerifiedWorkspaceImage,
+  public_key: WorkspacePublicKey, now_unix: Int,
+) -> WorkspaceLaunchAdmission {
+  if !utc_instant_is_canonical(t: reservation.request.expires_at) {
+    WorkspaceLaunchRefused { reason: "workspace lease expiry is not a canonical UTC instant" }
+  } else {
+    let expires = utc_instant_seconds_after(later: reservation.request.expires_at, earlier: "1970-01-01T00:00:00Z")
+    if now_unix <= 0 || expires <= now_unix || expires - now_unix > workspace_lease_bound_seconds() {
+      WorkspaceLaunchRefused { reason: "workspace lease has expired or exceeds its bounded policy" }
+    } else {
+      WorkspaceLaunchBound { binding: WorkspaceLaunchBinding {
+        reservation: reservation, attempt: attempt, image: image, public_key: public_key,
+        bootstrap_identity: attempt.attempt_id.value, lease_expires_unix: expires,
+      } }
+    }
+  }
+}
+
+fn workspace_bootstrap_content(binding: WorkspaceLaunchBinding) -> String {
+  let body = join([binding.bootstrap_identity as String, "\n", binding.public_key.line as String, "\n"], "")
+  let sector = byte_size_count(b: firecracker_block_sector_size)
+  let tail = byte_size_count(b: jit_drive_utf8_size(text: body)) % sector
+  if tail == 0 { body } else { concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
+}
+
+data workspace_bootstrap_jail_path: FilePath = "/bootstrap.bin"
+
+fn workspace_attempt_identity(binding: WorkspaceLaunchBinding, invocation_id: NonEmptyStr, firecracker_binary: String) -> AttemptIdentity {
+  AttemptIdentity {
+    attempt: binding.attempt, allocation_generation: binding.reservation.generation, invocation_id: invocation_id,
+    workload: WorkspaceWorkload { bootstrap_identity: binding.bootstrap_identity, image_identity: binding.image.identity, lease_expires_unix: binding.lease_expires_unix },
+    credential_device_path: concat(attempt_jail_chroot_root(attempt: binding.attempt, firecracker_binary: firecracker_binary), workspace_bootstrap_jail_path as String),
+  }
+}
+
+fn workspace_machine_config<P, A>(profile: WorkspaceProfile, grant: MemoryGrant<P, A>) -> FirecrackerMachineConfig {
+  FirecrackerMachineConfig {
+    vcpu_count: workspace_profile_vcpus(profile: profile),
+    mem_size_mib: byte_size_count(b: memory_grant_bytes(g: grant)) / 1048576,
+  }
+}
+
+fn workspace_vm_config(binding: WorkspaceLaunchBinding) -> FirecrackerVmConfig {
+  let net = runner_slot_network(slot: binding.attempt.slot)
+  FirecrackerVmConfig {
+    boot_source: FirecrackerBootSource {
+      kernel_image_path: jail_kernel_path,
+      boot_args: concat("keep_bootcon console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw ", runner_slot_guest_network_boot_args(net: net)) as NonEmptyStr,
+    },
+    drives: [
+      FirecrackerDrive { drive_id: "workspace-root", path_on_host: jail_workspace_path, is_root_device: true, is_read_only: false },
+      FirecrackerDrive { drive_id: "workspace-bootstrap", path_on_host: workspace_bootstrap_jail_path, is_root_device: false, is_read_only: true },
+    ],
+    network_interfaces: runner_microvm_network_interfaces(net: runner_slot_network_as_microvm_networking(net: net)),
+    machine_config: workspace_machine_config(profile: binding.reservation.request.profile, grant: binding.reservation.grant),
+  }
+}
+
+// Shared launch/staging/controller path, with one writable 8 GiB guest disk. The rootfs is
+// populated before launch; its staging readback is not a formatting operation that erases it.
+fn workspace_launch_plan(binding: WorkspaceLaunchBinding, ground: AttemptGround, jailer_binary: String, firecracker_binary: String) -> AttemptLaunchPlan {
+  match ground {
+    GroundOccupied => LaunchRefusedPriorResources
+    GroundClear => {
+      let attempt = binding.attempt
+      let jail_root = attempt_jail_chroot_root(attempt: attempt, firecracker_binary: firecracker_binary)
+      let rootfs = concat(jail_root, jail_rootfs_path as String)
+      let disk = concat(jail_root, jail_workspace_path as String)
+      let bootstrap = concat(jail_root, workspace_bootstrap_jail_path as String)
+      let net = runner_slot_network(slot: attempt.slot)
+      LaunchAuthorized {
+        authorization: LaunchAuthorizedByWorkspaceReservation { work: binding.reservation.work, generation: binding.reservation.generation },
+        payload: WorkspaceLaunchPayload { bootstrap_identity: binding.bootstrap_identity, device: BootstrapDeviceStaging {
+          host_path: bootstrap,
+          create: install_empty_file_command(path: bootstrap, octal_mode: "0400", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid),
+          content: workspace_bootstrap_content(binding: binding),
+        } },
+        workspace_grant: workspace_disk_bytes(),
+        lease_expires_unix: Present { value: binding.lease_expires_unix },
+        runtime_properties: [
+          SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: memory_grant_bytes(g: binding.reservation.grant)) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
+          SystemdRunProperty { property: MemorySwapMax, value: "0" },
+          SystemdRunProperty { property: CPUQuota, value: concat(to_string(workspace_profile_vcpus(profile: binding.reservation.request.profile) * 100), "%") as NonEmptyStr },
+        ],
+        tap_device: net.tap_device, guest_ip_boot_arg: runner_slot_guest_network_boot_args(net: net),
+        slice: runner_microvm_attempt_slice_property(attempt: attempt), jail_root: jail_root,
+        stage_jail_root: mkdir_parents_command(path: jail_root),
+        stage_kernel: cp_command(source: binding.image.kernel, destination: concat(jail_root, jail_kernel_path as String)),
+        stage_rootfs: cp_command(source: binding.image.rootfs, destination: rootfs),
+        workspace_path: disk,
+        workspace_create: install_file_owned_command(source: rootfs, destination: disk, mode: "0600", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid),
+        workspace_format: dumpe2fs_superblock_command(image_path: disk),
+        kvm_device: firecracker_requires_kvm_device,
+        vm_config: workspace_vm_config(binding: binding),
+        jailer: firecracker_jailer_run_command(
+          jailer_binary: jailer_binary, jailer_id: attempt.attempt_id.value as String, exec_file: firecracker_binary,
+          uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid,
+          chroot_base_dir: runner_microvm_attempt_jail_base(attempt: attempt), config_path_in_jail: jail_config_path,
+        ),
+      }
+    }
+  }
+}
+
+// A withdrawn reservation still names real cleanup subjects. This value does not authorize launch.
+fn workspace_retirement_identity(reservation: WorkspaceReservation, invocation_id: NonEmptyStr, firecracker_binary: String) -> AttemptIdentity? {
+  if !utc_instant_is_canonical(t: reservation.request.expires_at) { none }
+  else { match microvm_attempt(slot: reservation.slot, attempt_id: reservation.grant.attempt.key as String) {
+    MicroVmAttemptRefused { refusal: _ } => none
+    MicroVmAttemptAccepted { attempt: accepted } => Present { value: AttemptIdentity {
+      attempt: accepted, allocation_generation: reservation.generation, invocation_id: invocation_id,
+      workload: WorkspaceWorkload { bootstrap_identity: accepted.attempt_id.value, image_identity: reservation.request.image,
+        lease_expires_unix: utc_instant_seconds_after(later: reservation.request.expires_at, earlier: "1970-01-01T00:00:00Z") },
+      credential_device_path: concat(attempt_jail_chroot_root(attempt: accepted, firecracker_binary: firecracker_binary), workspace_bootstrap_jail_path as String),
+    } }
+  } }
+}

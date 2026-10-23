@@ -1,0 +1,239 @@
+module test.claim.parse_test_coproduct_leading_pipe
+
+import test.claim.parse_test_block_headed_operand_class { bc_parse_at }
+import v2.compiler.body_lowering_fold { BodyLoweredTree }
+import v2.compiler.normalize { normalize_node }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import std.optional { Absent, Optional, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Subject: two rows of the ONE dag grammar (v2.extdeps.languages.dag) that the native front end
+// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_lead_expr (a coproduct
+// opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`) -- and their
+// lowering by normalize. Gated by the v2.test.parse census (gunbc#13372, phase 3), which moved this
+// module out of v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.
+//
+// THE REAL ROUTE: leading_pipe_single_line_coproduct_parses_holds parses a WHOLE MODULE through the
+// prepared grammar (v2.test.parse.supplied_token_stream_support supplied_stream_parse), its stream
+// pinned to the real tokenizer by cps_fidelity_1; the refusing controls run the same route and pin
+// that each row admits only the seed's spelling.
+//
+// EVERY LOWERING CLAIM IS AT ITS INTERFACE: the one declaration it is about, parsed at its production
+// (dag_production_type_decl or dag_production_fn_decl) on the real prepared grammar with the stream's
+// layout, then lowered by normalize_node. The module header and the other declarations are not their
+// subject (DESIGN section 3, a witness discriminates at one interface). Three of them still exceed the
+// per-claim eval-step budget at that grain; they are the population of gunbc.rung_drop
+// coproduct_fragment_normalize_new_witness_eval_step_cost. The four claims that lower a fn declaration
+// exceed the floor's CPU enrolment margin even at fragment grain, which no drop lowers; they stay ungated,
+// in their original form, in v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse, a stated frontier
+// (gunbc.recurring_failure_mode fn_fragment_lowering_exceeds_the_enrolment_margin).
+
+// The declaration fragment, parsed at its production and lowered.
+fn cp_lowered(text: String, production: Symbol) -> Outcome<BodyLoweredTree> {
+  match bc_parse_at(text: text, production: production) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: n, diagnostics: _ } => normalize_node(n: n)
+  }
+}
+
+fn cp_lowers(text: String, production: Symbol) -> Bool {
+  match cp_lowered(text: text, production: production) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Whether two type fragments lower to the same provenance-free tree; Absent if either refuses.
+fn cp_same_lowering(left: String, right: String) -> Optional<Bool> {
+  match cp_lowered(text: left, production: ^dag_production_type_decl) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: l, diagnostics: _ } =>
+      match cp_lowered(text: right, production: ^dag_production_type_decl) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: r, diagnostics: _ } =>
+          Present { value: canonicalize_node_strip_provenance(n: l.node) == canonicalize_node_strip_provenance(n: r.node) }
+      }
+  }
+}
+
+test fn leading_pipe_multiline_coproduct_parses_and_normalizes_holds() -> Bool {
+  cp_lowers(text: "type H =\n  | A\n  | B", production: ^dag_production_type_decl)
+}
+
+test fn positional_payload_variants_parse_and_normalize_holds() -> Bool {
+  cp_lowers(text: "type C =\n  | A(X)\n  | B { n: Int }\n  | D", production: ^dag_production_type_decl)
+}
+
+// THE LEADING SEPARATOR IS LAYOUT, NOT MEANING: `type H = | A | B` and `type H = A | B` must lower
+// to the same provenance-free tree (the leading `|` mints occurrence ids of its own, so the
+// comparison is over canonicalize_node_strip_provenance).
+test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> Bool {
+  match cp_same_lowering(left: "type H = | A | B", right: "type H = A | B") {
+    Present { value: same } => same
+    Absent => false
+  }
+}
+
+// The discriminating half of the equality above: the same projection DOES separate two coproducts
+// whose alternatives differ, so the leading-pipe equality is not a comparison that cannot fail.
+test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool {
+  match cp_same_lowering(left: "type H = | A | B", right: "type H = A | C") {
+    Present { value: same } => !same
+    Absent => false
+  }
+}
+
+// THE INPUT IS SUPPLIED; PARSE AND NORMALIZE STILL EXECUTE. These rows are gunbc#11998's claims,
+// carried on this branch and converted here rather than in their own PR, because the floor
+// enforces the per-claim ceiling on this branch and they breach it here. Supplying the token
+// stream keeps parse in the subject, which matters for the rows whose subject IS parsing, and
+// each specimen owes a cp_fidelity_* claim that the stream IS what the real tokenizer emits
+// (v2.test.parse.supplied_token_stream_support).
+fn cp_parses(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn leading_pipe_single_line_coproduct_parses_holds() -> Bool {
+  cp_parses(o: cps_parsed_1())
+}
+
+test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool {
+  match cp_parses(o: cps_parsed_2()) {
+    true => false
+    false => true
+  }
+}
+
+test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool {
+  match cp_parses(o: cps_parsed_4()) {
+    true => false
+    false => true
+  }
+}
+
+test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
+  match cp_parses(o: cps_parsed_5()) {
+    true => false
+    false => true
+  }
+}
+
+fn cps_stream_1() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 25, end: 26 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 27, end: 28 }
+  ])
+}
+
+test fn cps_fidelity_1() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype H = | A | B\n",
+    file: ^coproduct_parse_probe,
+    supplied: cps_stream_1()
+  )
+}
+
+fn cps_stream_2() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "H", file: ^coproduct_parse_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 23, end: 24 }
+  ])
+}
+
+test fn cps_fidelity_2() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype H =\n  |\n",
+    file: ^coproduct_parse_probe,
+    supplied: cps_stream_2()
+  )
+}
+
+fn cps_stream_4() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^coproduct_parse_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^coproduct_parse_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^coproduct_parse_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^coproduct_parse_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "X", file: ^coproduct_parse_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^coproduct_parse_probe, start: 24, end: 25 },
+    Token { class: ^dag_token_ident, lexeme: "Z", file: ^coproduct_parse_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^coproduct_parse_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^coproduct_parse_probe, start: 29, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^coproduct_parse_probe, start: 31, end: 32 }
+  ])
+}
+
+test fn cps_fidelity_4() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(X, Z) | B\n",
+    file: ^coproduct_parse_probe,
+    supplied: cps_stream_4()
+  )
+}
+
+fn cps_stream_5() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^coproduct_parse_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^coproduct_parse_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^coproduct_parse_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^coproduct_parse_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^coproduct_parse_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^coproduct_parse_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^coproduct_parse_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "X", file: ^coproduct_parse_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^coproduct_parse_probe, start: 20, end: 21 }
+  ])
+}
+
+test fn cps_fidelity_5() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype R(X)\n",
+    file: ^coproduct_parse_probe,
+    supplied: cps_stream_5()
+  )
+}
+
+fn cps_parsed_1() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cps_stream_1())
+}
+
+fn cps_parsed_2() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cps_stream_2())
+}
+
+fn cps_parsed_4() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cps_stream_4())
+}
+
+fn cps_parsed_5() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cps_stream_5())
+}
+

@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bare_name_resolved_only_by_the_flat_namespace: RecurringFailureMode = RecurringFailureMode {
+  identity: "bare_name_resolved_only_by_the_flat_namespace" as NonEmptyStr,
+
+  receipts: [
+    "**a bare name resolved only by the flat namespace** (INVALID STATE: a module names a provider or type bare -- `systemd.Journalctl.UnitInvocationLog(...)`, `ConstructionJustification { ... }` -- without importing its declaring module. Every whole-tree compile resolves it, because that compile's single flat namespace already holds the declaring module. An entry compiled ALONE loads only its import closure, the declaring module is not pulled, and the entry refuses (`no field 'Journalctl' on type 'systemd'`, `unresolved type 'ConstructionJustification'`).",
+
+    "HARM: SILENT UNTIL DISPATCH. Every required lane compiles a whole-tree or floor subject, so all of them stay green. The operational workflow entry `gunbc.runner_microvm_slot_start` (fleet-converge mode microvm_slot_start) sat uncompilable on main, and would have refused the next time it was dispatched to a host. The severity lives in (check x population that executes it): the refusal is loud, but no CI step compiles the population it fires in.",
+
+    "MECHANISM: the loader's bare-reference channel, rostered as `gunbc.recurring_failure_mode` `bare_reference_channel_declines_a_pull_in_silence`: a file that declares any `import` line has its bare channel turned off, so a bare use in such a file never pulls the declaring module. That row owns the loader mechanism. This row owns the POPULATION gap: separately compiled entries that no CI step compiles on their own.",
+
+    "RECEIPTS: gunbc#12158 added `runner_microvm_lifecycle_realize` `observe_guest_bring_up` calling `systemd.Journalctl` bare, and CI stayed green. gunbc#12205 made an unimported bare provider refuse at the file, and seeded this pair as `ActiveDebt` in `v2.workflow.floor_unimported_bare_provider_debt_roster`. A debt row admits the pair; it does not make the name resolve, so the entry still refused. quiet-eagle-13's per-entry census (gunbc#12398) found it together with three siblings: `v2.lens.languages_consumer_census`, `gunbc.auth.patterns` and `gunbc.tools.review_codex`. gunbc#12494 imports the two live ones and retires both pairs with `ImportsFixed`.",
+
+    "DISTINGUISHING FACTS: one entry, two compiles, only the scope varying. The whole-root compile is clean. `gunbc compile --source-root dag --source-root src/v2 --entry <entry> --target dag --output-dir <tmp>` refuses at the bare site (per quiet-eagle-13's census, gunbc#12398). Receipted on gunbc#12494 (per-entry compile at its reviewed head, one binary, the before side being that head with only the added imports reverted): each entry refused rc=1 without its import and compiled rc=0 with it, with no further refusal exposed.",
+
+    "RUNG FOUND AT: below the ladder for this population -- a located refusal exists, but no gate executes it over the population where it fires. CEILING: 2 for the population (a required per-entry compile over every separately compiled entry) and 3 for the class (a bare name that resolves only through the flat namespace refuses at the file on every route, which gunbc#12205 began by rostering the standing pairs as monotone debt).",
+
+    "NEXT-RUNG TRIGGER, as the capability: every `gunbc.ci.ci_spec` workflow entry is compiled per-entry by a required phase of an existing required lane -- sufficient that an entry which refuses on its own blocks a merge. The design is a floor phase over the entries derived from `gunbc.ci.ci_spec`, with no new job. The trigger is gated on measuring the fold's price first (eager-owl-205, 2026-09-28): the phase runs on every floor, and one per-entry compile over the microvm closure OOMed and timed out on BuildBuddy.",
+    "THE CASE WITH NO IMPORT TO ADD: CONSTRUCTORS OF THE `T?` SUGAR (found on gunbc#13048). extdeps.external_authority `cited_figure_read_obligation(..) -> NonEmptyStr?` returns bare `Absent` and `Present { value: o }`, and no dag/extdeps module imports either name. The seed binds them; the v2 resolver does not: the module's own native resolve refuses resolve_reason_unbound_symbol with resolve_unbound_name_is_declared_in_several_modules at `Absent` (measured through #13028's closure-provider refusal roster, the only refused root in a 15-module std closure). The v2 std modules that did the same had an import to add (v2.std.optional Optional/Present/Absent, #13048), but a module that writes only `T?` names no Optional at all, so for it the language must answer the question this row has not had to: DOES THE `T?` SUGAR BRING ITS CONSTRUCTORS INTO SCOPE, and if so, WHICH declaration do they bind to when several modules declare a Present/Absent? Until that is decided, every dag/extdeps module that constructs or matches a `T?` value refuses its own v2 resolve and drops out of any closure index that needs it. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a declared binding of the `?` sugar's constructors (to one Optional authority) that v2 resolve consults -- or a ruling that `T?` users must import that authority, with the import then added -- SUFFICIENT FOR extdeps.external_authority to resolve natively.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner_microvm_lifecycle_realize", decl_name: "observe_guest_bring_up", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_unimported_bare_provider_debt_roster", decl_name: "UnimportedBareProviderStanding", field: WholeDeclaration },
+  ],
+}

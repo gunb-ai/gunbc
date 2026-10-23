@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.upstream_input_constraint_held_only_by_prose
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data upstream_input_constraint_held_only_by_prose: RecurringFailureMode = RecurringFailureMode {
+  identity: "upstream_input_constraint_held_only_by_prose" as NonEmptyStr,
+
+  receipts: [
+    "upstream input constraint held only by prose: an external API rejects an input that our model admits -- a length cap, a character class, an enum the upstream narrowed -- and the constraint is recorded as a source annotation on the operation rather than on the input it constrains. The annotation is unreadable by any Accepted program (DESIGN section 4c), so the wall is the author having read it. Every new call site is a fresh chance to violate a constraint the corpus already learned.",
+
+    "SPECIMEN, 2026-09-17, gunbc.auth.heal_publisher_federation heal_publisher_wif_pool_display_name. The declared pool display name was 'GitHub heal publisher (protected publication only)' -- 49 characters. gcp.IamAdmin CreateWorkloadIdentityPool answers HTTP 400 INVALID_ARGUMENT: \"The WorkloadIdentityPool's display name must be less than or equal to 32 characters.\" The cost was not the failure: it was that an operator-authorized run, holding a freshly minted control-plane token, reached a live cloud API before anything checked a property of a string literal already sitting in the corpus.",
+
+    "WHAT WAS DONE, AND WHY IT IS NOT THE CEILING. The name was shortened, the limit recorded on the operation as an annotation, and a claim added over OUR declared name (test.claim.heal_publisher_provision_witness witness_the_pool_display_name_is_within_the_services_limit) with a discriminating control beside it. That takes THIS row to mechanically preventable. It does NOT generalise: a second consumer declaring a 40-character pool name is admitted by the compiler and caught by nothing, because the claim quantifies over one literal rather than over the operation's input.",
+
+    "ATTAINABLE CEILING: structurally impossible. The constraint is a property of the OPERATION'S INPUT FIELD, so it belongs there -- a bounded-length carrier on display_name, the same move std.integer makes for machine widths, after which an over-long literal has no constructor. NEXT-RUNG TRIGGER: a length-refined string carrier admitted by the .dag type system and consumable from an extdeps operation input declaration. Until that exists, a lens over call sites is the honest interim, and the per-consumer claim is the interim's interim.",
+
+    "RECOGNITION RULE: an extdeps operation whose annotation states a numeric or lexical limit on an input, with no carrier or check between that sentence and the field. Grep shape: a comment containing 'must be', 'at most', 'no more than', 'maximum' or a digit-plus-'characters' within an operation body. The tell that it is THIS class rather than a documented-but-enforced one is that deleting the annotation changes no verdict anywhere.",
+  ],
+
+  evidence: [],
+}

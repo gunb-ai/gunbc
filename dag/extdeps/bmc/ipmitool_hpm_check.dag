@@ -1,0 +1,214 @@
+module extdeps.bmc.ipmitool_hpm_check
+
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool"
+  }
+}
+
+// THE TABLE `ipmitool hpm check` PRINTS: the PICMG HPM.1 component-properties query as ipmitool
+// renders it. The layout is self-observed, not read from ipmitool's source:
+// extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32 (mtcollins1, BMC 0.32, 2026-10-02)
+// is its one capture. One row per component: `|ID|Name|Active|Backup|Deferred|`, a leading `*` on the
+// ID when the component requires a payload cold reset, and `---.-- --------` for a version the
+// controller does not hold.
+//
+// A VERSION CELL IS KEPT AS THE CONTROLLER RENDERED IT ("0.32 01112100"). The eight hex digits are the
+// component's auxiliary firmware revision bytes, and no public source this repository cites fixes
+// their meaning per component, so nothing here decodes them.
+//
+// ONLY THE CHECK VARIANT IS READ. During an upgrade ipmitool prints the same table with a `File`
+// column and a progress column in place of Backup and Deferred; that table answers a different
+// question and refuses here by name.
+type HpmVersionCell
+  = HpmVersionHeld { rendering: NonEmptyStr }
+  | HpmVersionAbsent
+
+type HpmComponentRow {
+  id: Int
+  name: NonEmptyStr
+  cold_reset_required: Bool
+  active: HpmVersionCell
+  backup: HpmVersionCell
+  deferred: HpmVersionCell
+}
+
+type HpmCheckTable
+  = HpmCheckRead { rows: List<HpmComponentRow> }
+  | HpmCheckUpgradeVariant { header: NonEmptyStr }
+  | HpmCheckUnreadable { detail: NonEmptyStr }
+
+data hpm_version_absent_rendering: NonEmptyStr = "---.-- --------"
+
+// A HELD CELL IS `<major>.<minor> <aux>`: major and minor nonnegative decimal, aux exactly eight hex
+// digits (the HPM.1 auxiliary firmware revision bytes). Anything else is not a version cell.
+fn hpm_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn hpm_hex_digit(c: String) -> Bool {
+  hpm_digit(c: c) || (c >= "A" && c <= "F") || (c >= "a" && c <= "f")
+}
+
+fn hpm_digits_from(t: String, i: Int) -> Bool {
+  if i >= string_length(s: t) { true } else { hpm_digit(c: char_at(s: t, pos: i)) && hpm_digits_from(t: t, i: i + 1) }
+}
+
+fn hpm_hex_from(t: String, i: Int) -> Bool {
+  if i >= string_length(s: t) { true } else { hpm_hex_digit(c: char_at(s: t, pos: i)) && hpm_hex_from(t: t, i: i + 1) }
+}
+
+fn hpm_decimal(t: String) -> Bool {
+  t != "" && hpm_digits_from(t: t, i: 0)
+}
+
+fn hpm_hex8(t: String) -> Bool {
+  string_length(s: t) == 8 && hpm_hex_from(t: t, i: 0)
+}
+
+fn hpm_version_cell(raw: String) -> HpmVersionCell? {
+  let t = trim(s: raw)
+  if t == (hpm_version_absent_rendering as String) {
+    Present { value: HpmVersionAbsent }
+  } else {
+    let parts: List<String> = filter(split(s: t, delimiter: " "), x => x != "")
+    let revision: List<String> = split(s: text_at(xs: parts, i: 0), delimiter: ".")
+    if count(parts) == 2 && count(revision) == 2 && hpm_decimal(t: text_at(xs: revision, i: 0)) && hpm_decimal(t: text_at(xs: revision, i: 1)) && hpm_hex8(t: text_at(xs: parts, i: 1)) {
+      Present { value: HpmVersionHeld { rendering: t as NonEmptyStr } }
+    } else {
+      none
+    }
+  }
+}
+
+fn hpm_component_row(line: String) -> HpmComponentRow? {
+  let cells: List<String> = split(s: line, delimiter: "|")
+  if count(cells) != 7 {
+    none
+  } else {
+    let id_cell = trim(s: text_at(xs: cells, i: 1))
+    let cold = starts_with(s: id_cell, prefix: "*")
+    let id_text = if cold { trim(s: substring(s: id_cell, start: 1, end: string_length(s: id_cell))) } else { id_cell }
+    let name = trim(s: text_at(xs: cells, i: 2))
+    match if hpm_decimal(t: id_text) { parse_int(s: id_text) } else { none } {
+      Absent => none
+      Present { value: id } =>
+        if name == "" { none } else {
+          match hpm_version_cell(raw: text_at(xs: cells, i: 3)) {
+            Absent => none
+            Present { value: active } =>
+              match hpm_version_cell(raw: text_at(xs: cells, i: 4)) {
+                Absent => none
+                Present { value: backup } =>
+                  match hpm_version_cell(raw: text_at(xs: cells, i: 5)) {
+                    Absent => none
+                    Present { value: deferred } =>
+                      Present { value: HpmComponentRow { id: id, name: name as NonEmptyStr, cold_reset_required: cold, active: active, backup: backup, deferred: deferred } }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn text_at(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: x } => x
+    Absent => ""
+  }
+}
+
+fn hpm_header_line(line: String) -> Bool {
+  starts_with(s: trim(s: line), prefix: "|") && string_contains(s: line, pattern: "Active")
+}
+
+fn hpm_data_line(line: String) -> Bool {
+  let t = trim(s: line)
+  starts_with(s: t, prefix: "|") && !string_contains(s: t, pattern: "Name") && !string_contains(s: t, pattern: "Active") && !string_contains(s: t, pattern: "File")
+}
+
+type RowAcc {
+  rows: List<HpmComponentRow>
+  bad: String?
+}
+
+fn hpm_check_table_of(stdout: String) -> HpmCheckTable {
+  let lines: List<String> = split(s: stdout, delimiter: "\n")
+  let headers: List<String> = filter(lines, l => hpm_header_line(line: l))
+  match headers.first() {
+    Absent => HpmCheckUnreadable { detail: "no component table header (a row naming Active) was printed" }
+    Present { value: h } =>
+      if string_contains(s: h, pattern: "File") || any(lines, l => starts_with(s: trim(s: l), prefix: "|") && string_contains(s: l, pattern: "File")) {
+        HpmCheckUpgradeVariant { header: trim(s: h) as NonEmptyStr }
+      } else if !string_contains(s: h, pattern: "Backup") || !string_contains(s: h, pattern: "Deferred") {
+        HpmCheckUnreadable { detail: concat("the component table header does not name Active, Backup and Deferred: ", trim(s: h)) as NonEmptyStr }
+      } else {
+        let none_yet: List<HpmComponentRow> = []
+        let acc = fold(filter(lines, l => hpm_data_line(line: l)), init: RowAcc { rows: none_yet, bad: none }, f: (a, l) => match a.bad {
+          Present { value: _ } => a
+          Absent => match hpm_component_row(line: l) {
+            Present { value: r } => RowAcc { rows: concat(a.rows, [r]), bad: none }
+            Absent => RowAcc { rows: a.rows, bad: Present { value: trim(s: l) } }
+          }
+        })
+        match acc.bad {
+          Present { value: l } => HpmCheckUnreadable { detail: concat("a component row is not |ID|Name|Active|Backup|Deferred|: ", l) as NonEmptyStr }
+          Absent =>
+            if count(acc.rows) == 0 {
+              HpmCheckUnreadable { detail: "the component table has no rows" }
+            } else {
+              match hpm_duplicate(rows: acc.rows) {
+                Present { value: d } => HpmCheckUnreadable { detail: d }
+                Absent => HpmCheckRead { rows: acc.rows }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn hpm_version_cell_text(c: HpmVersionCell) -> String {
+  match c {
+    HpmVersionHeld { rendering: r } => r as String
+    HpmVersionAbsent => hpm_version_absent_rendering as String
+  }
+}
+
+// ONE COMPONENT BY THE NAME THE CONTROLLER PRINTS. A name the table does not list REFUSES, typed and
+// carrying what was listed: reading it as "no version" would let a misspelled route report a target
+// as unread forever without anything saying the route, not the target, was wrong.
+type HpmComponentSelection
+  = HpmComponentSelected { row: HpmComponentRow }
+  | HpmComponentNotListed { name: NonEmptyStr, listed: List<NonEmptyStr> }
+  | HpmComponentListedTwice { name: NonEmptyStr, ids: List<Int> }
+
+fn hpm_component_named(rows: List<HpmComponentRow>, name: NonEmptyStr) -> HpmComponentSelection {
+  let named = filter(rows, r => (r.name as String) == (name as String))
+  match named.first() {
+    Absent => HpmComponentNotListed { name: name, listed: map(rows, r => r.name) }
+    Present { value: r } =>
+      if count(named) > 1 { HpmComponentListedTwice { name: name, ids: map(named, x => x.id) } } else { HpmComponentSelected { row: r } }
+  }
+}
+
+// ONE COMPONENT PER NAME AND PER ID: a table naming either twice does not say which row is the
+// component, so it is not read.
+fn hpm_duplicate(rows: List<HpmComponentRow>) -> NonEmptyStr? {
+  match filter(rows, r => count(filter(rows, x => (x.name as String) == (r.name as String))) > 1).first() {
+    Present { value: r } => Present { value: concat(concat("the component table names '", r.name as String), "' twice") as NonEmptyStr }
+    Absent =>
+      match filter(rows, r => count(filter(rows, x => x.id == r.id)) > 1).first() {
+        Present { value: r } => Present { value: concat("the component table lists id ", to_string(r.id), " twice") as NonEmptyStr }
+        Absent => none
+      }
+  }
+}

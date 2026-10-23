@@ -1,0 +1,9 @@
+module std.constructors
+
+type Product
+
+type Coproduct
+
+type Phantom
+
+type Cardinality = Required | Optional

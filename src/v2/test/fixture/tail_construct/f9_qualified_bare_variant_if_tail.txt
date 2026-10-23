@@ -1,0 +1,15 @@
+module v2.test.fixture.tail_construct.f9_qualified_bare_variant_if_tail
+
+
+type PortReading
+  = PortPureLiteral
+  | PortBareName { name: Symbol }
+  | PortComputedExpression { mentions: List<Symbol> }
+
+fn port_reading(idents: Int, mentions: List<Symbol>) -> PortReading {
+  if idents == 0 {
+    v2.test.fixture.tail_construct.f9_qualified_bare_variant_if_tail.PortPureLiteral
+  } else {
+    PortComputedExpression { mentions: mentions }
+  }
+}

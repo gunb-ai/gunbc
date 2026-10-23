@@ -1,0 +1,52 @@
+module test.claim.workspace_allocation_witness_test
+import std.types { Bool }
+import std.measure { byte_size_count }
+import gunbc.principal_projection { PrincipalRef }
+import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey }
+import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
+import gunbc.workspace_allocation {
+  WorkspaceRequest, WorkspaceProfile, SmallWorkspace, LargeWorkspace,
+  workspace_policy_ref, workspace_memory_grant, workspace_profile_vcpus,
+  workspace_request_json, workspace_request_from_json,
+}
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+
+fn supplied_workspace_request(profile: WorkspaceProfile) -> WorkspaceRequest {
+  WorkspaceRequest {
+    owner: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "witness-only" },
+    idempotency_key: "test-request", profile: profile, image: "test-pinned-image",
+    public_key_ref: "test-public-key", expires_at: "2026-09-28T01:00:00Z", policy: workspace_policy_ref(),
+  }
+}
+
+test fn workspace_small_grant_is_four_gib_not_cell_remainder() -> Bool {
+  match workspace_memory_grant(request: supplied_workspace_request(profile: SmallWorkspace),
+    work: FabricIdentity { principal: "test", key: "small" as WorkKey },
+    attempt: FabricIdentity { principal: "test", key: "attempt" as ExecutionAttemptKey }) {
+    MemoryGrantIssued { grant } => byte_size_count(b: grant.granted) == 4294967296 && workspace_profile_vcpus(profile: SmallWorkspace) == 2
+    _ => false
+  }
+}
+
+test fn workspace_large_grant_is_eight_gib() -> Bool {
+  match workspace_memory_grant(request: supplied_workspace_request(profile: LargeWorkspace),
+    work: FabricIdentity { principal: "test", key: "large" as WorkKey },
+    attempt: FabricIdentity { principal: "test", key: "attempt" as ExecutionAttemptKey }) {
+    MemoryGrantIssued { grant } => byte_size_count(b: grant.granted) == 8589934592 && workspace_profile_vcpus(profile: LargeWorkspace) == 4
+    _ => false
+  }
+}
+
+test fn workspace_request_roundtrip_preserves_owner_and_expiry() -> Bool {
+  match workspace_request_from_json(value: workspace_request_json(request: supplied_workspace_request(profile: SmallWorkspace))) {
+    Present { value: request } => request.owner.subject == "witness-only" && request.expires_at == "2026-09-28T01:00:00Z" && request.idempotency_key == "test-request"
+    Absent => false
+  }
+}
+
+test fn workspace_partial_or_duplicate_request_refuses() -> Bool {
+  match workspace_request_from_json(value: json_object(members: [
+    json_kv(key: "owner", value: json_string(s: "principal:google-oidc/accounts/witness-only")),
+    json_kv(key: "owner", value: json_string(s: "principal:google-oidc/accounts/other")),
+  ])) { Absent => true Present { value: _ } => false }
+}

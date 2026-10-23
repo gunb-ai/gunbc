@@ -1,0 +1,29 @@
+module test.manual.issue_assignment_client
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.typescript.program { serialize_ts_stmt }
+import gunbc.roadmap_issue_sort { issue_sort_bind_statements }
+import gunbc.roadmap_inline_assignment_client { inline_assignment_bind_statements }
+
+fn assignment_client_script() -> String {
+  inline_assignment_bind_statements() |> map(s => serialize_ts_stmt(s: s)) |> join("\n")
+}
+
+fn write_assignment_client_script(path: String) -> ProcessExit {
+  if !starts_with(s: path, prefix: "/tmp/issue-assignment-") { exit_failure(reason: "temporary fixture path required") }
+  else {
+    let written = Filesystem.Write(path: path, content: assignment_client_script())
+    if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
+  }
+}
+
+fn write_issue_sort_script(path: String) -> ProcessExit {
+  if !starts_with(s: path, prefix: "/tmp/issue-sort-") { exit_failure(reason: "temporary fixture path required") }
+  else {
+    let script = issue_sort_bind_statements() |> map(s => serialize_ts_stmt(s: s)) |> join("\n")
+    let written = Filesystem.Write(path: path, content: script)
+    if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
+  }
+}

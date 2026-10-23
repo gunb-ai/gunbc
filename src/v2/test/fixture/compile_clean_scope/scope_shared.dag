@@ -1,0 +1,9 @@
+module v2.test.fixture.compile_clean_scope.scope_shared
+
+// The import TARGET of the cross-file selection row. It imports nothing and is
+// imported by scope_importer and by nothing else, so touching this file must select
+// exactly one roster entry. Owned by tools.dag_compile_clean_scope: this fixture home
+// exists for the scope-disposition rows and for no other subject, which is the whole
+// point of it (the specimens previously lived in two fixture homes owned by other
+// mechanisms and died with each of them).
+data scope_shared_marker: String = "scope_shared"

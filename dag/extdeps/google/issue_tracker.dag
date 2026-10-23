@@ -1,0 +1,1087 @@
+module extdeps.google.issue_tracker
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
+import std.algebra { trim }
+import v2.std.algebra { any }
+import extdeps.color.srgb { Srgb8 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, File, Https }
+import v2.std.algebra { any, filter }
+
+// Google's Issue Tracker (Buganizer) modeled as an external authority interface, per DESIGN §3:
+// the interface shape lives here in extdeps under the product's real vocabulary; any transport to
+// it and any policy mapped onto it are downstream facts, never authored in this module.
+//
+// SOURCES, stated honestly. (a) The stock sidebar roster below is transcribed VERBATIM from the
+// owner's logged-in session, captured 2026-09-22 in the owner ruling "The frontend as an issue
+// tracker" (docs/plans/harness-work-lifecycle.md): "Assigned to me, Starred by me, Upvoted by me,
+// CC'd to me, Collaborating, Reported by me, To be verified, plus Hotlists and Browse components"
+// — the session also surfaces "Saved searches" and "Bookmark groups" beside Hotlists. (b) The
+// product is PROPRIETARY: there is no public machine-readable specification of its interface, so
+// this module covers the structure publicly visible to a signed-in user — the issue resource's
+// fields, the standing status/priority/severity vocabulary, the sidebar view semantics, and the
+// handful of search operators the owner actually used. Where the full product surface is not
+// publicly documented, the boundary is declared (see the search scope note below and the status
+// vocabulary note) rather than filled from plausible memory.
+//
+// TWO KINDS OF SIDEBAR ENTRIES ARE MODELED DIFFERENTLY, deliberately. The first seven roster
+// entries are DERIVED QUERIES over an issue set — one derivation fn each below, named for the
+// sidebar label it realizes, never a hand-typed list. The remaining four (Hotlists, Saved
+// searches, Bookmark groups, Browse components) are NOT issue-set derivations: they are navigation
+// and curation surfaces (user-curated named lists, persisted personal queries, the component
+// tree). Rostered verbatim, not faked as derivations.
+//
+// STAR/UPVOTE/CC ARE PER-USER SUBSCRIPTION FACTS, typed below as IssueSubscription rows. The
+// sidebar views derive from those facts (and from issue fields), and every view takes the viewing
+// user as a PARAMETER — no viewer identity is hardcoded in this module. Issue.cc / stars / upvotes
+// remain on the issue resource because that is the shape the product renders on an issue page;
+// the witness suite pins that the cc-subscription facts and the issue's cc list agree, so the two
+// are one fact read two ways, not two authorities.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "issuetracker.google.com"
+  }
+}
+
+data issue_tracker_session_capture: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/plans/harness-work-lifecycle.md#the-frontend-as-an-issue-tracker"
+  }
+}
+
+data google_issue_tracker: NonEmptyStr = "Google Issue Tracker (Buganizer)"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.google.issue_tracker",
+      decl_name: "google_issue_tracker",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    issue_tracker_session_capture,
+    issue_tracker_visual_capture_origin,
+    issue_tracker_visual_capture_local,
+    issue_tracker_visual_capture_shared,
+  ]
+}
+
+// Versioned by the capture date of the cited session: this interface model states what was
+// publicly visible to the owner's signed-in session on 2026-09-22; a re-capture that changes any
+// vocabulary fact or view semantics bumps this row. Bumped 2026-09-24: the action vocabulary
+// below is owner-directed (the capture left the issue actions implicit beyond the shell's
+// "Create Issue"), which the version row records. Bumped 2026-09-25: the results row's assignee
+// display rule (plain-text identity, the "--" unassigned placeholder) verified against the
+// saved-results capture, which the version row records. Ruled 2026-09-25 (same date, recorded in
+// the same row): the title IS the link and the ID column drops from the results roster, and the
+// assignment field's population/validation (recently-used emails, the fabric endpoint, the
+// email-shaped route validation) lands — owner rulings amending the capture-verified vocabulary.
+// Bumped 2026-09-27: descriptive types, modeled sort keys, and the uniform served
+// roster without TYPE or a project-only count slot (owner-directed amendments).
+// Bumped 2026-10-04: the measured design language (type, palette in both schemes, metrics, card,
+// status chip and button anatomy) from the signed-out capture of that date, and the
+// owner-directed dark token row replaced by the captured dark palette.
+data issue_tracker_interface_version: NonEmptyStr = "2026-10-04"
+
+// The stock sidebar roster, verbatim from the owner's logged-in session (2026-09-22). The first
+// seven entries each have exactly one derivation fn below; the last four are navigation and
+// curation surfaces, not derivations, and are rostered here so the real product's roster is one
+// pinned fact rather than a comment.
+data stock_sidebar_roster: List<NonEmptyStr> = [
+  "Assigned to me",
+  "Starred by me",
+  "Upvoted by me",
+  "CC'd to me",
+  "Collaborating",
+  "Reported by me",
+  "To be verified",
+  "Hotlists",
+  "Saved searches",
+  "Bookmark groups",
+  "Browse components",
+]
+
+// USERS ARE IDENTIFIED BY THE EMAIL THE PRODUCT DISPLAYS. A display identity, not a verified
+// credential claim: the interface models who a user IS on the surface (the address shown as
+// assignee/reporter/cc), and equality below is email equality for that reason.
+type User {
+  email: String
+}
+
+// COMPONENTS FORM A HIERARCHY, and the hierarchy IS the path: a component is addressed by its
+// path from the tree root, root-first, exactly as the product's Browse components tree renders
+// it. No parent-pointer field: the path is the one grounded shape and a parent is a prefix.
+type Component {
+  id: Int
+  path: List<String>
+}
+
+// REFERENCES BETWEEN ENTITIES ARE BY ID. The issue resource carries references to its component
+// and to the issues it blocks / is blocked by; the referenced entities themselves live in the
+// caller's fixture or store, not duplicated inside each issue.
+type ComponentRef {
+  id: Int
+}
+
+type IssueRef {
+  id: Int
+}
+
+// THE STANDING STATUS VALUES PUBLICLY VISIBLE IN THE PRODUCT'S ISSUE UI, per the captured session:
+// an issue is New, then Assigned / Accepted while open, and leaves the open set via Fixed, Verified,
+// or Duplicate. What is modeled here is exactly that publicly visible standing set — organizations
+// can configure additional or custom statuses upstream, and the product's resolution vocabulary is
+// richer than any one organization's configuration; those are OUT OF SCOPE of this interface model
+// and are declared here rather than minted from plausible memory. The wire labels are the UI
+// spellings.
+type IssueStatus
+  = IssueStatusNew
+  | IssueStatusAssigned
+  | IssueStatusAccepted
+  | IssueStatusFixed
+  | IssueStatusVerified
+  | IssueStatusDuplicate
+
+fn issue_status_wire(status: IssueStatus) -> String {
+  match status {
+    IssueStatusNew => "New"
+    IssueStatusAssigned => "Assigned"
+    IssueStatusAccepted => "Accepted"
+    IssueStatusFixed => "Fixed"
+    IssueStatusVerified => "Verified"
+    IssueStatusDuplicate => "Duplicate"
+  }
+}
+
+// OPEN IS A DERIVED CLASS OF THE STATUS COPRODUCT, not a seventh status: New/Assigned/Accepted
+// are the open arms; Fixed/Verified/Duplicate have left the open set. `status:open` in the query
+// model below means exactly this predicate, matching the product's open/closed split.
+fn issue_status_is_open(status: IssueStatus) -> Bool {
+  match status {
+    IssueStatusNew => true
+    IssueStatusAssigned => true
+    IssueStatusAccepted => true
+    IssueStatusFixed => false
+    IssueStatusVerified => false
+    IssueStatusDuplicate => false
+  }
+}
+
+// Owner-directed descriptive vocabulary (2026-09-27). Types never constrain recursive
+// containment, dependency edges, assignment, or execution. Unclassified issues stay untyped.
+type IssueType
+  = IssueTypeBug
+  | IssueTypeTask
+  | IssueTypeFeature
+  | IssueTypeEpic
+  | IssueTypeChore
+
+fn issue_type_wire(kind: IssueType) -> String {
+  match kind {
+    IssueTypeBug => "Bug"
+    IssueTypeTask => "Task"
+    IssueTypeFeature => "Feature"
+    IssueTypeEpic => "Epic"
+    IssueTypeChore => "Chore"
+  }
+}
+
+data issue_type_vocabulary: List<IssueType> = [
+  IssueTypeBug, IssueTypeTask, IssueTypeFeature, IssueTypeEpic, IssueTypeChore,
+]
+
+// PRIORITY AND SEVERITY ARE THE PRODUCT'S P0-P4 / S0-S4 SCALES, carrying the UI spellings as wire
+// labels. Lower number is more urgent on both scales, as the product presents them.
+type IssuePriority
+  = IssuePriorityP0
+  | IssuePriorityP1
+  | IssuePriorityP2
+  | IssuePriorityP3
+  | IssuePriorityP4
+
+fn issue_priority_wire(priority: IssuePriority) -> String {
+  match priority {
+    IssuePriorityP0 => "P0"
+    IssuePriorityP1 => "P1"
+    IssuePriorityP2 => "P2"
+    IssuePriorityP3 => "P3"
+    IssuePriorityP4 => "P4"
+  }
+}
+
+type IssueSeverity
+  = IssueSeverityS0
+  | IssueSeverityS1
+  | IssueSeverityS2
+  | IssueSeverityS3
+  | IssueSeverityS4
+
+fn issue_severity_wire(severity: IssueSeverity) -> String {
+  match severity {
+    IssueSeverityS0 => "S0"
+    IssueSeverityS1 => "S1"
+    IssueSeverityS2 => "S2"
+    IssueSeverityS3 => "S3"
+    IssueSeverityS4 => "S4"
+  }
+}
+
+type IssueComment {
+  author: User
+  body: String
+  created: Timestamp
+}
+
+// THE HISTORY IS CARRIED AT INTERFACE GRAIN. The upstream audit trail records per-field deltas;
+// none of the stock views read it, so this model carries the event shape the interface needs
+// (when, who, what changed in summary) and declares the per-field delta detail out of scope
+// rather than inventing a wire shape for it.
+type HistoryEvent {
+  at: Timestamp
+  author: User
+  summary: String
+}
+
+// THE ISSUE RESOURCE, in the product's vocabulary. cc / stars / upvotes are the display fields
+// the issue page renders; the per-user relations that produce them are the IssueSubscription
+// facts below, and the views derive from those facts (witness-pinned to agree with these
+// fields). assignee is Optional because a New issue may have no assignee; Absent is "unassigned",
+// not "unknown".
+type Issue {
+  issue_type: IssueType? = none
+  id: Int
+  title: String
+  status: IssueStatus
+  priority: IssuePriority
+  severity: IssueSeverity
+  assignee: User?
+  reporter: User
+  cc: List<User>
+  stars: Int
+  upvotes: Int
+  component: ComponentRef
+  blocking: List<IssueRef>
+  blocked_by: List<IssueRef>
+  comments: List<IssueComment>
+  history: List<HistoryEvent>
+  created: Timestamp
+  modified: Timestamp
+}
+
+// PER-USER SUBSCRIPTION FACTS. Star, upvote, and cc membership are relations between a user and
+// an issue — typed here once, parameterized by the user, and it is THESE facts (not anything
+// hardcoded, not the issue's display counters) that the Starred / Upvoted / CC'd views derive
+// from. Changing a user's subscription moves an issue between views; changing the issue does not.
+type IssueSubscriptionKind
+  = IssueSubscriptionStar
+  | IssueSubscriptionUpvote
+  | IssueSubscriptionCc
+
+type IssueSubscription {
+  user: User
+  issue: IssueRef
+  kind: IssueSubscriptionKind
+}
+
+fn user_is_subscribed(
+  subs: List<IssueSubscription>,
+  user: User,
+  issue_id: Int,
+  kind: IssueSubscriptionKind,
+) -> Bool {
+  any(subs, s => s.issue.id == issue_id && s.user.email == user.email && s.kind == kind)
+}
+
+// THE CC LIST AS SUBSCRIPTION FACTS: every user holding a Cc subscription to the issue, in
+// subscription order. The witness pins this against the issue resource's cc field so the two
+// readings of one fact can never silently drift apart.
+fn cc_subscribers(subs: List<IssueSubscription>, issue_id: Int) -> List<User> {
+  subs
+    |> filter(s => s.kind == IssueSubscriptionCc && s.issue.id == issue_id)
+    |> map(s => s.user)
+}
+
+// THE SEVEN DERIVED SIDEBAR VIEWS, one fn per rostered label. Each is a pure query over the issue
+// set parameterized by the viewing user (and the subscription facts where the label's semantics
+// are per-user); a view NEVER hardcodes a viewer and never enumerates its members.
+
+// "Assigned to me": issues whose assignee is the viewing user. Unassigned issues (Absent) are
+// not in anyone's Assigned-to-me view.
+fn view_assigned_to_me(issues: List<Issue>, user: User) -> List<Issue> {
+  issues
+    |> filter(i => match i.assignee {
+      Present { value: a } => a.email == user.email
+      Absent => false
+    })
+}
+
+// "Starred by me": issues the viewing user holds a Star subscription on.
+fn view_starred_by_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
+  issues
+    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionStar))
+}
+
+// "Upvoted by me": issues the viewing user holds an Upvote subscription on.
+fn view_upvoted_by_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
+  issues
+    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionUpvote))
+}
+
+// "CC'd to me": issues the viewing user holds a Cc subscription on.
+fn view_ccd_to_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
+  issues
+    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionCc))
+}
+
+// "Collaborating": issues the viewing user has commented on. Membership comes from the comment
+// authorship the issue resource already carries — no separate subscription kind is minted for it.
+fn view_collaborating(issues: List<Issue>, user: User) -> List<Issue> {
+  issues
+    |> filter(i => any(i.comments, c => c.author.email == user.email))
+}
+
+// "Reported by me": issues the viewing user reported.
+fn view_reported_by_me(issues: List<Issue>, user: User) -> List<Issue> {
+  issues
+    |> filter(i => i.reporter.email == user.email)
+}
+
+// "To be verified": issues whose status is Fixed — the open-but-awaiting-verification standing.
+// (Verified issues have left this view; that is the Fixed/Verified distinction doing work.)
+fn view_to_be_verified(issues: List<Issue>) -> List<Issue> {
+  issues
+    |> filter(i => i.status == IssueStatusFixed)
+}
+
+// SEARCH, at the grain the owner actually used. THE SCOPE NOTE, stated honestly: this models the
+// three term shapes the owner's real queries exercised — `assignee:<email>`, `status:<value>`
+// (including the derived status:open), and plain text — conjunctively, as the product composes
+// space-separated terms. The product's query language is richer (component:, priority:, labels,
+// quoted phrases, negation, disjunction, ...); those operators are OUT OF SCOPE here and are
+// declared rather than fabricated. A term shape the owner never used is not vocabulary this
+// interface model claims.
+type IssueStatusQuery
+  = IssueStatusQueryOpen
+  | IssueStatusQueryStanding { status: IssueStatus }
+
+type QueryAtom
+  = QueryAssignee { email: String }
+  | QueryStatus { status: IssueStatusQuery }
+  | QueryText { text: String }
+
+type Query {
+  terms: List<QueryAtom>
+}
+
+fn query_atom_matches(issue: Issue, atom: QueryAtom) -> Bool {
+  match atom {
+    QueryAssignee { email: e } =>
+      match issue.assignee {
+        Present { value: a } => a.email == e
+        Absent => false
+      }
+    QueryStatus { status: q } =>
+      match q {
+        IssueStatusQueryOpen => issue_status_is_open(issue.status)
+        IssueStatusQueryStanding { status: s } => issue.status == s
+      }
+    QueryText { text: t } =>
+      string_contains(s: issue.title, pattern: t)
+        || any(issue.comments, c => string_contains(s: c.body, pattern: t))
+  }
+}
+
+// CONJUNCTION ACROSS TERMS: every term must match, matching how the product composes
+// space-separated terms (so `assignee:X status:open` means assigned-to-X AND open).
+fn query_matches(issue: Issue, query: Query) -> Bool {
+  fold(query.terms, init: true, f: fn(acc, term) { acc && query_atom_matches(issue: issue, atom: term) })
+}
+
+fn query_run(issues: List<Issue>, query: Query) -> List<Issue> {
+  issues
+    |> filter(i => query_matches(issue: i, query: query))
+}
+
+// BLOCKING-EDGE MEMBERSHIP, the one predicate the interface needs over the reference lists.
+fn issue_ref_list_includes(refs: List<IssueRef>, id: Int) -> Bool {
+  any(refs, r => r.id == id)
+}
+
+// THE VISUAL TOKENS, VERIFIED 2026-09-22 (docs/plans/buganizer-visual-contract.md — extracted from
+// the product's own CSS bundle in the owner's session capture). These are the product's actual
+// rendered values, carried here as interface facts with their citation; the dashboard's style
+// layer maps them onto the issue-tracker surface (gunbc.roadmap_style's issue token block) rather
+// than re-spelling them. Fonts are the product's stacks in order.
+type IssueTrackerVisualTokens {
+  text_primary: Srgb8
+  text_secondary: Srgb8
+  text_tertiary: Srgb8
+  border_default: Srgb8
+  border_strong: Srgb8
+  background_subtle: Srgb8
+  background_hover: Srgb8
+  highlight: Srgb8
+  action: Srgb8
+  action_hover: Srgb8
+  error: Srgb8
+  font_body: String
+  font_heading: String
+}
+
+data issue_tracker_visual_tokens: IssueTrackerVisualTokens = IssueTrackerVisualTokens {
+  text_primary: Srgb8 { r: 32, g: 33, b: 36 },
+  text_secondary: Srgb8 { r: 95, g: 99, b: 104 },
+  text_tertiary: Srgb8 { r: 60, g: 64, b: 67 },
+  border_default: Srgb8 { r: 218, g: 220, b: 224 },
+  border_strong: Srgb8 { r: 189, g: 193, b: 198 },
+  background_subtle: Srgb8 { r: 248, g: 249, b: 250 },
+  background_hover: Srgb8 { r: 241, g: 243, b: 244 },
+  highlight: Srgb8 { r: 210, g: 227, b: 252 },
+  action: Srgb8 { r: 26, g: 115, b: 232 },
+  action_hover: Srgb8 { r: 25, g: 103, b: 210 },
+  error: Srgb8 { r: 197, g: 34, b: 31 },
+  font_body: "Roboto, Arial, sans-serif",
+  font_heading: "Google Sans, Roboto, Arial, sans-serif",
+}
+
+// THE MEASURED DESIGN LANGUAGE, CAPTURED 2026-10-04. Everything from here to the action
+// vocabulary was read from the running product with getComputedStyle and bounding boxes: the
+// public Chromium instance (issues.chromium.org), signed out, headless Chromium at 1440x1100 CSS
+// px, device scale 1. The screenshots, the probe output and the instrument that produced them are
+// in the local capture folder; the fifteen first-pass screenshots are also in the shared folder.
+// These rows are MEASUREMENTS: a value gunbc adopts differently (a rounded size, a row height, a
+// link ink for a grey ground) is recorded by the adopting module and never written back here.
+data issue_tracker_visual_capture_origin: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "issues.chromium.org"
+  }
+}
+
+data issue_tracker_visual_capture_local: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "~/issue-tracker-shots"
+  }
+}
+
+data issue_tracker_visual_capture_shared: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/drive/folders/14rcDZQtJAHzrAYimoRNmm7rBS1HqV_9b?usp=sharing"
+  }
+}
+
+type IssueTrackerVisualCapture {
+  captured_on: NonEmptyStr
+  origin: ExternalAuthority
+  local_copy: ExternalAuthority
+  shared_copy: ExternalAuthority
+  session: NonEmptyStr
+  viewport_width_px: Int
+  viewport_height_px: Int
+}
+
+data issue_tracker_visual_capture: IssueTrackerVisualCapture = IssueTrackerVisualCapture {
+  captured_on: "2026-10-04",
+  origin: issue_tracker_visual_capture_origin,
+  local_copy: issue_tracker_visual_capture_local,
+  shared_copy: issue_tracker_visual_capture_shared,
+  session: "signed out",
+  viewport_width_px: 1440,
+  viewport_height_px: 1100,
+}
+
+// THE MEASURED PALETTE, one row per scheme. Slots are named for where the colour was read: the
+// content column behind the cards, a card, the comment field, body text, muted text, the
+// hairline, the action colour and a card's leading bar. The light row reads
+// the slots the 2026-09-22 token row already carries from that row, because the two captures
+// agree and one colour has one spelling in this module. The dark row replaces the owner-directed
+// dark tokens of 2026-09-23: it holds only what the dark capture shows, so a slot the capture
+// did not reach (hover, highlight, error, pressed action) has no dark value here at all.
+type IssueTrackerMeasuredPalette {
+  ground: Srgb8
+  card: Srgb8
+  field: Srgb8
+  text: Srgb8
+  text_muted: Srgb8
+  hairline: Srgb8
+  action: Srgb8
+  leading_bar: Srgb8
+}
+
+data issue_tracker_measured_palette_light: IssueTrackerMeasuredPalette = IssueTrackerMeasuredPalette {
+  ground: issue_tracker_visual_tokens.background_subtle,
+  card: Srgb8 { r: 255, g: 255, b: 255 },
+  field: issue_tracker_visual_tokens.background_subtle,
+  text: issue_tracker_visual_tokens.text_primary,
+  text_muted: issue_tracker_visual_tokens.text_secondary,
+  hairline: issue_tracker_visual_tokens.border_default,
+  action: issue_tracker_visual_tokens.action,
+  leading_bar: issue_tracker_visual_tokens.action,
+}
+
+data issue_tracker_measured_palette_dark: IssueTrackerMeasuredPalette = IssueTrackerMeasuredPalette {
+  ground: Srgb8 { r: 24, g: 25, b: 27 },
+  card: Srgb8 { r: 24, g: 25, b: 27 },
+  field: Srgb8 { r: 36, g: 37, b: 40 },
+  text: Srgb8 { r: 255, g: 255, b: 255 },
+  text_muted: Srgb8 { r: 154, g: 160, b: 166 },
+  hairline: Srgb8 { r: 60, g: 64, b: 67 },
+  action: Srgb8 { r: 138, g: 180, b: 248 },
+  leading_bar: issue_tracker_visual_tokens.action,
+}
+
+// THE MEASURED TYPE SCALE, one row per place the product sets text. Size is carried in tenths of
+// a CSS px because the markdown heading computes to 18.2px (1.4em of the 13px body); line height
+// is rounded to whole px (the card label computes to 15.23); tracking is hundredths of a px and is recorded only where the product sets it
+// deliberately (the card label's 0.8px) -- the sub-pixel per-size tracking Material applies to
+// every other row is not part of this model. The code face computes to a web-font alias for the
+// platform monospace, so it is recorded as the generic family rather than under that alias.
+type IssueTrackerMeasuredFace
+  = IssueTrackerFaceBody
+  | IssueTrackerFaceHeading
+  | IssueTrackerFaceMonospace
+
+type IssueTrackerMeasuredInk
+  = IssueTrackerInkText
+  | IssueTrackerInkMuted
+  | IssueTrackerInkAction
+  | IssueTrackerInkCode
+
+type IssueTrackerMeasuredCase
+  = IssueTrackerCaseAuthored
+  | IssueTrackerCaseUppercase
+
+type IssueTrackerMeasuredText {
+  face: IssueTrackerMeasuredFace
+  size_tenths_px: Int
+  line_height_px: Int
+  weight: Int
+  ink: IssueTrackerMeasuredInk
+  letter_case: IssueTrackerMeasuredCase
+  tracking_hundredths_px: Int
+}
+
+type IssueTrackerMeasuredTypeScale {
+  body: IssueTrackerMeasuredText
+  field_label: IssueTrackerMeasuredText
+  card_label: IssueTrackerMeasuredText
+  section_heading: IssueTrackerMeasuredText
+  control: IssueTrackerMeasuredText
+  control_small: IssueTrackerMeasuredText
+  title: IssueTrackerMeasuredText
+  markdown_heading: IssueTrackerMeasuredText
+  chip: IssueTrackerMeasuredText
+  inline_code: IssueTrackerMeasuredText
+}
+
+data issue_tracker_measured_type_scale: IssueTrackerMeasuredTypeScale = IssueTrackerMeasuredTypeScale {
+  body: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 130, line_height_px: 18, weight: 400, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  field_label: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 120, line_height_px: 16, weight: 500, ink: IssueTrackerInkMuted, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  card_label: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 110, line_height_px: 15, weight: 500, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseUppercase, tracking_hundredths_px: 80 },
+  section_heading: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 130, line_height_px: 18, weight: 700, ink: IssueTrackerInkMuted, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  control: IssueTrackerMeasuredText { face: IssueTrackerFaceHeading, size_tenths_px: 140, line_height_px: 20, weight: 500, ink: IssueTrackerInkAction, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  control_small: IssueTrackerMeasuredText { face: IssueTrackerFaceHeading, size_tenths_px: 130, line_height_px: 20, weight: 500, ink: IssueTrackerInkAction, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  title: IssueTrackerMeasuredText { face: IssueTrackerFaceHeading, size_tenths_px: 180, line_height_px: 24, weight: 400, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  markdown_heading: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 182, line_height_px: 24, weight: 500, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  chip: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 120, line_height_px: 22, weight: 400, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  inline_code: IssueTrackerMeasuredText { face: IssueTrackerFaceMonospace, size_tenths_px: 130, line_height_px: 18, weight: 400, ink: IssueTrackerInkCode, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+}
+
+// Inline code ink, read on the light capture only (the dark capture shows no inline code).
+data issue_tracker_measured_code_ink_light: Srgb8 = Srgb8 { r: 24, g: 128, b: 56 }
+
+// THE MEASURED METRICS, in CSS px at device scale 1. One corner radius serves cards, chips,
+// buttons, inputs and status; inline code has its own. Heights are drawn heights. The relation
+// table's header is 32 and its rows 33; grid rows are 37.
+type IssueTrackerMeasuredMetrics {
+  radius_px: Int
+  code_radius_px: Int
+  top_bar_height_px: Int
+  tab_height_px: Int
+  chip_height_px: Int
+  button_small_height_px: Int
+  button_height_px: Int
+  relation_header_height_px: Int
+  relation_row_height_px: Int
+  grid_row_height_px: Int
+}
+
+data issue_tracker_measured_metrics: IssueTrackerMeasuredMetrics = IssueTrackerMeasuredMetrics {
+  radius_px: 4,
+  code_radius_px: 2,
+  top_bar_height_px: 48,
+  tab_height_px: 34,
+  chip_height_px: 22,
+  button_small_height_px: 24,
+  button_height_px: 32,
+  relation_header_height_px: 32,
+  relation_row_height_px: 33,
+  grid_row_height_px: 37,
+}
+
+// CARD ANATOMY: card-coloured fill, a hairline border, the shared radius, uniform padding and an
+// outer margin; the description and status-update cards thicken the leading border into a bar in
+// the action colour. The label row (the uppercase card label, with author, time and an overflow
+// menu on the product) is 36px tall.
+type IssueTrackerMeasuredCard {
+  padding_px: Int
+  outer_margin_px: Int
+  border_px: Int
+  leading_bar_px: Int
+  label_row_height_px: Int
+}
+
+data issue_tracker_measured_card: IssueTrackerMeasuredCard = IssueTrackerMeasuredCard {
+  padding_px: 16,
+  outer_margin_px: 8,
+  border_px: 1,
+  leading_bar_px: 4,
+  label_row_height_px: 36,
+}
+
+// STATUS CHIP ANATOMY: the chip height tall on the shared radius, with 4px side padding and a 1px
+// ring drawn inside its box. Open statuses pair a pale tint with a saturated ring; Fixed is
+// card-coloured text on a fill in the muted text colour with a ring of the same colour; Obsolete
+// and Duplicate are body text on a pale grey with a ring in the muted text colour. The plain
+// chip (component path, ancestor chain) is the header chip row below.
+type IssueTrackerMeasuredStatusChip {
+  side_padding_px: Int
+  ring_px: Int
+}
+
+data issue_tracker_measured_status_chip: IssueTrackerMeasuredStatusChip = IssueTrackerMeasuredStatusChip {
+  side_padding_px: 4,
+  ring_px: 1,
+}
+
+// HEADER CHIP ANATOMY: the component path and the ancestor chain above the title are each one chip
+// of the chip height on the shared radius, with 6px side padding, no border, and a fill that is
+// 6% of black over whatever is behind it. The ancestor chain lists every ancestor id through to
+// the current issue inside the one chip, separated by a ">" glyph.
+type IssueTrackerMeasuredHeaderChip {
+  side_padding_px: Int
+  fill_ink_pct: Int
+}
+
+data issue_tracker_measured_header_chip: IssueTrackerMeasuredHeaderChip = IssueTrackerMeasuredHeaderChip {
+  side_padding_px: 6,
+  fill_ink_pct: 6,
+}
+
+// PRIORITY MARK ANATOMY: the priority as body text in a box 23 wide and the chip height tall,
+// inside a 2px border on the shared radius, with 2px of side padding inside the border (the rail's
+// priority, probe t1-detail rail.priority). The border is transparent except on P1, where
+// it is the action colour. P0 was not captured.
+type IssueTrackerMeasuredPriorityMark {
+  width_px: Int
+  border_px: Int
+  side_padding_px: Int
+}
+
+data issue_tracker_measured_priority_mark: IssueTrackerMeasuredPriorityMark = IssueTrackerMeasuredPriorityMark {
+  width_px: 23,
+  border_px: 2,
+  side_padding_px: 2,
+}
+
+// RELATION TABLE ANATOMY (the Dependencies and Blocking tabs): the Parents, Blockers and Child
+// issues sections are 32px apart inside one card, and each is the same table. Cells carry 4px
+// side padding over a 1px hairline. Each level of nesting
+// indents a child row's title by 24px (the product also draws an 18px disclosure chevron there,
+// which no element here adopts). A closed row
+// sits on the row-hover grey with its text in the muted colour (light capture only: the dark
+// relation table was not captured).
+type IssueTrackerMeasuredRelationTable {
+  section_gap_px: Int
+  cell_side_padding_px: Int
+  row_line_px: Int
+  level_indent_px: Int
+  closed_row_ground: Srgb8
+}
+
+data issue_tracker_measured_relation_table: IssueTrackerMeasuredRelationTable = IssueTrackerMeasuredRelationTable {
+  section_gap_px: 32,
+  cell_side_padding_px: 4,
+  row_line_px: 1,
+  level_indent_px: 24,
+  closed_row_ground: issue_tracker_visual_tokens.background_hover,
+}
+
+// FIELD RAIL ANATOMY (the issue metadata sidebar, shots 01 and 15; probes t1-detail and
+// t8-detail2): a column 331 wide including a 1px hairline on its leading edge, with no card.
+// Each field is inset 19px from both sides and its rows are 36px apart (a 20px row between 8px
+// margins; one row measured 37). The label sits in a column 23% of the row, clamped to 80..120px
+// (the product's bv2-field-label-spacer), followed by 10px of padding; the value is set at
+// 13/20 on one line, and a long identity is truncated rather than wrapped. A person is shown
+// with a 12px circular avatar before the address.
+type IssueTrackerMeasuredFieldRail {
+  width_px: Int
+  divider_px: Int
+  side_inset_px: Int
+  row_pitch_px: Int
+  label_column_pct: Int
+  label_column_min_px: Int
+  label_column_max_px: Int
+  label_gap_px: Int
+  value_line_height_px: Int
+  inline_avatar_px: Int
+}
+
+data issue_tracker_measured_field_rail: IssueTrackerMeasuredFieldRail = IssueTrackerMeasuredFieldRail {
+  width_px: 331,
+  divider_px: 1,
+  side_inset_px: 19,
+  row_pitch_px: 36,
+  label_column_pct: 23,
+  label_column_min_px: 80,
+  label_column_max_px: 120,
+  label_gap_px: 10,
+  value_line_height_px: 20,
+  inline_avatar_px: 12,
+}
+
+// BUTTON ANATOMY: three kinds on the shared radius, all in the heading face at weight 500. Filled
+// is card-coloured text on the action colour; outlined is an action-coloured label on the card
+// colour inside a hairline; text is the action-coloured label alone. Two sizes, the two button
+// heights of the metrics row, with 10px and 12px side padding. A disabled button draws its label
+// at 38% and its border or fill at 12% of one ink.
+type IssueTrackerMeasuredButton {
+  small_side_padding_px: Int
+  side_padding_px: Int
+  border_px: Int
+  disabled_label_pct: Int
+  disabled_boundary_pct: Int
+}
+
+data issue_tracker_measured_button: IssueTrackerMeasuredButton = IssueTrackerMeasuredButton {
+  small_side_padding_px: 10,
+  side_padding_px: 12,
+  border_px: 1,
+  disabled_label_pct: 38,
+  disabled_boundary_pct: 12,
+}
+
+// THE ISSUE'S ACTIONS AND THE PRODUCT'S BUTTON IDIOMS (owner directive 2026-09-24: the
+// issue-tracker's action surfaces must come from THIS model, never bespoke page markup). SOURCES,
+// stated honestly per the module's citation discipline: (a) VERIFIED from the capture
+// (docs/plans/buganizer-visual-contract.md, the app shell): the header's "Create Issue" button is
+// a CONTAINED PRIMARY button, and the action blue is the token set above; (b) OWNER-DIRECTED
+// 2026-09-24: Assign is the product's first-class issue action (assignment is the operation our
+// workflow calls dispatch — the mapping is a workflow fact, stated in the consumer, not here),
+// and the issue detail header carries an action bar with an overflow (the capture's 'action
+// overflow'); the duplicate/mark actions the contract names ride that bar; (c) the flat TEXT
+// button is the product's Material secondary idiom (the capture's builder/save affordances are
+// text-style). What an organization's configured action matrix holds BEYOND these names is
+// configuration, not interface — declared here rather than fabricated. The wire labels are the UI
+// spellings.
+
+// THE ACTION NAMES: the actions the product exposes on an issue. Assign claims the issue for a
+// user; Create Issue mints a new issue (the shell's primary button); Mark as duplicate closes the
+// issue into another.
+type IssueActionKind
+  = IssueActionAssign
+  | IssueActionCreate
+  | IssueActionMarkDuplicate
+  | IssueActionStartWork
+
+// THE ACTIONS' SEMANTICS (owner ruling 2026-09-24): Assign and Start Work are DISTINCT — Assign
+// is DURABLE ASSIGNMENT, a recorded fact on the issue (who it is assigned to); Start Work is
+// EXECUTION (dispatch), the workflow launching an attempt. Never one affordance doing both. Start
+// Work is our execution verb on the tracker surface, owner-directed 2026-09-24 — the product's
+// own execution verbs are not part of the captured session; the Assign/Create/MarkDuplicate
+// labels remain the product's UI spellings. AMENDED 2026-09-25 (owner: "scrap the button stuff we
+// have here for now ... just copy buganizer"): no tracker surface renders a Start Work button
+// today — the detail page keeps the durable Assign action alone, and the execution entry points
+// will be re-modeled later. The verb stays modeled here (the /dispatch route and the admission
+// authority it answers remain live); only its rendered surface is retired.
+fn issue_action_wire(kind: IssueActionKind) -> String {
+  match kind {
+    IssueActionAssign => "Assign"
+    IssueActionCreate => "Create Issue"
+    IssueActionMarkDuplicate => "Mark as duplicate"
+    IssueActionStartWork => "Start Work"
+  }
+}
+
+// THE BUTTON IDIOMS: a contained primary button (filled action blue, the "Create Issue" shape)
+// for the surface's primary action, or a flat text button (action-blue label, no fill) for
+// secondary actions. The outlined idiom (an action-blue label inside a hairline on the card
+// colour) was measured on the 2026-10-04 capture: the issue header's "Hotlists" button and the
+// relation sections' "Add" buttons.
+type IssueActionButtonIdiom
+  = IssueButtonContainedPrimary
+  | IssueButtonOutlined
+  | IssueButtonText
+
+fn issue_button_idiom_wire(idiom: IssueActionButtonIdiom) -> String {
+  match idiom {
+    IssueButtonContainedPrimary => "contained-primary"
+    IssueButtonOutlined => "outlined"
+    IssueButtonText => "text"
+  }
+}
+
+// THE UNAVAILABLE-ACTION IDIOM: the product RESTS an unavailable action — it stays visible but
+// non-interactive, never disappears (owner directive 2026-09-24: the disabled idiom, checked
+// against the contract's builder surfaces, which stay visible at rest). Availability itself is a
+// workflow fact (for our surface, the launch admission verdict); this row is the product's
+// RENDERING answer for an unavailable action.
+type IssueActionAvailability
+  = IssueActionEnabled
+  | IssueActionDisabled
+
+fn issue_action_availability_wire(a: IssueActionAvailability) -> String {
+  match a {
+    IssueActionEnabled => "enabled"
+    IssueActionDisabled => "disabled"
+  }
+}
+
+// THE DETAIL-PAGE ACTION BAR: the issue header's action surface — an ordered row of the issue's
+// actions beside the overflow. The caller decides which of the modeled actions its surface
+// renders (our detail page renders Assign — the dispatch mapping — today; create-issue and the
+// duplicate/mark actions land with the intake slice); the bar carries no stock roster here
+// because the product's per-organization action matrix is configuration, not interface.
+type IssueActionBar {
+  actions: List<IssueActionKind>
+}
+
+// A COMPONENT'S PLACEMENT IS ITS PATH (the type's own law): the browse tree derives from the
+// paths, never a second spelling. "Browse components" is one of the four navigation/curation
+// sidebar surfaces (stock_sidebar_roster) — the tree it renders is THIS derivation over the
+// component set: one node per distinct path prefix, parents before children, each exactly once —
+// the sidebar's ordered walk. Depth recurses while ANY component sits deeper — a level may be
+// empty (a host's arm nests at depth 3 with nothing at depth 2) and the walk still reaches the
+// deeper level; it stops only when no component's path extends past the current depth.
+type ComponentTreeEntry {
+  component: Component
+  depth: Int
+}
+
+fn component_is_at_depth(path: List<String>, depth: Int) -> Bool {
+  count(path) == depth
+}
+
+fn browse_component_tree(components: List<Component>) -> List<ComponentTreeEntry> {
+  browse_component_tree_from(components: components, depth: 1)
+}
+
+fn browse_component_tree_from(components: List<Component>, depth: Int) -> List<ComponentTreeEntry> {
+  let at = map(filter(components, c => component_is_at_depth(path: c.path, depth: depth)), c =>
+    ComponentTreeEntry { component: c, depth: depth })
+  let deeper = filter(components, c => count(c.path) > depth)
+  if count(deeper) == 0 {
+    at
+  } else {
+    concat(at, browse_component_tree_from(components: components, depth: depth + 1))
+  }
+}
+
+// THE RESULTS ROW'S ASSIGNEE CELL (owner ruling 2026-09-25, "copy the UI semantics of assigned/etc
+// from buganizer"; verified against the capture the same day). SOURCE, stated honestly:
+// /home/briansrls/chromium-565764076/ "test - Chromium.html" — the ASSIGNEE cell renders the
+// assignee's display identity as PLAIN TEXT: no chip, no button, no link, no menu. The capture's
+// populated cells did not load in the saved HTML (the identity renders asynchronously in the live
+// product, so the assigned rows' cells are empty in the artifact); the plain-text claim is the
+// identity the interface's User type already names, and the unassigned spelling is DIRECTLY
+// VERIFIED: every issue with no assignee renders the two-character placeholder "--" (34 of the
+// capture's 50 rows), in the cell's own dimmed voice — never blank, never a widget.
+data issue_assignee_unassigned_display: NonEmptyStr = "--"
+
+// THE CELL'S DISPLAY RULE, one fn every results surface derives from: the assignee's email when
+// one holds the issue, the unassigned placeholder when Absent — never a hand-rolled empties check
+// downstream of this row.
+fn issue_results_assignee_display(assignee: User?) -> String {
+  match assignee {
+    Present { value: a } => a.email
+    Absent => issue_assignee_unassigned_display as String
+  }
+}
+
+// THE ASSIGNMENT FIELD'S DISPLAY VOCABULARY (reshaped by the owner ruling 2026-09-25,
+// docs/plans/human-identity-authorization.md): the durable principal identity lives in
+// gunbc.principal_projection — email is the SELECTOR and a display fact, never the identity (the
+// ruling bans subject = email outright: the a3fd5eb principal_from_email shape has no constructor
+// anywhere in gunbc). THIS module keeps the interface's visible shapes: the fabric selector's
+// email spelling (what the picker displays; the stored identity is principal:gunbc/workflows/
+// fabric from the principal authority), the selector's shape validation, and the unassigned
+// placeholder. The suggestion assembly and the principal chips ride the event-principal types in
+// the page; the avatar chain below is the interface's display law (initials under the
+// never-blocks rule).
+data issue_assign_fabric_display: NonEmptyStr = "fabric@gunb.ai"
+
+// THE AVATAR DISPLAY LAW (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md): the
+// resolution chain — internal principal profile → Google Workspace directory/Contacts photo →
+// cached prior → deterministic initials — with THE NEVER-BLOCKS LAW: absent and unread render
+// initials and NEVER refuse assignment, comments, or rendering. These are DISPLAY rows; the
+// profile facts and the principal refs live in gunbc.principal_projection, and the /avatar
+// endpoint + directory fetch are the realization (follow-up, A9).
+type AvatarStanding
+  = AvatarResolved
+  | AvatarAbsent
+  | AvatarUnread
+
+type AvatarSource
+  = AvatarFromInternalProfile
+  | AvatarFromGoogleDirectory
+  | AvatarFromCachedPrior
+  | AvatarFromInitials
+
+type AvatarProbe
+  = AvatarProbeHit
+  | AvatarProbeMiss
+  | AvatarProbeUnread
+
+type AvatarResolution {
+  standing: AvatarStanding
+  source: AvatarSource
+}
+
+// THE CHAIN over the probe results: the first HIT wins; no hit with any unread probe is
+// AvatarUnread (degraded, still initials-rendered); all misses is AvatarAbsent.
+fn avatar_resolve(probe_internal: AvatarProbe, probe_directory: AvatarProbe, probe_cache: AvatarProbe) -> AvatarResolution {
+  if probe_internal == AvatarProbeHit {
+    AvatarResolution { standing: AvatarResolved, source: AvatarFromInternalProfile }
+  } else if probe_directory == AvatarProbeHit {
+    AvatarResolution { standing: AvatarResolved, source: AvatarFromGoogleDirectory }
+  } else if probe_cache == AvatarProbeHit {
+    AvatarResolution { standing: AvatarResolved, source: AvatarFromCachedPrior }
+  } else if probe_internal == AvatarProbeUnread || probe_directory == AvatarProbeUnread || probe_cache == AvatarProbeUnread {
+    AvatarResolution { standing: AvatarUnread, source: AvatarFromInitials }
+  } else {
+    AvatarResolution { standing: AvatarAbsent, source: AvatarFromInitials }
+  }
+}
+
+// THE INITIALS FALLBACK, deterministic from the display name: the first character of the first
+// two words (one word yields one initial). No case folding — the name's own characters render.
+fn avatar_initials_of(display_name: String) -> String {
+  let words = split(s: display_name, delimiter: " ")
+  let first = match words.first() { Present { value: w } => if string_length(s: w) == 0 { "" } else { substring(s: w, start: 0, end: 1) }  Absent => "" }
+  let second = match words.skip(n: 1).first() { Present { value: w } => if string_length(s: w) == 0 { "" } else { substring(s: w, start: 0, end: 1) }  Absent => "" }
+  join([first, second], "")
+}
+
+// THE NEVER-BLOCKS LAW, one spelling: rendering falls back to initials under exactly the
+// standings that carry no image.
+fn avatar_initial_fallback(a: AvatarStanding) -> Bool {
+  match a {
+    AvatarResolved => false
+    AvatarAbsent => true
+    AvatarUnread => true
+  }
+}
+
+fn issue_avatar_standing_wire(a: AvatarStanding) -> String {
+  match a {
+    AvatarResolved => "resolved"
+    AvatarAbsent => "absent"
+    AvatarUnread => "unread"
+  }
+}
+
+// THE ROUTE'S VALIDATION, exactly as ruled: non-empty and either an email spelling or the fabric
+// endpoint (display or qualified); anything else refuses at 400, never becomes an event. An email
+// spelling is one @ with a non-empty local part and a dotted domain, and no whitespace anywhere.
+fn issue_assignee_input_is_email(s: String) -> Bool {
+  let t = trim(s)
+  if t == "" {
+    false
+  } else {
+    let parts = split(s: t, delimiter: "@")
+    match parts.first() {
+      Absent => false
+      Present { value: local } =>
+        match parts.skip(n: 1).first() {
+          Absent => false
+          Present { value: domain } =>
+            count(parts) == 2
+              && local != ""
+              && domain != ""
+              && string_contains(s: domain, pattern: ".")
+              && !string_contains(s: t, pattern: " ")
+        }
+    }
+  }
+}
+
+// Served roster: capture amended by owner rulings. TITLE links to detail; ID and
+// D VIEWS retired 2026-09-25. TYPE and the separate task-count slot retire 2026-09-27:
+// descriptive labels do not determine structure, and progress belongs with status.
+type IssueResultsColumnKind
+  = IssueColumnPriority
+  | IssueColumnTitle
+  | IssueColumnAssignee
+  | IssueColumnStatus
+  | IssueColumnLastModified
+
+// The shared grid derives from this roster. TITLE takes the dominant flexible
+// share; short columns have fixed widths independent of filtered row populations.
+// Sort keys are model facts, distinct from rendered labels. Empty values sort last
+// in both directions. Text uses case-insensitive comparison; priority is numeric;
+// last-modified uses an ISO timestamp. Ties preserve the preceding row order.
+type IssueResultsSortKey
+  = IssueSortPriority
+  | IssueSortTitle
+  | IssueSortAssignee
+  | IssueSortStatus
+  | IssueSortModified
+
+fn issue_results_sort_key_wire(key: IssueResultsSortKey) -> String {
+  match key {
+    IssueSortPriority => "priority"
+    IssueSortTitle => "title"
+    IssueSortAssignee => "assignee"
+    IssueSortStatus => "status"
+    IssueSortModified => "last-modified"
+  }
+}
+
+fn issue_results_sort_numeric(key: IssueResultsSortKey) -> Bool {
+  match key {
+    IssueSortPriority => true
+    IssueSortTitle => false
+    IssueSortAssignee => false
+    IssueSortStatus => false
+    IssueSortModified => false
+  }
+}
+
+type IssueResultsColumn {
+  kind: IssueResultsColumnKind
+  sort_key: IssueResultsSortKey
+  header: NonEmptyStr
+  track: NonEmptyStr
+}
+
+data issue_results_columns: List<IssueResultsColumn> = [
+  IssueResultsColumn { kind: IssueColumnPriority, sort_key: IssueSortPriority, header: "P", track: "4ch" },
+  IssueResultsColumn { kind: IssueColumnTitle, sort_key: IssueSortTitle, header: "TITLE", track: "minmax(0, 2fr)" },
+  IssueResultsColumn { kind: IssueColumnAssignee, sort_key: IssueSortAssignee, header: "ASSIGNEE", track: "9ch" },
+  IssueResultsColumn { kind: IssueColumnStatus, sort_key: IssueSortStatus, header: "STATUS", track: "minmax(0, 1fr)" },
+  IssueResultsColumn { kind: IssueColumnLastModified, sort_key: IssueSortModified, header: "LAST MODIFIED", track: "12ch" },
+]
+
+fn issue_results_column_kind_wire(kind: IssueResultsColumnKind) -> String {
+  match kind {
+    IssueColumnPriority => "priority"
+    IssueColumnTitle => "title"
+    IssueColumnAssignee => "assignee"
+    IssueColumnStatus => "status"
+    IssueColumnLastModified => "last-modified"
+  }
+}
+
+// One track per declared column, shared by headers and all rows. No special
+// project/task action track: every issue has the same row structure.
+fn issue_results_row_tracks() -> String {
+  join(map(issue_results_columns, c => c.track as String), " ")
+}

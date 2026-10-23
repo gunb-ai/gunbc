@@ -1,0 +1,367 @@
+module v2.std.compilers.sugar
+
+import std.types { List }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, length }
+import v2.std.collection { Absent, Present, optional_absent, optional_present }
+import v2.std.diagnostic {
+  Correction,
+  Diagnostic,
+  node_locus,
+  Outcome,
+  UserInputBoundary,
+  Accepted,
+  None,
+  Rejected,
+  bind_outcome,
+  diagnostics_singleton,
+  outcome_accepted,
+  Unavailable
+}
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
+import v2.std.node {
+  Atom,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  LabeledEdges,
+  Authored,
+  Node,
+  Symbol,
+  TypeNode,
+  edges_conform,
+  is_empty_conj_root
+}
+
+type SugarLowering
+  = SugarFoldCoproductPipeChain {}
+  | SugarDropLeadingSeparator {}
+
+// A SUGAR RULE IS KEYED BY A PRODUCTION'S EMITTED IDENTITY AND BY NOTHING ELSE. The key is read
+// through the grammar's production-identity projection (v2.extdeps.languages.dag
+// parse_production_emitted_identity_optional), never from a bare atom: a bare atom is authored
+// text -- an identifier or a caret symbol's name -- and a rule keyed on it rewrote
+// `data x: Int = dag_c3_surface_sugar_fn` into an empty Arrow. The former SurfaceAtomKey arm and
+// its four ^dag_c3_surface_sugar_* rules had no producer (only hand-built test fixtures built those
+// atoms), so they were deleted rather than re-keyed (gunbc.recurring_failure_mode
+// authored_lexeme_read_as_a_grammar_marker).
+type SugarKey
+  = ProductionIdentityKey { identity: Symbol }
+
+type SugarRule {
+  key: SugarKey
+  lowering: SugarLowering
+}
+
+data sugar_rule_type_alias_rhs: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs },
+  lowering: SugarFoldCoproductPipeChain {}
+}
+
+// A coproduct may open with its separator (`type H =\n  | A\n  | B`). Over two or more variants the
+// separator is layout, so the lead production (v2.extdeps.languages.dag
+// dag_grammar_type_alias_rhs_lead_expr) lowers to its type_alias_rhs child and `= | A | B` normalizes
+// to the tree `= A | B` does; over ONE variant it marks a coproduct (sugar_carries_separator).
+data sugar_rule_type_alias_rhs_lead: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs_lead },
+  lowering: SugarDropLeadingSeparator {}
+}
+
+fn sugar_rules() -> List<SugarRule> {
+  [
+    sugar_rule_type_alias_rhs,
+    sugar_rule_type_alias_rhs_lead
+  ]
+}
+
+fn no_sugar_rule() -> SugarRule? {
+  optional_absent()
+}
+
+fn sugar_key_matches(key: SugarKey, rule_key: SugarKey) -> Bool {
+  match key {
+    ProductionIdentityKey { identity: i } =>
+      match rule_key {
+        ProductionIdentityKey { identity: j } => i == j
+      }
+  }
+}
+
+fn sugar_rule_for_key(key: SugarKey) -> SugarRule? {
+  fold(sugar_rules(), init: no_sugar_rule(), f: fn(acc, rule) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sugar_key_matches(key: key, rule_key: rule.key) {
+          optional_present(value: rule)
+        } else {
+          optional_absent()
+        }
+    }
+  })
+}
+
+fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^sugar_reason_malformed,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn sugar_type_node(connective: Connective, children: List<Edge>, n: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: connective },
+    children: children,
+    occurrence_id: n.occurrence_id
+  }
+}
+
+fn sugar_named_child_optional(root: Node, name: Symbol) -> Node? {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: _ } => optional_present(value: child)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+type SugarSequencePair {
+  left: Node
+  right: Node
+}
+
+fn sugar_sequence_pair_optional(node: Node) -> SugarSequencePair? {
+  match sugar_named_child_optional(root: node, name: ^grammar_sequence_left_node_projection) {
+    Present { value: left } =>
+      match sugar_named_child_optional(root: node, name: ^grammar_sequence_right_node_projection) {
+        Present { value: right } =>
+          optional_present(value: SugarSequencePair { left: left, right: right })
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
+  match sugar_sequence_pair_optional(node: node) {
+    Present { value: pair } => optional_present(value: pair.right)
+    Absent => optional_present(value: node)
+  }
+}
+
+fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
+  if is_empty_conj_root(n: spine) {
+    std.algebra.Empty
+  } else {
+    match sugar_sequence_pair_optional(node: spine) {
+      Present { value: pair } =>
+        match sugar_pipe_sequence_variant_optional(node: pair.left) {
+          Present { value: variant } =>
+            list_snoc_item(
+              xs: sugar_collect_pipe_chain_variants(spine: pair.right),
+              item: variant
+            )
+          Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
+        }
+      Absent => std.algebra.Empty
+    }
+  }
+}
+
+fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => std.algebra.Empty
+    Present { value: pair } =>
+      list_append(
+        left: Cons { head: pair.left, tail: std.algebra.Empty },
+        right: sugar_collect_pipe_chain_variants(spine: pair.right)
+      )
+  }
+}
+
+fn sugar_unwrap_production_shell(node: Node) -> Node {
+  match sugar_named_child_optional(root: node, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } => sugar_unwrap_production_shell(node: captured)
+    Absent => node
+  }
+}
+
+fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
+  let stripped = sugar_unwrap_production_shell(node: node)
+  match node_atom_identity_optional(node: stripped) {
+    Present { value: sym } => optional_present(value: sym)
+    Absent =>
+      fold(
+        stripped.children,
+        init: optional_absent(),
+        f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => sugar_first_atom_identity_optional(node: e.target)
+          }
+        }
+      )
+  }
+}
+
+// A Disj arm is Named{label} -> payload. A variant whose fields body lowering already declared
+// (v2.std.node_query variant_declaration_node) hands over its edge as is; a bare variant is the
+// nullary arm, whose payload is the empty Conj (a Conj with no children) -- its
+// name is the edge label, so the parse subtree that spelled it carries nothing the arm keeps.
+fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
+  let variant = sugar_unwrap_production_shell(node: variant_node)
+  match variant_declaration_edge_optional(n: variant) {
+    Present { value: declared } => Accepted { value: declared, diagnostics: None }
+    Absent =>
+      match sugar_first_atom_identity_optional(node: variant) {
+        Present { value: name } =>
+          Accepted {
+            value: Edge {
+              label: Authored { name: name },
+              target: sugar_type_node(connective: Conj, children: [], n: variant)
+            },
+            diagnostics: None
+          }
+        Absent =>
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
+      }
+  }
+}
+
+// THE SEED'S RULE FOR WHAT IS A SUM (v1.compiler.parse parse_type_body_after_eq): more than one
+// alternative, or a single alternative that carries a payload. One bare alternative is an alias
+// to the type it names and is left as parsed.
+fn sugar_variants_form_coproduct(variants: FreeMonoid<Node>) -> Bool {
+  if length(xs: variants) >= 2 {
+    true
+  } else {
+    fold_list(xs: variants, empty: false, cons: fn(acc, v) {
+      acc || (match variant_declaration_edge_optional(n: sugar_unwrap_production_shell(node: v)) {
+        Present { value: _ } => true
+        Absent => false
+      })
+    })
+  }
+}
+
+fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<Edge>> {
+  fold_list(
+    xs: variants,
+    empty: outcome_accepted(std.algebra.Empty),
+    cons: fn(acc_outcome, variant) {
+      bind_outcome(o: acc_outcome, f: fn(edges) {
+        bind_outcome(o: sugar_variant_to_disj_edge(variant_node: variant), f: fn(edge) {
+          outcome_accepted(list_snoc_item(xs: edges, item: edge))
+        })
+      })
+    }
+  )
+}
+
+fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
+  let variants = sugar_all_coproduct_variants(captured: captured)
+  if !sugar_variants_form_coproduct(variants: variants) {
+    Accepted { value: captured, diagnostics: None }
+  } else {
+    match sugar_variants_to_disj_edges(variants: variants) {
+      Accepted { value: edges, diagnostics: d } =>
+        if edges_conform(children: edges, d: LabeledEdges) {
+          Accepted {
+            value: sugar_type_node(connective: Disj, children: edges, n: shell),
+            diagnostics: d
+          }
+        } else {
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+        }
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    }
+  }
+}
+
+// A LEADING SEPARATOR IS LAYOUT ONLY WHEN THE RIGHT-HAND SIDE IS ALREADY A COPRODUCT. `= | A | B` and
+// `= A | B` are one tree. But a single payload-less variant is an ALIAS without the separator and a
+// ONE-VARIANT COPRODUCT with it -- v1.compiler.parse parse_type_body_after_eq takes the `|` arm to a
+// Disj and the bare arm to type_item_from_alias_rhs -- so the separator is the only mark of that
+// meaning. Dropping it read `type SignatureSuite =\n  | EcdsaP256Sha256` as an alias to an undeclared
+// name (gunbc.recurring_failure_mode leading_separator_single_variant_read_as_an_alias_in_v2). When the
+// separator is present the right-hand side lowers to the coproduct of its variants, one or many.
+fn sugar_carries_separator(node: Node) -> Bool {
+  match sugar_first_atom_identity_optional(node: node) {
+    Present { value: sym } => sym == ^dag_token_pipe
+    Absent => false
+  }
+}
+
+fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node) -> Outcome<Node> {
+  match rhs.kind {
+    TypeNode { connective: Disj } => Accepted { value: rhs, diagnostics: None }
+    TypeNode { connective: Atom { identity: _ } } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Conj } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Arrow } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Cardinality } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Instantiation } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    ComputationNode { behavior: _ } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+  }
+}
+
+fn sugar_separated_rhs_as_coproduct_otherwise(rhs: Node, shell: Node) -> Outcome<Node> {
+  match sugar_named_child_optional(root: rhs, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } =>
+      match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: captured)) {
+        Accepted { value: edges, diagnostics: d } =>
+          if edges_conform(children: edges, d: LabeledEdges) {
+            Accepted { value: sugar_type_node(connective: Disj, children: edges, n: shell), diagnostics: d }
+          } else {
+            Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+  }
+}
+
+fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
+  match rule.lowering {
+    SugarFoldCoproductPipeChain {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: result, diagnostics: d } =>
+              match result.kind {
+                TypeNode { connective: Disj } =>
+                  Accepted { value: result, diagnostics: d }
+                TypeNode { connective: Atom { identity: _ } } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Conj } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Arrow } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Cardinality } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Instantiation } =>
+                  Accepted { value: folded, diagnostics: None }
+                ComputationNode { behavior: _ } =>
+                  Accepted { value: folded, diagnostics: None }
+              }
+          }
+        Absent =>
+          Accepted { value: folded, diagnostics: None }
+      }
+    SugarDropLeadingSeparator {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_sequence_pair_optional(node: captured) {
+            Present { value: pair } =>
+              if sugar_carries_separator(node: pair.left) {
+                sugar_separated_rhs_as_coproduct(rhs: pair.right, shell: n)
+              } else {
+                Accepted { value: pair.right, diagnostics: None }
+              }
+            Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+          }
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+      }
+  }
+}

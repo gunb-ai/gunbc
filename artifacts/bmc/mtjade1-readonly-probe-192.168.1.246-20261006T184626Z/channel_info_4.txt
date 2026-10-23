@@ -1,0 +1,6 @@
+Channel 0x4 info:
+  Channel Medium Type   : SMBus v2.0
+  Channel Protocol Type : IPMI-SMBus
+  Session Support       : session-less
+  Active Session Count  : 0
+  Protocol Vendor ID    : 7154

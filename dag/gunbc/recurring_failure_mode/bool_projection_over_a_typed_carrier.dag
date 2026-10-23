@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.bool_projection_over_a_typed_carrier
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bool_projection_over_a_typed_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "bool_projection_over_a_typed_carrier" as NonEmptyStr,
+
+  receipts: [
+    "**a Bool-returning function over a sum-typed carrier** (the carrier separates several independent axes and names a cause on each arm; the function answers one bit over it, so two materially different situations arrive at the consumer as the same `false`, and the reason is gone.",
+
+    "THE RECOGNITION RULE IS THE COINCIDENCE, and it is what makes this cheap to spot: THE PROJECTION HAS NO REAL CONSUMER, AND THAT IS NOT A SEPARATE PROBLEM FROM THE ERASURE -- IT IS THE SAME ONE OBSERVED FROM THE OTHER END. Every would-be consumer needs the thing the Bool discarded, so each one reaches past it to the carrier and the projection keeps only its witnesses. So when a review finds an unconsumed helper and a review finds a distinction being flattened, check whether they are the same declaration; on the specimen branch they were, four times.",
+
+    "SPECIMENS, 2026-09-12/13, gunbc PR 11212, the fleet-observation acquisition carrier, four deletions on one branch.",
+
+    "(i) `may_record(ownership) -> Bool` asked whether an ownership is the recorder while the consuming module carried its own `recording_owner_session` asking the same question -- one concept, two names, so it was also a section 3 nickname -- and the Bool was the weaker spelling, because every caller that got `true` reopened the carrier to learn WHO was recording and under which generation. Dissolved into one `recording_owner` returning the identity and generation, homed beside the carrier.",
+
+    "(ii) `exclusivity_is_enforced(ownership) -> Bool` is the sharpest specimen because the two axes it flattened are genuinely independent: BEING THE RECORDER, and THE ENDPOINT BEING FENCEABLE. An owner over an endpoint with no remote fencing answered `false`, and so did a session that was not the owner at all -- and those have OPPOSITE REMEDIES, one being `you are recording but cannot exclude a foreign writer` and the other `you are not recording`. It also discarded the limitation text saying WHY fencing was absent, which is the one thing a reader needs to weigh the observation. The evidence that the axes come apart in practice was already in hand: on Mt. Collins unit 1 a stale collector of the observer's own held the console session, so allowed-to-record and actually-exclusive were separately true and false on one endpoint.",
+
+    "(iii) and (iv) `continuity_is_established(continuity) -> Bool` and `continuity_reaches(continuity, through) -> Bool` over a stream-continuity carrier whose arms name rollover, clearing, source restart and uncertain generation. The consuming fold called the first, then the second, then RE-DERIVED the verified-through offset from the same value -- three reads that each threw the standing away and one that rebuilt a figure out of it. Replaced by one `continuity_covers` returning `ContinuityCoversRange | ContinuityNotEstablished { continuity } | ContinuityShortOfRange { verified_through, requested_end }`.",
+
+    "A FIFTH, FOUND BY APPLYING THE ROW TO THE BRANCH THAT WROTE IT: `supervision_covered_window(disposition) -> Bool` collapsed six process dispositions and three drain states into one bit, so `not covered` could not say whether the child was interrupted, never spawned, unobserved, or had run its full deadline with nobody reading its pipe. That last one is the case that looks like success, so it is the one the bit most needed to keep. Replaced by a typed coverage carrying the disposition.",
+
+    "HARM: a consumer that takes the Bool renders two different situations as one, which puts this in the absent-reads-as-present family -- `not exclusive` cannot distinguish `you do not own it` from `you cannot fence it`, and a remedy chosen from that answer is chosen from a coin flip. The projection is also a SECOND AUTHORITY for a question the carrier already answers (section 3), so a later consumer can grow against the lossy spelling and inherit the flattening.",
+
+    "THE BOUNDARY AGAINST ITS NEAREST NEIGHBOUR, stated so the two are not merged or re-invented. The neighbour is the class in which a declaration-fact projection drops the authored values a lexeme-keyed reader matches on, so the reader answers confidently for every subject and a discovery gate greens on the population it exists to find. BOTH are information-losing projections whose consumer cannot tell two subjects apart. They differ in origin, in where the loss lives, and -- decisively -- in recognition. THE NEIGHBOUR IS AN INDEX GAP WITH REAL CONSUMERS: the projection is load-bearing, it is value-blind, and it is recognized by DISTRUSTING A GREEN AND RE-MEASURING against the source the index was built from. THIS CLASS IS AUTHORED AT THE MODEL LAYER AND HAS NO REAL CONSUMER: the loss is a deliberate narrowing written by hand, and it is recognized by NOTICING THE DECLARATION HAS ONLY WITNESSES CALLING IT. Those two recognition rules never fire on the same evidence -- one starts from a suspicious pass, the other from an unused symbol -- so they are two classes rather than one with two receipts.",
+
+    "RUNG FOUND AT: MITIGATABLE. Every specimen was caught by review reading a finished diff, four of them by a reviewer and a consuming lane independently naming the same declarations, and the fifth by the author applying the row to their own branch afterwards.",
+
+    "ATTAINABLE CEILING, AND THE CHEAP MECHANICAL RULE WAS PROPOSED AND THEN MEASURED AND DOES NOT HOLD. The proposal was that `a Bool-returning function whose only argument is a sum type, with no non-witness call site` is mechanically detectable and could gate. Two things are wrong with it and only the second is fatal.",
+
+    "FIRST, THE ARITY CLAUSE MISSES A SPECIMEN: `continuity_reaches(continuity, through)` takes two arguments and is squarely the class, so the discriminator is not `only argument` but `matches on a sum-typed argument and returns Bool`.",
+
+    "SECOND AND FATAL, THE POPULATION IS NOT A FINDING SET. Measured over dag/std, dag/gunbc and dag/extdeps at this writing, single-sum-argument Bool-returning functions excluding equality and comparison predicates number in the low thousands, and the subset with zero non-test call sites is several hundred -- roughly a third of them. A gate firing on several hundred declarations, most of which are ordinary predicates nobody has wired up yet, is not a wall; it is a heuristic wearing one, which DESIGN section 5 forbids, and it would be dismissed wholesale on its first run. To re-derive rather than trust these figures: enumerate `^fn <name>(<arg>: <Type>) -> Bool` across those roots, drop the `_eq` and `_equal` families, and count how many names have no call site outside `dag/test/`.",
+
+    "WHAT THE MEASUREMENT ACTUALLY SHOWS is that the mechanical half is a CHEAP SUPERSET and the deciding half is not decidable: whether a Bool over a carrier LOSES SOMETHING A CONSUMER NEEDS depends on whether the arms it merged are independent axes or merely two spellings of one, and nothing in the corpus declares which of a carrier's distinctions are load-bearing. So the honest ceiling is MITIGATABLE, with a narrow climb available and nothing more.",
+
+    "NEXT-RUNG TRIGGER, A CAPABILITY AND NOT AN ARTIFACT: a carrier able to DECLARE which of its arms' distinctions a consumer may not collapse, sufficient that a projection merging two so-declared arms refuses at typecheck. That is what would turn the undecidable half into a structural one, and it does not exist. A lens over Bool-returning functions is explicitly NOT this trigger -- it can be built in full, fire on several hundred rows, and leave the class exactly where it is.",
+
+    "UNTIL THEN THE RULE IS DILIGENCE AND IT IS CHEAP TO APPLY AT AUTHORING TIME, which is the point of filing it: before writing a Bool over a sum-typed carrier, ask what a caller does with `false`. If the answer is `reopens the carrier to find out which false this is`, the function should return the carrier's own distinction instead. And before dismissing an unconsumed predicate as merely dangling, check whether it is unconsumed BECAUSE it is lossy.",
+  ],
+
+  evidence: [],
+}

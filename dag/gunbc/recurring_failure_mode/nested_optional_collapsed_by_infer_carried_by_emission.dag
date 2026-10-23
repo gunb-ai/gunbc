@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.nested_optional_collapsed_by_infer_carried_by_emission
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_optional_collapsed_by_infer_carried_by_emission: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_optional_collapsed_by_infer_carried_by_emission" as NonEmptyStr,
+
+  receipts: [
+    "Infer carries optionality as one CardOptional flag on a node: join_optional_cardinality merges levels by design and with_required_cardinality strips the flag from a Present payload. So first() over a List<T?> is typed T? and the Present payload binding is typed bare T, while the Rust emission carries two levels (Option<Option<T>> and Option<T>). Specimen: gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle first_member_mismatch.",
+
+    "HARM: an infer/emission meaning fork over one fact. Any check built on the single-level reading either refuses a correct program (the match-arm wall at a Present payload arm) or, worse, admits a wrong one silently; the class is silent-wrongness risk, not only a false refusal.",
+
+    "WALL: none. The match-arm wall of bare_value_admitted_where_optional_is_declared excludes an arm whose body is a Present payload binding, as its stated claimed scope.",
+
+    "RUNG FOUND AT: 1 (mitigation by exclusion at one check); no wall claims the nested-optional distinction.",
+
+    "CEILING: 3-4 once optionality is a nested carrier. NEXT-RUNG TRIGGER: a nested-optional carrier in src/v1/00_core.dag, replacing the readers join_optional_cardinality, with_required_cardinality and preserve_outer_optional_cardinality; can climb after that one grounding, assigned as its own lane.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,8 @@
+module gunbc.srv3_actuate_shell_paths
+
+import std.types { String, NonEmptyStr }
+
+data srv3_bmcweb_login_body_path: String = "/tmp/srv3_bmcweb_login_body.json"
+data srv3_bmcweb_login_response_path: String = "/tmp/srv3_bmcweb_login_response.json"
+data srv3_bmcweb_token_path: String = "/tmp/srv3_bmcweb_token"
+data srv3_sol_console_log_path: NonEmptyStr = "/var/lib/gunbc/logs/srv3-install-sol-console.log" as NonEmptyStr

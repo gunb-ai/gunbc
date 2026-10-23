@@ -1,0 +1,104 @@
+module gunbc.ci_gate
+
+import std.types { NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+type Gate
+  = EmitHostGate
+  | CheapClaimPoolGate
+  | ExtdepsExternalAuthorityGate
+  | DagCompileCleanGate
+  | GeneratedArtifactDriftGate
+  | ExtdepsScopePlacementGate
+  | ProseRowIntroductionGate
+  | SourceRootIngestGate
+
+// WHY A GATE ANSWERS A RECEIPT AND NOT A Bool. The two host gate consumers behind
+// DagCompileCleanGate and GeneratedArtifactDriftGate used to answer through a process-global read
+// collapsed to Bool, with a second String builtin beside it carrying the located detail.
+// consume_floor_compile_clean_gate_verdict folded FIVE distinct states into false -- receipt lock
+// poisoned, receipt install failed, no in-run receipt at all, the receipt's own typed Refused arm,
+// and a genuine Compiled ok:false -- and folded the scope disposition's Skipped into true. So a
+// gate that never ran in this process was indistinguishable from a compile that found hard
+// diagnostics, and a scope disposition selecting nothing from a clean tree: DESIGN's
+// execution-provenance-loss row (a masked run and a clean run rendered identically) underneath
+// not-applicable-rendered-as-malformed, in one Bool. The detail companion did not repair it: a
+// SECOND builtin over the SAME global, so a caller had to correlate two reads to recover one fact,
+// and the generated-artifact one FABRICATED prose ('gate body did not run in this process') for
+// the very state the Bool had erased. THE THREE ARMS ARE THE THREE OWNERS, which is why this is a
+// construction and not a wider enum. GateObserved means the gate reached its subject and decided;
+// its GateOutcome carries the located detail on the failing side, so the detail can no longer be
+// read without the verdict that produced it. GateNotApplicable means the gate's own scope
+// disposition selected nothing to check -- owner the disposition, remedy never 'fix the tree'.
+// GateNotRun means could-not-measure: the instrument did not arrive at its subject -- owner the
+// instrument, remedy never 'fix the tree' either. The line still stops on GateNotRun
+// (gate_receipt_exit refuses it), so this is not a relaxation: the stop is now typed and located,
+// and analysis can precede restart. MODELLED ON gunbc.compile_diagnostic_census, deliberately:
+// that carrier splits CensusObserved from CensusNotRunnable for exactly this reason, and its
+// census_projection_note records that exporting a reader answering empty on the not-runnable arm
+// was the fail-open it existed to prevent. The same rule holds here, and it is why no accessor
+// hands back a Bool from a GateReceipt: the only way to a verdict is to match the coproduct.
+
+type GateOutcome
+  = GateClean
+  | GateFailed { detail: NonEmptyStr }
+
+type GateReceipt
+  = GateObserved { outcome: GateOutcome }
+  | GateNotApplicable { reason: NonEmptyStr }
+  | GateNotRun { cause: NonEmptyStr }
+
+// The one place a receipt becomes a line-stop, so the three arms cannot drift apart across gates.
+// GateNotRun exits FAILURE in its OWN vocabulary rather than the subject's: a reader of the exit
+// reason can tell 'the gate did not run' from 'the gate ran and refused the tree', the distinction
+// the Bool destroyed. GateNotApplicable exits SUCCESS and that is not a widen: the scope
+// disposition is the authority for what this gate covers, so a disposition selecting nothing is
+// an answer, not an absence of one, and its reason travels in the receipt for any consumer that
+// wants to count it.
+
+fn gate_outcome_exit(outcome: GateOutcome) -> ProcessExit {
+  match outcome {
+    GateClean => ExitSuccess
+    GateFailed { detail: detail } => exit_failure(reason: (detail as String))
+  }
+}
+
+fn gate_receipt_exit(r: GateReceipt) -> ProcessExit {
+  match r {
+    GateObserved { outcome: outcome } => gate_outcome_exit(outcome: outcome)
+    GateNotApplicable { reason: _ } => ExitSuccess
+    GateNotRun { cause: cause } => exit_failure(
+      reason: concat("gate did not run over its subject: ", (cause as String))
+    )
+  }
+}
+
+// THE COMPANION PROJECTION, a String only because its consumer is. claim_executor derives a
+// <witness>_failure_receipt companion from a Bool witness's own name and evaluates it to explain a
+// red (tools.floor_effect_gate_witness floor_gate_failure_receipt_note is that mechanism's
+// authority), so the two CI gates must still hand back a located line. What changes is its source:
+// PROJECTED from the same receipt that produced the verdict, instead of read out of a second
+// builtin over the same process global. That is the §3 half of this retype -- one authority, two
+// projections -- and why no arm here answers a detail the verdict did not produce. Each arm keeps
+// its OWN vocabulary: a gate that did not run says so, never borrowing the subject's
+// ('compile-clean failed'), which the two-builtin form could not avoid because the detail read had
+// no idea which state the verdict read had been in.
+
+fn gate_outcome_failure_detail(outcome: GateOutcome) -> String {
+  match outcome {
+    GateClean => ""
+    GateFailed { detail: detail } => (detail as String)
+  }
+}
+
+fn gate_receipt_failure_detail(r: GateReceipt) -> String {
+  match r {
+    GateObserved { outcome: outcome } => gate_outcome_failure_detail(outcome: outcome)
+    GateNotApplicable { reason: reason } => concat(
+      "gate not applicable over its subject: ", (reason as String)
+    )
+    GateNotRun { cause: cause } => concat(
+      "gate did not run over its subject: ", (cause as String)
+    )
+  }
+}

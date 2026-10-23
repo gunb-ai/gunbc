@@ -1,0 +1,209 @@
+module gunbc.host_kernel_dependency_apply
+
+import std.types { String, NonEmptyStr, Bool, List, CommitSha }
+import std.algebra { trim }
+import std.process { ExitSuccess, exit_failure }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.procfs { procfs_status_effective_uid }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import extdeps.systemd.systemctl
+import extdeps.apt
+import extdeps.tools.uname { uname_release_command }
+import gunbc.host_kernel_boot_selection { kernel_maintenance_grub_selects }
+import product.host_identity { HostIdentity }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.host_effect { LocalShell }
+import gunbc.host_kernel_dependency {
+  HostKernelDependencyPlan, HostKernelDependencyResolution, HostKernelCapabilitySatisfied,
+  HostKernelDependencyPlanned, HostKernelDependencyRefused, InstallKernelAndActivate,
+  ActivateInstalledKernel, kernel_provider_selection,
+}
+import gunbc.host_kernel_dependency_observe { host_tun_kernel_dependency_observe, kernel_read_command }
+import gunbc.host_kernel_dependency_wire { kernel_dependency_field, host_kernel_dependency_from_text, host_kernel_dependency_text }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.runner_microvm_network_sanitation_observe { slot_network_tun_queue_requirement }
+import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner_slot_population_census { census_unit_name_is_slot, unit_is_owned_by_host }
+import gunbc.runner_slot_retirement {
+  observe_slot_cgroup_occupancy, CgroupAbsent, CgroupObservedEmpty,
+  CgroupObservedPopulated, CgroupUnobserved, CgroupOccupancy,
+}
+
+// Operator maintenance consumes the SAME dependency the commissioning planner emitted.
+// These entries are not enrolled in workspace_dispatch_functions or any job-user sudo grant.
+// The administrator invokes them explicitly with the reviewed canonical plan on stdin.
+// Install and activation are separate effects: a peer can retain the plan across reboot and
+// verify the changed boot identity before rerunning commissioning. No VM readiness is written.
+type HostKernelMaintenanceAction = KernelDrain | KernelInstall | KernelActivate | KernelVerify
+
+fn kernel_maintenance_refused(reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
+}
+
+fn kernel_maintenance_report(text: String) -> CliWireResponse {
+  CliWirePrintable { bytes: concat(text, "\n"), exit: ExitSuccess }
+}
+
+fn kernel_maintenance_plan_read(text: String) -> HostKernelDependencyPlan? {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => match kernel_dependency_field(doc: doc, name: "host") {
+      Absent => none
+      Present { value: host } => match kernel_dependency_field(doc: doc, name: "source_revision") {
+        Absent => none
+        Present { value: revision } => {
+          let slots = filter(workspace_execution_slot_identities(), slot => (slot.host as String) == host)
+          if !content_hash_validate_lower_hex_length(text: revision, expected_hex_digits: 40) || slots.count() != 1 { none }
+          else { match slots.first() {
+            Absent => none
+            Present { value: slot } => host_kernel_dependency_from_text(text: text, host: slot.host,
+              revision: revision as CommitSha, requirement: slot_network_tun_queue_requirement(slot: slot))
+          } }
+        }
+      }
+    }
+  }
+}
+
+// An install may advance only package state, not the host, boot, source, requirement or
+// provider. Activation never uses an installation simulation as evidence of installed bytes.
+fn kernel_maintenance_plan_continues(reviewed: HostKernelDependencyPlan, current: HostKernelDependencyPlan,
+  action: HostKernelMaintenanceAction) -> Bool {
+  let same_subject = reviewed.host == current.host && reviewed.source_revision == current.source_revision
+    && reviewed.requirement == current.requirement && reviewed.running_release == current.running_release
+    && reviewed.boot_id == current.boot_id && reviewed.provider == current.provider
+  same_subject && (host_kernel_dependency_text(plan: reviewed) == host_kernel_dependency_text(plan: current)
+    || ((action == KernelInstall || action == KernelActivate) && current.remedy == ActivateInstalledKernel))
+}
+
+// list-units is a census, so malformed/foreign rows refuse the entire reading. All loaded
+// runner instances are included, including historical masked slots; no desired-width guess
+// may omit a still-running service. The mask leaves each ephemeral runner's current job alone.
+fn kernel_maintenance_runner_units(host: HostIdentity, text: String) -> List<NonEmptyStr>? {
+  let lines = filter(split(s: text, delimiter: "\n"), line => trim(s: line) != "")
+  let names = map(lines, line => match filter(split(s: trim(s: line), delimiter: " "), word => word != "").first() {
+    Present { value: name } => name
+    Absent => ""
+  })
+  if names.count() == 0 || !all(names, name => census_unit_name_is_slot(name: name)
+    && unit_is_owned_by_host(host: host, unit: name)
+    && count(filter(names, other => other == name)) == 1) { none }
+  else { Present { value: map(names, name => name as NonEmptyStr) } }
+}
+
+// Explicit lifecycle vocabulary: an unknown state is not quiescence. The kernel's existing
+// cgroup.events observer covers descendants; a service state alone cannot establish drain.
+fn kernel_maintenance_unit_quiet(unit: NonEmptyStr, require_mask: Bool) -> Bool {
+  let state = systemd.Systemctl.ShowProperty(unit: unit, property: "ActiveState")
+  let mask = systemd.Systemctl.ShowProperty(unit: unit, property: "UnitFileState")
+  let job = systemd.Systemctl.ShowProperty(unit: unit, property: "Job")
+  state.success && mask.success && job.success && kernel_maintenance_unit_readback_admits(
+    state: trim(s: state.value), mask: trim(s: mask.value), job: trim(s: job.value), require_mask: require_mask,
+    occupancy: observe_slot_cgroup_occupancy(transport: LocalShell, unit: unit))
+}
+
+fn kernel_maintenance_unit_readback_admits(state: String, mask: String, job: String,
+  require_mask: Bool, occupancy: CgroupOccupancy) -> Bool {
+  job == "" && (state == "inactive" || state == "failed")
+    && (!require_mask || mask == "masked" || mask == "masked-runtime")
+    && (match occupancy {
+      CgroupAbsent => true CgroupObservedEmpty => true
+      CgroupObservedPopulated => false CgroupUnobserved { cause: _ } => false
+    })
+}
+
+fn kernel_maintenance_drain(plan: HostKernelDependencyPlan, units: List<NonEmptyStr>) -> CliWireResponse {
+  let results = map(units, unit => {
+    let before = systemd.Systemctl.ShowProperty(unit: unit, property: "UnitFileState")
+    if !before.success { false }
+    else if trim(s: before.value) == "masked" || trim(s: before.value) == "masked-runtime" { true }
+    else { systemd.Systemctl.MaskRuntime(unit: unit).success }
+  })
+  if !all(results, ok => ok) { kernel_maintenance_refused(reason: "runner inhibition incomplete; read back the runtime masks before retrying; no package or reboot effect ran") }
+  else if all(units, unit => kernel_maintenance_unit_quiet(unit: unit, require_mask: true)) {
+    kernel_maintenance_report(text: "kernel-maintenance: runners drained; runtime masks expire at reboot")
+  } else { kernel_maintenance_refused(reason: "kernel-maintenance: awaiting current runner jobs and their cgroups; replacement inhibited, no jobs stopped") }
+}
+
+fn kernel_maintenance_activate(plan: HostKernelDependencyPlan) -> CliWireResponse {
+  let config = Filesystem.Read(path: "/boot/grub/grub.cfg")
+  let environment = Filesystem.Read(path: "/boot/grub/grubenv")
+  let boot = Filesystem.Read(path: "/proc/sys/kernel/random/boot_id")
+  if !config.success || !environment.success || !boot.success || trim(s: boot.content) != (plan.boot_id as String)
+    || !kernel_maintenance_grub_selects(config: config.content, environment: environment.content, target: plan.provider.kernel_release as String) {
+    kernel_maintenance_refused(reason: "reviewed boot identity or GRUB selection of the exact image/initramfs is not established")
+  } else {
+    let reboot = systemd.Systemctl.Reboot()
+    if reboot.success { kernel_maintenance_report(text: "kernel-maintenance: normal reboot requested; peer must verify a new boot, target kernel and actual queue capability") }
+    else { kernel_maintenance_refused(reason: "reboot acknowledgement unavailable; peer must read boot identity before any retry") }
+  }
+}
+
+fn kernel_maintenance_apply_observed(plan: HostKernelDependencyPlan, current: HostKernelDependencyPlan,
+  action: HostKernelMaintenanceAction) -> CliWireResponse {
+  let census = systemd.Systemctl.ListUnitsAllLoaded(pattern: "actions*runner*.service")
+  if !census.success { kernel_maintenance_refused(reason: "runner population unreadable") }
+  else { match kernel_maintenance_runner_units(host: plan.host, text: census.stdout) {
+    Absent => kernel_maintenance_refused(reason: "runner population is empty, malformed or includes a foreign unit")
+    Present { value: units } => if (action == KernelDrain) { kernel_maintenance_drain(plan: plan, units: units) }
+    else if !all(units, unit => kernel_maintenance_unit_quiet(unit: unit, require_mask: true)) {
+      kernel_maintenance_refused(reason: "kernel maintenance requires every runner inhibited and drained, including its cgroup")
+    } else {
+      let slots = filter(workspace_execution_slot_identities(), slot => slot.host == plan.host)
+      let quiet = all(slots, slot => kernel_maintenance_unit_quiet(
+        unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: slot) as String), require_mask: false))
+      if !quiet { kernel_maintenance_refused(reason: "workspace controller is active or its workload is unreadable") }
+      else if (action == KernelInstall) { match current.remedy {
+        ActivateInstalledKernel => kernel_maintenance_report(text: "kernel-maintenance: exact kernel and boot artifacts already installed; activation pending")
+        InstallKernelAndActivate => {
+          let installed = apt.PackageManager.InstallExactNonRemoving(selection: kernel_provider_selection(provider: plan.provider))
+          if !installed.success { kernel_maintenance_refused(reason: concat("kernel package installation did not complete; re-observe before retry: ", installed.stderr)) }
+          else { match host_tun_kernel_dependency_observe(host: plan.host, revision: plan.source_revision, requirement: plan.requirement) {
+            HostKernelDependencyPlanned { plan: after } => if after.remedy == ActivateInstalledKernel
+              && kernel_maintenance_plan_continues(reviewed: plan, current: after, action: KernelInstall) {
+              kernel_maintenance_report(text: "kernel-maintenance: exact installed packages, boot image, initramfs and TUN implementation read back; activation pending")
+            } else { kernel_maintenance_refused(reason: "package command succeeded but installed kernel readback did not establish the reviewed target") }
+            HostKernelDependencyRefused { reason } => kernel_maintenance_refused(reason: reason)
+            HostKernelCapabilitySatisfied => kernel_maintenance_refused(reason: "running capability changed during installation; fresh observation required")
+          } }
+        }
+      } } else if action == KernelActivate && (current.remedy == ActivateInstalledKernel) {
+        kernel_maintenance_activate(plan: plan)
+      } else { kernel_maintenance_refused(reason: "activation requires installed kernel readback; verification requires a new capable boot") }
+    }
+  } }
+}
+
+fn kernel_maintenance_cli(action: HostKernelMaintenanceAction) -> CliWireResponse {
+  let self = Filesystem.Read(path: "/proc/self/status")
+  let root = self.success && (match procfs_status_effective_uid(content: self.content) { Present { value: uid } => uid == 0 Absent => false })
+  let input = Filesystem.Read(path: "/dev/stdin")
+  if !root || !input.success { kernel_maintenance_refused(reason: "kernel maintenance requires an explicit administrator invocation and reviewed plan on stdin") }
+  else { match kernel_maintenance_plan_read(text: trim(s: input.content)) {
+    Absent => kernel_maintenance_refused(reason: "kernel maintenance input is not the canonical dependency for an enrolled workspace host")
+    Present { value: plan } => match host_tun_kernel_dependency_observe(host: plan.host,
+      revision: plan.source_revision, requirement: plan.requirement) {
+      HostKernelDependencyRefused { reason } => kernel_maintenance_refused(reason: reason)
+      HostKernelCapabilitySatisfied => {
+        let boot = Filesystem.Read(path: "/proc/sys/kernel/random/boot_id")
+        let running = kernel_read_command(command: uname_release_command())
+        let target = match running { Present { value: running_kernel } => running_kernel == (plan.provider.kernel_release as String) Absent => false }
+        if (action != KernelVerify) { kernel_maintenance_report(text: "kernel-maintenance: required capability already satisfied; no mutation") }
+        else if boot.success && trim(s: boot.content) != "" && trim(s: boot.content) != (plan.boot_id as String) && target {
+          kernel_maintenance_report(text: "kernel-maintenance: new boot, target release and TUN queue capability verified; rerun commissioning for full sanitation and readiness")
+        } else { kernel_maintenance_refused(reason: "capability is supported but activation of the reviewed kernel in a new boot is not established") }
+      }
+      HostKernelDependencyPlanned { plan: current } => if !kernel_maintenance_plan_continues(reviewed: plan, current: current, action: action) {
+        kernel_maintenance_refused(reason: "reviewed kernel plan drifted; refuse installation or reboot against a different boot or package proposal")
+      } else if (action == KernelVerify) { kernel_maintenance_refused(reason: "host still lacks the required queue capability") }
+      else { kernel_maintenance_apply_observed(plan: plan, current: current, action: action) }
+    }
+  } }
+}
+
+fn host_kernel_dependency_drain_cli() -> CliWireResponse { kernel_maintenance_cli(action: KernelDrain) }
+fn host_kernel_dependency_install_cli() -> CliWireResponse { kernel_maintenance_cli(action: KernelInstall) }
+fn host_kernel_dependency_activate_cli() -> CliWireResponse { kernel_maintenance_cli(action: KernelActivate) }
+fn host_kernel_dependency_verify_cli() -> CliWireResponse { kernel_maintenance_cli(action: KernelVerify) }

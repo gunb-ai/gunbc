@@ -1,0 +1,412 @@
+module test.claim.roadmap.roadmap_hierarchy_view_witness
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.markup { Fragment, Element, FragmentText, RawNode }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.harness.harness_throughput { RoundsUnobserved }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, MemberOf, AdmittedRoot, section_group }
+import gunbc.roadmap_status { AuthoredLine }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_authority { roadmap_node, edge, nid, declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap.roadmap_lineage {
+  LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic, lineage_walk,
+}
+import gunbc.roadmap_issue_location { issue_page_path }
+import gunbc.roadmap_presentation {
+  WorkRowView, OpenLifecycle, SchedulingReady, NoActiveWork, ActionView, NoDisclosure, ObservationsNominal, row_graph,
+}
+import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplayBlocked, DisplayUnknown }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  IssueHierarchyView, issue_hierarchy_view,
+  NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_derived, node_status_is_closed,
+  NodeChainRooted, NodeChainRefused,
+  NodeRelation, RowChildrenNotCarried, RowChildrenExpandable,
+  relation_summary, relation_count_text,
+}
+import gunbc.roadmap_page { issue_detail_page, issue_detail_hierarchy_for, issue_chain_breadcrumb_node, RowObservations, page_launch_context }
+
+// THE PLANTED TRACKER: seven nodes, one membership tree four levels deep, and a dependency relation
+// that deliberately disagrees with it.
+//
+//   membership                          dependency (prerequisite -> dependent)
+//   hv-root                             hv-leaf -> hv-mid      (a sub-issue that also blocks)
+//     hv-proj                           hv-ext  -> hv-mid      (a blocker that is no sub-issue)
+//       hv-mid                          hv-mid  -> hv-proj     (a member that blocks its parent)
+//         hv-leaf
+//         hv-sib                        (hv-sib is a sub-issue and blocks nothing)
+//     hv-ext
+fn hv_node(id: String, title: String, project: String) -> RoadmapNode {
+  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "", carriers: [], line: AuthoredLine { done: false, content: title },
+    parent: if project == "" { Present { value: AdmittedRoot } } else { Present { value: MemberOf { project: project, contribution: "fixture contribution" as NonEmptyStr } } })
+}
+
+fn hv_orphan(id: String, title: String) -> RoadmapNode {
+  roadmap_node(identity: concat("rnfx_", id), id: id, owner: "", carriers: [], line: AuthoredLine { done: false, content: title })
+}
+
+fn hv_nodes() -> List<RoadmapNode> {
+  [
+    hv_node(id: "hv-root", title: "Root title", project: ""),
+    hv_node(id: "hv-proj", title: "Project title", project: "hv-root"),
+    hv_node(id: "hv-mid", title: "Mid title", project: "hv-proj"),
+    hv_node(id: "hv-leaf", title: "Leaf title", project: "hv-mid"),
+    hv_node(id: "hv-sib", title: "Sibling title", project: "hv-mid"),
+    hv_node(id: "hv-ext", title: "External title", project: "hv-root"),
+  ]
+}
+
+fn hv_edges() -> List<RoadmapEdge> {
+  [
+    edge(child: "hv-mid", parent: "hv-leaf"),
+    edge(child: "hv-mid", parent: "hv-ext"),
+    edge(child: "hv-proj", parent: "hv-mid"),
+  ]
+}
+
+// The status every planted node shows is SUPPLIED, not derived: these claims are about the
+// hierarchy projection, and the row producer that derives a status is another interface. hv-leaf is
+// planted closed and hv-sib open so closed-over-total has both kinds to count.
+fn hv_status(rn: RoadmapNode) -> NodeStatus {
+  if (rn.node as String) == "hv-leaf" { node_status_derived(status: DisplayDone) }
+  else if (rn.node as String) == "hv-ext" { node_status_derived(status: DisplayBlocked) }
+  else { node_status_derived(status: DisplayReady) }
+}
+
+fn hv_view(id: String) -> IssueHierarchyView {
+  issue_hierarchy_view(node: nid(s: id), nodes: hv_nodes(), edges: hv_edges(), status_of: hv_status)
+}
+
+fn hv_slugs(relation: NodeRelation) -> List<String> {
+  map(relation.rows, row => row.node.slug)
+}
+
+// (a) A DEEP CHAIN YIELDS EVERY ANCESTOR, ROOT FIRST. Three levels sit above hv-leaf and all three
+// are in `ancestors`, in order, with the node itself apart in `self_node`. A chain that kept only
+// the root and the parent, or read leaf first, reds.
+test fn witness_deep_chain_yields_every_ancestor_in_order() -> Bool {
+  match hv_view(id: "hv-leaf").chain {
+    NodeChainRefused { refusal: _ } => false
+    NodeChainRooted { ancestors, self_node } =>
+      map(ancestors, a => a.slug) == ["hv-root", "hv-proj", "hv-mid"]
+        && map(ancestors, a => a.title) == ["Root title", "Project title", "Mid title"]
+        && self_node.slug == "hv-leaf"
+        && self_node.route == issue_page_path(node_id: "hv-leaf")
+  }
+}
+
+// (b) MEMBERSHIP AND BLOCKING ARE READ FROM DIFFERENT AUTHORITIES AND DIFFER. hv-mid's sub-issues
+// are its two members; its blockers are one of those members and one outsider. The member that is
+// also a blocker is ONE presentation under both relations; the relation kind is what differs.
+// Blocking rows carry no children reference; sub-issue rows carry a count.
+test fn witness_sub_issue_that_blocks_has_one_presentation_in_both_relations() -> Bool {
+  let view = hv_view(id: "hv-mid")
+  let as_sub_issue = filter(view.membership.sub_issues.rows, row => row.node.slug == "hv-leaf").first()
+  let as_blocker = filter(view.dependency.blocked_by.rows, row => row.node.slug == "hv-leaf").first()
+  hv_slugs(relation: view.membership.sub_issues) == ["hv-leaf", "hv-sib"]
+    && hv_slugs(relation: view.dependency.blocked_by) == ["hv-leaf", "hv-ext"]
+    && hv_slugs(relation: view.membership.parent) == ["hv-proj"]
+    && hv_slugs(relation: view.dependency.blocking) == ["hv-proj"]
+    && (match as_sub_issue {
+      Absent => false
+      Present { value: sub } => match as_blocker {
+        Absent => false
+        Present { value: blocker } =>
+          sub.node == blocker.node
+            && (match sub.children { RowChildrenExpandable { count: n } => n == 0  RowChildrenNotCarried => false })
+            && (match blocker.children { RowChildrenNotCarried => true  RowChildrenExpandable { count: _ } => false })
+      }
+    })
+}
+
+// A SUB-ISSUE ROW REFERS TO ITS OWN SUB-ISSUES BY COUNT. hv-proj's one sub-issue is hv-mid, which
+// has two of its own: the row says 2 and loads neither.
+test fn witness_sub_issue_row_counts_its_own_sub_issues_without_loading_them() -> Bool {
+  match hv_view(id: "hv-proj").membership.sub_issues.rows.first() {
+    Absent => false
+    Present { value: row } =>
+      row.node.slug == "hv-mid"
+        && (match row.children { RowChildrenExpandable { count: n } => n == 2  RowChildrenNotCarried => false })
+  }
+}
+
+// (c) A DEPENDENCY DIAMOND: base blocks left and right, which both block top. Each end sees both
+// middles once, each middle sees one of each, and the base is never listed twice at the top. The
+// nodes are the planted ones; only the edges are the diamond's.
+fn hv_diamond(id: String) -> IssueHierarchyView {
+  issue_hierarchy_view(node: nid(s: id), nodes: hv_nodes(), edges: [
+    edge(child: "hv-proj", parent: "hv-mid"),
+    edge(child: "hv-proj", parent: "hv-ext"),
+    edge(child: "hv-mid", parent: "hv-leaf"),
+    edge(child: "hv-ext", parent: "hv-leaf"),
+  ], status_of: hv_status)
+}
+
+test fn witness_dependency_diamond_lists_each_edge_once() -> Bool {
+  let top = hv_diamond(id: "hv-proj").dependency
+  let left = hv_diamond(id: "hv-mid").dependency
+  let base = hv_diamond(id: "hv-leaf").dependency
+  hv_slugs(relation: top.blocked_by) == ["hv-mid", "hv-ext"]
+    && hv_slugs(relation: top.blocking) == []
+    && hv_slugs(relation: left.blocked_by) == ["hv-leaf"]
+    && hv_slugs(relation: left.blocking) == ["hv-proj"]
+    && hv_slugs(relation: base.blocked_by) == []
+    && hv_slugs(relation: base.blocking) == ["hv-mid", "hv-ext"]
+    && !top.cycle
+}
+
+// (d) EACH LINEAGE REFUSAL STAYS THAT REFUSAL. The rooted control comes first so a projection that
+// refused everything could not pass; then a node with no parent, a node whose parent is not
+// declared, and two nodes that name each other each keep the walk's own arm.
+test fn witness_chain_keeps_each_lineage_refusal_arm() -> Bool {
+  let nodes = concat(hv_nodes(), [
+    hv_orphan(id: "hv-orphan", title: "Orphan"),
+    hv_node(id: "hv-ghosted", title: "Ghosted", project: "hv-ghost"),
+    hv_node(id: "hv-loop-a", title: "Loop a", project: "hv-loop-b"),
+    hv_node(id: "hv-loop-b", title: "Loop b", project: "hv-loop-a"),
+  ])
+  let chain_of = fn(id) { issue_hierarchy_view(node: nid(s: id), nodes: nodes, edges: [], status_of: hv_status).chain }
+  (match chain_of("hv-sib") { NodeChainRooted { ancestors, self_node: _ } => count(ancestors) == 3  NodeChainRefused { refusal: _ } => false })
+    && (match chain_of("hv-orphan") {
+      NodeChainRooted { ancestors: _, self_node: _ } => false
+      NodeChainRefused { refusal } => match refusal {
+        LineageNoParent { walked: _, at } => at == "hv-orphan"
+        LineageRooted { ids: _ } => false
+        LineageUndeclared { walked: _, node_id: _ } => false
+        LineageCyclic { node_id: _ } => false
+      }
+    })
+    && (match chain_of("hv-ghosted") {
+      NodeChainRooted { ancestors: _, self_node: _ } => false
+      NodeChainRefused { refusal } => match refusal {
+        LineageUndeclared { walked: _, node_id } => node_id == "hv-ghost"
+        LineageRooted { ids: _ } => false
+        LineageNoParent { walked: _, at: _ } => false
+        LineageCyclic { node_id: _ } => false
+      }
+    })
+    && (match chain_of("hv-loop-a") {
+      NodeChainRooted { ancestors: _, self_node: _ } => false
+      NodeChainRefused { refusal } => match refusal {
+        LineageCyclic { node_id: _ } => true
+        LineageRooted { ids: _ } => false
+        LineageNoParent { walked: _, at: _ } => false
+        LineageUndeclared { walked: _, node_id: _ } => false
+      }
+    })
+}
+
+// A RELATED ID NO NODE ANSWERS TO IS NAMED, NOT DROPPED AND NOT SHOWN AS A ROW. hv-ghosted's parent
+// is undeclared: the Parent relation has no row and says which id it could not show.
+test fn witness_undeclared_parent_is_named_not_shown() -> Bool {
+  let nodes = concat(hv_nodes(), [hv_node(id: "hv-ghosted", title: "Ghosted", project: "hv-ghost")])
+  let parent = issue_hierarchy_view(node: nid(s: "hv-ghosted"), nodes: nodes, edges: [], status_of: hv_status).membership.parent
+  count(parent.rows) == 0 && parent.undeclared == ["hv-ghost"]
+}
+
+// (e) THE COUNTS ARE THE ROWS. hv-mid has two sub-issues, one planted closed: the summary reads
+// total 2, closed 1, and its label reads 1/2. The blocked-by relation's label is its total. When
+// one row's status is unavailable the sub-issue label falls back to the total alone, because a
+// closed count beside an unknown row would understate it.
+test fn witness_relation_counts_equal_the_rows() -> Bool {
+  let view = hv_view(id: "hv-mid")
+  let sub = relation_summary(relation: view.membership.sub_issues)
+  let blocked = relation_summary(relation: view.dependency.blocked_by)
+  let partial = issue_hierarchy_view(node: nid(s: "hv-mid"), nodes: hv_nodes(), edges: hv_edges(), status_of: fn(rn) {
+    if (rn.node as String) == "hv-sib" { NodeStatusUnavailable { reason: "planted" } } else { hv_status(rn: rn) }
+  }).membership.sub_issues
+  sub.total == count(view.membership.sub_issues.rows)
+    && sub.total == 2 && sub.closed == 1 && sub.status_unavailable == 0
+    && relation_count_text(relation: view.membership.sub_issues) == "1/2"
+    && blocked.total == count(view.dependency.blocked_by.rows)
+    && blocked.total == 2 && blocked.closed == 1
+    && relation_count_text(relation: view.dependency.blocked_by) == "2"
+    && relation_summary(relation: partial).status_unavailable == 1
+    && relation_count_text(relation: partial) == "2"
+}
+
+// CLOSED IS COUNTED FROM THE CLOSURE FACT, NOT THE STATUS WORD. A sub-issue the producer shows as
+// Unknown and states is closed (a done node whose standing cannot be observed) is in the closed
+// numerator; one shown as Done and stated not closed would not be. Only a row whose state is
+// unavailable leaves the numerator unstated. The red this pins: counting closed by asking the
+// status word (issue_display_status_is_closed) reads 1/2 for the first relation and 2/2 for the
+// second.
+test fn witness_closed_count_reads_the_closure_fact_not_the_status_word() -> Bool {
+  let counted = fn(status_of) {
+    issue_hierarchy_view(node: nid(s: "hv-mid"), nodes: hv_nodes(), edges: hv_edges(), status_of: status_of).membership.sub_issues
+  }
+  let unknown_but_closed = counted(fn(rn) {
+    if (rn.node as String) == "hv-sib" { NodeStatusDerived { status: DisplayUnknown, closed: true } } else { hv_status(rn: rn) }
+  })
+  let done_word_not_closed = counted(fn(rn) {
+    if (rn.node as String) == "hv-sib" { NodeStatusDerived { status: DisplayDone, closed: false } } else { hv_status(rn: rn) }
+  })
+  relation_summary(relation: unknown_but_closed).closed == 2
+    && relation_summary(relation: unknown_but_closed).status_unavailable == 0
+    && relation_count_text(relation: unknown_but_closed) == "2/2"
+    && relation_summary(relation: done_word_not_closed).closed == 1
+    && relation_count_text(relation: done_word_not_closed) == "1/2"
+}
+
+fn hv_row(id: String, title: String) -> WorkRowView {
+  WorkRowView {
+    node_id: id,
+    headline: title,
+    summary: none,
+    lifecycle: OpenLifecycle,
+    scheduling: SchedulingReady,
+    superseded_by: "",
+    activity: NoActiveWork,
+    action: ActionView { primary_action: none, secondary_actions: [] },
+    supporting_facts: [],
+    disclosure: NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false,
+    standing: none,
+    assignment: none,
+    attempt_stale: false,
+    profiles: [],
+  }
+}
+
+fn hv_occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+// (f) EVERY NODE LINK ON THE RENDERED PAGE IS THE CANONICAL ROUTE. The page for hv-mid names four
+// other nodes: two ancestors in the chain, the parent again in the rail and the membership section,
+// two sub-issues, and the blockers and dependents in the graph. Every href on the page is one of
+// those nodes' issue_page_path, no /project/ address exists, and the page never links to itself. The
+// status word is the one derived spelling: the closed sub-issue reads Done and no lifecycle key
+// ("open") is printed as a row's state.
+test fn witness_rendered_issue_page_links_only_canonical_routes() -> Bool {
+  let page = issue_detail_page(view: hv_row(id: "hv-mid", title: "Mid title"), hierarchy: hv_view(id: "hv-mid"), observation: ObservationsNominal, attempts: [], events: [], viewer: "", recents: [], expected_revision: "")
+  match try_serialize_html_source(node: page) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => {
+      let linked = ["hv-root", "hv-proj", "hv-leaf", "hv-sib", "hv-ext"]
+      let canonical = fold(linked, init: 0, f: (acc, id) => acc + hv_occurrences(s: h, pattern: join(["href=\"", issue_page_path(node_id: id), "\""], "")))
+      all(linked, id => string_contains(s: h, pattern: join(["href=\"", issue_page_path(node_id: id), "\""], "")))
+        && hv_occurrences(s: h, pattern: "href=\"") == canonical
+        && !string_contains(s: h, pattern: "/project/")
+        && !string_contains(s: h, pattern: join(["href=\"", issue_page_path(node_id: "hv-mid"), "\""], ""))
+        && string_contains(s: h, pattern: "<small class=\"issue-graph-state\">Done</small>")
+        && string_contains(s: h, pattern: "<small class=\"issue-graph-state\">Ready</small>")
+        && !string_contains(s: h, pattern: "<small class=\"issue-graph-state\">open</small>")
+        && string_contains(s: h, pattern: "<span class=\"issue-membership-count\" aria-hidden=\"true\">1/2</span>")
+    }
+  }
+}
+
+// (g) THE REAL PATH, ONCE. One node of the declared authority goes through the wiring the served
+// entry uses (issue_detail_hierarchy_for: plan rows joined with the declared rows, statuses from the
+// row producer) and the page's own chain renderer, and what is drawn is compared with the one parent
+// walk over the same declared rows: the hrefs inside the hierarchy nav, in document order, are the
+// canonical routes of the walk's ancestors, root first. The route is asserted, not only the answer:
+// the node itself is the one plan row, so its status is DERIVED by the row producer, while its
+// ancestors are declared rows the plan omits and say so. This is the claim that fails if the page's
+// wiring stops calling the hierarchy projection, or the projection stops calling the walk -- the
+// planted claims above cannot, because their nodes are not the product's.
+//
+// The document shell around this (issue_detail_page_for, which adds the stylesheet and the launch
+// context) is not run here: measured 2026-10-05 it costs over twice a new claim's whole budget and
+// none of it is the chain.
+fn hv_nav_hrefs(node: Fragment) -> List<String> {
+  match node {
+    FragmentText { content: _ } => []
+    RawNode { content: _ } => []
+    Element { tag, attributes, children } =>
+      concat(
+        if tag == "a" { map(filter(attributes, a => a.name == "href"), a => a.value) } else { [] },
+        fold(children, init: [] as List<String>, f: (acc, c) => concat(acc, hv_nav_hrefs(node: c))))
+  }
+}
+
+fn hv_real_node_id() -> String { "shell-typed-invocation" }
+
+test fn witness_real_issue_page_chain_equals_the_lineage_walk() -> Bool {
+  let declared = declared_roadmap_nodes()
+  let plan = filter(declared, n => (n.node as String) == hv_real_node_id())
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [RoadmapSection { title: "", elements: [section_group(label: "", nodes: plan, edges: [])] }] }
+  let obs = RowObservations {
+    graph: row_graph(nodes: plan, edges: []), merged: [], attempts: [], attempts_refused: none,
+    standings: StandingsUnobserved { reason: "witness supplies no standings" },
+    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
+    stale_nodes: [], profiles: [] }
+  match plan.first() {
+    Absent => false
+    Present { value: rn } => {
+      let hierarchy = issue_detail_hierarchy_for(rn: rn, plan: plan, declared: declared, edges: [], obs: obs, accepted: [], withheld: [])
+      match lineage_walk(node_id: hv_real_node_id(), nodes: declared) {
+        LineageNoParent { walked: _, at: _ } => false
+        LineageUndeclared { walked: _, node_id: _ } => false
+        LineageCyclic { node_id: _ } => false
+        LineageRooted { ids } => {
+          let root_first = fold(ids, init: [] as List<String>, f: (acc, id) => if id == hv_real_node_id() { acc } else { concat([issue_page_path(node_id: id)], acc) })
+          count(root_first) > 0
+            && hv_nav_hrefs(node: issue_chain_breadcrumb_node(chain: hierarchy.chain)) == root_first
+            && (match hierarchy.chain {
+              NodeChainRefused { refusal: _ } => false
+              NodeChainRooted { ancestors, self_node } =>
+                (match self_node.status { NodeStatusDerived { status: _, closed: _ } => true  NodeStatusAccepted => false  NodeStatusWithheld => false  NodeStatusUnavailable { reason: _ } => false })
+                  && all(ancestors, a => match a.status { NodeStatusUnavailable { reason: _ } => true  NodeStatusAccepted => false  NodeStatusWithheld => false  NodeStatusDerived { status: _, closed: _ } => false })
+            })
+        }
+      }
+    }
+  }
+}
+
+// AN OMITTED NODE IS SHOWN BY THE AUTHORITY THAT ESTABLISHES IT, ON THE REAL PATH. The same
+// one-row plan as the claim above. When the acceptance authority lists every ancestor of the real
+// node, the page's own producer (gunbc.roadmap_page observed_node_status, through
+// issue_detail_hierarchy_for) shows each as Accepted, closed; when the plan's withheld set names
+// them instead, each is Withheld, not closed. The claim above is the control: the same ancestors
+// named by neither are unavailable, so each status comes from its authority and not from the row
+// being absent.
+fn real_ancestor_statuses(listed_accepted: Bool) -> List<NodeStatus> {
+  let declared = declared_roadmap_nodes()
+  let plan = filter(declared, n => (n.node as String) == hv_real_node_id())
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [RoadmapSection { title: "", elements: [section_group(label: "", nodes: plan, edges: [])] }] }
+  let obs = RowObservations {
+    graph: row_graph(nodes: plan, edges: []), merged: [], attempts: [], attempts_refused: none,
+    standings: StandingsUnobserved { reason: "witness supplies no standings" },
+    launch: page_launch_context(doc: doc, merged: [], launch: launch_host_unobserved_static_render()),
+    stale_nodes: [], profiles: [] }
+  match plan.first() {
+    Absent => []
+    Present { value: rn } => match lineage_walk(node_id: hv_real_node_id(), nodes: declared) {
+      LineageNoParent { walked: _, at: _ } => []
+      LineageUndeclared { walked: _, node_id: _ } => []
+      LineageCyclic { node_id: _ } => []
+      LineageRooted { ids } => {
+        let listed = map(filter(ids, id => id != hv_real_node_id()), id => nid(s: id))
+        match issue_detail_hierarchy_for(rn: rn, plan: plan, declared: declared, edges: [], obs: obs, accepted: if listed_accepted { listed } else { [] }, withheld: if listed_accepted { [] } else { listed }).chain {
+          NodeChainRefused { refusal: _ } => []
+          NodeChainRooted { ancestors, self_node: _ } => map(ancestors, a => a.status)
+        }
+      }
+    }
+  }
+}
+
+test fn witness_real_issue_page_shows_an_accepted_omitted_ancestor_as_accepted() -> Bool {
+  let statuses = real_ancestor_statuses(listed_accepted: true)
+  count(statuses) > 0 && all(statuses, st => node_status_is_closed(status: st) && match st {
+    NodeStatusAccepted => true
+    NodeStatusWithheld => false
+    NodeStatusUnavailable { reason: _ } => false
+    NodeStatusDerived { status: _, closed: _ } => false
+  })
+}
+
+test fn witness_real_issue_page_shows_a_withheld_omitted_ancestor_as_withheld() -> Bool {
+  let statuses = real_ancestor_statuses(listed_accepted: false)
+  count(statuses) > 0 && all(statuses, st => !node_status_is_closed(status: st) && match st {
+    NodeStatusWithheld => true
+    NodeStatusAccepted => false
+    NodeStatusUnavailable { reason: _ } => false
+    NodeStatusDerived { status: _, closed: _ } => false
+  })
+}

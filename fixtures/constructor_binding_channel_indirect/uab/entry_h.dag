@@ -1,0 +1,7 @@
+module uab.entry_h
+
+import uab.declaring { Shape, pick }
+import uab.ncar_one { ncarry_one }
+
+fn use_h(c: Bool) -> Shape { pick(c: c) }
+fn touch_h() -> Int { ncarry_one() }

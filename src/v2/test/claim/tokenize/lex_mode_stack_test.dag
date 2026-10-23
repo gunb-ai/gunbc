@@ -1,0 +1,190 @@
+module v2.test.tokenize.lex_mode_stack
+
+import v2.std.text { String }
+import v2.std.algebra { fold_list }
+import std.algebra { list_snoc_item }
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  CharPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexMode,
+  LexRule,
+  LexRuleSet,
+  LiteralPattern,
+  ModeTransitionTokenRule,
+  ModeledLexRules,
+  NotFollowedByPattern,
+  OneOrMorePattern,
+  PopLexMode,
+  PushLexMode,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TokenStream,
+  TriviaRule,
+  WhitespaceChar
+}
+import v2.compiler.tokenize { tokenize }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A small language with one mode, in the shape an interpolating string needs. `<{` opens a hole
+// and pushes it; inside the hole, `{` nests by pushing the hole again and `}` pops, while `}>`
+// closes the hole and pops back to the default mode. Brace depth is the mode stack's depth.
+
+fn ident_rule() -> LexRule {
+  TokenRule {
+    token_class: ^m_ident,
+    pattern: SequencePattern { left: CharClassPattern { class: IdentStartChar }, right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } } }
+  }
+}
+
+fn space_rule() -> LexRule {
+  TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } }
+}
+
+fn hole_rules() -> List<LexRule> {
+  [
+    space_rule(),
+    ident_rule(),
+    ModeTransitionTokenRule { token_class: ^m_lbrace, pattern: CharPattern { char: 123 }, transition: PushLexMode { mode: ^m_hole } },
+    ModeTransitionTokenRule { token_class: ^m_rbrace, pattern: CharPattern { char: 125 }, transition: PopLexMode },
+    ModeTransitionTokenRule { token_class: ^m_close, pattern: LiteralPattern { text: "}>" }, transition: PopLexMode }
+  ]
+}
+
+fn modal_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      space_rule(),
+      ident_rule(),
+      ModeTransitionTokenRule { token_class: ^m_open, pattern: LiteralPattern { text: "<{" }, transition: PushLexMode { mode: ^m_hole } }
+    ],
+    modes: [LexMode { mode: ^m_hole, rules: hole_rules() }]
+  }
+}
+
+fn lex_with(rules: LexRuleSet, src: String) -> Outcome<TokenStream> {
+  tokenize(text: src, file: ^probe, rules: ModeledLexRules { root: rules })
+}
+
+fn classes(stream: TokenStream) -> List<Symbol> {
+  fold_list(xs: stream.all, empty: [], cons: fn(acc, t) { list_snoc_item(xs: acc, item: t.class) })
+}
+
+fn classes_of(rules: LexRuleSet, src: String) -> List<Symbol> {
+  match lex_with(rules: rules, src: src) {
+    Accepted { value: stream, diagnostics: _ } => classes(stream: stream)
+    Rejected { diagnostics: _ } => [^m_refused]
+  }
+}
+
+// The refusal's reason and byte extent, or a reason no rule set produces when the text lexed.
+type RefusalAt {
+  reason: Symbol
+  start: Int
+  end: Int
+}
+
+fn refusal_of(rules: LexRuleSet, src: String) -> RefusalAt {
+  match lex_with(rules: rules, src: src) {
+    Accepted { value: _, diagnostics: _ } => RefusalAt { reason: ^m_accepted, start: -1, end: -1 }
+    Rejected { diagnostics: ds } =>
+      match ds.head.at {
+        Textual { file: _, extent: e } =>
+          match e {
+            ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+            WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+          }
+        NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+      }
+  }
+}
+
+// POSITIVE. Inside the hole, `{ c }` nests and pops back to the hole, so the `}>` after it is the
+// hole's close and `d` lexes in the default mode again. Outside a hole there is no `{` rule, so the
+// same braces would refuse there: the mode, not the character, decides.
+test fn nested_braces_inside_a_hole_return_to_the_hole_holds() -> Bool {
+  classes_of(rules: modal_rules(), src: "a <{ b { c } }> d") == [^m_ident, ^m_open, ^m_ident, ^m_lbrace, ^m_ident, ^m_rbrace, ^m_close, ^m_ident]
+}
+
+test fn a_brace_outside_any_hole_is_not_lexed_holds() -> Bool {
+  refusal_of(rules: modal_rules(), src: "a { b").reason == ^tokenize_lex_e1_unrecognized_char
+}
+
+// RED: the source ends inside the hole. Refused at the `<{` that opened it (octets 2..4), not at
+// end of input.
+test fn an_unclosed_hole_refuses_at_its_opening_token_holds() -> Bool {
+  let r = refusal_of(rules: modal_rules(), src: "a <{ b")
+  (r.reason == ^tokenize_lex_e4_mode_unterminated) && (r.start == 2) && (r.end == 4)
+}
+
+// RED: a pop in the default mode, which has nothing beneath it.
+test fn a_pop_in_the_default_mode_refuses_holds() -> Bool {
+  let rules = LexRuleSet {
+    rules: [
+      space_rule(),
+      ident_rule(),
+      ModeTransitionTokenRule { token_class: ^m_close, pattern: LiteralPattern { text: "}>" }, transition: PopLexMode }
+    ],
+    modes: []
+  }
+  let r = refusal_of(rules: rules, src: "a }>")
+  (r.reason == ^tokenize_lex_e3_mode_pop_at_default) && (r.start == 2) && (r.end == 4)
+}
+
+// RED: a push naming a mode the rule set never declared.
+test fn a_push_to_an_undeclared_mode_refuses_holds() -> Bool {
+  let rules = LexRuleSet {
+    rules: [
+      space_rule(),
+      ModeTransitionTokenRule { token_class: ^m_open, pattern: LiteralPattern { text: "<{" }, transition: PushLexMode { mode: ^m_nowhere } }
+    ],
+    modes: []
+  }
+  refusal_of(rules: rules, src: " <{").reason == ^tokenize_lex_e2_mode_undeclared
+}
+
+// RED: one mode name declared twice is refused before any text is walked.
+test fn a_mode_declared_twice_refuses_holds() -> Bool {
+  let rules = LexRuleSet {
+    rules: [
+      ident_rule()
+    ],
+    modes: [LexMode { mode: ^m_hole, rules: hole_rules() }, LexMode { mode: ^m_hole, rules: hole_rules() }]
+  }
+  refusal_of(rules: rules, src: "a").reason == ^tokenize_lex_e5_mode_declared_twice
+}
+
+// A mode declared inside a mode has no witness here because it has no constructor: LexMode's rules
+// are LexRules, and a mode is not a LexRule (DESIGN section 4b, structurally impossible).
+
+// NotFollowedByPattern: `{` is a token only when an identifier start does NOT follow it, and it
+// consumes nothing beyond the brace. The control is the same rule refusing `{a`.
+fn literal_brace_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      space_rule(),
+      TokenRule {
+        token_class: ^m_literal_brace,
+        pattern: SequencePattern { left: CharPattern { char: 123 }, right: NotFollowedByPattern { element: CharClassPattern { class: IdentStartChar } } }
+      }
+    ],
+    modes: []
+  }
+}
+
+test fn a_brace_not_followed_by_an_ident_start_lexes_alone_holds() -> Bool {
+  classes_of(rules: literal_brace_rules(), src: "{ {") == [^m_literal_brace, ^m_literal_brace]
+}
+
+test fn a_brace_followed_by_an_ident_start_is_refused_by_the_predicate_holds() -> Bool {
+  let r = refusal_of(rules: literal_brace_rules(), src: "\{a")
+  (r.reason == ^tokenize_lex_e1_unrecognized_char) && (r.start == 0)
+}

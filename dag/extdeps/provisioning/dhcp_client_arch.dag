@@ -1,0 +1,105 @@
+module extdeps.provisioning.dhcp_client_arch
+
+import std.types { Int }
+import extdeps.toolchain.types {
+  Architecture,
+  X86_64,
+  X86,
+  Aarch64,
+  Arm,
+  Armv7,
+  Mips,
+  Mipsel,
+  Mips64,
+  Mips64el,
+  Riscv64,
+  Wasm32,
+}
+import extdeps.provisioning.network_boot {
+  ClientNetworkBootMode,
+  LegacyBiosPxe,
+  UefiPxe,
+  UefiHttpBoot,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc4578#section-2.1"
+  }
+}
+
+type DhcpProcessorArchitecture =
+    BiosX86
+  | UefiX86_64
+  | UefiArm64
+  | HttpBootX86_64
+  | HttpBootArm64
+
+fn dhcp_processor_architecture_code(a: DhcpProcessorArchitecture) -> Int {
+  match a {
+    BiosX86 => 0
+    UefiX86_64 => 7
+    UefiArm64 => 11
+    HttpBootX86_64 => 16
+    HttpBootArm64 => 19
+  }
+}
+
+fn legacy_bios_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {
+  match arch {
+    X86_64 => Present { value: BiosX86 }
+    X86 => Present { value: BiosX86 }
+    Aarch64 => Absent
+    Arm => Absent
+    Armv7 => Absent
+    Mips => Absent
+    Mipsel => Absent
+    Mips64 => Absent
+    Mips64el => Absent
+    Riscv64 => Absent
+    Wasm32 => Absent
+  }
+}
+
+fn uefi_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {
+  match arch {
+    X86_64 => Present { value: UefiX86_64 }
+    Aarch64 => Present { value: UefiArm64 }
+    X86 => Absent
+    Arm => Absent
+    Armv7 => Absent
+    Mips => Absent
+    Mipsel => Absent
+    Mips64 => Absent
+    Mips64el => Absent
+    Riscv64 => Absent
+    Wasm32 => Absent
+  }
+}
+
+fn http_boot_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {
+  match arch {
+    X86_64 => Present { value: HttpBootX86_64 }
+    Aarch64 => Present { value: HttpBootArm64 }
+    X86 => Absent
+    Arm => Absent
+    Armv7 => Absent
+    Mips => Absent
+    Mipsel => Absent
+    Mips64 => Absent
+    Mips64el => Absent
+    Riscv64 => Absent
+    Wasm32 => Absent
+  }
+}
+
+fn dhcp_client_processor_architecture(arch: Architecture, mode: ClientNetworkBootMode) -> DhcpProcessorArchitecture? {
+  match mode {
+    LegacyBiosPxe { tftp_root: _ } => legacy_bios_processor_architecture(arch: arch)
+    UefiPxe { tftp_root: _ } => uefi_processor_architecture(arch: arch)
+    UefiHttpBoot => http_boot_processor_architecture(arch: arch)
+  }
+}

@@ -1,0 +1,25 @@
+module test.probe.alias_head_identity_refuses_probe
+
+// THIS MODULE MUST NOT RESOLVE (test.claim.alias_head_identity_probe_witness_test enrolls each
+// refusal by class and subject). A head that agrees only when the alias's right-hand side IS the
+// argument's declaration must still refuse a different record into either alias, and a literal whose
+// head agrees must still be judged per field.
+import test.probe.alias_head_identity_accepts_probe { WrScratchRec, floor_of, px }
+import std.nat { Nat }
+import std.integer { Int }
+
+type WrScratchOtherRec { x: Int }
+
+fn different_record_into_alias() -> Int {
+  px(p: WrScratchOtherRec { x: 1 })
+}
+
+type WrScratchOtherFrac { num: Nat, denom: Nat }
+
+fn different_record_into_generic_alias() -> Nat {
+  floor_of(t: WrScratchOtherFrac { num: 1, denom: 2 })
+}
+
+fn wrong_field_into_record_alias() -> Int {
+  px(p: WrScratchRec { x: "a" })
+}

@@ -1,0 +1,2972 @@
+module v1.std.core
+
+import std.source_annotation { AnnotationAttachmentRefusal, annotation_attachment_refusal_origin, annotation_attachment_refusal_message }
+import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
+import std.syntax {
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
+  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
+}
+import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.coercion {
+  TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent,
+  TypeReferenceIdentity, ReferenceResolvedToDeclaration, ReferenceIsTheDeclaration, ReferenceIsTypeVariableBinder, ReferenceIdentityUnavailable,
+  ReferenceIdentityUnavailableCause, NoResolutionBoundAtReference, ResolvedNodeIsNotADeclaration, DeclarationNodeCarriesNoSpan
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.literal_elaboration { LiteralElaboration }
+import std.operator_realization { OperandDeclaration }
+import std.target_representation { VariantParentIdentity }
+import std.decl_ref { DeclarationRef }
+import std.induction { SubValueRelation }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  OccurrenceSynthetic,
+  AuthoredTokenOrdinalSpace,
+  authored_token_ordinal_space_initial,
+  authored_token_ordinal_space_from_allocator,
+  occurrence_id_allocator_advance_to,
+  OccurrenceIdAllocator,
+  OccurrenceTransportRefusal,
+  MissingAuthoredOccurrenceIdentity,
+  DuplicateAuthoredOccurrenceIdentity,
+  DuplicateSuppliedCandidateIdentity,
+  InconsistentOccurrenceContainment,
+  WrongOccurrenceRole,
+  UnknownOccurrenceIdentity,
+}
+
+type Token {
+  text: String
+  span: SourceSpan
+  shape: TokenShape
+}
+
+type TokenShape
+  = ShKeyword
+  | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
+  | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
+  | ShColon | ShComma | ShDot | ShDotDot
+  | ShEq | ShEqEq | ShNe
+  | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
+  | ShBang | ShAnd | ShOr
+  | ShQuestion | ShNullCoalesce
+  | ShCaret
+  | ShPipe
+  | ShPipeArrow
+  | ShLitStr | ShLitInt | ShLitFloat | ShIdent
+  | ShStrBegin | ShStrMid | ShStrEnd
+  | ShNewline | ShEof
+  | ShUnknown
+
+type Connective = Conj | Disj | NoConnective | Arrow
+
+type Cardinality = Required | CardOptional
+
+type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
+
+type FieldValueShape = PlainValue | OptionalValue
+
+type FieldSummary {
+  access_style: FieldAccessStyle
+  value_shape: FieldValueShape
+}
+
+// Divergent is the fourth answer to what inference knows about a node, and it is
+// deliberately NOT a shape of Resolved: an expression that never produces a value
+// has no type to resolve, and an expression whose type the walk could not establish
+// has one it failed to find. Collapsing them -- which a nameless Resolved node does,
+// since the only feature distinguishing it is an absent name -- makes every consumer
+// that declines on a missing name decline on both, and the second is a state that
+// must still be judged. review 5085499375 (D1).
+type InferredNode
+  = Resolved { node: Node }
+  | CompilerError { message: String, span: SourceSpan }
+  | TypeVariable { id: String }
+  | Divergent
+
+// The type of an expression that never produces a value. The divergence is carried
+// as an EXPLICIT FACT in `inferred` (InferredNode Divergent), not inferred from the
+// absent name: namelessness is shared with a type the walk merely failed to resolve,
+// so a consumer keyed on it cannot tell the two apart and silences the second.
+// review 58406: the divergence fact has to survive independently of whether a
+// contextual expected type happens to exist -- an ordinary non-tail `let` initializer
+// passes `expected: none`, so a fallback to the arms return payloads fabricates a
+// type for unreachable code. The name stays empty because there is genuinely no type
+// to name; what consumers match on is the fact, via type_is_divergent.
+fn divergent_type() -> Node {
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: Present { value: no_span() }, children: [], connective: NoConnective, params: [], inferred: Present { value: Divergent }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+}
+
+fn inferred_to_node(inferred: InferredNode) -> Node? {
+  match inferred {
+    Resolved { node: n } => Present { value: n }
+    CompilerError { message: _, span: _ } => none
+    TypeVariable { id: _ } => none
+    Divergent => none
+  }
+}
+
+fn is_compiler_error(inferred: InferredNode) -> Bool {
+  match inferred {
+    Resolved { node: _ } => false
+    CompilerError { message: _, span: _ } => true
+    TypeVariable { id: _ } => false
+    Divergent => false
+  }
+}
+
+fn has_inferred(n: Node) -> Bool {
+  n.inferred != none
+}
+
+// ServiceValueBinding IS THE ANSWER TO "IS THIS A SERVICE", DECIDED WHERE THE REGISTRY IS AND
+// CARRIED, and it exists for exactly the reason the note below this type gives for
+// CallTargetIdentity: resolution holds the answer, and every mechanism that re-derives it later is
+// answering at a grain where the facts that decided it are gone.
+//
+// Two producers, one authority: both consult the service registry, after every binding that may
+// shadow the name. service_spine_projection resolves a whole dotted occurrence (`shell.Exec`), and
+// v1.compiler.infer infer_var_binding_kind recognizes a bare service name, which arrives as the
+// service's own namespace-root local (a service imported by name, such as `Filesystem`), so a
+// consumer asks the resolution rather than the spelling. Before the bare arm
+// existed, every call through a bare-imported service was invisible to derived service demand. The emitters need it because they cannot reach the registry: 371 functions
+// across the emit files thread `source_indices`, and adding a parallel `services` parameter beside
+// it would duplicate that plumbing rather than remove the guess.
+//
+// THREE SHAPES WERE TRIED HERE BEFORE THIS ONE AND EACH GUESSED. A field access rooted in a
+// variable with an uppercase leaf admitted `x.inner.User`. Any name equal to its own resolved type
+// name admitted single-segment `Filesystem`, deleting the fail-closed "unrealized host seam"
+// refusal that a service op in a pure fn is supposed to produce, and admitted bare namespace roots
+// like `cargo` besides. Requiring a dot reproduced the prior behaviour exactly but still inferred a
+// semantic fact from a character. A carried decision cannot be wrong about a name it did not read.
+type VarBindingKind
+  = LocalValueBinding
+  | FunctionValueBinding
+  | VariantValueBinding { parent_enum: String, parent_identity: VariantParentIdentity }
+  | MatchBoundBinding
+  | ServiceValueBinding
+
+// WHAT A CALL ACTUALLY TARGETS, DECIDED ONCE WHERE THE LEXICAL SCOPE IS AVAILABLE.
+//
+// Emission used to re-decide a call's target from the authored leaf spelling: a bare `contains`
+// reaching 05_emit_rust was matched against the v1_rt bridge roster by NAME, so an explicitly
+// imported v2 declaration could be emitted as an unrelated same-named runtime primitive. That
+// is the authority-substitution class -- resolution held the answer and a second mechanism
+// answered for it at a grain where the imports that decided it are gone.
+//
+// RuntimePrimitiveCall is produced by builtin resolution, or when std.primitive_projection says
+// THIS EXACT declaration is a HostRealizedSeam or ModeledProjection of the primitive.
+// SourceDeclarationCall is retained for every ordinary declaration and for DivergentProjection,
+// where the declaration and the primitive genuinely disagree and the declaration is what was
+// called. CallableTargetUndetermined is a refusal-bearing residue -- it is not permission for
+// emission to fall back to a name lookup, and emission refuses on it.
+// THE DECLARED HALF OF AN IDENTITY, HOISTED SO THE RESOLVED ARM CAN CARRY IT WITHOUT
+// CARRYING THE BUILTIN ARM.
+//
+// `decide_callable_candidates` proves a builtin never answers -- it can make a population
+// ambiguous and on its own hands the call back to the known-builtin bridge -- so the owner a
+// resolution binds is ALWAYS a declared one. Spelling FuncSigResolved's owner as
+// CallableIdentity would therefore admit a state the decision already ruled out, and spelling
+// it as a loose owner/decl String pair beside DeclaredCallable would be a second representation
+// of the pair v1.compiler.sigs already owns (DESIGN section 3). One record, two consumers.
+//
+// It is declared HERE rather than in v1.compiler.sigs, its former home, because
+// CallTargetIdentity below carries one and this module sits under that one. Re-spelling the pair
+// in either direction to avoid the import would fork it.
+type DeclaredCallableIdentity {
+  owner_module_path: String
+  decl_name: String
+}
+
+// A PRIMITIVE'S IDENTITY AND ITS PER-TARGET REALIZATION ARE TWO FACTS, AND `projected_from`
+// IS WHAT KEEPS THEM APART.
+//
+// The resolver knows both halves at once: that this call resolved to declaration D, and that
+// std.primitive_projection says D projects primitive P. It used to record only P, and every
+// emitter then had to assume P has a bridge in ITS runtime. That assumption is false and was
+// fabricating: v2.std.algebra length is a ModeledProjection of the `length` primitive, the Rust
+// registry has no `length` row (its list realization is `count`, its string realization is
+// `string_length`), and 05_emit_rust rendered `v1_rt::length` -- a symbol that does not exist in
+// the seed -- at 73 sites. That is DESIGN section 5 fabricated-plausible-output: the emitter
+// produced a well-formed call to nothing and only rustc refused, downstream of every gate we own.
+//
+// Which realization a target has is a REALIZATION fact and belongs peripheral to the target
+// (DESIGN section 3: the dispatch that selects a realization is itself realization), so the
+// resolver states only what it knows and carries the declaration alongside. An emitter routes to
+// the bridge when its own registry has the primitive, falls back to the declaration when one was
+// projected, and REFUSES otherwise -- it never invents a runtime symbol from a name.
+//
+// `projected_from` is Absent exactly when the target came from builtin resolution, where no
+// declaration answered and there is nothing to fall back to.
+type CallTargetIdentity
+  = RuntimePrimitiveCall { primitive_name: String, projected_from: DeclaredCallableIdentity? }
+  | SourceDeclarationCall { owner_module_path: String, decl_name: String }
+  | LocallyBoundCall { name: String }
+  | CallableTargetUndetermined
+
+// WHO OWNS A LEAF SPELLING, WITH AMBIGUITY AS AN ARM RATHER THAN AS A VALUE THE OWNER FIELD CANNOT
+// HOLD. The reverse of the item registry's key -- registry rows answer "what is THIS declaration",
+// and emission repeatedly asks "which module declares this spelling". The first encoding of that
+// index answered a contested leaf with the empty string, on the argument that an empty string is not
+// a legal module path so every consumer would miss and refuse. That argument is the one this
+// compiler already retired once, under `__DUPLICATE_ITEM_IDENTITY__`: the illegal state stayed
+// representable, and safety depended on every producer remembering to mint the sentinel and every
+// reader remembering to test for it. Four readers had to remember. As a coproduct the test is an
+// exhaustiveness arm the compiler demands, the producer cannot forget to mark ambiguity because
+// there is no other way to write it, and a reader that would have widened has to write the widening
+// down where a reviewer can see it. DESIGN section 5: correctness by construction, not validation.
+type LeafOwner
+  = SingleOwner { module: String }
+  | LeafAmbiguous
+
+type CallSemantics
+  = PlainCallSemantics { target: CallTargetIdentity }
+  | ResolvedDirectCallSemantics { target: CallTargetIdentity, application_plan: List<ResolvedCallFormal> }
+  | LookupCallSemantics { target: CallTargetIdentity }
+  | FunctionValueCallSemantics
+
+// THE RESOLVED CALLEE IDENTITY, PROJECTED WHERE THE TYPE IS DECLARED RATHER THAN AT ONE CONSUMER.
+//
+// This answers "which declaration does this call reach", and it is asked by two consumers that sit
+// on opposite sides of the pipeline: Rust emission, which needs the identity to name a symbol, and
+// transitive effect analysis, which needs it to key one summary per callable. It lived next to the
+// first consumer, so the second either had to depend on the Rust emitter -- inference importing an
+// emitter is a layer inversion -- or re-derive the answer from the authored spelling, which is the
+// owner-discarding join that made two modules' same-named declarations share one effect summary.
+//
+// A function value has no callable declaration to name, and a call carrying no recorded semantics
+// predates the carrier; both are Undetermined, which refuses at the seam that must produce an
+// identifier rather than silently reverting to name matching.
+// THE REGISTRY-KEY PROJECTION OF AN IDENTITY THAT ALREADY HAS A CARRIER.
+//
+// `DeclaredCallableIdentity` is the identity; this is only its spelling as a map key, and it takes
+// the RECORD rather than two loose strings for two reasons. It cannot be called with an authored
+// name that happens to contain a dot, which is the join this repair exists to remove. And it keeps
+// one spelling of the key: effect analysis and emission would otherwise agree by coincidence until
+// one of them changed its separator.
+//
+// Consumers carry the identity and project only at the map boundary. Projecting earlier throws
+// away the distinction the record exists to hold.
+fn callable_identity(id: DeclaredCallableIdentity) -> String {
+  concat(id.owner_module_path, ".", id.decl_name)
+}
+
+fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
+  match cs {
+    Present { value: PlainCallSemantics { target: target } } => target
+    Present { value: ResolvedDirectCallSemantics { target: target, application_plan: _ } } => target
+    Present { value: LookupCallSemantics { target: target } } => target
+    Present { value: FunctionValueCallSemantics } => CallableTargetUndetermined
+    Absent => CallableTargetUndetermined
+  }
+}
+
+// One declaration-produced fact, carried intact through application. These fields are not
+// independently recoverable at the call site: parameter identity orders named arguments,
+// conformance drives judgments, and substitution_basis drives generic and emitted type args.
+type ResolvedFormal {
+  parameter_identity: String
+  declared_type: Node
+  declaration_bound_conformance: Node
+  substitution_basis: Node
+}
+
+type ResolvedCallFormal {
+  formal_index: Int
+  formal: ResolvedFormal
+  matched_argument_index: Int?
+}
+
+type MethodSemantics
+  = PlainMethodSemantics
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
+  | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
+
+type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
+
+type ExprData
+  = NoExprData
+  | ExprLiteral { value: LiteralValue }
+  | ExprElaboratedLiteral { value: LiteralValue, elaboration: LiteralElaboration }
+  | ExprError { kind: ExprErrorKind, message: String }
+  | ExprVar { binding_kind: VarBindingKind? }
+  | ExprFieldAccess { summary: FieldSummary? }
+  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
+  | ExprMethodCall { method_semantics: MethodSemantics? }
+  | ExprMatch
+  | ExprIf
+  | ExprLet
+  | ExprRecordLit { parent_enum: String? }
+  | ExprListLit
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration? }
+  | ExprUnaryOp { op: UnaryOpKind }
+  | ExprLambda
+  | ExprStringInterp
+  | ExprBlock
+  | ExprCast
+  | ExprForEach
+  | ExprIndex
+  | ExprSlice
+  | ExprReturn
+
+type MatchPattern
+  = Bind { declaration: Node }
+  | LitPattern { value: LiteralValue }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node>, parent_identity: VariantParentIdentity }
+  | Wildcard
+
+// IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
+// answered twice -- once for emission and once for exhaustiveness -- and two authorities for one
+// classification drift apart as the type grows, which is the parallel authority DESIGN section 3
+// forbids. Consumers import this; neither re-derives it.
+//
+// THE MATCH IS EXHAUSTIVE ON PURPOSE, with no `_` arm. A catch-all would answer `false` for any
+// constructor added to `MatchPattern` later, silently classifying a new irrefutable form as
+// refutable; without one, adding a constructor refuses here and the author is made to decide.
+fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
+  match pattern {
+    Wildcard => true
+    Bind { declaration: _ } => true
+    VariantPattern { name: _, parent_enum: _, field_bindings: _, parent_identity: _ } => false
+    LitPattern { value: _ } => false
+  }
+}
+
+type UnaryOpKind = Not | Neg
+
+type StringPart
+  = Text { value: String }
+  | Interpolation { expr: Node }
+
+type OperationModifier = Idempotent | Readonly | Hermetic
+
+// The closed transport roster. Before this, the roster was implicit and re-derived in four
+// places at once -- emit_unified_transport_dispatch's if-chain, the Rust emit_transport_call's
+// copy of it, is_file_transport_after_dispatch_precedence's private copy of the ordering, and
+// is_local_transport's definition-by-exclusion -- so four carriers agreed about which arm claims
+// a multi-key transport by coincidence rather than by construction (DESIGN section 3).
+type TransportKind = RestTransport | ShellTransport | FileTransport | LocalTransport
+
+type CompileResult {
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
+}
+
+type TextFile {
+  path: FilePath
+  content: String
+}
+
+// UnlistedVariantValueUse EXISTS SEPARATELY FROM UnlistedImportUse ON PURPOSE. The situation is the
+// same one UnlistedImportUse reports for a TYPE -- a name used without an import -- and reusing that
+// constructor for the bare nullary VARIANT case was tried and withdrawn: v1.compiler.emit_rust
+// group_unlisted_type_names folds every diagnostic in typed.diagnostics selecting UnlistedImportUse by
+// constructor alone, and hands the result to reference_derived_use_lines, which SYNTHESIZES use-lines
+// from it. That selector is total over the diagnostic type and blind to the stage that minted it -- an
+// ErrorNode carries a module name and a diagnostic and nothing that says which stage produced it -- so
+// any stage emitting UnlistedImportUse is silently wired into production emission, which no author
+// would see from the code they were editing. A distinct constructor is therefore not a naming
+// preference: it is what makes the standing prohibition on adding bare variants to synthesis output
+// hold BY CONSTRUCTION rather than by a byte-diff that can only report 'not on this subject today'.
+type CompilerDiagnostic
+  = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
+  | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
+  | ImportShadowedByLocalDefinition { name: String, module_path: String, importing_module: String, span: SourceSpan }
+  | ImportCollidesWithKernelName { name: String, module_path: String, importing_module: String, kernel_declaration_module: String, span: SourceSpan }
+  | KernelMintDeclarationAmbiguousAtImport { name: String, module_path: String, importing_module: String, row_count: Int, span: SourceSpan }
+  | UnresolvedType     { name: String, span: SourceSpan }
+  | UnitVariantPhantomIdentityEvidenceUnavailable { name: String, span: SourceSpan }
+  | TypeMismatch       { expected: String, got: String, span: SourceSpan }
+  | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
+  | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
+  | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | MethodNotFound     { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
+  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
+  | ReceiverTypeUnestablished { method: String, span: SourceSpan }
+  | TextRepresentationUnidentifiedAtBoundary { position: String, span: SourceSpan }
+  | TextCrossingHasNoImplicitRoute { expected: String, got: String, route: String, span: SourceSpan }
+  | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
+  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
+  | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
+  | TestCodeReferenceAdmitted { referrer: String, target: String, span: SourceSpan }
+  | TestCodeReferenceBudgetMismatch { referrer: String, declared: Int, observed: Int, span: SourceSpan }
+  | TestCodeReferenceRowOrphaned { referrer: String, span: SourceSpan }
+  | MissingField       { field: String, type_name: String, span: SourceSpan }
+  | SiblingOperandEffectOrderUndetermined { construct: String, first_operand: String, second_operand: String, span: SourceSpan }
+  | PresentArmScrutineeTypeUnresolved { pattern: String, span: SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
+  | CircularDependency { modules: List<String>, span: SourceSpan }
+  | DuplicateModule    { name: String, span: SourceSpan }
+  | DuplicateDeclaration { module_name: String, name: String, span: SourceSpan }
+  | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
+  | ParseError         { message: String, span: SourceSpan }
+  | InternalError      { message: String, span: SourceSpan }
+  | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
+  | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: SourceSpan }
+  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
+  | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
+  | SoleConstructorViolation { type_name: String, span: SourceSpan }
+  | KernelMintShapeMismatch { declaration_name: String, cause: String, span: SourceSpan }
+  | OptionalCastNotEliminated { source_type: String, target_type: String, span: SourceSpan }
+  | BareNoneNotAdmittedByFieldType { field: String, type_name: String, declared_type: String, span: SourceSpan }
+  | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
+  | ConstructorCallAdmissionRefused {
+      constructor_module_path: String,
+      constructor_decl_name: String,
+      caller_module_path: String,
+      caller_decl_name: String,
+      permitted_callers: List<String>,
+      span: SourceSpan
+    }
+  | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
+  | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
+  | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
+  | UnlistedImportUse { name: String, span: SourceSpan }
+  | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
+  | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
+  | UnlistedVariantValueUse { name: String, span: SourceSpan }
+  | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
+  | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
+  | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
+  | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
+  | EmittedSymbolCollision { symbol: String, identities: List<String>, span: SourceSpan }
+  | NativeEffectRealizationRefused { entry: String, refusals: List<String>, span: SourceSpan }
+  | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
+  | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
+  | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
+  | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
+  | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
+  | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
+  | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
+  | EqualityOnFunctionMember { type_name: String, member: String, span: SourceSpan }
+  | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
+  | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
+  | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
+  | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
+  | TypeParameterInValuePosition { name: String, span: SourceSpan }
+  | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
+  | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
+  | ServiceConfigReferenceJudgmentDeferred {
+      field: String,
+      referenced_name: String,
+      trigger: String,
+      span: SourceSpan
+    }
+  | TransportEmissionNotModeled {
+      transport_kind: String,
+      service: String,
+      operation: String,
+      declaring_module: String,
+      target: String,
+      missing_realization_fact: String,
+      span: SourceSpan
+    }
+
+
+// SEVERITY AND GATE DISPOSITION ARE TWO FACTS ABOUT A DIAGNOSTIC, NOT ONE.
+// They were three hand-maintained allowlists -- is_error_diagnostic, is_interpreter_blocking_diagnostic
+// and is_discovery_corpus_advisory_typecheck_diagnostic -- each a separate wildcard match over this
+// coproduct, kept in agreement by an author remembering to touch all three. That is one concept with
+// three names, and the fork it predicts had already happened: ComplexityUnknown sat in the
+// blocking-false list and in NO advisory list, so it was rendered while counted by neither total.
+// A witness that the three lists agree would be validation standing where construction was available;
+// it can be satisfied by editing one declaration while the others still lie.
+//
+// WHY A PRODUCT AND NOT A THREE-ARM SUM. Severity does not follow from gate disposition. Measured over
+// all 55 variants, the (error, blocking, advisory) space has FOUR occupied points, and two of them share
+// a gate answer while disagreeing on severity: six advisory members are non-error, and
+// ServiceConfigReferenceJudgmentDeferred and DeclaredTypeInhabitanceUndecided are advisory AND error.
+// A single disposition sum cannot answer is_error without flipping those two.
+//
+// THE THIRD GATE ARM IS NAMED FOR THE STATE, NOT FOR ITS ONE OCCUPANT. Rendered and counted by neither
+// total is a real coordinate, not a quirk of ComplexityUnknown, and a second member must be forced to
+// name its own reason rather than inherit one.
+type DiagnosticSeverity
+  = SeverityError
+  | SeverityNonError
+
+type DiagnosticGateDisposition
+  = GateBlocking
+  | GateAdvisoryTypecheck
+  | GateRenderedUncounted { reason: String }
+
+type DiagnosticDisposition {
+  severity: DiagnosticSeverity
+  gate: DiagnosticGateDisposition
+}
+
+type ErrorNode {
+  diagnostic: CompilerDiagnostic
+  module_name: String
+}
+
+type ErrorDAG {
+  errors: List<ErrorNode>
+}
+
+// Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and
+// rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored
+// location' (review 45364).
+//
+// WHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in
+// neither entries_by_id nor references_by_id (std.occurrence_binding_resolve
+// resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY
+// an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the
+// validated carrier, so at that point no authored span exists to report. This is absence by
+// construction, not a failure to compute one.
+//
+// WHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file
+// '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The
+// wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been
+// absorbed into an anonymous placeholder instead of stopping the line. It is now
+// unreachable-by-construction rather than merely unused, because adding a variant reds the total
+// match below AND the total match in occurrence_transport_refusal_diagnostic_message. The
+// '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is
+// already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact
+// the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().
+//
+// BOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence
+// is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed
+// signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's
+// scope. Until then no_span() is the honest rendering and the message carries the identity.
+
+fn occurrence_transport_refusal_diagnostic_span(
+  refusal: OccurrenceTransportRefusal
+) -> SourceSpan? {
+  match refusal {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
+    DuplicateAuthoredOccurrenceIdentity {
+      occurrence: _,
+      diagnostic_span: span,
+    } => Present { value: span }
+    DuplicateSuppliedCandidateIdentity {
+      occurrence: _,
+      diagnostic_span: span,
+    } => Present { value: span }
+    InconsistentOccurrenceContainment {
+      occurrence: _,
+      diagnostic_span: span,
+    } => Present { value: span }
+    WrongOccurrenceRole {
+      occurrence: _,
+      expected: _,
+      observed: _,
+      diagnostic_span: span,
+    } => Present { value: span }
+    UnknownOccurrenceIdentity { occurrence: _ } => Absent
+  }
+}
+
+fn occurrence_transport_refusal_diagnostic_message(
+  refusal: OccurrenceTransportRefusal
+) -> String {
+  match refusal {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
+      "occurrence transport refused: missing authored occurrence identity"
+    DuplicateAuthoredOccurrenceIdentity {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: duplicate authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    DuplicateSuppliedCandidateIdentity {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence binding refused: duplicate supplied candidate identity ",
+      to_string(value: occurrence.value)
+    )
+    InconsistentOccurrenceContainment {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: inconsistent containment for authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    WrongOccurrenceRole {
+      occurrence: occurrence,
+      expected: _,
+      observed: _,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: wrong role for authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    UnknownOccurrenceIdentity { occurrence: occurrence } =>
+      concat(
+        "occurrence transport refused: unknown occurrence identity ",
+        to_string(value: occurrence.value)
+      )
+  }
+}
+
+fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
+  match d {
+    UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
+    MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
+    ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: s } => s
+    ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: s } => s
+    KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: s } => s
+    UnresolvedType     { name: _, span: s }                    => s
+    UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: s } => s
+    TypeMismatch       { expected: _, got: _, span: s }        => s
+    ArityMismatch      { name: _, expected: _, got: _, span: s } => s
+    VariantNotFound    { variant: _, type_name: _, span: s }   => s
+    FieldNotFound      { field: _, type_name: _, span: s }     => s
+    MethodNotFound     { method: _, receiver_type: _, span: s } => s
+    MethodExistenceUndecided { method: _, receiver_type: _, span: s } => s
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
+    ReceiverTypeUnestablished { method: _, span: s } => s
+    TextRepresentationUnidentifiedAtBoundary { position: _, span: s } => s
+    TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: s } => s
+    AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
+    FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
+    TestCodeReferenced { referrer: _, target: _, span: s } => s
+    TestCodeReferenceAdmitted { referrer: _, target: _, span: s } => s
+    TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: s } => s
+    TestCodeReferenceRowOrphaned { referrer: _, span: s } => s
+    MissingField       { field: _, type_name: _, span: s }     => s
+    SiblingOperandEffectOrderUndetermined { construct: _, first_operand: _, second_operand: _, span: s } => s
+    PresentArmScrutineeTypeUnresolved { pattern: _, span: s } => s
+    NonExhaustiveMatch { missing: _, span: s }                 => s
+    CircularDependency { modules: _, span: s }                 => s
+    DuplicateModule    { name: _, span: s }                    => s
+    DuplicateDeclaration { module_name: _, name: _, span: s }  => s
+    MissingAnnotation  { fn_name: _, what: _, span: s }        => s
+    ParseError         { message: _, span: s }                 => s
+    InternalError      { message: _, span: s }                 => s
+    ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
+    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: _, span: s } => s
+    OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
+    VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
+    SoleConstructorViolation { type_name: _, span: s } => s
+    KernelMintShapeMismatch { declaration_name: _, cause: _, span: s } => s
+    OptionalCastNotEliminated { source_type: _, target_type: _, span: s } => s
+    BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: s } => s
+    SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_origin(refusal: r)
+    ConstructorCallAdmissionRefused {
+      constructor_module_path: _,
+      constructor_decl_name: _,
+      caller_module_path: _,
+      caller_decl_name: _,
+      permitted_callers: _,
+      span: s
+    } => s
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
+    DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
+    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
+    UnlistedImportUse { name: _, span: s } => s
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
+    UnlistedVariantValueUse { name: _, span: s } => s
+    AmbiguousReference { name: _, candidates: _, span: s } => s
+    AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
+    EffectfulSelfRecursionUnrealized { name: _, span: s } => s
+    ModuleFilenameCollision { filename: _, modules: _, span: s } => s
+    EmittedSymbolCollision { symbol: _, identities: _, span: s } => s
+    NativeEffectRealizationRefused { entry: _, refusals: _, span: s } => s
+    EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
+    EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
+    CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
+    CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
+    CallArgumentDuplicate { callee: _, argument: _, span: s } => s
+    CallPositionalDeficit { callee: _, parameter: _, supplied: _, required: _, span: s } => s
+    CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
+    EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
+    EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
+    EqualityOptionalityMismatch { optional_side: _, span: s } => s
+    TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
+    TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
+    TypeParameterInValuePosition { name: _, span: s } => s
+    OccurrenceTransportViolation { refusal: refusal } =>
+      match occurrence_transport_refusal_diagnostic_span(refusal: refusal) {
+        Present { value: span } => span
+        Absent => no_span()
+      }
+    ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
+    TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
+  }
+}
+
+fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
+  match d {
+    UnresolvedImport   { module_path: m, importing_module: i, span: _ } => concat("unresolved import: module '", m, "' not found (imported by '", i, "')")
+    MissingExport      { name: n, module_path: m, importing_module: i, span: _ } => concat("name '", n, "' not found in module '", m, "' (imported by '", i, "')")
+    ImportShadowedByLocalDefinition { name: n, module_path: m, importing_module: i, span: _ } => concat("import of '", n, "' from module '", m, "' is discarded: '", i, "' also defines '", n, "' at module scope, and the LOCAL DEFINITION binds every bare use of the name. The import you wrote is not the binding you get. Qualify the call as '", m, ".", n, "(...)' to reach the imported one, or rename one of the two.")
+    ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') collides with the kernel name whose mint is the declaration in '", k, "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.")
+    KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') cannot be judged against the kernel mint: ", to_string(value: c), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.")
+    UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
+    UnitVariantPhantomIdentityEvidenceUnavailable { name: n, span: _ } => concat("unit-variant marker identity evidence unavailable for '", n, "'")
+    TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
+    ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
+    VariantNotFound    { variant: v, type_name: t, span: _ }      => concat("variant '", v, "' not found in type '", t, "'")
+    FieldNotFound      { field: f, type_name: t, span: _ }        => concat("field '", f, "' not found in type '", t, "'")
+    MethodNotFound     { method: m, receiver_type: t, span: _ }   => concat("method '", m, "' not found on receiver type '", t, "'")
+    MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
+    AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, span: _ } => concat("algebra receiver application evidence unavailable for '", t, "' at argument ", to_string(value: i), ": structural members are not type arguments")
+    TextCrossingHasNoImplicitRoute { expected: e, got: g, route: r, span: _ } => concat(concat(concat(concat(concat(concat("text crossing with no implicit route: expected ", e), ", got "), g), " -- host text and a code-point sequence meet only through a declared conversion plan; call "), r), " (std.coercion, named by gunbc.structural_realization_bindings conversion_plan_rows)")
+    TextRepresentationUnidentifiedAtBoundary { position: p, span: _ } => concat(concat("text boundary unjudged at ", p), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)")
+    ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
+    FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, span: _ } =>
+      concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), concat(concat("' no longer matches what this module contains: the row declares ", to_string(value: d)), concat(" occurrence(s) and ", to_string(value: o))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
+    TestCodeReferenced { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests")
+    TestCodeReferenceAdmitted { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink")
+    TestCodeReferenceRowOrphaned { referrer: r, span: _ } => concat("the test-reference debt row for '", r, "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist")
+    TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, span: _ } => concat("the test-reference debt row for '", r, "' declares ", to_string(value: d), " reference(s) but ", to_string(value: o), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted")
+    MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
+    SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, span: _ } => concat("two sibling operands of '", c, "' each reach a declared effect ('", a, "' and '", b, "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '", c, "'")
+    PresentArmScrutineeTypeUnresolved { pattern: p, span: _ } => concat("a '", p, "' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)")
+    NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
+    CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
+    DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
+    DuplicateDeclaration { module_name: m, name: n, span: _ }     => concat("duplicate declaration '", n, "' in module '", m, "' -- a second declaration of one name silently replaced the first")
+    MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
+    ParseError         { message: m, span: _ }                    => m
+    InternalError      { message: m, span: _ }                    => m
+    ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
+    WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, span: _ } =>
+      concat("where-refinement unenforced: predicate '", p, "' on '", t, "' — ", r)
+    OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
+    VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
+    SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
+    KernelMintShapeMismatch { declaration_name: d, cause: c, span: _ } => concat("kernel mint binding: '", d, "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ", c)
+    OptionalCastNotEliminated { source_type: st, target_type: tt, span: _ } =>
+      concat("cannot cast optional '", st, "' to '", tt, "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first")
+    BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, span: _ } =>
+      concat("bare 'None' cannot inhabit field '", f, "' of '", t, "': declared type '", dt, "' carries no absence — it is not optional and declares no 'None' variant")
+    SourceAnnotationRefused { refusal: r } => annotation_attachment_refusal_message(refusal: r)
+    ConstructorCallAdmissionRefused {
+      constructor_module_path: cm,
+      constructor_decl_name: cn,
+      caller_module_path: caller_m,
+      caller_decl_name: caller_n,
+      permitted_callers: permitted,
+      span: _
+    } =>
+      concat(
+        "constructor call admission refused: '",
+        cm,
+        ".",
+        cn,
+        "' refuses call from '",
+        caller_m,
+        ".",
+        caller_n,
+        "' — permitted callers: [",
+        join(permitted, separator: ", "),
+        "]"
+      )
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, span: _ } =>
+      concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
+    DeclaredTypeNotInhabited { position: pos, expected: e, got: g, span: _ } =>
+      concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
+    DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
+      concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
+    UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, span: _ } =>
+      concat("no provider is present for '", n, "', referenced by module '", rm, "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply")
+    ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, span: _ } =>
+      concat("the provider of '", n, "' is present but its export could not be established: module '", rm, "' references the name, the registry maps it to '", p, "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold")
+    UnlistedVariantValueUse { name: n, span: _ } => concat("unlisted variant value use '", n, "' (a coproduct arm referenced but not in any import's name list)")
+    AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
+    EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.")
+    ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
+    EmittedSymbolCollision { symbol: s, identities: ids, span: _ } => concat("emitted symbol collision: ", to_string(value: ids |> count), " authored identities render one emitted symbol '", s, "': ", join(ids, separator: ", "), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one")
+    NativeEffectRealizationRefused { entry: e, refusals: rs, span: _ } => concat("native effect realization refused for entry '", e, "': ", join(rs, separator: "; "), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)")
+    EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
+    EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
+    CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
+      concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
+    CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
+      concat("call shape mismatch calling '", c, "': too many positional arguments: ", to_string(value: s), " supplied, ", to_string(value: cap), " positional parameter(s) declared")
+    CallArgumentDuplicate { callee: c, argument: a, span: _ } =>
+      concat("call shape mismatch calling '", c, "': argument '", a, "' supplied more than once")
+    CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, span: _ } =>
+      concat("call shape mismatch calling '", c, "': missing required argument '", p, "' (", to_string(value: s), " of ", to_string(value: r), " required argument(s) supplied)")
+    CallNamedArgOnFunctionValue { callee: c, argument: a, span: _ } =>
+      concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
+    EqualityOnFunctionMember { type_name: t, member: m, span: _ } =>
+      concat("equality is not defined for '", t, "': member '", m, "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='")
+    EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
+      concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
+    EqualityOptionalityMismatch { optional_side: side, span: _ } =>
+      concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional")
+    TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
+      concat("type argument arity mismatch applying '", t, "': ", to_string(value: s), " type argument(s) supplied, ", to_string(value: d), " type parameter(s) declared")
+    TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
+      concat("type argument does not inhabit the declared kind applying '", t, "': parameter '", p, "' is declared '", k, "', and '", sup, "' is not one of its inhabitants")
+    TypeParameterInValuePosition { name: n, span: _ } =>
+      concat("'", n, "' is a type parameter, not a value: a name bound as a type may not stand in an expression position")
+    OccurrenceTransportViolation { refusal: refusal } =>
+      occurrence_transport_refusal_diagnostic_message(refusal: refusal)
+    ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
+      concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
+    ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, span: _ } =>
+      concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
+    TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
+      concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
+  }
+}
+
+fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
+  reason == "predicate deferred at compile time"
+    || reason == "predicate not enforced at compile time"
+    || reason == "non-literal value at refined position"
+    || reason == "predicate argument is not an int literal"
+    || reason == "int predicate not implemented"
+    || reason == "string predicate not implemented"
+}
+
+type FrontierOccurrenceKey {
+  method: String
+  receiver_shape: String
+}
+
+fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurrenceKey? {
+  match d {
+    ReceiverTypeUnestablished { method: m, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: "Primitive()" } }
+    MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: _, span: _ } =>
+      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: t } }
+    _ => none
+  }
+}
+
+// The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic
+// count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the
+// consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put
+// a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so
+// adding a variant could leave the budget silently blind to it, and the coproduct would have two
+// places that decide what a diagnostic means (codex review 45476). Only two variants carry an
+// occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and
+// ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape
+// renders as Primitive() — which is why that literal is the key here rather than a field on the
+// variant. Everything else counts against no row. A new variant that should be budgeted is added in
+// this fn, next to the variants it joins.
+
+// THE SINGLE AUTHORITY for a diagnostic's severity and its gate disposition. Every predicate below
+// derives from this one total function, so the three allowlists that used to answer independently no
+// longer exist and cannot disagree.
+//
+// EXHAUSTIVE BY CONSTRUCTION -- there is no wildcard. A new variant does not compile until an author
+// states its disposition, which is what makes the omission unwritable rather than merely detectable:
+// v1.compiler.patterns refuses a closed-coproduct match missing a constructor with NonExhaustiveMatch,
+// naming the missing member. diagnostic_to_span and diagnostic_to_message already read this coproduct
+// exhaustively, so this is the established form in this module and not a new burden.
+fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
+  match d {
+    UnresolvedImport { module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MissingExport { name: _, module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ImportShadowedByLocalDefinition { name: _, module_path: _, importing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ArityMismatch { name: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    VariantNotFound { variant: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    FieldNotFound { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MethodNotFound { method: _, receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MethodExistenceUndecided { method: _, receiver_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TextRepresentationUnidentifiedAtBoundary { position: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TestCodeReferenceRowOrphaned { referrer: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MissingField { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    SiblingOperandEffectOrderUndetermined { construct: _, first_operand: _, second_operand: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    PresentArmScrutineeTypeUnresolved { pattern: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DuplicateDeclaration { module_name: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    MissingAnnotation { fn_name: _, what: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ParseError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    InternalError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ComplexityUnknown { func_name: _, reason: _, span: _ } =>
+      DiagnosticDisposition {
+        severity: SeverityError,
+        gate: GateRenderedUncounted { reason: "complexity analysis is the only producer, and its violations are reported to the author without gating the corpus: they are errors about a function's cost shape rather than about its meaning, so blocking would stop the line on a cost fact and counting them as advisory would enter them in the discovery-corpus frontier they do not belong to. Preserved as measured; whether this coordinate should stay occupied is an open question and not settled here." }
+      }
+    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
+      if is_where_refinement_unenforced_advisory_reason(reason: r) {
+        DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+      } else {
+        DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+      }
+    OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    VariantCollision { variant: _, enum1: _, enum2: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    SoleConstructorViolation { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    KernelMintShapeMismatch { declaration_name: _, cause: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    OptionalCastNotEliminated { source_type: _, target_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    BareNoneNotAdmittedByFieldType { field: _, type_name: _, declared_type: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    SourceAnnotationRefused { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
+    UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    UnlistedVariantValueUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    AmbiguousReference { name: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EmittedSymbolCollision { symbol: _, identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    NativeEffectRealizationRefused { entry: _, refusals: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallArgumentDuplicate { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallPositionalDeficit { callee: _, parameter: _, supplied: _, required: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    CallNamedArgOnFunctionValue { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeParameterInValuePosition { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    OccurrenceTransportViolation { refusal: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ContainerSpellingUnrecognized { name: _, container_leaf: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
+    TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+  }
+}
+
+fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match diagnostic_disposition(d: d).severity {
+    SeverityError => true
+    SeverityNonError => false
+  }
+}
+
+// owner: v1.compiler.emit_rust (reference_derived_use_line_plan's per-candidate disposition). TWO
+// DIAGNOSTICS, ONE WIRED AND BLOCKING, ONE DECLARED AND PRODUCED BY NOTHING -- and which is which
+// was decided by measurement, not by preference. ReferenceDerivedImportExportUnproven is emitted
+// from CandidateExportProofFailed: the provider is present in the closure and its export could not
+// be established, and the remedy is NOT an import -- the provider is already here -- but making the
+// emitter able to prove an export it may already hold. IT IS ADVISORY, AND IT WAS BLOCKING FOR ONE
+// CI RUN -- THE FLIP WAS APPROVED, EXECUTED, AND REFUTED BY ITS OWN FIRST EXECUTION OVER A SECOND
+// CLOSURE, recorded here rather than repointed because a trigger that survives its own
+// falsification inherits credibility a dead prediction no longer has. THE FLIP CONDITION WAS: an
+// arm flips when its population over a NAMED CLOSURE is zero AND a discriminating RED is
+// authorable. Both halves held and the conclusion was still wrong, which is the finding. The named
+// closure was the regen seed closure (SeedV1 + DagCorpus), where the population is zero. The
+// required build lane ALSO runs a v2-emission phase over a DIFFERENT closure --
+// entry:src/v2/compiler/00_compile.dag, 169 modules -- and there the population is EIGHTY-SEVEN,
+// measured on run 33111325404 at b331e24cf7d, which refused the phase and reddened the required
+// check. So the zero was a property of THE CLOSURE and not of the arm, and flipping globally on a
+// single-closure measurement is the denominator error this very carrier already names one clause
+// down for the sibling arm (registry-absent is ENTRY-RELATIVE rather than a fixed target). The same
+// reasoning was available for this arm and was not applied to it. THE CORRECTED CONDITION, which is
+// what the flip should have required: the population must be zero over EVERY closure a required
+// phase compiles, not over one named closure -- a per-closure zero is a fact about that entry and
+// licenses nothing about another. AND THE CLOSURES MUST BE NAMED HERE RATHER THAN DESCRIBED,
+// because the phrase every-closure-a-required-phase-compiles names a set that MOVES: it grew when
+// #9035 added the v2-emission phase and again when that phase's subject was widened from
+// dag/std/abi.dag to the v2 pipeline root, and it grows whenever a phase is added or an entry
+// roster widens. A described set leaves that to whoever remembers; a named one makes a phase
+// addition visibly re-open this question. AS OF 2026-08-27 THE SET IS THREE, each with its own
+// authority: the regen seed closure (v1.compiler.cli_run regen_source_roots, SeedV1 + DagCorpus),
+// the v2-emission entries (gunbc.ci_layer_roots required_v2_emission_entries), and the emit-compile
+// entries (gunbc.ci_layer_roots required_emit_compile_entries). Only the first two have been
+// measured for this arm -- 0 and 87 -- and the third is UNMEASURED, so even the corrected condition
+// is not currently evaluable and any future flip must measure it rather than assume it follows the
+// seed. This warning was delivered before the flip rather than after it: deep-ant-102 stated that
+// the zero was 0 over that closure and not over all closures, and that with every provider selected
+// in the proof gate is the easy case; it was acknowledged in writing and not carried into the
+// condition. It is recorded as a dropped warning rather than as a missing insight, because the two
+// have different remedies. The bounded sequence ruled for this work said count == 0 flips and count
+// > 0 IS THE BURNDOWN ROSTER AT IDENTITY GRAIN; the terminal event has now fired with the second
+// answer, so the 87 is that roster and the arm stays advisory until it burns down. The population
+// is NOT a stable number and must not be quoted as one: it is 0 over the seed closure and 87 over
+// the v2 compiler entry, and no closure has been enumerated beyond those two. THE DIAGNOSTIC IS
+// STILL TYPED, LOCATED AND COUNTED, which is the whole of what the brief asked -- the silent
+// omission is closed either way; severity decides whether the line stops, not whether the omission
+// is visible. A sample of what it reports, and the reason 87 is a real roster rather than noise:
+// std.determinism references std.perturbation.PerturbationVerdict whose provider is in the closure
+// with its export unestablished, and v2.lens.complexity_accumulator_copy.analyze accounts for a
+// large share of the rest against providers that are likewise present. Under the previous
+// condition: an arm flips when its population over a NAMED CLOSURE is zero AND A DISCRIMINATING RED
+// IS AUTHORABLE. A zero alone is never sufficient, because an observation of zero on an arm that
+// has never fired is indistinguishable in a count from an arm that CANNOT fire, and flipping the
+// latter yields a permanently-green check cited as coverage, which 4b rates worse than absent. BOTH
+// HALVES HELD AT THE TIME: the population is zero over the regen seed closure (claim_executor
+// --required-regen --source-root dag --source-root src/v2, whose subject is regen_input_sources
+// grown to a joint fixpoint over import, dotted-reference and bare-reference edges), and the RED is
+// authorable and AUTHORED at the fixture boundary in
+// v1.tests.claim.reference_derived_disposition_census_witness_test, which builds a
+// CandidateExportProofFailed row and asserts the diagnostic. The emission still produces its files
+// beside the diagnostic rather than returning none: production precedes adjudication, so the
+// candidate tree survives the refusal and the refusal is what stops the line.
+// ReferenceDerivedImportProviderUnknown is DECLARED HERE AND PRODUCED BY NOTHING. Its arm,
+// CandidateRegistryAbsent, was instrumented and measured over the same closure and returned 473
+// rows over 63 names across 110 modules. THAT POPULATION IS MIXED, AND AN EARLIER REVISION OF THIS
+// NOTE CALLED IT ALL TARGET VOCABULARY -- corrected 2026-08-27 after deep-ant-102 pushed back on
+// the census SCOPE. Two classes are conflated inside it. (a) EXTINGUISHED -- Vec 88, bool 73, i64
+// 48, BTreeSet: no .dag declaration exists anywhere and none can, because the PRODUCER is
+// collect_item_realized_surface_names, which is rust_identifier_tokens over render_rust_type and so
+// emits target-language SPELLINGS by construction (attribution corrected by clever-boar-140, who
+// owns the coproduct: the candidate filter's emitted-source disjunct is an admission GATE over an
+// already-proposed list and cannot itself propose anything, so narrowing it would delete genuine
+// emitter-attested candidates and leave the real source untouched).
+// reference_is_host_realized_builtin misses these because it is keyed on .dag vocabulary --
+// is_container_type reads std.types container_type_arity -- so Vec and BTreeSet, the RUST spellings
+// of List and Set, pass a filter that exists precisely to remove host-realized names. (b)
+// OUT-OF-CLOSURE -- empty_map 33 (v2.std.collection), Optional 25 (v2.std.optional), and its
+// VARIANTS Present 47 and Absent 13: REAL .dag names whose providers exist and were not selected
+// in. The variant half is not a detail: a consumer key that reads a declaration index's `declared`
+// field alone reports no-provider-anywhere for every variant name in the corpus, because a variant
+// is not a top-level declaration and such an index holds variants in a separate field -- so the key
+// must read declared UNION variants, and two of these four names are the instance that proves it
+// (clever-boar-140, who then settled it STRUCTURALLY rather than from this sample: build_item_info
+// in v1.compiler.infer produces one ItemInfo per TOP-LEVEL ITEM and no arm descends into a
+// coproduct's children, and the single item_registry insert is keyed on that name, so a variant
+// name is absent from the registry under EVERY closure -- verified here against both sites). THAT
+// FACT AND THIS ARM'S ORDERING COMPOSE, and the composition is why these two names appear under (b)
+// rather than under (a): CandidateVariantDelegatedToParent is tested BEFORE the registry lookup, so
+// a variant whose parent is IN closure is delegated and never reaches the registry at all, and the
+// registry's structural inability to hold variants surfaces only when the parent is OUT of closure
+// and type_summaries therefore cannot recognise the name as a variant. So Present and Absent are
+// registry-absent HERE because Optional was out of closure, and would be delegated with it in --
+// which is exactly why this sample cannot discriminate the two readings, and why the structural
+// argument above was needed instead. THE PROPORTION IS UNMEASURED IN BOTH DIRECTIONS, and the two
+// ways of counting point OPPOSITE ways, which is the whole reason this population was misread
+// twice. BY ROW the immovable names dominate: Vec 88 + bool 73 + Option 50 + i64 48 out of 473,
+// each verified to have no .dag declaration anywhere. BY DISTINCT NAME the examined sample is 4 of
+// 63 and ALL FOUR ARE MOVABLE. High-count immovable names at the head, movable names in the tail
+// with small counts -- which is exactly the structure that hid the signal, and exactly why reading
+// a sorted head answered the wrong question: empty_map's 33 rows were the third-largest count and
+// were still classified as target vocabulary on the first pass. FIFTY-NINE NAMES ARE UNEXAMINED BY
+// ANYONE. Neither the row-dominance nor the 4-of-4 may be quoted as a proportion; both are
+// directional facts about different denominators. WHY (b) IS THERE AT ALL is a trap worth carrying:
+// the census invocation passes --source-root dag --source-root src/v2, but the SUBJECT is
+// regen_input_sources, whose roots are SeedV1 and DagCorpus and exclude src/v2 entirely -- stage0
+// IS the v1 seed, and a seed reaching into src/v2 would depend on the successor it bootstraps
+// toward. The source-root FLAGS and the regen SUBJECT are not the same thing. So class (b) is
+// precisely the closure-conditioned population this change exists to make visible, sitting inside
+// the rows that had been written off, and registry-absent is ENTRY-RELATIVE rather than a fixed
+// target: a reader who takes the number as stable has made the denominator error. THE 473 IS NOT A
+// ROSTER OF UNFIXABLE ROWS. Wiring a diagnostic to it would still print a permanently-false report
+// on every class-(a) row -- which is why the arm stays unwired even though part of the population
+// is movable -- and the reason that is worse than shipping nothing is that IT TRAINS READERS TO
+// IGNORE THE CHANNEL: a diagnostic nobody reads is worth less than an absent one, because the
+// absent one is honest about its coverage. The variant stays declared because the class is real and
+// its shape is settled; the trigger for wiring it is that class (a) leave the arm -- the candidate
+// walk ceasing to propose target-language vocabulary -- after which the residue is class (b) and is
+// exactly the closure-conditioned population worth reporting. A witness asserts zero diagnostics
+// from that arm and fails the moment anyone wires it. THE TWO ARE SEPARATE DIAGNOSTICS RATHER THAN
+// ONE WITH A CAUSE FIELD, because the question is upstream of severity: registry-absent is fixed by
+// authoring an import, export-proof-failed by proving an export that already exists -- opposite
+// remedies, different owners, different populations, different reachability -- and 4b files one row
+// per class. That the two turned out to need different TREATMENT rather than merely different
+// severity is the strongest evidence the split was right. A REFUTED PREDICTION, recorded rather
+// than quietly repointed. Registry-absent was predicted to overlap heavily with UnlistedImportUse,
+// both being described as 'referenced but never imported', and the prediction was made because
+// closure membership is driven by imports. Measured on one run: 63 registry-absent names, 36
+// UnlistedImportUse names, INTERSECTION ZERO. UnlistedImportUse names .dag types masked at RESOLVE
+// time; registry-absent is dominated by Rust tokens that never reached the resolver. The reasoning
+// was wrong at the MECHANISM, not merely the magnitude. ProviderUnknown's trigger therefore does
+// NOT point at the family-closure-SVN burndown as this carrier previously stated, and the
+// falsification is recorded here rather than the trigger being silently repointed -- a repointed
+// trigger would inherit the credibility of a prediction that just died, so whatever that trigger
+// eventually becomes is argued fresh.
+
+// THE SCAFFOLD STATE BEHIND THE TRIGGER BELOW, held here as an annotation because it is rationale
+// rather than program data. owner: v1.compiler.infer, the 00_core diagnostic partition. lane:
+// where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a
+// closed-string sum, and any unlisted reason fails closed to blocking. bound: the deferral strings
+// 04_infer emits today; classifier, eval and equivalence arms must change together until the
+// authority lands.
+//
+// WHY THE TRIGGER WAS RENAMED, recorded because a meaning fork that is silently corrected leaves
+// the next reader unable to tell two capabilities were ever confused. This row formerly cited
+// feature:where-refinement-predicate-coproduct, a name that was carried at seven sites for THREE
+// different capabilities: this one, the predicate declaration authority in
+// gunbc.where_refinement_predicate_vocabulary, and refinement evidence at non-literal positions in
+// std.content_hash and std.decimal. DESIGN 4b(3) retires a drop by its trigger and by nothing else,
+// so satisfying the shared name here would have retired the predicate row while every string
+// classifier it names still stood.
+//
+// THIS PROSE WAS PROGRAM DATA UNTIL codex review 60718. It sat inside the String declaration below,
+// which is mirrored verbatim into the stage0 seed, so the rename roughly DOUBLED a commentary row
+// that ships in the compiler. DESIGN 4c names that shape exactly: rationale belongs in an annotation,
+// and 4c's own history is the receipt -- making `//` a parse error did not make commentary
+// unwritable, it made the corpus hoist comments into `data ...: String` rows, and the first cleanup
+// swept 215 of them. This was very nearly the 216th. Moving it here removes it from the emitted seed
+// entirely, because annotations are captured on a lexical channel disjoint from semantic occurrence
+// allocation and reach no target bytes.
+//
+// THE CARRIER BELOW IS TYPED, AND WHICH TYPE IT IS WAS THE CONTESTED PART. gunbc.rung_drop was
+// proposed as the terminal and is the WRONG one: its RungDropReason is a closed coproduct of
+// LostAsPassenger, DeletedWithoutReplacement and ReplacementStaged -- three ways a guarantee FELL --
+// and nothing fell here. This row declares that an interim construction exists and names what ends
+// it, so forcing it into rung_drop would require lying about which arm applied. DESIGN 5 says a
+// dissolution condition describes how admitted debt ends, and std.dissolution DissolutionCondition
+// is the type for exactly that, used by gunbc.compile_diagnostic_census
+// compile_diagnostic_census_hand_rust_dissolve_trigger and by
+// gunbc.where_refinement_predicate_vocabulary where_refinement_unenrolled_predicate_dissolve_trigger.
+// The scaffold CONTEXT -- owner, lane, interim, bound -- stays above as rationale, because it is not
+// the condition; only the condition is data.
+data where_refinement_deferral_reason_scaffold_note: DissolutionCondition = unbound_dissolution(description: "feature:where-refinement-deferral-reason-authority -- the where-refinement deferral reason has a SINGLE DECLARED AUTHORITY for its identity and its severity, so an unclassified reason cannot be written. Named as the capability and not as a mechanism: a coproduct on the diagnostic carrier is one route to it and this trigger does not require that one.")
+
+fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match diagnostic_disposition(d: d).gate {
+    GateBlocking => true
+    GateAdvisoryTypecheck => false
+    GateRenderedUncounted { reason: _ } => false
+  }
+}
+
+fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match diagnostic_disposition(d: d).gate {
+    GateBlocking => false
+    GateAdvisoryTypecheck => true
+    GateRenderedUncounted { reason: _ } => false
+  }
+}
+
+fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
+  ErrorNode { diagnostic: diagnostic, module_name: module_name }
+}
+
+type DeclaredFuncSig {
+  name: String
+  params: List<Node>
+  inferred: Node?
+  output_provenance: List<Map<String, SubValueRelation>>
+  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
+}
+
+type DeclaredFuncEnv {
+  signatures: Map<String, DeclaredFuncSig>
+}
+
+// The module-item kind a node was CONSTRUCTED as, carried from the parse constructor that already
+// knew it. It is a positive authority: no consumer re-derives an item's kind from the ABSENCE of
+// body / transport / children / properties, because a discriminator built from absence fails
+// silently toward whichever bucket absence defines -- v1.compiler.parse parsed_module_item_kind
+// records the two fail-opens that rule was ruled from. `NotAModuleItem` is what every expression,
+// type-expression, field, variant, param and synthetic node carries: it says this node was never
+// constructed as a module item, which is a DIFFERENT statement from `ModuleItemUnrecognized`, the
+// value the parser's own item-error constructor stamps when the leading keyword was not one of the
+// item keywords it recognises. Constructions that rebuild an existing node propagate the field from
+// the node they rebuild, so an item keeps the kind its constructor gave it across resolve,
+// inference and emission.
+type ParsedModuleItemKind
+  = ModuleItemTypeDeclaration
+  | ModuleItemFunction
+  | ModuleItemDataValue
+  | ModuleItemService
+  | ModuleItemResource
+  | ModuleItemUnrecognized
+  | NotAModuleItem
+
+// Whether a declaration carries the authored `test` marker. The marker is sugar on an ordinary
+// fn or data item: it does not change what the item IS (module_item_kind), it segregates test
+// code from serving code. Every node the parser did not construct from a marked item carries
+// Unmarked; constructions that rebuild a node propagate the marker from the node they rebuild.
+//
+// ITS CONSUMER IS v1.compiler.compile test_reference_diagnostics, which refuses any reference to
+// a TestMarked declaration and any dependency of serving code on test code. The text scanners that
+// read `test fn` from source are not its consumer: the v2 one is blocked on v2's grammar, not on v1.
+type DeclarationMarker = Unmarked | TestMarked
+
+type Node {
+  occurrence_identity: NodeOccurrenceIdentity
+  name: String
+  ident: Int?
+  span: SourceSpan
+  ident_span: SourceSpan?
+  children: List<Node>
+  connective: Connective
+
+  params: List<Node>
+  inferred: InferredNode?
+  return_cardinality: Cardinality
+  uses: List<Node>
+  body: Node?
+  transport: Node?
+  properties: List<Node>
+  type_annotation: Node?
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+
+  match_pattern: MatchPattern?
+  module_item_kind: ParsedModuleItemKind
+  declaration_marker: DeclarationMarker
+  declaration: DeclarationRef?
+  expr_data: ExprData
+}
+
+fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
+  if name == "" { none } else { Present { value: span } }
+}
+
+fn node_name_span(n: Node) -> SourceSpan {
+  match n.ident_span { Present { value: s } => s  Absent => n.span }
+}
+
+fn empty_node_list() -> List<Node> {
+  []
+}
+
+fn make_expr_node(occurrence_identity: NodeOccurrenceIdentity, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: children,
+    connective: NoConnective,
+
+    params: [], inferred: inferred, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: expr_data
+  }
+}
+
+fn make_named_expr_node(occurrence_identity: NodeOccurrenceIdentity, name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
+    connective: NoConnective,
+
+    params: [], inferred: inferred, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: expr_data
+  }
+}
+
+fn make_pattern_binder_declaration_node(occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan) -> Node {
+  make_named_expr_node(
+    occurrence_identity: occurrence_identity,
+    name: name,
+    expr_data: NoExprData,
+    children: [],
+    inferred: none,
+    span: span,
+    name_span: span
+  )
+}
+
+fn make_expr_error_node(occurrence_identity: NodeOccurrenceIdentity, kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
+
+    params: [], inferred: Present { value: CompilerError { message: message, span: span } },
+    return_cardinality: Required, uses: [], body: none, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false,
+    match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: ExprError { kind: kind, message: message }
+  }
+}
+
+fn make_arg_node(occurrence_identity: NodeOccurrenceIdentity, name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let arg_name = match name { Present { value: n } => n  Absent => "" }
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn make_arm_node(occurrence_identity: NodeOccurrenceIdentity, pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
+  let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Present { value: pattern },
+    module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn make_resource_use_node(occurrence_identity: NodeOccurrenceIdentity, name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn resource_use_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn resource_use_resource(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "malformed resource-use: missing resource", span: n.span)
+  }
+}
+
+fn make_field_init_node(occurrence_identity: NodeOccurrenceIdentity, name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn make_field_binding_node(occurrence_identity: NodeOccurrenceIdentity, field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Present { value: binding }, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn field_binding_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn field_binding_pattern(n: Node) -> MatchPattern {
+  match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
+}
+
+fn make_text_part_node(occurrence_identity: NodeOccurrenceIdentity, text: String, span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none,
+    module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: ExprLiteral { value: LitStr { value: text } }
+  }
+}
+
+fn make_interp_part_node(occurrence_identity: NodeOccurrenceIdentity, expr: Node, span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn make_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn make_resolved_param_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
+    params: [], inferred: Present { value: Resolved { node: type_expr } }, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: properties,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn param_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn generic_param_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> String {
+  match node.ident_span {
+    Present { value: span } =>
+      match map_get(source_indices, span.file) {
+        Present { value: index } =>
+          let text = source_text_at(index: index, span: span)
+          if text == "" { "" } else { text }
+        Absent =>
+          if string_length(s: span.file) > 8 && substring(s: span.file, start: 0, end: 8) == "<kernel:" {
+            substring(s: span.file, start: 8, end: string_length(s: span.file) - 1)
+          } else {
+            node.name
+          }
+      }
+    Absent => ""
+  }
+}
+
+fn find_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match n.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == name) |> first {
+    Present { value: ch } => Present { value: ch }
+    Absent => none
+  }
+}
+
+fn has_child_named(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == name)
+}
+
+fn param_node_type_expr(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "malformed param: missing type_expr", span: n.span)
+  }
+}
+
+fn param_node_default_value(n: Node) -> Node? {
+  if n.children |> count > 1 {
+    n.children |> skip(1) |> first
+  } else { none }
+}
+
+fn param_node_span(n: Node) -> SourceSpan { n.span }
+
+fn make_field_node(occurrence_identity: NodeOccurrenceIdentity, name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key_properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: cardinality,
+    uses: [], body: none, transport: none, properties: concat(from_key_properties, type_expr.properties),
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn field_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+
+fn field_node_type_expr(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "malformed field: missing type_expr", span: n.span)
+  }
+}
+
+fn field_node_cardinality(n: Node) -> Cardinality { n.return_cardinality }
+
+fn field_node_default_value(n: Node) -> Node? {
+  if n.children |> count > 1 {
+    n.children |> skip(1) |> first
+  } else { none }
+}
+
+// THE ONE SPELLING OF THE OUTPUT-CHANNEL PROPERTY, read by the parser that mints
+// it and by every reader that looks for it.
+//
+// It existed as TWO spellings and the readers silently diverged. The parser minted
+// the property with the stored name "from_key" while its `name_span` covers the
+// source token `from`; every reader goes through `field_init_node_name_at`, which
+// is span-derived, so every comparison against "from_key" was Absent FOR EVERY
+// PROGRAM -- four dead readers, and the emitter answering declared `from` keys
+// with a default it should never have needed. The interpreter's own reader
+// accepted BOTH spellings, which is why the two directions of one procedure
+// disagreed without anything going red (DESIGN section 3 -- a nickname duplicates
+// work at the meaning layer; section 5 -- the emitter fabricated where it should
+// have read).
+//
+// Converging them on the LENIENT side -- teaching the emitter to accept both --
+// would have given the nickname a second permanent home. The stored name is now
+// the authored token, so stored and span-derived agree by construction and there
+// is one spelling to compare against.
+data field_from_key_property_name: String = "from"
+
+fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: n.properties, prop_name: field_from_key_property_name, source_indices: source_indices) {
+    Present { value: p } => expr_literal_string_optional(expr: p)
+    Absent => none
+  }
+}
+
+fn field_node_span(n: Node) -> SourceSpan { n.span }
+
+fn make_variant_node(occurrence_identity: NodeOccurrenceIdentity, name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
+fn variant_node_fields(n: Node) -> List<Node> { n.children }
+fn variant_node_span(n: Node) -> SourceSpan { n.span }
+
+type ChildRole {
+  name: String
+  accessor: String
+  position: Int
+  required: Bool
+}
+
+data expr_child_roles: Map<String, List<ChildRole>> = {
+  "ExprFieldAccess": [
+    ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
+  ],
+  "ExprBinOp": [
+    ChildRole { name: "left", accessor: "binop_left", position: 0, required: true },
+    ChildRole { name: "right", accessor: "binop_right", position: 1, required: true }
+  ],
+  "ExprUnaryOp": [
+    ChildRole { name: "operand", accessor: "unaryop_operand", position: 0, required: true }
+  ],
+  "ExprIf": [
+    ChildRole { name: "condition", accessor: "if_condition", position: 0, required: true },
+    ChildRole { name: "then", accessor: "if_then_branch", position: 1, required: true },
+    ChildRole { name: "else", accessor: "if_else_branch", position: 2, required: false }
+  ],
+  "ExprMatch": [
+    ChildRole { name: "scrutinee", accessor: "match_scrutinee", position: 0, required: true }
+  ],
+  "ExprLet": [
+    ChildRole { name: "value", accessor: "let_value", position: 0, required: true },
+    ChildRole { name: "body", accessor: "let_body", position: 1, required: false }
+  ],
+  "ExprLambda": [
+    ChildRole { name: "body", accessor: "lambda_body", position: 0, required: true }
+  ],
+  "ExprMethodCall": [
+    ChildRole { name: "receiver", accessor: "method_receiver", position: 0, required: true }
+  ],
+  "ExprCast": [
+    ChildRole { name: "expr", accessor: "cast_expr", position: 0, required: true },
+    ChildRole { name: "target", accessor: "cast_target", position: 1, required: true }
+  ],
+  "ExprForEach": [
+    ChildRole { name: "collection", accessor: "foreach_collection", position: 0, required: true },
+    ChildRole { name: "body", accessor: "foreach_body", position: 1, required: true }
+  ],
+  "ExprIndex": [
+    ChildRole { name: "base", accessor: "index_base", position: 0, required: true },
+    ChildRole { name: "index", accessor: "index_expr", position: 1, required: true }
+  ],
+  "ExprSlice": [
+    ChildRole { name: "base", accessor: "slice_base", position: 0, required: true },
+    ChildRole { name: "start", accessor: "slice_start", position: 1, required: true },
+    ChildRole { name: "end", accessor: "slice_end", position: 2, required: true }
+  ],
+  "ExprReturn": [
+    ChildRole { name: "value", accessor: "return_value", position: 0, required: true }
+  ]
+}
+
+data wrapper_child_roles: Map<String, List<ChildRole>> = {
+  "Arg": [
+    ChildRole { name: "value", accessor: "arg_value", position: 0, required: true }
+  ],
+  "Arm": [
+    ChildRole { name: "guard", accessor: "arm_guard", position: 0, required: false },
+    ChildRole { name: "body", accessor: "arm_body", position: -1, required: true }
+  ],
+  "FieldInit": [
+    ChildRole { name: "value", accessor: "field_init_node_value", position: 0, required: true }
+  ]
+}
+
+fn is_child_accessor_in_model(name: String) -> Bool {
+  (map_values(expr_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
+  || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
+}
+
+fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
+  map_get(expr_child_roles, variant_name)
+}
+
+type NodeFieldRole
+  = ChildrenListField
+  | SubValueField
+  | MetadataField
+
+data node_field_roles: Map<String, NodeFieldRole> = {
+  "children": ChildrenListField,
+  "params": ChildrenListField,
+  "body": SubValueField,
+  "expr_data": SubValueField,
+  "match_pattern": SubValueField
+}
+
+fn is_children_list_field(field_name: String) -> Bool {
+  match lookup(node_field_roles, key: field_name) {
+    Present { value: ChildrenListField } => true
+    _ => false
+  }
+}
+
+fn is_sub_value_field(field_name: String) -> Bool {
+  match lookup(node_field_roles, key: field_name) {
+    Present { value: SubValueField } => true
+    Present { value: ChildrenListField } => true
+    _ => false
+  }
+}
+
+type FunctionSizeEffect
+  = TreeSizePreserving
+  | TreeSizeReducing
+  | PropertyContraction { domain_size: Int }
+
+data function_size_effects: Map<String, FunctionSizeEffect> = {
+  "with_required_cardinality": PropertyContraction { domain_size: 2 },
+  "resolved_type": TreeSizeReducing,
+  "param_node_type_expr": TreeSizeReducing,
+  "field_binding_pattern": TreeSizeReducing,
+  "wrapper_inner_arg": TreeSizeReducing,
+  "extractor_inner_arg": TreeSizeReducing,
+  "child_type_node": TreeSizeReducing
+}
+
+fn is_tree_size_preserving(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Present { value: effect } => match effect {
+      TreeSizePreserving => true
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn is_tree_size_reducing(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Present { value: effect } => match effect {
+      TreeSizeReducing => true
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn is_property_contraction(func_name: String) -> Bool {
+  match lookup(function_size_effects, key: func_name) {
+    Present { value: effect } => match effect {
+      PropertyContraction { domain_size: _ } => true
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
+  match texpr.children |> skip(index) |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
+  }
+}
+
+fn arg_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" { none } else { Present { value: name } }
+}
+
+fn arg_value(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "malformed arg: missing value", span: n.span)
+  }
+}
+
+fn arm_pattern(n: Node) -> MatchPattern {
+  match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
+}
+
+fn arm_guard(n: Node) -> Node? {
+  if (n.children |> count) == 2 { n.children |> first } else { none }
+}
+
+fn arm_body(n: Node) -> Node {
+  match n.children |> last {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "malformed arm: missing body", span: n.span)
+  }
+}
+
+fn field_init_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  authored_name_at(source_indices: source_indices, node: n)
+}
+
+fn field_init_node_value(n: Node) -> Node {
+  match n.children |> first {
+    Present { value: v } => v
+    Absent => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
+  }
+}
+
+type DeclRefCoords {
+  module_path: String
+  decl_name: String
+}
+
+fn decl_ref_coords_label(coords: DeclRefCoords) -> String {
+  concat(coords.module_path, ".", coords.decl_name)
+}
+
+fn call_named_arg_string_optional(
+  call: Node,
+  arg_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> String? {
+  match call.children
+    |> filter(a =>
+      match arg_name_at(n: a, source_indices: source_indices) {
+        Present { value: n } => n == arg_name
+        Absent => false
+      })
+    |> first {
+    Present { value: arg } => expr_literal_string_optional(expr: arg_value(n: arg))
+    Absent => none
+  }
+}
+
+type AdmitCallersEntry
+  = AdmitCallersEntryCoords { coords: DeclRefCoords }
+  | AdmitCallersEntryUninterpretable { span: SourceSpan }
+
+fn decl_ref_coords_from_call_expr(
+  expr: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> DeclRefCoords? {
+  if expr_call_func_at(texpr: expr, source_indices: source_indices) != "decl_ref" {
+    none
+  } else {
+    match call_named_arg_string_optional(
+      call: expr,
+      arg_name: "module_path",
+      source_indices: source_indices
+    ) {
+      Present { value: mp } =>
+        match call_named_arg_string_optional(
+          call: expr,
+          arg_name: "decl_name",
+          source_indices: source_indices
+        ) {
+          Present { value: dn } =>
+            Present { value: DeclRefCoords { module_path: mp, decl_name: dn } }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
+}
+
+// TOTALITY IS THE REPAIR, not a check beside it. This was a flat_map whose Absent arm
+// returned [], so an entry that could not be interpreted was DROPPED: N authored entries
+// collected to fewer than N, and in the all-malformed case to zero — at which point
+// fn_admit_callers returned Present-and-empty and the admission wall refused every caller
+// while the diagnostic named the CALL SITE, the one place with nothing wrong. The parser's
+// admit_callers_property_nonempty guard does not catch this: it counts list CHILDREN before
+// interpretation, so it refuses a syntactically empty list and cannot see a list that
+// EMPTIES during collection.
+//
+// Mapping to a total per-entry outcome makes the shrink unrepresentable at this seam rather
+// than detected after it: the result length equals the authored length by construction, so
+// "the roster is smaller than the author wrote" has no spelling here. A post-collection
+// count check would not have been equivalent — three entries with one malformed still
+// collect to a nonempty list and pass any threshold, while silently dropping a caller the
+// author explicitly admitted.
+fn admit_callers_entries_from_list(
+  exprs: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<AdmitCallersEntry> {
+  map(
+    exprs,
+    e =>
+      match decl_ref_coords_from_call_expr(expr: e, source_indices: source_indices) {
+        Present { value: coords } => AdmitCallersEntryCoords { coords: coords }
+        Absent => AdmitCallersEntryUninterpretable { span: e.span }
+      }
+  )
+}
+
+fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<AdmitCallersEntry>? {
+  match n.properties |> filter(p => p.name == "admit_callers") |> first {
+    Present { value: p } =>
+      Present {
+        value: admit_callers_entries_from_list(
+          exprs: field_init_node_value(n: p).children,
+          source_indices: source_indices
+        )
+      }
+    Absent => Absent
+  }
+}
+
+fn admit_callers_entry_uninterpretable_spans(entries: List<AdmitCallersEntry>) -> List<SourceSpan> {
+  flat_map(
+    entries,
+    e =>
+      match e {
+        AdmitCallersEntryCoords { coords: _ } => []
+        AdmitCallersEntryUninterpretable { span: s } => [s]
+      }
+  )
+}
+
+fn admit_callers_entry_coords(entries: List<AdmitCallersEntry>) -> List<DeclRefCoords> {
+  flat_map(
+    entries,
+    e =>
+      match e {
+        AdmitCallersEntryCoords { coords: c } => [c]
+        AdmitCallersEntryUninterpretable { span: _ } => []
+      }
+  )
+}
+
+fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
+fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
+fn if_else_branch(texpr: Node) -> Node? { texpr.children |> skip(2) |> first }
+
+fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
+fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
+
+fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
+fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
+
+fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
+
+fn expr_var_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
+fn field_access_field_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
+  match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
+}
+
+type FieldAccessSpine {
+  root: String
+  dotted: String
+}
+
+fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+      Present { value: FieldAccessSpine { root: name, dotted: name } }
+    ExprFieldAccess { summary: _ } =>
+      match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
+        Present { value: base_spine } =>
+          Present { value: FieldAccessSpine {
+            root: base_spine.root,
+            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+          } }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: de } => de
+    _ => none
+  }
+}
+
+fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
+fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
+fn expr_method_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
+  match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
+}
+
+fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
+fn lambda_param_names_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_indices: source_indices, node: n)) }
+
+fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
+fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
+fn let_binding_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
+fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
+
+fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
+fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
+fn foreach_variable_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
+
+fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
+fn index_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
+
+fn slice_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "slice base") }
+fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "slice start") }
+fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
+
+fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
+
+fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
+
+fn record_lit_type_name_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  let name = authored_name_at(source_indices: source_indices, node: texpr)
+  if name == "" { none } else { Present { value: name } }
+}
+
+data transport_url_key: String = "base_url"
+data transport_path_key: String = "base_path"
+data transport_auth_token_key: String = "auth_token"
+data transport_auth_header_key: String = "auth_header"
+data transport_auth_scheme_key: String = "auth_scheme"
+data transport_method_key: String = "method"
+data transport_path_template_key: String = "path"
+data transport_query_key: String = "query"
+data transport_body_key: String = "body"
+data transport_stdin_key: String = "stdin"
+data transport_verb_key: String = "verb"
+data transport_response_format_key: String = "response_format"
+data transport_headers_key: String = "headers"
+data transport_auth_basic_key: String = "auth_basic"
+data transport_tls_key: String = "tls"
+
+fn make_transport_node(occurrence_identity: NodeOccurrenceIdentity, properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: body, transport: none, properties: properties,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn local_transport_node(occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan) -> Node {
+  make_transport_node(occurrence_identity: occurrence_identity, properties: [], children: [], body: none, span: span)
+}
+
+fn rest_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: SourceSpan) -> Node {
+  let zero_span = no_span()
+  let url_field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
+  let method_props = match method {
+    Present { value: m } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_method_key, value: m, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let path_props = match path {
+    Present { value: p } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_path_template_key, value: p, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let query_props = match query {
+    Present { value: q } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_query_key, value: q, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let body_props = match request_body {
+    Present { value: b } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_body_key, value: b, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let rf_props = match response_format {
+    Present { value: rf } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_response_format_key, value: rf, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let props = concat([url_field], method_props, path_props, query_props, body_props, rf_props, auth_props, headers)
+  make_transport_node(occurrence_identity: occurrence_identity, properties: props, children: [], body: none, span: span)
+}
+
+fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
+  let shell_marker = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let zero_span = no_span()
+  let stdin_props = match stdin {
+    Present { value: s } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let all_props = concat(env, stdin_props)
+  Node { occurrence_identity: occurrence_identity,
+    name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: Present { value: shell_marker }, transport: none, properties: all_props,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn file_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_path: Node, verb: Node?, span: SourceSpan) -> Node {
+  let path_field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_path_key, value: base_path, span: no_span(), name_span: no_span())
+  let props = match verb {
+    Present { value: verb_expr } =>
+      [path_field, make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_verb_key, value: verb_expr, span: no_span(), name_span: no_span())]
+    Absent => [path_field]
+  }
+  make_transport_node(occurrence_identity: occurrence_identity, properties: props, children: [], body: none, span: span)
+}
+
+// The property channel a type parameter's KIND annotation rides on. Named once here because the
+// parser writes it (v1.compiler.parse collect_type_param_names) and the resolver reads it
+// (v1.compiler.resolve), and a property key spelled at both ends is the same literal standing in
+// two authorities -- DESIGN section 3.
+fn type_param_kind_property_name() -> String {
+  "__param_kind"
+}
+
+fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match props |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == prop_name) |> first() {
+    Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+    Absent => none
+  }
+}
+
+fn find_property_string(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: props, prop_name: prop_name, source_indices: source_indices) {
+    Present { value: n } => expr_literal_string_optional(expr: n)
+    Absent => none
+  }
+}
+
+fn expr_literal_int_optional(expr: Node) -> Int? {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitInt { value: v } => Present { value: v }
+        _ => none
+      }
+    ExprElaboratedLiteral { value: lit, elaboration: _ } =>
+      match lit {
+        LitInt { value: v } => Present { value: v }
+        _ => none
+      }
+    ExprUnaryOp { op: Neg } =>
+      match expr_literal_int_optional(expr: unaryop_operand(texpr: expr)) {
+        Present { value: v } => Present { value: 0 - v }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn expr_literal_string_optional(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitStr { value: v } => Present { value: v }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn expr_literal_symbol_optional(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitSymbol { value: v } => Present { value: v }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn expr_is_any_literal(expr: Node) -> Bool {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitNull => false
+        _ => true
+      }
+    ExprElaboratedLiteral { value: _, elaboration: _ } => true
+    ExprUnaryOp { op: Neg } => expr_is_any_literal(expr: unaryop_operand(texpr: expr))
+    _ => false
+  }
+}
+
+fn record_lit_expr_optional(expr: Node) -> Node? {
+  match expr.expr_data {
+    ExprRecordLit { parent_enum: _ } => Present { value: expr }
+    _ => none
+  }
+}
+
+fn record_lit_named_field_value_optional(
+  record_expr: Node,
+  field: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Node? {
+  match record_lit_expr_optional(expr: record_expr) {
+    Present { value: record } =>
+      match record.children
+        |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field)
+        |> first {
+        Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn transport_base_path(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_key, source_indices: source_indices)
+}
+
+fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_verb_key, source_indices: source_indices)
+}
+
+fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
+
+// Transport KIND is discriminated by which marker property is present, not by a stored tag, and
+// that has a consequence which is easy to undo by accident: `rest_transport_node` ALWAYS writes a
+// `base_url` property, filled from the empty-string literal `parse_rest_fields` substitutes when
+// `url:` is omitted -- and omitting it is the NORM, since the base normally comes from the service
+// `config`. So that fabricated "" is load-bearing structure holding the discrimination up, not a
+// lazy default: remove it and every rest transport in the corpus reclassifies as `local`. The same
+// holds for `config`'s `endpoint`, where `config { }` is legal. This is also why
+// `is_local_transport` is defined negatively -- local is genuinely the residual, and there is no
+// marker for it to carry. The file arm is NOT in this class: an omitted `path:` has no such role,
+// and `parse_file_fields` refuses it (gunbc#8949).
+fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
+fn is_shell_transport(t: Node) -> Bool { t.body != none }
+fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
+// A local transport is the one local_transport_node builds: no properties, no argv, no body.
+fn is_bare_transport(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0 && t.body == none
+}
+
+// The precedence is declared ONCE here and every consumer reads it. Absent = the transport
+// matches no roster member.
+//
+// WHAT THIS CHANGES AND WHAT IT DOES NOT, because the two are easy to conflate. Local used to be
+// defined as "not rest, not shell, not file", which made it ABSORB every transport the other
+// three predicates declined -- so the dispatch's `unrecognized transport kind` arm could not be
+// reached by any input whatsoever, and a check whose red is unreachable is a decoration:
+// permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class).
+// Local is now a POSITIVE test, so that arm is reachable and an unrecognized transport is refused
+// instead of silently emitting as a direct function call.
+//
+// IT DOES NOT MAKE THE ARM FIRE ON ANY SOURCE SPELLING TODAY, and this PR does not claim it does.
+// A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and
+// parse_rest_fields substitute an empty string literal when their key is omitted, rather than
+// producing a transport node carrying no recognized key, so every transport the PARSER builds
+// still lands in a roster member. The arm's occupancy is therefore zero and its reachability is
+// bounded by the parser, not by this predicate -- which is the honest statement of what moved:
+// the absorbing arm is gone, the fabricated default that keeps it unoccupied is the open next
+// step and belongs to the parser, not here.
+//
+// AND THE FABRICATED DEFAULT IS LOAD-BEARING IN THE OTHER DIRECTION TOO, which is sharper than
+// "unoccupied arm" and is recorded here so the next reader does not discover it mid-cut
+// (crisp-crane-201 via deep-ant-102, 2026-08-23). Kind is discriminated by MARKER-FIELD PRESENCE:
+// rest is "carries base_url", and the parser's substituted empty string literal IS that marker.
+// Making base_url refuse when absent therefore does not merely tighten a value -- it deletes the
+// rest tag, and every rest transport in the corpus reclassifies as LOCAL. So the parser repair is
+// not a parser repair alone: whoever makes the marker refusable owes an explicit kind tag in the
+// same change. It is deliberately NOT taken here -- this cut binds meaning, it does not move the
+// discrimination -- and it is the reason no arm of bind_operation_transport requires a base_url
+// value: a binding that demanded one would move the classifier while its oracle watched only the
+// emitted bytes, which report THAT output moved and never that the CLASSIFIER moved.
+fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> TransportKind? {
+  if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
+  else if is_shell_transport(t: t) { Present { value: ShellTransport } }
+  else if is_file_transport(t: t, source_indices: source_indices) { Present { value: FileTransport } }
+  else if is_bare_transport(t: t) { Present { value: LocalTransport } }
+  else { none }
+}
+
+fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match classify_transport(t: t, source_indices: source_indices) {
+    Present { value: LocalTransport } => true
+    _ => false
+  }
+}
+
+fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
+  let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
+  if fi_name == "idempotent" { Present { value: Idempotent } }
+  else if fi_name == "readonly" { Present { value: Readonly } }
+  else if fi_name == "hermetic" { Present { value: Hermetic } }
+  else { none }
+}
+
+fn operation_modifier_name(modifier: OperationModifier) -> String {
+  match modifier {
+    Idempotent => "idempotent"
+    Readonly => "readonly"
+    Hermetic => "hermetic"
+  }
+}
+
+fn transport_base_url(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_url_key, source_indices: source_indices)
+}
+
+fn transport_auth_token(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices)
+}
+
+fn transport_auth_header_name(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  find_property_string(props: t.properties, prop_name: transport_auth_header_key, source_indices: source_indices)
+}
+
+fn transport_has_auth(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: t.properties, prop_name: transport_auth_token_key, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn transport_method(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_method_key, source_indices: source_indices)
+}
+
+fn transport_path_template(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_template_key, source_indices: source_indices)
+}
+
+fn transport_query(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_query_key, source_indices: source_indices)
+}
+
+fn transport_request_body(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_body_key, source_indices: source_indices)
+}
+
+fn transport_stdin(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_stdin_key, source_indices: source_indices)
+}
+
+fn transport_response_format(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_response_format_key, source_indices: source_indices)
+}
+
+fn is_config_reserved_key(name: String) -> Bool {
+  name == transport_url_key || name == transport_path_key || name == transport_auth_scheme_key
+    || name == transport_auth_header_key || name == transport_auth_token_key
+    || name == transport_method_key || name == transport_path_template_key
+    || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
+    || name == transport_response_format_key || name == transport_headers_key
+    || name == transport_auth_basic_key 
+    || name == transport_tls_key
+}
+
+fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
+}
+
+
+fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {
+    Present { value: n } => Present { value: authored_name_at(source_indices: source_indices, node: n) }
+    Absent => Absent
+  }
+}
+
+fn transport_headers(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  t.properties |> filter(p =>
+    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
+  )
+}
+
+fn transport_env(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  t.properties |> filter(p =>
+    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_indices: source_indices))
+  )
+}
+
+fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
+  Node { occurrence_identity: node.occurrence_identity,
+    name: node.name, ident: node.ident, span: node.span, ident_span: node.ident_span,
+    children: node.children |> map(child => transform(child)),
+    connective: node.connective,
+    params: node.params, inferred: node.inferred,
+    return_cardinality: node.return_cardinality, uses: node.uses,
+    body: node.body, transport: node.transport,
+    properties: node.properties, type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: node.match_pattern, module_item_kind: node.module_item_kind, declaration_marker: node.declaration_marker, declaration: node.declaration, expr_data: node.expr_data
+  }
+}
+
+fn expr_has_self_call(texpr: Node, fn_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name { true }
+      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices)) }
+    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_indices: source_indices))
+  }
+}
+
+fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match texpr.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if expr_call_func_at(texpr: texpr, source_indices: source_indices) == fn_name {
+        if in_tail == false { true }
+        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices)) }
+      } else {
+        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+      }
+    ExprError { kind: _, message: _ } => false
+    ExprVar { binding_kind: _ } => false
+    ExprLiteral { value: _ } => false
+    ExprElaboratedLiteral { value: _, elaboration: _ } => false
+    ExprFieldAccess { summary: _ } =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+    ExprMethodCall { method_semantics: _ } =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+    ExprIf =>
+      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
+      let else_bad = match if_else_branch(texpr: texpr) { Present { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
+      cond_bad || then_bad || else_bad
+    ExprMatch =>
+      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let arms_bad = match_arm_nodes(texpr: texpr) |> any(arm_node =>
+        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
+      scrut_bad || arms_bad
+    ExprLet =>
+      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false, source_indices: source_indices)
+      let body_bad = match let_body(texpr: texpr) { Present { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)  Absent => false }
+      val_bad || body_bad
+    ExprBlock =>
+      let ss = texpr.children
+      let ss_count = ss |> count
+      if ss_count == 0 { false }
+      else {
+        let init_bad = ss |> enumerate
+          |> filter(p => p.first < ss_count - 1)
+          |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+        let last_bad = match ss |> last {
+          Present { value: last_expr } =>
+            expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices)
+          Absent => false
+        }
+        init_bad || last_bad
+      }
+    ExprReturn =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true, source_indices: source_indices))
+    NoExprData =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail, source_indices: source_indices))
+    _ =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
+  }
+}
+
+// THE SERVICE-CONFIG FIELD SET IS ONE AUTHORITY, and it is a coproduct rather than a list of
+// string literals because the property spellings had THREE copies before this: minted here,
+// matched in `04_infer` `service_config_field_judgment`, and (in authored spelling) matched in
+// `02_parse` `parse_config_fields`. Review 55463 on gunbc#9028 caught the cost exactly: the
+// judgment claimed a new field would fail to compile, and it would not — it was an `if/else if`
+// chain over string literals whose else-arm classified any unrecognised property as carrying no
+// reference, so a field added to the parser without a matching arm routed silently to
+// `diagnostics: []`. That recreates the fail-open the change exists to close, one level up.
+//
+// With the spellings derived from this coproduct and the judgment matching it totally, a new
+// variant forces an arm in `service_config_field_property_name` AND in the judgment. The residue
+// is declared rather than papered over: `service_config_known_fields` is a hand-authored roster,
+// so a variant added without a row there is unreachable from the judgment and lands in the
+// carries-no-reference arm. Its next-rung trigger is a variant-enumeration primitive; until one
+// exists, the roster is the one place that must be edited and every other site refuses.
+type ServiceConfigField
+  = SvcEndpoint
+  | SvcAuth
+  | SvcAuthInput
+  | SvcAuthSource
+  | SvcRateLimit
+
+fn service_config_field_property_name(field: ServiceConfigField) -> String {
+  match field {
+    SvcEndpoint => "svc_endpoint"
+    SvcAuth => "svc_auth"
+    SvcAuthInput => "svc_auth_input"
+    SvcAuthSource => "svc_auth_source"
+    SvcRateLimit => "svc_rate_limit"
+  }
+}
+
+fn service_config_known_fields() -> List<ServiceConfigField> {
+  [SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit]
+}
+
+fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
+  service_config_known_fields()
+    |> filter(f => service_config_field_property_name(field: f) == name)
+    |> first
+}
+
+// `retry` WAS A FIELD HERE AND IS DELETED AT THE ROOT, not left parsed-and-unread.
+// Measured before removal: `service_config_retry` had zero callers in the whole tree, and
+// NEITHER realization retries anything -- `05_emit_rust.dag` has no occurrence of retry or
+// backoff, and the interpreter's only match for either word is an unrelated doc comment. So
+// the field was declared policy with no consumer (DESIGN section 5, specification without
+// execution). It was also in the wrong layer: `max_attempts: 3` is OUR policy authored
+// inside a cited upstream module, which is the literal-where-a-parameter-should-be-received
+// tell for the section 3 layer inversion. `rate_limit` is deliberately NOT deleted beside
+// it -- a published request ceiling is a fact ABOUT the dependency and belongs in extdeps;
+// a retry policy is a fact about how WE call it and belongs to the caller. When a retrying
+// realization exists, its policy arrives as a workflow-layer carrier parameterized per call
+// site, not as a literal frozen into a dependency's module.
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> List<Node> {
+  let zero_span = no_span()
+  let ep_prop = [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, name_span: zero_span)]
+  let auth_prop = match auth {
+    Present { value: a } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let auth_input_prop = match auth_input {
+    Present { value: ai } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let auth_source_prop = match auth_source {
+    Present { value: src } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let rate_prop = match rate_limit {
+    Present { value: r } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
+}
+
+fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "svc_endpoint")
+}
+
+fn service_config_endpoint(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_endpoint", source_indices: source_indices)
+}
+
+fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth", source_indices: source_indices)
+}
+
+fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
+}
+
+fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_input", source_indices: source_indices)
+}
+
+fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
+}
+
+fn module_node(occurrence_identity: NodeOccurrenceIdentity, name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
+  Node { occurrence_identity: occurrence_identity,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
+
+    params: imports, inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn import_node(occurrence_identity: NodeOccurrenceIdentity, module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+  let wildcard_marker = if is_all {
+    Present { value: Node { occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData } }
+  } else { none }
+  Node { occurrence_identity: occurrence_identity,
+    name: module_path, span: span, ident_span: Present { value: name_span }, children: specific_names, connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: wildcard_marker, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+  }
+}
+
+fn import_is_all(n: Node) -> Bool {
+  n.body != none
+}
+
+fn import_specific_names_at(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  n.children |> map(c => authored_name_at(source_indices: source_indices, node: c))
+}
+
+fn module_imports(n: Node) -> List<Node> {
+  n.params
+}
+
+fn module_items(n: Node) -> List<Node> {
+  n.children
+}
+
+fn leaf_node_with_span(occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan) -> Node {
+  Node { occurrence_identity: occurrence_identity, name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+}
+
+fn kernel_span(name: String) -> SourceSpan {
+  SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
+}
+
+// THE RECOGNIZER, HOMED BESIDE ITS MINTER. kernel_span above is what synthesizes the pseudo-file a
+// kernel node carries, and every kernel construction in this seed sets
+// ident_span: kernel_span(name: <the node's own name>) beside name: <that same name>. So comparing
+// a span's file against kernel_span(name: name).file asks the CONSTRUCTOR whether it built this
+// node -- exact equality against the authority rather than a prefix test over its output.
+//
+// RELOCATED HERE FROM v1.compiler.infer_env, WHERE THE AUTHORITY SAT ABOVE ITS OWN SUBJECT. That
+// module declared this predicate and never called it: its three consumers were v1.compiler.infer,
+// v1.compiler.emit_rust and -- by re-derivation rather than by call -- declaration_provenance_of
+// below, which sits in THIS module and therefore could not import it at all without closing an
+// import cycle (v1.compiler.infer_env imports v1.std.core). So the one fact had two spellings for a
+// purely positional reason, and the second spelling was not the weaker one by accident: the
+// relocated body asked kernel_span, while the infer_env body inlined `concat("<kernel:", name, ">")`
+// as a literal. That made it a second authority for the SPAN FORMAT as well as for the identity
+// question -- the format is minted in exactly one place, and a reader of the old body could not see
+// that it was reproducing kernel_span's output by hand.
+//
+// WHAT THIS CLOSES, STATED AS THE STATE THAT IS NOW UNWRITABLE. Editing kernel_span's spelling used
+// to leave the infer_env literal answering the OLD format with no refusal anywhere -- the minter and
+// its recognizer disagreeing silently, which is the coincidence the previous note here recorded as
+// "no refusal fires if one is edited". There is now one format authority and one identity authority
+// and they are the same declaration, so that divergence has no constructor.
+//
+// CAVEAT THAT BOUNDS WHAT THIS MAY CLAIM, NARROWED BUT NOT DISCHARGED. There are still two
+// declarations of kernel_span in this seed -- this one and v1.compiler.infer's -- with
+// byte-identical bodies, and that module's own call sites bind its local twin by shadowing. Every
+// consumer of the identity question now routes through the one predicate below, so the surviving
+// exposure is exactly the two kernel_span bodies, not the four recognizers it used to be. That
+// consolidation is a separate change: it is a deletion in v1.compiler.infer, not an edit here.
+fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
+  match node.ident_span {
+    Present { value: sp } => sp.file == kernel_span(name: name).file
+    Absent => false
+  }
+}
+
+// THE PROVENANCE MINT, WITH ITS KernelMinted ARM DERIVED RATHER THAN RE-SPELLED.
+// gunbc.type_reference_decl_file_occurrence_census's kernel-minted-provenance row states the
+// constraint this arm now satisfies: the KernelMinted arm must be DERIVED from the predicate that
+// already owns kernel identity by exact equality, because a further spelling test would add an
+// authority while claiming to remove one. The predicate is directly above; this reads it.
+//
+// THE ORDER OF THE ARMS IS LOAD-BEARING AND IS WHAT MAKES THE BAD STATE UNWRITABLE. A kernel mint
+// has no declaration in the corpus, so CorpusDeclared must be unreachable for one. It is reached
+// only in the else of the kernel arm, so there is no input on which this function hands a kernel
+// identity to a consumer that will read it as a declared file path -- the confusion
+// gunbc.recurring_failure_mode state_space_conflation's third form records.
+fn declaration_provenance_of(item: Node) -> TypeDeclarationProvenance {
+  match item.ident_span {
+    Absent => DeclarationIdentityAbsent
+    Present { value: sp } =>
+      if sp.file == "" {
+        DeclarationIdentityAbsent
+      } else if resolved_node_is_kernel_identity_for_name(node: item, name: item.name) {
+        KernelMinted { minted_name: item.name }
+      } else {
+        CorpusDeclared { decl_file: sp.file }
+      }
+  }
+}
+
+// The reference-site counterpart: project the resolved node bound to the reference, and fall back
+// to the node's own ident_span when the reference IS the declaration. The shape defect this
+// projection has always had is unchanged and is NOT repaired here -- it cannot tell `this node is
+// its own declaration` from `this reference was not resolved here`, and in the second case answers
+// about the file the REFERENCE sits in. What changes is that its answer is no longer a String a
+// consumer may re-interpret: it is a provenance, and the only thing downstream of it is a decision.
+// The two states are now told apart by type_reference_identity below. This read keeps its collapsed
+// answer on purpose until the renderer reroute is measured, and that mis-keying is declared as
+// gunbc.rung_drop type_reference_location_fallback_keys_production_realization rather than left
+// silent.
+fn type_reference_provenance(n: Node) -> TypeDeclarationProvenance {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => declaration_provenance_of(item: rt)
+    _ => declaration_provenance_of(item: n)
+  }
+}
+
+// THE SPLIT OF THE ARM ABOVE, as a separate query so the production answer stays byte-identical
+// until the reroute is measured (std.coercion TypeReferenceIdentity says why each arm is decided
+// from structure). Kernel identity is read through declaration_provenance_of, which already owns
+// it by exact equality, so this adds no second kernel recognizer.
+// EVERY ParsedModuleItemKind ARM IS SPELLED, no wildcard. A kind that should key as a declaration
+// must be a compile-time decision here, never a silent `not a declaration` that reads as a refusal
+// (the positive-authority rule stated on ParsedModuleItemKind itself; review 67150).
+fn declaration_node_provenance(n: Node) -> TypeDeclarationProvenance? {
+  match declaration_provenance_of(item: n) {
+    KernelMinted { minted_name: nm } => Present { value: KernelMinted { minted_name: nm } }
+    CorpusDeclared { decl_file: f } =>
+      match n.module_item_kind {
+        ModuleItemTypeDeclaration => Present { value: CorpusDeclared { decl_file: f } }
+        ModuleItemFunction => none
+        ModuleItemDataValue => none
+        ModuleItemService => none
+        ModuleItemResource => none
+        ModuleItemUnrecognized => none
+        NotAModuleItem => none
+      }
+    DeclarationIdentityAbsent => none
+  }
+}
+
+fn declaration_node_unavailable_cause(n: Node, when_not_a_declaration: ReferenceIdentityUnavailableCause) -> ReferenceIdentityUnavailableCause {
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => DeclarationNodeCarriesNoSpan
+    ModuleItemFunction => when_not_a_declaration
+    ModuleItemDataValue => when_not_a_declaration
+    ModuleItemService => when_not_a_declaration
+    ModuleItemResource => when_not_a_declaration
+    ModuleItemUnrecognized => when_not_a_declaration
+    NotAModuleItem => when_not_a_declaration
+  }
+}
+
+fn type_variable_binder_name(n: Node) -> String? {
+  match n.inferred {
+    Present { value: TypeVariable { id: tv } } => Present { value: tv }
+    _ => none
+  }
+}
+
+fn type_reference_identity(n: Node) -> TypeReferenceIdentity {
+  match type_variable_binder_name(n: n) {
+    Present { value: tv } => ReferenceIsTypeVariableBinder { binder_name: tv }
+    Absent => type_reference_declaration_identity(n: n)
+  }
+}
+
+fn type_reference_declaration_identity(n: Node) -> TypeReferenceIdentity {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      match type_variable_binder_name(n: rt) {
+        Present { value: tv } => ReferenceIsTypeVariableBinder { binder_name: tv }
+        Absent =>
+      match declaration_node_provenance(n: rt) {
+        Present { value: p } => ReferenceResolvedToDeclaration { provenance: p }
+        Absent => ReferenceIdentityUnavailable { cause: declaration_node_unavailable_cause(n: rt, when_not_a_declaration: ResolvedNodeIsNotADeclaration) }
+      }
+      }
+    _ =>
+      match declaration_node_provenance(n: n) {
+        Present { value: p } => ReferenceIsTheDeclaration { provenance: p }
+        Absent => ReferenceIdentityUnavailable { cause: declaration_node_unavailable_cause(n: n, when_not_a_declaration: NoResolutionBoundAtReference) }
+      }
+  }
+}
+
+// FOR REPORTING ONLY -- an instrument or a diagnostic rendering a provenance as the path it stands
+// on. Nothing that DECIDES may consult this: reading a decision's input back out of a string is
+// precisely the round trip this construction removed, and the empty answer for an absent identity is
+// a rendering choice rather than an identity.
+fn provenance_reported_file(p: TypeDeclarationProvenance) -> String {
+  match p {
+    CorpusDeclared { decl_file: f } => f
+    KernelMinted { minted_name: nm } => kernel_span(name: nm).file
+    DeclarationIdentityAbsent => ""
+  }
+}
+
+data unit_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: kernel_span(name: "Unit"), ident_span: Present { value: kernel_span(name: "Unit") }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data bool_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data string_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "String", span: kernel_span(name: "String"), ident_span: Present { value: kernel_span(name: "String") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data hash_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Hash", span: kernel_span(name: "Hash"), ident_span: Present { value: kernel_span(name: "Hash") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data int_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Int", span: kernel_span(name: "Int"), ident_span: Present { value: kernel_span(name: "Int") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data float_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "Float", span: kernel_span(name: "Float"), ident_span: Present { value: kernel_span(name: "Float") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data none_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "None", span: kernel_span(name: "None"), ident_span: Present { value: kernel_span(name: "None") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+data tuple_type_name: String = "Tuple"
+data error_type: Node = Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: no_span() } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+
+fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
+}
+
+// The ONLY fileless SourceSpan constructor, and it takes no offsets. A span either
+// names the file it was authored in (make_file_span / kernel_span) or is the null span:
+// there is no third constructor that accepts real start/end offsets while fabricating
+// the file, because such a span asserts a located range inside a file that does not
+// exist. make_span(start:, end:) was exactly that constructor and is deleted; every one
+// of its call sites passed 0, 0, so the offset parameters only ever served to make the
+// fabrication look located.
+//
+// The "<synthetic>" file name itself is NOT this rule's subject -- it is the FilePath
+// non_empty sentinel tracked by std.types file_path_sentinel_scaffold_note and dissolves
+// with feature:optional-textfile-and-source-span.
+fn no_span() -> SourceSpan {
+  SourceSpan { file: "<synthetic>", start: 0, end: 0 }
+}
+
+type LineCol {
+  line: Int
+  col: Int
+}
+
+type NewlineIndex {
+  file: String
+  offsets: List<Int>
+  char_codes: List<Int>
+}
+
+fn build_newline_index(file: String, source: String) -> NewlineIndex {
+  let char_codes = source |> chars
+  let offsets = char_codes |> enumerate |> fold(init: [], f: (acc, pair) =>
+    if pair.second == 10 { list_push(acc, pair.first) } else { acc }
+  )
+  NewlineIndex { file: file, offsets: offsets, char_codes: char_codes }
+}
+
+fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
+  let clamped = if offset < 0 { 0 } else { offset }
+  let line = (index.offsets |> filter(o => o < clamped) |> count) + 1
+  let line_start = if line <= 1 { 0 }
+    else {
+      match index.offsets |> skip(line - 2) |> first {
+        Present { value: o } => o + 1
+        Absent => 0
+      }
+    }
+  let col = clamped - line_start + 1
+  LineCol { line: line, col: col }
+}
+
+fn source_line_at(index: NewlineIndex, line: Int) -> String {
+  let src_len = count(index.char_codes)
+  let line_start = if line <= 1 { 0 }
+    else {
+      match index.offsets |> skip(line - 2) |> first {
+        Present { value: o } => o + 1
+        Absent => src_len
+      }
+    }
+  let line_end = match index.offsets |> skip(line - 1) |> first {
+    Present { value: o } => o
+    Absent => src_len
+  }
+  chars_to_string(chars: index.char_codes, start: line_start, end: line_end)
+}
+
+fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
+  chars_to_string(chars: index.char_codes, start: span.start, end: span.end)
+}
+
+type InternTable {
+  strings: List<String>
+  index: Map<String, Int>
+  next_id: Int
+  authored_token_ordinals: AuthoredTokenOrdinalSpace
+}
+
+type InternResult {
+  table: InternTable
+  id: Int
+}
+
+fn empty_intern_table() -> InternTable {
+  InternTable {
+    strings: [""],
+    index: map_insert(empty_map(), "", 0),
+    next_id: 1,
+    authored_token_ordinals: authored_token_ordinal_space_initial(),
+  }
+}
+
+fn intern_table_with_authored_token_ordinals(
+  table: InternTable,
+  authored_token_ordinals: AuthoredTokenOrdinalSpace
+) -> InternTable {
+  InternTable {
+    strings: table.strings,
+    index: table.index,
+    next_id: table.next_id,
+    authored_token_ordinals: authored_token_ordinals,
+  }
+}
+
+fn intern(table: InternTable, s: String) -> InternResult {
+  match map_get(table.index, s) {
+    Present { value: id } => InternResult { table: table, id: id }
+    Absent =>
+      let id = table.next_id
+      InternResult {
+        table: InternTable {
+          strings: list_push(table.strings, s),
+          index: map_insert(table.index, s, id),
+          next_id: id + 1,
+          authored_token_ordinals: table.authored_token_ordinals,
+        },
+        id: id
+      }
+  }
+}
+
+fn intern_str(table: InternTable, id: Int) -> String {
+  match table.strings |> get(id) {
+    Present { value: s } => s
+    Absent => ""
+  }
+}
+
+fn intern_find(table: InternTable, s: String) -> Int? {
+  match map_get(table.index, s) {
+    Present { value: id } => Present { value: id }
+    Absent => none
+  }
+}
+
+fn intern_find_or_empty(table: InternTable, s: String) -> Int {
+  match map_get(table.index, s) {
+    Present { value: id } => id
+    Absent => 0
+  }
+}
+
+fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
+  tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    let merged_allocator = occurrence_id_allocator_advance_to(
+      alloc: merged.authored_token_ordinals.allocator,
+      min_next: t.authored_token_ordinals
+    )
+    let merged = intern_table_with_authored_token_ordinals(
+      table: merged,
+      authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+        alloc: merged_allocator
+      )
+    )
+    t.strings |> fold(init: merged, f: (m, s) =>
+      if s == "" { m } else { intern(table: m, s: s).table }
+    )
+  )
+}
+
+fn is_internable_token(shape: TokenShape) -> Bool {
+  match shape { ShIdent => true  ShKeyword => true  _ => false }
+}
+
+fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
+  fold(tokens, init: table, f: (t, tok) =>
+    if is_internable_token(shape: tok.shape) {
+      intern(table: t, s: tok.text).table
+    } else { t }
+  )
+}
+
+fn with_optional_cardinality(n: Node) -> Node {
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+}
+
+fn with_required_cardinality(n: Node) -> Node {
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+}
+
+fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
+  let merge_optional = left == CardOptional || right == CardOptional
+  if merge_optional { CardOptional } else { right }
+}
+
+fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
+  let joined = join_optional_cardinality(outer.return_cardinality, inner.return_cardinality)
+  let needs_restore = joined == CardOptional && inner.return_cardinality != CardOptional
+  if needs_restore { with_optional_cardinality(n: inner) } else { inner }
+}
+
+fn module_path_segments(path: String) -> List<String> {
+  if path == "" { [] } else { path |> split(delimiter: ".") }
+}
+
+fn qualified_last_segment(name: String) -> String {
+  match module_path_segments(path: name) |> last {
+    Present { value: s } => s
+    Absent => name
+  }
+}
+
+// A container-table lookup has THREE answers, not two. container_expected_arity
+// returning Absent conflates "this name is not a container" -- String, Bool, and
+// every user record, which is the correct answer for the overwhelming majority of
+// type-position names -- with "this IS a container spelling, and it is one we do
+// not recognize", which is ignorance. Rendering the second as the first is the
+// empty-observation narrow of DESIGN section 5: the arm answers "not under-
+// parameterized" / "not a keyed map" about a name it could not classify at all,
+// and the wrong answer produces no evidence of itself.
+//
+// The discriminator refuses; it never DECIDES. Matching on the leaf to pick a
+// container kind would collapse a qualified spelling onto the kernel row and
+// silently realize the wrong one (the std.nat.Nat collision class). Matching on
+// the leaf to REFUSE selects no kind and no template: its worst case is a located
+// diagnostic closed by declaring the row it names.
+type ContainerSpellingVerdict
+  = ContainerSpellingDeclared { arity: Int }
+  | NotAContainerSpelling
+  | ContainerSpellingUnknown { container_leaf: String }
+
+// The known container leaves are read from container_type_arity itself -- the same
+// authority the Present arm consults -- so this is not a third roster (DESIGN
+// section 3). The lowercase alias spellings that container_template_alias_rows
+// additionally carries are deliberately NOT read here: "list", "map" and "set" are
+// ordinary identifier spellings, so a binder or field named `map` would be refused
+// as an unrecognized container. The wall is drawn where the refusal cannot be
+// wrong about what kind of name it is looking at.
+fn known_container_leaf(name: String) -> String? {
+  let leaf = qualified_last_segment(name: name)
+  match container_expected_arity(name: leaf) {
+    Present { value: _ } => Present { value: leaf }
+    Absent => none
+  }
+}
+
+fn container_spelling_verdict(name: String) -> ContainerSpellingVerdict {
+  match container_expected_arity(name: name) {
+    Present { value: arity } => ContainerSpellingDeclared { arity: arity }
+    Absent =>
+      match known_container_leaf(name: name) {
+        Present { value: leaf } => ContainerSpellingUnknown { container_leaf: leaf }
+        Absent => NotAContainerSpelling
+      }
+  }
+}
+
+// Only a name the compiler can read back out of real authored source may be
+// refused. A synthesized type node carries a <kernel:...> span whose file is in no
+// source index -- and the service path is exactly that: check_service_field_access_node
+// builds nominal_type_ref(name: "cron.Tab.List"), a LEAF TYPE NODE whose last
+// segment is a container name and which is not a container. Excluding it by
+// authorship rather than by an exception list is what keeps the five known
+// false-refusals (cron.Tab.List, Filesystem.List, github.Pulls.List,
+// tmux.Session.List, req.Header.Set) out by construction: a
+// sixth service operation named after a container needs no edit here.
+// (os.Hostname.Set left this list with the CLI-invocation migration: the op's
+// hand-authored transport row was deleted and the hostnamectl set-hostname
+// vertical realizes through hostnamectl.Process.Run.)
+fn type_node_name_is_authored(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match node.ident_span {
+    Present { value: span } =>
+      match map_get(source_indices, span.file) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn authored_container_spelling_verdict(node: Node, source_indices: Map<String, NewlineIndex>) -> ContainerSpellingVerdict {
+  if type_node_name_is_authored(node: node, source_indices: source_indices) {
+    container_spelling_verdict(name: authored_name_at(source_indices: source_indices, node: node))
+  } else {
+    match container_expected_arity(name: authored_name_at(source_indices: source_indices, node: node)) {
+      Present { value: arity } => ContainerSpellingDeclared { arity: arity }
+      Absent => NotAContainerSpelling
+    }
+  }
+}
+
+fn type_name_compatible(a: String, b: String) -> Bool {
+  if a == b { true }
+  else if contains(a, ".") && contains(b, ".") { false }
+  else { qualified_last_segment(name: a) == qualified_last_segment(name: b) }
+}

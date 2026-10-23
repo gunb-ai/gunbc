@@ -1,0 +1,90 @@
+module v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
+  rcf_member_accepted_and_decided,
+  rcf_read
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS FOR TOP-DOWN CHECKING MODE IN v2.compiler.infer, enrolled EXPECTED-RED
+// (v2.workflow.floor_expected_red floor_expected_red_chunk_infer_checking_mode) until it lands.
+//
+// Each specimen is a generic record construct whose type its field values cannot fix -- a phantom
+// parameter, or one that occurs only inside a field whose own value is a construct only the context
+// can type -- at a position that DECLARES the instantiation. infer is a bottom-up fold, so today the
+// construct's row decides before its expected type is known: the phantom and the nested construct are
+// accepted with a counted obligation. Both claims here assert the CHECKING-MODE answer, so both are
+// red today and pass unchanged when checking mode carries the declared type into the construct's row
+// (v2.std.node fold_node_topdown; plan docs/plans/infer-checking-mode-plan.md). The discriminating
+// refusal (`b: 3` at a declared Two<Bool> refused at the value) is deliberately NOT here: while red it
+// exceeds the floor's new-witness budget, so checking mode enrolls it green; the plan carries its
+// specimen and required verdict.
+//
+// THE RED IS ISOLATED FROM THE STRING-LITERAL GAP: no field value here is a String literal. The
+// map-literal case (a String key) is not claimed; it stays counted until a String literal is typed
+// through the declared unfold (work item adhoc-3e4eee5a-d66).
+//
+// THE ROUTE IS REAL: source text through the production front end into infer, on the harness
+// v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test declares.
+data etr_phantom_source: String = "module v2.test.etr_phantom\n\nimport std.types { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ndata p: Ph<Bool> = Ph { n: 1 }\n"
+
+data etr_two_good_source: String = "module v2.test.etr_two_good\n\nimport std.types { Bool }\n\ntype Ph<T> {\n  n: Int\n}\n\ntype Two<T> {\n  a: Ph<T>\n  b: T\n}\n\ndata t: Two<Bool> = Two { a: Ph { n: 1 }, b: true }\n"
+
+data etr_ingest: SourceRootIngest = [
+  rcf_read(source: etr_phantom_source, id: ^etr_phantom_read, unit: ^etr_phantom_cu, path: "src/v2/test/fixture/expected_type_record/phantom.dag"),
+  rcf_read(source: etr_two_good_source, id: ^etr_two_good_read, unit: ^etr_two_good_cu, path: "src/v2/test/fixture/expected_type_record/two_good.dag")
+]
+
+fn etr_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: etr_ingest, lm: dag_language_model())
+}
+
+fn etr_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match etr_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn etr_resolved_phantom() -> Outcome<ResolvedTree> { etr_resolve_subject(subject: "v2.test.etr_phantom") }
+fn etr_resolved_two_good() -> Outcome<ResolvedTree> { etr_resolve_subject(subject: "v2.test.etr_two_good") }
+
+// A PHANTOM BINDER IS FIXED BY THE DECLARED TYPE: `data p: Ph<Bool> = Ph { n: 1 }` is decided at
+// Ph<Bool> -- accepted with no counted obligation.
+test fn etr_a_phantom_binder_is_fixed_by_the_declared_type_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: etr_resolved_phantom(), member: ^p)
+}
+
+// THE CONTROL, one term away: `b: true` agrees with the context's T, and the nested Ph construct is
+// typed at Ph<Bool> by the same context, so the whole initializer is decided -- accepted with no
+// counted obligation, including none from Two's own row (its field `a: Ph<T>` is judged at Ph<Bool>
+// because the row runs with T already fixed).
+test fn etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: etr_resolved_two_good(), member: ^t)
+}

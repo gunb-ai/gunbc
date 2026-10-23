@@ -1,0 +1,225 @@
+module test.claim.machine_intake.mtcollins1_sixteen_module_restore_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String, list_length }
+import std.process { exit_ok }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+  SolCaptureUnderCondition,
+  mtcollins1_dram_training_reading,
+}
+import gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation {
+  check_loop_before_restore_is_the_bounded_terminal,
+  check_no_restart_after_the_swap,
+  check_restore_window_is_undetermined_not_terminal,
+  mtcollins1_restore_boot_captures,
+  mtcollins1_restore_sol_reading,
+  mtcollins1_run_a_sparse_reference_capture,
+  mtcollins1_run_b_sparse_samsung_capture,
+  mtcollins1_sixteen_module_restore_capture,
+  mtcollins1_stable_boot_window_capture,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  FirmwareErrorStatementUnrecognized,
+  NoTerminalStated,
+  SolCaptureReading,
+  SolHostBytesObserved,
+  TrainingRefusedByFirmware,
+}
+
+// THIS WITNESS READS THE COMMITTED CAPTURES, which is what makes the corpus rows evidence rather
+// than assertions: every byte count is checked against the file it names, every console reading
+// is folded from the file's own lines, and every transcribed SEL row is looked up in the file.
+// Under the hermetic floor a readonly read of a path under the checkout root is input access
+// (`v1_interpreter` `hermetic_checkout_input_disposition_under`), so this declares ReadsLiveTree
+// truthfully and executes on the ordinary route.
+//
+// THE DIGEST IS NOT RECOMPUTED HERE. No pure sha256 exists in the substrate and a sha256sum
+// process is a host effect the hermetic frame refuses, so the byte count is the custody half this
+// witness can execute -- the same half gunbc.bmc_fan_program_observation_witness executes, for the
+// same reason. A swapped or truncated artifact refuses on the count; a same-length edit does not,
+// and that residue is stated rather than papered.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A SERIAL CONSOLE ENDS ITS LINES IN CR LF, AND THE CAPTURE RENDERS THE CR AS THE TWO CHARACTERS
+// `^M`: the wrapper that recorded the session wrote the control character in caret notation, so
+// the committed bytes carry a literal caret and M at the end of every console line (measured: the
+// file holds no 0x0d byte and 514 `^M` renderings) while the run's own header lines end in LF
+// alone. The split is on LF and the trailing rendering is removed per line, because the grammar's
+// `trim` cannot know it is whitespace, and a statement carried as "...failed^M" is a different
+// string from the one the firmware printed.
+data console_cr_rendering: String = "^M"
+
+fn without_trailing_cr(line: String) -> String {
+  if line.ends_with(console_cr_rendering) { line.substring(start: 0, end: line.length() - console_cr_rendering.length()) } else { line }
+}
+
+fn capture_lines(capture: SolCaptureUnderCondition) -> List<String> {
+  map(Filesystem.Read(path: capture.artifact_path as String).content.split(sep: "\n"), l => without_trailing_cr(line: l))
+}
+
+fn capture_content(capture: SolCaptureUnderCondition) -> String {
+  Filesystem.Read(path: capture.artifact_path as String).content
+}
+
+fn reading_of(capture: SolCaptureUnderCondition) -> SolCaptureReading {
+  mtcollins1_restore_sol_reading(capture: capture, lines: capture_lines(capture: capture))
+}
+
+// ── custody: the rows name the bytes they were taken from ─────────────────────────────────────
+
+test fn every_boot_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool {
+  all(mtcollins1_restore_boot_captures, c => capture_content(capture: c).length() == c.bytes.count)
+}
+
+test fn the_sel_capture_row_names_a_file_of_exactly_its_byte_count() -> Bool {
+  Filesystem.Read(path: mtcollins1_stable_boot_window_capture.artifact_path as String).content.length()
+    == mtcollins1_stable_boot_window_capture.byte_count.count
+}
+
+// A MISSING PATH READS AS EMPTY CONTENT ON THIS ROUTE (measured by the fan-program witness), so
+// a zero-length read must never satisfy a count check; the rows carry non-zero counts, and this
+// control keeps the comparison honest about what an absent file looks like.
+test fn an_absent_capture_reads_as_zero_bytes_and_fails_the_count() -> Bool {
+  Filesystem.Read(path: "artifacts/bmc/mtcollins1-no-such-capture.txt").content.length() == 0
+    && mtcollins1_sixteen_module_restore_capture.bytes.count > 0
+}
+
+// ── the SEL rows are the file's rows ──────────────────────────────────────────────────────────
+
+// EACH TRANSCRIBED EVENT'S CLOCK RENDERING APPEARS IN THE FILE IN THE CONTROLLER'S OWN COLUMNS.
+// The row carries "MM/DD/YYYY HH:MM:SS AM UTC" as one string; the `sel list` line carries the
+// date and the time in separate ` | ` columns, so the lookup re-splits the rendering at its
+// first space. A row whose rendering the file does not carry is a transcription error, red here.
+fn rendering_in_sel_columns(rendering: NonEmptyStr) -> String {
+  let parts = (rendering as String).split(sep: " ")
+  match parts.first() {
+    Absent => rendering as String
+    Present { value: date } =>
+      concat(" | ", date, " | ", parts.skip(n: 1).join(" "), " | ")
+  }
+}
+
+fn sel_content() -> String {
+  Filesystem.Read(path: mtcollins1_stable_boot_window_capture.artifact_path as String).content
+}
+
+test fn every_transcribed_sel_event_is_in_the_capture() -> Bool {
+  let content = sel_content()
+  all(mtcollins1_stable_boot_window_capture.events, e => contains(content, rendering_in_sel_columns(rendering: e.bmc_clock_rendering)))
+}
+
+// THE COUNT IS AN IDENTITY JOIN IN THE OTHER DIRECTION: the file's record lines -- those carrying
+// the capture date in the controller's date column -- number exactly the rows transcribed, so a
+// record the transcription dropped is red as well as one it invented.
+test fn the_capture_carries_exactly_the_transcribed_record_count() -> Bool {
+  let record_lines = filter(sel_content().split(sep: "\n"), l => contains(l, " | 09/12/2026 | "))
+  list_length(items: record_lines) == list_length(items: mtcollins1_stable_boot_window_capture.events)
+}
+
+// ── the console readings, folded from the bytes ───────────────────────────────────────────────
+
+// ALL THREE CAPTURES ARE HOST BYTES: the firmware grammar recognises checkpoint lines in each, so
+// none reads as banner-only or unattributed -- the discriminating contrast with the four
+// byte-identical 86-byte captures of the 32-DIMM corpus.
+test fn every_boot_capture_reads_as_host_bytes() -> Bool {
+  all(mtcollins1_restore_boot_captures, c => match reading_of(capture: c) {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: _ } => true
+    _ => false
+  })
+}
+
+// RUN A STATED NO TERMINAL: every recognised line is a checkpoint, and the run ends in the PXE
+// loop before UEFI prints a boot-option error.
+test fn run_a_states_no_terminal() -> Bool {
+  match reading_of(capture: mtcollins1_run_a_sparse_reference_capture) {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
+      match r {
+        NoTerminalStated => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// RUN B AND THE RESTORE VERIFICATION CARRY UEFI'S "ERROR: Boot option loading failed", an ERROR:
+// line the DRAM-training grammar has never seen. It is carried verbatim as an unrecognised
+// statement and NOT promoted to a training refusal: the line comes from boot-device selection,
+// which the firmware reaches only after initialisation completed. That the grammar keeps it
+// unrecognised rather than guessing is the review-64457 arm doing its job over real bytes.
+fn reads_as_unrecognised_boot_option_error(capture: SolCaptureUnderCondition) -> Bool {
+  match reading_of(capture: capture) {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
+      match r {
+        FirmwareErrorStatementUnrecognized { statement: st } => st == "ERROR: Boot option loading failed"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn run_b_carries_the_uefi_boot_option_error_unrecognised() -> Bool {
+  reads_as_unrecognised_boot_option_error(capture: mtcollins1_run_b_sparse_samsung_capture)
+}
+
+test fn the_restore_verification_carries_the_uefi_boot_option_error_unrecognised() -> Bool {
+  reads_as_unrecognised_boot_option_error(capture: mtcollins1_sixteen_module_restore_capture)
+}
+
+// THE GRAMMAR STILL DISCRIMINATES: the held-session capture whose firmware refused the mixture
+// reads as a training refusal through the same fold, so "no refusal" above is not the grammar
+// having gone blind.
+test fn the_same_grammar_reads_the_mixture_capture_as_a_refusal() -> Bool {
+  match mtcollins1_dram_training_reading() {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
+      match r {
+        TrainingRefusedByFirmware { statement: _, locus: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// NO TRAINED CAPTURE READS AS A REFUSAL.
+test fn no_trained_capture_reads_as_a_refusal() -> Bool {
+  all(mtcollins1_restore_boot_captures, c => match reading_of(capture: c) {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
+      match r {
+        TrainingRefusedByFirmware { statement: _, locus: _ } => false
+        _ => true
+      }
+    _ => false
+  })
+}
+
+// ── the verdicts ──────────────────────────────────────────────────────────────────────────────
+
+test fn the_loop_before_the_restore_is_the_bounded_terminal() -> Bool {
+  exit_ok(e: check_loop_before_restore_is_the_bounded_terminal())
+}
+
+test fn the_restore_window_is_undetermined_not_terminal() -> Bool {
+  exit_ok(e: check_restore_window_is_undetermined_not_terminal(console: reading_of(capture: mtcollins1_sixteen_module_restore_capture)))
+}
+
+// THE CAUSE IS THE CONSOLE'S: the fold decides an unrecognised ERROR: statement before it reads
+// the window, so the observation module's check refuses any cause but that line. The window
+// itself is checked next, through the cycle fold, because this verdict never reaches it.
+test fn the_restore_verdict_is_undetermined_by_the_unrecognised_uefi_line() -> Bool {
+  match reading_of(capture: mtcollins1_sixteen_module_restore_capture) {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
+      match r {
+        FirmwareErrorStatementUnrecognized { statement: _ } =>
+          exit_ok(e: check_restore_window_is_undetermined_not_terminal(console: reading_of(capture: mtcollins1_sixteen_module_restore_capture)))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// ZERO RESTARTS AFTER THE SWAP, AS AN EXECUTED FOLD OVER THE ROWS: a restart row added after 0x640
+// closes the power-up's cycle and turns this red (planted and measured while the check was written);
+// so does dropping the power-up itself.
+test fn no_restart_closes_a_cycle_after_the_swap() -> Bool {
+  exit_ok(e: check_no_restart_after_the_swap())
+}

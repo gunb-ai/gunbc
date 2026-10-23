@@ -1,0 +1,231 @@
+module test.claim.altra_routed_vs_populated_witness_test
+
+import std.types { Bool, List, list_length }
+import std.integer { Int }
+import product.altra_motherboard.minimal_design {
+  RevARoutedMemoryDesign, RoutedDdrTopology, ActiveDdrTopology,
+  MemoryPopulationLifecycle, ShipsWithProductionPopulation, BringUpThenFill,
+  RoutedDesignAdmission, RoutedDesignAdmitted, RoutedDesignRefused,
+  DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7,
+  FirstDimmOnChannel, SecondDimmOnChannel,
+  admit_routed_design, population_subset_causes,
+  DesignRefusal, PopulatedChannelIsNotRouted, PopulatedPositionIsNotRouted,
+  NoProductionQualifiedPopulationIsReachable, NoProductionQualifiedChannelCountExists,
+  DebugOnlyChannelCountUnderProductionIntent, ChannelCountExceedsControllerPopulation,
+  ChannelPopulationIsNotAnAdmittedCount, ChannelPopulatedMoreThanOnce,
+  ChannelHasNoDimmPositions, DimmPositionRepeatedOnChannel, PcieLanesExceedPackage,
+}
+
+// EXECUTING EVIDENCE that routing and population are separate facts and that copper is the
+// ceiling. The motivating case is the one a single topology could not express at all: a board
+// that routes eight channels and ships four populated.
+
+fn all_eight_routed() -> RoutedDdrTopology {
+  RoutedDdrTopology {
+    routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5, DdrChannel6, DdrChannel7],
+    routed_positions_per_channel: [FirstDimmOnChannel],
+  }
+}
+
+fn four_active() -> ActiveDdrTopology {
+  ActiveDdrTopology {
+    populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+    positions_per_channel: [FirstDimmOnChannel],
+  }
+}
+
+fn ships(p: ActiveDdrTopology) -> MemoryPopulationLifecycle {
+  ShipsWithProductionPopulation { production: p }
+}
+
+fn is_admitted(a: RoutedDesignAdmission) -> Bool {
+  match a {
+    RoutedDesignAdmitted { admitted: _, pcie_lanes_broken_out: _ } => true
+    RoutedDesignRefused { causes: _ } => false
+  }
+}
+
+fn admit(routed: RoutedDdrTopology, l: MemoryPopulationLifecycle) -> RoutedDesignAdmission {
+  admit_routed_design(d: RevARoutedMemoryDesign { routed: routed, lifecycle: l }, pcie_lanes: 4)
+}
+
+// THE MOTIVATING CASE: eight routed, four populated, admitted.
+test fn w_a_board_may_route_eight_and_populate_four() -> Bool {
+  is_admitted(a: admit(routed: all_eight_routed(), l: ships(p: four_active())))
+}
+
+test fn w_populating_an_unrouted_channel_refuses() -> Bool {
+  !is_admitted(a: admit(
+    routed: RoutedDdrTopology {
+      routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      routed_positions_per_channel: [FirstDimmOnChannel],
+    },
+    l: ships(p: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel7],
+      positions_per_channel: [FirstDimmOnChannel],
+    })))
+}
+
+test fn w_populating_an_unrouted_position_refuses() -> Bool {
+  !is_admitted(a: admit(
+    routed: all_eight_routed(),
+    l: ships(p: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [FirstDimmOnChannel, SecondDimmOnChannel],
+    })))
+}
+
+// THE ORIGINAL FAIL-OPEN: eight routed, two active, Production. Admitted by the law that
+// qualified copper instead of the active population.
+test fn w_eight_routed_but_two_active_refuses_under_production() -> Bool {
+  !is_admitted(a: admit(
+    routed: all_eight_routed(),
+    l: ships(p: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1],
+      positions_per_channel: [FirstDimmOnChannel],
+    })))
+}
+
+// THE PAIRED OVER-REFUSAL: five routed interfaces operating a supported four-channel population
+// is refused by nothing in the source.
+test fn w_five_routed_with_four_active_is_admitted() -> Bool {
+  is_admitted(a: admit(
+    routed: RoutedDdrTopology {
+      routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4],
+      routed_positions_per_channel: [FirstDimmOnChannel],
+    },
+    l: ships(p: four_active())))
+}
+
+test fn w_a_two_route_board_has_no_reachable_production_population() -> Bool {
+  !is_admitted(a: admit(
+    routed: RoutedDdrTopology {
+      routed_channels: [DdrChannel0, DdrChannel1],
+      routed_positions_per_channel: [FirstDimmOnChannel],
+    },
+    l: ships(p: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1],
+      positions_per_channel: [FirstDimmOnChannel],
+    })))
+}
+
+// STRUCTURAL LAW ON THE ACTIVE POPULATION. Both of these were ADMITTED before the shared law
+// landed, each proven by running the counterexample against the old module.
+
+// [DDR0, DDR0, DDR1, DDR2] has list length four, so it reached the production-qualified arm,
+// and every identity in it IS routed, so the subset law could not see the repeat.
+test fn w_a_repeated_active_channel_refuses() -> Bool {
+  !is_admitted(a: admit(
+    routed: all_eight_routed(),
+    l: ships(p: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel0, DdrChannel1, DdrChannel2],
+      positions_per_channel: [FirstDimmOnChannel],
+    })))
+}
+
+// Four channels and NO dimm position at all: the empty-position refusal used to be routed-only,
+// and the position subset fold succeeds vacuously on an empty list.
+test fn w_an_active_population_with_no_dimm_positions_refuses() -> Bool {
+  !is_admitted(a: admit(
+    routed: all_eight_routed(),
+    l: ships(p: ActiveDdrTopology {
+      populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      positions_per_channel: [],
+    })))
+}
+
+// THE LIFECYCLE. A production board may legitimately come up on two channels and ship on four;
+// the bring-up population is judged under bring-up intent, so it does not refuse.
+test fn w_a_board_may_bring_up_on_two_and_ship_on_four() -> Bool {
+  is_admitted(a: admit(
+    routed: all_eight_routed(),
+    l: BringUpThenFill {
+      bringup: ActiveDdrTopology {
+        populated_channels: [DdrChannel0, DdrChannel1],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+      production: four_active(),
+    }))
+}
+
+// AND THE SHIPPED POPULATION IS STILL JUDGED AS PRODUCTION. Declaring a lifecycle does not
+// launder a debug-only shipped population through the bring-up arm.
+test fn w_a_lifecycle_may_not_ship_a_debug_only_population() -> Bool {
+  !is_admitted(a: admit(
+    routed: all_eight_routed(),
+    l: BringUpThenFill {
+      bringup: ActiveDdrTopology {
+        populated_channels: [DdrChannel0],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+      production: ActiveDdrTopology {
+        populated_channels: [DdrChannel0, DdrChannel1],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+    }))
+}
+
+// THE BRING-UP POPULATION IS STILL BOUND BY COPPER. Its intent excuses the channel COUNT, never
+// the subset law.
+test fn w_a_bring_up_population_may_not_leave_the_routed_set() -> Bool {
+  !is_admitted(a: admit(
+    routed: RoutedDdrTopology {
+      routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+      routed_positions_per_channel: [FirstDimmOnChannel],
+    },
+    l: BringUpThenFill {
+      bringup: ActiveDdrTopology {
+        populated_channels: [DdrChannel7],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+      production: four_active(),
+    }))
+}
+
+// THE ADMITTED VALUE RETAINS ITS ROUTING, which is what a downstream selector must consume. The
+// earlier success constructor discarded it, so this reads the routed set back OUT of the result.
+test fn w_the_admitted_design_retains_the_routed_topology() -> Bool {
+  match admit(routed: all_eight_routed(), l: ships(p: four_active())) {
+    RoutedDesignRefused { causes: _ } => false
+    RoutedDesignAdmitted { admitted: d, pcie_lanes_broken_out: _ } =>
+      list_length(items: d.routed.routed_channels) == 8
+  }
+}
+
+fn names_unrouted_channel(rs: List<DesignRefusal>, ordinal: Int) -> Bool {
+  fold(rs, init: false, f: fn(acc, r) {
+    acc || match r {
+      PopulatedChannelIsNotRouted { channel: n } => n == ordinal
+      PopulatedPositionIsNotRouted { position: _ } => false
+      NoProductionQualifiedPopulationIsReachable { routed_channels: _ } => false
+      NoProductionQualifiedChannelCountExists => false
+      DebugOnlyChannelCountUnderProductionIntent { selected: _ } => false
+      ChannelCountExceedsControllerPopulation { selected: _, available: _ } => false
+      ChannelPopulationIsNotAnAdmittedCount { populated: _ } => false
+      ChannelPopulatedMoreThanOnce { channel: _ } => false
+      ChannelHasNoDimmPositions => false
+      DimmPositionRepeatedOnChannel { position: _ } => false
+      PcieLanesExceedPackage { requested: _, available: _ } => false
+    }
+  })
+}
+
+// THE REFUSAL NAMES WHICH CHANNEL, rather than only that something was unroutable.
+test fn w_the_refusal_names_which_channel_was_unrouted() -> Bool {
+  let routed = RoutedDdrTopology {
+    routed_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+    routed_positions_per_channel: [FirstDimmOnChannel],
+  }
+  let populated = ActiveDdrTopology {
+    populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel7],
+    positions_per_channel: [FirstDimmOnChannel],
+  }
+  names_unrouted_channel(rs: population_subset_causes(routed: routed, populated: populated), ordinal: 7)
+    && !names_unrouted_channel(rs: population_subset_causes(routed: routed, populated: populated), ordinal: 3)
+}
+
+// NON-VACUITY: a clean design yields no subset causes at all, so the reds above are discriminating
+// rather than a law that refuses everything.
+test fn w_RED_a_clean_routed_design_yields_no_subset_causes() -> Bool {
+  list_length(items: population_subset_causes(routed: all_eight_routed(), populated: four_active())) == 0
+}

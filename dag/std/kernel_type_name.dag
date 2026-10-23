@@ -1,0 +1,31 @@
+module std.kernel_type_name
+
+import std.types { String, is_kernel_type }
+
+// A LEAF ON PURPOSE: it imports std.types and nothing else, so the v1 seed's closure (which reaches
+// this carrier through std.target_representation) does not also reach the external models that
+// std.kernel_type_denotation cites. What a kernel name MEANS lives there; that a String IS a kernel
+// name lives here, once.
+//
+// A KERNEL TYPE NAME, admitted only through std.types is_kernel_type (kernel_type_set is read, not
+// restated). This is the ONE carrier for "a name the kernel rosters": every consumer that needs one
+// -- this module's denotation rows, std.target_representation's kernel-parent variants -- takes a
+// KernelTypeName rather than a String with its own membership check. RUNG: mechanically
+// preventable -- the record constructor stays public (the language has no module-private
+// constructor); kernel_type_name is the admitting route, and a String that is not a kernel name
+// yields NotAKernelTypeName, never a KernelTypeName.
+type KernelTypeName {
+  name: String
+}
+
+type KernelTypeNameAdmission
+  = KernelTypeNameAdmitted { kernel_name: KernelTypeName }
+  | NotAKernelTypeName { name: String }
+
+fn kernel_type_name(name: String) -> KernelTypeNameAdmission {
+  if is_kernel_type(name: name) {
+    KernelTypeNameAdmitted { kernel_name: KernelTypeName { name: name } }
+  } else {
+    NotAKernelTypeName { name: name }
+  }
+}

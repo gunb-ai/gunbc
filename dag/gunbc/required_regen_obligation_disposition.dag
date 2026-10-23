@@ -1,0 +1,338 @@
+module gunbc.required_regen_obligation_disposition
+
+import std.types { Int, String, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// WAVE 4 LACKS A TOTAL DISPOSITION FOR THE REQUIRED-REGEN OBLIGATION: TRANSFER AND RETIREMENT
+// ARE FUSED.
+//
+// `gunbc.plans.cli_run_hollowing_plan` carries one row -- area "Regen oracle & self-host scope",
+// authority `v2.workflow.required_regen` / `v1_compiler.required_regen_host` -- dispositioned
+// `delete-with-v1` at the Wave 4 real-fixpoint cutover. That row answers for two futures with
+// different obligations: TRANSFER, where the operation survives under a successor and owes an
+// equivalence receipt, and RETIRE, where the operation ceases and owes proof its subject is empty.
+// Transfer itself splits again by whether the successor replaces the REALIZATION or the AUTHORITY.
+// Both end in deleting the same two files, which is why one row can cover them and why nothing
+// notices that it does. `delete-with-v1` states the ACTION and leaves the JUSTIFICATION unstated.
+//
+// The plan may still choose retirement. What it may not do is let `delete-with-v1` stand in for
+// PROVING the subject retired.
+//
+// DESIGN owns safety standing and the plan owns sequencing; this lifecycle is where they meet, so
+// neither is edited against the other. An earlier revision reported the two as CONTRADICTORY and
+// asked for arbitration. That was wrong: a next-rung trigger is an obligation WHILE ITS SUBJECT
+// REMAINS LIVE, and a terminal migration may remove the subject entirely -- deleting an operation
+// whose subject is gone is RETIRING it, not declining to climb. The two are compatible under
+// exactly that condition, and nobody had checked whether it holds. That unchecked condition, not
+// a contradiction, is the defect.
+//
+// THIS CARRIER GATES NOTHING, and says so because a carrier named for a wall while occupying none
+// is the inflation DESIGN section 4b forbids. It is a finding, not a repair and not a proposal for
+// the Wave 4 work.
+//
+// SCOPE: one obligation, one authority pair, one plan row. How many other plan rows fuse transfer
+// with retirement is UNMEASURED, deliberately -- a specimen count taken while establishing the
+// mechanism would be mistaken for the bound. What licenses generalizing the MECHANISM and not the
+// RATE is that nothing in the corpus can refuse over a plan row's disposition: it has no
+// executable dependents, so the fail-closed census that normally surfaces a load-bearing gap is
+// structurally silent for this class, and the only thing that finds one is somebody attempting
+// the work it governs.
+
+// A RETIREMENT'S OUTSTANDING WORK, ENUMERATED RATHER THAN CHECKED. A prior revision carried the
+// Retired arm as a LIST of discharged obligations plus a predicate asserting both were present,
+// which review 57020 correctly named as predicate dissolution -- two folds each matching a closed
+// two-variant coproduct and answering true for one arm and false for the other. The repair is not
+// to respell that predicate. It is to notice that the predicate existed only because the carrier
+// could represent a retirement that was not retired, and to remove that representation: an
+// incompletely discharged retirement is now a DIFFERENT ARM, not a Retired value carrying a short
+// list. The invalid state stops being writable, so there is nothing left to validate and the
+// predicate dissolves rather than being reformulated (SS5 construction over validation, SS4b
+// dissolution on climb -- the production check goes, the witnesses stay).
+//
+// The list also admitted a state with no meaning: `Retired { discharged: [] }` was representable
+// and was neither retired nor prepared. Enumerating the incomplete states removes that too.
+type RetirementProgress
+  = MirrorPopulationStillOccupied
+  | RequiredConsumersRemain
+  | BothObligationsOutstanding
+
+// TRANSFER SPLITS IN TWO, and fusing them was this carrier's own instance of the defect it exists
+// to name. A single Transferred arm carrying a successor AUTHORITY described a full authority
+// transfer, while the deletion rule below denied deleting the old carrier under it -- so the
+// carrier encoded a terminal state in which two definitions answer for one operation, which is
+// exactly what SS3 forbids. Which realization performs the work and which authority DEFINES it are
+// separate questions with separate deletion consequences, so they are separate arms.
+//
+// RETIREMENT SPLITS THE SAME WAY AND FOR THE SAME REASON: Retired carries NOTHING, because it
+// means both populations are empty and a value that has to be inspected to find out whether it
+// means that is not a terminal state.
+// ABSORPTION IS A THIRD CONTINUATION AND IT WAS FUSED INTO AuthorityTransferred, which is this
+// carrier committing its own subject's defect one level in. An obligation can survive while
+// ceasing to be an INDEPENDENTLY NAMED operation -- performed as one inseparable part of a broader
+// transaction. That is not an authority transfer: a transfer hands one operation to a successor
+// that still answers for it by name, while absorption dissolves the name and owes a COVERAGE
+// receipt instead of an equivalence one -- every old input population, ordering guarantee, refusal
+// and consumer obligation must map to a named arm of the broader operation.
+//
+// WHY THE COMPLETED ARM ALONE WOULD HAVE BEEN A DECORATION, stated because the first draft of this
+// split was exactly that. A completed absorption has the SAME deletion truth table as an authority
+// transfer -- the absorber is canonical, so both files go -- so an Absorbed arm on its own changes
+// no predicate outcome and no witness over it can go red for the right reason. It would be a
+// richer name over an unchanged wall, which SS4b calls out directly.
+//
+// THE INCOMPLETE STATE IS WHAT MAKES IT A WALL, and it is the same move retirement already made
+// here: a coverage that has not been demonstrated admits NEITHER deletion, which authority
+// transfer does not. That difference is authorable by a fixture and refuses.
+//
+// AbsorptionGap NAMES ONE UNCOVERED CLASS, NOT THE SET, deliberately. A `List<AbsorptionGap>`
+// would readmit the empty-list state review 57020 removed from retirement -- a prepared absorption
+// carrying no gap is neither prepared nor absorbed. The decision both predicates make turns on
+// EXISTENCE of a gap, never on which ones or how many, so a single witness carries everything read
+// and nothing that can rot.
+type AbsorptionGap
+  = InputPopulationUncovered
+  | OrderingGuaranteeUncovered
+  | RefusalUncovered
+  | ConsumerObligationUncovered
+
+// INCOMPLETENESS ITSELF SPLITS, AND COLLAPSING IT WOULD BE NOT-APPLICABLE RENDERED AS MALFORMED --
+// DESIGN's most-repeated conflation form, one reason symbol over "no evidence yet" and "the
+// evidence says no", which have OPPOSITE OWNERS AND OPPOSITE REPAIRS. Nobody has produced the
+// coverage receipt is an ABSENT OBSERVATION: the absorber may cover everything, the remedy is to
+// produce the receipt, and it is owned by whoever is landing the absorption. A receipt that SHOWS a
+// gap is an observation with a negative result: the remedy is to widen the absorber or refuse the
+// absorption, it is owned by whoever owns the broader operation, and the design is wrong.
+//
+// THE TWO AGREE ON BOTH DELETION PREDICATES, which is exactly why collapsing them is tempting and
+// exactly why it is the trap -- a truth-table test cannot see this split, and a carrier whose whole
+// subject is a fused disposition must not fuse one two levels in.
+//
+// THE PRECEDENT IS IN THIS FILE, TWICE, WHICH IS WHY THIS IS NOT SYMMETRY-SEEKING: `RouteStatus`
+// separates `RouteRefuted` from `RouteUnexamined`, and `RealizationConformance` separates an
+// unobserved conformance from an observed one. Both encode absent-observation against
+// negative-result. Collapsing absorption's would leave this module using one vocabulary for that
+// distinction in three places and a different one in the fourth.
+//
+// NOT AN ARM: "absorber not yet identified". An obligation with no named absorber is not being
+// absorbed, it is Active, and the carrier already has somewhere to put that.
+type AbsorptionCoverage
+  = CoverageReceiptUnproduced
+  | CoverageReceiptShowsGap { uncovered: AbsorptionGap }
+
+type ObligationLifecycle
+  = Active
+  | RealizationTransferred { successor_realization: DeclarationRef }
+  | AuthorityTransferred {
+      successor_authority: DeclarationRef
+      successor_realization: DeclarationRef
+    }
+  | AbsorptionPrepared { coverage: AbsorptionCoverage }
+  | AbsorbedIntoBroaderOperation { absorber: DeclarationRef }
+  | RetirementPrepared { outstanding: RetirementProgress }
+  | Retired
+
+// THE ASYMMETRY IS THE ENTIRE CONTENT, and a symmetric pair would be the fused row again in typed
+// clothing. The HOST is one realization: either transfer moves its work to a successor and a
+// retirement ends it, so those arms admit deleting it. The CARRIER is the operation's DEFINITION,
+// and the two transfers part company there. Under a REALIZATION transfer the carrier stays
+// canonical -- the successor realization consumes it -- so deleting it would destroy the referent
+// of the equivalence receipt that transfer owes. Under an AUTHORITY transfer the successor
+// authority becomes canonical, so the old carrier MUST delete or the operation has two
+// definitions; the continuation evidence has to live outside it by then.
+//
+// A PREPARED RETIREMENT ADMITS NEITHER, and it is the only non-Active arm that does not: no
+// terminal deletion is authorized from a prepared state, because the thing that would justify it
+// has not happened yet.
+fn host_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
+  match lifecycle {
+    Active => false
+    RealizationTransferred { successor_realization: _ } => true
+    AuthorityTransferred { successor_authority: _, successor_realization: _ } => true
+    AbsorptionPrepared { coverage: _ } => false
+    AbsorbedIntoBroaderOperation { absorber: _ } => true
+    RetirementPrepared { outstanding: _ } => false
+    Retired => true
+  }
+}
+
+fn carrier_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
+  match lifecycle {
+    Active => false
+    RealizationTransferred { successor_realization: _ } => false
+    AuthorityTransferred { successor_authority: _, successor_realization: _ } => true
+    AbsorptionPrepared { coverage: _ } => false
+    AbsorbedIntoBroaderOperation { absorber: _ } => true
+    RetirementPrepared { outstanding: _ } => false
+    Retired => true
+  }
+}
+
+type RouteStatus
+  = RouteRefuted
+  | RouteUnexamined
+
+type DerivationRoute {
+  route: String
+  status: RouteStatus
+}
+
+// REFUTED, and the three preconditions below are its evidence. `regen_source_roots()` is a closed
+// two-variant enum -- src/v1 and dag -- so src/v2 is not a regen root; measured by reading line 2
+// of every emitted stage0 .rs, ZERO declare a v2.* source module. Relocating the carrier into dag/
+// does not suffice, because closure membership is by IMPORT FROM A SEED MODULE rather than by
+// residence. And no seed-side consumer of regen refusals exists, because the adjudication is
+// hand-written Rust; the only honest candidate consumer is the host itself.
+// `dag/std/trait_derive_shape.dag` states the exclusion is deliberate: stage0 IS the v1 seed, and
+// a seed reaching into src/v2 would depend on the successor it bootstraps toward.
+data route_seed_import_generated_type: DerivationRoute = DerivationRoute {
+  route: "host imports a Rust type generated into the v1 stage0 closure",
+  status: RouteRefuted
+}
+
+// Does not require the carrier to be a closure member at all -- the generation step runs before or
+// beside the seed build rather than inside it, so the src/v2 root exclusion does not reach it.
+data route_build_time_generation: DerivationRoute = DerivationRoute {
+  route: "generate the host decision fold from the carrier at build time",
+  status: RouteUnexamined
+}
+
+// The interpreter already executes .dag; the host would consume a receipt rather than a generated
+// type, so no Rust type needs to exist in the seed closure.
+data route_interpreted_receipt: DerivationRoute = DerivationRoute {
+  route: "interpret the carrier and pass a typed receipt across the host boundary",
+  status: RouteUnexamined
+}
+
+// Dissolves the boundary instead of crossing it: if the operation runs in the v2 product there is
+// no v1 host to derive. This is the TRANSFER arm of the lifecycle above.
+data route_promoted_v2_product: DerivationRoute = DerivationRoute {
+  route: "move the operation to the promoted v2 workflow product",
+  status: RouteUnexamined
+}
+
+// If Wave 4 eliminates the committed stage0-mirror population and no successor needs the
+// operation, there is nothing left to derive. This is the RETIRED arm, and it is the plan's
+// apparent intent -- but it is unproven, which is this module's subject.
+data route_retire_with_subject: DerivationRoute = DerivationRoute {
+  route: "the operation retires with its subject",
+  status: RouteUnexamined
+}
+
+// AN EARLIER REVISION CONCLUDED THE CLASS COULD NOT CLIMB, from three refuted attempts at the FIRST
+// route only. That is an impossibility claim resting on the exhaustion of one construction, and it
+// is the same equivalence-across-a-gap this lane had already caught itself making elsewhere. The
+// evidence licenses only that the seed-import route is unavailable.
+data required_regen_derivation_routes: List<DerivationRoute> = [
+  route_seed_import_generated_type,
+  route_build_time_generation,
+  route_interpreted_receipt,
+  route_promoted_v2_product,
+  route_retire_with_subject
+]
+
+// DERIVED, NEVER STORED, so a stale verdict is unrepresentable rather than merely discouraged.
+fn some_derivation_route_remains_unexamined() -> Bool {
+  required_regen_derivation_routes |> any(r => match r.status {
+    RouteUnexamined => true
+    RouteRefuted => false
+  })
+}
+
+fn refuted_route_count() -> Int {
+  length(xs: required_regen_derivation_routes |> filter(r => match r.status {
+    RouteRefuted => true
+    RouteUnexamined => false
+  }))
+}
+
+// THE FIELD CARRIES THE DISTINCTION ITS CONSUMERS READ, AND NOTHING MORE. An earlier revision
+// carried seed_importers as an Int, and review 57043 was right that a transcribed integer sat
+// oddly beside this module's own retraction of transcribed counts. Measured against the
+// consumers rather than argued: every reader tested `== 0` or `> 0`, so the MAGNITUDE was read
+// by nothing and a row could drift from one importer to seven with no witness changing. That is
+// the same test this file applies to the conformance counts a few declarations up -- a member
+// that can rot without changing any decision was never carrying one -- so the honest move is to
+// delete the magnitude rather than defend it as a fixture. What remains is the zero/non-zero
+// distinction the rule actually turns on, which is a structural fact about the import graph and
+// not a measurement of a population. `emitted` stays a stored Bool because it IS read directly:
+// it is the observed consequence the control exists to pair against reachability.
+type ClosureMembershipObservation {
+  module_path: String
+  seed_reachable: Bool
+  emitted: Bool
+}
+
+// BOTH ARMS ARE LOAD-BEARING. A positive-only list would establish that imported modules are
+// emitted and leave "would an unimported one be emitted anyway?" unanswered -- which is exactly
+// the question the second precondition of the refuted route turns on.
+data required_regen_closure_membership_controls: List<ClosureMembershipObservation> = [
+  ClosureMembershipObservation { module_path: "extdeps.cargo", seed_reachable: true, emitted: true },
+  ClosureMembershipObservation { module_path: "gunbc.cli_dispatch_surface", seed_reachable: true, emitted: true },
+  ClosureMembershipObservation { module_path: "gunbc.ci_spec", seed_reachable: false, emitted: false },
+  ClosureMembershipObservation { module_path: "gunbc.commit_workflow", seed_reachable: false, emitted: false },
+  ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_reachable: false, emitted: false }
+]
+
+// THE OPERATION IS ENFORCED; WHAT IS UNOBSERVED IS THE RELATION BETWEEN ITS TWO REALIZATIONS.
+// Across all of src/v1/stage0/src/*.rs the carrier's operation symbols occur only inside a COMMENT
+// naming the carrier as authority for an ordering. No production Rust calls into the carrier; its
+// only executor is its own witness test.
+//
+// AN EARLIER REVISION READ THAT AS THE OPERATION BEING UNENFORCED. It is not, and the correction
+// changes both severity and repair: the hand-written host is an INDEPENDENT REALIZATION and it
+// does enforce required-regen -- it refuses drift, names paths, stops the line. What is missing is
+// a mechanically enforced RELATION between the two realizations, not the enforcement.
+//
+// A PRIOR REVISION CARRIED THAT RELATION AS FIVE TRANSCRIBED COUNTS, and review 57020 was right to
+// refuse them: they were measured off a live-tree scan with no instrument named, which is exactly
+// what the 2026-08-24 ruling forbids -- a transcribed number is unreachable from the thing that
+// owns it, so it rots without anyone touching either end. The repair is not to re-source them but
+// to observe that they were never load-bearing. The standing this carrier needs is QUALITATIVE:
+// whether a conformance relation has been observed at all. The magnitude of the divergence changes
+// that answer not at all, and the predicate that consumed the counts read `false` regardless of
+// whether they were current -- so the counts could rot silently while the decision stayed right,
+// which is the definition of a member carrying no decision.
+//
+// CONFORMANCE IS A SEPARATE AXIS FROM LIFECYCLE, not an arm of it. The operation's fate and the
+// state of the relation between its realizations are orthogonal: the operation is Active today AND
+// its realization conformance is unobserved, and fusing them would make one row answer for two
+// independent questions.
+type RealizationConformance
+  = IndependentRealizationConformanceUnobserved
+  | RealizationConformanceObserved { receipt: DeclarationRef }
+  | NoIndependentRealizationExists
+
+// The observed standing, and it is an assertion of ABSENCE rather than a measurement -- which is
+// why it needs no instrument. Naming an instrument is owed by a number that claims to describe the
+// tree; this claims only that nothing in the tree relates the two realizations, and the arm that
+// would displace it (RealizationConformanceObserved) is uninhabitable until a receipt exists to
+// fill it.
+data required_regen_realization_conformance: RealizationConformance = IndependentRealizationConformanceUnobserved
+
+fn conformance_is_observed(c: RealizationConformance) -> Bool {
+  match c {
+    IndependentRealizationConformanceUnobserved => false
+    RealizationConformanceObserved { receipt: _ } => true
+    NoIndependentRealizationExists => false
+  }
+}
+
+data required_regen_obligation_authorities: List<DeclarationRef> = [
+  decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run"),
+  decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_sync_admission"),
+  decl_ref(module_path: "v2.workflow.required_regen", decl_name: "RequiredRegenRefusal"),
+  decl_ref(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan_body")
+]
+
+// THE SPLIT IS READ, not merely declared. Without a consumer, `AbsorptionCoverage` would be the
+// richer name over an unchanged wall that this module objects to elsewhere -- so the distinction
+// answers the question whose two states have different owners: is the absorption UNPROVEN, or has
+// it been REFUTED? A refuted absorption is a design defect owned by the broader operation; an
+// unproven one is an outstanding receipt owned by whoever is landing it. Shaped exactly like
+// `some_derivation_route_remains_unexamined` above, and for the same reason.
+fn absorption_coverage_is_refuted(coverage: AbsorptionCoverage) -> Bool {
+  match coverage {
+    CoverageReceiptUnproduced => false
+    CoverageReceiptShowsGap { uncovered: _ } => true
+  }
+}

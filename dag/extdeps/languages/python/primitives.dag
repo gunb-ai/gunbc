@@ -1,0 +1,85 @@
+module extdeps.languages.python.primitives
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.python.org/3/reference/datamodel.html"
+  }
+}
+
+type PythonIntegerSpecAlgebraTag
+  = PythonIntOrderedRingAlgebra
+  | PythonIntegerSpecAlgebraReserved
+
+type PythonIntegerSpecCarrierTag
+  = PythonIntUnboundedCarrier
+  | PythonIntegerSpecCarrierReserved
+
+type PythonBooleanSpecAlgebraTag
+  = PythonBoolCanonicalTwoElementBooleanAlgebra
+  | PythonBooleanSpecAlgebraReserved
+
+type PythonBooleanSpecCarrierTag
+  = PythonBoolBitCarrier
+  | PythonBooleanSpecCarrierReserved
+
+type PythonStringSpecAlgebraTag
+  = PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra
+  | PythonStringSpecAlgebraReserved
+
+type PythonStringSpecCarrierTag
+  = PythonStrUnicodeCodePointSequenceCarrier
+  | PythonStringSpecCarrierReserved
+
+type PythonUnitSpecAlgebraTag
+  = PythonUnitTerminalAlgebra
+  | PythonUnitSpecAlgebraReserved
+
+type PythonUnitSpecCarrierTag
+  = PythonUnitTerminalCarrier
+  | PythonUnitSpecCarrierReserved
+
+type PythonPrimitive
+  = PythonIntegerPrimitive {
+      target_name: String
+      algebra: PythonIntegerSpecAlgebraTag
+      carrier: PythonIntegerSpecCarrierTag
+    }
+  | PythonStringPrimitive {
+      target_name: String
+      algebra: PythonStringSpecAlgebraTag
+      carrier: PythonStringSpecCarrierTag
+    }
+  | PythonBooleanPrimitive {
+      target_name: String
+      algebra: PythonBooleanSpecAlgebraTag
+      carrier: PythonBooleanSpecCarrierTag
+    }
+  | PythonUnitPrimitive {
+      target_name: String
+      algebra: PythonUnitSpecAlgebraTag
+      carrier: PythonUnitSpecCarrierTag
+    }
+
+data python_spec_predeclared_primitives: List<PythonPrimitive> = [
+  PythonIntegerPrimitive { target_name: "int",
+    algebra: PythonIntOrderedRingAlgebra,
+    carrier: PythonIntUnboundedCarrier },
+
+  PythonBooleanPrimitive { target_name: "bool",
+    algebra: PythonBoolCanonicalTwoElementBooleanAlgebra,
+    carrier: PythonBoolBitCarrier },
+
+  PythonStringPrimitive { target_name: "str",
+    algebra: PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra,
+    carrier: PythonStrUnicodeCodePointSequenceCarrier }
+]
+
+data python_dag_unit_target_primitive: PythonPrimitive = PythonUnitPrimitive {
+  target_name: "None",
+  algebra: PythonUnitTerminalAlgebra,
+  carrier: PythonUnitTerminalCarrier
+}

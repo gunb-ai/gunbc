@@ -1,0 +1,159 @@
+module test.claim.compiler_diagnostic_seed_projection_witness_test
+
+import gunbc.capability_origin { CapabilityPresentOnBase, ModeledCapability, NoNewCapability }
+import gunbc.compiler_diagnostic_seed_projection { compiler_diagnostic_seed_projection_paragraphs }
+import gunbc.compiler_diagnostic_seed_projection_disposition {
+  SeedProjectionReceiptRefused,
+  SeedProjectionReceiptWellFormed,
+  compiler_diagnostic_seed_projection_dispositions,
+  compiler_diagnostic_seed_projection_verdict,
+  projected_item_keys,
+  seed_projection_receipt_verdict_of
+}
+import gunbc.seed_growth_admission { ExistingSeedItemModified, HandRustDeleted, SeedGrowthChangeDisposition }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.algebra { fold_list, length, list_map }
+
+// WHAT THIS WITNESS ASSERTS, AND WHY IT IS NOT THE PROSE-SELF-MATCH ANTIPATTERN.
+//
+// The receipt this carrier replaced was a String row, so the only thing assertable about it was
+// that it contained a substring -- a check green over its own inversion and worth nothing. What is
+// assertable now is the property the receipt actually claims: that extending the CompilerDiagnostic
+// coproduct MODIFIES one named seed item and ORIGINATES NO CAPABILITY there. Both ways of writing
+// that claim falsely are authorable, so each is executed as a discriminating RED beside the
+// positive control on the real rows, and both stay enrolled after the wall lands (DESIGN 4b(4)).
+
+test fn compiler_diagnostic_seed_projection_receipt_is_well_formed() -> Bool {
+  match compiler_diagnostic_seed_projection_verdict() {
+    SeedProjectionReceiptWellFormed { items: items } => length(xs: items) == 1
+    SeedProjectionReceiptRefused { detail: _ } => false
+  }
+}
+
+// POSITIVE CONTROL ON THE PLANT ITSELF: the rows the two REDs below mutate are well-formed before
+// the mutation, so a red there is the mutation and not the fixture.
+fn well_formed_plant() -> List<SeedGrowthChangeDisposition> {
+  [
+    ExistingSeedItemModified {
+      item: DeclarationRef {
+        module_path: "v1_compiler.cli_run.compile_clean" as NonEmptyStr,
+        decl_name: "compile_clean_diagnostic_histogram_key" as NonEmptyStr,
+        field: WholeDeclaration
+      },
+      dag_authority: DeclarationRef {
+        module_path: "v1.std.core" as NonEmptyStr,
+        decl_name: "CompilerDiagnostic" as NonEmptyStr,
+        field: WholeDeclaration
+      },
+      capability_origin: NoNewCapability,
+      current_boundary: "the plant, unmutated"
+    }
+  ]
+}
+
+test fn the_plant_is_well_formed_before_mutation() -> Bool {
+  match seed_projection_receipt_verdict_of(rows: well_formed_plant()) {
+    SeedProjectionReceiptWellFormed { items: _ } => true
+    SeedProjectionReceiptRefused { detail: _ } => false
+  }
+}
+
+// RED 1 -- A ROW CLAIMING THE SEED GAINED SEMANTICS. This is the claim the receipt exists to deny:
+// the arms are forced by the .dag coproduct gaining a member, so an author filing ModeledCapability
+// under this receipt's name is saying the opposite of what the receipt says while keeping its name.
+test fn a_modeled_capability_row_is_refused() -> Bool {
+  let mutated = [
+    ExistingSeedItemModified {
+      item: DeclarationRef {
+        module_path: "v1_compiler.cli_run.compile_clean" as NonEmptyStr,
+        decl_name: "compile_clean_diagnostic_histogram_key" as NonEmptyStr,
+        field: WholeDeclaration
+      },
+      dag_authority: DeclarationRef {
+        module_path: "v1.std.core" as NonEmptyStr,
+        decl_name: "CompilerDiagnostic" as NonEmptyStr,
+        field: WholeDeclaration
+      },
+      capability_origin: ModeledCapability {
+        origin: CapabilityPresentOnBase {
+          authority: DeclarationRef {
+            module_path: "v1.std.core" as NonEmptyStr,
+            decl_name: "CompilerDiagnostic" as NonEmptyStr,
+            field: WholeDeclaration
+          }
+        }
+      },
+      current_boundary: "the plant, mutated at capability_origin only"
+    }
+  ]
+  match seed_projection_receipt_verdict_of(rows: mutated) {
+    SeedProjectionReceiptWellFormed { items: _ } => false
+    SeedProjectionReceiptRefused { detail: _ } => true
+  }
+}
+
+// RED 2 -- A RECEIPT ABOUT SOMETHING ELSE FILED HERE. A disposition naming a different .dag
+// authority is a well-formed seed-growth row and a wrong CompilerDiagnostic receipt, which is
+// exactly the state a String row could not distinguish.
+test fn a_foreign_dag_authority_row_is_refused() -> Bool {
+  let mutated = [
+    ExistingSeedItemModified {
+      item: DeclarationRef {
+        module_path: "v1_compiler.cli_run.compile_clean" as NonEmptyStr,
+        decl_name: "compile_clean_diagnostic_histogram_key" as NonEmptyStr,
+        field: WholeDeclaration
+      },
+      dag_authority: DeclarationRef {
+        module_path: "v2.std.host_transport" as NonEmptyStr,
+        decl_name: "HostBuildEnvironment" as NonEmptyStr,
+        field: WholeDeclaration
+      },
+      capability_origin: NoNewCapability,
+      current_boundary: "the plant, mutated at dag_authority only"
+    }
+  ]
+  match seed_projection_receipt_verdict_of(rows: mutated) {
+    SeedProjectionReceiptWellFormed { items: _ } => false
+    SeedProjectionReceiptRefused { detail: _ } => true
+  }
+}
+
+// RED 3 -- AN EMPTY RECEIPT. A projection that modifies nothing is not a green receipt; the whole
+// content of this row is that a seed item IS modified, so an empty list is the absorbing answer.
+test fn an_empty_receipt_is_refused() -> Bool {
+  match seed_projection_receipt_verdict_of(rows: []) {
+    SeedProjectionReceiptWellFormed { items: _ } => false
+    SeedProjectionReceiptRefused { detail: _ } => true
+  }
+}
+
+// RED 4 -- A DISPOSITION THAT IS NOT A MODIFICATION. HandRustDeleted is a real arm of the shared
+// coproduct and a false statement about this subject: the total match is modified, not deleted.
+test fn a_non_modification_disposition_is_refused() -> Bool {
+  match seed_projection_receipt_verdict_of(rows: [HandRustDeleted]) {
+    SeedProjectionReceiptWellFormed { items: _ } => false
+    SeedProjectionReceiptRefused { detail: _ } => true
+  }
+}
+
+// THE RENDER IS JOINED TO THE ROWS, NOT COMPARED TO A LITERAL. Every disposition must reach the
+// projected markdown: a renderer that silently drops a row would publish a receipt shorter than the
+// rows it claims to project, and the drift gate cannot see an omission it never rendered. This is
+// an identity join over item keys rather than a substring pin on authored prose.
+test fn every_disposition_reaches_the_projected_paragraphs() -> Bool {
+  let keys = projected_item_keys(rows: compiler_diagnostic_seed_projection_dispositions)
+  let rendered = fold_list(xs: compiler_diagnostic_seed_projection_paragraphs(), empty: "", cons: fn(acc, s) { concat(acc, s) })
+  fold_list(
+    xs: keys,
+    empty: true,
+    cons: fn(acc, k) { acc && string_contains(s: rendered, pattern: k) }
+  )
+}
+
+// THE JOIN ABOVE IS DISCRIMINATING: a key no row carries is absent from the render, so the check is
+// not satisfied by a renderer that emits everything or by one that emits nothing.
+test fn an_unrostered_item_key_is_not_in_the_projected_paragraphs() -> Bool {
+  let rendered = fold_list(xs: compiler_diagnostic_seed_projection_paragraphs(), empty: "", cons: fn(acc, s) { concat(acc, s) })
+  !string_contains(s: rendered, pattern: "v1_compiler.cli_run.compile_clean totally_unrostered_seed_item")
+}

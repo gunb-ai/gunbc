@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.a_coproduct_arm_without_a_constructor_name_is_accepted
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_coproduct_arm_without_a_constructor_name_is_accepted: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_coproduct_arm_without_a_constructor_name_is_accepted" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a coproduct declaration with an arm that has no constructor name, `type T = { x: Int } | B`. Nothing can build or match that arm, so the declaration is malformed. v2 normalize accepts it, and so does v2 resolve on the single-tree door. Measured by claim_batch on BuildBuddy, 2026-10-05 (clever-raven-680): `v2.test.long.cwc_resolution_probe` `cwc_malformed_nary_coproduct_normalize_rejects` FAILs. The claim hands normalize a supplied parse tree for `type T = { x: Int } | B`; the module's real-path claim `cwc_cwc_module_resolve_accepts` checks that the real parser emits that tree for the source, by content hash.",
+    "HOW IT HID: the witness carried this claim beside its own negation (`cwc_malformed_nary_coproduct_fail_open_control`, `!cwc_norm_rejects` over the same source). Both became `test fn` in gunbc#7287; at gunbc#7002 the negation was a helper inside one conjunction. So one of the pair was red whatever normalize did, and the file read as a stale shape rather than a finding. The negation is deleted and the remaining claim discriminates. Until gunbc#13333 the module was frozen in `gunbc.witness_deferral_freeze`, so the floor never ran it. That PR retired the freeze row and enrolled this claim in `v2.workflow.floor_expected_red`, so the required floor now runs it and holds its failure as agreement.",
+    "RUNG FOUND AT: below the floor (silent acceptance of a malformed declaration). CEILING: structurally impossible. The arm's children are in hand when the Disj node is built, so the fold can refuse an arm with no name. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the declaration fold that builds a coproduct refuses an arm with no authored constructor name, with a located diagnostic, and the claim above turns green. Owner unassigned at filing. The claim is enrolled in `v2.workflow.floor_expected_red` (`floor_expected_red_chunk_coproduct_arm_without_constructor_name`); when it turns green the roster row is deleted and the claim stays as the control.",
+  ],
+  evidence: [],
+}

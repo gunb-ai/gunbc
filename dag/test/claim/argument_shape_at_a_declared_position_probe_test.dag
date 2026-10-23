@@ -1,0 +1,128 @@
+module test.claim.argument_shape_at_a_declared_position_probe_test
+
+import gunbc.compile_census_probe { total_blocking_count_for, blocking_subject_count_for }
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// total_blocking_count_for answers -1 on CensusNotRunnable, so could-not-measure REDS every row
+// below and greens none (DESIGN section 5: bottom-as-answer must never be readable as
+// bottom-as-ignorance). That arm is the canonical helper's, not a convention re-stated here.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INSTRUMENT FOR TWO ROWS, AND THE REASON IT IS A MODULE RATHER THAN A PARAGRAPH.
+// gunbc.recurring_failure_mode.unapplied_function_value_admitted_at_a_value_position and the
+// ceiling receipt on gunbc.recurring_failure_mode.generic_application_admits_distinct_unit_variant_arguments
+// both rest on ONE comparison, and DESIGN section 6 requires that comparison to be cited by naming
+// the producer that re-derives it rather than by copying its output into prose. This module IS that
+// producer: four sources, one blocking-count fold, run by the ordinary claim route.
+//
+// WHY THE FIXTURE IS SOURCE HANDED TO THE COMPILER RATHER THAN A CORPUS MODULE. Two of these four
+// programs are INVALID, and one of them the compiler correctly refuses -- so as corpus members they
+// would break every build that resolved them. DESIGN section 4b answers this directly: a state
+// unrepresentable in the accepted corpus may still be representable as source handed to the compiler
+// by a fixture, and a compiler is precisely a thing whose regression probes are invalid programs.
+// The refusal is authorable here, so the evidence is enrollable here, and declining it would be
+// specification-without-execution.
+//
+// WHAT THE THREE SHAPE ARMS ISOLATE, each differing from a neighbour in exactly one term. The
+// declared position is either CONCRETE (a parameter declared Map<String, Bool>) or GENERIC (a
+// parameter whose payload types are type variables). The argument is either a STRING -- an obviously
+// wrong non-function shape -- or an UNAPPLIED nullary function whose return type is the declared
+// type. A fourth row is a well-typed control that is not a shape arm at all.
+//
+//   concrete + string    MUST refuse       the positive control: the checker decides shape here
+//   concrete + function  observed accept   the defect: silent where a String at the SAME position refuses
+//   generic  + string    observed accept   the generic-formal deferral
+//   (well-typed call)    MUST stay clean   the fixture is not broken in some unrelated way
+//
+// THE FOURTH CELL OF THE 2x2 -- generic + function -- IS DELIBERATELY NOT MEASURED HERE, and saying
+// so is the same discipline as the closing paragraph rather than an exception to it. It cannot come
+// out against anything: acceptance there is already entailed by the two arms above it, since the
+// position defers on every argument and the argument is refused at no position. An arm that cannot
+// produce a result contradicting what its neighbours already establish is not a measurement, it is a
+// fifth witness to author, review, maintain and eventually run, which DESIGN section 2 counts as
+// redundant work on all three of section 1's quantities. It was compiled once during the
+// investigation and behaved as entailed; that is not evidence this module carries, and it is not
+// cited as any.
+//
+// THE TWO ASSERTIONS BELOW ARE THE CORRECT BEHAVIOUR, NOT THE OBSERVED ONE, and that is the whole
+// discipline of this file. Written the other way -- asserting that the function arm is accepted --
+// the rows would go green today and become DEFENDERS OF THE DEFECT, cited afterwards as coverage of
+// a wall that does not exist. So an_unapplied_function_at_a_concrete_position_is_refused and
+// a_string_at_a_generic_position_is_refused assert REFUSAL, with the observed acceptance recorded
+// above, and flip green of their own accord when the wall lands. Per DESIGN section 4b
+// meta-obligation (4) they do not retire at that point: they convert to permanent regression
+// controls.
+//
+// THEY ARE ENROLLED IN v2.workflow.floor_expected_red, AND THE PREFIX ROSTER IS NOT THE WHOLE
+// ADMISSION RULE. This module matches no prefix in v2.workflow.required_floor required_gate_prefixes,
+// which is why no ORDINARY floor run repeats this measurement -- but the floor ALSO plans a witness
+// whose file the change touches, so every change to this module runs these identities, including the
+// change that lands them. That roster's rule is that enrolling an identity asserts it REACHES ITS
+// SUBJECT AND ANSWERS, and these arms do: they evaluate and return false with cause claim_failed,
+// which is a reached answer rather than a never-executed row. Un-enrolled they would block their own
+// landing change. The residual gap -- that between changes the rung rests on a human-run command --
+// is stated in gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall, which
+// names required_gate_prefixes admission as its own trigger, separately from the compiler capability
+// that retires the class.
+//
+// AND THE STRING-AT-A-CONCRETE-POSITION ARM IS NOT DECORATION. It is what makes the function arm
+// mean anything: without it, a red on the function arm would be indistinguishable from a probe whose
+// source was broken in some unrelated way. With it, the pair says one argument, one declared type,
+// two shapes, two different answers in ONE compile -- which is what establishes that refusal is
+// REACHABLE at that position and that the deferral is a gap rather than a limit.
+//
+// WHAT THIS DOES NOT MEASURE, stated so no receipt reads coverage it does not have: the Rust
+// emission path, record-field positions as distinct from call arguments, and n-ary functions.
+
+
+// THE ORACLE IS PINNED TO A CLASS AND A SUBJECT WHEREVER THAT IS MEASURABLE, because a count of
+// ANY blocking diagnostic does not establish WHAT was refused, and every conclusion these rows
+// carry is class-specific. Two arms name TypeMismatch with subject Primitive(String) -- the class
+// half of the compiler's own histogram key, and for TypeMismatch the subject is the `got` type --
+// so an unrelated blocking class in a fixture cannot green them.
+//
+// THE FUNCTION-AT-A-CONCRETE-POSITION ARM STAYS ON THE TOTAL COUNT, AND THE REASON IS THAT THE
+// SUBJECT IS NOT MEASURABLE YET RATHER THAN THAT IT DOES NOT MATTER. An unapplied function value
+// is accepted at every position today, so no refusal exists whose subject render could be read;
+// writing a guessed one would author an assertion that either never greens when the wall lands or
+// greens for the wrong reason, which is worse than a wider oracle that is honest about its width.
+// It is measured, not assumed: the same value is accepted at a plain Bool position too, so the
+// defect is not specific to the generic carrier. When the wall lands, the lane that lands it reads
+// the subject the compiler actually emits and narrows this arm to it.
+
+// THE POSITIVE CONTROL. A String at a CONCRETE declared position. The compiler refuses this today,
+// located and typed, and this row is green now and must stay green.
+data string_at_concrete_position_source: String = "module probe_string_at_concrete\nimport std.types { Bool, String }\nimport v2.std.collection { Map }\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: \"definitely not a map\") }\n"
+
+test fn a_string_at_a_concrete_position_is_refused() -> Bool {
+  blocking_subject_count_for(source: string_at_concrete_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)") >= 1
+}
+
+// THE DISCRIMINATING RED. An unapplied nullary function at that SAME concrete position. No
+// instantiation of any type variable makes fn() -> T inhabit T, so this is decidable from the
+// argument's own shape. Observed today: accepted, zero blocking diagnostics.
+data function_at_concrete_position_source: String = "module probe_function_at_concrete\nimport std.types { Bool, String }\nimport v2.std.collection { Map, empty_map }\nfn take_map(m: Map<String, Bool>) -> Bool { true }\nfn probe() -> Bool { take_map(m: empty_map) }\n"
+
+test fn an_unapplied_function_at_a_concrete_position_is_refused() -> Bool {
+  total_blocking_count_for(source: function_at_concrete_position_source) >= 1
+}
+
+// THE GENERIC ARM OF THE SAME PAIR, which is what discharges the sibling row's ceiling sentence:
+// the SAME String that refuses at a concrete position is accepted at a generic one. Observed today:
+// accepted. Asserting refusal keeps this row from defending the deferral.
+data string_at_generic_position_source: String = "module probe_string_at_generic\nimport std.types { Bool, String }\nimport v2.std.collection { Map, map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: \"definitely not a map\", key: \"k\", value: true) }\n"
+
+test fn a_string_at_a_generic_position_is_refused() -> Bool {
+  blocking_subject_count_for(source: string_at_generic_position_source, wanted_class: "TypeMismatch", wanted_subject: "Primitive(String)") >= 1
+}
+
+// THE SECOND POSITIVE CONTROL, and it is the one that keeps the three rows above from passing on a
+// broken fixture: the same call written CORRECTLY must stay at zero blocking diagnostics. Without
+// it, an import typo or a renamed builtin would red every row above and read as the walls landing.
+data well_typed_source: String = "module probe_well_typed\nimport std.types { Bool, String }\nimport v2.std.collection { Map, empty_map, map_insert }\nfn probe() -> Map<String, Bool> { map_insert(m: empty_map(), key: \"k\", value: true) }\n"
+
+test fn the_well_typed_call_is_clean() -> Bool {
+  total_blocking_count_for(source: well_typed_source) == 0
+}

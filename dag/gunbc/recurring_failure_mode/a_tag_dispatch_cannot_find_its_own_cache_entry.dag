@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_tag_dispatch_cannot_find_its_own_cache_entry
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_tag_dispatch_cannot_find_its_own_cache_entry: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_tag_dispatch_cannot_find_its_own_cache_entry" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the release-bins lookup (gunbc.fleet_release_bins_key release_bins_lookup_refs) admits an entry under refs/heads/main or under 'the ref this dispatch runs on', and matched the latter as .ref == GITHUB_REF. For a workflow_dispatch on a TAG the cache API lists that scope as refs/heads/<GITHUB_REF>, so the lookup reads ABSENT for the dispatch's own entry while actions/cache restores it as an exact hit.",
+
+    "HARM, 2026-09-30: the #12482 door roll-forward on tag deploy/door-8e0c1fad16. Plan run 36652280985 built and saved release-bins-25f14b25... (API ref=refs/heads/refs/tags/deploy/door-8e0c1fad16); apply runs 36653382960 and 36653490246 on the same tag both refused StoreTransportDisagreeAbsentHit in the build job, so no tag-pinned deploy at a sha main had not already cached could proceed. The apply on tag deploy/12482-178fb76c71 (run 36581756988) passed only because that sha's bins were already admitted under refs/heads/main.",
+
+    "EARLIEST WRONG LINK (DESIGN section 6b): not the disagreement check -- it refused correctly on the two observations it was handed -- but the model's assumption that the cache API spells a dispatch's scope as GITHUB_REF for every ref kind. REPAIR: the dispatch lookup reads RELEASE_BINS_DISPATCH_SCOPE_REF, derived in the step from github.ref by one expression (a tag is respelled refs/heads/<ref>; a branch is verbatim). One spelling of the same ref, not a second scope; the check is unchanged.",
+
+    "EVIDENCE: test.claim.long.fleet_release_bins_key_witness release_bins_tag_dispatch_entry_is_present (the real decoder over an answer listing the dispatch's entry under the tag's API spelling reads present; under the old GITHUB_REF match it reads absent) and release_bins_RED_other_tag_entry_is_absence (another tag's entry still reads absent). RUNG FOUND AT: mitigatable (loud refusal, no wrong bits run). RUNG NOW: mitigatable -- the witness sits in the long lane. The spelling is an OBSERVATION of GitHub's cache API, not a documented contract: if it changes, the lookup reads absent again and refuses, never widens. NEXT TRIGGER: the cache API's scope spelling modeled as a cited extdeps fact (extdeps GitHub Actions cache) with its own observation receipt, so the derivation reads an upstream authority rather than a workflow-local expression.",
+  ],
+
+  evidence: [],
+}

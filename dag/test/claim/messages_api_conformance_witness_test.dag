@@ -1,0 +1,73 @@
+module test.claim.messages_api_conformance_witness_test
+
+import std.types { Bool, String }
+import extdeps.llm.anthropic_messages_api {
+  MessagesApiImplementation,
+  MessagesApiVersionBinding,
+  VersionHeaderSelectsRevision,
+  VersionHeaderAcceptedUnused,
+  current_api_version,
+  anthropic_chat_message_wire_contract,
+  anthropic_tool_result_block_wire_contract,
+  anthropic_messages_200_content_block_wire_contract
+}
+import extdeps.llm.anthropic { anthropic_messages_api_conformance }
+import extdeps.ollama.api {
+  OllamaEndpoint,
+  ApiV1Messages,
+  OllamaGet,
+  OllamaPost,
+  ollama_endpoint_path,
+  ollama_endpoint_method,
+  ollama_messages_api_conformance
+}
+
+// DCH-1's evidence that the hoist is a replacement migration and not a fork.
+//
+// The discriminating control is the version binding, and it is read by MATCHING THE ARM rather
+// than through a Bool: which arm an implementation declares is the whole content, and a predicate
+// answering "honored?" would have thrown that away at exactly the place it matters. Upstream Ollama
+// documents that the anthropic-version header is accepted and not used, while the publisher's own
+// service selects a revision with it, so the two implementations declare DIFFERENT arms against the
+// SAME specification version. A migration that collapsed the axis, left an arm uninhabited, or gave
+// both implementations the publisher's arm typechecks and goes red here.
+test fn w_messages_api_version_binding_differs_by_implementation() -> Bool {
+  match anthropic_messages_api_conformance.version_binding {
+    VersionHeaderSelectsRevision {} => match ollama_messages_api_conformance.version_binding {
+      VersionHeaderAcceptedUnused {} =>
+        anthropic_messages_api_conformance.spec_version.version == current_api_version.version
+          && ollama_messages_api_conformance.spec_version.version == current_api_version.version
+      VersionHeaderSelectsRevision {} => false
+    }
+    VersionHeaderAcceptedUnused {} => false
+  }
+}
+
+// Each implementation's conformance row points at a declaration in its OWN module and cites its own
+// upstream, which is what keeps the specification module from enumerating its implementations. Red
+// if a conformance row is authored in the hub, or copied between implementations without being
+// repointed.
+test fn w_messages_api_conformance_subjects_are_implementation_local() -> Bool {
+  anthropic_messages_api_conformance.implementation.declaration.module_path == "extdeps.llm.anthropic_rest"
+    && ollama_messages_api_conformance.implementation.declaration.module_path == "extdeps.ollama.api"
+    && anthropic_messages_api_conformance.citation.uri.locator != ollama_messages_api_conformance.citation.uri.locator
+}
+
+// The shape's wire contracts must name the specification module, not the vendor module they were
+// hoisted off. Red if a contract row is left behind pointing at extdeps.llm.anthropic — the exact
+// parallel-authority state the replacement migration exists to prevent.
+test fn w_messages_api_wire_contracts_target_the_specification_module() -> Bool {
+  anthropic_chat_message_wire_contract.coproduct.module_path == "extdeps.llm.anthropic_messages_api"
+    && anthropic_tool_result_block_wire_contract.coproduct.module_path == "extdeps.llm.anthropic_messages_api"
+    && anthropic_messages_200_content_block_wire_contract.coproduct.module_path == "extdeps.llm.anthropic_messages_api"
+}
+
+// The endpoint each implementation serves the specification at stays in that implementation's own
+// endpoint authority, never restated on the conformance carrier.
+test fn w_ollama_serves_messages_specification_at_its_own_endpoint() -> Bool {
+  ollama_endpoint_path(endpoint: ApiV1Messages) == "/v1/messages"
+    && match ollama_endpoint_method(endpoint: ApiV1Messages) {
+      OllamaPost => true
+      OllamaGet => false
+    }
+}

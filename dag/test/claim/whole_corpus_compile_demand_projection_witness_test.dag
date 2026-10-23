@@ -1,0 +1,48 @@
+module test.claim.whole_corpus_compile_demand_projection_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.measure { byte_size }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
+import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileRootIdentity,
+  MeasuredForRoot,
+  UnmeasuredRoot,
+  whole_corpus_compile_public_root_census,
+  whole_corpus_compile_public_root_receipt,
+}
+import gunbc.whole_corpus_compile_demand_projection {
+  whole_corpus_compile_demand_projection_json,
+  expected_whole_corpus_compile_measured_root_demands_json,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The committed projection carries the public root's whole identity key and its peak, rendered from
+// the row, so the seed's join has every coordinate to join on.
+test fn the_public_projection_carries_the_identity_key_and_peak() -> Bool {
+  let j = expected_whole_corpus_compile_measured_root_demands_json()
+  string_contains(s: j, pattern: "\"repository\": \"gunbc\"")
+    && string_contains(s: j, pattern: "\"primary_root\": \"dag\"")
+    && string_contains(s: j, pattern: "\"dependency_pools\": [\"src/v2\"]")
+    && string_contains(s: j, pattern: "\"peak_bytes\": 17179869184")
+    && string_contains(s: j, pattern: "\"schema\": \"gunbc.whole_corpus_compile_demand_projection/1\"")
+}
+
+// An unmeasured root is the ABSENCE of a row: it projects to no row, so no reader can mistake an
+// authored negative for a measurement. The measured control beside it projects one row.
+test fn an_unmeasured_root_projects_no_row_and_a_measured_one_projects_one() -> Bool {
+  let root = WholeCorpusCompileRootIdentity {
+    repository: "gunbc-private" as RepositoryIdentity,
+    primary_root: "strategy" as SourceRootIdentity,
+    dependency_pools: [],
+  }
+  let unmeasured = whole_corpus_compile_demand_projection_json(demands: [UnmeasuredRoot { root: root }])
+  let measured = whole_corpus_compile_demand_projection_json(demands: [
+    MeasuredForRoot { root: root, census: whole_corpus_compile_public_root_census, peak: byte_size(6442450944), receipt: whole_corpus_compile_public_root_receipt }
+  ])
+  string_contains(s: unmeasured, pattern: "\"rows\": []")
+    && string_contains(s: measured, pattern: "\"repository\": \"gunbc-private\"")
+    && string_contains(s: measured, pattern: "\"dependency_pools\": []")
+    && string_contains(s: measured, pattern: "\"peak_bytes\": 6442450944")
+}

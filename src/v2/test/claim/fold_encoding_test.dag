@@ -1,0 +1,553 @@
+module v2.test.claim.fold_encoding
+
+import std.algebra { Empty }
+import v2.std.anonymous_binder { is_fold_carrier_binder }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOLD ENCODING CARRIES EVERY OPERAND, AT ITS AUTHORED OCCURRENCE (MQ-5, plan S3 of
+// gunbc.plans.for_while_loop_sugar). v2.compiler.fold_lowering fold_recurrence_encoding builds
+//   Bind { acc := init, Loop { step, domain: collection, carrier: acc, bound, realized: head } }
+// and v2.compiler.body_lowering_fold body_lower_fold_encoding fills it from the lowered operands.
+//
+// The fixture's collection (`xs`) and init (`seed`) are DISTINCT references, so a slot that carried
+// the wrong one, or a synthetic stand-in for either, cannot pass. The claims ask, in order:
+//   * exact shape. The tree came through the conserved route. Each slot holds the named atom at a
+//     MINTED occurrence: init at the Bind value, the collection at the domain, the head at the
+//     realized edge. The three occurrences are pairwise distinct, the carrier is `acc`, and the
+//     step is an Arrow.
+//   * each operand's drop, planted in that same accepted tree, turns the real conservation measure
+//     red at exactly that atom (v2.compiler.reference_conservation reference_conservation_of_subject).
+//     So the conservation that admits the encoding is the wall under it, not a bystander.
+//   * resolve. The canary's head binds to the one DeclarationRef the realization table names,
+//     std.algebra collection_fold_shape. A module declaring its own `fold` refuses AT THE HEAD with
+//     resolve_reason_realized_declaration_shadowed. `fold_x` is outside the roster and never
+//     desugars.
+
+data fe_path: String = "fold_encoding_probe_file"
+
+data fe_distinct_operands_source: String = "module fold_encoding_probe\n\nfn f(xs: List<Int>, seed: Int) -> Int {\n  fold(xs, seed, fn(acc, x) { acc })\n}\n"
+
+data fe_pipe_source: String = "module fold_encoding_pipe\n\nfn f(xs: List<Int>, seed: Int) -> Int {\n  xs |> fold(seed, fn(acc, x) { acc })\n}\n"
+
+data fe_pipe_chain_source: String = "module fold_encoding_pipe_chain\n\nfn g(ys: List<Int>) -> List<Int> { ys }\n\nfn f(xs: List<Int>, seed: Int) -> Int {\n  xs |> g |> fold(seed, fn(acc, x) { acc })\n}\n"
+
+data fe_binders_source: String = "module fold_encoding_binders\n\nfn f(xs: Bool) -> Bool {\n  fold(xs, false, fn(found, e) { found || e })\n}\n"
+
+data fe_canary_source: String = "module fold_encoding_canary\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
+
+data fe_user_fold_source: String = "module fold_encoding_user_fold\n\nfn fold(xs: Int, init: Int, f: Int) -> Int { init }\n\nfn caller(x: Int) -> Int { fold(x, 0, fn(acc, _) { acc }) }\n"
+
+data fe_fold_x_source: String = "module fold_encoding_fold_x\n\nfn caller(x: Int) -> Int { fold_x(x, 0, fn(acc, _) { acc }) }\n"
+
+fn fe_atom_is(n: Node, sym: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == sym
+    _ => false
+  }
+}
+
+fn fe_minted(n: Node) -> Optional<OccurrenceId> {
+  match n.occurrence_id {
+    OccurrenceMinted { id: id } => Present { value: id }
+    _ => Absent
+  }
+}
+
+fn fe_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    _ => false
+  }
+}
+
+// The lookup's third arm shares its name with Optional's Absent, so it is matched by the wildcard.
+// Binders here are never named `loop`: it is a keyword (^dag_token_kw_loop), and the native parser
+// refuses it as a pattern binder (parse_g0_tokens_remain), which the seed parser tolerates.
+fn fe_lookup_target(l: NamedEdgeTargetLookup) -> Optional<Node> {
+  match l {
+    Found { target: t } => Present { value: t }
+    Ambiguous => Absent
+    _ => Absent
+  }
+}
+
+// The first fold encoding in a tree: a Bind whose body is a Loop.
+fn fe_first_encoding(root: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: Absent, f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match fold_recurrence_loop(encoding: n) {
+          Present { value: _ } => Present { value: n }
+          Absent => Absent
+        }
+    }
+  })
+}
+
+fn fe_normalized(source: String) -> Optional<NormalizedTree> {
+  match conserved_normalize_of_text(path: fe_path, text: source, explained: no_explained_drops()) {
+    Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// The exact shape of one encoding, as the three minted occurrences it must carry.
+type FeSlots {
+  init: OccurrenceId
+  collection: OccurrenceId
+  head: OccurrenceId
+}
+
+// THE CARRIER IS NOT AN AUTHORED OPERAND, SO IT IS NOT CHECKED AS ONE. This conjunct read
+// fe_atom_is(n: carrier, sym: ^acc) -- the step's own first binder -- which held while
+// v2.compiler.fold_lowering spelled the persistent slot with operands.carrier, and which made the lowered
+// tree hold two visible binders with one name (the slot and the step Arrow's freshly-bound formal).
+// v2.compiler.resolve's value-binder admission refused the inner one.
+//
+// The slot is now minted by v2.std.anonymous_binder fresh_fold_carrier, so it has no authored occurrence
+// and no authored spelling -- which is why it never appears in FeSlots beside init, collection and head.
+// Those three ARE authored operands and this claim still holds each at its own minted occurrence. The
+// carrier is instead asserted to BE a generated slot and NOT to be the authored binder: either half alone
+// is satisfiable by accident, and together they are the separation the encoding now guarantees.
+fn fe_carrier_is_a_generated_slot(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: sym } => is_fold_carrier_binder(sym: sym) && !(sym == ^acc)
+    Absent => false
+  }
+}
+
+fn fe_slots(encoding: Node) -> Optional<FeSlots> {
+  match fold_recurrence_loop(encoding: encoding) {
+    Absent => Absent
+    Present { value: lp } =>
+      match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
+        Absent => Absent
+        Present { value: init } =>
+          match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
+            Absent => Absent
+            Present { value: collection } =>
+              match fe_lookup_target(l: loop_realized_declaration_target(children: lp.children)) {
+                Absent => Absent
+                Present { value: head } =>
+                  match fe_lookup_target(l: loop_carrier_binder_target(children: lp.children)) {
+                    Absent => Absent
+                    Present { value: carrier } =>
+                      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
+                        Absent => Absent
+                        Present { value: step } =>
+                          if fe_atom_is(n: init, sym: ^seed) && fe_atom_is(n: collection, sym: ^xs)
+                            && fe_atom_is(n: head, sym: ^fold) && fe_carrier_is_a_generated_slot(n: carrier)
+                            && fe_is_arrow(n: step) {
+                            match fe_minted(n: init) {
+                              Absent => Absent
+                              Present { value: i } =>
+                                match fe_minted(n: collection) {
+                                  Absent => Absent
+                                  Present { value: c } =>
+                                    match fe_minted(n: head) {
+                                      Absent => Absent
+                                      Present { value: h } =>
+                                        if (i != c) && (c != h) && (i != h) {
+                                          optional_present(value: FeSlots { init: i, collection: c, head: h })
+                                        } else {
+                                          optional_absent()
+                                        }
+                                    }
+                                }
+                            }
+                          } else {
+                            optional_absent()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fold_encoding_carries_each_operand_at_its_authored_occurrence_verdict() -> Bool {
+  match fe_normalized(source: fe_distinct_operands_source) {
+    Absent => false
+    Present { value: tree } =>
+      match fe_first_encoding(root: tree.root) {
+        Absent => false
+        Present { value: encoding } =>
+          match fe_slots(encoding: encoding) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// ---- the piped receiver: `xs |> fold(init, step)` -----------------------------------------------
+// The pipe supplies the fold's receiver, so its left operand is the collection and the call's
+// positional arguments sit one place earlier (v2.compiler.fold_lowering fold_call_lowering_piped).
+// A pipe fold that refused here would refuse its whole FILE on the native route, which is how one
+// such refusal in std.algebra dropped std.algebra.FreeMonoid, and with it every `[]`, from the index
+// (gunbc#12550 native census). The corpus-grain check -- std files the native route must admit whole --
+// is a separate follow-up (a native must-admit roster); a whole-file normalize is beyond one per-PR
+// witness's budget.
+
+fn fe_pipe_slots_hold(source: String) -> Bool {
+  match fe_normalized(source: source) {
+    Absent => false
+    Present { value: tree } =>
+      match fe_first_encoding(root: tree.root) {
+        Absent => false
+        Present { value: encoding } =>
+          match fold_recurrence_loop(encoding: encoding) {
+            Absent => false
+            Present { value: lp } =>
+              match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
+                Absent => false
+                Present { value: domain } =>
+                  match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
+                    Absent => false
+                    Present { value: init } =>
+                      fe_atom_is(n: init, sym: ^seed) && fe_domain_reads_xs(domain: domain)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The domain is the pipe's input: the atom `xs` itself, or, for a chain, a node whose subtree carries it.
+fn fe_domain_reads_xs(domain: Node) -> Bool {
+  fold(node_subtree_nodes(root: domain), init: false, f: fn(acc, n) { acc || fe_atom_is(n: n, sym: ^xs) })
+}
+
+fn fe_domain_is_the_bare_input(source: String) -> Bool {
+  match fe_normalized(source: source) {
+    Absent => false
+    Present { value: tree } =>
+      match fe_first_encoding(root: tree.root) {
+        Absent => false
+        Present { value: encoding } =>
+          match fold_recurrence_loop(encoding: encoding) {
+            Absent => false
+            Present { value: lp } =>
+              match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
+                Absent => false
+                Present { value: domain } => fe_atom_is(n: domain, sym: ^xs)
+              }
+          }
+      }
+  }
+}
+
+fn piped_fold_takes_the_pipe_input_as_its_collection_verdict() -> Bool {
+  fe_pipe_slots_hold(source: fe_pipe_source) && fe_domain_is_the_bare_input(source: fe_pipe_source)
+}
+
+fn piped_chain_takes_the_whole_prefix_as_its_collection_verdict() -> Bool {
+  fe_pipe_slots_hold(source: fe_pipe_chain_source) && !fe_domain_is_the_bare_input(source: fe_pipe_chain_source)
+}
+
+// ---- the step's binders are binders ---------------------------------------------------------------
+// The Loop's positional child is the step as a function value (gunbc.plans.for_while_loop_sugar §2.3,
+// body: (acc, x) => step), so BOTH of its binders -- the carrier `found` and the element `e` -- are
+// parameters of that Arrow, named on its domain, and resolve scopes them over the step body as it
+// scopes any Arrow's parameters. The shape claim reads the two names off the Arrow's domain; the
+// resolve claim is the route: a step body reading both binders resolves with nothing unbound.
+
+fn fe_domain_names(domain: Node) -> List<Symbol> {
+  fold(domain.children, init: [], f: fn(acc, e) {
+    match e.label {
+      Authored { name: n } => list_snoc_item(xs: acc, item: n)
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+fn fe_step_binders(encoding: Node) -> List<Symbol> {
+  match fold_recurrence_loop(encoding: encoding) {
+    Absent => []
+    Present { value: lp } =>
+      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
+        Absent => []
+        Present { value: step } =>
+          match arrow_first_positional_target(children: step.children) {
+            FirstPositionalFound { target: domain } => fe_domain_names(domain: domain)
+            FirstPositionalAbsent => []
+          }
+      }
+  }
+}
+
+fn fold_step_carries_carrier_and_element_binders_verdict() -> Bool {
+  match fe_normalized(source: fe_binders_source) {
+    Absent => false
+    Present { value: tree } =>
+      match fe_first_encoding(root: tree.root) {
+        Absent => false
+        Present { value: encoding } =>
+          match fe_step_binders(encoding: encoding) {
+            Cons { head: a, tail: Cons { head: b, tail: Empty } } =>
+              (symbol_lexeme(sym: a) == "found") && (symbol_lexeme(sym: b) == "e")
+            _ => false
+          }
+      }
+  }
+}
+
+fn fold_step_binders_resolve_in_the_step_body_verdict() -> Bool {
+  match fe_resolved(source: fe_binders_source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ---- the drop mutations, measured by the real conservation check ----------------------------------
+
+type FeDrop
+  = FeDropCollection
+  | FeDropInit
+  | FeDropHead
+
+// Rebuilds the tree with one operand cut out of every fold encoding: the collection by removing the
+// Loop's domain edge, the head by removing its realized-declaration edge, init by replacing the Bind
+// with its Loop (so the Bind's value is gone).
+fn fe_mutated(n: Node, drop: FeDrop) -> Node {
+  match fold_recurrence_loop(encoding: n) {
+    Present { value: lp } =>
+      match drop {
+        FeDropInit => fe_mutated(n: lp, drop: drop)
+        FeDropCollection => fe_rebuilt(n: n, drop: drop)
+        FeDropHead => fe_rebuilt(n: n, drop: drop)
+      }
+    Absent => fe_rebuilt(n: n, drop: drop)
+  }
+}
+
+fn fe_rebuilt(n: Node, drop: FeDrop) -> Node {
+  node_rebuild(n: n, children: fold(n.children, init: [], f: fn(acc, e) {
+    let cut = match drop {
+      FeDropCollection =>
+        match n.kind {
+          ComputationNode { behavior: Loop } =>
+            match loop_edge_role(e: e) {
+              LoopDomainValue => true
+              _ => false
+            }
+          _ => false
+        }
+      FeDropHead =>
+        match n.kind {
+          ComputationNode { behavior: Loop } =>
+            match loop_edge_role(e: e) {
+              LoopRealizedDeclaration => true
+              _ => false
+            }
+          _ => false
+        }
+      FeDropInit => false
+    }
+    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop) }) }
+  }))
+}
+
+fn fe_dropped_identities_under(drop: FeDrop) -> FreeMonoid<Symbol> {
+  let subject = conservation_subject_of_text(path: fe_path, text: fe_distinct_operands_source)
+  match subject.normalized {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: tree, diagnostics: _ } =>
+      match admit_normalized_tree(
+        root: fe_mutated(n: tree.root, drop: drop),
+        test_markers: tree.test_markers,
+        import_bindings: tree.import_bindings,
+        type_declaration_kinds: tree.type_declaration_kinds,
+        type_declaration_modifiers: tree.type_declaration_modifiers,
+        diagnostics: None
+      ) {
+        Rejected { diagnostics: _ } => Empty
+        Accepted { value: mutated, diagnostics: _ } =>
+          fold_list(
+            xs: reference_conservation_of_subject(
+              subject: ReferenceConservationSubject { path: subject.path, parsed: subject.parsed, normalized: Accepted { value: mutated, diagnostics: None } },
+              token_classes: dag_declared_token_classes()
+            ).dropped,
+            empty: Empty,
+            cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.atom.identity) }
+          )
+      }
+  }
+}
+
+fn fe_is_exactly(xs: FreeMonoid<Symbol>, sym: Symbol) -> Bool {
+  match xs {
+    Cons { head: h, tail: Empty } => h == sym
+    _ => false
+  }
+}
+
+fn dropping_the_collection_turns_conservation_red_at_it_verdict() -> Bool {
+  fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropCollection), sym: ^xs)
+}
+
+fn dropping_init_turns_conservation_red_at_it_verdict() -> Bool {
+  fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropInit), sym: ^seed)
+}
+
+fn dropping_the_head_edge_turns_conservation_red_at_it_verdict() -> Bool {
+  fe_is_exactly(xs: fe_dropped_identities_under(drop: FeDropHead), sym: ^fold)
+}
+
+// ---- resolve: the head binds the one realization, or refuses at the head --------------------------
+
+fn fe_resolved(source: String) -> Outcome<Node> {
+  match conserved_normalize_of_text(path: fe_path, text: source, explained: no_explained_drops()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match qualified_name_from_module_node(root: root.root) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: module_qn, diagnostics: _ } =>
+          match resolve_with_admission(
+            lm: dag_language_model(),
+            roots: Cons { head: root, tail: Empty },
+            admission: Admission {
+              subject: ResolutionSubject { name: module_qn },
+              imports: Empty
+            }
+          ) {
+            Accepted { value: resolved, diagnostics: d } => Accepted { value: resolved.root, diagnostics: d }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+      }
+  }
+}
+
+fn canary_fold_head_binds_to_the_collection_fold_row_verdict() -> Bool {
+  match fe_resolved(source: fe_canary_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match fe_first_encoding(root: resolved) {
+        Absent => false
+        Present { value: encoding } =>
+          match fold_recurrence_loop(encoding: encoding) {
+            Absent => false
+            Present { value: lp } =>
+              match fe_lookup_target(l: loop_realized_declaration_target(children: lp.children)) {
+                Absent => false
+                Present { value: head } =>
+                  match declaration_reference_path_optional(node: head) {
+                    Present { value: path } => qualified_name_to_dotted_string(qn: path) == "std.algebra.collection_fold_shape"
+                    Absent => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fe_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (d.head.reason == reason) || fold_list(xs: d.tail, empty: false, cons: fn(acc, x) { acc || (x.reason == reason) })
+  }
+}
+
+fn user_declared_fold_refuses_at_the_head_verdict() -> Bool {
+  fe_refuses_with(o: fe_resolved(source: fe_user_fold_source), reason: ^resolve_reason_realized_declaration_shadowed)
+}
+
+fn fold_like_name_outside_the_roster_is_not_desugared_verdict() -> Bool {
+  match fe_normalized(source: fe_fold_x_source) {
+    Absent => false
+    Present { value: tree } =>
+      match fe_first_encoding(root: tree.root) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// ONE PRODUCER, SEVERAL READERS (v2.workflow.floor_pure_producer_share, WARM). Every claim above
+// drives the front end over a supplied snippet and inspects one verdict; the front end, not the
+// assertion, is the expense, and MQ-5's floor run 36490720680 measured each claim over the
+// new-witness budget for exactly that reason (DESIGN section 3, a witness discriminates at one
+// interface). The claims below read one field each of this record. The stored value is eleven Bools:
+// no Node, no context, no closure, so it is portable.
+type FeOutcomes {
+  fold_encoding_carries_each_operand_at_its_authored_occurrence: Bool
+  dropping_the_collection_turns_conservation_red_at_it: Bool
+  dropping_init_turns_conservation_red_at_it: Bool
+  dropping_the_head_edge_turns_conservation_red_at_it: Bool
+  canary_fold_head_binds_to_the_collection_fold_row: Bool
+  user_declared_fold_refuses_at_the_head: Bool
+  fold_like_name_outside_the_roster_is_not_desugared: Bool
+  piped_fold_takes_the_pipe_input_as_its_collection: Bool
+  piped_chain_takes_the_whole_prefix_as_its_collection: Bool
+  fold_step_carries_carrier_and_element_binders: Bool
+  fold_step_binders_resolve_in_the_step_body: Bool
+}
+
+fn fe_outcomes() -> FeOutcomes {
+  FeOutcomes {
+    fold_encoding_carries_each_operand_at_its_authored_occurrence: fold_encoding_carries_each_operand_at_its_authored_occurrence_verdict(),
+    dropping_the_collection_turns_conservation_red_at_it: dropping_the_collection_turns_conservation_red_at_it_verdict(),
+    dropping_init_turns_conservation_red_at_it: dropping_init_turns_conservation_red_at_it_verdict(),
+    dropping_the_head_edge_turns_conservation_red_at_it: dropping_the_head_edge_turns_conservation_red_at_it_verdict(),
+    canary_fold_head_binds_to_the_collection_fold_row: canary_fold_head_binds_to_the_collection_fold_row_verdict(),
+    user_declared_fold_refuses_at_the_head: user_declared_fold_refuses_at_the_head_verdict(),
+    fold_like_name_outside_the_roster_is_not_desugared: fold_like_name_outside_the_roster_is_not_desugared_verdict(),
+    piped_fold_takes_the_pipe_input_as_its_collection: piped_fold_takes_the_pipe_input_as_its_collection_verdict(),
+    piped_chain_takes_the_whole_prefix_as_its_collection: piped_chain_takes_the_whole_prefix_as_its_collection_verdict(),
+    fold_step_carries_carrier_and_element_binders: fold_step_carries_carrier_and_element_binders_verdict(),
+    fold_step_binders_resolve_in_the_step_body: fold_step_binders_resolve_in_the_step_body_verdict()
+  }
+}
+
+test fn fold_encoding_carries_each_operand_at_its_authored_occurrence() -> Bool {
+  fe_outcomes().fold_encoding_carries_each_operand_at_its_authored_occurrence
+}
+
+test fn dropping_the_collection_turns_conservation_red_at_it() -> Bool {
+  fe_outcomes().dropping_the_collection_turns_conservation_red_at_it
+}
+
+test fn dropping_init_turns_conservation_red_at_it() -> Bool {
+  fe_outcomes().dropping_init_turns_conservation_red_at_it
+}
+
+test fn dropping_the_head_edge_turns_conservation_red_at_it() -> Bool {
+  fe_outcomes().dropping_the_head_edge_turns_conservation_red_at_it
+}
+
+test fn canary_fold_head_binds_to_the_collection_fold_row() -> Bool {
+  fe_outcomes().canary_fold_head_binds_to_the_collection_fold_row
+}
+
+test fn user_declared_fold_refuses_at_the_head() -> Bool {
+  fe_outcomes().user_declared_fold_refuses_at_the_head
+}
+
+test fn fold_like_name_outside_the_roster_is_not_desugared() -> Bool {
+  fe_outcomes().fold_like_name_outside_the_roster_is_not_desugared
+}
+
+test fn piped_fold_takes_the_pipe_input_as_its_collection() -> Bool {
+  fe_outcomes().piped_fold_takes_the_pipe_input_as_its_collection
+}
+
+test fn piped_chain_takes_the_whole_prefix_as_its_collection() -> Bool {
+  fe_outcomes().piped_chain_takes_the_whole_prefix_as_its_collection
+}
+
+test fn fold_step_carries_carrier_and_element_binders() -> Bool {
+  fe_outcomes().fold_step_carries_carrier_and_element_binders
+}
+
+test fn fold_step_binders_resolve_in_the_step_body() -> Bool {
+  fe_outcomes().fold_step_binders_resolve_in_the_step_body
+}

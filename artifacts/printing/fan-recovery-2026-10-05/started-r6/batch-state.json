@@ -1,0 +1,1 @@
+{"schema": "gunbc.printer-batch.v1", "observed_at": "2026-10-05T19:07:11Z", "lanes": [{"printer": "printer-01", "standing": "printing", "remaining_plates": 1, "attempts": ["fan-recovery-20261005-m140-flat-v1"]}, {"printer": "printer-02", "standing": "printing", "remaining_plates": 1, "attempts": ["fan-recovery-20261005-g140-flat-v1"]}]}

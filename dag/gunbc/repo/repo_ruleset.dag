@@ -1,0 +1,1735 @@
+module gunbc.repo_ruleset
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { HttpStatus, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.repository { gunbc_repository }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import gunbc.witness_floor_lanes { required_lanes_roster }
+import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
+import gunbc.ensure {
+  EnsurePolicy,
+  EnsureMayApply,
+  EnsureObservation,
+  EnsureObserved,
+  EnsureInaccessible,
+  EnsurePlan,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+  ensure_decide,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import extdeps.github.actions { github_actions_app_integration_id }
+import extdeps.github.rulesets
+import extdeps.github.rulesets {
+  RequiredStatusCheckWire,
+  RulesetRuleWire,
+  RulesetConditionsWire,
+  RulesetRuleType,
+  CreationRule,
+  DeletionRule,
+  NonFastForwardRule,
+  RequiredLinearHistoryRule,
+  RequiredStatusChecksRule,
+  RulesetEnforcement,
+  RulesetActive,
+  RulesetTarget,
+  BranchTarget,
+  ReaderBypassStanding,
+  ThisReaderCannotBypass,
+  ThisReaderCanBypassPullRequestsOnly,
+  ThisReaderCanBypassAlways,
+  UnrecognizedReaderBypassStanding,
+  reader_bypass_standing_wire_label,
+  BypassActorRosterObservation,
+  BypassRosterObserved,
+  BypassRosterUnavailable,
+  RulesetBypassActor,
+  bypass_roster_unavailable_from_get,
+  RequiredStatusCheckStanding,
+  NoRequiredStatusChecksRule,
+  RequiredStatusChecks,
+  RequiredStatusChecksParametersIncomplete,
+  MultipleRequiredStatusChecksRules,
+  merge_queue_rule,
+  required_status_check_standing,
+  MergeQueueStanding,
+  NoMergeQueueRule,
+  MergeQueueConfigured,
+  MultipleMergeQueueRules,
+  MergeQueueParametersIncomplete,
+  MergeQueueGroupingStrategy,
+  AllGreenGrouping,
+  MergeQueueMergeMethod,
+  QueueSquash,
+  merge_queue_standing,
+  RulesetRuleParametersWire,
+  rule_is_merge_queue,
+  merge_queue_missing_fields,
+  merge_queue_str,
+  merge_queue_int,
+  merge_queue_grouping_strategy_wire_label,
+  merge_queue_merge_method_wire_label,
+  ruleset_rule_types,
+  MergeQueueRule,
+  ruleset_rule_type_wire_label,
+  ruleset_enforcement_wire_label,
+  ruleset_target_wire_label,
+  parse_ruleset_enforcement,
+  parse_ruleset_target,
+  parse_reader_bypass_standing,
+  github_ruleset_bypass_actor_type_repository_role,
+  github_ruleset_bypass_mode_always,
+  github_repository_role_id_maintain,
+  required_status_check_row,
+  required_status_checks_rule,
+  parameterless_rule,
+  ref_name_conditions,
+  default_branch_ref_alias,
+}
+import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
+  RestRefusal,
+  RestStatusRefused,
+  RestTransportRefused,
+  RestBodyUndecodable,
+}
+import v2.std.collection { Absent, Present }
+import extdeps.github.github { Repository }
+import v2.std.algebra { non_empty_to_list }
+import v2.std.cardinality { Never }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  GoalInspected, GoalObservationRefused,
+  assess_by_deviations_and_unknowns,
+  inspect_goal,
+}
+
+// WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A DOCUMENTATION FIX.
+//
+// DESIGN's Building & checks section states, as the fact the whole two-lane split turns on, that
+// this repository's `passing CI` ruleset is active, carries no bypass actors, and names exactly one
+// required status check -- `witnesses`. Until this module, that sentence was the ONLY place the
+// fact lived on our side of the boundary. The setting itself was a hand-maintained web form: no
+// authority declared it, nothing read it back, and nothing in the tree went red if it changed. The
+// aggregation job in gunbc.witness_floor_workflow exists precisely because a required context is
+// produced by a JOB and a second job's check is not required -- which means the safety of that
+// whole design rests on a value nobody in this repository could observe.
+//
+// That is the specification-without-execution failure DESIGN section 5 names, at the outermost
+// boundary the project has: a claim about the world, typed nowhere, checked by nothing. A prose
+// sentence is not a consumer. If someone adds a second required context, removes the one that
+// gates, flips enforcement to `evaluate`, or grants a bypass role, every gate inside this
+// repository stays green while nothing it produces can block a merge any more.
+//
+// This module binds the repository subject to std.goal_assessment `inspect_goal`: DESIRED state is
+// declared, the live state is OBSERVED without reference to it, and the two are ASSESSED. `verify`
+// remains inspect-only. `converge` is the operator ceremony that may Apply a whole-ruleset PUT
+// when the bypass-actor roster was OBSERVED, then read back; an unobservable roster is Refuse,
+// never an assumed empty list. The first live Apply is the operator's -- workers do not actuate.
+//
+// DISSOLVE-ON for #10204, still a capability not a PR number: GitHub's ruleset PUT is
+// whole-document and takes `bypass_actors` as a replacement list. `converge` Applies that PUT
+// only when the roster was OBSERVED, then reads back; an unobservable roster is Refuse.
+// What this still does not discharge: a write that can change rules without supplying a
+// replacement roster (so an unread grant cannot be destroyed as a side effect of a timeout
+// bump). A PUT that preserves the roster but cannot read it back afterwards also fails the
+// trigger. #10204 merging is not the trigger.
+//
+// THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
+// gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
+// names its aggregation job with. Before this module those were two strings that happened to agree;
+// now they are one fact read in two directions, so renaming the job cannot leave the ruleset naming
+// a context nothing publishes (DESIGN section 3). That failure mode is specifically quiet: a
+// required context that no job publishes leaves the check permanently pending rather than red.
+// See the module-leading annotation. This row exists because the module's subject is a fact about
+// the world rather than about the tree, and a reader arriving from gunbc.witness_floor_workflow
+// needs the pointer.
+
+// WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
+// PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}; the name is a mutable label and two rulesets may
+// carry the same one. The id is the identity the API itself uses, so addressing by it is what makes
+// "the ruleset we assess" and "the ruleset GitHub serves" the same subject rather than two
+// lookups that happen to agree. The name is still declared and still verified -- a live ruleset at
+// this id under a different name is drift this module reports, not a subject it silently accepts.
+data gunbc_passing_ci_ruleset_id: Int = 16178731
+data gunbc_passing_ci_ruleset_name: String = "passing CI"
+
+// THE ONE REQUIRED CONTEXT, DERIVED. See the module annotation: this is the aggregation job's id,
+// not a second spelling of it.
+fn witness_floor_required_check_identities() -> List<String> {
+  append(
+    [witness_floor_workflow_job_id],
+    items: map(non_empty_to_list(xs: required_lanes_roster()), lane => lane.job_id),
+  )
+}
+
+fn required_context_absent_from_required_lane_roster(context: String) -> Bool {
+  !any(witness_floor_required_check_identities(), id => id == context)
+}
+
+fn required_contexts_declaration_refusals(contexts: List<String>) -> List<String> {
+  filter(contexts, c => required_context_absent_from_required_lane_roster(context: c))
+}
+
+fn desired_required_contexts() -> List<String> {
+  [witness_floor_workflow_job_id]
+}
+
+data desired_ruleset_enforcement: RulesetEnforcement = RulesetActive
+data desired_ruleset_target: RulesetTarget = BranchTarget
+
+// STRICT IS FALSE AND THAT IS A DECLARED POSITION, NOT AN OMISSION. A strict policy requires every
+// branch to be up to date with the base before merging, which re-runs the ~30-minute floor for
+// every pull request behind a merge. The merge queue is MergeQueueSignedOff and projected; that is
+// the construction that establishes the same invariant without that cost. Declaring false here
+// states the current position so that turning it on is a visible edit to this row rather than a
+// web-form change nobody sees.
+data desired_strict_required_status_checks_policy: Bool = false
+data desired_do_not_enforce_on_create: Bool = false
+
+data desired_ruleset_bypass_standing: ReaderBypassStanding = ThisReaderCannotBypass
+
+// THE PUT IS WHOLE-RULESET. deletion and non_fast_forward protect history; required_status_checks
+// gates; merge_queue is projected only from MergeQueueSignedOff. Sending a subset would DELETE
+// the rest (extdeps.github.rulesets Update), which is the read-modify-write hazard a desired-state
+// authority exists to remove.
+// THE TYPE ROSTER IS DERIVED FROM THE RULES AND IS NO LONGER A SECOND LIST BESIDE THEM. It was
+// authored as a literal `[DeletionRule, NonFastForwardRule, RequiredStatusChecksRule]` that a human
+// kept in agreement with `desired_ruleset_rules` -- one fact with two authorities, agreeing by
+// diligence. Anything reading the roster to reason about what converge SENDS was therefore reading
+// a proxy that coincided with its subject rather than being derived from it, and a rule added to
+// the projection without a matching hand-edit here would have been invisible to every such reader.
+fn desired_ruleset_rule_types() -> List<RulesetRuleType> {
+  ruleset_rule_types(rules: desired_ruleset_rules())
+}
+
+fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
+  map(desired_required_contexts(), c =>
+    required_status_check_row(context: c, integration_id: github_actions_app_integration_id))
+}
+
+// CREATION AND LINEAR HISTORY JOIN THE PROJECTION (operator direction 2026-09-17), AND `update` IS
+// DELIBERATELY NOT AMONG THEM. Restrict-creations matches ~DEFAULT_BRANCH, so it forbids re-creating
+// main rather than making a branch; require-linear-history states at the ref's own grain the shape
+// squash-through-the-queue already produces.
+//
+// RESTRICT-UPDATES IS THE ONE THAT WAS ASKED FOR AND REFUSED, and the reason is a mechanism rather
+// than a preference: the merge queue lands by UPDATING this ref -- it builds gh-readonly-queue/*
+// compositions and then advances main to one -- and neither GitHub's available-rules page nor its
+// merge-queue page says the queue is exempt from a rule that limits updates to bypass actors. Adding
+// it could therefore stop every landing in the repository, and it would buy almost nothing: a direct
+// push to main must already satisfy the required `witnesses` context and the merge_queue rule. The
+// operator ruled on 2026-09-17 to leave it off until that interaction is established, not to forbid
+// it; establishing it is a live observation of one queue landing under the rule, which is a change
+// with a receipt rather than a paragraph.
+fn desired_ruleset_rules_without_queue() -> List<RulesetRuleWire> {
+  [
+    parameterless_rule(t: CreationRule),
+    parameterless_rule(t: DeletionRule),
+    parameterless_rule(t: NonFastForwardRule),
+    parameterless_rule(t: RequiredLinearHistoryRule),
+    required_status_checks_rule(
+      checks: desired_required_status_checks(),
+      strict: desired_strict_required_status_checks_policy,
+      do_not_enforce_on_create: desired_do_not_enforce_on_create,
+    ),
+  ]
+}
+
+fn desired_ruleset_rules() -> List<RulesetRuleWire> {
+  match desired_merge_queue {
+    MergeQueueUnsigned { proposal: _, awaiting: _ } => desired_ruleset_rules_without_queue()
+    MergeQueueSignedOff { policy: p, ruling: _ } =>
+      append(desired_ruleset_rules_without_queue(), items: [merge_queue_rule_from_policy(policy: p)])
+  }
+}
+
+fn merge_queue_rule_from_policy(policy: MergeQueuePolicy) -> RulesetRuleWire {
+  merge_queue_rule(
+    grouping_strategy: policy.grouping_strategy,
+    merge_method: policy.merge_method,
+    check_response_timeout: policy.check_response_timeout,
+    max_entries_to_build: policy.max_entries_to_build,
+    max_entries_to_merge: policy.max_entries_to_merge,
+    min_entries_to_merge: policy.min_entries_to_merge,
+    min_entries_to_merge_wait: policy.min_entries_to_merge_wait,
+  )
+}
+
+fn desired_ruleset_conditions() -> RulesetConditionsWire {
+  ref_name_conditions(include: [default_branch_ref_alias], exclude: [])
+}
+
+// THE MERGE QUEUE IS SIGNED DESIRED STATE; THE SIGN-OFF IS THE TYPE, NOT A COMMENT.
+//
+// Strict is false BECAUSE the merge queue is the construction that establishes the same
+// invariant without re-running the floor for every pull request behind a merge. That used to
+// name a remedy no declaration carried. The queue is now MergeQueueSignedOff;
+// `desired_ruleset_rules` projects `merge_queue_rule_from_policy` from the SignedOff policy,
+// and only then. `converge` may PUT that projection. Flipping back to Unsigned drops the rule
+// from the projection rather than leaving a web-form queue as desired-by-omission.
+// EVERY PARAMETER GITHUB REQUIRES, NOT A BOOLEAN. A `merge_queue_required: Bool` would say "queue
+// on" while seven unmodeled parameters decided what the queue DOES -- provider defaults standing as
+// a second authority beside our own declaration, which is the fork DESIGN section 3 forbids. So the
+// policy is the complete documented parameter set of the merge_queue rule; there is no field left
+// to a default.
+type MergeQueuePolicy {
+  grouping_strategy: MergeQueueGroupingStrategy
+  merge_method: MergeQueueMergeMethod
+  check_response_timeout: Minute
+  max_entries_to_build: MergeQueueEntryCount
+  max_entries_to_merge: MergeQueueEntryCount
+  min_entries_to_merge: MergeQueueEntryCount
+  min_entries_to_merge_wait: Minute
+}
+
+type MergeQueueDesire
+  = MergeQueueUnsigned { proposal: MergeQueuePolicy, awaiting: DissolutionCondition }
+  | MergeQueueSignedOff { policy: MergeQueuePolicy, ruling: NonEmptyStr }
+
+type BypassRosterDesire
+  = BypassRosterUnsigned { awaiting: DissolutionCondition }
+  | BypassRosterSignedOff {
+      actors: List<RulesetBypassActor>,
+      ruling: NonEmptyStr,
+      restoration: DissolutionCondition,
+    }
+
+// THE PROPOSED SETTINGS, EACH DERIVED RATHER THAN PICKED.
+//
+// grouping_strategy ALLGREEN: HEADGREEN admits an entry on the head entry's result alone, which
+// re-opens the joint-failure class the queue is being proposed to close -- two changes each green
+// against a base the other never existed on. ALLGREEN is the only strategy that makes the queue's
+// guarantee the one this repository needs.
+//
+// merge_method SQUASH: the repository allows squash only (read live 2026-09-03: allow_squash_merge
+// true, allow_merge_commit and allow_rebase_merge both false), and the queue merges as the app, so
+// a queue configured to MERGE would compose merge commits past a repository setting that forbids
+// them. SQUASH is what keeps the queue's publication the same shape as the one this repository
+// already documents.
+//
+// check_response_timeout IS DERIVED FROM THE FLOOR'S OWN ENVELOPE AND IS NOT A CONSTANT HERE. It
+// reads gunbc.witness_floor_workflow witness_floor_lane_timeout and adds a declared margin, both as Minute.
+// A queue whose response timeout is BELOW the repository's execution envelope manufactures queue
+// failures out of runs that were going to pass: it dequeues green work for being slow, and the
+// author of the next timeout bump would have no way to know a second number tracked the first.
+// Transcribing 180 here would have been exactly that second authority, so the number is read from
+// the row that owns it -- and the witness asserts the ordering rather than the value, so raising
+// the floor's timeout cannot silently invert it.
+//
+// THE ENTRY COUNTS ARE THE OPERATOR'S CHOICE, and they moved twice: the commissioning 1s, then
+// build 3 / merge 1 / wait 1 on 2026-09-13, then batching on 2026-09-17 -- build 5, merge groups of
+// 2 to 8, wait 10 minutes for the minimum. What batching buys is throughput per composed run; what
+// it costs is attribution, because a red group names up to eight pull requests rather than one. That
+// cost is bounded by the grouping strategy above rather than by the counts: under ALLGREEN every
+// entry's own checks must pass, so a group that lands vouches for each member, and a group that
+// fails is re-split by the queue rather than landing a member nothing judged.
+//
+// Re-derive live parameters with github.Rulesets.Get / `verify`, not a transcribed GET snapshot: the
+// declared values are what `converge` will PUT, and the live ones are whatever the web form last
+// held.
+// The margin covers queue-side scheduling either side of the check itself -- the composition being
+// built and the result being reported -- which is time the floor's own job timeout does not bound.
+data merge_queue_response_margin: Minute = minute(count: 30)
+
+fn merge_queue_check_response_timeout() -> Minute {
+  measure_add(a: witness_floor_lane_timeout, b: merge_queue_response_margin)
+}
+
+// THE CONTENTION THIS PROPOSAL TARGETS IS MEASURED, NOT ARGUED FROM FIRST PRINCIPLES, AND THE
+// INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED. Re-derive over any window with:
+//
+//   git log origin/main --since='12 hours ago' --oneline | wc -l
+//   git log origin/main --since='12 hours ago' --oneline -- docs/design-failure-modes.md | wc -l
+//   git log origin/main --since='12 hours ago' --format='%h %ad' --date=format:'%H:%M' -- docs/design-failure-modes.md
+//
+// Run on 2026-09-04 against origin/main it reported 48 landings, of which 14 touched
+// `docs/design-failure-modes.md` -- a generated projection whose merge driver REFUSES whenever both
+// sides changed it since the base. THE REFUSAL IS CERTAIN ONLY WHEN BOTH SIDES MOVED, and that is a
+// conditional rather than a universal: a branch that touched the projection collides only once main
+// also touches it, which the same command puts at 14 of 48 landings rather than at certainty. A
+// branch that lands quickly may never collide, and one was open beside this measurement that never
+// did. What the rate governs is EXPOSURE: the probability of a collision grows with how long a
+// branch stays open against that churn, so the cost falls on exactly the branches that wait --
+// which is every branch waiting on a queue position. The last three intervals from that same
+// command were 06:44, 08:08, 08:17.
+//
+// THE NUMBER THAT DECIDES IT IS NOT THE RATE BUT ITS RELATION TO THE VALIDATION TIME. When the
+// interval between collisions falls below the time to get a resolved head through the required
+// aggregate, resolving promptly CANNOT WIN: every resolution is obsolete before the run that would
+// validate it finishes, and resolving faster makes it worse, because each attempt is a new head, a
+// fresh queue position, and a fresh set of voided approvals. Three lanes were in that state
+// simultaneously on the date above, and one branch ran six regenerate-then-remerge cycles and
+// converged zero times.
+//
+// A QUEUE IS EXACTLY THE MECHANISM THAT DISSOLVES THAT, and this is the argument for the proposal
+// rather than a complaint about the file: serialised landing resolves each conflict ONCE, against a
+// base that cannot move underneath the resolution while it is being validated. The alternative
+// available without a queue -- resolve once, at the moment of landing, and let the branch sit behind
+// its base until then -- is the same discipline enforced by hand, which is why it works and why it
+// does not scale past the lanes willing to observe it.
+fn merge_queue_timeout_below_floor(policy: MergeQueuePolicy) -> Bool {
+  minute_count(policy.check_response_timeout) <= minute_count(witness_floor_lane_timeout)
+}
+
+fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
+  MergeQueuePolicy {
+    grouping_strategy: AllGreenGrouping,
+    merge_method: QueueSquash,
+    check_response_timeout: merge_queue_check_response_timeout(),
+    max_entries_to_build: merge_queue_entry_count(count: 5),
+    max_entries_to_merge: merge_queue_entry_count(count: 8),
+    min_entries_to_merge: merge_queue_entry_count(count: 2),
+    min_entries_to_merge_wait: minute(count: 10),
+  }
+}
+
+data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
+  policy: merge_queue_floor_aligned_policy(),
+  ruling: "Operator direction 2026-09-17: batch the queue -- build 5, merge groups of 2 to 8, wait 10 minutes for the minimum -- and keep ALLGREEN, so a group lands only when every entry in it passed rather than only the group head. The timeout stays merge_queue_check_response_timeout (the floor lane's own envelope plus a margin) and NOT the 90 the live rule carries: 90 is below that envelope, so a required run that is merely slow is dequeued as if it had failed. Supersedes the 2026-09-13 direction that set build 3 / merge 1 / wait 1. Re-derive live parameters with github.Rulesets.Get / verify, not a transcribed GET snapshot." as NonEmptyStr,
+}
+
+data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {
+  actors: [
+    RulesetBypassActor {
+      actor_type: github_ruleset_bypass_actor_type_repository_role,
+      actor_id: github_repository_role_id_maintain,
+      bypass_mode: github_ruleset_bypass_mode_always,
+    }
+  ],
+  ruling: "Operator emergency path; a bypass merge is a landing the composed run cannot vouch for — recorded, not forbidden. royal-eagle-761 2026-09-13: keep Maintain always-allow as desired until the operator rules to drop it, so the first converge is a Noop rather than stripping the path." as NonEmptyStr,
+  restoration: unbound_dissolution(description: "Operator ruling to drop Maintain always-allow from the passing-CI ruleset. Until that ruling this grant stays desired so Apply does not revoke a path the operator already enabled."),
+}
+
+fn desired_bypass_actors() -> List<RulesetBypassActor> {
+  match desired_bypass_roster {
+    BypassRosterUnsigned { awaiting: _ } => []
+    BypassRosterSignedOff { actors: as_, ruling: _, restoration: _ } => as_
+  }
+}
+
+// THE DECLARED GOAL AS ONE VALUE. The desired side used to be reached by nullary calls from inside
+// the comparison folds, which is how a goal travels without being a parameter: the fold and its
+// caller could not disagree only because they both called the same function, and nothing in the
+// shape said the assessment was ABOUT this goal. std.goal_assessment hands the goal to the assessor
+// now, so the value it compares against is the value its result reports.
+type RepositoryRulesetGoal sole_constructor {
+  policy: MergeQueuePolicy?
+  rules: List<RulesetRuleWire>
+}
+
+fn desired_repo_ruleset_goal() -> RepositoryRulesetGoal {
+  RepositoryRulesetGoal {
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  }
+}
+
+fn desired_merge_queue_policy() -> MergeQueuePolicy? {
+  match desired_merge_queue {
+    MergeQueueUnsigned { proposal: _, awaiting: _ } => none
+    MergeQueueSignedOff { policy: p, ruling: _ } => Present { value: p }
+  }
+}
+
+fn desired_merge_queue_standing() -> MergeQueueStanding {
+  match desired_merge_queue_policy() {
+    Absent => NoMergeQueueRule
+    Present { value: p } => MergeQueueConfigured {
+      grouping_strategy: p.grouping_strategy,
+      merge_method: p.merge_method,
+      check_response_timeout: p.check_response_timeout,
+      max_entries_to_build: p.max_entries_to_build,
+      max_entries_to_merge: p.max_entries_to_merge,
+      min_entries_to_merge: p.min_entries_to_merge,
+      min_entries_to_merge_wait: p.min_entries_to_merge_wait,
+    }
+  }
+}
+
+// THE READ IS AN OBSERVATION WITH FOUR OUTCOMES, NOT A RULESET OR NOTHING. A ruleset that could not
+// be read is not a ruleset with no rules, and the three ways a read fails do not share a remedy: a
+// status refusal means a remote authority answered and its body usually says why; a transport
+// refusal means nothing was answered at all, so nothing about the ruleset has been learned; an
+// undecodable body means an answer arrived that this module could not read, which is a contract
+// fault rather than an access one. Collapsing any of them into an empty observation would report
+// "no required context" for "we could not look", and this module's whole verdict turns on that
+// distinction -- the empty-observation narrow DESIGN names.
+type RulesetReadRefusal
+  = RulesetReadStatusRefused { status: HttpStatus, body: String }
+  | RulesetReadTransportRefused { cause: NonEmptyStr }
+  | RulesetReadBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
+
+type RulesetObservation
+  = RulesetObserved {
+      name: String
+      enforcement: RulesetEnforcement
+      target: RulesetTarget
+      bypass: ReaderBypassStanding
+      include: List<String>
+      exclude: List<String>
+      rule_types: List<RulesetRuleType>
+      standing: RequiredStatusCheckStanding
+      merge_queue: MergeQueueStanding
+      bypass_roster: BypassActorRosterObservation
+    }
+  | RulesetUnreadable { cause: RulesetReadRefusal }
+
+fn read_refusal_of_outcome(outcome: RestRefusal) -> RulesetReadRefusal {
+  match outcome {
+    RestStatusRefused { status: s, body: b } =>
+      RulesetReadStatusRefused { status: s, body: b }
+    RestTransportRefused { cause: c } =>
+      RulesetReadTransportRefused { cause: c }
+    RestBodyUndecodable { status: s, cause: c } =>
+      RulesetReadBodyUndecodable { status: s, cause: c }
+  }
+}
+
+fn render_read_refusal(cause: RulesetReadRefusal) -> String {
+  match cause {
+    RulesetReadStatusRefused { status: s, body: b } =>
+      join(["ruleset read refused with status ", to_string(s), ": ", b], "")
+    RulesetReadTransportRefused { cause: c } =>
+      concat("ruleset read never reached GitHub: ", c)
+    RulesetReadBodyUndecodable { status: s, cause: c } =>
+      join(["ruleset read returned status ", to_string(s), " with an unreadable body: ", c], "")
+  }
+}
+
+fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetObservation {
+  let read = github.Rulesets.Get(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    ruleset_id: ruleset_id,
+  )
+  match read {
+    RestRefused { refusal } => RulesetUnreadable { cause: read_refusal_of_outcome(outcome: refusal) }
+    RestAnswered { answer: r } => RulesetObserved {
+      name: r.name,
+      enforcement: parse_ruleset_enforcement(raw: r.enforcement),
+      target: parse_ruleset_target(raw: r.target),
+      bypass: parse_reader_bypass_standing(raw: r.current_user_can_bypass),
+      include: r.conditions.ref_name.include,
+      exclude: r.conditions.ref_name.exclude,
+      rule_types: ruleset_rule_types(rules: r.rules),
+      standing: required_status_check_standing(rules: r.rules),
+      merge_queue: merge_queue_standing(rules: r.rules),
+      bypass_roster: match r.bypass_actors {
+        Absent => bypass_roster_unavailable_from_get(
+          reader: "the credential this module's github.Rulesets.Get runs as"
+        )
+        Present { value: actors } => BypassRosterObserved { actors: actors }
+      },
+    }
+  }
+}
+
+// EVERY WAY THE LIVE RULESET CAN DISAGREE WITH DESIRED, AS A VALUE. A Bool verdict here would be
+// the collapse DESIGN keeps recording: "the ruleset is wrong" carries no remedy, and the remedies
+// differ completely -- a missing context is fixed by a write, a granted bypass role is fixed by a
+// person, and an unrecognized enforcement string means GitHub's vocabulary moved and this module's
+// reading is no longer established.
+type RulesetDivergence
+  = RulesetNameDrift { observed: String }
+  | RulesetEnforcementDrift { observed: String }
+  | RulesetTargetDrift { observed: String }
+  | RulesetBypassGranted { observed: String }
+  | ReaderBypassStandingUnrecognized { raw: String }
+  | RefNameIncludeDrift { observed: List<String> }
+  | RefNameExcludeNonEmpty { observed: List<String> }
+  | RulesetRuleAbsent { rule: String }
+  | RequiredStatusChecksRuleAbsent
+  | RequiredStatusChecksRuleAmbiguous { count: Int }
+  | RequiredContextMissing { context: String }
+  | RequiredContextUnexpected { context: String }
+  | RequiredContextUnactionable { count: Int }
+  | RequiredStatusChecksParametersUnreadable { missing: List<String> }
+  | StrictPolicyDrift { observed: Bool }
+  | DoNotEnforceOnCreateDrift { observed: Bool }
+  | RulesetRuleUnexpected { rule: String }
+  | RulesetBypassActorUnexpected { actor: String }
+  | RulesetBypassActorAbsent { actor: String }
+  | MergeQueueUndeclared { grouping_strategy: String, merge_method: String }
+  | MergeQueueRuleAbsent
+  | MergeQueueRuleAmbiguous { count: Int }
+  | MergeQueueParametersUnreadable { missing: List<String> }
+  | MergeQueueSettingDrift { setting: String, observed: String, desired: String }
+
+fn enforcement_divergences(observed: RulesetEnforcement) -> List<RulesetDivergence> {
+  let label = ruleset_enforcement_wire_label(e: observed)
+  if label == ruleset_enforcement_wire_label(e: desired_ruleset_enforcement) {
+    []
+  } else {
+    [RulesetEnforcementDrift { observed: label }]
+  }
+}
+
+fn target_divergences(observed: RulesetTarget) -> List<RulesetDivergence> {
+  let label = ruleset_target_wire_label(t: observed)
+  if label == ruleset_target_wire_label(t: desired_ruleset_target) {
+    []
+  } else {
+    [RulesetTargetDrift { observed: label }]
+  }
+}
+
+// BYPASS IS READ THROUGH current_user_can_bypass AND THAT IS READER-RELATIVE, WHICH IS STATED
+// RATHER THAN GLOSSED. GitHub answers this field for the identity that made the request, so a
+// `never` here establishes that THIS reader cannot walk past the rule, not that no actor anywhere
+// can. It is still the strongest signal the read returns -- an administrator token reading `never`
+// means no bypass role covers an administrator -- and it is strictly better than the previous state
+// of no observation at all. The honest bound: a bypass role granted to an actor this module never
+// authenticates as would not be seen here, and closing that needs the bypass_actors roster, which
+// GitHub omits from the response entirely when it is empty rather than sending [].
+//
+// AND THE NON-`never` ARMS ARE NAMED RATHER THAN WILDCARDED, which review 56496 caught this
+// function getting wrong. A single `_` arm emitting one static sentence was total over the type
+// and blind one level down -- exactly the pattern the rest of this module is written to avoid.
+// Three facts sat under it with three different remedies: `pull_requests_only` and `always` are
+// real, DIFFERENT bypass grants (revoke the role -- and which role differs), while an
+// unrecognized standing means GitHub's vocabulary moved and this module's reading is no longer
+// established, whose remedy is to extend the parser and re-establish the read. Collapsing the
+// third into the first two would report a granted bypass for an unread one, and the `raw` GitHub
+// actually sent -- the only thing that says what to extend the parser WITH -- was discarded.
+fn bypass_divergences(observed: ReaderBypassStanding) -> List<RulesetDivergence> {
+  match observed {
+    ThisReaderCannotBypass => []
+    ThisReaderCanBypassPullRequestsOnly =>
+      [RulesetBypassGranted { observed: reader_bypass_standing_wire_label(b: observed) }]
+    ThisReaderCanBypassAlways =>
+      [RulesetBypassGranted { observed: reader_bypass_standing_wire_label(b: observed) }]
+    UnrecognizedReaderBypassStanding { raw: r } => [ReaderBypassStandingUnrecognized { raw: r }]
+  }
+}
+
+fn rule_presence_divergences(observed: List<RulesetRuleType>) -> List<RulesetDivergence> {
+  fold(desired_ruleset_rule_types(), init: [], f: fn(acc, wanted) {
+    let label = ruleset_rule_type_wire_label(t: wanted)
+    if any(observed, o => ruleset_rule_type_wire_label(t: o) == label) {
+      acc
+    } else {
+      append(acc, items: [RulesetRuleAbsent { rule: label }])
+    }
+  })
+}
+
+// THE UNEXPECTED DIRECTION, WHICH WAS MISSING AND IS NOT COSMETIC. The fold above answers "is
+// every rule we declared present". Nothing answered "is every rule present one we declared", and
+// a WHOLE-RULESET REPLACE is what such a projection is for: under any writer consuming it, a rule
+// that exists live and is absent from desired_ruleset_rules is DELETED, with no divergence
+// reported before or after, because the read-back compares against the same desired that dropped
+// it. That is the
+// read-modify-write hazard the module annotation says a desired-state authority exists to remove,
+// left open in the one direction nobody had a live example of -- until the merge queue became a
+// rule this repository might carry.
+fn rule_unexpected_divergences(observed: List<RulesetRuleType>) -> List<RulesetDivergence> {
+  fold(observed, init: [], f: fn(acc, got) {
+    let label = ruleset_rule_type_wire_label(t: got)
+    if any(desired_ruleset_rule_types(), w => ruleset_rule_type_wire_label(t: w) == label) {
+      acc
+    } else {
+      append(acc, items: [RulesetRuleUnexpected { rule: label }])
+    }
+  })
+}
+
+// THE REPORTING HALF FOR ACTORS, WHICH verify HAD NO WAY TO SEE. `observation_divergences` bound
+// the roster to `_`, so an undeclared bypass actor was invisible to verify even after converge
+// learned to refuse on it -- the refusal stops the write, and nothing told anyone the grant was
+// there. The rule side has both halves (`RulesetRuleUnexpected` reported, actuation refused) and
+// this is that pair completed for actors.
+//
+// AN UNOBSERVED ROSTER IS NOT SILENT AND IS NOT A DIVERGENCE EITHER, and the second half of that
+// sentence is what changed when this module moved onto std.goal_assessment. "We could not see
+// whether a bypass exists" and "no bypass exists" are the distinction this module's
+// reader-versus-roster split was built to keep -- but the earlier repair kept it by adding a
+// RulesetBypassRosterUnobserved arm to the DIVERGENCE coproduct, which kept the fact visible by
+// misfiling it: an unread fact reported as a proved mismatch. It is now an unknown
+// (`ruleset_unknowns`), it reaches GoalIndeterminate rather than GoalDiverged, and the arm it used
+// to occupy no longer exists, so the misfiling has no spelling. This function answers only the
+// half it can prove.
+fn bypass_actor_identity(a: RulesetBypassActor) -> String {
+  concat(concat(concat(a.actor_type, "/"), to_string(a.actor_id)), concat(" mode=", a.bypass_mode))
+}
+
+fn bypass_actor_eq(a: RulesetBypassActor, b: RulesetBypassActor) -> Bool {
+  a.actor_type == b.actor_type && a.actor_id == b.actor_id && a.bypass_mode == b.bypass_mode
+}
+
+fn bypass_actor_unexpected_divergences(roster: BypassActorRosterObservation) -> List<RulesetDivergence> {
+  match roster {
+    BypassRosterUnavailable { reader: _, cause: _ } => []
+    BypassRosterObserved { actors: as_ } =>
+      append(
+        fold(as_, init: [], f: fn(acc, got) {
+          if any(desired_bypass_actors(), w => bypass_actor_eq(a: w, b: got)) {
+            acc
+          } else {
+            append(acc, items: [RulesetBypassActorUnexpected { actor: bypass_actor_identity(a: got) }])
+          }
+        }),
+        items: fold(desired_bypass_actors(), init: [], f: fn(acc, want) {
+          if any(as_, g => bypass_actor_eq(a: g, b: want)) {
+            acc
+          } else {
+            append(acc, items: [RulesetBypassActorAbsent { actor: bypass_actor_identity(a: want) }])
+          }
+        }),
+      )
+  }
+}
+
+// A LIVE RULE THIS PROJECTION CANNOT EXPRESS IS REPORTED, AND `converge` REFUSES APPLY.
+// Applying desired DESTROYS it. `merge_queue_put_plan` is not reached while
+// `RulesetRuleUnexpected` (or an undeclared bypass actor) is in the observation.
+// THE WALL READS THE PROJECTED RULES THEMSELVES, NOT A ROSTER THAT TRACKS THEM.
+//
+// Its first form asked whether `desired_ruleset_rule_types()` contained a merge_queue entry. That
+// question was answerable without ever touching what the projection carries: the roster was a second
+// hand-maintained list, so the check passed or failed on the agreement between two authorities
+// rather than on the projection. Even with the roster now derived, a rule TYPE says nothing about
+// the seven parameters that decide what the queue actually does -- a merge_queue rule projected
+// with the wrong strategy, or with a parameter missing, carries the right type and the wrong queue.
+//
+// So the subject is the rule list, and it is read with `merge_queue_standing` -- THE SAME READER
+// THAT INTERPRETS THE LIVE GET. That is DESIGN section 4's one-grammar-both-directions applied to
+// this module: the projection is judged by the identical procedure that judges the live ruleset, so
+// "the signed policy is in force" and "the signed policy will be sent" cannot drift into two
+// different questions with two different answers. Every arm of the reader becomes a located
+// refusal, and per-field drift is reported as the field, the declared value and the projected one.
+type SignedProjectionRefusal
+  = NoQueueRuleProjected
+  | ProjectedQueueParametersIncomplete { missing: List<String> }
+  | ProjectedQueueAmbiguous { count: Int }
+  | ProjectedQueueSettingDrift { field: String, declared: String, projected: String }
+
+// THE COMPARISON IS AGAINST THE RAW WIRE FIELDS OF THE PROJECTED RULE, NOT AGAINST A VALUE LIFTED
+// OUT OF IT. `merge_queue_standing` exists to interpret a ruleset READ, and reusing its output here
+// would compare the policy to the result of a parse rather than to what the PUT carries -- a second
+// representation between the guard and its subject, which is the same defect as the roster one
+// layer down. So this walks the projected `RulesetRuleWire` list itself and compares each declared
+// setting, rendered to the spelling GitHub is sent, against the exact optional the serializer will
+// receive. The policy side goes THROUGH the wire labels for the same reason: a declared
+// `AllGreenGrouping` and a projected "ALLGREEN" are only comparable in one vocabulary, and the
+// upstream's own spelling is the one that lands in the body.
+//
+// ITS STRUCTURE MIRRORS `merge_queue_standing` DELIBERATELY -- absent, ambiguous, incomplete, then
+// the field walk -- because the two must agree about what a well-formed projection is even though
+// they answer different questions. Where they would disagree, the disagreement is the finding.
+fn projected_queue_drift(policy: MergeQueuePolicy, rules: List<RulesetRuleWire>) -> List<SignedProjectionRefusal> {
+  let matched = filter(rules, r => rule_is_merge_queue(rule: r))
+  if length(matched) == 0 {
+    [NoQueueRuleProjected]
+  } else {
+    if length(matched) > 1 {
+      [ProjectedQueueAmbiguous { count: length(matched) }]
+    } else {
+      fold(matched, init: [], f: fn(_, rule) {
+        match rule.parameters {
+          Absent => [ProjectedQueueParametersIncomplete { missing: ["parameters"] }]
+          Present { value: p } =>
+            let missing = merge_queue_missing_fields(p: p)
+            if length(missing) > 0 {
+              [ProjectedQueueParametersIncomplete { missing: missing }]
+            } else {
+              projected_queue_field_drift(policy: policy, p: p)
+            }
+        }
+      })
+    }
+  }
+}
+
+fn projected_queue_field_drift(policy: MergeQueuePolicy, p: RulesetRuleParametersWire) -> List<SignedProjectionRefusal> {
+  concat_lists([
+    drift_str(
+      field: "grouping_strategy",
+      declared: merge_queue_grouping_strategy_wire_label(g: policy.grouping_strategy),
+      projected: merge_queue_str(v: p.grouping_strategy),
+    ),
+    drift_str(
+      field: "merge_method",
+      declared: merge_queue_merge_method_wire_label(m: policy.merge_method),
+      projected: merge_queue_str(v: p.merge_method),
+    ),
+    drift_int(
+      field: "check_response_timeout_minutes",
+      declared: minute_count(policy.check_response_timeout),
+      projected: merge_queue_int(v: p.check_response_timeout_minutes),
+    ),
+    drift_int(
+      field: "max_entries_to_build",
+      declared: merge_queue_entry_count_value(policy.max_entries_to_build),
+      projected: merge_queue_int(v: p.max_entries_to_build),
+    ),
+    drift_int(
+      field: "max_entries_to_merge",
+      declared: merge_queue_entry_count_value(policy.max_entries_to_merge),
+      projected: merge_queue_int(v: p.max_entries_to_merge),
+    ),
+    drift_int(
+      field: "min_entries_to_merge",
+      declared: merge_queue_entry_count_value(policy.min_entries_to_merge),
+      projected: merge_queue_int(v: p.min_entries_to_merge),
+    ),
+    drift_int(
+      field: "min_entries_to_merge_wait_minutes",
+      declared: minute_count(policy.min_entries_to_merge_wait),
+      projected: merge_queue_int(v: p.min_entries_to_merge_wait_minutes),
+    ),
+  ])
+}
+
+fn concat_lists(xs: List<List<SignedProjectionRefusal>>) -> List<SignedProjectionRefusal> {
+  fold(xs, init: [], f: fn(acc, more) { append(acc, items: more) })
+}
+
+fn drift_str(field: String, declared: String, projected: String) -> List<SignedProjectionRefusal> {
+  if declared == projected {
+    []
+  } else {
+    [ProjectedQueueSettingDrift { field: field, declared: declared, projected: projected }]
+  }
+}
+
+fn drift_int(field: String, declared: Int, projected: Int) -> List<SignedProjectionRefusal> {
+  drift_str(field: field, declared: to_string(declared), projected: to_string(projected))
+}
+
+fn render_signed_projection_refusal(r: SignedProjectionRefusal) -> String {
+  match r {
+    NoQueueRuleProjected => "no merge_queue rule is projected at all, so applying desired would PUT a ruleset without the signed queue and the divergence would never clear"
+    ProjectedQueueAmbiguous { count: c } => concat("the projection carries more than one merge_queue rule, count ", to_string(c))
+    ProjectedQueueParametersIncomplete { missing: m } => concat("the projected merge_queue rule is missing parameters: ", join(m, ", "))
+    ProjectedQueueSettingDrift { field: f, declared: d, projected: p } =>
+      concat(concat(concat(concat(concat("projected ", f), " is "), p), " but the signed policy declares "), d)
+  }
+}
+
+fn signed_desire_projection_refusal_for(
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> NonEmptyStr? {
+  match policy {
+    Absent =>
+      if length(filter(rules, r => rule_is_merge_queue(rule: r))) == 0 {
+        none
+      } else {
+        Present {
+          value: "the merge queue is unsigned but the desired projection carries a merge_queue rule, so the goal states this dimension two ways and WHICH ONE IS THE DESIRE is undetermined" as NonEmptyStr
+        }
+      }
+    Present { value: p } => {
+      let drift = projected_queue_drift(policy: p, rules: rules)
+      if length(drift) == 0 {
+        none
+      } else {
+        Present { value: concat(
+          "the merge queue is signed off but the desired projection does not carry the signed policy, so the goal states this dimension two ways and which one is the desire is undetermined. ",
+          join(map(drift, d => render_signed_projection_refusal(r: d)), "; "),
+        ) as NonEmptyStr }
+      }
+    }
+  }
+}
+
+// THE DELETE HAZARD, KEPT AS THE STANDING IT IS RATHER THAN AS TWO FUNCTIONS NOTHING CALLS.
+//
+// Two helpers stood here -- bypass_roster_projection_refusal and merge_queue_projection_refusal --
+// each answering "may converge actuate at all" with one refusal. Both already recorded, in their
+// own annotations, that no production path called them: their consumer was the whole-ruleset
+// actuate root, and world convergence had already replaced it. They were kept alive by the claims
+// that read them, which is the unconsumed-declaration state DESIGN section 3c reds, and this
+// migration deletes the last thing that could be mistaken for their consumer.
+//
+// THE FACT THEY CARRIED IS NOT DELETED WITH THEM. `desired_ruleset_rules` still does not
+// project undeclared rules; a whole-ruleset PUT of that list would DELETE them. `converge`
+// sends `desired_bypass_actors` as a replacement list when the roster was OBSERVED, and
+// Refuses when it was not -- treating unavailable as empty would let an empty observation
+// decide a destructive write. What #10204 still names: a write that can change rules without
+// replacing an unread roster.
+
+fn ref_name_divergences(include: List<String>, exclude: List<String>) -> List<RulesetDivergence> {
+  let want = [default_branch_ref_alias]
+  let include_ok = length(include) == length(want)
+    && all(want, w => any(include, i => i == w))
+  let head = if include_ok { [] } else { [RefNameIncludeDrift { observed: include }] }
+  if length(exclude) == 0 {
+    head
+  } else {
+    append(head, items: [RefNameExcludeNonEmpty { observed: exclude }])
+  }
+}
+
+fn context_roster_divergences(
+  contexts: List<String>,
+  strict: Bool,
+  do_not_enforce_on_create: Bool,
+) -> List<RulesetDivergence> {
+  let missing = fold(desired_required_contexts(), init: [], f: fn(acc, want) {
+    if any(contexts, c => c == want) {
+      acc
+    } else {
+      append(acc, items: [RequiredContextMissing { context: want }])
+    }
+  })
+  let unexpected = fold(contexts, init: missing, f: fn(acc, got) {
+    if any(desired_required_contexts(), w => w == got) {
+      acc
+    } else {
+      append(acc, items: [RequiredContextUnexpected { context: got }])
+    }
+  })
+  let with_strict = if strict == desired_strict_required_status_checks_policy {
+    unexpected
+  } else {
+    append(unexpected, items: [StrictPolicyDrift { observed: strict }])
+  }
+  if do_not_enforce_on_create == desired_do_not_enforce_on_create {
+    with_strict
+  } else {
+    append(with_strict, items: [DoNotEnforceOnCreateDrift { observed: do_not_enforce_on_create }])
+  }
+}
+
+fn standing_divergences(standing: RequiredStatusCheckStanding) -> List<RulesetDivergence> {
+  match standing {
+    NoRequiredStatusChecksRule => [RequiredStatusChecksRuleAbsent]
+    MultipleRequiredStatusChecksRules { count: n } =>
+      [RequiredStatusChecksRuleAmbiguous { count: n }]
+    RequiredStatusChecks { contexts: c, strict: s, do_not_enforce_on_create: d } =>
+      context_roster_divergences(contexts: c, strict: s, do_not_enforce_on_create: d)
+    RequiredStatusChecksParametersIncomplete { missing: ms } =>
+      [RequiredStatusChecksParametersUnreadable { missing: ms }]
+  }
+}
+
+fn setting_drift(setting: String, observed: String, desired: String) -> List<RulesetDivergence> {
+  if observed == desired {
+    []
+  } else {
+    [MergeQueueSettingDrift { setting: setting, observed: observed, desired: desired }]
+  }
+}
+
+fn merge_queue_setting_drifts(
+  policy: MergeQueuePolicy,
+  grouping: MergeQueueGroupingStrategy,
+  method: MergeQueueMergeMethod,
+  timeout: Minute,
+  build: MergeQueueEntryCount,
+  merge_max: MergeQueueEntryCount,
+  merge_min: MergeQueueEntryCount,
+  wait: Minute,
+) -> List<RulesetDivergence> {
+  fold(
+    [
+      setting_drift(
+        setting: "merge_method",
+        observed: merge_queue_merge_method_wire_label(m: method),
+        desired: merge_queue_merge_method_wire_label(m: policy.merge_method),
+      ),
+      setting_drift(
+        setting: "check_response_timeout_minutes",
+        observed: to_string(minute_count(timeout)),
+        desired: to_string(minute_count(policy.check_response_timeout)),
+      ),
+      setting_drift(
+        setting: "max_entries_to_build",
+        observed: to_string(merge_queue_entry_count_value(build)),
+        desired: to_string(merge_queue_entry_count_value(policy.max_entries_to_build)),
+      ),
+      setting_drift(
+        setting: "max_entries_to_merge",
+        observed: to_string(merge_queue_entry_count_value(merge_max)),
+        desired: to_string(merge_queue_entry_count_value(policy.max_entries_to_merge)),
+      ),
+      setting_drift(
+        setting: "min_entries_to_merge",
+        observed: to_string(merge_queue_entry_count_value(merge_min)),
+        desired: to_string(merge_queue_entry_count_value(policy.min_entries_to_merge)),
+      ),
+      setting_drift(
+        setting: "min_entries_to_merge_wait_minutes",
+        observed: to_string(minute_count(wait)),
+        desired: to_string(minute_count(policy.min_entries_to_merge_wait)),
+      ),
+    ],
+    init: setting_drift(
+      setting: "grouping_strategy",
+      observed: merge_queue_grouping_strategy_wire_label(g: grouping),
+      desired: merge_queue_grouping_strategy_wire_label(g: policy.grouping_strategy),
+    ),
+    f: fn(acc, more) { append(acc, items: more) },
+  )
+}
+
+// THE UNSIGNED ARM IS NOT SILENT ABOUT A LIVE QUEUE. Unsigned + absent is no divergence.
+// Unsigned + PRESENT means a web-form queue while the desire is still a proposal, so it is
+// reported. This repository's desire row is MergeQueueSignedOff; the arm remains so that
+// coproduct stays closed.
+fn merge_queue_divergences(policy: MergeQueuePolicy?, observed: MergeQueueStanding) -> List<RulesetDivergence> {
+  match observed {
+    MultipleMergeQueueRules { count: n } => [MergeQueueRuleAmbiguous { count: n }]
+    MergeQueueParametersIncomplete { missing: ms } => [MergeQueueParametersUnreadable { missing: ms }]
+    NoMergeQueueRule =>
+      match policy {
+        Absent => []
+        Present { value: _ } => [MergeQueueRuleAbsent]
+      }
+    MergeQueueConfigured {
+      grouping_strategy: g,
+      merge_method: m,
+      check_response_timeout: t,
+      max_entries_to_build: b,
+      max_entries_to_merge: xm,
+      min_entries_to_merge: nm,
+      min_entries_to_merge_wait: w,
+    } =>
+      match policy {
+        Absent => [MergeQueueUndeclared {
+          grouping_strategy: merge_queue_grouping_strategy_wire_label(g: g),
+          merge_method: merge_queue_merge_method_wire_label(m: m),
+        }]
+        Present { value: p } => merge_queue_setting_drifts(
+          policy: p,
+          grouping: g,
+          method: m,
+          timeout: t,
+          build: b,
+          merge_max: xm,
+          merge_min: nm,
+          wait: w,
+        )
+      }
+  }
+}
+
+fn name_divergences(observed: String) -> List<RulesetDivergence> {
+  if observed == gunbc_passing_ci_ruleset_name {
+    []
+  } else {
+    [RulesetNameDrift { observed: observed }]
+  }
+}
+
+fn observed_ruleset_divergences_for(
+  goal: RepositoryRulesetGoal,
+  name: String,
+  enforcement: RulesetEnforcement,
+  target: RulesetTarget,
+  bypass: ReaderBypassStanding,
+  include: List<String>,
+  exclude: List<String>,
+  rule_types: List<RulesetRuleType>,
+  standing: RequiredStatusCheckStanding,
+  merge_queue: MergeQueueStanding,
+) -> List<RulesetDivergence> {
+  fold(
+    [
+      enforcement_divergences(observed: enforcement),
+      target_divergences(observed: target),
+      bypass_divergences(observed: bypass),
+      ref_name_divergences(include: include, exclude: exclude),
+      rule_presence_divergences(observed: rule_types),
+      rule_unexpected_divergences(observed: rule_types),
+      standing_divergences(standing: standing),
+      merge_queue_divergences(policy: goal.policy, observed: merge_queue),
+    ],
+    init: name_divergences(observed: name),
+    f: fn(acc, more) { append(acc, items: more) },
+  )
+}
+
+fn render_divergence(d: RulesetDivergence) -> String {
+  match d {
+    RulesetNameDrift { observed: o } => concat("ruleset name is ", o)
+    RulesetEnforcementDrift { observed: o } => concat("enforcement is ", o)
+    RulesetTargetDrift { observed: o } => concat("target is ", o)
+    RulesetBypassGranted { observed: o } => concat("reader may bypass this ruleset: ", o)
+    ReaderBypassStandingUnrecognized { raw: r } =>
+      concat("current_user_can_bypass is unrecognized: ", r)
+    RefNameIncludeDrift { observed: o } => concat("ref_name include is ", join(o, "|"))
+    RefNameExcludeNonEmpty { observed: o } => concat("ref_name exclude is non-empty: ", join(o, "|"))
+    RulesetRuleAbsent { rule: r } => concat("rule absent: ", r)
+    RequiredStatusChecksRuleAbsent => "no required_status_checks rule"
+    RequiredStatusChecksRuleAmbiguous { count: n } =>
+      concat("more than one required_status_checks rule: ", to_string(n))
+    RequiredContextMissing { context: c } => concat("required context missing: ", c)
+    RequiredContextUnexpected { context: c } => concat("unexpected required context: ", c)
+    RequiredContextUnactionable { count: n } =>
+      concat("required-context reconcile refused members: ", to_string(n))
+    StrictPolicyDrift { observed: o } =>
+      concat("strict_required_status_checks_policy is ", to_string(o))
+    DoNotEnforceOnCreateDrift { observed: o } =>
+      concat("do_not_enforce_on_create is ", to_string(o))
+    RulesetRuleUnexpected { rule: r } => concat("undeclared rule present: ", r)
+    RulesetBypassActorUnexpected { actor: a } => concat("undeclared bypass actor present: ", a)
+    RulesetBypassActorAbsent { actor: a } => concat("declared bypass actor missing: ", a)
+    RequiredStatusChecksParametersUnreadable { missing: ms } =>
+      concat("required_status_checks parameters did not carry: ", join(ms, ", "))
+    MergeQueueUndeclared { grouping_strategy: g, merge_method: m } =>
+      join(["a merge queue is configured that no signed desire declares: grouping ", g, ", merge method ", m], "")
+    MergeQueueRuleAbsent => "merge_queue rule absent while the merge queue is signed off"
+    MergeQueueRuleAmbiguous { count: n } =>
+      concat("more than one merge_queue rule: ", to_string(n))
+    MergeQueueParametersUnreadable { missing: ms } =>
+      concat("merge_queue rule present but its parameters did not carry: ", join(ms, ", "))
+    MergeQueueSettingDrift { setting: st, observed: o, desired: d } =>
+      join(["merge queue ", st, " is ", o, ", desired ", d], "")
+  }
+}
+
+fn render_divergences(ds: List<RulesetDivergence>) -> String {
+  join(map(ds, d => render_divergence(d: d)), "; ")
+}
+
+fn observation_divergences(goal: RepositoryRulesetGoal, observation: RulesetObservation) -> List<RulesetDivergence> {
+  match observation {
+    RulesetUnreadable { cause: _ } => []
+    RulesetObserved {
+      name: n,
+      enforcement: e,
+      target: t,
+      bypass: b,
+      include: inc,
+      exclude: exc,
+      rule_types: rt,
+      standing: st,
+      merge_queue: mq,
+      bypass_roster: br,
+    } => append(
+      observed_ruleset_divergences_for(
+        goal: goal,
+        name: n,
+        enforcement: e,
+        target: t,
+        bypass: b,
+        include: inc,
+        exclude: exc,
+        rule_types: rt,
+        standing: st,
+        merge_queue: mq,
+      ),
+      items: bypass_actor_unexpected_divergences(roster: br),
+    )
+  }
+}
+
+// THE RECONCILE PLAN IS COMPUTED FROM THE OBSERVED CONTEXT ROSTER AND IS WHAT DECIDES WHETHER TO
+// WRITE. It is not a second opinion beside the divergence list: the divergences answer "is the live
+// ruleset what we declared", across every field; the plan answers "does the context roster need an
+// apply", which is the only part of the subject this module can actuate. A bypass role is a real
+// divergence with no apply.
+fn observed_required_checks(standing: RequiredStatusCheckStanding) -> List<RequiredStatusCheckWire> {
+  match standing {
+    NoRequiredStatusChecksRule => []
+    MultipleRequiredStatusChecksRules { count: _ } => []
+    RequiredStatusChecksParametersIncomplete { missing: _ } => []
+    RequiredStatusChecks { contexts: c, strict: _, do_not_enforce_on_create: _ } =>
+      map(c, ctx => required_status_check_row(
+        context: ctx,
+        integration_id: github_actions_app_integration_id,
+      ))
+  }
+}
+
+type RepoRulesetConvergedEvidence {
+  writes_applied: Int
+  removals_applied: Int
+  required_contexts: List<String>
+  enforcement: String
+  reader_cannot_bypass: Bool
+}
+
+fn converged_evidence_of(
+  writes: Int,
+  removals: Int,
+  observation: RulesetObservation,
+) -> RepoRulesetConvergedEvidence {
+  match observation {
+    RulesetUnreadable { cause: _ } => RepoRulesetConvergedEvidence {
+      writes_applied: writes,
+      removals_applied: removals,
+      required_contexts: [],
+      enforcement: "",
+      reader_cannot_bypass: false,
+    }
+    RulesetObserved {
+      name: _,
+      enforcement: e,
+      target: _,
+      bypass: b,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: st,
+      merge_queue: _,
+      bypass_roster: _,
+    } => RepoRulesetConvergedEvidence {
+      writes_applied: writes,
+      removals_applied: removals,
+      required_contexts: map(observed_required_checks(standing: st), c => c.context),
+      enforcement: ruleset_enforcement_wire_label(e: e),
+      reader_cannot_bypass: match b { ThisReaderCannotBypass => true ThisReaderCanBypassPullRequestsOnly => false ThisReaderCanBypassAlways => false UnrecognizedReaderBypassStanding { raw: _ } => false },
+    }
+  }
+}
+
+// THE SUBJECT IS THE REPOSITORY; THE REQUEST IS WHICH RULESET TO READ. These were one fused record
+// until the recut, and fusing them is what let the first version of this binding pass the SAME value
+// as both subject and request -- a "request" that repeated the subject verbatim, carrying nothing
+// about the read and making std.goal_assessment's claim (a refusal says which read was attempted)
+// vacuous for this binding while the receipt still reported one. Split, each argument answers its
+// own question and neither can stand in for the other.
+type RulesetReadRequest sole_constructor {
+  ruleset_id: Int
+}
+
+// WHAT REPLACED THE FIVE HELD STANDINGS, AND WHY THE REPLACEMENT IS SMALLER RATHER THAN RICHER.
+//
+// This module used to answer through gunbc.world_converge, whose handler had an `apply` stage. It
+// had no writer and never will have one at this rung, so the binding supplied an actuator whose
+// every arm was a refusal, and the refusal vocabulary grew to carry the reasons that actuator
+// declined: an unbound realization, a live rule a PUT would delete, a bypass roster a PUT would
+// overwrite. Those are facts about a WRITE THAT DOES NOT EXIST. Modelling read-only policy as an
+// actuator that always refuses is the parallel-authority tell DESIGN section 6 names, and it cost
+// a real distinction: because the hold arms were ordered above the drift, an unreadable bypass
+// roster SUPPRESSED the drift list, so an operator was told the roster could not be read and never
+// told the enforcement had also changed.
+//
+// The replacement asks the only question a reader can answer -- does the live ruleset satisfy the
+// declared goal -- through std.goal_assessment `inspect_goal`, and the five held standings
+// redistribute onto the three facts they always were:
+//
+//   the read failed entirely            -> the observation layer (RulesetReadRefusal)
+//   the desire disagrees with itself    -> RulesetUnknown on THAT dimension only: the goal states
+//                                          the merge queue twice and the two disagree, so which one
+//                                          is the desire is undetermined -- and every OTHER
+//                                          dimension is still compared
+//   the roster could not be read        -> RulesetUnknown: reached, unread, and now carried
+//                                          ALONGSIDE the proved drift instead of hiding it
+//   the live state differs              -> deviations, each already located by render_divergence
+//
+// TWO CAUSES ARE DELETED RATHER THAN MOVED, which is the point of a replacement migration.
+// RepositoryRulesetActuationRealizationUnbound said "no admitted writer exists" -- that was
+// true of `verify` and is false of `converge`. RepositoryRulesetUnexpectedLiveRule said a live
+// rule this projection cannot express blocks the write; that is `RulesetRuleUnexpected`, and
+// `converge` Refuses Apply rather than PUTting a document that would delete it.
+//
+// WHAT IS PRESERVED: every state that made `verify` exit non-zero still does. `converge` adds
+// Apply (whole-ruleset PUT + readback) and Refuse (unobservable roster, below-floor timeout,
+// undeclared live rule or bypass actor, unreadable readback).
+//
+// #10204: `verify` is inspect-only. `converge` writes when the roster was observed. The
+// remaining capability is a write that can change rules without supplying a replacement
+// bypass list, plus readback that the unread roster survived. The trigger is that capability,
+// not the merge of this change.
+
+// THE ONE UNKNOWN THIS ASSESSMENT CAN REACH. It is a property of the CREDENTIAL rather than of the
+// moment -- under the token this repository holds, a live ruleset GET omits bypass_actors on every
+// read, and GitHub omits that field both when the roster is empty and when the reader may not see
+// it -- so a retry cannot discharge it and it must never be read as "no actors".
+type RulesetUnknown
+  = RulesetBypassRosterUnobservable { reader: NonEmptyStr, detail: NonEmptyStr }
+  | RulesetMergeQueueDesireSelfInconsistent { detail: NonEmptyStr }
+
+fn ruleset_unknowns(roster: BypassActorRosterObservation) -> List<RulesetUnknown> {
+  match roster {
+    BypassRosterUnavailable { reader: r, cause: c } =>
+      [RulesetBypassRosterUnobservable { reader: r, detail: c }]
+    BypassRosterObserved { actors: _ } => []
+  }
+}
+
+fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown> {
+  match observation {
+    RulesetUnreadable { cause: _ } => []
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: br,
+    } => ruleset_unknowns(roster: br)
+  }
+}
+
+// THE ASSESSOR, AND THE ONLY PLACE THE GOAL IS READ.
+//
+// IT HAS NO SHORT-CIRCUIT, AND THAT IS THE SECOND HALF OF THIS MIGRATION RATHER THAN A DETAIL.
+// An earlier revision answered `signed_desire_projection_refusal` FIRST and returned a whole-
+// assessment refusal, so a defect in ONE dimension of the desire suppressed the comparison of
+// every other -- a live enforcement, target, name or required-context drift went unreported
+// because of a merge-queue projection gap that has nothing to do with any of them. That is the
+// exact ordering harm this branch deleted the actuation holds to fix, reproduced one layer down
+// on the arm that was left, and it is the class rostered as
+// gunbc.recurring_failure_mode.read_only_policy_bound_as_an_actuator_that_only_refuses. The helper
+// it called still carried actuation prose -- "Refusing rather than actuating" -- which is what it
+// was written for; that sentence is gone with the actuation. Review 62287 found it.
+//
+// SO THE PROJECTION GAP IS AN UNKNOWN ON ONE DIMENSION, and it is genuinely unknown rather than
+// merely awkward: the goal states the merge-queue desire TWICE -- once as the signed policy, once
+// as the rules wire the projection carries -- and when those two disagree, WHICH ONE IS THE GOAL is
+// undetermined. `merge_queue_divergences` can still compare the live queue against the signed
+// policy, so the dimension is not unassessable for want of a comparison; it is unassessable for
+// want of an unambiguous goal. Every other dimension is unaffected and is still compared.
+//
+// THERE IS THEREFORE NO WHOLE-ASSESSMENT REFUSAL LEFT FOR THIS SUBJECT, and the type says so:
+// AssessRefusal is v2.std.cardinality Never, which has no constructor. That is not a placeholder --
+// it is the claim, checked, that no state of this subject leaves its inputs incomparable. The arm
+// stays in `verify`'s match because the coproduct is closed, and it is unreachable by
+// construction rather than by convention.
+//
+// Deviations and unknowns go to the mint together and the mint decides the arm: unknowns outrank
+// deviations, and the deviations survive into GoalIndeterminate rather than being dropped.
+fn ruleset_assess(
+  goal: RepositoryRulesetGoal,
+  observed: RulesetObservation,
+) -> GoalAssessment<RepoRulesetConvergedEvidence, RulesetDivergence, RulesetUnknown, Never> {
+  assess_by_deviations_and_unknowns(
+    evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
+    deviations: observation_divergences(goal: goal, observation: observed),
+    unknowns: append(
+      observation_unknowns(observation: observed),
+      items: merge_queue_desire_unknowns(policy: goal.policy, rules: goal.rules),
+    ),
+  )
+}
+
+// The goal's own self-consistency on the merge-queue dimension, read from the two places the desire
+// states it. This is a fact about the DESIRE and not about the live ruleset, which is why it does
+// not come from the observation.
+//
+// IT TAKES THE POLICY AND THE RULES AS OPERANDS RATHER THAN READING THE DECLARED ROWS ITSELF.
+// The corpus is SignedOff with a projected merge_queue rule, so a nullary fold over those rows
+// would never reach the Present-vs-missing-rule arm. The RED is a fixture (review 62379).
+fn merge_queue_desire_unknowns(
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> List<RulesetUnknown> {
+  match signed_desire_projection_refusal_for(policy: policy, rules: rules) {
+    Absent => []
+    Present { value: detail } =>
+      [RulesetMergeQueueDesireSelfInconsistent { detail: detail }]
+  }
+}
+
+// THE OBSERVER, WHICH DOES NOT RECEIVE THE GOAL. It takes the subject and reads; nothing about the
+// desired ruleset reaches it, so it cannot narrow what it looks at to what the desire mentions.
+fn observe_repo_ruleset_attempt(
+  subject: Repository,
+  request: RulesetReadRequest,
+) -> ObservationAttempt<RulesetObservation, RulesetReadRefusal> {
+  let observed = observe_repo_ruleset(
+    owner: subject.owner,
+    repo: subject.name,
+    ruleset_id: request.ruleset_id,
+  )
+  match observed {
+    RulesetUnreadable { cause: cause } => ObservationRefused { cause: cause }
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } => ObservationEstablished { observed: observed }
+  }
+}
+
+fn render_unknown(u: RulesetUnknown) -> String {
+  match u {
+    RulesetBypassRosterUnobservable { reader: r, detail: d } =>
+      join(
+        [
+          "this reader (",
+          r as String,
+          ") CANNOT SEE whether the ruleset grants any bypass actor -- not an observation that none exists -- ",
+          d as String,
+        ],
+        "",
+      )
+    RulesetMergeQueueDesireSelfInconsistent { detail: d } =>
+      concat(
+        "the merge queue IS signed off and the desired projection does not carry the signed policy, so the goal states this dimension two ways and WHICH ONE IS THE DESIRE is undetermined -- signing again fixes nothing -- ",
+        d as String,
+      )
+  }
+}
+
+fn render_unknowns(us: List<RulesetUnknown>) -> String {
+  join(map(us, u => render_unknown(u: u)), "; ")
+}
+
+// The repository binding. There is no mutating entry point beside it, and -- unlike the shape it
+// replaces -- there is no stage that could become one by having its refusal edited: this closure
+// carries an observer and an assessor and nothing else.
+//
+// EVERY NON-SATISFIED ARM EXITS FAILURE, and each renders the located facts it holds rather than a
+// summary. The indeterminate arm renders BOTH sides deliberately: the unknown says what could not
+// be read, and the drift beside it is what the previous shape suppressed.
+//
+// THE GoalAssessmentRefused ARM BELOW IS UNREACHABLE BY CONSTRUCTION, not by convention: this
+// assessment instantiates AssessRefusal at v2.std.cardinality Never, which has no constructor
+// anywhere, so no value can arrive there. It is written because the coproduct is CLOSED -- the
+// property that makes a fifth assessment arm a compile error rather than a silent fall-through --
+// and its reason is stated here rather than beside it because DESIGN section 4c models annotations
+// at module-item grain only. An annotation inside a body is a parse refusal, which is how this
+// note came to be here.
+fn verify() -> ProcessExit {
+  match inspect_goal(
+    subject: gunbc_repository,
+    goal: desired_repo_ruleset_goal(),
+    request: RulesetReadRequest { ruleset_id: gunbc_passing_ci_ruleset_id },
+    observe: observe_repo_ruleset_attempt,
+    assess: ruleset_assess,
+  ) {
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalSatisfied { evidence: _ } } => ExitSuccess
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: cause } =>
+      exit_failure(reason: concat("repo ruleset verify refused: ", render_read_refusal(cause: cause)))
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalDiverged { deviations: ds } } =>
+      exit_failure(reason: concat(
+        "repo ruleset verify refused: the live ruleset has drifted from the desired projection -- ",
+        render_divergences(ds: non_empty_to_list(xs: ds)),
+      ))
+    GoalInspected {
+      subject: _,
+      goal: _,
+      request: _,
+      observed: _,
+      assessment: GoalIndeterminate { known_deviations: ds, unknowns: us },
+    } =>
+      exit_failure(reason: join(
+        [
+          "repo ruleset verify refused: the live ruleset could not be fully assessed -- ",
+          render_unknowns(us: non_empty_to_list(xs: us)),
+          if length(ds) == 0 { "" } else { concat(" -- and it has ALSO drifted: ", render_divergences(ds: ds)) },
+        ],
+        "",
+      ))
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: GoalAssessmentRefused { cause: _ } } =>
+      exit_failure(reason: "repo ruleset verify refused: unreachable assessment refusal")
+  }
+}
+
+type RepoRulesetApplyPlan sole_constructor {
+  ruleset_id: Int
+  rules: List<RulesetRuleWire>
+  bypass_actors: List<RulesetBypassActor>
+}
+
+fn passing_ci_ruleset_observation() -> RulesetObservation {
+  observe_repo_ruleset(
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    ruleset_id: gunbc_passing_ci_ruleset_id,
+  )
+}
+
+fn ruleset_observation_satisfies_goal(observed: RulesetObservation) -> Bool {
+  match observed {
+    RulesetUnreadable { cause: _ } => false
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } =>
+      match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed) {
+        GoalSatisfied { evidence: _ } => true
+        GoalDiverged { deviations: _ } => false
+        GoalIndeterminate { known_deviations: _, unknowns: _ } => false
+        GoalAssessmentRefused { cause: _ } => false
+      }
+  }
+}
+
+fn ruleset_observation_mismatch_reason(observed: RulesetObservation) -> String {
+  match observed {
+    RulesetUnreadable { cause: c } => render_read_refusal(cause: c)
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } =>
+      match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed) {
+        GoalSatisfied { evidence: _ } => "live ruleset already equals the declaration"
+        GoalDiverged { deviations: ds } => render_divergences(ds: non_empty_to_list(xs: ds))
+        GoalIndeterminate { known_deviations: ds, unknowns: us } => join(
+          [
+            render_unknowns(us: non_empty_to_list(xs: us)),
+            if length(ds) == 0 { "" } else { concat(" -- ", render_divergences(ds: ds)) },
+          ],
+          "",
+        )
+        GoalAssessmentRefused { cause: _ } => "unreachable assessment refusal"
+      }
+  }
+}
+
+fn ensure_observation_of_ruleset(observed: RulesetObservation) -> EnsureObservation<RulesetObservation> {
+  match observed {
+    RulesetUnreadable { cause: c } => EnsureInaccessible { reason: render_read_refusal(cause: c) }
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: _,
+      merge_queue: _,
+      bypass_roster: _,
+    } => EnsureObserved { evidence: observed }
+  }
+}
+
+fn undetermined_desire_put_reason(policy: MergeQueuePolicy?, rules: List<RulesetRuleWire>) -> String? {
+  let us = merge_queue_desire_unknowns(policy: policy, rules: rules)
+  if length(us) == 0 {
+    none
+  } else {
+    Present {
+      value: concat(
+        "refusing to PUT: the desire is undetermined -- ",
+        render_unknowns(us: us),
+      )
+    }
+  }
+}
+
+fn repo_ruleset_ensure_plan(observed: RulesetObservation) -> EnsurePlan<RepoRulesetApplyPlan> {
+  repo_ruleset_ensure_plan_for(
+    observed: observed,
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  )
+}
+
+fn repo_ruleset_ensure_plan_for(
+  observed: RulesetObservation,
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> EnsurePlan<RepoRulesetApplyPlan> {
+  let declared_bad = required_contexts_declaration_refusals(contexts: desired_required_contexts())
+  if length(declared_bad) > 0 {
+    EnsurePlanUnavailable {
+      reason: concat(
+        "declared required check absent from the required-lane roster: ",
+        join(declared_bad, ", "),
+      )
+    }
+  } else {
+    match undetermined_desire_put_reason(
+      policy: policy,
+      rules: rules,
+    ) {
+      Present { value: why } => EnsurePlanUnavailable { reason: why }
+      Absent =>
+        match observed {
+      RulesetUnreadable { cause: c } =>
+        EnsurePlanUnavailable { reason: render_read_refusal(cause: c) }
+      RulesetObserved {
+        name: _,
+        enforcement: _,
+        target: _,
+        bypass: _,
+        include: _,
+        exclude: _,
+        rule_types: _,
+        standing: _,
+        merge_queue: _,
+        bypass_roster: roster,
+      } =>
+        match roster {
+          BypassRosterUnavailable { reader: r, cause: c } =>
+            EnsurePlanUnavailable {
+              reason: join(
+                [
+                  "refusing to PUT the ruleset while bypass_actors are unobservable (",
+                  r as String,
+                  "): ",
+                  c as String,
+                ],
+                "",
+              )
+            }
+          BypassRosterObserved { actors: _ } => {
+            let destroy = divergences_a_put_would_destroy(
+              ds: observation_divergences(goal: desired_repo_ruleset_goal(), observation: observed),
+            )
+            if length(destroy) > 0 {
+              EnsurePlanUnavailable {
+                reason: concat(
+                  "refusing to PUT: whole-ruleset apply would delete undeclared live state -- ",
+                  render_divergences(ds: destroy),
+                )
+              }
+            } else {
+              merge_queue_put_plan()
+            }
+          }
+        }
+        }
+    }
+  }
+}
+
+fn put_would_destroy_undeclared_or_unread_live_state(d: RulesetDivergence) -> Bool {
+  match d {
+    RulesetRuleUnexpected { rule: _ } => true
+    RulesetBypassActorUnexpected { actor: _ } => true
+    RefNameExcludeNonEmpty { observed: _ } => true
+    RefNameIncludeDrift { observed: _ } => true
+    RequiredContextUnexpected { context: _ } => true
+    RequiredContextUnactionable { count: _ } => true
+    RequiredStatusChecksParametersUnreadable { missing: _ } => true
+    RequiredStatusChecksRuleAmbiguous { count: _ } => true
+    MergeQueueParametersUnreadable { missing: _ } => true
+    MergeQueueRuleAmbiguous { count: _ } => true
+    MergeQueueUndeclared { grouping_strategy: _, merge_method: _ } => true
+    ReaderBypassStandingUnrecognized { raw: _ } => true
+    RulesetNameDrift { observed: _ } => false
+    RulesetEnforcementDrift { observed: _ } => false
+    RulesetTargetDrift { observed: _ } => false
+    RulesetBypassGranted { observed: _ } => false
+    RulesetRuleAbsent { rule: _ } => false
+    RequiredStatusChecksRuleAbsent => false
+    RequiredContextMissing { context: _ } => false
+    StrictPolicyDrift { observed: _ } => false
+    DoNotEnforceOnCreateDrift { observed: _ } => false
+    RulesetBypassActorAbsent { actor: _ } => false
+    MergeQueueRuleAbsent => false
+    MergeQueueSettingDrift { setting: _, observed: _, desired: _ } => false
+  }
+}
+
+fn divergences_a_put_would_destroy(ds: List<RulesetDivergence>) -> List<RulesetDivergence> {
+  filter(ds, d => put_would_destroy_undeclared_or_unread_live_state(d: d))
+}
+
+fn merge_queue_put_plan() -> EnsurePlan<RepoRulesetApplyPlan> {
+  match desired_merge_queue_policy() {
+    Absent =>
+      EnsurePlanAvailable {
+        plan: RepoRulesetApplyPlan {
+          ruleset_id: gunbc_passing_ci_ruleset_id,
+          rules: desired_ruleset_rules(),
+          bypass_actors: desired_bypass_actors(),
+        }
+      }
+    Present { value: p } =>
+      if merge_queue_timeout_below_floor(policy: p) {
+        EnsurePlanUnavailable {
+          reason: "refusing to PUT a merge_queue check_response_timeout at or below the floor lane envelope",
+        }
+      } else {
+        EnsurePlanAvailable {
+          plan: RepoRulesetApplyPlan {
+            ruleset_id: gunbc_passing_ci_ruleset_id,
+            rules: desired_ruleset_rules(),
+            bypass_actors: desired_bypass_actors(),
+          }
+        }
+      }
+  }
+}
+
+fn repo_ruleset_ensure_decision(observed: RulesetObservation) -> UpsertDecision<RepoRulesetApplyPlan> {
+  repo_ruleset_ensure_decision_for(
+    observed: observed,
+    policy: desired_merge_queue_policy(),
+    rules: desired_ruleset_rules(),
+  )
+}
+
+fn repo_ruleset_ensure_decision_for(
+  observed: RulesetObservation,
+  policy: MergeQueuePolicy?,
+  rules: List<RulesetRuleWire>,
+) -> UpsertDecision<RepoRulesetApplyPlan> {
+  ensure_decide(
+    policy: EnsureMayApply,
+    observation: ensure_observation_of_ruleset(observed: observed),
+    observation_satisfies: ruleset_observation_satisfies_goal(observed: observed),
+    mismatch_reason: ruleset_observation_mismatch_reason(observed: observed),
+    plan: repo_ruleset_ensure_plan_for(observed: observed, policy: policy, rules: rules),
+  )
+}
+
+fn apply_repo_ruleset_plan(plan: RepoRulesetApplyPlan) -> RulesetReadRefusal? {
+  match github.Rulesets.Update(
+    auth_token: "",
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    ruleset_id: plan.ruleset_id,
+    name: gunbc_passing_ci_ruleset_name,
+    target: ruleset_target_wire_label(t: desired_ruleset_target),
+    enforcement: ruleset_enforcement_wire_label(e: desired_ruleset_enforcement),
+    conditions: desired_ruleset_conditions(),
+    rules: plan.rules,
+    bypass_actors: plan.bypass_actors,
+  ) {
+    RestAnswered { answer: _ } => none
+    RestRefused { refusal } => Present { value: read_refusal_of_outcome(outcome: refusal) }
+  }
+}
+
+// Operator ceremony: GITHUB_TOKEN must hold admin:repo until a federated identity
+// can hold that scope. Workers do not actuate the live ruleset. The executing route
+// is this function via `gunbc run`; the namespace names it — no second path/string roster.
+fn converge() -> ProcessExit {
+  let before = passing_ci_ruleset_observation()
+  match repo_ruleset_ensure_decision(observed: before) {
+    Noop => ExitSuccess
+    Refuse { reason: why } =>
+      exit_failure(reason: concat("repo ruleset converge refused: ", why as String))
+    Apply { plan: plan } =>
+      match apply_repo_ruleset_plan(plan: plan) {
+        Present { value: cause } =>
+          exit_failure(reason: concat("repo ruleset converge apply refused: ", render_read_refusal(cause: cause)))
+        Absent => {
+          let after = passing_ci_ruleset_observation()
+          if ruleset_observation_satisfies_goal(observed: after) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat(
+              "repo ruleset converge refused: readback did not match the declaration after Apply -- ",
+              ruleset_observation_mismatch_reason(observed: after),
+            ))
+          }
+        }
+      }
+  }
+}

@@ -1,0 +1,64 @@
+module test.fixture.emitted_interpreted_parity.local_callable_value_calls
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// ONE PROGRAM, RUN TWICE: interpreted (`gunbc run`) and emitted (`gunbc compile --target rust`, then
+// the crate built and executed). The two outputs must be byte-identical, and the expected line is
+// `6 8 6 7 9 0`. Each field calls a LOCALLY BOUND function value, the idiom
+// extdeps.apple.app_attest first_assertion_refusal used before gunbc#12251 rewrote it:
+//   1    a let-bound lambda called (annotated: an unannotated lambda's parameter has no type
+//        a Rust closure can be written at)
+//   2    a parameter of function type called
+//   3    a closure returned by a function, let-bound, then called
+//   4    a LAMBDA PARAMETER bound to a List<fn() -> Int?> element, called inside a fold -- the
+//        specimen shape, which refused at inference as "function 'r' not found in scope" because
+//        v1.compiler.infer child_type_node read an Arrow element's RETURN type as the element type
+//   5    the same through a unary element type, List<fn(Int) -> Int>, whose elements are lambda
+//        LITERALS: each realizes as the arrow carrier Rc<dyn Fn>, never a bare closure
+//   6    the fold's absent arm: no step answers, so the default holds
+fn apply_it(g: fn(Int) -> Int, v: Int) -> Int {
+  g(v)
+}
+
+fn make_adder(n: Int) -> fn(Int) -> Int {
+  fn(x) { x + n }
+}
+
+fn first_some(rs: List<fn() -> Int?>) -> Int? {
+  fold(rs, init: none, f: (acc, r) => match acc {
+    Present { value: a } => Present { value: a }
+    Absent => r()
+  })
+}
+
+fn sum_applied(fs: List<fn(Int) -> Int>, v: Int) -> Int {
+  fold(fs, init: 0, f: (acc, f) => acc + f(v))
+}
+
+fn or_zero(o: Int?) -> Int {
+  match o {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn observed_line() -> String {
+  let h: fn(Int) -> Int = fn(x) { x * 2 }
+  let add5 = make_adder(n: 5)
+  let parts = [
+    to_string(value: h(3)),
+    to_string(value: apply_it(g: h, v: 4)),
+    to_string(value: add5(1)),
+    to_string(value: or_zero(o: first_some(rs: [fn() { none }, fn() { Present { value: 7 } }, fn() { Present { value: 9 } }]))),
+    to_string(value: sum_applied(fs: [fn(x) { x + 1 }, fn(x) { x * 3 }], v: 2)),
+    to_string(value: or_zero(o: first_some(rs: [fn() { none }])))
+  ]
+  join(parts, separator: " ")
+}
+
+data expected_line: String = "6 8 6 7 9 0"
+
+fn main() -> ProcessExit {
+  let line = observed_line()
+  if line == expected_line { ExitSuccess } else { ExitFailure { code: 1, reason: line } }
+}

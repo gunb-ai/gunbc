@@ -1,0 +1,27 @@
+module test.claim.printer_start_reconciliation_witness_test
+import std.types {Bool,String}
+import gunbc.fleet.printer_start_reconciliation {observe_start,reconcile_step,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved,ConfirmRunning,StopBlocked,StopUncertain,ReadAgain}
+
+fn report(state:String,file:String,code:String) -> String {
+ join(["{\"print\":{\"gcode_state\":\"",state,"\",\"gcode_file\":\"",file,"\",\"print_error\":",code,"}}"],"")
+}
+test fn exact_running_project_survives_spurious_vendor_error() -> Bool {
+ all(["0","83935249"],code=>match observe_start(text:report(state:"RUNNING",file:"gunbc-abc.3mf",code:code),remote:"gunbc-abc.3mf") {ExpectedProjectRunning=>true _=>false})
+}
+test fn other_project_and_finished_previous_job_never_confirm() -> Bool {
+ all(["IDLE","FINISH","PREPARE","SLICING","UNKNOWN"],state=>match observe_start(text:report(state:state,file:"gunbc-abc.3mf",code:"0"),remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}) &&
+ match observe_start(text:report(state:"RUNNING",file:"gunbc-other.3mf",code:"0"),remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}
+}
+test fn partial_duplicate_and_display_only_reports_cannot_confirm() -> Bool {
+ all(["{}","not json","{\"print\":{\"gcode_state\":\"RUNNING\",\"subtask_name\":\"gunbc-abc.3mf\",\"print_error\":0}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\"}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\",\"print_error\":0,\"print_error\":1}}"],text=>match observe_start(text:text,remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false})
+}
+test fn expected_project_pause_failure_and_real_errors_are_distinct() -> Bool {
+ all(["PAUSE","FAILED"],state=>match observe_start(text:report(state:state,file:"gunbc-abc.3mf",code:"0"),remote:"gunbc-abc.3mf") {ExpectedProjectBlocked=>true _=>false}) &&
+ match observe_start(text:report(state:"RUNNING",file:"gunbc-abc.3mf",code:"83902511"),remote:"gunbc-abc.3mf") {ExpectedProjectBlocked=>true _=>false}
+}
+test fn unresolved_budget_terminates_and_confirmation_stops_reads() -> Bool {
+ (match reconcile_step(observation:StartUnresolved,remaining:2) {ReadAgain {remaining:n}=>n==1 _=>false}) &&
+ (match reconcile_step(observation:StartUnresolved,remaining:1) {StopUncertain=>true _=>false}) &&
+ (match reconcile_step(observation:ExpectedProjectRunning,remaining:8) {ConfirmRunning=>true _=>false}) &&
+ (match reconcile_step(observation:ExpectedProjectBlocked,remaining:8) {StopBlocked=>true _=>false})
+}

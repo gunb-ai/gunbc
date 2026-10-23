@@ -1,0 +1,203 @@
+module extdeps.bmc.redfish
+
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor }
+import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.languages.json.parse {
+  parse_json_document, json_field, json_field_string,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
+}
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "dmtf.org/standards/redfish"
+  }
+}
+
+fn redfish_memory_summary_from_gib(total_gib: Gibibyte) -> RedfishMemorySummary {
+  RedfishMemorySummary { total_memory_bytes: gibibyte_to_byte_size(g: total_gib) }
+}
+
+fn redfish_processor_summary(
+  model: NonEmptyStr,
+  processor_count: Int,
+  core_count: HardwareThreadCount,
+  logical_processor_count: HardwareThreadCount?
+) -> RedfishProcessorSummary {
+  RedfishProcessorSummary {
+    model: model,
+    processor_count: processor_count,
+    core_count: core_count,
+    logical_processor_count: logical_processor_count,
+  }
+}
+
+fn redfish_system_inventory(
+  model: NonEmptyStr,
+  manufacturer: NonEmptyStr?,
+  processor_model: NonEmptyStr,
+  processor_count: Int,
+  processor_core_count: HardwareThreadCount,
+  total_memory_gib: Gibibyte,
+  power_state: RedfishPowerState,
+  logical_processor_count: HardwareThreadCount?
+) -> RedfishSystemInventory {
+  RedfishSystemInventory {
+    model: model,
+    manufacturer: manufacturer,
+    serial_number: none,
+    processor: redfish_processor_summary(
+      model: processor_model,
+      processor_count: processor_count,
+      core_count: processor_core_count,
+      logical_processor_count: logical_processor_count
+    ),
+    memory: redfish_memory_summary_from_gib(total_gib: total_memory_gib),
+    power_state: power_state,
+  }
+}
+
+fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt? {
+  fold(
+    controls,
+    init: Absent,
+    f: (acc, ctrl) =>
+      match ctrl.power_consumed_watts {
+        Absent => acc
+        Present { value: w } =>
+          match acc {
+            Absent => Present { value: w }
+            Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+          }
+      }
+  )
+}
+
+fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Watt? {
+  fold(
+    sensors,
+    init: Absent,
+    f: (acc, sensor) =>
+      match sensor {
+        PowerSensor { name: _, watts: reading } =>
+          match reading {
+            Absent => acc
+            Present { value: w } =>
+              match acc {
+                Absent => Present { value: w }
+                Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+              }
+          }
+        TemperatureSensor { name: _, celsius: _ } => acc
+        FanTachSensor { name: _, rpm: _ } => acc
+      }
+  )
+}
+
+fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
+  match snapshot.power {
+    Present { value: p } =>
+      match redfish_power_consumed_total_watts(controls: p.controls) {
+        Present { value: w } => Present { value: w }
+        Absent =>
+          match snapshot.sensors {
+            Absent => none
+            Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
+          }
+      }
+    Absent =>
+      match snapshot.sensors {
+        Absent => none
+        Present { value: s } => redfish_sensors_power_total_watts(sensors: s.sensors)
+      }
+  }
+}
+
+fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerControl? {
+  fold(
+    power.controls,
+    init: Absent,
+    f: (acc, ctrl) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => Present { value: ctrl }
+      }
+  )
+}
+
+fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
+  BmcGroundedHostObservations {
+    processor_model: snapshot.system.processor.model,
+    processor_core_count: snapshot.system.processor.core_count,
+    total_memory_bytes: snapshot.system.memory.total_memory_bytes,
+    power_consumed_watts: bmc_telemetry_power_consumed_watts(snapshot: snapshot),
+  }
+}
+
+fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
+  inv.memory.total_memory_bytes
+}
+
+// DMTF REDFISH BASE MESSAGE REGISTRY, PasswordChangeRequired (DSP8011, Base 1.x): a service
+// answers an authenticated request with this message when the account's password must be changed
+// before any other access is granted, and the only admitted request is a PATCH of that account's
+// Password property. It is not an authentication failure: the credential was accepted. Observed on
+// ASRock Rack ALTRAD8UD-1L2T OpenBMC 3.22.00 (srv13, 2026-10-08) as HTTP 403 whose top-level
+// @Message.ExtendedInfo carries MessageId "Base.1.16.0.PasswordChangeRequired"; a wrong password on
+// the same service is a bare 401. The registry version varies by service, so the id is matched as
+// the "Base." registry prefix plus the ".PasswordChangeRequired" key, and the message is read from
+// either the top-level annotation (bmcweb) or the standard error object's annotation.
+type RedfishPasswordChangeVerdict
+  = RedfishPasswordChangeRequired
+  | RedfishPasswordChangeNotIndicated
+
+fn redfish_message_id_is_password_change_required(id: String) -> Bool {
+  starts_with(s: id, prefix: "Base.") && ends_with(s: id, suffix: ".PasswordChangeRequired")
+}
+
+fn redfish_message_requires_password_change(message: JsonValue) -> Bool {
+  match json_field_string(obj: message, key: "MessageId") {
+    FieldRead { value: id } => redfish_message_id_is_password_change_required(id: id)
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
+fn redfish_extended_info_requires_password_change(holder: JsonValue) -> Bool {
+  match json_field(obj: holder, key: "@Message.ExtendedInfo") {
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: elements } =>
+          fold(elements, init: false, f: fn(acc, m) { acc || redfish_message_requires_password_change(message: m) })
+        JsonNull => false
+        JsonBool { value: _ } => false
+        JsonNumber { lexeme: _ } => false
+        JsonString { value: _ } => false
+        JsonObject { members: _ } => false
+      }
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
+fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => RedfishPasswordChangeNotIndicated
+    JsonDocumentParsed { value: doc } =>
+      if redfish_extended_info_requires_password_change(holder: doc) {
+        RedfishPasswordChangeRequired
+      } else {
+        match json_field(obj: doc, key: "error") {
+          FieldRead { value: err } =>
+            if redfish_extended_info_requires_password_change(holder: err) { RedfishPasswordChangeRequired } else { RedfishPasswordChangeNotIndicated }
+          FieldAbsent => RedfishPasswordChangeNotIndicated
+          FieldMalformed { cause: _ } => RedfishPasswordChangeNotIndicated
+        }
+      }
+  }
+}

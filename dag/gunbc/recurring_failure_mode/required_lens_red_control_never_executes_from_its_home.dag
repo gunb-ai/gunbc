@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.required_lens_red_control_never_executes_from_its_home
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data required_lens_red_control_never_executes_from_its_home: RecurringFailureMode = RecurringFailureMode {
+  identity: "required_lens_red_control_never_executes_from_its_home" as NonEmptyStr,
+
+  receipts: [
+    "**a lens is enrolled as REQUIRED and reports a mechanical rung, while the discriminating RED that would establish that rung lives in a module the floor never plans** (INVALID STATE: the obligation census names a witness as the class's discriminating red; that witness's home is excluded from per-PR discovery -- a long lane, a cost-declined module, an exclusion pattern -- so no required run has ever executed it. The claimed rung is then supported by a control whose verdict nobody has seen, and the lens can be wholly broken while every green run agrees it is enforced.",
+
+    "**THE DISCRIMINATOR: the cited discriminating red and the planned population do not intersect.** It is a JOIN, not a property of either side, which is why neither the census nor the exclusion roster looks wrong on its own: the census names a real witness that really exists, the exclusion roster declines a real cost, and only the pair is the defect.",
+
+    "HARM, and it is the inverse of the usual one. A missing test leaves a gap everyone can see. This leaves a gap that READS AS COVERED: the census publishes MechanicallyPreventable, the witness file exists, the function is named, and the roster entry is well formed. Every artifact a reviewer would consult agrees, and the one fact that would settle it -- the verdict -- has no producer.",
+
+    "SPECIMEN (2026-09-12, gunbc#11004, found because gunbc#11073's long-home arm ran a long-lane witness FOR ITS VERDICT for the first time). `gunbc.v2_compile_obligation_census accumulator_copy_obligation` claims `MechanicallyPreventable` and names `v2.test.long.accumulator_copy_compile_gate gate_red_quadratic_rejects` as its discriminating red. That witness's home is `test/claim/long/`, a `gunbc.ci_layer_roots witness_exclusion_frontier` pattern, so it is planned on no ordinary floor. Its first real execution FAILED, and the three-way discrimination is recorded because the failure mode matters: the specimen normalizes fine and the gate does not reject with a wrong reason -- `accumulator_copy_compile_gate` ACCEPTS it. `accumulator_copy_findings` returns no suspect for `fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })`, which is the textbook shape the lens exists to refuse.",
+
+    "MEASURED ON THE BASELINE, WHICH IS WHAT MAKES IT THIS CLASS AND NOT A REGRESSION. The same witness was run with one binary against `origin/main` and against the PR head: FAIL on both, with the sibling controls `gate_green_identity_accepts_clean` and `gate_refusal_ledger_counted_not_gating` PASS on both. The red is latent on main and was merely made visible; a failing witness is not a regression until it is shown to have passed somewhere.",
+
+    "RUNG FOUND AT: the class's own rung is what this failure is ABOUT, so it is stated twice. The census ASSERTED mechanically preventable (rung 2). The rung ESTABLISHED by executed evidence is BELOW the ladder for the affected class, because no run ever refused the invalid state on a real acceptance path and the one execution that occurred accepted it. DESIGN section 4b(1) is exact about which of those two may be reported: the rung must equal the rung established by executed evidence, and an inert control establishes nothing.",
+
+    "RECOGNITION RULE, cheap and mechanical: for each obligation that names a discriminating red, ask WHEN THAT WITNESS LAST RAN. If the answer cannot be produced from a run receipt -- not from the roster, not from the file existing, not from a local invocation -- the rung it supports is asserted. The tell is a witness whose module path matches an exclusion pattern while the obligation citing it claims a mechanical rung.",
+
+    "DISTINCT FROM ITS NEIGHBOURS. Not `discriminating_arm_built_but_never_enrolled`: there the arm is absent from the roster, and the repair is enrolment; here the arm IS enrolled and the roster is correct -- the planned population is what excludes it, so enrolling it again changes nothing. Not `a_positive_control_certifies_the_defect_it_exists_to_catch`: that control runs and reports agreement with a wrong subject; this one does not run at all. Not `roster_is_its_own_denominator`: the denominator here is fine and the join is the defect.",
+
+    "CEILING: structurally guaranteed. Whether a cited discriminating red intersects the planned population is a decidable join between two declared rosters -- the obligation census and the exclusion frontier -- both of which are modelled data in this tree, so an obligation citing a red the floor cannot plan can be refused at ingestion rather than discovered by a lane that happens to widen the population.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the obligation census joined against the planned-witness population, refusing an obligation whose claimed rung rests on a witness no required lane plans. That is a join over two rosters this repository already declares, and it is not the same as making the excluded witnesses affordable -- affordability is the separate cost trigger the census already carries, and either one alone leaves the other's harm standing.)",
+
+    "A SECOND SPECIMEN AT A WORSE GRAIN, 2026-09-12 (gunbc#11142): THE CONTROL WOULD NOT HAVE RUN EVEN IF IT HAD BEEN PLANNED. The first specimen is a red control the floor never plans. This one is the same class with an aggravating second cause: `v2.test.long.accumulator_copy_fold_analysis` carries the analysis-grain controls for the same lens -- `quadratic_fold_has_suspect` among them -- and its `ingest` passed the sealed `NormalizedTree` carrier where a `Node` is wanted, missing `.root`, dead since the BL-1 seal in gunbc#10439. ALL TWENTY-ONE of its witnesses failed at the type level with `no field 'kind' on type 'NormalizedTree'`, so none of them ever evaluated its subject. Being unplanned hid the fact that they were also unrunnable, and the two causes are independent: planning them would have produced twenty-one type errors rather than twenty-one verdicts.",
+
+    "WHY THAT MATTERS FOR THE RECOGNITION RULE ABOVE, which asks when the witness last ran: for this module the honest answer was NEVER, and no roster could say so -- the exclusion frontier records that the home is unplanned, and nothing anywhere records that the file had stopped compiling its own subject. The repair is one word (`normalized.root`), which is the measure of how long a dark module can carry a type error: un-darkening it returned 17 of 21 to green immediately and left 4 pre-existing reds that had never been seen, three distinct defects, established as pre-existing on a control tree carrying only the `.root` repair. A dark home is therefore not merely uncovered; it is a place where unrelated rot accumulates without a reader, and the census cannot distinguish the two states from outside.",
+  ],
+
+  evidence: [],
+}

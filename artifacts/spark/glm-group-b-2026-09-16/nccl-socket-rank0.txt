@@ -1,0 +1,24 @@
+spark-0c75:346:346 [0] NCCL INFO NET/Plugin: Could not find: libnccl-net.so
+spark-0c75:346:346 [0] NCCL INFO NET/IB : No device found.
+spark-0c75:346:346 [0] NCCL INFO NET/IB : Using [RO]; OOB enp1s0f1np1:192.168.110.17<0>
+spark-0c75:346:346 [0] NCCL INFO NET/Socket : Using [0]enp1s0f1np1:192.168.110.17<0>
+spark-0c75:346:346 [0] NCCL INFO Using network Socket
+spark-0c75:346:346 [0] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'enp1s0f1np1'
+spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 01/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 02/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 03/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 01/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 02/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 03/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Using network Socket
+spark-0c75:346:346 [0] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'enp1s0f1np1'
+spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 01/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 02/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 03/0 : 2[0] -> 0[0] [receive] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 00/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 01/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 02/0 : 0[0] -> 2[0] [send] via NET/Socket/0
+spark-0c75:346:346 [0] NCCL INFO Channel 03/0 : 0[0] -> 2[0] [send] via NET/Socket/0

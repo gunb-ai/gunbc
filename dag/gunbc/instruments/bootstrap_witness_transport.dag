@@ -1,0 +1,11 @@
+module tools.bootstrap_witness_transport
+
+import tools.host_prelude { run_witness_bin }
+
+fn run_bootstrap_witness() -> Bool {
+  run_witness_bin(
+    var_name: "BOOTSTRAP_WITNESS",
+    bin_name: "bootstrap_witness",
+    args: ["--suite", "floor"]
+  )
+}

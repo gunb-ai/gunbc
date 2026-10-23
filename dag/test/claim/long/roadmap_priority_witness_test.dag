@@ -1,0 +1,52 @@
+module test.claim.long.roadmap_priority_witness
+
+import gunbc.roadmap_priority { ProjectPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3, project_priority_walk, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key }
+import gunbc.roadmap.roadmap_project { membership_index }
+import gunbc.roadmap_nesting { RoadmapMembership }
+
+fn member(child: String, parent: String) -> RoadmapMembership {
+  RoadmapMembership { member: child, project: parent, contribution: "fixture" }
+}
+
+test fn nonblocking_debt_descendants_inherit_p3_without_promoting_other_work() -> Bool {
+  let index = membership_index(memberships: [member(child: "slice", parent: "shell-typed-invocation"), member(child: "shell-typed-invocation", parent: "root")])
+  let debt = issue_priority_of(node_id: "slice", index: index)
+  roadmap_priority_rank(priority: debt.priority) == 3
+    && debt.source == "shell-typed-invocation"
+    && roadmap_priority_rank(priority: issue_priority_of(node_id: "root", index: index).priority) == 2
+    && roadmap_priority_rank(priority: issue_priority_of(node_id: "unclassified", index: index).priority) == 2
+}
+
+test fn nearest_classified_project_overrides_ancestor_and_urgency_sorts_first() -> Bool {
+  let index = membership_index(memberships: [member(child: "slice", parent: "debt"), member(child: "debt", parent: "urgent")])
+  let policies = [ProjectPriority { project: "urgent", priority: PriorityP0, reason: "Urgent fixture" }, ProjectPriority { project: "debt", priority: PriorityP3, reason: "Non-blocking fixture" }]
+  let near = project_priority_walk(node_id: "slice", index: index, policies: policies, visited: [])
+  let urgent = project_priority_walk(node_id: "urgent", index: index, policies: policies, visited: [])
+  near.source == "debt" && roadmap_priority_rank(priority: near.priority) == 3
+    && roadmap_priority_rank(priority: urgent.priority) == 0
+    && roadmap_priority_rank(priority: PriorityP0) < roadmap_priority_rank(priority: PriorityP1)
+}
+
+test fn cyclic_and_ambiguous_membership_does_not_invent_urgency() -> Bool {
+  let index = membership_index(memberships: [member(child: "a", parent: "b"), member(child: "b", parent: "a"), member(child: "fork", parent: "shell-typed-invocation"), member(child: "fork", parent: "a")])
+  let cycle = issue_priority_of(node_id: "a", index: index)
+  let ambiguous = issue_priority_of(node_id: "fork", index: index)
+  roadmap_priority_rank(priority: cycle.priority) == 2 && cycle.source == ""
+    && roadmap_priority_rank(priority: ambiguous.priority) == 2 && ambiguous.source == ""
+}
+
+
+test fn only_v2_project_work_inherits_p1_and_debt_override_stays_p3() -> Bool {
+  let index = membership_index(memberships: [member(child: "bootstrap", parent: "v2-emitter-production"), member(child: "v2-emitter-production", parent: "v2-compiler-live"), member(child: "shell-typed-invocation", parent: "v2-compiler-live"), member(child: "fleet-work", parent: "fleet")])
+  roadmap_priority_rank(priority: issue_priority_of(node_id: "bootstrap", index: index).priority) == 1
+    && roadmap_priority_rank(priority: issue_priority_of(node_id: "shell-typed-invocation", index: index).priority) == 3
+    && roadmap_priority_rank(priority: issue_priority_of(node_id: "fleet-work", index: index).priority) == 2
+}
+
+// Ready work leads even urgent blocked work; urgency then orders each readiness bucket.
+test fn status_then_priority_orders_workspace() -> Bool {
+  workspace_priority_order_key(priority: PriorityP3, status_rank: 10) < workspace_priority_order_key(priority: PriorityP0, status_rank: 4)
+    && workspace_priority_order_key(priority: PriorityP1, status_rank: 10) < workspace_priority_order_key(priority: PriorityP2, status_rank: 10)
+    && workspace_priority_order_key(priority: PriorityP2, status_rank: 9) < workspace_priority_order_key(priority: PriorityP1, status_rank: 4)
+    && workspace_priority_order_key(priority: PriorityP2, status_rank: 9) < workspace_priority_order_key(priority: PriorityP2, status_rank: 4)
+}

@@ -1,0 +1,66 @@
+module test.claim.namecheap_hosts_witness_test
+import std.types { String, Bool }
+import extdeps.namecheap.read_hosts { namecheap_read_hosts, NamecheapHostsObserved, NamecheapHostsRefused }
+import extdeps.languages.xml.read { read_xml_subset, XmlRefused, XmlParsed }
+
+fn namecheap_api_response(result: String) -> String {
+  join(["<?xml version=\"1.0\"?><ApiResponse xmlns=\"http://api.namecheap.com/xml.response\" Status=\"OK\"><Errors/><RequestedCommand>namecheap.domains.dns.getHosts</RequestedCommand><CommandResponse Type=\"namecheap.domains.dns.getHosts\">", result, "</CommandResponse></ApiResponse>"], "")
+}
+fn result(domain: String, rows: String) -> String {
+  join(["<DomainDNSGetHostsResult Domain=\"", domain, "\" IsUsingOurDNS=\"true\">", rows, "</DomainDNSGetHostsResult>"], "")
+}
+test fn valid_host_preserves_unknown_provider_fields() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: result(domain: "gunb.ai", rows: "<Host HostId='1' Name='@' Type='TXT' Address='a&amp;b' TTL='1800' Future='preserved'/>")), domain: "gunb.ai") {
+    NamecheapHostsObserved { domain: observed_domain, hosts, result_fields: _ } => observed_domain == "gunb.ai" && count(hosts) == 1 && all(hosts, h => h.fields.any(f => f.name == "Future" && f.value == "preserved") && h.fields.any(f => f.name == "Address" && f.value == "a&b"))
+    _ => false
+  }
+}
+test fn wrong_domain_refuses() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: result(domain: "other.ai", rows: "")), domain: "gunb.ai") { NamecheapHostsRefused { reason: _ } => true _ => false }
+}
+test fn incomplete_host_refuses() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: result(domain: "gunb.ai", rows: "<Host Name='@' Type='A' Address='1.2.3.4'/>")), domain: "gunb.ai") { NamecheapHostsRefused { reason: _ } => true _ => false }
+}
+test fn duplicate_attributes_refuse() -> Bool {
+  match read_xml_subset(s: "<a x='one' x='two'/>") { XmlRefused => true _ => false }
+}
+test fn extra_document_refuses() -> Bool {
+  match read_xml_subset(s: "<a/><b/>") { XmlRefused => true _ => false }
+}
+test fn mismatched_close_refuses() -> Bool {
+  match read_xml_subset(s: "<a></b>") { XmlRefused => true _ => false }
+}
+test fn doctype_and_external_entity_refuse() -> Bool {
+  match read_xml_subset(s: "<!DOCTYPE a [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><a>&x;</a>") { XmlRefused => true _ => false }
+}
+test fn encoded_markup_is_text_not_a_second_host() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: result(domain: "gunb.ai", rows: "&lt;Host Name='fake'/&gt;")), domain: "gunb.ai") { NamecheapHostsRefused { reason: _ } => true _ => false }
+}
+test fn nested_namespace_override_refuses() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: "<DomainDNSGetHostsResult xmlns='foreign' Domain='gunb.ai' IsUsingOurDNS='true'/>"), domain: "gunb.ai") { NamecheapHostsRefused { reason: _ } => true _ => false }
+}
+test fn duplicate_results_refuse() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: concat(result(domain: "gunb.ai", rows: ""), result(domain: "gunb.ai", rows: ""))), domain: "gunb.ai") { NamecheapHostsRefused { reason: _ } => true _ => false }
+}
+
+test fn malformed_declaration_refuses() -> Bool {
+  match read_xml_subset(s: "<?xml garbage?><a/>") { XmlRefused => true _ => false }
+}
+test fn unsupported_entity_refuses() -> Bool {
+  match read_xml_subset(s: "<a>&unknown;</a>") { XmlRefused => true _ => false }
+}
+test fn literal_attribute_newline_refuses_instead_of_misnormalizing() -> Bool {
+  match read_xml_subset(s: "<a value='one\ntwo'/>") { XmlRefused => true _ => false }
+}
+test fn duplicate_provider_ids_refuse() -> Bool {
+  let host = "<Host HostId='1' Name='@' Type='A' Address='1.2.3.4' TTL='1800'/>"
+  match namecheap_read_hosts(body: namecheap_api_response(result: result(domain: "gunb.ai", rows: concat(host, host))), domain: "gunb.ai") { NamecheapHostsRefused { reason: _ } => true _ => false }
+}
+
+
+test fn provider_result_fields_are_not_discarded() -> Bool {
+  match namecheap_read_hosts(body: namecheap_api_response(result: "<DomainDNSGetHostsResult Domain='gunb.ai' IsUsingOurDNS='true' EmailType='MX'/>"), domain: "gunb.ai") {
+    NamecheapHostsObserved { domain: _, hosts: _, result_fields } => result_fields.any(f => f.name == "EmailType" && f.value == "MX")
+    _ => false
+  }
+}

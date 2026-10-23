@@ -1,0 +1,101 @@
+#!/bin/busybox sh
+exec </dev/console >/dev/console 2>&1
+#
+# PID 1 of the runner-host image. For this first slice its whole job is to make the boot
+# OBSERVABLE: bring up the minimum pseudo-filesystems, print an identity marker the acceptance
+# test can bind to, and report the two facts the hardware lane could only predict --
+# whether igb bound the observed PCI functions, and whether /dev/kvm exists.
+#
+# IT DOES NOT REAP, SUPERVISE, OR NETWORK. Those belong to the host agent this shell is a
+# placeholder for, and pretending otherwise here would be the scaffold that quietly becomes
+# the architecture.
+
+/bin/busybox --install -s /bin 2>/dev/null
+
+mount -t proc     proc     /proc
+mount -t sysfs    sysfs    /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+
+echo ""
+echo "================ GUNBC-RUNNER-HOST ================"
+echo "marker=gunbc-runner-host-boot"
+echo "image-build=@@BUILD_ID@@"
+echo "kernel=$(uname -r)"
+echo "machine=$(uname -m)"
+
+# THE PREDICTION THE HARDWARE LANE OWED A RECEIPT FOR. runner_host_hardware_observation lists
+# "that igb bound these exact PCI functions" as unobserved until Linux boots. This is that
+# observation, printed at the grain the claim was made: the driver's own bound-device links.
+echo "--- igb binding ---"
+if [ -d /sys/bus/pci/drivers/igb ]; then
+  for d in /sys/bus/pci/drivers/igb/[0-9]*; do
+    [ -e "$d" ] || continue
+    echo "igb-bound=$(basename $d)"
+  done
+else
+  echo "igb-bound=NONE (driver directory absent)"
+fi
+
+echo "--- network interfaces ---"
+for n in /sys/class/net/*; do
+  [ -e "$n" ] || continue
+  echo "iface=$(basename $n) mac=$(cat $n/address 2>/dev/null)"
+done
+
+# THE OTHER PRECONDITION THE WHOLE DESIGN RESTS ON. No /dev/kvm means no Firecracker, so this
+# is reported as its own line rather than folded into a general health message.
+echo "--- kvm ---"
+if [ -c /dev/kvm ]; then
+  echo "kvm=present"
+else
+  echo "kvm=ABSENT"
+fi
+
+echo "--- storage ---"
+echo "block-devices=$(ls /sys/class/block 2>/dev/null | tr '\n' ' ')"
+
+# ── the guest smoke, under a deadline the HOST enforces ────────────────────────────────────
+# THE DEADLINE IS OUTSIDE THE GUEST ON PURPOSE. A guest asked to power itself off may not, and a
+# wedged VMM is exactly the state a runner host must be able to end. This is the crudest possible
+# form of that -- a timeout around one process -- and it is named as such rather than presented as
+# the lifecycle enforcement the host agent will owe.
+echo "--- firecracker smoke ---"
+# THE DEVICE NODE EXISTS BEFORE THE DEVICE DOES, and the first attempt lost that race: /init
+# mounted at 17.5s while the kernel registered sr0 at 17.58s. The initramfs declares /dev/sr0
+# statically, so its presence proves nothing about readiness -- polling the MOUNT is the only
+# observation that does. Bounded, because an unbounded wait for hardware that will never appear is
+# a hang rather than a diagnosis.
+MOUNTED=no
+i=0
+while [ $i -lt 30 ]; do
+  if mount -t iso9660 -o ro /dev/sr0 /media 2>/dev/null; then MOUNTED=yes; break; fi
+  i=$((i+1))
+  /bin/busybox sleep 1
+done
+echo "media-mount=$MOUNTED after ${i}s"
+echo "media-contents=$(ls /media/guest 2>&1 | tr '\n' ' ')"
+echo "firecracker-version=$(/bin/firecracker --version 2>&1 | head -1)"
+echo "jailer-present=$(test -x /bin/jailer && echo yes || echo no)"
+echo "guest-boot-begin"
+# THE EXIT STATUS IS FIRECRACKER'S, NOT head'S. The previous form piped into head and read $? --
+# which reports the LAST command in the pipeline, so a failed hypervisor would have shown rc=0.
+/bin/busybox timeout 90 /bin/firecracker --no-api --config-file /media/guest/vm.json > /run/guest.log 2>&1
+GRC=$?
+/bin/busybox head -60 /run/guest.log
+echo "guest-boot-end rc=$GRC"
+
+echo "marker-end=gunbc-runner-host-boot"
+echo "==================================================="
+echo ""
+
+# A SHELL HERE IS A DELIBERATE PROPERTY OF THE BOOTSTRAP PROFILE, NOT THE PRODUCTION ONE.
+# runner_host_surface names RunnerHostProduction and RunnerHostRecovery as mutually exclusive;
+# this image is the recovery/bootstrap shape, and the production image must not inherit it.
+# PID 1 MUST NOT EXIT. The first boot ended in "Attempted to kill init!" because this exec'd a
+# shell whose stdin was immediately EOF. A shell is offered, and its exit falls through to a halt
+# loop rather than killing init and panicking the machine.
+while true; do
+  /bin/busybox sh || true
+  echo "[init] shell exited; PID 1 holding. Reset via BMC to reboot."
+  /bin/busybox sleep 30
+done

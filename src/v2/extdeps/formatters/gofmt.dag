@@ -1,0 +1,11 @@
+module v2.extdeps.formatters.gofmt
+
+import v2.std.patch { ConfigPatchRecord, config_patch_layer }
+
+type GofmtConfig {}
+
+data gofmt_defaults: GofmtConfig = GofmtConfig {}
+
+fn gofmt_layer(base: GofmtConfig, patch: ConfigPatchRecord<GofmtConfig>) -> GofmtConfig {
+  config_patch_layer(base: base, patch: patch)
+}

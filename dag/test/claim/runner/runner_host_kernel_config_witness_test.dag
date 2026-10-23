@@ -1,0 +1,114 @@
+module test.claim.runner.runner_host_kernel_config_witness_test
+
+import std.types { Bool, List, String }
+import gunbc.runner.runner_host_kernel_config {
+  KernelConfigVerdict, KernelConfigHolds, KernelConfigRefused, KernelConfigUnreadable,
+  KernelOptionVerdict, KernelOptionMissing, KernelOptionUnexpectedlyEnabled, KernelOptionSatisfied,
+  verify_kernel_config, runner_host_kernel_options, kernel_config_argv_text,
+}
+
+// A CONFIGURATION THAT SATISFIES EVERY MODELED OPTION, built from the roster itself so the fixture
+// cannot drift away from what is required. Hand-writing fifty-two CONFIG_ lines would create a
+// second place that says what the kernel needs -- the exact fork this module exists to close.
+fn config_line(o_symbol: String, enabled: Bool) -> String {
+  if enabled {
+    join([o_symbol, "=y"], "")
+  } else {
+    join(["# ", o_symbol, " is not set"], "")
+  }
+}
+
+fn satisfying_config() -> String {
+  join(
+    runner_host_kernel_options()
+      |> map(o => match o.setting {
+           KernelOptionEnabled => config_line(o_symbol: o.symbol as String, enabled: true)
+           KernelOptionDisabled => config_line(o_symbol: o.symbol as String, enabled: false)
+         }),
+    "\n",
+  )
+}
+
+test fn a_configuration_meeting_every_modeled_option_holds() -> Bool {
+  match verify_kernel_config(config: satisfying_config()) {
+    KernelConfigHolds { options_checked: n } => n == (runner_host_kernel_options() |> count)
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED. A configuration that is complete except for ONE required option must
+// refuse and must name that option -- this is precisely the CONFIG_NFT_COUNTER shape, where the
+// model required a symbol the built kernel did not contain and nothing noticed for weeks.
+//
+// THE OPTION IS DROPPED BY REBUILDING THE TEXT WITHOUT IT rather than by editing a literal, so the
+// negative case stays discriminating as the roster changes.
+fn config_missing(symbol: String) -> String {
+  join(
+    runner_host_kernel_options()
+      |> filter(o => (o.symbol as String) != symbol)
+      |> map(o => match o.setting {
+           KernelOptionEnabled => config_line(o_symbol: o.symbol as String, enabled: true)
+           KernelOptionDisabled => config_line(o_symbol: o.symbol as String, enabled: false)
+         }),
+    "\n",
+  )
+}
+
+test fn one_missing_required_option_refuses_and_names_it() -> Bool {
+  match verify_kernel_config(config: config_missing(symbol: "CONFIG_KVM")) {
+    KernelConfigRefused { failures: fs } =>
+      (fs |> count) == 1
+      && (fs |> any(f => match f {
+           KernelOptionMissing { symbol: s, required_for: _ } => (s as String) == "CONFIG_KVM"
+           _ => false
+         }))
+    _ => false
+  }
+}
+
+// A DISABLED OPTION THAT IS ON IS ALSO A FAILURE, and it fails differently. Folding it into
+// "missing" would lose the distinction between a kernel that lacks something it needs and one that
+// carries something it must not -- CONFIG_MODULES being on would make every other requirement here
+// a runtime question instead of a build-time one.
+fn config_with_modules_enabled() -> String {
+  join([satisfying_config(), "CONFIG_MODULES=y"], "\n")
+}
+
+test fn an_option_required_off_but_found_on_refuses_distinctly() -> Bool {
+  match verify_kernel_config(config: config_with_modules_enabled()) {
+    KernelConfigRefused { failures: fs } =>
+      fs |> any(f => match f {
+        KernelOptionUnexpectedlyEnabled { symbol: s, required_for: _ } => (s as String) == "CONFIG_MODULES"
+        _ => false
+      })
+    _ => false
+  }
+}
+
+// AN UNREADABLE CONFIG MUST NOT PASS, AND THIS IS THE ARM MOST LIKELY TO BE GOT WRONG. Every
+// "is this symbol present" test answers no on an empty string, and a DISABLED option is satisfied by
+// absence -- so a verifier that only counted failures would call an empty file compliant for the two
+// disabled options, and would call an unreadable one compliant for all fifty-two if the roster ever
+// became disabled-only. The emptiness check is separate for that reason.
+test fn an_empty_or_unreadable_configuration_refuses() -> Bool {
+  match verify_kernel_config(config: "") {
+    KernelConfigUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn text_that_is_not_a_kernel_config_refuses() -> Bool {
+  match verify_kernel_config(config: "this file is not a kernel configuration at all") {
+    KernelConfigUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+// THE EMITTED FLAGS COVER EVERY MODELED OPTION. The build asks for exactly what the verifier will
+// demand, which is what makes the two agree by construction rather than by an author keeping them
+// in step.
+test fn the_emitted_argv_names_every_modeled_option() -> Bool {
+  let argv = kernel_config_argv_text()
+  runner_host_kernel_options()
+    |> all(o => string_contains(s: argv, pattern: o.symbol as String))
+}

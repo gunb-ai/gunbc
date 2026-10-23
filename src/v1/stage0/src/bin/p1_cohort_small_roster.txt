@@ -1,0 +1,10 @@
+dag/test/claim/accelerator_demo_execution_witness_test.dag
+dag/test/claim/accelerator_demo_gpu_witness_test.dag
+dag/test/claim/accelerator_demo_model_witness_test.dag
+dag/test/claim/access_iam_validation_test.dag
+dag/test/claim/access_layer_extension_witness_test.dag
+dag/test/claim/access_token_ensure_witness_test.dag
+dag/test/claim/access_validation_test.dag
+dag/test/claim/acquisition_mechanism_witness_test.dag
+dag/test/claim/advertising_interface_witness_test.dag
+dag/test/claim/annotation_carrier_witness_test.dag

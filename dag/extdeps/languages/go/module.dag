@@ -1,0 +1,149 @@
+module extdeps.languages.go.module
+
+import std.types { NonEmptyStr, brand }
+import std.algebra { Ordering, Less, Equal, Greater }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, ComparisonSide, LeftOperand, RightOperand }
+import extdeps.version.semver { semver_compare, semver_version_parse, SemVerVersion }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "go.dev/ref/mod"
+  }
+}
+
+type GoSemVer {
+  major: Int
+  minor: Int
+  patch: Int
+  prerelease: String?
+  build: String?
+}
+
+fn go_semver_label(v: GoSemVer) -> String {
+  let base = concat("v", concat(to_string(v.major), concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))))
+  let with_pre = match v.prerelease {
+    Present { value: pre } => concat(base, concat("-", pre))
+    Absent => base
+  }
+  match v.build {
+    Present { value: bld } => concat(with_pre, concat("+", bld))
+    Absent => with_pre
+  }
+}
+
+fn go_semver_to_version_identity(v: GoSemVer) -> VersionIdentity {
+  go_semver_label(v: v)
+}
+
+// ---- identity compare -----------------------------------------------------------------------
+// Go module versions are "v" followed by a SemVer 2.0.0 version (the cited authority:
+// module versions are semantic versions with a leading "v"), so the scheme strips the prefix and
+// reuses the SemVer grammar and semver_compare — the ONE implementation of the precedence rule.
+// The former go-local comparator is deleted: it ranked ANY two pre-release versions Equal
+// (v1.0.0-alpha == v1.0.0-beta), the exact widening the cited rule forbids, and its parser
+// accepted labels SemVer refuses (a leading-zero pre-release identifier, an empty identifier).
+// A label outside the grammar (no "v" prefix, or a non-SemVer remainder) is a located refusal:
+// the carrier names the failing side, the label, and the cause.
+
+fn go_module_semver_identity_parse(identity: VersionIdentity) -> SemVerVersion? {
+  let cps = chars(s: identity as String)
+  match cps.first() {
+    Absent => none
+    Present { value: h } =>
+      if h != 118 {
+        none
+      } else {
+        semver_version_parse(cps: cps.skip(n: 1))
+      }
+  }
+}
+
+fn go_module_compare_identity(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
+  match go_module_semver_identity_parse(identity: a) {
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
+    Present { value: va } =>
+      match go_module_semver_identity_parse(identity: b) {
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label is not a go module version: a go module version is 'v' followed by a SemVer 2.0.0 version" }
+        Present { value: vb } => VersionCompared { ordering: semver_compare(a: va, b: vb) }
+      }
+  }
+}
+
+data go_module_version_scheme: VersionScheme = VersionScheme {
+  compare: go_module_compare_identity
+}
+
+type GoModulePath = NonEmptyStr where brand("GoModulePath")
+
+type GoMajorVersionSuffix
+  = MajorV0OrV1
+  | MajorV2Plus { major: Int where range(min: 2) }
+
+fn go_major_suffix_str(suffix: GoMajorVersionSuffix) -> String {
+  match suffix {
+    MajorV0OrV1 => ""
+    MajorV2Plus { major: m } => concat("/v", to_string(m))
+  }
+}
+
+type GoLanguageVersion = NonEmptyStr where brand("GoLanguageVersion")
+
+type GoToolchainName = NonEmptyStr where brand("GoToolchainName")
+
+type GoRequireEntry {
+  module_path: GoModulePath
+  version: GoSemVer
+  indirect: Bool
+}
+
+type GoReplaceTarget
+  = ModuleRedirect { path: GoModulePath, version: GoSemVer }
+  | LocalDirRedirect { path: NonEmptyStr }
+
+type GoReplaceEntry {
+  source_path: GoModulePath
+  source_version: GoSemVer?
+  target: GoReplaceTarget
+}
+
+type GoExcludeEntry {
+  module_path: GoModulePath
+  version: GoSemVer
+}
+
+type GoRetractRange
+  = RetractSingle { version: GoSemVer }
+  | RetractRange  { low: GoSemVer, high: GoSemVer }
+
+type GoRetractEntry {
+  range: GoRetractRange
+  rationale: NonEmptyStr?
+}
+
+type GoModFile {
+  module_path: GoModulePath
+  go_version: GoLanguageVersion
+  toolchain: GoToolchainName?
+  require: List<GoRequireEntry>
+  replace: List<GoReplaceEntry>
+  exclude: List<GoExcludeEntry>
+  retract: List<GoRetractEntry>
+}
+
+type GoMvsProperty
+  = DeterministicMinimal
+  | ContentHashLocked
+  | MainModuleOnly
+
+data go_mvs_properties: List<GoMvsProperty> = [
+  DeterministicMinimal,
+  ContentHashLocked,
+  MainModuleOnly
+]
+
+data emit_host_min_go_language_version: GoLanguageVersion = "1.22"
+data emit_host_bootstrap_toolchain: GoToolchainName = "go1.22.5"

@@ -1,0 +1,45 @@
+module test.probe.data_effect_permit_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A DataEffectPermit is minted by product.data_class
+// admit_data_effect and by nothing else: it is sole_constructor, so the record literal below --
+// a permit authored beside the decision that is supposed to produce it, with a category, a sink,
+// an operation and the payload all chosen by the author -- refuses as SoleConstructorViolation.
+// The sink literal inside it is a second forged sealed record and refuses the same way. The
+// third function is the mint-shaped route (review 65175): admitted_seed reveals the payload into
+// a permit and is admit_callers-sealed to admit_data_effect, so calling it from here with an
+// empty current-row list refuses as ConstructorCallAdmissionRefused.
+
+import std.types { FilePath }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_of_value }
+import product.data_category { BuildOutput, build_output_ref }
+import product.data_class {
+  DataEffectPermit, Sink, LogChannel, Transmit, StoreDurably, DataEffectAdmission, Classified,
+  admitted_seed, durable_origin_sink, build_output_category, public_fabric_map, public_fabric_posture,
+}
+import product.fabric.provider_route { ProviderRoute }
+import gunbc.fabric_m0_origin_commit { job_output_bytes, fabric_durable_origin_route }
+
+fn forged_permit(path: FilePath) -> DataEffectPermit<BuildOutput, FilePath> {
+  DataEffectPermit {
+    category: build_output_ref(),
+    sink: Sink { category: build_output_ref(), kind: LogChannel, purpose: build_output_ref(), recipient: build_output_ref() },
+    operation: Transmit,
+    value: path,
+    map_authority: decl_ref(module_path: "test.probe.data_effect_permit_forged_probe", decl_name: "forged_permit"),
+    posture: content_hash_of_value(value: "forged"),
+    retention: build_output_ref(),
+    lawful_basis: build_output_ref(),
+  }
+}
+
+fn seeded_past_the_fold(path: FilePath) -> DataEffectAdmission<BuildOutput, FilePath> {
+  admitted_seed(
+    classified: job_output_bytes(local_path: path),
+    sink: durable_origin_sink(category: build_output_category(), route: fabric_durable_origin_route(), purpose: build_output_ref(), recipient: build_output_ref()),
+    operation: StoreDurably,
+    handling_map: public_fabric_map(),
+    posture: public_fabric_posture(),
+    current: [],
+  )
+}

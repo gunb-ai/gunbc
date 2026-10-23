@@ -1,0 +1,459 @@
+module extdeps.ray.threshold_memory_monitor
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Percent, percent, ByteSize, Millisecond, millisecond, millisecond_count, Gibibyte, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// RAY'S THRESHOLD MEMORY MONITOR, NAMED FOR THE IMPLEMENTATION AND NOT FOR THE FACTORY.
+//
+// THE OBVIOUS NAME WOULD HAVE BEEN A MEANING FORK. Upstream has no single `memory_monitor` any more:
+// `src/ray/common/monitors/` holds THREE implementations -- threshold, pressure and event -- behind
+// `memory_monitor_factory.h`. A module called `extdeps.ray.memory_monitor` would be one name over
+// three materially different behaviours, which is exactly what DESIGN section 3 forbids, and the
+// reader would have no way to tell which one a cited default belongs to.
+//
+// AND THE PRESSURE MONITOR IS NOT REACHABLE THROUGH THAT FACTORY AT ALL, which is the second and
+// stronger reason for the narrow name: it lives in the same directory and is never selected by
+// `Create`. A module named for the directory would have implied coverage of something upstream does
+// not run on this path.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/ray_config_def.h"
+  }
+}
+
+// THE AUTHORITY IS PARTITIONED BY SOURCE FILE, BECAUSE ONE ANCHOR OVER FIVE FILES IS NOT A CITATION.
+//
+// An earlier revision pointed a single scope at `ray_config_def.h` with no further citations, while
+// the module asserted facts read from the factory body and the monitor implementation as well. That
+// gap is not cosmetic: it is WHY fifteen green witnesses did not catch a `master` diagnostic literal
+// sitting under a 2.58.0 pin. The witnesses compare authored values against authored expectations;
+// nothing in them establishes external-source fidelity, so the only thing that can is a citation
+// naming the file each fact came from.
+data ray_factory_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/multi_memory_monitor_factory.cc"
+  }
+}
+
+data ray_threshold_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/threshold_memory_monitor.h"
+  }
+}
+
+data ray_event_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/event_memory_monitor.h"
+  }
+}
+
+data ray_noop_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/noop_memory_monitor.h"
+  }
+}
+
+data ray_config_macro_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/ray_config.h"
+  }
+}
+
+// THE ABSENCE ROW ASSERTS ONE REVISION, BECAUSE THE OTHER END WAS NEVER PINNABLE.
+// An earlier revision of this module carried a second authority pointing at
+// `blob/master/src/ray/common/ray_config_def.h` so that `ray_config_absences` could assert a field
+// is present on master AND absent at the tag. That authority was deleted and the positive half of
+// the contrast with it. `master` is not a revision: it is whichever commit occupies the branch when
+// a reader follows the link, so the cited end could change while this authored row stayed fixed --
+// which is the same "wrong about one field, and undetectably so" failure the pin below exists to
+// prevent, re-entering through the citation instead of through the defaults.
+//
+// The exact master commit that was read is NOT recoverable after the fact, and reconstructing a
+// plausible one would be a fabricated citation rather than a repair. So the row keeps only the half
+// that is grounded at a pinned revision -- absent from `ray_config_def.h` at `ray-2.58.0` -- which
+// is also the only half any consumer needs.
+
+data ray_threshold_monitor_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ray-project/ray/blob/ray-2.58.0/src/ray/common/monitors/threshold_memory_monitor.cc"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "RayThresholdMonitorDefaults",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ray_built_monitors_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_linux_built_monitors",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_factory_authority,
+  further_citations: []
+}
+
+// THE CLASSIFIER IS CITED BECAUSE IT DECIDES ADMISSION, AND ITS CRITERION IS NOT `IsEnabled()`.
+// `ray_built_monitor_enforces` selects whether a serving host is treated as having a live memory
+// enforcer, so an authored mapping verified only against authored expectations would be this
+// module's own opinion sitting on the decisive branch. It is read from the three implementation
+// headers at the tag, and the criterion is CAN IT INVOKE THE KILL-WORKERS CALLBACK:
+//
+//   ThresholdMemoryMonitor -- "checks the memory usage periodically and invokes the callback"
+//   EventMemoryMonitor     -- monitors memory events "when the memory.high is reached or exceeded
+//                             and trigger the kill workers callback"
+//   NoopMemoryMonitor      -- "does not perform any monitoring"; `Enable` and `Disable` have empty
+//                             bodies
+//
+// `IsEnabled()` WOULD HAVE GIVEN THE WRONG ANSWER, which is why the criterion is stated rather than
+// left to the obvious method. NoopMemoryMonitor overrides `IsEnabled() const` to `return true` while
+// doing nothing at all, so a classifier keyed on it would report the disabled configuration as
+// enforcing -- the exact direction that admits a host nothing is watching.
+data ray_built_monitor_enforces_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_built_monitor_enforces",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_threshold_impl_authority,
+  further_citations: [ray_event_impl_authority, ray_noop_impl_authority]
+}
+
+data ray_config_env_spelling_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_config_env_spelling",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_config_macro_authority,
+  further_citations: []
+}
+
+data ray_config_absences_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_config_absences",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ray_monitor_log_format_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ray.threshold_memory_monitor",
+      decl_name: "ray_monitor_log_format",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: ray_threshold_monitor_authority,
+  further_citations: [ray_factory_authority]
+}
+
+// ── THE REVISION IS THE ONE WE EXECUTE, NOT THE ONE THAT WAS EASIEST TO READ ────────────────────
+//
+// THIS PIN IS LOAD-BEARING AND IT ALREADY CAUGHT ONE ERROR. The defaults below were first read from
+// an unpinned branch read, which listed `count_swap_in_memory_monitor` -- a field that DOES NOT
+// EXIST at 2.58.0. Writing that list into a row pinned here would have cited a knob absent from the
+// version the fleet runs, in a shape no later reader could detect: the row would name a real
+// repository, a real file and a real revision, and be wrong about one field.
+//
+// The version this module pins is the one the deployment executes rather than the one that was
+// easiest to read. HOW that version was established is a receipt about our fleet and lives in
+// `gunbc.spark`, not here: an extdeps row states which revision it cites, never who observed it or
+// where.
+type RaySourceRevision sole_constructor {
+  repository: NonEmptyStr
+  tag: NonEmptyStr
+}
+
+data ray_source_revision_read: RaySourceRevision = RaySourceRevision {
+  repository: "github.com/ray-project/ray" as NonEmptyStr,
+  tag: "ray-2.58.0" as NonEmptyStr
+}
+
+// ── THE ENVIRONMENT SPELLING IS DERIVED FROM THE CONFIG NAME, NOT LISTED BESIDE IT ──────────────
+//
+// Ray's pattern is `RAY_` prefixed to the config field name verbatim, which is why the variables are
+// lowercase-with-underscores rather than the SCREAMING_CASE an author would guess. Deriving the
+// spelling means a config row cannot drift from its own environment variable: there is one name
+// here, and the other is computed.
+type RayThresholdMonitorConfig
+  = MemoryUsageThreshold
+  | MemoryMonitorRefreshMs
+  | MinMemoryFreeBytes
+  | MaxKillMemoryBufferBytes
+  | WorkerKillingPolicyByGroup
+  | TaskOomRetries
+
+fn ray_config_field_name(c: RayThresholdMonitorConfig) -> NonEmptyStr {
+  match c {
+    MemoryUsageThreshold => "memory_usage_threshold" as NonEmptyStr
+    MemoryMonitorRefreshMs => "memory_monitor_refresh_ms" as NonEmptyStr
+    MinMemoryFreeBytes => "min_memory_free_bytes" as NonEmptyStr
+    MaxKillMemoryBufferBytes => "max_kill_memory_buffer_bytes" as NonEmptyStr
+    WorkerKillingPolicyByGroup => "worker_killing_policy_by_group" as NonEmptyStr
+    TaskOomRetries => "task_oom_retries" as NonEmptyStr
+  }
+}
+
+fn ray_config_env_spelling(c: RayThresholdMonitorConfig) -> NonEmptyStr {
+  concat("RAY_", ray_config_field_name(c: c) as String) as NonEmptyStr
+}
+
+// ── A VERIFIED NEGATIVE IS A ROW, BECAUSE ABSENCE IS WHAT A READER CANNOT CHECK ─────────────────
+//
+// `count_swap_in_memory_monitor` is carried as an explicit ABSENCE at this revision rather than
+// simply left out. A field that is merely missing from a list is indistinguishable from one nobody
+// looked for, and this one was looked for and found not to exist -- the distinction that keeps the
+// next author from re-adding it off an unpinned search. WHY it matters to a particular deployment --
+// whether that deployment has swap at all -- is a fleet fact and belongs to the consumer, not here.
+type RayConfigAbsentAtRevision sole_constructor {
+  field_name: NonEmptyStr
+  absent_at: RaySourceRevision
+  ground: NonEmptyStr
+}
+
+data ray_config_absences: List<RayConfigAbsentAtRevision> = [
+  RayConfigAbsentAtRevision {
+    field_name: "count_swap_in_memory_monitor" as NonEmptyStr,
+    absent_at: ray_source_revision_read,
+    ground: "Read as absent from ray_config_def.h at ray-2.58.0. Recorded as a verified negative because an earlier draft of this module nearly cited this field into a row pinned at this tag after reading an unpinned branch." as NonEmptyStr
+  }
+]
+
+// ── THE COMPILED-IN DEFAULTS AT THIS REVISION ───────────────────────────────────────────────────
+//
+// THESE ARE COMPILED-IN DEFAULTS AND NOT, BY THEMSELVES, THIS FLEET'S EFFECTIVE CONFIGURATION.
+//
+// AN EARLIER REVISION CLAIMED THEY WERE "in force on this fleet" on the strength of an empty
+// `RAY_*` environment. That entailment does not hold: Ray reads the environment AND THEN applies a
+// JSON configuration list through `RayConfig::initialize`, so an empty environment rules out one
+// input and not the other. The observation was real; the conclusion drawn from it was larger than
+// the observation, which is the same shape as every other defect this module has already corrected.
+//
+// THE HONEST SPLIT, and the reason the fleet reading is not written here at all: this module owns
+// the ray-2.58.0 DEFAULTS. Which of them survive into an effective configuration is a join over an
+// observed environment and an observed config list, and both of those are receipts about OUR
+// deployment rather than facts about Ray -- so they belong in `gunbc.spark`, where an unobserved
+// config list is a coverage obligation that can be refused rather than a silence that reads as zero.
+// THE SENTINEL IS AN ARM, NOT A NEGATIVE NUMBER. `min_memory_free_bytes` defaults to -1, which is
+// upstream's DISABLED marker rather than a quantity. Carrying it as a signed byte count would make
+// "no floor configured" and "a floor of minus one byte" the same value, and ByteSize cannot hold the
+// sentinel honestly anyway. It is enumerated as a config above and consumed by the factory's
+// threshold calculation, so leaving its default out of this record while claiming the record IS the
+// defaults population was a partial surface presented as a complete one.
+type RayMinMemoryFree
+  = MinMemoryFreeDisabled
+  | MinMemoryFreeFloor { bytes: ByteSize }
+
+type RayThresholdMonitorDefaults {
+  memory_usage_threshold: Percent
+  memory_monitor_refresh: Millisecond
+  max_kill_memory_buffer: ByteSize
+  min_memory_free: RayMinMemoryFree
+  worker_killing_policy_by_group: Bool
+  read_at: RaySourceRevision
+}
+
+data ray_threshold_monitor_defaults: RayThresholdMonitorDefaults = RayThresholdMonitorDefaults {
+  memory_usage_threshold: percent(count: 95),
+  memory_monitor_refresh: millisecond(count: 250),
+  max_kill_memory_buffer: gibibyte_to_byte_size(g: gibibyte(count: 3)),
+  min_memory_free: MinMemoryFreeDisabled,
+  worker_killing_policy_by_group: false,
+  read_at: ray_source_revision_read
+}
+
+// ── A ZERO REFRESH DISABLES THE THRESHOLD ARM, AND THE NAME SAYS SO ────────────────────────────
+//
+// The argv is computed from the same row the default comes from rather than authored beside it, so a
+// rename of the config field moves both at once. The FUNCTION is named for the threshold monitor
+// rather than for "the memory monitor" because that is all it disables -- see `ray_linux_built_monitors`.
+fn ray_threshold_monitor_disable_env() -> NonEmptyStr {
+  concat(ray_config_env_spelling(c: MemoryMonitorRefreshMs) as String, "=0") as NonEmptyStr
+}
+
+// ── WHAT THE MONITOR PRINTS, AND THE TRAP IN THE PERCENTAGE IT PRINTS ───────────────────────────
+//
+// THE DISPLAYED FRACTION IS DERIVED FROM THE BYTE THRESHOLD, NOT THE CONFIGURED ONE. The monitor
+// computes it as threshold_bytes / total_bytes, so the percentage in the log is a re-derivation and
+// not the configured fraction echoed back. Anyone reconciling a log line against
+// `memory_usage_threshold` is comparing two quantities that agree only when the byte threshold was
+// itself derived from that fraction against the same total -- which is precisely what a cgroup limit
+// or a resource-isolated slice changes.
+type RayMonitorLogLine
+  = ThresholdExceeded
+  | NodeMemoryAboveThreshold
+  | UserSliceMemoryAboveThreshold
+  | NodeMemoryUncapturable
+  | UserSliceSnapshotFailed
+  | ThresholdMonitorDisabled
+
+fn ray_monitor_log_format(line: RayMonitorLogLine) -> NonEmptyStr {
+  match line {
+    ThresholdExceeded =>
+      "Memory usage %dB exceeded threshold of %dB (%.1f%% of %dB total)" as NonEmptyStr
+    NodeMemoryAboveThreshold =>
+      "Node memory usage above threshold, used: %d, threshold_bytes: %d, total bytes: %d, threshold fraction: %f" as NonEmptyStr
+    UserSliceMemoryAboveThreshold =>
+      "User slice memory usage above threshold, used: %d, threshold_bytes: %d, total bytes: %d, threshold fraction: %f" as NonEmptyStr
+    NodeMemoryUncapturable =>
+      "Unable to capture node memory. Monitor will not be able to detect memory usage above threshold." as NonEmptyStr
+    UserSliceSnapshotFailed =>
+      "Failed to take user and system slice memory snapshot due to: %s. The threshold memory monitor will not be able to provide resource isolation protection." as NonEmptyStr
+    ThresholdMonitorDisabled =>
+      "ThresholdMemoryMonitor disabled. Specify `RAY_memory_monitor_refresh_ms` > 0 to enable the monitor." as NonEmptyStr
+  }
+}
+
+// THE UNCAPTURABLE LINE IS THE ONE THAT MATTERS TO A READER OF OUR OWN INCIDENTS, because it is the
+// monitor announcing it cannot see, which is a different state from seeing a safe number. A reader
+// scanning for the exceeded-threshold line and finding none has not established that memory was
+// below threshold; it may equally mean nothing was being measured.
+fn ray_monitor_line_reports_measurement(line: RayMonitorLogLine) -> Bool {
+  match line {
+    ThresholdExceeded => true
+    NodeMemoryAboveThreshold => true
+    UserSliceMemoryAboveThreshold => true
+    NodeMemoryUncapturable => false
+    UserSliceSnapshotFailed => false
+    ThresholdMonitorDisabled => false
+  }
+}
+
+// WHICH DIAGNOSTIC LINES EXPLAIN AN ABSENT THRESHOLD ALARM -- AND THE CLAIM IS NARROWED TO THAT.
+//
+// AN EARLIER DRAFT CLAIMED THIS DECIDED THREE CAUSES OF SILENCE. It cannot, and the reason is
+// structural rather than a wording slip: this takes a LINE, while the safe case is the ABSENCE of any
+// line. A function over present texts can never represent "nothing was printed", so it classifies the
+// explicit explanations and says nothing about the third outcome. Deciding BelowThreshold against
+// ObservationFailed against Disabled needs a carrier for an observation OUTCOME -- a reader's fact
+// about a captured log, not a property of a line -- so it belongs to whatever consumes the capture,
+// and this module does not fabricate it.
+//
+// WHAT REMAINS TRUE IS THE USEFUL PART: each of these lines, WHEN PRESENT, explains an absent alarm,
+// and none of them reports a measurement. A reader who finds none has established only that no
+// explanation was printed.
+fn ray_line_explains_absent_threshold_alarm(line: RayMonitorLogLine) -> Bool {
+  match line {
+    ThresholdMonitorDisabled => true
+    NodeMemoryUncapturable => true
+    UserSliceSnapshotFailed => true
+    ThresholdExceeded => false
+    NodeMemoryAboveThreshold => false
+    UserSliceMemoryAboveThreshold => false
+  }
+}
+
+// ── SCOPE: THE LINUX PATH, SAID RATHER THAN LEFT IMPLICIT ──────────────────────────────────────
+//
+// THE FACTORY CONSTRUCTION BELOW -- `RayBuiltMonitor` and `ray_linux_built_monitors` -- IS READ FROM
+// THE LINUX FACTORY PATH. This block once opened "EVERYTHING ABOVE", which was true where it was
+// first written and became FALSE when it moved: above it now sit the defaults from
+// `ray_config_def.h`, the environment spelling from `ray_config.h`, and the diagnostics from
+// `threshold_memory_monitor.cc`, none of which are factory material. A pointer that names a REGION
+// rather than a SYMBOL is invalidated by any edit that moves either end, which is why the scope is
+// stated against the two declarations it governs. An earlier revision carried a
+// `NonLinuxPlatform -> Noop` arm taken from a comment on MASTER's header, and deleting it was right
+// -- the 2.58.0 body read for this module has no platform branch, so asserting one would have been a
+// citation to a revision it was not read at, the same failure the absence row above records.
+//
+// BUT DELETING THE ARM LEFT THE SCOPE UNSTATED, WHICH IS ITS OWN DEFECT, AND THE FIRST REPAIR PUT
+// THE SCOPE IN THIS PARAGRAPH RATHER THAN IN THE NAME. A total name reading `ray_built_monitors` over
+// a body read only from the Linux factory invites exactly the use the paragraph forbids, and a
+// comment cannot forbid a use the name invites -- so the declaration is `ray_linux_built_monitors`
+// and the scope is carried by the thing every consumer must spell. What the factory does on other
+// platforms is UNREAD, not known-to-be-the-same, and that distinction is the difference between a
+// citation and a guess.
+//
+// NO PROVENANCE FOR `resource_isolation_enabled` EITHER. It is an argument to `Create`, so where it
+// comes from is the caller's fact rather than this citation's.
+//
+// THE PRESSURE MONITOR IS ABSENT BY CONSTRUCTION, WHICH IS WHY THERE IS NO PREDICATE FOR IT.
+// `RayBuiltMonitor` has no pressure constructor, so a pressure monitor cannot be written into a
+// built population at all -- the state is unrepresentable rather than merely refused. A
+// `ray_pressure_monitor_is_factory_selectable() -> false` function stood here with a witness
+// asserting its negation, and both are deleted: a zero-argument constant is not discriminated by any
+// input, so the witness could only go red if someone edited the constant it reads. That is a change
+// detector, and it was worse than absent because it would have been cited as coverage for a fact the
+// TYPE already guarantees. This is the third constant-shaped decoration removed from this module,
+// and the rule that catches all three is the same: ask whether the check's RED is authorable before
+// writing the check.
+// ── WHAT THE FACTORY BUILDS, READ FROM Create's BODY AND NOT FROM ITS SIGNATURE ────────────────
+//
+// SELECTION DEPENDS ON CONFIG THE SIGNATURE DOES NOT NAME. `Create` takes
+// (kill_workers_callback, resource_isolation_enabled, cgroup_manager) -- the refresh interval is
+// nowhere in it. The interval is read from the `RayConfig` GLOBAL inside the body:
+//
+//   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
+//
+// An earlier revision of this module modelled selection from the signature alone and was WRONG for
+// the disable case -- the case that matters most -- because a header's parameter list is not the set
+// of inputs a function reads. That is the whole reason this section cites the body.
+//
+// THE ZERO INTERVAL SWAPS THE OBJECT, IT DOES NOT SKIP THE PUSH. Above zero the factory pushes a
+// ThresholdMemoryMonitor; at zero it pushes a NoopMemoryMonitor and logs a line naming the variable.
+// There is therefore no "constructed but never scheduled" state, which is what makes the disabled
+// case DECIDABLE FROM THE LOG rather than inferable only from configuration.
+type RayBuiltMonitor = ThresholdMonitorBuilt | NoopMonitorBuilt | EventMonitorBuilt
+
+// ONE POPULATION, AND `disable` NAMES ONLY ONE MEMBER OF IT. The event monitor is pushed BEFORE the
+// interval is read and is guarded solely by `resource_isolation_enabled`, so with isolation ON and a
+// zero interval the factory builds [Event, Noop] -- a LIVE cgroup-driven monitor beside a no-op.
+//
+// SO `RAY_memory_monitor_refresh_ms=0` DOES NOT DISABLE MEMORY ENFORCEMENT. It disables the THRESHOLD
+// arm. An earlier draft of this module called that argv "disable the monitor", which overstates in
+// exactly the direction a refusal must not overstate: a caller reading it would conclude a host is
+// unenforced when a cgroup-driven monitor is still killing workers on it.
+fn ray_linux_built_monitors(
+  resource_isolation_enabled: Bool,
+  refresh: Millisecond,
+) -> List<RayBuiltMonitor> {
+  concat(
+    match resource_isolation_enabled {
+      true => [EventMonitorBuilt]
+      false => []
+    },
+    match millisecond_count(refresh) == 0 {
+      true => [NoopMonitorBuilt]
+      false => [ThresholdMonitorBuilt]
+    },
+  )
+}
+
+fn ray_built_monitor_enforces(m: RayBuiltMonitor) -> Bool {
+  match m {
+    ThresholdMonitorBuilt => true
+    EventMonitorBuilt => true
+    NoopMonitorBuilt => false
+  }
+}

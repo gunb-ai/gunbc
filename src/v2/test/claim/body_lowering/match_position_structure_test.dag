@@ -1,0 +1,177 @@
+module v2.test.claim.body_lowering.match_position_structure
+
+import std.types { List }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { list_at_optional }
+import v2.std.compilers.body_lowering { Application, ApplicationRefused, NotApplication, application_read }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Bind, ComputationNode, Found, Match, Node, Symbol, node_subtree_nodes, MatchArmBodyEdge, core_edge_target_lookup }
+import v2.std.node_query { node_positional_child_targets }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A MATCH'S PARTS ARE READ FROM THEIR GRAMMAR POSITIONS, AND THESE CLAIMS READ THE SHAPE.
+//
+// The conservation controls (v2.test.claim.namespace_xl0.reference_conservation_accepted_drops
+// *_is_conserved_holds) establish that every authored atom reaches the lowered tree. They stay
+// green under a lowering that keeps every atom in the wrong place: a scrutinee lowered into an arm,
+// or a let whose bound value and continuation are swapped. These claims read the LOWERED TREE the
+// production route hands the resolver (program_assembly module_roots_from_source_root_ingest,
+// projected through normalized_tree_roots_to_nodes) and assert where each part sits.
+//
+// THE PAIRING. The same match, with the same scrutinee call, is the initializer of a data
+// declaration in one module and the body of a fn in the other. The two routes reach the match
+// differently: a data initializer is folded bottom-up before its declaration is dispatched, so the
+// scrutinee's own shell is already reduced when the match reads it; a fn body is read from its
+// unfolded parse. The data route read its scrutinee from the first arm
+// (gunbc.recurring_failure_mode data_initializer_match_reads_its_scrutinee_from_an_arm_at_v2_body_lowering),
+// the fn route kept it. Each route's claim names its own callee, so neither can be satisfied by the
+// other module.
+//
+// THE ARM STATEMENT BODY. `MpsA => let mps_local = mps_bound` followed by `mps_id(mps_after)` is a
+// statement sequence, and it lowers to the Bind the statement authority builds for a fn body: key
+// mps_local, value mps_bound, continuation the call. It lowered to `mps_bound` alone
+// (gunbc.recurring_failure_mode match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering).
+// The claim asserts the Bind's three positions, so a swapped value and continuation reds it.
+//
+// module_roots_from_source_root_ingest refuses the whole ingest when one module refuses, so a module
+// that stops lowering reds every claim here, not only its own.
+
+data mps_data_source: String = "module v2.test.mps_data\n\ntype MpsT = MpsA | MpsB\n\ndata mps_arg_d: Int = 1\n\nfn mps_pick_d(a: Int) -> MpsT { MpsA }\n\ndata mps_matched: Bool = match mps_pick_d(mps_arg_d) {\n  MpsA => true\n  MpsB => false\n}\n"
+
+data mps_fn_source: String = "module v2.test.mps_fn\n\ntype MpsT = MpsA | MpsB\n\ndata mps_arg_f: Int = 1\n\nfn mps_pick_f(a: Int) -> MpsT { MpsA }\n\nfn mps_matched() -> Bool {\n  match mps_pick_f(mps_arg_f) {\n    MpsA => true\n    MpsB => false\n  }\n}\n"
+
+data mps_arm_source: String = "module v2.test.mps_arm\n\ntype MpsT = MpsA | MpsB\n\ndata mps_bound: Int = 1\n\ndata mps_after: Int = 2\n\nfn mps_id(a: Int) -> Int { a }\n\nfn mps_arm(t: MpsT) -> Int {\n  match t {\n    MpsA =>\n      let mps_local = mps_bound\n      mps_id(mps_after)\n    MpsB => 0\n  }\n}\n"
+
+fn mps_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data mps_ingest: SourceRootIngest = Cons {
+    head: mps_read(source: mps_data_source, id: ^mps_data_artifact, unit: ^mps_data_cu, path: "src/v2/test/fixture/body_lowering/mps_data.dag"),
+    tail: Cons {
+      head: mps_read(source: mps_fn_source, id: ^mps_fn_artifact, unit: ^mps_fn_cu, path: "src/v2/test/fixture/body_lowering/mps_fn.dag"),
+      tail: Cons {
+        head: mps_read(source: mps_arm_source, id: ^mps_arm_artifact, unit: ^mps_arm_cu, path: "src/v2/test/fixture/body_lowering/mps_arm.dag"),
+        tail: Empty
+      }
+    }
+  }
+
+fn mps_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: mps_ingest, lm: dag_language_model())
+}
+
+fn mps_roots() -> FreeMonoid<Node> {
+  match mps_normalized() {
+    Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn mps_is_atom(n: Node, id: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: got } => got == id
+    Absent => false
+  }
+}
+
+// A one-argument call to `callee` whose argument is the atom `arg`, read through
+// v2.std.compilers.body_lowering application_read, the authority for what a lowered call is.
+fn mps_is_unary_call(n: Node, callee: Symbol, arg: Symbol) -> Bool {
+  match application_read(site: n) {
+    Application { view: v } =>
+      mps_is_atom(n: v.head, id: callee) && (length(xs: v.operands) == 1) && (match list_at_optional(xs: v.operands, index: 0) {
+        Present { value: a } => mps_is_atom(n: a, id: arg)
+        Absent => false
+      })
+    NotApplication => false
+    ApplicationRefused { diagnostics: _ } => false
+  }
+}
+
+fn mps_positional(n: Node, i: Int) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: n), index: i)
+}
+
+// A Match whose scrutinee (its first positional child, v2.std.compilers.body_lowering lower_match)
+// is the call callee(arg).
+fn mps_is_match_on_call(n: Node, callee: Symbol, arg: Symbol) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Match } =>
+      match mps_positional(n: n, i: 0) {
+        Present { value: s } => mps_is_unary_call(n: s, callee: callee, arg: arg)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// A Bind (v2.std.compilers.body_lowering lower_bind: key, value, continuation, in that order) whose
+// key is `key`, whose value is the atom `value`, and whose continuation is callee(arg).
+fn mps_is_bind(n: Node, key: Symbol, value: Symbol, callee: Symbol, arg: Symbol) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      (match mps_positional(n: n, i: 0) { Present { value: k } => mps_is_atom(n: k, id: key)  Absent => false })
+        && (match mps_positional(n: n, i: 1) { Present { value: v } => mps_is_atom(n: v, id: value)  Absent => false })
+        && (match mps_positional(n: n, i: 2) { Present { value: b } => mps_is_unary_call(n: b, callee: callee, arg: arg)  Absent => false })
+    _ => false
+  }
+}
+
+// An arm (body_lowering_fold body_lower_match_arm_wire: a Conj with a Named match_arm_body edge)
+// whose body is that Bind.
+fn mps_is_arm_binding(n: Node, key: Symbol, value: Symbol, callee: Symbol, arg: Symbol) -> Bool {
+  match core_edge_target_lookup(children: n.children, marker: MatchArmBodyEdge) {
+    Found { target: body } => mps_is_bind(n: body, key: key, value: value, callee: callee, arg: arg)
+    _ => false
+  }
+}
+
+type MpsShape
+  = MpsMatchOnCall { callee: Symbol, arg: Symbol }
+  | MpsArmBinding { key: Symbol, value: Symbol, callee: Symbol, arg: Symbol }
+
+fn mps_node_has_shape(n: Node, shape: MpsShape) -> Bool {
+  match shape {
+    MpsMatchOnCall { callee: c, arg: a } => mps_is_match_on_call(n: n, callee: c, arg: a)
+    MpsArmBinding { key: k, value: v, callee: c, arg: a } => mps_is_arm_binding(n: n, key: k, value: v, callee: c, arg: a)
+  }
+}
+
+fn mps_any_node(shape: MpsShape) -> Bool {
+  fold_list(xs: mps_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(inner, n) {
+      inner || mps_node_has_shape(n: n, shape: shape)
+    })
+  })
+}
+
+test fn a_data_initializer_match_lowers_its_scrutinee_from_the_match_position_holds() -> Bool {
+  mps_any_node(shape: MpsMatchOnCall { callee: ^mps_pick_d, arg: ^mps_arg_d })
+}
+
+test fn the_same_match_as_a_fn_body_lowers_its_scrutinee_from_the_match_position_holds() -> Bool {
+  mps_any_node(shape: MpsMatchOnCall { callee: ^mps_pick_f, arg: ^mps_arg_f })
+}
+
+test fn a_match_arm_statement_body_lowers_to_the_let_binding_its_continuation_holds() -> Bool {
+  mps_any_node(shape: MpsArmBinding { key: ^mps_local, value: ^mps_bound, callee: ^mps_id, arg: ^mps_after })
+}

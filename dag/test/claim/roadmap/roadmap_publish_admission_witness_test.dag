@@ -1,0 +1,42 @@
+module test.claim.roadmap.roadmap_publish_admission_witness_test
+
+import std.types { Bool, String, CommitSha }
+import test.claim.roadmap_verification_receipt_witness_test { exact_head_receipt }
+import gunbc.roadmap_validation_oracle { ValidationPassed, ValidationFailed, ValidationNotRun, ValidationRefused }
+import gunbc.roadmap_verification_receipt { VerificationReceipt, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject }
+import gunbc.roadmap.roadmap_publish_admission { PublishAdmitted, PublishWithheld, verdict_admission, publish_admission }
+
+test fn a_passed_verdict_admits_publication() -> Bool {
+  let r = exact_head_receipt(head: "feedfacefeedfacefeedfacefeedfacefeedface" as CommitSha)
+  let receipt = VerificationReceipt {
+    subject: r.subject,
+    oracle_identity: r.oracle_identity,
+    executions: r.executions,
+    verdict: ValidationPassed { command: "x", oracle_identity: r.oracle_identity },
+  }
+  match verdict_admission(verdict: receipt.verdict) {
+    PublishAdmitted => true
+    PublishWithheld { reason: _ } => false
+  }
+}
+
+test fn a_not_run_verdict_withholds_publication() -> Bool {
+  match verdict_admission(verdict: ValidationNotRun) {
+    PublishWithheld { reason: _ } => true
+    PublishAdmitted => false
+  }
+}
+
+test fn a_failed_verdict_withholds_publication() -> Bool {
+  match verdict_admission(verdict: ValidationFailed { command: "x", exit_code: 1, detail: "x" }) {
+    PublishWithheld { reason: _ } => true
+    PublishAdmitted => false
+  }
+}
+
+test fn evidence_for_another_subject_withholds_publication() -> Bool {
+  match publish_admission(evidence: VerificationEvidenceForAnotherSubject { field: "head_sha" as std.types.NonEmptyStr, expected: "a", found: "b" }) {
+    PublishWithheld { reason: _ } => true
+    PublishAdmitted => false
+  }
+}

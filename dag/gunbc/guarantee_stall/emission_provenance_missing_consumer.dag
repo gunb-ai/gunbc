@@ -1,0 +1,22 @@
+module gunbc.guarantee_stall.emission_provenance_missing_consumer
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+data emission_provenance_missing_consumer: GuaranteeStall = GuaranteeStall {
+  subject: "std.emission_provenance defines EmissionContribution and its fold. An emitter path now constructs those values: `v2.compiler.emit_module` `emit_module_contribution` builds EmissionAuthoredFragment (the declaration separator, whose bytes are the literal declared at `emit_module_decl_separator`), EmissionSourceComposition (the module and family folds, one composition per declaration) and EmissionUnobservedFragment (`v2.compiler.emit` returns Medium<String>, so the origins of one declaration's emitted text are observed nowhere at that seam), and `emit_module_text`/`emit_family_text` DERIVE the emitted bytes from that tree rather than concatenating beside it. The required floor control is `v2.test.emit.emit_module_contribution`, which censuses all three arms through emission_contribution_fold, reads the tree through emission_contribution_read, joins the unobserved producer against `v2.compiler.emit` by identity, and measures the emitted bytes against a repeated-append reference. What remains unsatisfied is the specimen leg: the match-bound FreeMonoid-element map at `test.manual.emission_provenance_specimen_red` `emission_combined_read_preserves_content_order_and_origin_multiplicity` still does not compile under dag/test/claim, pending #10625.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "`test.manual.emission_provenance_specimen_red` `emission_combined_read_preserves_content_order_and_origin_multiplicity` compiles and runs as a required-floor test fn under dag/test/claim. The emitter-path leg of this stall is discharged by `v2.compiler.emit_module` `emit_module_contribution` and the executing control `v2.test.emit.emit_module_contribution`."
+  },
+  population: BoundedPopulation { members: [
+    "std.emission_provenance.EmissionAuthoredFragment",
+    "std.emission_provenance.EmissionSourceComposition",
+    "std.emission_provenance.EmissionUnobservedFragment",
+    "std.emission_provenance.emission_contribution_read",
+    "std.emission_provenance.emission_contribution_origins",
+    "test.manual.emission_provenance_specimen_red.emission_combined_read_preserves_content_order_and_origin_multiplicity"
+  ] },
+  next_rung_trigger: climbs_when(capability: "test.manual.emission_provenance_specimen_red emission_combined_read_preserves_content_order_and_origin_multiplicity compiles and runs as a required-floor test fn under dag/test/claim — a // annotation cannot discharge that move. The emitter-path leg this trigger also named is discharged: v2.compiler.emit_module emit_module_contribution constructs all three contribution arms from a real emitter path and v2.test.emit.emit_module_contribution is the required executing control that reads them through emission_contribution_read and censuses every arm through emission_contribution_fold.")
+}

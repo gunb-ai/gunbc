@@ -1,0 +1,129 @@
+module v2.test.claim.body_lowering.if_arm_position
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, node_subtree_nodes, symbol_lexeme }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN if's ARMS ARE READ AT THEIR OWN SLOTS OF THE if_expr ROW. The subject is
+// v2.compiler.body_lowering_fold body_lower_if_row_arms_optional, the one reader both arm readers
+// project from. The else reader it replaced searched the if's capture and recursed into the left
+// subtree first, so for an if nested in the THEN arm it answered the nested if's else as the outer
+// if's else: the outer else was dropped, the nested else lowered twice, and normalize ACCEPTED the
+// module (gunbc.recurring_failure_mode else_arm_lowered_as_an_if_nested_inside_it, capture side).
+//
+// THE MEASURE IS AN ATOM COUNT OVER THE NORMALIZED TREE, because the defect is silent: each marker is a
+// parameter (one atom in the domain) plus one atom per use, so a marker used once counts 2 when its arm
+// was kept exactly once. THE REDS under the searching reader: the outer else's marker counts 1 (dropped)
+// and the nested else's counts 3 (lowered twice); and a function value in that nested else refused as
+// normalize_reason_minted_occurrence_duplicated, the only form in which the defect was ever loud.
+// CONTROLS, TRUE UNDER BOTH: a flat if and a real else-if chain keep every arm once.
+//
+// The stages are the native route's own, tokenize -> parse -> normalize, and nothing above them.
+data iap_cached_lm: LanguageModel = dag_language_model()
+
+fn iap_normalized_root(src: String) -> Optional<Node> {
+  let lm = iap_cached_lm
+  match tokenize(text: src, file: ^if_arm_position_subject, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: a, diagnostics: _ } =>
+          match normalize(parse_tree: a.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree.root }
+          }
+      }
+  }
+}
+
+fn iap_normalize_outcome(src: String) -> String {
+  let lm = iap_cached_lm
+  match tokenize(text: src, file: ^if_arm_position_subject, rules: lm.lex) {
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+        Accepted { value: a, diagnostics: _ } =>
+          match normalize(parse_tree: a.tree) {
+            Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
+  }
+}
+
+fn iap_count(root: Node, name: String) -> Int {
+  fold_list(xs: node_subtree_nodes(root: root), empty: 0, cons: fn(acc, n) {
+    match node_atom_identity_optional(node: n) {
+      Present { value: id } => if symbol_lexeme(sym: id) == name { acc + 1 } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+// Every marker kept exactly once: its parameter atom plus its one use.
+fn iap_each_arm_kept_once(src: String) -> Bool {
+  match iap_normalized_root(src: src) {
+    Absent => false
+    Present { value: root } =>
+      (iap_count(root: root, name: "zzz_then") == 2)
+        && (iap_count(root: root, name: "zzz_inner_else") == 2)
+        && (iap_count(root: root, name: "zzz_outer_else") == 2)
+  }
+}
+
+data src_nested_in_then: String = "module m.t\nfn t(b: Bool, c: Bool, zzz_then: Int, zzz_inner_else: Int, zzz_outer_else: Int) -> Int {\n  if b {\n    if c {\n      zzz_then\n    } else {\n      zzz_inner_else\n    }\n  } else {\n    zzz_outer_else\n  }\n}\n"
+
+data src_flat_and_else_if: String = "module m.t\nfn t(b: Bool, c: Bool, zzz_then: Int, zzz_inner_else: Int, zzz_outer_else: Int) -> Int {\n  if b {\n    zzz_then\n  } else if c {\n    zzz_inner_else\n  } else {\n    zzz_outer_else\n  }\n}\n"
+
+data src_lambda_in_nested_else: String = "module m.t\nfn g(p: Int) -> Bool {\n  p > 3\n}\nfn h(w: fn(Int) -> Bool) -> Int {\n  0\n}\nfn t(b: Bool, c: Bool) -> Int {\n  if b {\n    if c {\n      2\n    } else {\n      h(w: p => g(p: p))\n    }\n  } else {\n    0\n  }\n}\n"
+
+data src_fn_literal_in_nested_else: String = "module m.t\nfn g(p: Int) -> Bool {\n  p > 3\n}\nfn h(w: fn(Int) -> Bool) -> Int {\n  0\n}\nfn t(b: Bool, c: Bool) -> Int {\n  if b {\n    if c {\n      2\n    } else {\n      h(w: fn(p) { g(p: p) })\n    }\n  } else {\n    0\n  }\n}\n"
+
+// ONE PRODUCER FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share. Each verdict
+// pays a full tokenize -> parse -> normalize of its own source, and the four claims would otherwise
+// pay all four per claim frame; the stored value is four Bools (no Node, no closure), so it is portable.
+type IapVerdicts {
+  nested_in_then_keeps_outer_else: Bool,
+  function_value_in_nested_else_lowers: Bool,
+  fn_literal_in_nested_else_lowers: Bool,
+  else_if_chain_keeps_every_arm: Bool,
+}
+
+fn iap_verdicts() -> IapVerdicts {
+  IapVerdicts {
+    nested_in_then_keeps_outer_else: iap_each_arm_kept_once(src: src_nested_in_then),
+    function_value_in_nested_else_lowers: iap_normalize_outcome(src: src_lambda_in_nested_else) == "ACCEPTED",
+    fn_literal_in_nested_else_lowers: iap_normalize_outcome(src: src_fn_literal_in_nested_else) == "ACCEPTED",
+    else_if_chain_keeps_every_arm: iap_each_arm_kept_once(src: src_flat_and_else_if),
+  }
+}
+
+test fn an_if_nested_in_the_then_arm_keeps_the_outer_else_holds() -> Bool {
+  iap_verdicts().nested_in_then_keeps_outer_else
+}
+
+test fn a_function_value_in_a_nested_else_lowers_once_holds() -> Bool {
+  iap_verdicts().function_value_in_nested_else_lowers
+}
+
+test fn a_fn_literal_in_a_nested_else_lowers_once_holds() -> Bool {
+  iap_verdicts().fn_literal_in_nested_else_lowers
+}
+
+test fn an_else_if_chain_keeps_every_arm_control_holds() -> Bool {
+  iap_verdicts().else_if_chain_keeps_every_arm
+}

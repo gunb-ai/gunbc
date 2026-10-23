@@ -1,0 +1,94 @@
+module v2.workflow.regen_scope_worktree
+
+import std.types { Bool, String, List }
+import extdeps.git
+import extdeps.git.inspect
+
+// A SCOPED REGEN ROUND MAY RUN ONLY OVER A TREE ITS EDIT OBSERVATION CAN SEE.
+//
+// The affected-set bound reads its edited population from the floor's diff observation
+// (v2.workflow.floor_diff_observe floor_observe_git_diff_unified_for_ci), which compares two
+// COMMITS: the merge-base with the default branch, and HEAD. An uncommitted .dag edit is in
+// neither, so the bound never sees it -- and the round under-selects or, when nothing committed
+// touches a mirror, answers NoAffectedMirrors and installs nothing, reporting a clean round over
+// an edit it never looked at. The state is ordinary rather than exotic: it is exactly the
+// mid-merge tree gunbc.generated_artifact_merge_driver's recipe runs in, where the merged
+// authorities are in the worktree and not yet in any commit.
+//
+// So the scoped round REFUSES a tree with an uncommitted .dag path, and refuses a tree whose
+// status it cannot read. It does not widen to the whole population: "regenerate everything"
+// and "the edit observation cannot see this edit" are different states, and widening would be
+// the absorbing fallback DESIGN section 5 forbids. The remedy is in the refusal -- commit the
+// edit, or run the unscoped round, which reads no diff and is therefore correct on any tree.
+//
+// WHY ONLY .dag PATHS. The bound's population is .dag modules (edited_population_from_diff
+// locates edited paths as modules), so a dirty .rs mirror, a doc, or an untracked scratch file
+// changes nothing the scope could select from. Refusing on those would block the ordinary
+// developer state -- a regenerated mirror sitting uninstalled-and-uncommitted between rounds --
+// for no selection the refusal protects.
+//
+// WHY NO RECORD PARSE. porcelain v1 -z separates records with NUL, and a rename or copy record
+// carries its source path as one extra NUL field. Asking "does ANY field name a .dag path" is
+// therefore answered correctly without telling records from rename sources: a rename whose
+// source or destination is a .dag file is an uncommitted .dag edit either way, and the status
+// letters cannot themselves end in ".dag".
+
+type RegenScopeWorktreeAdmission
+  = ScopeWorktreeAdmitted
+  | ScopeWorktreeHasUncommittedDag { paths: List<String> }
+  | ScopeWorktreeUnobservable { reason: String }
+
+// A record field is "XY path"; a rename source field is the bare path. Both end in the path, so
+// the suffix test reads either; this strips the two status letters and the space only so the
+// refusal names the path rather than the record.
+fn regen_scope_status_field_path(field: String) -> String {
+  if string_length(s: field) > 3 && substring(s: field, start: 2, end: 3) == " " {
+    substring(s: field, start: 3, end: string_length(s: field))
+  } else {
+    field
+  }
+}
+
+fn regen_scope_uncommitted_dag_paths(entries_nul: String) -> List<String> {
+  split(s: entries_nul, delimiter: from_code_point(0))
+    |> filter(f => f != "" && ends_with(s: f, suffix: ".dag"))
+    |> map(f => regen_scope_status_field_path(field: f))
+}
+
+// PURE, so the arms are witnessable over a planted status without a repository.
+fn regen_scope_worktree_admission(status_success: Bool, entries_nul: String, stderr: String) -> RegenScopeWorktreeAdmission {
+  if !status_success {
+    ScopeWorktreeUnobservable { reason: concat("git status --porcelain=v1 did not answer: ", stderr) }
+  } else {
+    let dirty = regen_scope_uncommitted_dag_paths(entries_nul: entries_nul)
+    if count(dirty) == 0 {
+      ScopeWorktreeAdmitted
+    } else {
+      ScopeWorktreeHasUncommittedDag { paths: dirty }
+    }
+  }
+}
+
+// The observation, through the modeled operation rather than a host spawn.
+fn regen_scope_observe_worktree() -> RegenScopeWorktreeAdmission {
+  let status = git.Inspect.WorkingTreeStatus(repository_path: git.Inspect.Toplevel().path as String)
+  regen_scope_worktree_admission(status_success: status.success, entries_nul: status.entries_nul, stderr: status.stderr)
+}
+
+// The refusal as the host prints it: empty for an admitted tree, the located cause otherwise.
+fn regen_scope_worktree_refusal(a: RegenScopeWorktreeAdmission) -> String {
+  match a {
+    ScopeWorktreeAdmitted => ""
+    ScopeWorktreeHasUncommittedDag { paths: paths } =>
+      concat(
+        concat("refusal: the scoped round reads its edit set from committed history (merge-base with the default branch ... HEAD), and these .dag paths are uncommitted, so the bound cannot see them: ", join(paths, ", ")),
+        ". Commit them, or run --required-regen without --regen-affected-scope; the round does not widen on its own."
+      )
+    ScopeWorktreeUnobservable { reason: reason } =>
+      concat("refusal: the scoped round cannot read the working-tree standing, so it cannot tell whether its edit observation sees every edit: ", reason)
+  }
+}
+
+fn regen_scope_observe_worktree_refusal() -> String {
+  regen_scope_worktree_refusal(a: regen_scope_observe_worktree())
+}

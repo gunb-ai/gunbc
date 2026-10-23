@@ -1,0 +1,110 @@
+module test.claim.self_host_emitted_contract_driver_witness
+
+import std.logic { Bool }
+import v2.std.algebra { fold_list }
+import tools.self_host_curated_seed_linked_harness {
+  CsslWitnessDriver,
+  CuratedSeedLinkedClaimRun,
+  cssl_contract_driver_main_source,
+  cssl_contract_interpreted_claim_function,
+  cssl_driver_claim_runs,
+  cssl_fault_run_detected_the_planted_fault
+}
+import tools.self_host_module_behavioral_transport_roster {
+  ModuleBehavioralTransportConfig,
+  compiler_module_behavioral_transport_roster
+}
+
+// THE DRIVER IS RENDERED FROM THE ROW, AND THESE CLAIMS ARE ABOUT THAT RENDERING. Each supplies a
+// designed row rather than running a receipt; the rows that actually build through the rendered
+// driver are the roster's migrated rows, on the fleet.
+data designed_contract_driver: CsslWitnessDriver = CsslWitnessDriver {
+  contract_entry_rel: "src/designed/contract_test.dag",
+  contract_module: "designed.pkg.contract",
+  contract_function: "designed_contract_holds"
+}
+
+data designed_pass_marker: String = "DESIGNED_RECEIPT: PASS"
+
+fn designed_main_source() -> String {
+  cssl_contract_driver_main_source(
+    contract_module: "designed.pkg.contract",
+    contract_function: "designed_contract_holds",
+    pass_marker: designed_pass_marker
+  )
+}
+
+// The one call the rendered driver makes is to the emitted contract, addressed by the emitted
+// file name of its module, and it passes the fault flag through.
+test fn the_rendered_driver_calls_the_emitted_contract_with_the_fault_flag() -> Bool {
+  string_contains(
+    s: designed_main_source(),
+    pattern: "v1_compiled::designed_pkg_contract::designed_contract_holds(inject_fault)"
+  )
+    && string_contains(s: designed_main_source(), pattern: "a == \"--inject-fault\"")
+}
+
+// Both markers the harness reads are the row's: the pass marker verbatim and its stem plus FAIL.
+// A rendered driver that printed only one of them would make every fault run undetectable.
+test fn the_rendered_driver_prints_the_rows_pass_marker_and_its_fail_marker() -> Bool {
+  string_contains(s: designed_main_source(), pattern: "println!(\"DESIGNED_RECEIPT: PASS\");")
+    && string_contains(s: designed_main_source(), pattern: "println!(\"DESIGNED_RECEIPT: FAIL\");")
+}
+
+// What a fault run of the rendered driver prints, when the emitted contract correctly does not
+// hold, is what the harness accepts as a detected fault -- and what it prints when the contract
+// wrongly holds is not.
+test fn the_fail_marker_the_driver_prints_is_the_one_the_harness_detects() -> Bool {
+  cssl_fault_run_detected_the_planted_fault(
+    fault_exit_ok: false,
+    fault_stdout: "emitted contract inject_fault=true holds=false\nDESIGNED_RECEIPT: FAIL\n",
+    pass_marker: designed_pass_marker
+  )
+    && !cssl_fault_run_detected_the_planted_fault(
+      fault_exit_ok: true,
+      fault_stdout: "emitted contract inject_fault=true holds=true\nDESIGNED_RECEIPT: PASS\n",
+      pass_marker: designed_pass_marker
+    )
+}
+
+fn claim_run_count(driver: CsslWitnessDriver, runs: List<CuratedSeedLinkedClaimRun>) -> Int {
+  cssl_driver_claim_runs(driver: driver, claim_runs: runs) |> count
+}
+
+fn names_the_interpreted_contract(runs: List<CuratedSeedLinkedClaimRun>) -> Bool {
+  (runs
+    |> filter(r => r.entry_rel == "src/designed/contract_test.dag"
+      && r.function == "designed_contract_holds_and_its_planted_fault_does_not")
+    |> count) == 1
+}
+
+// A row's receipt carries the INTERPRETED realization of its contract as a claim run, ahead of
+// whatever the row already declared, so a row cannot hold on the emitted run alone.
+test fn a_row_adds_its_interpreted_contract_to_the_claim_runs() -> Bool {
+  let declared = [CuratedSeedLinkedClaimRun { entry_rel: "src/other_test.dag", function: "other_claim" }]
+  names_the_interpreted_contract(runs: cssl_driver_claim_runs(driver: designed_contract_driver, claim_runs: declared))
+    && claim_run_count(driver: designed_contract_driver, runs: declared) == 2
+    && claim_run_count(driver: designed_contract_driver, runs: []) == 1
+    && !names_the_interpreted_contract(runs: declared)
+}
+
+fn row_contract_is_under_the_contract_directory(cfg: ModuleBehavioralTransportConfig) -> Bool {
+  string_contains(s: cfg.driver.contract_entry_rel, pattern: "src/v2/test/claim/self_host_contract/")
+    && string_contains(s: cfg.driver.contract_module, pattern: "v2.test.claim.self_host_contract.")
+    && cfg.driver.contract_function != ""
+}
+
+// The real roster inhabits the carrier: every row names a contract module and function, and no
+// two rows share one. A row with an empty contract, or two rows pointed at one contract, would
+// make a held verdict say nothing about its own subject. Each property is stated over ALL rows --
+// compared to the roster's own count, never to a headcount copied from the tree, so adding or
+// removing a row does not move the claim -- and the roster is required to be inhabited, because
+// over an empty roster both would hold vacuously.
+test fn every_roster_row_names_its_own_contract() -> Bool {
+  let rows = compiler_module_behavioral_transport_roster
+  (rows |> count) > 0
+    && (rows |> filter(cfg => row_contract_is_under_the_contract_directory(cfg: cfg)) |> count) == (rows |> count)
+    && (rows
+      |> filter(cfg => (rows |> filter(other => other.driver.contract_function == cfg.driver.contract_function) |> count) == 1)
+      |> count) == (rows |> count)
+}

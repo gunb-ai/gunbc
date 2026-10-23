@@ -1,0 +1,2809 @@
+#![allow(clippy::disallowed_macros)]
+
+use std::fs;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use v1_compiler::cli_run::PhaseProfile;
+
+// THE REQUIRED-CI MEASUREMENT RECEIPT AND ITS ADMISSION RELATION NOW LIVE IN THE LIBRARY,
+// `v1_compiler::cli_run::required_ci_measurement`, which carries the hand-Rust deferral note
+// this block used to. They moved for one reason: the relation that decides a required lane's
+// exit status was wrong on at least two landed runs and nothing executed it. A library module
+// has a documented execution route (`cargo test --release -p v1-compiler --lib`); a module
+// beside this binary has none. What stays here is what only a process can do -- print the
+// located lines and set the status.
+use v1_compiler::cli_run::required_ci_measurement::{
+    adjudicate_required_ci_measurement_receipt_file, completed_required_ci_measurement_receipt,
+    synthesize_phase_blockers, write_required_ci_measurement_receipt, RequiredCiAdmission,
+    RequiredCiBlocker, RequiredCiMeasurementReceipt,
+};
+
+// ONE RELATION, ONE EXIT. Both consumers -- the separate `--adjudicate-measurement-receipt`
+// mode and the measuring process reading back its own receipt -- reach the process exit through
+// THIS function, so no second mapping from an admission verdict to a status can exist to drift.
+fn required_ci_admission_exit(admission: RequiredCiAdmission) -> Result<ExitCode, ExitCode> {
+    for line in admission.diagnostics() {
+        eprintln!("{line}");
+    }
+    if admission.is_admitted() {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Err(ExitCode::from(1))
+    }
+}
+
+fn adjudicate_required_ci_measurement_receipt(path: &str) -> Result<ExitCode, ExitCode> {
+    required_ci_admission_exit(adjudicate_required_ci_measurement_receipt_file(path))
+}
+
+fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    match args.get(idx) {
+        Some(v) => Ok(v.clone()),
+        None => {
+            eprintln!("claim_executor: {} requires a value", flag);
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+/// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
+/// on a nonexistent path — never falling back to the compile-time-baked workspace root
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    let given = require_value(args, idx, flag)?;
+    match v1_compiler::cli_run::resolve_cli_path_arg("claim_executor", flag, &given) {
+        Ok(resolved) => Ok(resolved),
+        Err(msg) => {
+            eprintln!("{msg}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+/// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
+/// (exit 1) with the GitHub-Actions `::error::` annotation on the first violation. This is the
+/// in-binary home of what was previously inline `[ -x ]` / `[ -s ]` shell in the generated ci.yml
+/// (DESIGN §5 fail-open guard: an sccache-served truncated/empty cached artifact after a
+/// `successful` build). The artifact paths are authored by the .dag spec and passed positionally.
+fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
+    use std::os::unix::fs::PermissionsExt;
+    if paths.is_empty() {
+        eprintln!("claim_executor: --verify-build-artifacts requires at least one artifact path");
+        return Err(ExitCode::from(2));
+    }
+    for path in paths {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path.as_str());
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                let executable = meta.permissions().mode() & 0o111 != 0;
+                if !meta.is_file() || !executable {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' absent or not \
+                         executable after a 'successful' build (sccache/cache corruption — DESIGN \
+                         §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+                if meta.len() == 0 {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' is zero-byte after \
+                         a 'successful' build (sccache served a truncated/empty cached artifact — \
+                         DESIGN §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+            }
+            Err(_) => {
+                eprintln!(
+                    "::error::build verification: declared artifact '{name}' absent or not \
+                     executable after a 'successful' build (sccache/cache corruption — DESIGN §5 \
+                     fail-open); failing closed: {path}"
+                );
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
+    eprintln!(
+        "claim_executor: build-artifact verification passed ({} declared release binar{} present \
+         + non-empty)",
+        paths.len(),
+        if paths.len() == 1 { "y" } else { "ies" }
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
+const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
+
+fn append_floor_phase_journal(phase: &str, state: &str, detail: &str) {
+    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!(
+                "claim_executor: create floor phase journal directory {}: {e}",
+                parent.display()
+            );
+            return;
+        }
+    }
+    let mut file = match fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: open floor phase journal {}: {e}",
+                path.display()
+            );
+            return;
+        }
+    };
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let row = format!(
+        "{unix_millis}\t{}\t{phase}\t{state}\t{clean_detail}\n",
+        std::process::id()
+    );
+    use std::io::Write as _;
+    if let Err(e) = file
+        .write_all(row.as_bytes())
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync_data())
+    {
+        eprintln!(
+            "claim_executor: persist floor phase journal {}: {e}",
+            path.display()
+        );
+    }
+}
+
+fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return Ok(());
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
+    }
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
+        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
+}
+
+fn run() -> Result<ExitCode, ExitCode> {
+    // BEFORE ANY WORK, AND BEFORE ARGUMENTS, because a limit acquired after the first large
+    // allocation bounds nothing that already happened. On a machine that already binds this
+    // process — every self-hosted CI runner — this is a no-op that says so; on an executor with
+    // no limit at all it creates one, so the whole-corpus adjudication can run somewhere the
+    // kernel is enforcing a ceiling instead of thrashing against a machine.
+    // A refused bind STOPS THE LINE: the run asked to be bounded, it is not bounded, and
+    // proceeding would be exactly the escape hatch the request existed to close.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return Err(ExitCode::FAILURE);
+    }
+
+    let args: Vec<String> = std::env::args().collect();
+    let mut source_roots: Vec<String> = Vec::new();
+    let mut verify_artifacts: Vec<String> = Vec::new();
+    let mut verify_artifacts_mode = false;
+    let mut write_checker_inputs: Option<String> = None;
+    let mut required_floor_mode = false;
+    let mut required_ci_mode = false;
+    let mut required_ci_measurement_receipt: Option<String> = None;
+    let mut required_ci_adjudicate_receipt: Option<String> = None;
+    let mut reach_base_standings_file: Option<String> = None;
+    let mut claim_wall_limit_ms: Option<u64> = None;
+    let mut required_ci_unreached_receipt: Option<String> = None;
+    let mut required_ci_unreached_cause: Option<String> = None;
+    let mut required_ci_lane: Option<RequiredCiLane> = None;
+    let mut required_v2_emission_mode = false;
+    let mut required_emit_compile_mode = false;
+    let mut v2_native_route_mode = false;
+    let mut required_regen_mode = false;
+    let mut emit_partition_crates_mode = false;
+    let mut emit_partition_crates_write = false;
+    let mut regen_round_cost_mode = false;
+    let mut regen_affected_set_mode = false;
+    let mut regen_affected_scope = false;
+    let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
+    let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--verify-build-artifacts" => {
+                // All remaining positional args are declared release-artifact paths to verify.
+                verify_artifacts_mode = true;
+                i += 1;
+                while i < args.len() {
+                    verify_artifacts.push(args[i].clone());
+                    i += 1;
+                }
+                break;
+            }
+            // THE PRODUCER OF A RESTORED PAIR'S CHECKER-INPUT RECORD, run by the job that built the
+            // pair (see `write_checker_inputs_record`). Takes no roots.
+            "--write-checker-inputs" => {
+                i += 1;
+                // An OUTPUT path: it does not exist yet, so it is not resolved-and-required.
+                write_checker_inputs = Some(require_value(&args, i, "--write-checker-inputs")?);
+            }
+            "--source-root" => {
+                i += 1;
+                source_roots.push(require_path_value(&args, i, "--source-root")?);
+            }
+            "--required-floor" => {
+                required_floor_mode = true;
+            }
+            "--required-ci" => {
+                required_ci_mode = true;
+            }
+            "--measurement-receipt" => {
+                i += 1;
+                required_ci_measurement_receipt =
+                    Some(require_value(&args, i, "--measurement-receipt")?);
+            }
+            "--adjudicate-measurement-receipt" => {
+                i += 1;
+                required_ci_adjudicate_receipt =
+                    Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            // THE BASE SIDE OF THE PER-PR v2 CLAIM DIFFERENTIAL. Only the required floor passes
+            // this, as a separate process whose working directory is a worktree at the diff base
+            // (`v1_compiler::cli_run::reach_base_standings`). It names the reached identities and
+            // the floor's own per-claim wall limit, read once by the floor from
+            // `v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms`.
+            "--reach-base-standings" => {
+                i += 1;
+                reach_base_standings_file =
+                    Some(require_value(&args, i, "--reach-base-standings")?);
+            }
+            "--claim-wall-limit-ms" => {
+                i += 1;
+                let value = require_value(&args, i, "--claim-wall-limit-ms")?;
+                match value.parse::<u64>() {
+                    Ok(ms) => claim_wall_limit_ms = Some(ms),
+                    Err(e) => {
+                        eprintln!("--claim-wall-limit-ms {value:?}: {e}");
+                        return Err(ExitCode::from(2));
+                    }
+                }
+            }
+            "--measurement-unreached-receipt" => {
+                i += 1;
+                required_ci_unreached_receipt =
+                    Some(require_value(&args, i, "--measurement-unreached-receipt")?);
+            }
+            "--measurement-unreached-cause" => {
+                i += 1;
+                required_ci_unreached_cause =
+                    Some(require_value(&args, i, "--measurement-unreached-cause")?);
+            }
+            // NAMES A JOB, NOT A PHASE SET. The workflow asks for a lane and this binary decides
+            // which phases that lane owns, so widening or re-routing the roster is a change here
+            // and never an edit to a YAML step list.
+            "--required-lane" => {
+                i += 1;
+                let value = require_value(&args, i, "--required-lane")?;
+                match RequiredCiLane::parse(&value) {
+                    Ok(lane) => required_ci_lane = Some(lane),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return Err(ExitCode::from(2));
+                    }
+                }
+            }
+            "--required-v2-emission" => {
+                required_v2_emission_mode = true;
+            }
+            // THE PHASE AS ITS OWN ENTRY POINT, for the reason `--required-v2-emission` is one:
+            // running this alone is a real local action, and it runs the SAME producer the
+            // required phase runs, so a green here and a green there cannot be two facts.
+            "--required-emit-compile" => {
+                required_emit_compile_mode = true;
+            }
+            // THE NATIVE ROUTE AS AN OPERATOR-INVOKED INSTRUMENT, NOT A REQUIRED PHASE. It ran
+            // as the required `v2-native` lane from 2026-09-09 until the 2026-09-11 operator
+            // ruling deleted that job (~4h wall on every push against a 180-minute envelope;
+            // gunbc.rung_drop v2_native_route_off_the_merge_path). The harness and the
+            // admission authority are unchanged — this flag is the one route to them, so a
+            // receipt minted here and one minted by the deleted lane cannot be two facts.
+            "--v2-native-route" => {
+                v2_native_route_mode = true;
+            }
+            "--required-regen" => {
+                required_regen_mode = true;
+            }
+            // THE SANCTIONED PRODUCER for the derived partition's boundary files. Named by the
+            // phase's own refusal, because a stop whose only remedy does not exist is what
+            // produced this class in the first place.
+            "--emit-partition-crates" => {
+                emit_partition_crates_mode = true;
+            }
+            "--write" => {
+                emit_partition_crates_write = true;
+            }
+            // ONE PRICED REGEN ROUND: seed build, the same `--required-regen` emit, install of
+            // what drifted, rebuild from the installed seed, diff — every phase on two clocks,
+            // rendered by `gunbc.regen_round_cost`. It installs into src/v1/stage0/src, which
+            // is what a round IS; the receipt names the tree and every installed path.
+            "--regen-round-cost" => {
+                regen_round_cost_mode = true;
+            }
+            // THE AFFECTED SET OF THE FLOOR'S DIFF RANGE: which committed mirrors can change
+            // for the .dag modules this edit touched, as `gunbc.regen_affected_set` bounds it.
+            // Reports; it installs nothing. An edited path the tree cannot name refuses.
+            "--regen-affected-set" => {
+                regen_affected_set_mode = true;
+            }
+            // CONSUME the bound rather than report it: the round adjudicates, writes and digests
+            // only the mirrors `--regen-affected-set` names for this edit, and REFUSES when that
+            // bound cannot locate an edited path. Opt-in and narrowing: without it the round is
+            // whole-population, which is what the required CI phase runs and what establishes
+            // the fixed point a scoped round starts from (v2.workflow.required_regen
+            // RegenEmissionScope).
+            "--regen-affected-scope" => {
+                regen_affected_scope = true;
+            }
+            "--regen-candidate-dir" => {
+                i += 1;
+                regen_candidate_dir = require_value(&args, i, "--regen-candidate-dir")?;
+            }
+            "--regen-receipt" => {
+                i += 1;
+                regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
+            }
+            other => {
+                eprintln!("claim_executor: unknown argument: {}", other);
+                return Err(ExitCode::from(2));
+            }
+        }
+        i += 1;
+    }
+
+    // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
+    // this check so a `successful` build that nonetheless produced a missing/zero-byte binary
+    // (sccache serving a truncated/empty cached artifact — DESIGN §5 fail-open) fails CLOSED before
+    // the floor runs. The LOGIC lives here (the floor binary) instead of inline shell in ci.yml; the
+    // declared artifact paths are still authored by the .dag spec and passed as positional args.
+    // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
+    if verify_artifacts_mode {
+        return verify_build_artifacts(&verify_artifacts);
+    }
+
+    if let Some(path) = write_checker_inputs {
+        return match v1_compiler::cli_run::write_checker_inputs_record(std::path::Path::new(&path))
+        {
+            Ok(n) => {
+                eprintln!("claim_executor: wrote {n} checker inputs to {path}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("::error::write-checker-inputs refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if let Some(path) = reach_base_standings_file {
+        let Some(wall_ms) = claim_wall_limit_ms else {
+            eprintln!("--reach-base-standings requires --claim-wall-limit-ms");
+            return Err(ExitCode::from(2));
+        };
+        return run_reach_base_standings(&source_roots, &path, wall_ms);
+    }
+    if let Some(path) = required_ci_adjudicate_receipt {
+        return adjudicate_required_ci_measurement_receipt(&path);
+    }
+    if let Some(path) = required_ci_unreached_receipt {
+        let cause = required_ci_unreached_cause
+            .unwrap_or_else(|| "measurement process exited before producing a receipt".to_string());
+        return write_required_ci_measurement_receipt(
+            &path,
+            RequiredCiMeasurementReceipt::MeasurementUnreached { cause },
+        )
+        .map(|_| ExitCode::SUCCESS)
+        .map_err(|e| {
+            eprintln!("required-ci: measurement-unreached receipt REFUSED {e}");
+            ExitCode::from(1)
+        });
+    }
+
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
+    // is: this mode takes NO roots. It renders from the emitted
+    // authority carrier and reads only the files it is adjudicating, so the generic guard below
+    // would refuse the only invocation it has -- a mode that could never have run once.
+    // MEASURED, NOT REASONED -- the first remote run of this entry point exited 2 with
+    // `provide at least one --source-root` before the branch was moved here.
+    //
+    // THE PRODUCER, AS ITS OWN ENTRY POINT. `--write` installs; without it the run reports and
+    // changes nothing, so the read-only form is safe to run anywhere and the `written` list is
+    // empty BY CONSTRUCTION rather than by a caller remembering not to ask.
+    if emit_partition_crates_mode {
+        let outcome =
+            v1_compiler::cli_run::run_partition_crate_boundary(emit_partition_crates_write);
+        match &outcome {
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                eprintln!("emit-partition-crates: CarrierRefused cause={cause}");
+                return Err(ExitCode::from(1));
+            }
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered { files, written } => {
+                for file in files {
+                    eprintln!(
+                        "emit-partition-crates: {} {}",
+                        file.disposition().name(),
+                        file.path
+                    );
+                }
+                eprintln!(
+                    "emit-partition-crates: rendered={} written={} mode={}",
+                    files.len(),
+                    written.len(),
+                    if emit_partition_crates_write {
+                        "write"
+                    } else {
+                        "read-only"
+                    }
+                );
+                // A READ-ONLY RUN THAT FOUND DRIFT EXITS NONZERO; the write form is what closes
+                // it. Exiting zero here would make the producer's own entry point disagree with
+                // the phase that names it as the remedy.
+                let unresolved = outcome.divergent().len();
+                return if emit_partition_crates_write || unresolved == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
+        }
+    }
+
+    if source_roots.is_empty() {
+        eprintln!("claim_executor: provide at least one --source-root");
+        return Err(ExitCode::from(2));
+    }
+
+    let _phase_profile = PhaseProfile::install_from_env();
+
+    // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
+    // claim scope, one cheap mutable frame per claim, one linear fold over every witness in the
+    // tree. It takes no plan, so it short-circuits before the plan-arg requirement — there is no
+    // schedule to resolve, no batch to assign, no worker to spawn and no selection to compute,
+    // and the absence of those flags is the point rather than an omission. `run_required_floor`
+    // refuses when planned, executed and terminal identity counts disagree, so a silently short
+    // roster cannot report as a pass.
+    // THE COMPOSED CI RUN — one process per LANE. The roster includes the runtime-body gate and the retained .dag parse
+    // sweep, one generated-artifact comparison over registry projections and stage0 mirrors,
+    // its fixed-point comparison, and the witness floor.
+    // `--required-lane` selects which of them
+    // this process owns; with no lane, it owns the whole roster.
+    //
+    // WHAT IT IS AND IS NOT. Sequencing a program's phases is the program's job (DESIGN §3: the
+    // workflow is a realization of the intent, not the place the intent lives), so the order
+    // lives here rather than in a YAML step list whose preconditions read each other's
+    // `outcome`. What is NOT here is a judgement about which checks CI ought to run: the roster
+    // is an operator decision, and the 2026-08-21 ruling set it to three, with v2-emission
+    // added on 2026-08-23.
+    //
+    // A LANE IS NOT A NARROWING OF THE ROSTER. Both lanes run in the same required workflow, on
+    // every push and pull request, and every phase is owned by exactly one of them
+    // (`RequiredCiPhase::lane`, an exhaustive match). What the lane selects is which JOB takes a
+    // phase, so that independent phases stop queueing behind each other -- see the roster block
+    // beside `RequiredCiLane` for why that boundary is a job boundary of necessity.
+    //
+    // WHAT WAS DELETED AND WHY IT IS NOT LEFT AS A SKIPPED PHASE (operator ruling, 2026-08-21).
+    // Five phases previously ran inside this fold: merge-admission-capture, regen-determinism
+    // (the fixed point), receipt-selftest, receipt-vs-changed-authorities, and
+    // merge-admission-stamp. They are GONE from this mode — not disabled behind a flag, not
+    // reported as SKIPPED — because a phase that always reports the same non-verdict is the
+    // absorbing fallback wearing a phase's clothes (DESIGN §5): its deficit frequency is zero by
+    // construction and it reads as coverage on the ledger. The capabilities themselves survive
+    // where they had their own entry points and consumers.
+    // The three behavioral producers now run only through their `gunbc test` labels. Their old
+    // flags are deleted in the same change as those bindings, so no dual-authority interval exists.
+    //
+    // WHAT THAT COSTS, named rather than left to be rediscovered. No CI run now measures regen
+    // DETERMINISM (that the emitter reproduces its own output), behavioural equivalence of a
+    // changed authority against its committed mirror, or the receipt machinery's own
+    // discriminating arms; and no run mints a merge-admission receipt. The merge-admission
+    // consumers refuse on a missing receipt rather than admitting on one (DESIGN, the CI
+    // paragraph's re-add queue), so nothing is admitted by the absence — but the three
+    // measurements above are simply not taken, which is a declared rung drop, not a silent one.
+    //
+    // THE NAMESPACE WAVE-ADMISSION WALL LEFT THE SAME WAY, LATER (operator ruling, 2026-09-19).
+    // The phase measured closure, subject-membership and binding deltas between the merge base
+    // and the head and refused unadjudicated motion; its consumed-row bookkeeping loop refused
+    // 100% of merge_group runs on a clean floor (run 35461710214), so the gate was deleted
+    // outright rather than repaired. The drop is declared at `gunbc.rung_drop`
+    // `namespace_wave_admission_wall_removed`; the baseline-reconstruction machinery the floor's
+    // planning row shares survives as `cli_run::namespace_baseline`.
+    //
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The phases are independent —
+    // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
+    // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
+    // reports the complete ledger instead of letting the first defect hide the rest. The line
+    // still stops (a nonzero exit on any failed phase); it stops with every deficit named. This
+    // is the stopped-line AUDIT DESIGN §5 sanctions: it reports, it never greens.
+    if required_ci_mode {
+        let mut phase_failures: Vec<String> = Vec::new();
+        let mut measurement_blockers: Vec<RequiredCiBlocker> = Vec::new();
+        let mut ran: Vec<&'static str> = Vec::new();
+        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The floor's planning row below reads
+        // the index the parse phase built (its base-side reconstruction starts from it) rather
+        // than acquiring the corpus again; holding it in an `Option` also keeps `the parse
+        // refused` distinguishable from `the parse ran and found nothing`, which the floor's
+        // own NotEvaluated arm keeps apart one level down.
+        let mut head_index: Option<v1_compiler::cli_run::declaration_index::DeclarationIndex> =
+            None;
+
+        // THE ROSTER IS ANNOUNCED BEFORE ANY PHASE RUNS, whole, with each phase's owning lane.
+        // A reader of one job's log sees the complete required roster and where the phases this
+        // job does not own are being measured, so a lane's coverage is legible from inside it
+        // rather than only by holding two logs side by side.
+        eprintln!(
+            "required-ci: lane={}",
+            required_ci_lane
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)")
+        );
+        for phase in REQUIRED_CI_PHASES {
+            if !required_ci_phase_selected(phase, required_ci_lane) {
+                eprintln!(
+                    "required-ci: phase {} ROUTED to lane {} (not this job)",
+                    phase.name(),
+                    phase.lane().name()
+                );
+            }
+        }
+
+        // THE RUNTIME-BODY CHILD STARTS HERE AND IS JUDGED AT ITS PHASE'S PLACE BELOW. It is
+        // already a separate process with its own roots and caches, it reads the tree and writes
+        // nothing, and no phase in front of it reads its answer -- so waiting for the lane
+        // roster, the parse sweep and its riders to finish before starting it only lengthened
+        // the lane by the child's whole wall (154 s on merge-queue run 36339106604). It is still
+        // waited on before the floor phase, so the floor's memory peak never overlaps it.
+        let primitive_runtime_body =
+            required_ci_phase_selected(RequiredCiPhase::PrimitiveRuntimeBody, required_ci_lane)
+                .then(spawn_required_primitive_runtime_body);
+
+        // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
+        // join rides the parse phase's index, but a match arm is not a declaration, so lane
+        // ownership is joined by evaluating the roster authority's
+        // `required_ci_lane_phase_rows`. Three lanes are independently selected and the native
+        // route's isolation is load-bearing: a host edit mapping a phase to the wrong lane
+        // (leaving the native job selecting zero phases), or a selected lane owning zero
+        // phases in the authority, stops the line here rather than greening over an
+        // unmeasured population.
+        v1_compiler::cli_run::floor_seam("lane-roster");
+        let authority_lane_rows =
+            match v1_compiler::cli_run::authority_lane_phase_rows(&source_roots) {
+                Ok(rows) => Some(rows),
+                Err(e) => {
+                    eprintln!("required-ci: lane-roster FAIL {e}");
+                    phase_failures.push(format!("lane-roster: {e}"));
+                    None
+                }
+            };
+        if let Some(rows) = &authority_lane_rows {
+            let findings = lane_roster_findings(rows, required_ci_lane);
+            for finding in &findings {
+                eprintln!("required-ci: lane-roster FAIL {finding}");
+            }
+            if !findings.is_empty() {
+                phase_failures.push(format!("lane-roster ({} finding(s))", findings.len()));
+            }
+        }
+
+        // PHASE 1 — the .dag parse sweep, over the authored roots in DAG_PARSE_SWEEP_ROOTS.
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        if required_ci_phase_selected(RequiredCiPhase::Parse, required_ci_lane) {
+            // THE PHASES BEFORE THE FLOOR ARE SEAMS TOO: the floor enters holding whatever the
+            // parse and its riders left resident, so a beat at their boundaries is what separates
+            // that inheritance from the floor's own growth (gunbc.floor_demand).
+            v1_compiler::cli_run::floor_seam("parse");
+            eprintln!(
+                "required-ci: phase parse (.dag: {})",
+                v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+            );
+            match v1_compiler::cli_run::run_dag_parse_sweep(
+                &v1_compiler::cli_run::workspace_root(),
+                &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+            ) {
+                Ok(sweep) => {
+                    eprintln!(
+                        "required-ci: parse OK {} file(s) parse-clean",
+                        sweep.parse_clean
+                    );
+                    v1_compiler::cli_run::floor_seam("declarations");
+                    // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
+                    //
+                    // They are reported inside this phase rather than as a phase of their own
+                    // because they are not a second pass over anything: the index was built by
+                    // insertion from the sweep above, so there is no walk to order, nothing to
+                    // schedule, and no second acquisition of the corpus. DESIGN §6 and §3's
+                    // cited-symbol row both name exactly this — one module's facts from one
+                    // module's source, at ingestion, instead of a corpus-wide job per question.
+                    let population =
+                        v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
+                    let findings =
+                        v1_compiler::cli_run::declaration_index::corpus_findings(&sweep.index);
+                    // A GREEN NAMES ITS DENOMINATORS. `checked=0` and `all clean` are different
+                    // states with different remedies, and an instrument that renders them
+                    // identically is the failure DESIGN §5 names, not a tidy report.
+                    eprintln!(
+                        "required-ci: declarations modules={} declared={} import_members={} \
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={} \
+                         cited_authorities_without_import_edges={} retained={:?} \
+                         cited_and_called={} called_retained={:?} cited_not_called={} not_called_retained={:?} \
+                         primary_dag_entries={} primary_dag_retained={:?} src_v2_pool_only={} pool_only_retained={:?}",
+                        population.modules,
+                        population.declarations,
+                        population.import_members,
+                        population.citations,
+                        population.citations_pre_existing_debt,
+                        population.citations_in_fixtures,
+                        population.citations_outside_index,
+                        population.import_members_kernel_named,
+                        population.lens_modules,
+                        population.cited_authorities_without_import_edges.len(),
+                        population.cited_authorities_without_import_edges,
+                        population.cited_and_called_without_import_edges.len(),
+                        population.cited_and_called_without_import_edges,
+                        population.cited_not_called_without_import_edges.len(),
+                        population.cited_not_called_without_import_edges,
+                        population.cited_authorities_under_primary_dag_entry_root.len(),
+                        population.cited_authorities_under_primary_dag_entry_root,
+                        population.cited_authorities_in_src_v2_dependency_pool_only.len(),
+                        population.cited_authorities_in_src_v2_dependency_pool_only,
+                    );
+                    for finding in &findings {
+                        eprintln!(
+                            "required-ci: declarations FAIL {}",
+                            v1_compiler::cli_run::declaration_index::render_finding(
+                                &v1_compiler::cli_run::workspace_root(),
+                                finding
+                            )
+                        );
+                    }
+                    if !findings.is_empty() {
+                        phase_failures
+                            .push(format!("declarations ({} finding(s))", findings.len()));
+                    }
+                    // THE PHASE ROSTER JOIN RIDES THE SAME INGESTION. The substrate authority
+                    // for phase identity is `gunbc.required_ci_phase_roster` `RequiredCiPhase`;
+                    // this enum is its declared parallel realization, and the two are joined by
+                    // variant-set equality in both directions on every required run, the DESIGN
+                    // §3 answer to a second representation.
+                    // A phase declared and not realized, or realized and not declared, stops
+                    // the line here rather than diverging silently.
+                    let roster_findings = phase_roster_findings(&sweep.index);
+                    for finding in &roster_findings {
+                        eprintln!("required-ci: phase-roster FAIL {finding}");
+                    }
+                    if !roster_findings.is_empty() {
+                        phase_failures.push(format!(
+                            "phase-roster ({} finding(s))",
+                            roster_findings.len()
+                        ));
+                    }
+
+                    // THE DECLARED-VERSUS-ROSTERED IDENTITY JOIN RIDES THE SAME INGESTION, for
+                    // the same reason the two joins above do: the roster half is a membership
+                    // fact readable only from the parse this phase has already performed, and a
+                    // corpus-wide job per question is what DESIGN §6 refuses. The declared half
+                    // is read through the `data_decl_type_facts` producer — the same walk the
+                    // `v2.std.decl_index` builtin marshals, not a second derivation of it.
+                    //
+                    // IT LIVES IN THE LANE THE PARSE PHASE LIVES IN, whichever that is: it is a
+                    // rider, not a phase, so `RequiredCiPhase::Parse`'s lane ownership answers for
+                    // it and no second routing fact exists to drift. No job is added; the roster of
+                    // required jobs is closed to growth, and this check belongs to a phase that
+                    // already exists.
+                    match v1_compiler::cli_run::rostered_row_join::run_rostered_row_join(
+                        &sweep.index,
+                    ) {
+                        Ok(report) => {
+                            // A GREEN NAMES ITS DENOMINATORS, per row type: declared, rostered
+                            // and CHECKED, so a subject that narrowed is legible from the log
+                            // rather than only from the verdict.
+                            eprintln!(
+                                "required-ci: rostered-row-join sources_accounted={} controls_fired={}",
+                                report.sources_accounted,
+                                report.control_findings.len()
+                            );
+                            for counts in &report.counts {
+                                eprintln!(
+                                    "required-ci: rostered-row-join {} population_of_type={} excluded_other_carrier={} declared={} rostered_names={} checked={} fixture_home={}",
+                                    counts.row_type,
+                                    counts.population_of_type,
+                                    counts.excluded_other_carrier,
+                                    counts.declared,
+                                    counts.rostered,
+                                    counts.checked,
+                                    counts.fixture_home,
+                                );
+                            }
+                            for finding in &report.control_findings {
+                                eprintln!(
+                                    "required-ci: rostered-row-join CONTROL {}",
+                                    finding.rendered()
+                                );
+                            }
+                            for finding in &report.findings {
+                                eprintln!(
+                                    "required-ci: rostered-row-join FAIL {}",
+                                    finding.rendered()
+                                );
+                            }
+                            if !report.findings.is_empty() {
+                                phase_failures.push(format!(
+                                    "rostered-row-join ({} finding(s))",
+                                    report.findings.len()
+                                ));
+                            }
+                        }
+                        // NO VERDICT IS NOT A GREEN. The declared population being unobtainable
+                        // stops the line under its own name rather than being reported as a
+                        // clean join over nothing.
+                        Err(e) => {
+                            eprintln!("required-ci: rostered-row-join NOT EVALUATED — {e}");
+                            phase_failures.push(
+                                "rostered-row-join (declared population unobtainable)".to_string(),
+                            );
+                        }
+                    }
+                    // MOVED, NOT CLONED: the riders above read the sweep's own index, so it is
+                    // handed on once they are done rather than copied while they run.
+                    head_index = Some(sweep.index);
+                }
+                Err(errors) => {
+                    for e in &errors {
+                        eprintln!("required-ci: parse FAIL {e}");
+                    }
+                    phase_failures.push(format!("parse ({} error(s))", errors.len()));
+                }
+            }
+            ran.push("parse");
+        }
+
+        // A separate source universe: the runtime producer is in src/v1, whose module-name
+        // collisions must not widen the floor's prepared subject. The .dag door owns both
+        // the population verdict and the permanent missing-body mutation control.
+        if let Some(spawned) = primitive_runtime_body {
+            eprintln!("required-ci: phase primitive-runtime-body (live emitted source + mutation control)");
+            if !finish_required_primitive_runtime_body(spawned) {
+                phase_failures.push("primitive-runtime-body".to_string());
+            }
+            ran.push("primitive-runtime-body");
+        }
+
+        // PHASE — ONE adjudication over BOTH declared generated-artifact populations: every
+        // emitted stage0 mirror, and every committed registry projection. Neither half can report
+        // a terminal green: the phase records its one verdict only after both adjudicators ran.
+        // This closes the disjoint-denominator failure where registry=38/38 printed green while a
+        // stale v1_compiler_infer.rs made the sibling regen phase red. The registry boundary is
+        // read-only, so it cannot manufacture its own green by installing generated bytes.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase generated-artifact (registry projections + stage0 mirrors)"
+            );
+            let failures_before = phase_failures.len();
+
+            // MIRROR HALF, AS A CHILD BESIDE THE OTHER TWO. The stage0 regeneration reads the src/v1
+            // universe and writes only its candidate and receipt under target/; the docs and
+            // registry halves below read dag and src/v2 and write nothing, and neither reads the
+            // other. Run in series they made the merge queue's generated job wait for their sum
+            // (merge-queue run 36357621284: regen 13 min, then docs 5.8 and registry 3.1). The
+            // regen is `claim_executor --required-regen` -- the same producer, candidate and
+            // receipt paths -- judged by its exit status once the in-process halves finish, so the
+            // phase still records ONE verdict after all three adjudicators ran, and the
+            // fixed-point phase after it still reads the receipt this child wrote.
+            // The child's argv validation requires the parent's source roots; the
+            // unscoped regeneration reads its own fixed v1 sweep, not these roots.
+            let mut stage0_regen_args: Vec<String> = source_roots
+                .iter()
+                .flat_map(|root| ["--source-root".to_string(), root.clone()])
+                .collect();
+            stage0_regen_args.extend([
+                "--required-regen".to_string(),
+                "--regen-candidate-dir".to_string(),
+                regen_candidate_dir.clone(),
+                "--regen-receipt".to_string(),
+                regen_receipt_path.clone(),
+            ]);
+            let stage0_regen =
+                spawn_required_child("stage0-regen", "claim_executor", &stage0_regen_args);
+
+            // DOCS LEDGER HALF. A dedicated ProcessExit entry whose closure is the two ledger
+            // renderers, not gunbc.generated_artifact_emit. Run even after a mirror refusal, and
+            // before the whole-registry resolve, so a stale docs/design-failure-modes.md cannot
+            // hide behind a SIGKILL or MemoryStall of the whole-registry fold.
+            match v1_compiler::cli_run::run_docs_projection_agreement(&source_roots) {
+                v1_compiler::cli_run::DocsProjectionAgreement::Clean => {
+                    eprintln!("required-ci: generated-artifact population=docs-projections OK");
+                }
+                v1_compiler::cli_run::DocsProjectionAgreement::Refused { cause } => {
+                    eprintln!(
+                        "required-ci: generated-artifact population=docs-projections REFUSED {cause}"
+                    );
+                    phase_failures.push(format!("generated-artifact docs-projections: {cause}"));
+                }
+            }
+
+            // REGISTRY HALF. Run even after a mirror refusal so the one outcome names the complete
+            // population rather than allowing the first failure to hide the second.
+            let registry_failures_before = phase_failures.len();
+            let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
+            match &outcome {
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
+                    cause,
+                } => {
+                    eprintln!(
+                        "required-ci: generated-artifact CarrierRefused cause={cause} \
+                         (the authority declined to answer; nothing was compared)"
+                    );
+                    phase_failures.push(format!("generated-artifact carrier refused: {cause}"));
+                }
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::Adjudicated {
+                    artifacts,
+                    unadjudicated,
+                } => {
+                    let divergent = v1_compiler::cli_run::boundary_divergent(&outcome);
+                    eprintln!(
+                        "required-ci: generated-artifact population=registry-projections \
+                         rostered={} adjudicated={} matches={} \
+                         drifted={} absent={} unadjudicated={}",
+                        artifacts.len() + unadjudicated.len(),
+                        artifacts.len(),
+                        artifacts.len() - divergent.len(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Drifted)
+                            .count(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Absent)
+                            .count(),
+                        unadjudicated.len(),
+                    );
+                    for a in &divergent {
+                        eprintln!(
+                            "required-ci: generated-artifact {} {}",
+                            v1_compiler::cli_run::artifact_disposition_name(
+                                v1_compiler::cli_run::artifact_disposition(a)
+                            ),
+                            a.path
+                        );
+                    }
+                    for u in unadjudicated {
+                        eprintln!(
+                            "required-ci: generated-artifact UNADJUDICATED {} — {}",
+                            u.path, u.cause
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        eprintln!(
+                            "required-ci: generated-artifact these are GENERATED projections of \
+                             their .dag authorities — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::GENERATED_ARTIFACT_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "generated-artifact ({} projection(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                    if !unadjudicated.is_empty() {
+                        phase_failures.push(format!(
+                            "generated-artifact ({} rostered artifact(s) reached no verdict)",
+                            unadjudicated.len()
+                        ));
+                    }
+                }
+            }
+            if !v1_compiler::cli_run::boundary_is_clean(&outcome)
+                && phase_failures.len() == registry_failures_before
+            {
+                eprintln!(
+                    "required-ci: generated-artifact REFUSED — the outcome is not clean and no \
+                     branch above named why. Reporting the refusal rather than the silence"
+                );
+                phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
+            }
+            // The mirror half's verdict, joined after the in-process halves. Production still
+            // precedes adjudication inside the child, so a stale mirror leaves the candidate
+            // needed to repair it.
+            if !finish_required_child(stage0_regen, "stage0-regen") {
+                eprintln!(
+                    "required-ci: generated-artifact population=stage0-mirrors FAIL (the \
+                     regeneration child reported failures above or did not complete)"
+                );
+                phase_failures.push("generated-artifact stage0-mirrors".to_string());
+            }
+
+            if phase_failures.len() == failures_before {
+                eprintln!(
+                    "required-ci: generated-artifact OK populations=registry-projections,stage0-mirrors"
+                );
+            } else {
+                eprintln!(
+                    "required-ci: generated-artifact FAIL populations=registry-projections,stage0-mirrors"
+                );
+            }
+            ran.push("generated-artifact");
+        }
+
+        // PHASE 2b — THE SECOND-GENERATION RE-EMIT IS GONE (operator ruling 2026-10-04: "we
+        // don't need to run multiple times - we are not that particular about determinism in v1
+        // anymore"). It re-emitted with the SAME binary the generated-artifact phase had just
+        // run, so it could separate the two generations only on a NONDETERMINISTIC emit -- it
+        // was a determinism check and nothing else, and determinism is what the ruling waives.
+        // What the build lane asserts is now exactly one sentence: the committed mirrors equal
+        // ONE emission of the current .dag sources by the seed built from those mirrors (the
+        // generated-artifact phase above). The ruling does NOT waive CONVERGENCE, and that
+        // assertion is what still enforces it: a change to the emitter's own closure (infer,
+        // emit_rust) emitted by a binary that predates it is refused there, because the seed CI
+        // builds from the committed mirrors emits differently. The declared drop of the
+        // determinism capability stays `gunbc.rung_drop`
+        // `floor_cut_regen_second_generation_agreement`.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THE GENERATED-ARTIFACT PHASE.
+            // It rode the deleted second-generation phase until 2026-10-04 and moved here rather
+            // than lapsing: it is a fixture-sized emitter property (registry-key order in one
+            // artifact), not the corpus re-emit the ruling waives, and the roster of required
+            // jobs is closed to growth. It is a rider, not a phase, so
+            // `RequiredCiPhase::GeneratedArtifact`'s lane ownership answers for it and no second
+            // routing fact exists to drift.
+            //
+            // ITS COST IS THREE EMISSIONS OF A SIXTEEN-DECLARATION FIXTURE, not of the corpus.
+            // The class it catches is a property of the EMITTER, so the smallest specimen that
+            // carries several registry keys discriminates it exactly as the corpus does; paying
+            // corpus cost for it would buy nothing this control can read.
+            match v1_compiler::cli_run::run_dag_artifact_identity() {
+                Ok(outcome) => {
+                    eprintln!("required-ci: dag-artifact-identity {}", outcome.summary());
+                    for finding in &outcome.findings {
+                        eprintln!("required-ci: dag-artifact-identity FAIL {finding}");
+                    }
+                    if !outcome.passed() {
+                        phase_failures.push(format!(
+                            "dag-artifact-identity ({} finding(s))",
+                            outcome.findings.len()
+                        ));
+                    }
+                }
+                // NO VERDICT IS NOT A GREEN. A fixture that will not compile leaves this run
+                // holding no identity evidence, and that stops the line under its own name.
+                Err(e) => {
+                    eprintln!("required-ci: dag-artifact-identity NOT EVALUATED — {e}");
+                    phase_failures.push("dag-artifact-identity (subject unobtainable)".to_string());
+                }
+            }
+        }
+
+        // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
+        // the requesting session, after the 2026-08-23 break reached main and stayed for
+        // hours with every required phase green: the required run parses src/v1 .dag,
+        // compares the regen mirrors and folds the floor, and NONE OF THE THREE COMPILES A
+        // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
+        //
+        // IT NO LONGER SHARES A JOB WITH THE FLOOR AT ALL (operator ruling, 2026-08-25).
+        // The phase sits in the `build` lane beside generated-artifact, whose mirror half writes
+        // its receipt; the floor is the other job, and
+        // the two run in parallel. The old paragraph here weighed whether to make this an
+        // early PREREQUISITE of the floor -- an exit before it -- and that question is now
+        // moot rather than answered: a phase in another job cannot precondition this one,
+        // and the run reports both lanes' ledgers whatever either does.
+        //
+        // The SUBJECT widened with the split, which is the same ruling's other half: the
+        // roster is `src/v2/compiler/00_compile.dag`, the v2 pipeline root, where it was
+        // the smallest entry in the tree. The reason is in `gunbc.ci_layer_roots`
+        // `required_v2_emission_entries` -- the cost that argued against it was a cost
+        // against a SERIAL run, and this lane's cost is now free up to the floor's
+        // duration.
+        //
+        // The subject is the SAME PRODUCER the cargo board runs
+        // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
+        // a green here and an emitting board are one fact rather than two.
+        // THE WHOLE POOL'S BARE-REFERENCE OBLIGATION. An entry resolve judges only the files its
+        // closure reaches; this phase is where every import-less pool file is judged, on every
+        // pull_request and merge_group, so the narrowing an entry run is allowed never becomes a
+        // pool nobody judged. Before the floor, on the index the floor reuses.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase bare-reference-admission (every pool file, one judgment)"
+            );
+            let phase_started = std::time::Instant::now();
+            let judgment =
+                v1_compiler::cli_run::run_required_bare_reference_admission(&source_roots);
+            let phase_wall_ms = phase_started.elapsed().as_millis();
+            match judgment {
+                Ok(coverage) => eprintln!(
+                    "required-ci: bare-reference-admission OK {coverage} wall_ms={phase_wall_ms}"
+                ),
+                Err(e) => {
+                    eprintln!(
+                        "required-ci: bare-reference-admission REFUSED wall_ms={phase_wall_ms} {e}"
+                    );
+                    phase_failures.push(format!("bare-reference-admission refused: {e}"));
+                }
+            }
+            ran.push("bare-reference-admission");
+        }
+
+        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
+        if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
+            v1_compiler::cli_run::floor_seam("floor-entry");
+            eprintln!("required-ci: phase floor (one prepared subject, one fold)");
+            let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+            // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW: the match-bearing
+            // consumers of a coproduct whose arm set changed are derived from that index and
+            // its base-side reconstruction, never from a second corpus walk. `None` here means
+            // the parse refused (the line is already stopped) and the floor refuses the
+            // planning row rather than planning blind.
+            match v1_compiler::cli_run::run_required_floor(
+                &source_roots,
+                &commit,
+                v1_compiler::cli_run::ShardStyle::single_shard(),
+                head_index.take(),
+            ) {
+                Ok(outcome) => {
+                    report_required_floor_outcome(&outcome);
+                    if !required_floor_outcome_is_clean(&outcome) {
+                        phase_failures.push("floor".to_string());
+                        measurement_blockers.extend(required_floor_measurement_blockers(&outcome));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("required-ci: floor refused: {e}");
+                    phase_failures.push(format!("floor refused: {e}"));
+                }
+            }
+            ran.push("floor");
+        }
+
+        // THE WHOLE-POOL ADMISSION'S COMPLETION IS THE PRODUCER'S RECORD, NOT THE MARKER. The
+        // ran-set below compares literals this driver pushes; for this phase the evidence that the
+        // judgment happened is what the producer recorded, so a driver that kept the marker and
+        // lost the call refuses here, under this phase's own name.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            if let Some(failure) =
+                v1_compiler::cli_run::required_bare_reference_admission_completion_failure(
+                    &source_roots,
+                )
+            {
+                eprintln!("required-ci: {failure}");
+                phase_failures.push(failure);
+            }
+        }
+
+        // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints
+        // phases_run; this refusal covers the state where that number is legible but wrong — a
+        // phase silently never reached, or one executed that the authority does not expect in
+        // this lane. Equality over an empty expected set cannot mask a zero-phase run: the
+        // empty-expectation case already refused at run start.
+        if let Some(rows) = &authority_lane_rows {
+            let expected = expected_lane_phases(rows, required_ci_lane);
+            let expected_refs: std::collections::BTreeSet<&str> =
+                expected.iter().map(String::as_str).collect();
+            let observed: std::collections::BTreeSet<&str> = ran.iter().copied().collect();
+            if observed != expected_refs {
+                phase_failures.push(format!(
+                    "lane-roster ran-set: the authority expects {:?} in this lane but the run \
+                     executed {:?}",
+                    expected_refs, observed
+                ));
+            }
+        }
+
+        // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
+        // phase population. The required-floor aggregate below counts claim outcomes, so the
+        // formerly shared `failed` key gave one spelling two meanings in one process's output.
+        eprintln!(
+            "required-ci: lane={} phases_run={} phases_failed={}",
+            required_ci_lane
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)"),
+            ran.len(),
+            phase_failures.len()
+        );
+        let judged_module_identities =
+            v1_compiler::cli_run::required_lane_judged_module_identities_for_ci();
+        eprintln!(
+            "required-ci: judged-module-identities {:?}",
+            judged_module_identities
+        );
+        match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(&source_roots) {
+            Ok(admitted_module_identities) => {
+                eprintln!(
+                    "required-ci: admitted-module-identities {:?}",
+                    admitted_module_identities
+                );
+                // ADMITTED MINUS JUDGED IS THE POPULATION OUTSIDE THIS RUN'S PREPARED SUBJECT,
+                // not a set of resolve failures: a module here was never handed to the checker,
+                // so nothing about it was refused. It was printed as
+                // `unresolved-module-identities`, a name for a failure it does not record (DESIGN
+                // section 3, a meaning fork), and a reader took it for silently dropped resolve
+                // errors. Which modules a run prepares, and under which seed ground, is printed by
+                // the floor's `[floor-phase]` lines; this is the count of the rest.
+                eprintln!(
+                    "required-ci: outside-subject-module-count {}",
+                    v1_compiler::cli_run::declaration_index::modules_outside_lane_subject(
+                        admitted_module_identities,
+                        &judged_module_identities,
+                    )
+                    .len()
+                );
+            }
+            Err(cause) => {
+                eprintln!("required-ci: source-root ingest receipt refused: {cause}");
+                phase_failures.push(format!("source-root ingest receipt refused: {cause}"));
+            }
+        }
+        for failure in &phase_failures {
+            eprintln!("required-ci: FAILED PHASE {failure}");
+        }
+        if let Some(path) = required_ci_measurement_receipt {
+            // EVERY REPORTED FAILURE MUST REACH THE BLOCKER SET, because the blocker set is
+            // what the exit is derived from below AND what the separate adjudicating consumer
+            // prints. The fold lives in the library beside the admission relation, with its own
+            // controls, because it has now been wrong twice in two different directions and
+            // neither was visible from the process status -- see
+            // `required_ci_measurement::synthesize_phase_blockers`, which states both.
+            //
+            // Dissolve this compatibility boundary when every required phase returns its own
+            // `Vec<RequiredCiBlocker>`: a human diagnostic must not remain the authority for a
+            // blocker's phase and identity.
+            synthesize_phase_blockers(&phase_failures, &mut measurement_blockers);
+            // Reaching this branch means the measurement process returned after running every
+            // selected phase. A phase refusal is therefore a completed measurement carrying
+            // blockers, never MeasurementUnreached. The latter is sealed by the workflow's
+            // outer finalizer only when this process cannot return a receipt at all (for example,
+            // a failed instrument build or a killed process).
+            let receipt = completed_required_ci_measurement_receipt(measurement_blockers);
+            if let Err(e) = write_required_ci_measurement_receipt(&path, receipt) {
+                eprintln!("required-ci: measurement REFUSED {e}");
+                return Err(ExitCode::from(1));
+            }
+            eprintln!("required-ci: measurement completed receipt={path}");
+            // THE WRITE IS NOT THE VERDICT. This branch used to return SUCCESS here because the
+            // D0 design published the receipt and let a SEPARATE adjudicating step decide. That
+            // step no longer exists: `gunbc.compiler_gate_workflow`
+            // `compiler_gate_floor_run_step` carries no `continue-on-error` and is followed by
+            // no adjudicator -- "here a refused claim refuses the lane", as its own note says --
+            // while the command it runs still asks for a receipt. So the measuring process is
+            // now the only authority left standing, and it was answering SUCCESS for a phase it
+            // had just refused (runs 35503853026 and 35510547600, both green on a declined
+            // changed-witness observation).
+            //
+            // It adjudicates the FILE it just wrote rather than the value it meant to write, so
+            // the readback, the JSON transport and the version agreement are all inside the
+            // verdict, and it reaches the exit through the same function the separate
+            // `--adjudicate-measurement-receipt` mode uses: one relation, one exit. Restoring
+            // the published/adjudicated split costs nothing here -- a step carrying
+            // `continue-on-error` absorbs this status and its own adjudicator reads the same
+            // receipt to the same verdict.
+            return required_ci_admission_exit(adjudicate_required_ci_measurement_receipt_file(
+                &path,
+            ));
+        }
+        return if phase_failures.is_empty() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
+    }
+
+    if required_emit_compile_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        let probe_root = match v1_compiler::cli_run::local_emit_compile_probe_root() {
+            Ok(root) => root,
+            Err(e) => {
+                eprintln!("required-emit-compile: probe root not created: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
+            Ok(outcomes) => {
+                let mut not_passed = 0usize;
+                for outcome in &outcomes {
+                    eprintln!(
+                        "required-emit-compile: {}",
+                        v1_compiler::cli_run::emit_compile_outcome_summary(outcome)
+                    );
+                    if !v1_compiler::cli_run::emit_compile_outcome_passed(outcome) {
+                        not_passed += 1;
+                        if let v1_compiler::cli_run::EmitCompileOutcome::Measured {
+                            baseline, ..
+                        } = outcome
+                        {
+                            for line in
+                                v1_compiler::cli_run::cargo_verdict_stderr_tail(baseline).lines()
+                            {
+                                eprintln!("required-emit-compile: cargo| {line}");
+                            }
+                        }
+                    }
+                }
+                let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
+                    &outcomes,
+                    &roots,
+                    &probe_root,
+                    "required-emit-compile:",
+                );
+                for line in report {
+                    eprintln!("{line}");
+                }
+                // The report printed this root and the retention file inside it, so it is kept
+                // for the reader rather than removed with the value.
+                let _ = probe_root.retain();
+                return if not_passed == 0 && retention_error.is_none() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
+            Err(e) => {
+                eprintln!("required-emit-compile: roster refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
+
+    if v2_native_route_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        eprintln!(
+            "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
+        );
+        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern -- read from
+        // the ONE seed-side accessor rather than spelled as a literal here, so this caller and the
+        // `gunbc test` verb cannot drift about what the native universe is. A narrower pattern
+        // reaches the same runner through `gunbc test <operand>`.
+        let default_pattern =
+            v1_compiler::cli_run::target_invocation_host::native_route_default_pattern_text();
+        return match v1_compiler::cli_run::run_required_v2_native(&roots, &default_pattern) {
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationHeld { .. } => {
+                Ok(ExitCode::SUCCESS)
+            }
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused {
+                summary, ..
+            } => {
+                eprintln!("v2-native-route: refused: LaneQualificationRefused — {summary}");
+                Err(ExitCode::from(1))
+            }
+            v1_compiler::cli_run::NativeRouteOutcome::Unreached { cause } => {
+                eprintln!("v2-native-route: refused: {cause}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if required_v2_emission_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        return match v1_compiler::cli_run::run_required_v2_emission(&roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    // ONE SELF-DESCRIBING LINE. The disposition is ON the line, so a run
+                    // that never reached the compiler cannot be read as a clean emission
+                    // of nothing by anything that reads one line at a time.
+                    eprintln!("{}", run.measurement_line("required-v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionRefused {} phase={phase} cause={cause}",
+                                run.subject.receipt()
+                            );
+                        }
+                        v1_compiler::cli_run::CompileDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                run.subject.receipt()
+                            );
+                        }
+                    }
+                }
+                eprintln!(
+                    "required-v2-emission: entries={} not_completed={}",
+                    runs.len(),
+                    not_completed
+                );
+                if not_completed == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            // The roster itself being unreadable is reported as itself: no entry ran, so
+            // there is no per-entry disposition to render.
+            Err(e) => {
+                eprintln!(
+                    "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    // THE CITED-SYMBOL CENSUS IS GONE FROM HERE, AND ITS SUBJECT MOVED RATHER THAN LAPSING.
+    //
+    // `--required-cited-symbol` ran `v2.lens.cited_symbol_resolution` over the corpus-wide
+    // `decl_facts` + `module_declaration_facts` walks, answering each authored reference by a
+    // LINEAR SCAN of a flat list of every declaration in the repository. DESIGN §3's rung-drop
+    // row names exactly that shape as the thing to stop doing: the wall belongs "checked at
+    // ingestion, on the module whose source carries the citation, from that module's own text,
+    // rather than reconstructed corpus-wide by a second job".
+    //
+    // It is now the `parse` phase above, over the per-module declaration index the sweep builds
+    // from the parse it was already performing. The mode is deleted rather than left standing as
+    // a second route to one question (§3, single authority), and the replacement is STRICTLY
+    // WIDER, which is the test §3's replacement doctrine sets: it enrolls every authored
+    // `DeclarationRef` in the corpus rather than the five carriers the lens's population named,
+    // and it indexes test modules, which `decl_facts` deliberately did not — so the
+    // outside-index disposition those exclusions forced is not needed at all.
+
+    // THE HEADS READING'S OWN INSTRUMENT MOVED TO `gunbc test`, AND IT MOVED ATOMICALLY.
+    //
+    // What stood here was a `--heads-reading-differential` mode: the same producer, reached by a
+    // flag on this binary. It is DELETED in the change that makes the instrument addressable as
+    // `//gunbc/instruments:heads-reading-differential`, rather than left standing beside it. Two
+    // routes to one producer is the fork DESIGN section 3 forbids, and the interval in which both
+    // work is exactly when a caller learns the old one and keeps it.
+    //
+    // The reason it was never enrolled in the required run is unchanged and is now recorded on the
+    // target instead: reading the corpus TWICE is precisely the cost the heads reading exists to
+    // remove, so paying it on every push would spend more than the repair saves. The instrument is
+    // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
+    // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
+
+    if regen_affected_set_mode {
+        return match v1_compiler::cli_run::run_regen_affected_set(&source_roots) {
+            Ok(outcome) => {
+                eprint!("{}", outcome.rendered);
+                if outcome.arm == "EditedSetUnlocatable" {
+                    Err(ExitCode::from(1))
+                } else {
+                    Ok(ExitCode::SUCCESS)
+                }
+            }
+            Err(e) => {
+                eprintln!("regen-affected-set: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if regen_round_cost_mode {
+        return match v1_compiler::cli_run::run_regen_round_cost(
+            &regen_candidate_dir,
+            &regen_receipt_path,
+            &source_roots,
+            regen_affected_scope,
+        ) {
+            Ok(outcome) => {
+                eprint!("{}", outcome.rendered);
+                eprintln!(
+                    "regen-round-cost: receipt={}",
+                    outcome.receipt_path.display()
+                );
+                for failure in &outcome.round_failures {
+                    eprintln!("regen-round-cost: FAIL {failure}");
+                }
+                if outcome.round_failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("regen-round-cost: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if required_regen_mode {
+        let regen = if regen_affected_scope {
+            v1_compiler::cli_run::run_required_regen_scoped(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+                &source_roots,
+            )
+        } else {
+            v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path)
+        };
+        return match regen {
+            Ok(outcome) => {
+                // Both values here ARE measured by this pass, so they print unqualified. Read
+                // through accessors rather than by matching the variant: the
+                // `required_regen_host` module is private to `cli_run`, so the type is usable here
+                // but not nameable. The accessors return Option because the sibling variant does
+                // not measure these fields; a `None` on this path would mean the first pass built
+                // the wrong variant, so it prints `unmeasured` rather than defaulting to a
+                // plausible-looking value.
+                let fge = outcome
+                    .receipt
+                    .first_generation_equal()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unmeasured".to_string());
+                let candidate = outcome
+                    .receipt
+                    .candidate_artifact()
+                    .unwrap_or("unmeasured")
+                    .to_string();
+                eprintln!("required-regen: first_generation_equal={fge} candidate={candidate}");
+                for failure in &outcome.failures {
+                    eprintln!("required-regen: FAIL {failure}");
+                }
+                if outcome.failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("required-regen: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if required_floor_mode {
+        let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        // The standalone floor entry runs no parse phase, so no declaration index exists to
+        // lend; on a CI commit the floor refuses its planning row rather than planning blind.
+        return match v1_compiler::cli_run::run_required_floor(
+            &source_roots,
+            &commit,
+            v1_compiler::cli_run::ShardStyle::single_shard(),
+            None,
+        ) {
+            Ok(outcome) => {
+                report_required_floor_outcome(&outcome);
+                if required_floor_outcome_is_clean(&outcome) {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("required-floor: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+    // THE PLAN/WALK SURFACE IS DELETED (2026-08-25). Every mode above returns before this
+    // point, and what stood here -- the --plan-entry walk, the batch executor, the
+    // coordinator/worker protocol, the perturb re-walk and their terminal reporting -- was
+    // reachable ONLY through --plan-entry. Nothing has supplied it since the 2026-08-15 floor
+    // cut deleted the composed floor it drove, and `src/v2/workflow/ci_floor_plan.dag`, which
+    // --plan-function named, does not exist.
+    //
+    // This is a REACHABILITY deletion, not an occupancy one, and the distinction is the one
+    // DESIGN names: the arms are not quiet guards that happen to be empty today, their
+    // governing MECHANISM was removed, so no input any caller can author reaches them.
+    //
+    // The refusal is typed and names the live modes rather than exiting silently: an argv this
+    // binary no longer understands must stop the line, never fall through to a default.
+    eprintln!(
+        "claim_executor: CLAIM-EXECUTOR REFUSAL cause=NoRunnableMode — live modes are \
+         --required-ci and --verify-build-artifacts. The plan/walk surface (--plan-entry, \
+         --plan-function, --floor-worker-role, --scoped-batch-id) was deleted 2026-08-25 with \
+         the machinery it drove."
+    );
+    Err(ExitCode::from(2))
+}
+
+fn emit_floor_terminal_outcome(outcome: &str, detail: &str) {
+    append_floor_phase_journal("walk-terminal", outcome, detail);
+    if outcome == "completed" {
+        eprintln!("[floor-terminal] outcome=completed detail={detail}");
+    } else {
+        eprintln!("[floor-terminal-refusal] outcome=failed detail={detail}");
+    }
+}
+
+/// Pre-walk worker failures return through `main()` instead of `floor_terminal_fast_exit`.
+/// Mirror the walk-terminal journal/stderr emission so those refusals survive Actions log
+/// truncation the same way post-walk failures do.
+fn emit_worker_terminal_before_return(code: ExitCode) -> ExitCode {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return code;
+    };
+    if code == ExitCode::SUCCESS {
+        return code;
+    }
+    let path = PathBuf::from(path);
+    let (outcome, detail) = if path.exists() {
+        match fs::read_to_string(&path) {
+            Ok(body) => {
+                let line = body.trim_end_matches(['\r', '\n']);
+                let (label, detail) = line.split_once('\t').unwrap_or((line, ""));
+                let outcome = if label == "completed" {
+                    "completed"
+                } else {
+                    "failed"
+                };
+                (outcome, detail.to_string())
+            }
+            Err(e) => ("failed", format!("worker terminal receipt unreadable: {e}")),
+        }
+    } else {
+        let detail = "worker returned before producing a walk terminal receipt".to_string();
+        let _ = write_floor_worker_terminal("failed", &detail);
+        ("failed", detail)
+    };
+    emit_floor_terminal_outcome(outcome, &detail);
+    code
+}
+
+/// Print the floor's complete ledger. ONE implementation, called by `--required-floor` and by
+/// the composed `--required-ci` run, so the two modes cannot drift into reporting the same
+/// outcome differently (DESIGN §3).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE REQUIRED RUN'S PHASE ROSTER, AND THE TWO LANES IT PARTITIONS INTO.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY A PARTITION EXISTS AT ALL (operator ruling, 2026-08-25). The required run's phases are
+// mutually independent -- that property was already established when the roster was composed
+// into one process -- but they were also SERIAL, because one process runs them one after
+// another. Serial independence is the expensive combination: the witness floor costs ~30-40
+// minutes and every other phase waits behind it for no reason a data dependency can name, so
+// the run's wall clock is the SUM of things that could have been a MAX.
+//
+// The split makes it a max. `build` (parse, regen, v2-emission) and `witnesses` (the floor)
+// run as two GitHub Actions jobs with no `needs` edge between them, so the required check
+// finishes when the slower of the two does, and the build lane's cost is free up to the
+// floor's duration. That headroom is what makes the v2-emission phase's subject a cost
+// decision rather than a cost objection.
+//
+// WHAT THIS SUPERSEDES, AND WHAT IT DOES NOT (2026-08-20 consolidation directive: "i would
+// much prefer if it was all handled within the witnesses step and within the gunbc binary, not
+// at a github actions job level"). That directive has two halves and only one is superseded.
+//
+//   SURVIVES -- "within the gunbc binary". The phases still live here. Each job makes ONE
+//   invocation of this binary and names a LANE; it does not name phases, order them, or wire
+//   one phase's precondition to another step's `outcome`. The step-ladder defect the
+//   consolidation fixed -- an `if:` naming a sibling step, silently conjoined with GitHub's
+//   implicit `success()`, so a regen red disarmed the whole floor -- cannot return, because
+//   there is no step whose condition another step's verdict could reach.
+//
+//   SUPERSEDED -- "not at a github actions job level". PARALLELISM IS NOT EXPRESSIBLE IN THE
+//   BINARY, and that is a property of the transport rather than a preference. Two phases
+//   running concurrently means two runners, two checkouts and two toolchains; a single process
+//   on one runner can thread but cannot acquire a second machine, and the ~9.4 GiB the floor
+//   peaks at is a reason not to want them on one anyway. So the lane boundary is a JOB
+//   boundary of necessity. What the directive was protecting against -- SEQUENCING and
+//   PRECONDITIONS leaking into YAML -- is exactly what does not cross it: the jobs are
+//   unordered and unconditioned on each other, which is the whole content of running them in
+//   parallel.
+//
+// THE PARTITION IS TOTAL BY CONSTRUCTION, which is the point of writing it as a match rather
+// than as two lists. Two hand-authored rosters could drop a phase from both and each would
+// look complete; here every phase has exactly one lane because `RequiredCiPhase::lane` is an
+// exhaustive match, and adding a phase without assigning it fails to compile. A phase silently
+// belonging to no job is the empty-observation narrow (DESIGN, recurring failure modes) at the
+// worst possible grain -- a required check reporting green over a measurement nothing took.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequiredCiLane {
+    Build,
+    Witnesses,
+}
+
+impl RequiredCiLane {
+    fn name(self) -> &'static str {
+        match self {
+            RequiredCiLane::Build => "build",
+            RequiredCiLane::Witnesses => "witnesses",
+        }
+    }
+
+    /// A REFUSAL, NOT A DEFAULT. An unrecognized lane word names a job that does not exist, and
+    /// the failure mode of guessing is that the run silently covers a different set of phases
+    /// than the workflow believes it asked for -- green over an unmeasured population.
+    fn parse(value: &str) -> Result<RequiredCiLane, String> {
+        match value {
+            "build" => Ok(RequiredCiLane::Build),
+            "witnesses" => Ok(RequiredCiLane::Witnesses),
+            other => Err(format!(
+                "unknown --required-lane: {other} (expected build | witnesses)"
+            )),
+        }
+    }
+}
+
+// A REQUIRED-CI CHECK RUN AS A CHILD PROCESS BESIDE THE PHASES AROUND IT. Two checks use it: the
+// primitive-runtime-body gate and the stage0 mirror regeneration. Each is already a whole process
+// of its own elsewhere (`gunbc run`, `claim_executor --required-regen`), reads the tree, and is
+// read by no phase that runs while it does, so starting it early and judging it at its phase's
+// place changes when it runs and nothing it decides.
+//
+// Its output goes to a log under target/ rather than to the job's streams, so the lines it prints
+// while other phases run are replayed whole under its own phase header instead of interleaving
+// with theirs. A child still running when the parent unwinds is killed rather than orphaned.
+struct SpawnedRequiredChild {
+    label: &'static str,
+    child: Option<std::process::Child>,
+    log: PathBuf,
+}
+
+impl Drop for SpawnedRequiredChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn spawn_required_child(
+    label: &'static str,
+    executable: &str,
+    args: &[String],
+) -> Result<SpawnedRequiredChild, String> {
+    let executable = std::env::current_exe()
+        .map(|path| path.with_file_name(executable))
+        .map_err(|error| format!("cannot locate sibling {executable}: {error}"))?;
+    let log_dir = v1_compiler::cli_run::workspace_root().join("target");
+    fs::create_dir_all(&log_dir)
+        .map_err(|error| format!("cannot create {}: {error}", log_dir.display()))?;
+    let log = log_dir.join(format!("required-ci-{label}.log"));
+    let stdout = fs::File::create(&log)
+        .map_err(|error| format!("cannot create {}: {error}", log.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("cannot share {}: {error}", log.display()))?;
+    let child = std::process::Command::new(&executable)
+        .args(args)
+        .stdout(stdout)
+        .stderr(stderr)
+        .spawn()
+        .map_err(|error| format!("{} did not execute: {error}", executable.display()))?;
+    Ok(SpawnedRequiredChild {
+        label,
+        child: Some(child),
+        log,
+    })
+}
+
+/// Wait for the child, replay its log, and answer whether it exited zero. The exit status is the
+/// verdict; an unreadable log loses the child's diagnostics but not its verdict.
+fn finish_required_child(spawned: Result<SpawnedRequiredChild, String>, label: &str) -> bool {
+    let mut spawned = match spawned {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            eprintln!("{label}: {error}");
+            return false;
+        }
+    };
+    let Some(mut child) = spawned.child.take() else {
+        eprintln!(
+            "{}: the child was already reaped, so no verdict exists",
+            spawned.label
+        );
+        return false;
+    };
+    let status = child.wait();
+    match fs::read_to_string(&spawned.log) {
+        Ok(text) => eprint!("{text}"),
+        Err(error) => eprintln!(
+            "{}: the child's log at {} could not be read ({error}); its exit status below is still the verdict",
+            spawned.label,
+            spawned.log.display()
+        ),
+    }
+    match status {
+        Ok(status) => status.success(),
+        Err(error) => {
+            eprintln!("{}: the child did not complete: {error}", spawned.label);
+            false
+        }
+    }
+}
+
+// Transport only: gunbc returns the .dag ProcessExit, including the permanent control.
+// The witnesses job already builds this sibling binary. Use a child so the extra src/v1
+// preparation and its process-wide caches are released before the ordinary floor starts.
+fn spawn_required_primitive_runtime_body() -> Result<SpawnedRequiredChild, String> {
+    let mut args = vec!["run".to_string()];
+    for root in v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS {
+        args.push("--source-root".to_string());
+        args.push(root.to_string());
+    }
+    // The producer spans v1 and v2. Keep it outside both default floor roots and
+    // the v1-only stage0 regeneration sweep. Its root is enrolled in the shared
+    // parse/declaration universe above so the carrier citation is also checked.
+    args.extend(
+        [
+            "--entry",
+            "test/primitive_runtime_body/producer.dag",
+            "--function",
+            "check",
+        ]
+        .map(String::from),
+    );
+    spawn_required_child("primitive-runtime-body", "gunbc", &args)
+}
+
+fn finish_required_primitive_runtime_body(spawned: Result<SpawnedRequiredChild, String>) -> bool {
+    finish_required_child(spawned, "primitive-runtime-body")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequiredCiPhase {
+    Parse,
+    PrimitiveRuntimeBody,
+    GeneratedArtifact,
+    BareReferenceAdmission,
+    Floor,
+}
+
+impl RequiredCiPhase {
+    fn name(self) -> &'static str {
+        match self {
+            RequiredCiPhase::Parse => "parse",
+            RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
+            RequiredCiPhase::GeneratedArtifact => "generated-artifact",
+            RequiredCiPhase::BareReferenceAdmission => "bare-reference-admission",
+            RequiredCiPhase::Floor => "floor",
+        }
+    }
+
+    fn lane(self) -> RequiredCiLane {
+        match self {
+            // PARSE RIDES WITH THE FLOOR, and the reason is its subject rather than its cost.
+            // The sweep walks src/v1, dag and src/v2 and answers `does every authored .dag
+            // file tokenize and parse` -- the same corpus the floor then prepares strictly. It
+            // costs seconds, so it is free wherever it sits; putting it in front of the long
+            // lane means the cheapest total refusal over the witness corpus arrives from the
+            // job that owns that corpus.
+            RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
+            RequiredCiPhase::PrimitiveRuntimeBody => RequiredCiLane::Witnesses,
+            // THE POOL'S BARE-REFERENCE OBLIGATION RIDES WITH THE FLOOR because they share one
+            // subject and one index: the phase judges the whole pool on the process-shared index
+            // the floor then prepares from, so the heads census is read once.
+            RequiredCiPhase::BareReferenceAdmission => RequiredCiLane::Witnesses,
+            RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
+            RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
+        }
+    }
+}
+
+// The runtime-body phase adds a live definition-presence check to the retained roster.
+// The original four phases are the 2026-08-29 compiler-floor bankruptcy roster;
+// generated-artifact returned after its declared exposure produced a real stale projection on
+// main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
+// identities would preserve the independently-green outcomes this composition removes. The other
+// three removed phases remain outside required CI and inside the declared drop. The v2-native
+// phase (2026-09-09 to 2026-09-11) left required CI by operator ruling — its ~4h wall on every
+// push starved the gating lanes; the route stays reachable as `--v2-native-route` and the drop
+// is gunbc.rung_drop v2_native_route_off_the_merge_path. The namespace wave-admission phase
+// (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
+// refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
+// namespace_wave_admission_wall_removed. The regen-fixed-point phase (a same-binary second
+// emit, catching only nondeterminism) left by operator ruling 2026-10-04 ("we are not that
+// particular about determinism in v1 anymore"); the drop stays gunbc.rung_drop
+// floor_cut_regen_second_generation_agreement.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+    RequiredCiPhase::Parse,
+    RequiredCiPhase::PrimitiveRuntimeBody,
+    RequiredCiPhase::GeneratedArtifact,
+    RequiredCiPhase::BareReferenceAdmission,
+    RequiredCiPhase::Floor,
+];
+
+/// The `.dag` coproduct this enum realizes, and the declaration whose variants it must equal.
+/// `gunbc.required_ci_phase_roster` is the substrate authority for phase identity and lane
+/// ownership; this enum, its `lane` match and `REQUIRED_CI_PHASES` are its declared parallel
+/// realization, scheduled to delete atomically when the workflow emission consumes the roster
+/// whole (`gunbc.required_ci_host_verdict_census` `required_ci_phase_roster_next_rung`).
+const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
+const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
+
+/// Every phase this binary realizes, in the authority's own variant spelling.
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+    "ParsePhase",
+    "PrimitiveRuntimeBodyPhase",
+    "GeneratedArtifactPhase",
+    "BareReferenceAdmissionPhase",
+    "FloorPhase",
+];
+
+/// Refuse if the host phase enum and the `.dag` phase roster disagree — a both-directions
+/// variant-set join against the authority's own declaration, because a second representation
+/// diverges on the first amendment, and nothing else joins these two. An absent authority module
+/// refuses too — that is the state in which nothing is checking the roster, not permission to
+/// proceed.
+///
+/// WHAT THIS JOIN DOES NOT COVER: lane ownership. A match arm is not a declaration, so the
+/// index this join reads cannot see which lane owns a phase. That half is joined by evaluation
+/// instead — `authority_lane_phase_rows` against this host's enum-plus-lane-match, executed at
+/// run start in EVERY lane (the lanes are independently selected jobs), with the
+/// empty-expectation and exact-ran-set refusals beside it.
+fn phase_roster_findings(
+    index: &v1_compiler::cli_run::declaration_index::DeclarationIndex,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let Some(record) =
+        v1_compiler::cli_run::declaration_index::index_get(index, PHASE_ROSTER_AUTHORITY_MODULE)
+    else {
+        return vec![format!(
+            "the phase-roster authority `{PHASE_ROSTER_AUTHORITY_MODULE}` is absent from the \
+             index, so nothing joins this host phase enum to the roster it realizes"
+        )];
+    };
+    let Some(authored) = record.decl_fields.get(PHASE_ROSTER_AUTHORITY_DECL) else {
+        return vec![format!(
+            "`{PHASE_ROSTER_AUTHORITY_MODULE}` declares no `{PHASE_ROSTER_AUTHORITY_DECL}`"
+        )];
+    };
+    let here: BTreeSet<String> = PHASE_ROSTER_VARIANT_LABELS
+        .iter()
+        .map(|l| l.to_string())
+        .collect();
+    let mut findings = Vec::new();
+    for missing in authored.difference(&here) {
+        findings.push(format!(
+            "`{PHASE_ROSTER_AUTHORITY_DECL}` declares `{missing}` and this host enum does not \
+             realize it — a phase enrolled with no executor"
+        ));
+    }
+    for extra in here.difference(authored) {
+        findings.push(format!(
+            "this host enum realizes `{extra}` and `{PHASE_ROSTER_AUTHORITY_DECL}` does not \
+             declare it — a phase running with no authority"
+        ));
+    }
+    findings
+}
+
+/// The authority-expected phase names for the selected lane — the whole roster when no lane was
+/// selected (a lane-less run owns every phase).
+fn expected_lane_phases(
+    rows: &[v1_compiler::cli_run::LanePhaseRow],
+    selected: Option<RequiredCiLane>,
+) -> std::collections::BTreeSet<String> {
+    rows.iter()
+        .filter(|r| selected.is_none_or(|l| r.lane == l.name()))
+        .map(|r| r.phase.clone())
+        .collect()
+}
+
+/// The (phase, lane) pair join, both directions, plus the empty-expectation refusal. The pair
+/// join is what makes a host lane-match edit red: moving a phase between lanes changes the host
+/// pair set while the authority's stays, and the difference names the divergence. The empty
+/// refusal is what makes a zero-phase selected lane stop: `phases_run=0` can no longer render
+/// as a successful required job.
+fn lane_roster_findings(
+    rows: &[v1_compiler::cli_run::LanePhaseRow],
+    selected: Option<RequiredCiLane>,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let host: BTreeSet<(String, String)> = REQUIRED_CI_PHASES
+        .iter()
+        .map(|p| (p.lane().name().to_string(), p.name().to_string()))
+        .collect();
+    let authority: BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.lane.clone(), r.phase.clone()))
+        .collect();
+    let mut findings = Vec::new();
+    for (lane, phase) in authority.difference(&host) {
+        findings.push(format!(
+            "the authority rosters phase `{phase}` in lane `{lane}` and this host does not \
+             realize that pair — lane ownership diverged"
+        ));
+    }
+    for (lane, phase) in host.difference(&authority) {
+        findings.push(format!(
+            "this host runs phase `{phase}` in lane `{lane}` and the authority does not roster \
+             that pair — lane ownership diverged"
+        ));
+    }
+    if expected_lane_phases(rows, selected).is_empty() {
+        findings.push(format!(
+            "the selected lane `{}` owns no phases in the authority roster — the run would \
+             report success over zero phases",
+            selected
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)")
+        ));
+    }
+    findings
+}
+
+/// EVERY PHASE IS ACCOUNTED FOR IN EVERY RUN, whether or not this lane owns it.
+///
+/// A lane that simply omitted the other lane's phases would produce a ledger in which "this
+/// phase passed", "this phase was never reached" and "this phase belongs to the other job" are
+/// one silence. So a run selecting a lane prints a ROUTED line for each phase it does not own,
+/// naming the lane that does. The reader of one job's log can then reconstruct the whole roster
+/// and see exactly which job to look in for the rest, instead of inferring coverage from an
+/// absence.
+fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLane>) -> bool {
+    match lane {
+        None => true,
+        Some(selected) => phase.lane() == selected,
+    }
+}
+
+fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) {
+    eprintln!(
+        "required-floor: subject={} modules_resolved={} modules_excluded={}",
+        outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
+    );
+    // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
+    // `planned` is the population that SURVIVED site projection; printing it
+    // without `offered` and the declines made the receipt unable to say what it
+    // dropped, which is how a roster that narrowed read exactly like one that did
+    // not. The categories are printed together so the subtraction is visible rather
+    // than inferable.
+    // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
+    // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
+    // exact and silent at the same time: a `*_test.dag` entry declaring no `test fn` contributes
+    // no site at all, so it could never appear in any of the four numbers, and the line read as a
+    // coverage guarantee over a denominator that had already dropped it. It cannot now — a barren
+    // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
+    // rather than left for a reader to discover it was never claimed.
+    eprintln!(
+        "required-floor: declared={} offered={} routed={} declined_long={} declined_fixture={} \
+         declined_outside_required_gate={} declined_outside_gate_closure={} \
+         declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
+         one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
+         and no `*_test.dag` entry declared zero sites (v2.workflow.floor_discovery_producer \
+         refuses a barren or misplaced sidecar upstream of this line, over the full module \
+         index)",
+        outcome.declared_identities,
+        outcome.sites_offered,
+        outcome.claims_planned,
+        outcome.declined_long_module,
+        outcome.declined_fixture_member,
+        outcome.declined_outside_required_gate,
+        outcome.declined_outside_gate_closure,
+        outcome.declined_discovery_excluded
+    );
+    // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
+    // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
+    // UNENROLLED gaps alone. Measured on main run 32407436149 that printed `route_gap=0` while
+    // 101 enrolled identities were held as route-gapped on a `[floor-route-gap]` line ~300 lines
+    // away, and the headline's own categories did not close: executed 9810 − passed 9502 −
+    // known_red_held 207 − failed 0 left exactly those 101 unaccounted. A reader did not see an
+    // understated count they might interrogate; they saw a ZERO, which closes the question rather
+    // than opening it. The correcting evidence existed and was disjoint from the surface anyone
+    // reads, so it lands on THIS line — shipping it as yet another separate line would reproduce
+    // the defect it repairs.
+    //
+    // THESE COUNTERS ARE OVERLAPPING AXES, NOT A PARTITION, and the receipt must not be read as
+    // one. A single claim that is enrolled expected-red AND route-gapped increments
+    // `known_red_host_effect_refused` and `route_gap_held` both (see the ExpectedRedArm::
+    // HostEffectRefused arm in cli_run: the two rosters are different axes and the row sits on
+    // both). So `passed + known_red_held + … == executed` is NOT an invariant and asserting it
+    // would red on a legitimate state. The tree already has the vocabulary for this distinction —
+    // `InclusiveCostRow` carries "a counter deliberately INCLUSIVE of another … so the receipt can
+    // print it without it ever entering the exclusive sum" — but the floor's ledger has no such
+    // typed exclusive/inclusive split, which is why the sum silently failed to close instead of
+    // refusing. Modelling that split is a RequiredFloorDisposition question in
+    // src/v2/workflow/required_floor.dag, not something to decide inside an eprintln!.
+    // THE PER-CAUSE COUNTERS ARE DERIVED FROM THE ROWS, never accumulated beside them: a
+    // counter that disagrees with the population it summarizes has no constructor here.
+    // `interrupted_before_verdict` stays on the line as the population's size, with the causes
+    // beside it, because dropping the total would move the question rather than answer it —
+    // a reader who wants "how many claims never answered" would have to add the arms and would
+    // silently under-count the day a third mechanism gets an arm.
+    let interrupted_causes =
+        v1_compiler::cli_run::interrupted_cause_census(&outcome.interrupted_before_verdict);
+    eprintln!(
+        "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
+         known_red_held={} claims_failed={} stale_quarantine={} \
+         interrupted_before_verdict={} interrupted_cpu_deadline={} \
+         interrupted_wall_deadline={} completed_over_cost_requirement={} \
+         host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
+         stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
+         known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
+         known_red_host_effect_refused={} known_red_runtime_errored={} \
+         known_red_observation_unreadable={} over_cost_line_diagnostic={} \
+         withheld_cost_debt={} stale_cost_debt={}",
+        outcome.claims_planned,
+        outcome.claims_executed,
+        outcome.not_attempted_after_abort,
+        outcome.receipt_identities,
+        outcome.passed,
+        outcome.known_red_held,
+        outcome.failures.len(),
+        outcome.stale_quarantine.len(),
+        outcome.interrupted_before_verdict.len(),
+        interrupted_causes.cpu_deadline,
+        interrupted_causes.wall_deadline,
+        outcome.completed_over_cost_requirement.len(),
+        outcome.host_tool_unresolved.len(),
+        outcome.route_gap.len(),
+        outcome.route_gap_held,
+        outcome.stale_route_gap.len(),
+        outcome.known_red_now_passing,
+        outcome.known_red_budget_refused,
+        outcome.known_red_passed_over_budget,
+        outcome.known_red_host_tool_unresolved_held,
+        outcome.known_red_host_effect_refused,
+        outcome.known_red_runtime_errored.len(),
+        outcome.known_red_observation_unreadable.len(),
+        outcome.over_cost_line_diagnostic,
+        outcome.withheld_cost_debt.len(),
+        outcome.stale_cost_debt.len()
+    );
+    // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
+    // counterpart, so the ratio it is really about was never readable.
+    //
+    // EXACTLY ONE OF THESE MAY EXIST, and a duplicate is not cosmetic: two lines reporting one
+    // pair is the second-representation shape the receipt was introduced to remove, so
+    // duplicating it degrades the property it asserts. There WAS a second copy here briefly —
+    // this function is re-derived from main's inline block on every merge that touches it, and
+    // a note reading "each merge has to graft it back deliberately" instructed the re-add
+    // without saying to check whether main's block already carried it. It did. Caught in
+    // review 54101. The instruction is deleted with the duplicate: re-derivation copies main's
+    // block wholesale, so this line arrives WITH it and needs no grafting.
+    let (memo_hits, memo_misses) = v1_compiler::cli_run::compile_dag_rust_emit_check_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
+         misses={memo_misses}"
+    );
+    // The sibling census memo, reported on its own line for the reason the emit-check line
+    // carries both halves: a hit count without its denominator is not a measurement. These are
+    // two different memos over two different builtins and must never be summed into one ratio.
+    let (census_hits, census_misses) =
+        v1_compiler::cli_run::compile_dag_diagnostic_census_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
+         misses={census_misses}"
+    );
+    // The eval-frame call memo, process-wide: the subject of a whole-floor before/after
+    // comparison when its keying changes. Its own line for the same reason as the two above.
+    let (eval_hits, eval_misses) = v1_compiler::v1_interpreter::eval_call_memo_process_counts();
+    eprintln!("required-floor: eval_call_memo hits={eval_hits} misses={eval_misses}");
+    for failure in &outcome.failures {
+        eprintln!("required-floor: FAIL {failure}");
+    }
+    // SEVEN CAUSES, SEVEN COUNTS, ONE STOPPED LINE. All seven refuse the run, and
+    // they are reported apart because their remedies differ: a FAIL is a defect to
+    // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
+    // delete, an INTERRUPTED-BEFORE-VERDICT is an undecided claim whose real cost
+    // is unmeasured (operator ruling 2026-08-19, BUDGET POLICY CUT), a
+    // COMPLETED-OVER-COST-REQUIREMENT is a claim that reached a verdict and then
+    // was found to cost too much (an exact measurement, not a bound), and a
+    // HOST-TOOL-UNRESOLVED is an infra gap to provision (never a witness-cost
+    // chase), and a ROUTE-GAP is a claim that never reached its subject because
+    // its execution route has no arm for a host effect it reached for — remedied by
+    // supplying a route, never by editing the witness, and a STALE-ROUTE-GAP is
+    // that same roster's other direction — a route that WAS supplied, whose
+    // enrollment must now be deleted. Summing them into `failed` would make an un-quarantine
+    // indistinguishable from a regression in the alert signature, which is the
+    // conflation `std.witness_admission` rules out. Splitting the former
+    // `budget_refused` collection in two makes it visible whether a stopped run
+    // is a cost debt on a claim that actually finished, or a claim the safety
+    // deadline preempted before it could answer at all — but both still stop the
+    // line: an interruption is NotEvaluated, and NotEvaluated is never green.
+    for stale in &outcome.stale_quarantine {
+        eprintln!("required-floor: STALE-QUARANTINE {stale}");
+    }
+    // THE CAUSE IS ON THE ROW'S OWN LINE, not only in the summary. A reader triaging one
+    // identity reads this line and nothing else; leaving the mechanism only in the aggregate
+    // would put the evidence on a surface disjoint from the one anyone reads for that identity.
+    for refused in &outcome.interrupted_before_verdict {
+        eprintln!(
+            "required-floor: INTERRUPTED-BEFORE-VERDICT {} raised_by={} \
+             cpu_at_least={}ms wall_at_least={}ms/{}ms enrolled_expected_red={} {}",
+            refused.qualified,
+            refused.interrupt.raised_by.label(),
+            // BOTH CLOCKS, AND ONLY ONE LIMIT, BECAUSE ONLY ONE IS ARMED. These are LOWER
+            // BOUNDS, which is what `at_least` says: the deadline preempted the witness, so the
+            // true cost is above them by an unbounded amount. The CPU figure is printed WITHOUT a
+            // ceiling beside it since 2026-09-12 — the required floor arms no CPU deadline, so
+            // there is no CPU limit this reading could be compared against, and printing one
+            // would invent a ceiling the run never set. The pair is still what a reader needs: a
+            // row blocked on I/O shows a small cpu figure beside a wall figure at its ceiling,
+            // and a row that genuinely computed shows a large one. `cost=UNMEASURED` in the
+            // sentence that follows stays true of both.
+            refused.interrupt.elapsed_cpu_at_least_ms,
+            refused.interrupt.elapsed_wall_at_least_ms,
+            refused.interrupt.wall_safety_limit_ms,
+            refused.enrolled_expected_red,
+            refused.detail
+        );
+    }
+    for over_cost in &outcome.completed_over_cost_requirement {
+        eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
+    }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "required-floor: COST-DEBT-ROW-REFUSED {} cause={} — this change admits or restores a \
+             floor_cost_debt row, and its claim did not pass when run for its verdict without the \
+             eval-step budget. A cost row withholds a witness for COST; standing over a failing or \
+             verdict-less claim it hides a semantic red. Repair the claim, or keep the row out of \
+             the roster and name the red where reds are carried.",
+            blocker.identity, blocker.cause
+        );
+    }
+    for blocker in &outcome.enrolment_margin_blocking {
+        eprintln!(
+            "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
+             identity, and it was not shown to reach a verdict inside the margin the measured \
+             runner envelope implies. The ceiling is not the bar here: a row that clears 500ms on \
+             the runner that measured it can cross on the runner that runs it next, which is what \
+             every one of the fifteen incident rows did. Reduce what the witness reaches for, or \
+             enroll it in a lane that declares its own ceiling AND names it as an executing \
+             consumer. RELOCATING THE FILE DOES NOT DISCHARGE IT. If the cause is \
+             `enrolment_not_measured`, nothing timed this identity at all — that is a missing \
+             measurement to produce, not a cost to reduce.",
+            blocker.identity, blocker.cause
+        );
+    }
+    for unresolved in &outcome.host_tool_unresolved {
+        eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+    }
+    // STALE WITHHOLDS ARE NAMED INDIVIDUALLY; WITHHELD ROWS ARE NOT. The stale population
+    // blocks and every member is a line to delete, so each one is printed. The withheld
+    // population is large enough that printing it per-row would bury every other diagnostic in
+    // the run — it is counted in the summary above and enumerated in full in
+    // `v2.workflow.floor_cost_debt`, which is the authority a reader should be sent to anyway.
+    //
+    // NO SIZE IS STATED HERE, DELIBERATELY. This comment carried a numeral until review 57254,
+    // and it had gone stale against the roster it described — two hand-transcribed counts for one
+    // population, disagreeing at the two points a reader is most likely to trust. That is the
+    // failure DESIGN's "name the instrument, never transcribe its output" rule exists to prevent,
+    // and the fix is not to re-transcribe the current figure: the roster is a function, its size
+    // is a property of that function, and any numeral here is a second representation that goes
+    // stale the next time a row is enrolled or released. The authority is named instead.
+    for stale in &outcome.stale_cost_debt {
+        eprintln!("required-floor: STALE-COST-DEBT {stale}");
+    }
+    for errored in &outcome.known_red_runtime_errored {
+        eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
+    }
+    for unreadable in &outcome.known_red_observation_unreadable {
+        eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
+    }
+    for unenrolled in &outcome.non_verdict_unenrolled {
+        eprintln!("required-floor: NON-VERDICT-UNENROLLED {unenrolled}");
+    }
+    for stale in &outcome.stale_non_verdict {
+        eprintln!("required-floor: STALE-NON-VERDICT {stale}");
+    }
+    for gap in &outcome.route_gap {
+        eprintln!("required-floor: ROUTE-GAP {gap}");
+    }
+    for stale in &outcome.stale_route_gap {
+        eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
+    }
+    // THE VERDICT LINE, AND WHY A ZERO NEEDED A SENTENCE BESIDE IT.
+    //
+    // `failed=0` is a sentence a reader can finish alone, and finishes wrongly: it says nothing
+    // about whether the population that was supposed to answer actually answered. This exact
+    // misreading dispatched a session against a regression that did not exist — a run was
+    // compared to a baseline carrying a fix, `planned` matched on both sides, and `failed=0`
+    // supplied the confidence that the rest was equivalent. Separating the two questions removes
+    // the ability to finish that sentence: `unexpected_failures` is how many claims answered
+    // WRONG, `verdict_incomplete` is how many never answered AT ALL, and a run can be admitted
+    // while the second is large.
+    //
+    // ADMITTED IS NOT CLEAN, and the word carries that. `FloorAdmittedWithNonVerdictDebt` gates
+    // nothing by itself — the conjunct that gates is growth in the non-verdict population — but
+    // it refuses to let a run with 142 unanswered assertions render identically to one with
+    // none.
+    let verdict_incomplete =
+        outcome.known_red_runtime_errored.len() + outcome.known_red_observation_unreadable.len();
+    let verdict = if !required_floor_outcome_is_clean(outcome) {
+        "FloorRefused"
+    } else if verdict_incomplete > 0 {
+        "FloorAdmittedWithNonVerdictDebt"
+    } else {
+        "FloorClean"
+    };
+    eprintln!(
+        "required-floor: verdict={verdict} unexpected_failures={} verdict_incomplete={} \
+         non_verdict_unenrolled={} stale_non_verdict={}",
+        outcome.failures.len(),
+        verdict_incomplete,
+        outcome.non_verdict_unenrolled.len(),
+        outcome.stale_non_verdict.len()
+    );
+}
+
+// Moved to `v1_compiler::cli_run::required_floor_outcome_is_clean` so the floor's integration
+// controls drive the same predicate this binary gates on.
+use v1_compiler::cli_run::required_floor_outcome_is_clean;
+
+fn required_floor_measurement_blockers(
+    outcome: &v1_compiler::cli_run::RequiredFloorOutcome,
+) -> Vec<RequiredCiBlocker> {
+    let mut blockers = Vec::new();
+    let mut add = |identity: &str, cause: &str| {
+        blockers.push(RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: identity.to_string(),
+            cause: cause.to_string(),
+        })
+    };
+    for identity in &outcome.failures {
+        add(identity, "claim_failed");
+    }
+    for (identity, differential) in &outcome.reach_differential_blocking {
+        add(identity, &format!("reach_differential_{differential}"));
+    }
+    for identity in &outcome.non_verdict_unenrolled {
+        add(identity, "non_verdict_unenrolled");
+    }
+    for identity in &outcome.stale_non_verdict {
+        add(identity, "stale_non_verdict");
+    }
+    for identity in &outcome.stale_quarantine {
+        add(identity, "stale_quarantine");
+    }
+    for row in &outcome.interrupted_before_verdict {
+        add(&row.qualified, "interrupted_before_verdict");
+    }
+    for identity in &outcome.completed_over_cost_requirement {
+        add(identity, "completed_over_cost_requirement");
+    }
+    for identity in &outcome.host_tool_unresolved {
+        add(identity, "host_tool_unresolved");
+    }
+    for identity in &outcome.route_gap {
+        add(identity, "route_gap");
+    }
+    for identity in &outcome.stale_route_gap {
+        add(identity, "stale_route_gap");
+    }
+    for identity in &outcome.stale_cost_debt {
+        add(identity, "stale_cost_debt");
+    }
+    // THE CAUSE COMES FROM THE ROW, NOT FROM THIS LOOP. What stood here stamped the constant
+    // "changed_witness_blocking" on every member, which is the name of the POPULATION and not of
+    // anything that happened: a declined witness that never executed, a planned witness that ran
+    // and reached no verdict, and an identity with no disposition row at all reached the merge
+    // gate as one bit offering one affordance — rerun — for two states a rerun cannot discharge.
+    // The distinction was computed in `changed_witness_projection_rows` and dropped on the way
+    // out (`gunbc.recurring_failure_mode` `non_verdict_disposition_surfaces_as_refusal`).
+    for blocker in &outcome.changed_witness_blocking {
+        add(&blocker.identity, &blocker.cause);
+    }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        add(&blocker.identity, &blocker.cause);
+    }
+    // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes
+    // measured-over-margin, censored-at-ceiling and not-measured-at-all, and those have three
+    // different remedies — collapsing them into one population name here would rebuild exactly the
+    // defect the loop above was repaired for.
+    for blocker in &outcome.enrolment_margin_blocking {
+        add(&blocker.identity, &blocker.cause);
+    }
+    blockers
+}
+
+/// One line per reached identity on stdout, `reach-base identity=<id> standing=<name>`, then exit
+/// 0. Exit 3 with `reach-base-refused identity=<id> cause=<cause>` when an outcome is not a
+/// verdict, and exit 2 when the arm could not run at all. The floor parses these lines and
+/// nothing else.
+fn run_reach_base_standings(
+    source_roots: &[String],
+    identities_file: &str,
+    wall_ms: u64,
+) -> Result<ExitCode, ExitCode> {
+    use v1_compiler::cli_run::reach_base_standings::{reach_base_standings, ReachBaseArm};
+    let text = std::fs::read_to_string(identities_file).map_err(|e| {
+        eprintln!("reach-base: {identities_file}: {e}");
+        ExitCode::from(2)
+    })?;
+    let identities: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    match reach_base_standings(source_roots, &identities, wall_ms) {
+        Ok(ReachBaseArm::Completed(standings)) => {
+            for (identity, standing) in standings {
+                println!(
+                    "reach-base identity={identity} standing={}",
+                    standing.name()
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Ok(ReachBaseArm::Refused { identity, cause }) => {
+            println!("reach-base-refused identity={identity} cause={cause}");
+            Ok(ExitCode::from(3))
+        }
+        Err(e) => {
+            eprintln!("reach-base: arm did not run: {e}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+fn main() -> ExitCode {
+    // NO SECOND ARGV READER. What stood here read std::env::args() directly and dispatched the
+    // floor coordinator BEFORE run() parsed anything, so deleting --plan-function from run()'s
+    // parser left the coordinator fully reachable -- and reachable through a path that removed
+    // receipt files and spawned workers before any refusal could fire. Review 55875 caught it,
+    // and the state it caught was worse than the one before this branch: --plan-function answered
+    // "unknown argument" for every value EXCEPT the one that ran the whole coordinator.
+    //
+    // The lesson is the cut's, not the coordinator's: a flag is not deleted when one of two
+    // parsers stops reading it. run() is now the only thing that reads argv.
+    // The materialization demand receipt is mandatory on the floor: enable the
+    // interpreter's recompute-trace ledger unless the environment already set
+    // it. An explicit =0 zeroes the receipt, and the derived ci.yml gate fails
+    // closed on keyed_calls=0 — disabling is loud, never silent.
+    if std::env::var_os("GUNBC_RECOMPUTE_TRACE").is_none() {
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+    }
+    let code = match run() {
+        Ok(code) => code,
+        Err(code) => code,
+    };
+    // THE TERMINAL RECEIPT IS EMITTED FIRST, AND THE ORDER IS THE WHOLE POINT OF THESE TWO LINES.
+    // `emit_worker_terminal_before_return` is the worker's fail-closed channel: when the receipt is
+    // absent the parent substitutes "worker returned before producing a walk terminal receipt" and
+    // the real, located detail is gone. The first revision of this change called the instrument
+    // BEFORE it, inserting a ~168-second window -- this PR's own measured figure -- between a
+    // failure and the emission of its receipt, so a worker killed by an outer step cap during
+    // teardown would have downgraded a located failure into the generic no-receipt arm. That window
+    // did not exist when the drops ran after `main` returned, so the instrument would have created
+    // the regression it was added to measure (review 68459; DESIGN section 5, "every path succeeds
+    // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
+    // receipt, so emitting first costs nothing.
+    let code = emit_worker_terminal_before_return(code);
+    // THE CORPUS CACHES ARE RELEASED WITH THE PROCESS, NOT FREED ONE NODE AT A TIME. The receipt
+    // above is already out, and nothing reads those caches again; see
+    // `release_process_caches_at_exit` for what it forgets, why that is safe, and the residue it
+    // leaves measured rather than assumed.
+    v1_compiler::cli_run::release_process_caches_at_exit();
+    code
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lane_phase_row(lane: &str, phase: &str) -> v1_compiler::cli_run::LanePhaseRow {
+        v1_compiler::cli_run::LanePhaseRow {
+            lane: lane.to_string(),
+            phase: phase.to_string(),
+        }
+    }
+
+    /// The pairs `required_ci_lane_phase_rows` derives from the standing roster.
+    fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
+        vec![
+            lane_phase_row("witnesses", "parse"),
+            lane_phase_row("witnesses", "primitive-runtime-body"),
+            lane_phase_row("build", "generated-artifact"),
+            lane_phase_row("witnesses", "floor"),
+        ]
+    }
+
+    #[test]
+    fn primitive_runtime_body_phase_executes_the_live_gate() {
+        assert!(finish_required_primitive_runtime_body(
+            spawn_required_primitive_runtime_body()
+        ));
+    }
+
+    #[test]
+    fn the_standing_pairs_join_cleanly_in_every_lane() {
+        for lane in [RequiredCiLane::Build, RequiredCiLane::Witnesses] {
+            assert!(
+                lane_roster_findings(&standing_authority_rows(), Some(lane)).is_empty(),
+                "lane {} must join cleanly",
+                lane.name()
+            );
+        }
+        assert!(lane_roster_findings(&standing_authority_rows(), None).is_empty());
+    }
+
+    #[test]
+    fn a_lane_ownership_divergence_is_red_and_names_the_pair() {
+        // The review's scenario — the host mapping and the authority mapping disagree about
+        // which lane owns a phase — simulated by moving every build-lane row to witnesses;
+        // the pair difference is symmetric, so either side's edit fires both directions, and
+        // the build lane's expectation is now empty and must refuse.
+        let mut rows = standing_authority_rows();
+        rows.retain(|r| r.lane != "build");
+        rows.push(lane_phase_row("witnesses", "generated-artifact"));
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.contains("generated-artifact") && f.contains("witnesses")),
+            "the divergence must name the pair: {findings:?}"
+        );
+        assert!(
+            findings.iter().any(|f| f.contains("owns no phases")),
+            "the build lane's expectation is now empty and must refuse: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_selected_lane_with_no_expected_phases_is_refused() {
+        let rows: Vec<_> = standing_authority_rows()
+            .into_iter()
+            .filter(|r| r.lane != "build")
+            .collect();
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
+        assert!(findings.iter().any(|f| f.contains("owns no phases")));
+    }
+
+    #[test]
+    fn the_expected_set_tracks_the_selected_lane() {
+        let rows = standing_authority_rows();
+        assert_eq!(
+            expected_lane_phases(&rows, Some(RequiredCiLane::Build)),
+            ["generated-artifact".to_string()].into_iter().collect()
+        );
+        assert_eq!(
+            expected_lane_phases(&rows, None),
+            REQUIRED_CI_PHASES
+                .iter()
+                .map(|phase| phase.name().to_string())
+                .collect()
+        );
+    }
+
+    #[test]
+    fn a_returned_subject_refusal_is_a_completed_measurement() {
+        let blocker = RequiredCiBlocker {
+            phase: "floor".to_string(),
+            identity: "fixture.subject_refusal".to_string(),
+            cause: "type mismatch".to_string(),
+        };
+        assert_eq!(
+            completed_required_ci_measurement_receipt(vec![blocker]),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: "fixture.subject_refusal".to_string(),
+                    cause: "type mismatch".to_string(),
+                }],
+            }
+        );
+    }
+
+    #[test]
+    fn blocking_measurement_round_trips_with_the_planted_identity_and_refuses() {
+        let path =
+            std::env::temp_dir().join(format!("gunbc-d0-blocking-{}.json", std::process::id()));
+        let identity = "fixture.planted_blocking_diagnostic";
+        write_required_ci_measurement_receipt(
+            path.to_str().expect("utf8 temp path"),
+            RequiredCiMeasurementReceipt::MeasurementCompleted {
+                blockers: vec![RequiredCiBlocker {
+                    phase: "floor".to_string(),
+                    identity: identity.to_string(),
+                    cause: "claim_failed".to_string(),
+                }],
+            },
+        )
+        .expect("write receipt");
+        let body = std::fs::read_to_string(&path).expect("read receipt");
+        assert!(
+            body.contains(identity),
+            "receipt must retain the blocking identity"
+        );
+        assert!(adjudicate_required_ci_measurement_receipt(path.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn measurement_unreached_is_a_present_distinct_refusal() {
+        let path =
+            std::env::temp_dir().join(format!("gunbc-d0-unreached-{}.json", std::process::id()));
+        write_required_ci_measurement_receipt(
+            path.to_str().expect("utf8 temp path"),
+            RequiredCiMeasurementReceipt::MeasurementUnreached {
+                cause: "instrument exited".to_string(),
+            },
+        )
+        .expect("write receipt");
+        let body = std::fs::read_to_string(&path).expect("read receipt");
+        assert!(body.contains("measurement_unreached"));
+        assert!(adjudicate_required_ci_measurement_receipt(path.to_str().unwrap()).is_err());
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn repo_root_from_manifest() -> PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root from CARGO_MANIFEST_DIR")
+    }
+
+    fn dag_source_from_repo(rel: &str) -> String {
+        let path = repo_root_from_manifest().join(rel);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+    }
+
+    fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
+        let marker = format!("data {data_name}:");
+        let start = source
+            .find(&marker)
+            .unwrap_or_else(|| panic!("data row {data_name} not found in authority source"));
+        let slice = &source[start..];
+        let field_marker = format!("{field}: \"");
+        let fstart = slice
+            .find(&field_marker)
+            .unwrap_or_else(|| panic!("field {field} not found on data row {data_name}"))
+            + field_marker.len();
+        let rest = &slice[fstart..];
+        let end = rest
+            .find('"')
+            .expect("unterminated string field in authority source");
+        rest[..end].to_string()
+    }
+
+    // Test-only mirror of gunbc.ci_materialization obligation subject rows. Production
+    // parses transported obligations from WalkPlan.finalization; this module is the
+    // checkable drift receipt (review 48261 / 48570).
+    const TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY: &str =
+        "dag/gunbc/instruments/floor_effect_gate_witness.dag";
+    const TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION: &str = "dag_compile_clean_gate_passes";
+    const TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY: &str =
+        "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";
+    const TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION: &str = "native_selected_logic_production_spec";
+
+    /// Test-only obligation-subject literals must track gunbc.ci_materialization authority rows.
+    #[test]
+    fn floor_resolve_obligation_seed_constants_match_dag_authority() {
+        let ci_materialization = dag_source_from_repo("dag/gunbc/ci/ci_materialization.dag");
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "entry"
+            ),
+            TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "compile_anchor_obligation_subject",
+                "function"
+            ),
+            TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "entry"
+            ),
+            TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY,
+        );
+        assert_eq!(
+            dag_record_string_field(
+                &ci_materialization,
+                "native_bundle_obligation_subject",
+                "function"
+            ),
+            TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
+        );
+    }
+
+    // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
+    //
+    // Three previously-silent cases, each with its own discriminating control so the
+    // three cannot collapse back into one indistinguishable "nothing printed" bucket:
+    //   A — finalization absent by construction (scoped floor worker)
+    //   B — finalization absent incidentally (walk never reached the call)
+    //   C — finalization HELD on an otherwise-failed floor (verdict must not vanish)
+
+    #[test]
+    fn emit_worker_terminal_before_return_journals_pre_walk_refusal() {
+        let dir = std::env::temp_dir().join(format!(
+            "claim-executor-worker-terminal-before-return-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let terminal = dir.join("worker-terminal.tsv");
+        let journal = dir.join("floor-phase-journal.tsv");
+        let _ = fs::remove_file(&terminal);
+        let _ = fs::remove_file(&journal);
+        fs::write(
+            &terminal,
+            "refused\tscoped witness scheduling refusal: fixture detail\n",
+        )
+        .expect("write worker terminal fixture");
+        std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        let code = emit_worker_terminal_before_return(ExitCode::from(1));
+        std::env::remove_var(FLOOR_WORKER_TERMINAL_ENV);
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+        assert_eq!(code, ExitCode::from(1));
+        let persisted = fs::read_to_string(&journal).expect("walk-terminal journal row");
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            persisted.contains("\twalk-terminal\tfailed\tscoped witness scheduling refusal"),
+            "pre-walk worker refusal must reach the durable journal: {persisted:?}"
+        );
+    }
+
+    // ENROLLMENT MAY ONLY HOLD A CLAIM THAT WAS DECIDED. Found on gunbc#8642 by the side
+    // thread: the first version of `from_outcome` matched `_ if enrolled => KnownRed` above
+    // every failing arm, so an enrolled row that was INTERRUPTED at a budget, or whose host
+    // tool could not be resolved, printed KNOWN-RED — owned semantic debt, for two states that
+    // carry no semantic verdict at all.
+    //
+    // RED: restoring the blanket `_ if enrolled` arm turns the two interruption cases into
+    // KnownRed and fails this test. The `Fail` case is the positive control — without it, a
+    // `from_outcome` that never returned KnownRed at all would also pass.
+    #[test]
+    fn enrollment_holds_only_semantic_failures_not_undecided_claims() {
+        use v1_compiler::cli_run::{BudgetKind, CiWitnessVerdict, ClaimOutcome};
+
+        let interrupted = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5_000,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        };
+        let missing_tool = ClaimOutcome::HostToolUnresolved {
+            name: "git".to_string(),
+            probed: vec!["/usr/bin/git".to_string()],
+        };
+
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&ClaimOutcome::Fail, true),
+            CiWitnessVerdict::KnownRed,
+            "positive control: an enrolled SEMANTIC failure is the one thing enrollment holds"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&interrupted, true),
+            CiWitnessVerdict::BudgetRefused,
+            "an interruption is a lower bound on cost, not a verdict enrollment can hold"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&missing_tool, true),
+            CiWitnessVerdict::HostToolUnresolved,
+            "an unresolved host tool is an infra gap, not owned semantic debt"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&interrupted, false),
+            CiWitnessVerdict::from_outcome(&interrupted, true),
+            "enrollment must not change the token for an undecided claim, either direction"
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&ClaimOutcome::Pass, true),
+            CiWitnessVerdict::Passed,
+            "an enrolled row that passes still prints PASSED; the roster staleness is the \
+             ledger's to report, not a token the console invents"
+        );
+    }
+
+    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+
+    fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write artifact");
+        let mut perms = std::fs::metadata(&p).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn verify_build_artifacts_accepts_nonempty_executables() {
+        let dir = std::env::temp_dir().join(format!("cev-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"\x7fELF-not-really-but-nonempty");
+        let b = write_exec(&dir, "gunbc", b"binary");
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Ok(c) if c == ExitCode::SUCCESS),
+            "real bins pass"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("cev-zero-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"ok");
+        let b = write_exec(&dir, "gunbc", b""); // sccache served a truncated/empty cached artifact
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "zero-byte artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_missing() {
+        let missing = std::env::temp_dir()
+            .join(format!("cev-missing-{}/gunbc", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let r = verify_build_artifacts(&[missing]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "absent artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_empty_arglist() {
+        let r = verify_build_artifacts(&[]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(2)),
+            "no declared artifacts is a usage error, fail closed"
+        );
+    }
+
+    // ---- walk-attempt identity ----
+    //
+    // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
+    // not merely as "not equal to the good value". The positive controls exist so the
+    // negatives are discriminating: a `compose_walk_attempt_id` that refused everything
+    // would pass every Err assertion and fail these.
+
+    #[test]
+    fn floor_phase_journal_persists_a_completed_path() {
+        let journal = std::env::temp_dir().join(format!(
+            "claim-executor-floor-phase-positive-control-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&journal);
+        std::env::set_var(FLOOR_PHASE_JOURNAL_ENV, &journal);
+        append_floor_phase_journal("positive-control", "completed", "known-green-path");
+        std::env::remove_var(FLOOR_PHASE_JOURNAL_ENV);
+
+        let persisted = fs::read_to_string(&journal)
+            .expect("the synced out-of-band journal must be readable after a completed path");
+        let _ = fs::remove_file(&journal);
+        assert!(
+            persisted.contains("\tpositive-control\tcompleted\tknown-green-path\n"),
+            "the persisted row must retain the phase, state, and detail: {persisted:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BEHAVIORAL RECEIPT — selection and corpus-domain derivation
+// ---------------------------------------------------------------------------
+//
+// WHAT THIS ANSWERS THAT NOTHING ELSE DOES. `--required-regen` proves the committed mirrors
+// equal what the authority emits. It never COMPILES the emitted candidate, let alone runs it: the regen host spawns exactly
+// rustfmt, rustfmt and git. So the whole promotion story rests on bytes — and DESIGN §7 says in
+// as many words that a byte-identical fixed point is NOT the goal, because matching bytes forces

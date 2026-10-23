@@ -1,0 +1,63 @@
+module gunbc.rung_drop.live_deploy_dark_install_render_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dark_install_render_rows }
+
+// DECLARED 4b(3) DROP, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538 on gunbc#12482). The
+// DECLARATION lives here; the POPULATION's authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_dark_install_render_rows`.
+//
+// THE COST IS INHERITED, NOT CAUSED. The identity string-inspects `test.claim.live_deploy.emit`
+// `witness_approval_broker_dark_script_text`, whose bytes are identical on main and on gunbc#12482.
+// gunbc#12482 only re-planned it as a changed witness because the script is built from
+// deployment_spec_srv1, which that change touches. The script render's fill is netted separately;
+// what the new-witness gate prices is the marginal the first reader is billed, and it moved to
+// whichever claim read the script first when the others were narrowed to their producers
+// (DESIGN §3 witness rule), so narrowing cannot discharge it. gunbc#12520 cut the fill without
+// moving the marginal. The measurement is named in the population row, not transcribed here.
+//
+// TRACED, 2026-10-02 (gentle-lynx-533). The marginal rides the GENERIC emit path: every pipeline
+// assembly pays orch_emit_from_registry's per-call machinery — bundle lookup, grounding, translate,
+// fidelity decode and token fold, exactly #12576's components — once per step spelling AND once per
+// seq2 join, and orch_emit_join2 chains n-1 registry realizations per render. The bash medium's
+// seq2 realizes exactly left ++ "\\n" ++ right (orch_seq2_source_text), so the join's BYTES are
+// known before the registry is consulted; only its COST is not.
+//
+// BLOCKED, 2026-10-02, operator-relayed by lively-ram-153. The named repair is NOT taken here, for
+// two reasons. (1) SCOPE: fixing it means production surgery every bash emitter inherits; this task
+// is witness-side, and the repair needs its own PR and its own review — lively-ram-153 will offer
+// the operator the emit-registry cost as its own task. (2) SHAPE: a hand-spelled seq2 fast path
+// bypassing the grammar registry would give seq2's spelling a SECOND AUTHORITY beside the medium's
+// rows (DESIGN §4: one grammar, read in both directions); the module's redirect-suffix bypass is
+// existing debt, not precedent. And the sufficiency of ANY spelling of the repair is UNMEASURABLE
+// on every available host: claim_batch — the instrument that owns this marginal — was measured
+// dying three ways on the recount (10-identity batch rc=137 resolving entries upfront; four
+// single-identity slots rc=124 silent; one no-timeout run completing the 44.5s / 2.4 GB
+// bare-reference-edge-index-warm phase over 7222 files and then rc=137 under the host OOM killer),
+// and the CI required floor numbers a shape only on the PR's own acceptance run. The lever, per
+// DESIGN §6b: the per-call cost of orch_emit_from_registry is the defect — one lookup per step and
+// one per join where a prepared plan belongs. This row stands until that repair measures the first
+// reader under the derived NewWitnessTier budget on the acceptance path.
+data live_deploy_dark_install_render_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_dark_install_render_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_dark_install_render_rows; measured by "), m.measured_by))
+
+data live_deploy_dark_install_render_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "live_deploy_dark_install_render_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one live_deploy emit identity that first reads the broker dark-install script: it still executes, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
+
+  declared: "2026-09-29",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the generic bash emit path's per-step overhead (bundle lookup, grounding, translate, fidelity decode and token fold, per jolly-bee-43's gunbc#12576 findings) reduced so a claim reading the rendered dark-install script is not billed that overhead",
+    },
+    population: live_deploy_dark_install_render_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: the generic bash emit path's per-step overhead is reduced SUFFICIENT FOR the first reader of test.claim.live_deploy.emit witness_approval_broker_dark_script_text to measure under the NewWitnessTier budget v2.workflow.required_floor claim_ceiling_eval_step_budget derives, on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Moving the bill to another claim (reordering, narrowing, or a different first reader) does not retire the row, nor does deleting the identity, replacing the rendered script with a fixture, or raising the budget. MEASUREMENT RULE (2026-10-03): the row leaves only on a BILLED reading -- an acceptance run that bills this rostered identity and records its per-claim eval steps (persisting the floor's per-claim cost record as an artifact, as this lane's measured_by rows cite artifact required-floor-claim-cost on runs 34854812903 and 35174104379, or billing rostered drop-lane identities on every acceptance run) measuring that first reader under the same NewWitnessTier budget. While the drop stands the identity is exempt from the eval-step standing gate and the floor bills only changed or new witnesses, so an absence from an over-cost report is not a measurement and cannot establish this trigger. STATUS (2026-10-03, PR gunbc#13119): the waited-for repair has landed -- the per-call registry payment (orch_emit_from_registry: one bundle lookup, grounding walk, translate, fidelity decode and token fold per step and per seq2 join, plus the per-call rebuild of the realize targets' payload-independent parts) was removed in favor of a prepared plan computed once per medium and production and carried by the fold -- with output equivalence proven by the generated-artifact agreement lane (tools.generated_artifact_gate main_wet_one rendering the registry-rostered projections byte-identical to the committed files); that PR therefore does NOT establish this trigger, and the row stands until a run bills the identity under the budget. Corroborating instrument off the acceptance path: claim_batch --hermetic over dag/test/claim/live_deploy/emit_test.dag.",
+  }
+}

@@ -1,0 +1,158 @@
+module test.claim.materialization_store_local_immutable_pin_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, List, String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.materialization_provider {
+  ArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
+  evaluation_store_address, evaluation_store_admitted_address,
+  output_module_test_verdicts, output_module_preparation_diagnostics,
+}
+import std.materialization_store_grant { MaterializationStoreRoot, WitnessScratchRoot }
+import std.materialization_object {
+  ArtifactPayload,
+  StoreCommit,
+  store_object_name,
+  store_lookup_is_miss,
+  store_commit_refusal_tag,
+}
+import extdeps.realization.materialization_store_local {
+  LocalStoreCapability,
+  LocalStoreOpened, LocalStoreUnavailable,
+  LocalStoreInitialization, LocalStoreInitialized, LocalStoreInitializationRefused,
+  local_store_initialize, local_store_lookup, store_path,
+  LocalStoreFamilyBudget,
+  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under,
+  LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
+  local_store_hold_key,
+  LocalStoreHoldRefusal, LocalStoreFamilyBusy,
+  LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
+  LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow, LocalStoreHoldUnsettled,
+}
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
+import std.measure { byte_size }
+
+// PARTIAL RECLAIM MUST NOT RE-AUTHORIZE A LEAKED HOLD. Independent deletes could remove G+1 while
+// G survived, so named verify would treat leaked G as head. Pin G against unlink, run another
+// acquire/release (the reclaim that used to punch that hole), then reuse G. commit_under observes
+// the hold first: named verify must answer NamedWindowHeadMoved (G present, G+1 still there).
+//
+// DECLARED NO-CI-WET-LANE DEBT. ioctl-set IMMUTABLE needs CAP_LINUX_IMMUTABLE; no required wet
+// lane grants it. This file is BinWitnessWet in gunbc.ci_layer_roots and named in
+// gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci_population, so a changed
+// identity is DeclinedNoCiWetLane rather than PlannedAsChangedWitness without a terminal.
+// Restoration: a wet lane that grants CAP_LINUX_IMMUTABLE, or an unlink-refusal construction
+// that needs none. Floor wall for the invariant:
+// reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution.
+// Integration evidence (not CI): invocation bbdf835a-b6fa-4a51-a93b-26b140398306, FAIL then PASS
+// with reclaim-stop reverted.
+
+data witness_family_budgets: List<LocalStoreFamilyBudget> = [
+  LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
+]
+
+fn h(v: String) -> Fnv1a64Structural {
+  content_hash_atom(value: v as NonEmptyStr)
+}
+
+fn bundle_req(module: String) -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: h(v: "route-binary-1"),
+    module_identity: h(v: module),
+    canonical_module_import_closure_identity: h(v: "closure-1"),
+    ordered_test_identity_population: h(v: "t1,t2"),
+    eval_interpretation_identity: h(v: "eval-1")
+  })
+}
+
+fn verdicts(text: String) -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_module_test_verdicts, content: text },
+    ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
+  ]
+}
+
+fn object_path(root_path: String, req: ArtifactRequest) -> String {
+  match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+    Absent => ""
+    Present { value: addr } => store_path(root_path: root_path, name: store_object_name(address: addr))
+  }
+}
+
+fn commit_tag(c: StoreCommit) -> String {
+  store_commit_refusal_tag(c: c)
+}
+
+fn fresh_root_path() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+}
+
+fn opened(root: MaterializationStoreRoot) -> LocalStoreCapability? {
+  match local_store_initialize(root: root, instance_label: "wet-witness", budgets: witness_family_budgets) {
+    LocalStoreInitialized { opening: o } => match o {
+      LocalStoreOpened { capability: c, durability: _ } => Present { value: c }
+      LocalStoreUnavailable { root_path: _, cause: _ } => none
+    }
+    LocalStoreInitializationRefused { root_path: _, cause: _ } => none
+  }
+}
+
+fn hold_refusal_is_named_window_head_moved(r: LocalStoreHoldRefusal?) -> Bool {
+  match r {
+    Present { value: x } => match x {
+      LocalStoreHoldNamedWindowHeadMoved { named: _ } => true
+      LocalStoreHoldStale { observed: _ } => false
+      LocalStoreFamilyBusy { holder: _, evidence: _ } => false
+      LocalStoreHolderUnobservable { holder: _, cause: _ } => false
+      LocalStoreHoldRecoveryRefused { refusal: _ } => false
+      LocalStoreHoldContended => false
+      LocalStoreHoldStoreUnavailable { cause: _ } => false
+      LocalStoreHoldSlotUndecodable { detail: _ } => false
+      LocalStoreHoldKeyNotAddressable => false
+      LocalStoreHoldSelfUnidentified { cause: _ } => false
+      LocalStoreHoldWindowTooNarrow { k: _ } => false
+      LocalStoreHoldUnsettled { settlement: _ } => false
+      LocalStoreHoldWrongFamily { held: _, requested: _ } => false
+    }
+    Absent => false
+  }
+}
+
+data pin_ext2_immutable_script: String = "import fcntl, os, struct, sys\nGET = 0x80086601\nSET = 0x40086602\nIMM = 0x10\npath = sys.argv[1]\non = sys.argv[2] == \"1\"\nfd = os.open(path, os.O_RDONLY)\ncur = struct.unpack(\"I\", fcntl.ioctl(fd, GET, struct.pack(\"I\", 0)))[0]\nfcntl.ioctl(fd, SET, struct.pack(\"I\", (cur | IMM) if on else (cur & ~IMM)))\nos.close(fd)\n"
+
+fn pin_generation_unlink(path: String, on: Bool) -> Bool {
+  shell.Exec.RunArgv(program: "python3", arguments: ["-c", pin_ext2_immutable_script, path, if on { "1" } else { "0" }]).exit_code == 0
+}
+
+test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let rs = bundle_req(module: "s")
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } =>
+      match local_store_with_family(capability: store, of: rs, run: h => h) {
+        LocalStoreBracketRefused { refusal: _ } => false
+        LocalStoreBracketRan { value: leaked, hold_release: _ } => {
+          let pinned = cas_file_slot_path(root: root_path as NonEmptyStr, key: local_store_hold_key(family: leaked.family), generation: leaked.generation)
+          let immutable = pin_generation_unlink(path: pinned, on: true)
+          let advanced = match local_store_with_family(capability: store, of: rs, run: _ => true) {
+            LocalStoreBracketRefused { refusal: _ } => false
+            LocalStoreBracketRan { value: ok, hold_release: _ } => ok
+          }
+          let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
+          let _unlock = pin_generation_unlink(path: pinned, on: false)
+          immutable && advanced
+            && commit_tag(c: c.commit) == "occupancy_unavailable"
+            && hold_refusal_is_named_window_head_moved(r: c.hold_refusal)
+            && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
+            && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
+        }
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}

@@ -1,0 +1,223 @@
+module gunbc.roadmap_emit
+
+import std.markdown {
+  MarkdownDocument, MarkdownBlock, MarkdownInline, HeadingBlock, ParagraphBlock, TaskListBlock,
+  UnorderedListBlock, MarkdownListItem,
+  MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
+}
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
+  roadmap_parent_index, roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
+  SectionElement, Prose, Group, SectionProse, SectionGroup,
+}
+
+import v2.std.collection { Map }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
+
+fn roadmap_max_depth() -> Int { 12 }
+
+fn node_is_superseded(rn: RoadmapNode) -> Bool {
+  !(item_superseded_by(item: rn.line) == "")
+}
+
+fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
+  signoff_accepts(s: rn.signoff) || node_is_superseded(rn: rn)
+}
+
+fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
+  item_is_done(item: rn.line, merged: merged)
+}
+
+fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
+  if node_is_superseded(rn: rn) {
+    []
+  } else {
+    if signoff_accepts(s: rn.signoff) {
+      [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+    } else {
+      if node_evidence_present(rn: rn, merged: merged) {
+        [TextInline { text: " — ⏳ awaiting sign-off" }]
+      } else {
+        []
+      }
+    }
+  }
+}
+
+fn pointer_inlines(p: Pointer) -> List<MarkdownInline> {
+  [
+    TextInline { text: " " },
+    LinkInline { inlines: [TextInline { text: p.label }], url: p.path },
+  ]
+}
+
+fn carriers_inlines(carriers: List<Pointer>) -> List<MarkdownInline> {
+  fold(carriers, init: [], f: (acc, p) => concat(acc, pointer_inlines(p: p)))
+}
+
+fn refs_text(prs: List<Int>) -> String {
+  fold(prs, init: "", f: (acc, p) =>
+    if acc == "" { concat("#", to_string(p)) } else { concat(acc, concat("/#", to_string(p))) })
+}
+fn refs_inlines(prs: List<Int>) -> List<MarkdownInline> {
+  if count(prs) == 0 { [] } else { [TextInline { text: concat(" (", concat(refs_text(prs: prs), ")")) }] }
+}
+
+fn desc_inlines(description: String) -> List<MarkdownInline> {
+  if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
+}
+
+// A reader of ROADMAP.md kept asking what a row actually accomplishes, and the answer was already
+// on the row — displaced_cost, the pain that goes away — but the markdown projection never rendered
+// it, so only the scope sentence showed. Rendering it here is a projection fix, not a new field:
+// the authority still states the reason exactly once. An empty reason renders nothing rather than a
+// dangling label, so a row that has not stated its why is visibly missing it instead of quietly
+// padded.
+
+fn why_clause(t: TicketFields) -> String {
+  if t.displaced_cost == "" { "" } else { concat(" Why: ", t.displaced_cost) }
+}
+
+fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
+  match line {
+    DerivableLine { prs, title, description } =>
+      concat(
+        concat([TextInline { text: title }], refs_inlines(prs: prs)),
+        desc_inlines(description: description),
+      )
+    AuthoredLine { done: _, content } => [TextInline { text: content }]
+    PlainLine { content } => [TextInline { text: content }]
+    SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
+    TicketLine { done: _, ticket } =>
+      [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief, why_clause(t: ticket)], "") }]
+  }
+}
+
+fn node_is_plain(rn: RoadmapNode) -> Bool {
+  match rn.line {
+    PlainLine { content: _ } => true
+    DerivableLine { prs: _, title: _, description: _ } => false
+    AuthoredLine { done: _, content: _ } => false
+    SupersededLine { by: _, content: _ } => false
+    TicketLine { done: _, ticket: _ } => false
+  }
+}
+
+fn dependency_inlines(rn: RoadmapNode, graph: MarkdownTreeGraph) -> List<MarkdownInline> {
+  let parents = roadmap_parent_ids_in(parents: graph.parents, node: rn.node)
+  if count(parents) > 1 {
+    [
+      TextInline {
+        text: concat(
+          " — requires all: ",
+          join(map(parents, p => p as String), ", "),
+        )
+      },
+    ]
+  } else {
+    []
+  }
+}
+
+fn node_inlines(rn: RoadmapNode, graph: MarkdownTreeGraph) -> List<MarkdownInline> {
+  concat(
+    concat(
+      line_inlines(line: rn.line),
+      carriers_inlines(carriers: rn.carriers),
+    ),
+    dependency_inlines(rn: rn, graph: graph),
+  )
+}
+
+// A group's tree, indexed once where the group is projected: every node's parents (its dependency
+// line, and whether it is top-level) and every node's primary children (its nested list). The walk
+// below asked both questions of the whole edge list per node, which made the projection nodes x
+// edges (gunbc.roadmap_model roadmap_parent_index, roadmap_primary_children_index).
+type MarkdownTreeGraph {
+  parents: Map<String, List<RoadmapNodeId>>
+  children: Map<String, List<RoadmapNode>>
+}
+
+fn markdown_tree_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> MarkdownTreeGraph {
+  MarkdownTreeGraph {
+    parents: roadmap_parent_index(edges: edges),
+    children: roadmap_primary_children_index(nodes: nodes, edges: edges),
+  }
+}
+
+fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
+  if done {
+    MarkdownTaskItem { state: Checked, blocks: blocks }
+  } else {
+    MarkdownTaskItem { state: Unchecked, blocks: blocks }
+  }
+}
+
+fn plain_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph) -> MarkdownListItem {
+  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, graph: graph) }] }
+}
+
+fn task_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
+  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, graph: graph), signoff_suffix_inlines(rn: rn, merged: merged)) }
+  let kids = if fuel > 0 { roadmap_primary_children_in(index: graph.children, parent: rn.node) } else { [] }
+  let blocks = if count(kids) > 0 {
+    concat([para], nodes_to_blocks(items: kids, graph: graph, merged: merged, fuel: fuel - 1))
+  } else {
+    [para]
+  }
+  task_item_with(done: node_is_done(rn: rn, merged: merged), blocks: blocks)
+}
+
+fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownTaskItem>, pbuf: List<MarkdownListItem> }) -> List<MarkdownBlock> {
+  if acc.mode == 1 {
+    concat(acc.blocks, [TaskListBlock { items: acc.tbuf }])
+  } else {
+    if acc.mode == 2 {
+      concat(acc.blocks, [UnorderedListBlock { items: acc.pbuf }])
+    } else {
+      acc.blocks
+    }
+  }
+}
+
+fn nodes_to_blocks(items: List<RoadmapNode>, graph: MarkdownTreeGraph, merged: List<Int>, fuel: Int) -> List<MarkdownBlock> {
+  let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
+    if node_is_plain(rn: rn) {
+      let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
+      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn, graph: graph)]) }
+    } else {
+      let flushed = if a.mode == 2 { concat(a.blocks, [UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
+      { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, graph: graph, merged: merged, fuel: fuel)]), pbuf: [] }
+    }
+  })
+  flush_run(acc: acc)
+}
+
+fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
+  let graph = markdown_tree_graph(nodes: g.nodes, edges: g.edges)
+  let tops = g.nodes |> filter(n => count(roadmap_parent_ids_in(parents: graph.parents, node: n.node)) == 0)
+  let list_blocks = nodes_to_blocks(items: tops, graph: graph, merged: merged, fuel: roadmap_max_depth())
+  if g.label == "" {
+    list_blocks
+  } else {
+    concat(
+      [ParagraphBlock { inlines: [StrongInline { inlines: [TextInline { text: concat(g.label, ":") }] }] }],
+      list_blocks,
+    )
+  }
+}
+
+fn element_blocks(e: SectionElement, merged: List<Int>) -> List<MarkdownBlock> {
+  match e {
+    Prose { prose } => [ParagraphBlock { inlines: [TextInline { text: prose.content }] }]
+    Group { group } => group_blocks(g: group, merged: merged)
+  }
+}
+
+fn project_roadmap_section(title: String, elements: List<SectionElement>, merged: List<Int>) -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: fold(elements,
+      init: [HeadingBlock { level: H2, inlines: [TextInline { text: title }] }],
+      f: fn(acc, e) { concat(acc, element_blocks(e: e, merged: merged)) })
+  }
+}

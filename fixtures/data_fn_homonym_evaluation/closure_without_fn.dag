@@ -1,0 +1,10 @@
+module fixtures.data_fn_homonym_evaluation.closure_without_fn
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import fixtures.data_fn_homonym_evaluation.data_declarer { read_homonym_field }
+
+// THE CONTROL. The same subject with the fn declarer absent from the closure: the bare spelling has
+// one declarer, and the data reference evaluates correctly on every run.
+fn evaluation_main() -> ProcessExit {
+  if read_homonym_field() == "data-side" { ExitSuccess } else { ExitFailure { code: 1, reason: "wrong value" } }
+}

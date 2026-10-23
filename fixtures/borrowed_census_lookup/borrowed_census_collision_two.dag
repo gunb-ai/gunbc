@@ -1,0 +1,3 @@
+module test.fixture.borrowed_census_collision_two
+
+fn borrowed_census_collision_probe() -> Int { 2 }

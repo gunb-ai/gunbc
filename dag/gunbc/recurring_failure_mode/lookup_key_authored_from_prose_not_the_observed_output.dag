@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.lookup_key_authored_from_prose_not_the_observed_output
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data lookup_key_authored_from_prose_not_the_observed_output: RecurringFailureMode = RecurringFailureMode {
+  identity: "lookup_key_authored_from_prose_not_the_observed_output" as NonEmptyStr,
+
+  receipts: [
+    "**A KEY INTO A TOOL'S OUTPUT IS WRITTEN FROM HOW PEOPLE NAME THE THING, NOT FROM WHAT THE TOOL PRINTS.** Invalid state: a route or selector holds a name that no real output contains, and nothing has run it against a capture, so the mismatch cannot surface until the first live reader -- where, unless the selection refuses, it reads as the target having no value rather than the key being wrong.",
+
+    "SPECIMEN (calm-lynx-884, 2026-10-04, found while parsing the first retained hpm check capture): gunbc.fleet.mtcollins_firmware_converge readback_route_of(MainboardCpld) named the hpm check component `MB CPLD`, the vendor's prose for the mainboard CPLD. The controller prints the row `CPLD`, id 5, on BMC 0.32 (artifacts/bmc/mtcollins1-ipmitool-hpm-check-bmc0.32-2026-10-02.txt) and on 0.45.3 (artifacts/bmc/mtcollins1-cpld-hpm-upgrade-2026-10-02.log line 26). No parser of hpm check output existed, so the route was a dry argv and a supplied witness value: the key was never compared with anything.",
+
+    "DISTINGUISHING FACTS: this is not `lookup_miss_read_as_positive_classification` (a miss minting a positive) and not `absent_reads_identically_to_never_looked` (absence read as a negative). The defect is upstream of both -- the KEY is a nickname (DESIGN section 3) for an identifier the upstream tool already fixes -- and either of those classes is what it becomes once a reader exists, depending on how that reader treats a miss.",
+
+    "REPAIR: the name is taken from the observed row and cited to its capture, and the reader that selects by it (extdeps.bmc.ipmitool_hpm_check hpm_component_named) refuses a name the table does not list, typed and carrying what was listed, so a wrong key is reported as the key. RED: the real 0.45.3 row under the old name refuses by name.",
+
+    "RUNG FOUND AT: below the ladder in waiting -- latent silent wrongness, since no reader ran. NOW: mechanically preventable (2) for the routes a witness runs against a retained capture. CEILING: 2. The key is an external fact about the tool's output, so construction cannot fix it; a capture-backed witness per route is the wall. NEXT-RUNG TRIGGER: every HpmCheckComponent route enumerated by a witness over a current-BMC check capture, which waits on a post-reflash hpm check capture.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.bmc.ipmitool_hpm_check", decl_name: "hpm_component_named"),
+    decl_ref(module_path: "test.claim.mtcollins_firmware_readback_route_witness", decl_name: "the_prose_name_mb_cpld_refuses_against_the_current_bmc_row_by_name"),
+    decl_ref(module_path: "test.claim.mtcollins_firmware_readback_route_witness", decl_name: "the_cpld_route_reads_the_current_bmc_row"),
+  ],
+}

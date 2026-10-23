@@ -1,0 +1,127 @@
+module gunbc.remote_host_model
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { second }
+import v2.std.operation_realization {
+  OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault, ShellObserved,
+}
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.exec.command { argv_words }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.crypto.hash { sha256sum_file_command }
+import gunbc.host_command_model { dispatched_words, ssh_session_exec_portable_words_operation }
+
+// A MODELED REMOTE HOST reached over extdeps.ssh.session ssh.Session.ExecPortableWords. The SSH client
+// arguments are shaped as `<options...> <endpoint> -- <remote words...>` (gunbc.fleet_known_hosts_anchor
+// shape_fleet_ssh_exec), and the far side sees exactly the endpoint and the remote words; the model is
+// that far side. It answers ONLY the remote words the production command builders produce for the
+// paths it holds -- extdeps.tools.gnu_coreutils cat_command and extdeps.crypto.hash
+// sha256sum_file_command -- compared exactly, so nothing is dispatched on a program's name. Anything
+// else, including a request for another endpoint, is a harness fault.
+//
+// NOT JUDGED HERE, and stated so a green over it is not over-read: the client-side options before the
+// endpoint (host-key trust, credential, config suppression). They are the real OpenSSH client's to
+// honour; their evidence is the SSH transport's own controls, not this model.
+//
+// A FILE IS ITS CONTENT AND ITS DECLARED DIGEST. An image is not hashed in .dag; the scenario declares
+// the SHA-256 its bytes have, and the model reports it in sha256sum's own format. A path with no
+// content is absent, and both commands answer as coreutils does for a missing file.
+type ModeledRemoteFile {
+  path: String
+  content: String?
+  sha256: String?
+}
+
+type ModeledRemoteHost {
+  endpoint: String
+  files: List<ModeledRemoteFile>
+}
+
+fn remote_missing(tool: String, path: String) -> ShellExchangeObservation {
+  ShellProcessExited { exit_code: 1, stdout: "", stderr: join([tool, ": ", path, ": No such file or directory\n"], "") }
+}
+
+fn remote_cat(file: ModeledRemoteFile) -> ShellExchangeObservation {
+  match file.content {
+    Absent => remote_missing(tool: "cat", path: file.path)
+    Present { value: c } => ShellProcessExited { exit_code: 0, stdout: c, stderr: "" }
+  }
+}
+
+fn remote_sha256sum(file: ModeledRemoteFile) -> ShellExchangeObservation {
+  match file.content {
+    Absent => remote_missing(tool: "sha256sum", path: file.path)
+    Present { value: _ } => match file.sha256 {
+      Absent => ShellProcessExited { exit_code: 1, stdout: "", stderr: join(["sha256sum: ", file.path, ": Input/output error\n"], "") }
+      Present { value: d } => ShellProcessExited { exit_code: 0, stdout: join([d, "  ", file.path, "\n"], ""), stderr: "" }
+    }
+  }
+}
+
+type RemoteRequest {
+  endpoint: String
+  words: List<String>
+}
+
+// The far side of the client args: the word before the FIRST `--` is the endpoint, everything after
+// it is the remote command -- which may itself carry a `--` (sha256sum -- <path>). No separator at all
+// means the request is not one this shape produces.
+fn remote_request(client_args: List<String>) -> RemoteRequest? {
+  let separators = filter(client_args, a => a == "--")
+  if count(separators) == 0 { none } else {
+    let before = take_while(xs: client_args, keep: fn(a) { a != "--" })
+    let after = client_args.skip(n: count(before) + 1)
+    match before.last() {
+      Absent => none
+      Present { value: endpoint } => Present { value: RemoteRequest { endpoint: endpoint, words: after } }
+    }
+  }
+}
+
+fn take_while(xs: List<String>, keep: fn(String) -> Bool) -> List<String> {
+  fold(xs, init: TakeWhileState { kept: [], open: true }, f: fn(acc, x) {
+    if acc.open && keep(x) { TakeWhileState { kept: list_append(acc.kept, x), open: true } }
+    else { TakeWhileState { kept: acc.kept, open: false } }
+  }).kept
+}
+
+type TakeWhileState {
+  kept: List<String>
+  open: Bool
+}
+
+fn remote_answer(host: ModeledRemoteHost, words: List<String>) -> ShellExchangeObservation? {
+  fold(host.files, init: none, f: fn(acc, file) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if words == argv_words(command: cat_command(path: file.path)) { Present { value: remote_cat(file: file) } }
+        else if words == argv_words(command: sha256sum_file_command(path: file.path)) { Present { value: remote_sha256sum(file: file) } }
+        else { none }
+    }
+  })
+}
+
+fn remote_host_binding<S>(get: fn(S) -> List<ModeledRemoteHost>) -> OperationBinding<S> {
+  OperationBinding {
+    at: ssh_session_exec_portable_words_operation,
+    handler: fn(state, call) {
+      match dispatched_words(bindings: call.invocation.bindings, name: "client_args") {
+        Absent => OperationHarnessFault { reason: "a remote exec was dispatched without client args" as NonEmptyStr }
+        Present { value: args } => match remote_request(client_args: args) {
+          Absent => OperationHarnessFault { reason: "the client args do not end in `<endpoint> -- <remote words>`" as NonEmptyStr }
+          Present { value: request } => {
+            let hosts = filter(get(state), h => h.endpoint == request.endpoint)
+            match hosts.first() {
+              Absent => OperationHarnessFault { reason: join(["no modeled host answers at ", request.endpoint], "") as NonEmptyStr }
+              Present { value: host } => match remote_answer(host: host, words: request.words) {
+                Absent => OperationHarnessFault { reason: join(["the modeled host at ", request.endpoint, " answers no command `", join(request.words, " "), "`"], "") as NonEmptyStr }
+                Present { value: observation } => OperationObserved { observation: ShellObserved { observation: observation }, state: state, elapsed: second(count: 1) }
+              }
+            }
+          }
+        }
+      }
+    },
+  }
+}

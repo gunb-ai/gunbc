@@ -1,0 +1,332 @@
+module test.claim.supplier.oracle_oci_always_free_ensure_witness
+
+import std.measure { gigabyte_count, second, second_count }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.oracle_oci.api { OciListRead, OciListed, OciListRefused, OciListInaccessible, OciAnswered, classify_oci_list }
+import extdeps.network.ipv4 { ipv4_same_network, render_ipv4_prefix }
+import std.optional { Absent, Present }
+import gunbc.oracle_oci.tenancy_usage {
+  OciUsagePart, UsagePart, UsagePartRefused, oci_instance_usage, oci_volume_usage, oci_usage_part_add,
+}
+import gunbc.oracle_oci.network_ensure {
+  OciStep, OciStepReady, OciStepStopped, oci_admit_wired,
+  oci_vcn_wiring, oci_igw_wiring, oci_access_disagreement,
+  oci_free_vcn_cidr, oci_free_subnet_cidr,
+  OciNamedDecision, NamedReady, NamedCreate, NamedStop,
+  oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
+}
+import gunbc.oracle_oci.instance_ensure {
+  OciInstanceDecision, InstanceHeld, InstanceLaunch, InstanceStop,
+  oci_instance_decision, oci_observed_instance_of, oci_free_plan, oci_launch_body,
+  oci_query_value, OciQueryEncoded, OciQueryRefused, oci_out_of_host_capacity, oci_free_authorized_keys,
+  oci_select_offering, oci_domain_answer, DomainOffers, DomainLacks, DomainReadRefused,
+  oci_attachments_disagreement, oci_answer_retires_record, oci_parse_launch_record, oci_launch_record_text,
+  oci_replay_window_open, OciLaunchRecorded, OciLaunchRecordMalformed,
+  CandidateDomains, CandidateDomainsRefused,
+}
+import product.supplier.oracle_oci { FitsAlwaysFree, ExceedsAlwaysFree, oci_always_free_fit }
+
+// The subject is each decision point of the Always Free converge at its list boundary, over supplied
+// list answers shaped as Oracle's SDK models them. The signed exchange runs only live, on srv1. Its
+// receipt is the inhabitance evidence for these boundaries, and these rows are what it must agree with.
+
+fn json_items(text: String) -> List<JsonValue> {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => []
+    JsonDocumentParsed { value } => match value {
+      JsonArray { elements } => elements
+      JsonObject { members } => []
+      JsonNull => []
+      JsonBool { value: b } => []
+      JsonNumber { lexeme } => []
+      JsonString { value: s } => []
+    }
+  }
+}
+
+fn one(text: String) -> JsonValue {
+  match json_items(text: join(["[", text, "]"], "")).first() {
+    Present { value: v } => v
+    Absent => JsonNull
+  }
+}
+
+fn named(display: String, text: String) -> String {
+  match oci_named_decision(kind: "vcn", display_name: display, read: OciListed { items: json_items(text: text) }) {
+    NamedReady { resource } => concat("ready:", resource.id)
+    NamedCreate => "create"
+    NamedStop { line } => "stop"
+  }
+}
+
+// ── THE OPERATOR'S PLAN ───────────────────────────────────────────────────────────────────────
+
+test fn the_operators_plan_fits_the_always_free_allowance() -> Bool {
+  match oci_always_free_fit(plan: oci_free_plan) {
+    FitsAlwaysFree => true
+    ExceedsAlwaysFree { breaches } => false
+  }
+}
+
+// ── LISTS ─────────────────────────────────────────────────────────────────────────────────────
+
+// Absence needs a complete list: an answer carrying opc-next-page refuses, even when its page is empty.
+test fn a_continued_list_refuses_and_a_finished_one_lists() -> Bool {
+  let continued = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: "[]", next_page: "t" }) {
+    OciListRefused { cause } => true
+    OciListed { items } => false
+    OciListInaccessible { status, body } => false
+  }
+  let finished = match classify_oci_list(operation: "List", exchange: OciAnswered { status: 200, body: "[{\"id\":\"x\"}]", next_page: "" }) {
+    OciListed { items } => items.length() == 1
+    OciListRefused { cause } => false
+    OciListInaccessible { status, body } => false
+  }
+  continued && finished
+}
+
+// A network row missing a required field refuses the read. It does not read as "none live", which
+// would create a duplicate.
+test fn a_malformed_network_row_stops_rather_than_creating() -> Bool {
+  named(display: "gunbc-always-free", text: "[{\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"}]") == "stop"
+    && named(display: "gunbc-always-free", text: "[{}]") == "stop"
+}
+
+// ── NETWORK ───────────────────────────────────────────────────────────────────────────────────
+
+test fn a_network_resource_is_created_only_when_none_live_has_the_name() -> Bool {
+  named(display: "gunbc-always-free", text: "[]") == "create"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"other\",\"lifecycleState\":\"AVAILABLE\"}]") == "create"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"TERMINATED\"}]") == "create"
+}
+
+test fn an_available_namesake_is_ready_and_a_provisioning_one_stops() -> Bool {
+  named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"}]") == "ready:v1"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"PROVISIONING\"}]") == "stop"
+    && named(display: "gunbc-always-free", text: "[{\"id\":\"v1\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"},{\"id\":\"v2\",\"displayName\":\"gunbc-always-free\",\"lifecycleState\":\"AVAILABLE\"}]") == "stop"
+}
+
+test fn a_route_table_is_admitted_only_if_it_reaches_this_gateway() -> Bool {
+  let good = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeRules\":[{\"destination\":\"0.0.0.0/0\",\"destinationType\":\"CIDR_BLOCK\",\"networkEntityId\":\"igw1\"}]}"))
+  let other = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeRules\":[{\"destination\":\"0.0.0.0/0\",\"destinationType\":\"CIDR_BLOCK\",\"networkEntityId\":\"igw2\"}]}"))
+  let empty = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeRules\":[]}"))
+  oci_route_table_wiring(r: good, igw: "igw1") == ""
+    && oci_route_table_wiring(r: other, igw: "igw1") != ""
+    && oci_route_table_wiring(r: empty, igw: "igw1") != ""
+}
+
+test fn a_subnet_is_admitted_only_on_this_route_table() -> Bool {
+  let s = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"routeTableId\":\"rt1\",\"cidrBlock\":\"10.0.0.0/24\",\"prohibitPublicIpOnVnic\":false}"))
+  oci_subnet_wiring(r: s, vcn: "v1", route_table: "rt1") == "" && oci_subnet_wiring(r: s, vcn: "v1", route_table: "rt2") != ""
+}
+
+// ── INSTANCES ─────────────────────────────────────────────────────────────────────────────────
+
+fn decide_a1(text: String) -> String {
+  match oci_free_plan.skip(n: 2).first() {
+    Absent => "no-plan"
+    Present { value: p } => match oci_instance_decision(planned: p, observed: map(json_items(text: text), i => oci_observed_instance_of(v: i))) {
+      InstanceHeld { line } => "held"
+      InstanceLaunch => "launch"
+      InstanceStop { line } => "stop"
+    }
+  }
+}
+
+test fn the_a1_instance_launches_when_absent_and_holds_when_running() -> Bool {
+  decide_a1(text: "[]") == "launch"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"TERMINATED\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "launch"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":2.0,\"memoryInGBs\":12.0}}]") == "held"
+}
+
+// A stopped instance was stopped by someone, and a wrong-shaped namesake is not this instance. Neither
+// is started, reshaped or replaced.
+test fn a_stopped_or_wrong_shaped_namesake_stops_rather_than_launching() -> Bool {
+  decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"STOPPED\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":2.0,\"memoryInGBs\":12.0}}]") == "stop"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.E2.1.Micro\"}]") == "stop"
+}
+
+// The query values go through extdeps.uri's encoder: an availability domain's colon and the image
+// query's space come out percent-encoded, and an empty value refuses before any read is sent.
+test fn query_values_are_encoded_by_the_shared_uri_encoder() -> Bool {
+  let colon = match oci_query_value(value: "Uocm:US-ASHBURN-AD-1") { OciQueryEncoded { wire } => wire == "Uocm%3AUS-ASHBURN-AD-1"  OciQueryRefused { line } => false }
+  let space = match oci_query_value(value: "Oracle Linux") { OciQueryEncoded { wire } => wire == "Oracle%20Linux"  OciQueryRefused { line } => false }
+  let empty = match oci_query_value(value: "") { OciQueryRefused { line } => true  OciQueryEncoded { wire } => false }
+  colon && space && empty
+}
+
+test fn out_of_host_capacity_is_read_from_oracles_500_text_only() -> Bool {
+  oci_out_of_host_capacity(status: 500, body: "{\"code\":\"InternalError\",\"message\":\"Out of host capacity.\"}")
+    && !oci_out_of_host_capacity(status: 500, body: "{\"code\":\"InternalError\",\"message\":\"something else\"}")
+    && !oci_out_of_host_capacity(status: 400, body: "Out of host capacity.")
+}
+
+// The A1 launch carries its shapeConfig and both keys. The micro launch carries no shapeConfig,
+// because its size is fixed.
+test fn launch_bodies_carry_shape_config_only_for_the_flex_shape() -> Bool {
+  let micro = match oci_free_plan.first() { Present { value: p } => oci_launch_body(planned: p, compartment: "c", subnet: "s", domain: "AD-1", image: "img") Absent => "" }
+  let a1 = match oci_free_plan.skip(n: 2).first() { Present { value: p } => oci_launch_body(planned: p, compartment: "c", subnet: "s", domain: "AD-1", image: "img") Absent => "" }
+  !string_contains(s: micro, pattern: "shapeConfig")
+    && string_contains(s: a1, pattern: "\"shapeConfig\": {\"ocpus\": 2, \"memoryInGBs\": 12}")
+    && string_contains(s: a1, pattern: "\"bootVolumeSizeInGBs\": 50")
+    && string_contains(s: oci_free_authorized_keys(), pattern: "fleet-automation@gunbc")
+    && string_contains(s: oci_free_authorized_keys(), pattern: "macbook-m4")
+}
+
+// A refused ListShapes read is not "this domain lacks the shape" (review 76366). One refused domain
+// refuses the selection with its cause, even beside a domain that answered and offers the shape.
+// With every read answered, the offering domain is selected.
+test fn a_refused_shape_read_refuses_the_selection_rather_than_reading_as_lacking() -> Bool {
+  let refused = match oci_select_offering(answers: [oci_domain_answer(domain: "AD-1", offer: DomainReadRefused { line: "ListShapes for AD-1 refused: 500" }), oci_domain_answer(domain: "AD-2", offer: DomainOffers)]) {
+    CandidateDomainsRefused { line } => string_contains(s: line, pattern: "AD-1")
+    CandidateDomains { domains } => false
+  }
+  let selected = match oci_select_offering(answers: [oci_domain_answer(domain: "AD-1", offer: DomainLacks), oci_domain_answer(domain: "AD-2", offer: DomainOffers)]) {
+    CandidateDomains { domains } => domains == ["AD-2"]
+    CandidateDomainsRefused { line } => false
+  }
+  refused && selected
+}
+
+// The subnet is inside the VCN: its network shares the VCN's network at the VCN's prefix, and its
+// prefix is at least as long. The rendered CIDR text is what the create bodies send.
+test fn the_subnet_sits_inside_the_vcn() -> Bool {
+  let contained = match ipv4_same_network(a: oci_free_subnet_cidr.network, b: oci_free_vcn_cidr.network, prefix: oci_free_vcn_cidr.length) {
+    Present { value } => value
+    Absent => false
+  }
+  contained
+    && oci_free_subnet_cidr.length >= oci_free_vcn_cidr.length
+    && render_ipv4_prefix(p: oci_free_vcn_cidr) == "10.0.0.0/16"
+    && render_ipv4_prefix(p: oci_free_subnet_cidr) == "10.0.0.0/24"
+}
+
+// ── TENANCY USAGE ─────────────────────────────────────────────────────────────────────────────
+
+fn usage_text(u: OciUsagePart) -> String {
+  match u {
+    UsagePart { a1_ocpus, a1_memory, micros, block } => join([to_string(a1_ocpus), to_string(gigabyte_count(g: a1_memory)), to_string(micros), to_string(gigabyte_count(g: block))], "/")
+    UsagePartRefused { line } => "refused"
+  }
+}
+
+// What each live instance holds: an A1 its shapeConfig OCPUs and memory, read exactly from Oracle's
+// float numerals; a micro one micro. A terminated instance holds nothing. A stopped one still counts.
+test fn instances_contribute_their_allocation_and_terminated_ones_nothing() -> Bool {
+  usage_text(u: oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":2.0,\"memoryInGBs\":12.0}}"))) == "2/12/0/0"
+    && usage_text(u: oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"STOPPED\",\"shape\":\"VM.Standard.E2.1.Micro\"}"))) == "0/0/1/0"
+    && usage_text(u: oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"TERMINATED\",\"shape\":\"VM.Standard.A1.Flex\"}"))) == "0/0/0/0"
+}
+
+// A fractional or missing allocation refuses rather than being rounded or read as zero, and a refusal
+// absorbs every later sum, so a usage total can never silently omit a row.
+test fn an_unreadable_allocation_refuses_and_stays_refused_through_the_sum() -> Bool {
+  let fractional = oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":1.5,\"memoryInGBs\":6}}"))
+  let missing = oci_instance_usage(row: one(text: "{\"id\":\"i\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\"}"))
+  usage_text(u: fractional) == "refused"
+    && usage_text(u: missing) == "refused"
+    && usage_text(u: oci_usage_part_add(a: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"AVAILABLE\",\"sizeInGBs\":50}")), b: fractional)) == "refused"
+}
+
+// Volumes hold storage in every state but TERMINATED, including a boot volume a terminated instance
+// left behind.
+test fn volumes_hold_storage_until_terminated() -> Bool {
+  usage_text(u: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"AVAILABLE\",\"sizeInGBs\":50}"))) == "0/0/0/50"
+    && usage_text(u: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"TERMINATED\",\"sizeInGBs\":50}"))) == "0/0/0/0"
+}
+
+// A running A1 namesake is held only at the planned size. A different size, or a size that cannot be
+// read, stops rather than being taken as converged (side-chat review on gunbc#13351).
+test fn an_a1_namesake_is_held_only_at_the_planned_size() -> Bool {
+  decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":1.0,\"memoryInGBs\":6.0}}]") == "stop"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "stop"
+}
+
+// One admission for found and read-back resources: wiring that disagrees stops, whichever path
+// reached it (side-chat review on gunbc#13351).
+test fn wiring_admission_stops_on_any_disagreement() -> Bool {
+  let r = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\"}"))
+  let ok = match oci_admit_wired(kind: "route table", display_name: "p", resource: r, disagreement: "", how: "created and AVAILABLE on read-back") { OciStepReady { id, line } => true  OciStepStopped { line } => false }
+  let bad = match oci_admit_wired(kind: "route table", display_name: "p", resource: r, disagreement: "route table has no rule sending 0.0.0.0/0 to igw1", how: "created and AVAILABLE on read-back") { OciStepStopped { line } => true  OciStepReady { id, line } => false }
+  ok && bad
+}
+
+// The network is admitted on what it claims to provide: a disabled gateway, a private subnet, a subnet
+// with another range, and a VCN without the planned range each stop, where only the route table was
+// checked before (side-chat review and review 78205 on gunbc#13351).
+test fn the_network_is_admitted_on_enabled_public_planned_properties() -> Bool {
+  let igw_on = oci_named_resource_of(v: one(text: "{\"id\":\"g\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"isEnabled\":true}"))
+  let igw_off = oci_named_resource_of(v: one(text: "{\"id\":\"g\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"isEnabled\":false}"))
+  let private = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"routeTableId\":\"rt1\",\"cidrBlock\":\"10.0.0.0/24\",\"prohibitPublicIpOnVnic\":true}"))
+  let other_range = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"routeTableId\":\"rt1\",\"cidrBlock\":\"10.0.9.0/24\",\"prohibitPublicIpOnVnic\":false}"))
+  let vcn_ok = oci_named_resource_of(v: one(text: "{\"id\":\"v1\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"cidrBlocks\":[\"10.0.0.0/16\"]}"))
+  let vcn_other = oci_named_resource_of(v: one(text: "{\"id\":\"v1\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"cidrBlocks\":[\"192.168.0.0/16\"]}"))
+  oci_igw_wiring(r: igw_on, vcn: "v1") == "" && oci_igw_wiring(r: igw_off, vcn: "v1") != ""
+    && oci_subnet_wiring(r: private, vcn: "v1", route_table: "rt1") != ""
+    && oci_subnet_wiring(r: other_range, vcn: "v1", route_table: "rt1") != ""
+    && oci_vcn_wiring(r: vcn_ok) == "" && oci_vcn_wiring(r: vcn_other) != ""
+}
+
+// Access rules are read, not assumed: SSH ingress from anywhere plus all egress admits; a list without
+// the SSH rule, or a named list that was not read, stops.
+test fn subnet_access_rules_are_admitted_only_when_read_and_sufficient() -> Bool {
+  let good = one(text: "{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":22,\"max\":22}}}],\"egressSecurityRules\":[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]}")
+  let no_ssh = one(text: "{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":443,\"max\":443}}}],\"egressSecurityRules\":[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]}")
+  let subnet = one(text: "{\"id\":\"sn\",\"securityListIds\":[\"sl1\"]}")
+  oci_access_disagreement(subnet_row: subnet, lists: [good]) == ""
+    && oci_access_disagreement(subnet_row: subnet, lists: [no_ssh]) != ""
+    && oci_access_disagreement(subnet_row: subnet, lists: []) != ""
+}
+
+// A held instance must be attached to the selected subnet: an otherwise identical instance on another
+// subnet, or with no attached VNIC, stops (side-chat review on gunbc#13351).
+test fn a_held_instance_must_be_attached_to_the_selected_subnet() -> Bool {
+  oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"ATTACHED\",\"subnetId\":\"sn1\"}]"), subnet: "sn1") == ""
+    && oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"ATTACHED\",\"subnetId\":\"sn2\"}]"), subnet: "sn1") != ""
+    && oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"DETACHED\",\"subnetId\":\"sn1\"}]"), subnet: "sn1") != ""
+}
+
+// THE LAUNCH RECORD'S LIFECYCLE (side-chat review on gunbc#13351). Only the run that created a record,
+// on its first send, retires it on a definitive non-creation. A re-send never retires it: an auth
+// rejection on a re-send after an unknown original keeps the record. A 5xx, a throttle or a conflict
+// keeps it on any send.
+test fn only_a_first_send_definitive_refusal_retires_the_record() -> Bool {
+  oci_answer_retires_record(first_send: true, status: 400, body: "{}")
+    && oci_answer_retires_record(first_send: true, status: 500, body: "{\"message\":\"Out of host capacity.\"}")
+    && !oci_answer_retires_record(first_send: false, status: 401, body: "{}")
+    && !oci_answer_retires_record(first_send: false, status: 403, body: "{}")
+    && !oci_answer_retires_record(first_send: false, status: 400, body: "{}")
+    && !oci_answer_retires_record(first_send: true, status: 409, body: "{}")
+    && !oci_answer_retires_record(first_send: true, status: 429, body: "{}")
+    && !oci_answer_retires_record(first_send: true, status: 503, body: "{}")
+}
+
+// The record round-trips its first-send time and exact body, and a record outside the retry-token
+// window is not re-sent.
+test fn the_record_carries_its_send_time_and_expires_from_replay() -> Bool {
+  let round = match oci_parse_launch_record(content: oci_launch_record_text(sent_at: second(count: 1000), body: "{\"a\": 1}\n{\"b\": 2}")) {
+    OciLaunchRecorded { sent_at, body } => second_count(s: sent_at) == 1000 && body == "{\"a\": 1}\n{\"b\": 2}"
+    OciLaunchRecordMalformed { cause } => false
+  }
+  let malformed = match oci_parse_launch_record(content: "not-a-time\n{}") {
+    OciLaunchRecordMalformed { cause } => true
+    OciLaunchRecorded { sent_at, body } => false
+  }
+  round && malformed
+    && oci_replay_window_open(sent_at: second(count: 1000), now: second(count: 1000 + 3600))
+    && !oci_replay_window_open(sent_at: second(count: 1000), now: second(count: 1000 + 82800))
+    && !oci_replay_window_open(sent_at: second(count: 1000), now: second(count: 999))
+}
+
+// An SSH rule restricted to a source port does not admit a client connecting from an ephemeral port;
+// the same rule without the source restriction does (side-chat review on gunbc#13351).
+test fn a_source_port_restricted_ssh_rule_is_not_admitted() -> Bool {
+  let subnet = one(text: "{\"id\":\"sn\",\"securityListIds\":[\"sl1\"]}")
+  let egress = "\"egressSecurityRules\":[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]"
+  let restricted = one(text: join(["{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"sourcePortRange\":{\"min\":22,\"max\":22},\"destinationPortRange\":{\"min\":22,\"max\":22}}}],", egress, "}"], ""))
+  let full = one(text: join(["{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"sourcePortRange\":{\"min\":1,\"max\":65535},\"destinationPortRange\":{\"min\":22,\"max\":22}}}],", egress, "}"], ""))
+  oci_access_disagreement(subnet_row: subnet, lists: [restricted]) != ""
+    && oci_access_disagreement(subnet_row: subnet, lists: [full]) == ""
+}

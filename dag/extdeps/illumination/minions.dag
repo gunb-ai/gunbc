@@ -1,0 +1,68 @@
+module extdeps.illumination.minions
+
+import std.types { List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// The named Minions of Illumination's Despicable Me franchise, as the fan wiki's "Minions" category
+// enumerates them. The studio publishes no roster, so the wiki category is the authority cited; it was
+// read 2026-10-08 through the MediaWiki API (list=categorymembers, cmtitle=Category:Minions,
+// cmlimit=500), which returned 485 members with no continuation, so the read is the whole category.
+//
+// WHAT IS VENDORED: one entry per distinct first name, in the category's own order. Pages that name
+// no individual Minion (the species page, "Evil Minions", "Mega Minions", "Pit Crew", "Holiday
+// Minion", "Traveling Sales Minion", "Unnamed Referee Minion", "Minionese", trivia, biography and
+// group pages, subcategories) are excluded; a disambiguating suffix such as "(Despicable Me 2)" or
+// "Jr." is dropped, so several Minions sharing a name are one entry. Spellings are folded to
+// lowercase ASCII letters -- accents removed, punctuation and spaces dropped ("Francois" from
+// François, "jeanluc" from Jean-Luc) -- so every entry is a legal DNS label. A later read is a new
+// list beside this one, never an edit to it.
+
+data minions_fandom_category_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "despicableme.fandom.com/wiki/Category:Minions"
+  }
+}
+
+data minion_first_names: List<NonEmptyStr> = [
+  "aaron", "adrian", "aiden", "akio", "akira", "alan", "alazraqui", "albert", "alberto",
+  "alejandro", "alex", "alexander", "alfonso", "alfred", "alvin", "amir", "andre", "andrei",
+  "andrew", "ang", "anthony", "ari", "arnie", "arnold", "arthur", "austin", "barry", "bastien",
+  "ben", "benjamin", "benny", "bernardo", "bert", "bertrand", "bill", "billy", "bob", "bobby",
+  "bobo", "bong", "boon", "boris", "brad", "brandon", "brett", "brian", "bruce", "bruno", "buck",
+  "butch", "calvin", "cameron", "carl", "carlos", "carter", "casey", "cecil", "chandler",
+  "charles", "charlie", "chase", "chris", "christoph", "chuck", "cillian", "cinco", "clark",
+  "claude", "claudian", "clay", "clint", "cody", "connor", "cory", "craig", "crane", "cubby",
+  "daggett", "damien", "dan", "danny", "dario", "darwin", "daryl", "dave", "david", "denis",
+  "derek", "devin", "dexter", "dick", "donald", "donnie", "donny", "doug", "douglas", "dudley",
+  "dwayne", "dwight", "ed", "edgar", "edward", "ehouarn", "elbaton", "eli", "elia", "elijah",
+  "elvis", "emerson", "enzo", "eric", "erich", "erik", "ernest", "ethan", "euchariah", "eugene",
+  "evan", "ewan", "ezekiel", "ezra", "federico", "felix", "finn", "forrest", "fox", "francis",
+  "frank", "frankie", "francois", "fred", "fritz", "gabriel", "gaetano", "garrett", "garth",
+  "gary", "gene", "george", "gerald", "gibson", "gilbert", "gilles", "gino", "gordon", "graham",
+  "grayson", "greg", "guillaume", "guillermo", "gus", "guy", "habib", "hal", "hank", "harold",
+  "harry", "hayao", "henry", "herbert", "herman", "hichem", "hiromoto", "horace", "howard", "hugo",
+  "ian", "ingmar", "ivan", "jack", "jackson", "jacob", "james", "jason", "jax", "jay", "jeanluc",
+  "jeff", "jeffrey", "jeremy", "jerome", "jerry", "jesse", "jim", "jj", "joe", "joel", "joey",
+  "jof", "john", "johnny", "jon", "jonathan", "jonny", "jordan", "jorge", "josh", "joshua", "jose",
+  "juan", "jude", "julien", "justin", "kayden", "keanu", "keith", "ken", "kenji", "kenny", "kevin",
+  "kofi", "kraig", "kyle", "lance", "larry", "lars", "lasse", "lenny", "leo", "leon", "lewis",
+  "liam", "lincoln", "lionel", "lloyd", "logan", "lorenzo", "louis", "luc", "luca", "lucas",
+  "luchino", "lucio", "luis", "luke", "mack", "malik", "manny", "marc", "marcel", "mark",
+  "marshall", "martin", "marty", "mason", "mateo", "matt", "matthew", "maurice", "mael", "mel",
+  "michael", "mike", "mil", "milan", "milo", "milos", "miquel", "moe", "monty", "morgan",
+  "muhammad", "nate", "nathan", "ned", "neil", "newman", "niall", "nick", "nicolas", "nima",
+  "nino", "noah", "nobu", "nolan", "norbert", "noe", "oliver", "omid", "orlin", "orson", "oscar",
+  "oswald", "otis", "otto", "owen", "pablo", "palmer", "park", "parker", "pascal", "patrick",
+  "paul", "paxton", "pedro", "percy", "perry", "peter", "peyton", "phil", "pierce", "pudgy",
+  "quentin", "ralph", "raphael", "raymond", "reginald", "rhett", "ricky", "ridley", "ringo",
+  "risotto", "robert", "robin", "rod", "ron", "ross", "rowan", "ryan", "sam", "samson", "samuel",
+  "satyajit", "saxon", "scott", "scrooge", "sean", "sebastian", "seth", "shawn", "sid", "silas",
+  "simon", "sonny", "soren", "spencer", "spike", "stan", "stanley", "steve", "steven", "stu",
+  "stuart", "sydney", "ted", "terence", "terry", "theodore", "thomas", "tim", "timmy", "tobias",
+  "toby", "todd", "tom", "tony", "travis", "trey", "val", "van", "varun", "vegas", "victor",
+  "vincent", "vincente", "walter", "wark", "wayne", "werner", "wes", "will", "william", "willy",
+  "wilson", "wong", "wyatt", "xander", "yasujiro", "yiannis", "yussuf", "yves", "zach", "zack",
+  "zeno", "ziggy", "zorex"
+]

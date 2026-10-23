@@ -1,0 +1,145 @@
+module test.claim.host_kernel_dependency_witness_test
+
+import std.types { Bool, String, NonEmptyStr, CommitSha }
+import std.content_hash { serialize_content_hash }
+import std.upsert_decision { Noop, Apply, Refuse }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import extdeps.linux.tun_fdinfo { TunQueuesAttached, TunQueuesRefused, TunCensusQueueCountUnsupported, TunCensusQueueCountUnreadable, TunCensusReaderNotRoot, TunCensusMultiQueue, tun_attached_queue_requirement }
+import extdeps.shell.exec { ProcessObservation }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.runner_microvm_network_sanitation_observe { slot_network_tun_queue_requirement }
+import gunbc.host_kernel_dependency {
+  UbuntuTunKernelProvider, HostKernelDependencyPlan, InstallKernelAndActivate, ActivateInstalledKernel,
+  HostKernelDependencyPlanned, HostKernelDependencyRefused,
+  KernelPackageExact, KernelPackageNeedsInstall, KernelPackageReadRefused,
+  tun_kernel_provider_for_host, tun_kernel_capability_decision, kernel_package_reading,
+  kernel_package_readings_join, host_kernel_dependency_plan, host_kernel_maintenance_capability,
+}
+import gunbc.host_kernel_dependency_observe { kernel_provider_platform_admits, kernel_provider_candidate_admits }
+import gunbc.host_kernel_dependency_wire { host_kernel_dependency_text, host_kernel_dependency_from_text }
+import gunbc.fleet_converge_plan {
+  WorkspaceCommissioningDependencyConverge, fleet_converge_plan_artifact_of_request,
+  fleet_converge_apply_artifact_admits, ApplyAwaitingCapability,
+}
+import gunbc.fleet_converge_terminal { AwaitingCapability }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
+
+// SUPPLIED AT THE BOUNDARY: observations below are adversarial inputs to the production
+// dependency fold, not evidence about this machine. Actual ioctl execution has its own wet
+// witness, and the installed privileged commissioning entry is exercised on srv1.
+fn kernel_fixture_provider() -> UbuntuTunKernelProvider {
+  UbuntuTunKernelProvider { package: "linux-generic-hwe-24.04", version: "7.0.0-38.38~24.04.4",
+    architecture: "arm64", kernel_release: "7.0.0-38-generic" as LinuxKernelRelease }
+}
+
+fn kernel_fixture_plan() -> HostKernelDependencyPlan {
+  HostKernelDependencyPlan { host: operator_host_srv1,
+    source_revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha,
+    requirement: tun_attached_queue_requirement(name: "gunbc-tap13"),
+    running_release: "6.8.0-138-generic" as LinuxKernelRelease, boot_id: "old-boot",
+    provider: kernel_fixture_provider(), remedy: InstallKernelAndActivate,
+    package_simulation: "Inst linux-generic-hwe-24.04 (7.0.0-38.38~24.04.4 Ubuntu:24.04/noble-updates [arm64])\n" }
+}
+
+test fn a_supported_query_never_demands_a_kernel_even_when_the_tap_is_held() -> Bool {
+  all([0, 1, 8], count => match tun_kernel_capability_decision(
+    requirement: tun_attached_queue_requirement(name: "gunbc-tap13"), reading: TunQueuesAttached { count: count }) {
+    Noop => true other => false
+  })
+}
+
+test fn only_unsupported_demands_the_selected_sanitation_operation() -> Bool {
+  let requirement = tun_attached_queue_requirement(name: "gunbc-tap13")
+  (match tun_kernel_capability_decision(requirement: requirement, reading: TunQueuesRefused { cause: TunCensusQueueCountUnsupported }) {
+    Apply { plan } => plan == requirement other => false
+  }) && all([TunCensusQueueCountUnreadable { cause: "permission denied" }, TunCensusReaderNotRoot { euid: 1000 }, TunCensusMultiQueue], cause =>
+    match tun_kernel_capability_decision(requirement: requirement, reading: TunQueuesRefused { cause: cause }) {
+      Refuse { reason: _ } => true other => false
+    })
+}
+
+test fn installed_packages_select_activation_and_absent_packages_select_installation() -> Bool {
+  let p = kernel_fixture_plan()
+  (match host_kernel_dependency_plan(host: p.host, revision: p.source_revision, requirement: p.requirement,
+    running_release: p.running_release, boot_id: p.boot_id, provider: p.provider, packages: KernelPackageExact, simulation: "") {
+    HostKernelDependencyPlanned { plan } => plan.remedy == ActivateInstalledKernel other => false
+  }) && (match host_kernel_dependency_plan(host: p.host, revision: p.source_revision, requirement: p.requirement,
+    running_release: p.running_release, boot_id: p.boot_id, provider: p.provider, packages: KernelPackageNeedsInstall, simulation: p.package_simulation) {
+    HostKernelDependencyPlanned { plan } => plan.remedy == InstallKernelAndActivate other => false
+  }) && (match host_kernel_dependency_plan(host: p.host, revision: p.source_revision, requirement: p.requirement,
+    running_release: p.provider.kernel_release, boot_id: p.boot_id, provider: p.provider, packages: KernelPackageExact, simulation: "") {
+    HostKernelDependencyRefused { reason: _ } => true other => false
+  })
+}
+
+fn kernel_fixture_package_record() -> String {
+  "Package: linux-generic-hwe-24.04\nStatus: install ok installed\nArchitecture: arm64\nVersion: 7.0.0-38.38~24.04.4\n"
+}
+
+test fn package_identity_and_read_failures_cannot_become_absence() -> Bool {
+  let p = kernel_fixture_provider()
+  (match kernel_package_reading(package: p.package, provider: p,
+    reading: ProcessObservation { exit_code: 0, stdout: kernel_fixture_package_record(), stderr: "" }) {
+    KernelPackageExact => true other => false
+  }) && (match kernel_package_reading(package: p.package, provider: p,
+    reading: ProcessObservation { exit_code: 1, stdout: "", stderr: "dpkg-query: no information is available about package linux-generic-hwe-24.04" }) {
+    KernelPackageNeedsInstall => true other => false
+  }) && all([
+    "", "Status: hold ok not-installed\n",
+    "Package: linux-generic-hwe-24.04\nStatus: install ok installed\nArchitecture: amd64\nVersion: 7.0.0-38.38~24.04.4\n",
+    "Package: linux-generic-hwe-24.04\nStatus: install ok installed\nArchitecture: arm64\nVersion: 7.1.0\n",
+    concat(kernel_fixture_package_record(), "Version: 7.0.0-38.38~24.04.4\n"),
+  ], record => match kernel_package_reading(package: p.package, provider: p,
+    reading: ProcessObservation { exit_code: 0, stdout: record, stderr: "" }) {
+    KernelPackageReadRefused { reason: _ } => true other => false
+  }) && (match kernel_package_reading(package: p.package, provider: p,
+    reading: ProcessObservation { exit_code: 1, stdout: "", stderr: "permission denied" }) {
+    KernelPackageReadRefused { reason: _ } => true other => false
+  }) && (match kernel_package_readings_join(provider: p, readings: [KernelPackageExact, KernelPackageExact]) {
+    KernelPackageReadRefused { reason: _ } => true other => false
+  }) && (match kernel_package_readings_join(provider: p, readings: [KernelPackageNeedsInstall, KernelPackageReadRefused { reason: "denied" }, KernelPackageExact]) {
+    KernelPackageReadRefused { reason: _ } => true other => false
+  })
+}
+
+test fn kernel_provider_is_bound_to_platform_and_exact_package_metadata() -> Bool {
+  let p = kernel_fixture_provider()
+  tun_kernel_provider_for_host(host: operator_host_srv1) == Present { value: p }
+    && kernel_provider_platform_admits(os_release: "ID=ubuntu\nVERSION_ID=\"24.04\"\n", machine: "aarch64", provider: p)
+    && !kernel_provider_platform_admits(os_release: "ID=ubuntu\nVERSION_ID=24.04\n", machine: "x86_64", provider: p)
+    && !kernel_provider_platform_admits(os_release: "ID=debian\nVERSION_ID=24.04\n", machine: "aarch64", provider: p)
+    && !kernel_provider_platform_admits(os_release: "ID=ubuntu\nID=ubuntu\nVERSION_ID=24.04\n", machine: "aarch64", provider: p)
+    && kernel_provider_candidate_admits(provider: p, record: kernel_fixture_package_record())
+    && !kernel_provider_candidate_admits(provider: p, record: concat(kernel_fixture_package_record(), "Architecture: arm64\n"))
+}
+
+test fn dependency_response_is_bound_to_host_source_and_actual_operation() -> Bool {
+  let p = kernel_fixture_plan()
+  let wire = host_kernel_dependency_text(plan: p)
+  host_kernel_dependency_from_text(text: wire, host: p.host, revision: p.source_revision, requirement: p.requirement) == Present { value: p }
+    && host_kernel_dependency_from_text(text: concat(wire, "\n"), host: p.host, revision: p.source_revision, requirement: p.requirement) == none
+    && host_kernel_dependency_from_text(text: wire, host: p.host, revision: "1123456789abcdef0123456789abcdef01234567" as CommitSha, requirement: p.requirement) == none
+    && host_kernel_dependency_from_text(text: wire, host: p.host, revision: p.source_revision, requirement: tun_attached_queue_requirement(name: "gunbc-tap12")) == none
+}
+
+// Production fleet artifact and admission, not a second renderer. Pending host work cannot
+// produce a commissioning credential, an admitted apply, or a successful apply terminal.
+test fn commissioning_plan_exposes_the_dependency_without_publishing_readiness() -> Bool {
+  let request = WorkspaceCommissioningDependencyConverge { plan: kernel_fixture_plan() }
+  let artifact = fleet_converge_plan_artifact_of_request(request: request, prior_generation: 20)
+  (match artifact.apply_terminal { AwaitingCapability { capability } => capability == host_kernel_maintenance_capability other => false })
+    && string_contains(s: artifact.plan_body, pattern: "install-package:linux-generic-hwe-24.04=7.0.0-38.38~24.04.4")
+    && string_contains(s: artifact.plan_body, pattern: "activate-kernel:7.0.0-38-generic")
+    && !string_contains(s: artifact.plan_body, pattern: "commissioning-credential:")
+    && !string_contains(s: artifact.apply_shell, pattern: "apt-get")
+    && !string_contains(s: artifact.apply_shell, pattern: "systemctl reboot")
+    && (match fleet_converge_apply_artifact_admits(planned_host_text: "srv1", planned_scope_wire: workspace_executor_scope_wire,
+      planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint), observed: request) {
+      ApplyAwaitingCapability { capability } => capability == host_kernel_maintenance_capability other => false
+    })
+    && (match filter(workspace_execution_slot_identities(), slot => slot.host == "srv1").first() {
+      Present { value: slot } => slot_network_tun_queue_requirement(slot: slot) == kernel_fixture_plan().requirement
+      Absent => false
+    })
+}

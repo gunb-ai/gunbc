@@ -1,0 +1,82 @@
+module product.printed_chassis.assembly_review_checks
+import std.types {Bool,Int,List,Map,String}
+import v2.std.algebra {any,length}
+import v2.std.collection {empty_map,map_insert,map_lookup}
+import std.measure {micrometer_count,millimeter_count}
+import std.affine_space {Point3,signed_frame_component_count}
+import std.euclidean_geometry {Axis3,Axis3X,Axis3Y,Axis3Z}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,Block,RoundPrism,Printed,Purchased,Metal,Clearance,PrintPlane,LayOnXY,LayOnXZ,LayOnYZ,MechanicalInterface}
+import extdeps.printing.bambu_lab_a1_mini {a1_mini_build_envelope}
+import extdeps.printing.fdm {build_envelope_x,build_envelope_y,build_envelope_z}
+
+// Conservative positive-geometry bounds, at half-micrometre precision. Cuts cannot enlarge them.
+// These are source-model checks. Kernel validity/connectivity and load behavior remain separate.
+type Bounds {lo_x:Int,lo_y:Int,lo_z:Int,hi_x:Int,hi_y:Int,hi_z:Int}
+fn component(p:Point3,a:Axis3) -> Int {match a {Axis3X=>signed_frame_component_count(c:p.x) Axis3Y=>signed_frame_component_count(c:p.y) Axis3Z=>signed_frame_component_count(c:p.z)}}
+fn dimension(p:Primitive,a:Axis3) -> Int {
+ match p {Block {size:s,center:_}=>match a {Axis3X=>micrometer_count(m:s.size_x) Axis3Y=>micrometer_count(m:s.size_y) Axis3Z=>micrometer_count(m:s.size_z)}
+ RoundPrism {diameter:d,length:l,axis:axis,center:_}=>if axis_same(a:a,b:axis) {micrometer_count(m:l)} else {micrometer_count(m:d)}}
+}
+fn axis_same(a:Axis3,b:Axis3) -> Bool {match a {Axis3X=>match b {Axis3X=>true Axis3Y=>false Axis3Z=>false} Axis3Y=>match b {Axis3Y=>true Axis3X=>false Axis3Z=>false} Axis3Z=>match b {Axis3Z=>true Axis3X=>false Axis3Y=>false}}}
+fn center(p:Primitive) -> Point3 {match p {Block {size:_,center:c}=>c RoundPrism {diameter:_,length:_,axis:_,center:c}=>c}}
+fn smaller(a:Int,b:Int) -> Int {if a<b {a} else {b}}
+fn larger(a:Int,b:Int) -> Int {if a>b {a} else {b}}
+fn primitive_bounds(p:Primitive) -> Bounds {
+ let c=center(p:p)
+ let x=2*component(p:c,a:Axis3X)
+ let y=2*component(p:c,a:Axis3Y)
+ let z=2*component(p:c,a:Axis3Z)
+ let w=dimension(p:p,a:Axis3X)
+ let h=dimension(p:p,a:Axis3Y)
+ let d=dimension(p:p,a:Axis3Z)
+ Bounds {lo_x:x-w,lo_y:y-h,lo_z:z-d,hi_x:x+w,hi_y:y+h,hi_z:z+d}
+}
+fn joined(a:Bounds,b:Bounds) -> Bounds {Bounds {lo_x:smaller(a:a.lo_x,b:b.lo_x),lo_y:smaller(a:a.lo_y,b:b.lo_y),lo_z:smaller(a:a.lo_z,b:b.lo_z),hi_x:larger(a:a.hi_x,b:b.hi_x),hi_y:larger(a:a.hi_y,b:b.hi_y),hi_z:larger(a:a.hi_z,b:b.hi_z)}}
+fn primitive_positive(p:Primitive) -> Bool {all([Axis3X,Axis3Y,Axis3Z],a=>dimension(p:p,a:a)>0)}
+fn within_bed(p:AssemblyPart) -> Bool {
+ match p.adds.first() {Absent=>false Present {value:first}=>{
+ let b=fold(p.adds,init:primitive_bounds(p:first),f:fn(acc,q){joined(a:acc,b:primitive_bounds(p:q))})
+ let x=b.hi_x-b.lo_x
+ let y=b.hi_y-b.lo_y
+ let z=b.hi_z-b.lo_z
+ let bx=2*1000*millimeter_count(m:build_envelope_x(e:a1_mini_build_envelope))
+ let by=2*1000*millimeter_count(m:build_envelope_y(e:a1_mini_build_envelope))
+ let bz=2*1000*millimeter_count(m:build_envelope_z(e:a1_mini_build_envelope))
+ match p.print_plane {LayOnXY=>x<=bx&&y<=by&&z<=bz LayOnXZ=>x<=bx&&z<=by&&y<=bz LayOnYZ=>z<=bx&&y<=by&&x<=bz}
+ }}
+}
+// Build world-space bore lines once. A line ignores only the axial component,
+// exactly as the coaxial relation does; diameter and different-owner checks remain.
+// Persistent-map insertion copies its small accumulator; the bounded cassette has
+// tens of lines, rather than a corpus-sized map. No global linear-cost claim is made.
+type BoreLine {axis:Axis3,u:Int,v:Int}
+type Bore {owner:String,line:BoreLine,diameter:Int}
+fn bores(p:AssemblyPart,primitives:List<Primitive>) -> List<Bore> {
+ flat_map(primitives,q=>match q {Block {size:_,center:_}=>[] RoundPrism {diameter:d,length:_,axis:a,center:c}=>{
+ let diameter=micrometer_count(m:d)
+ if diameter>5000 {[]} else {
+ let x=signed_frame_component_count(c:c.x)+signed_frame_component_count(c:p.at.x)
+ let y=signed_frame_component_count(c:c.y)+signed_frame_component_count(c:p.at.y)
+ let z=signed_frame_component_count(c:c.z)+signed_frame_component_count(c:p.at.z)
+ let line=match a {Axis3X=>BoreLine {axis:Axis3X,u:y,v:z} Axis3Y=>BoreLine {axis:Axis3Y,u:x,v:z} Axis3Z=>BoreLine {axis:Axis3Z,u:x,v:y}}
+ [Bore {owner:p.id,line:line,diameter:diameter}]
+ }}})
+}
+fn bore_index(parts:List<AssemblyPart>) -> Map<BoreLine,List<Bore>> {
+ fold(flat_map(parts,p=>bores(p:p,primitives:concat(p.adds,p.cuts))),init:empty_map(),f:fn(index,b){
+ let previous=match map_lookup(m:index,key:b.line) {Absent=>[] Present {value:rows}=>rows}
+ map_insert(m:index,key:b.line,value:concat([b],previous))
+ })
+}
+fn bore_has_mate(b:Bore,index:Map<BoreLine,List<Bore>>) -> Bool {
+ match map_lookup(m:index,key:b.line) {Absent=>false Present {value:rows}=>any(rows,q=>q.owner!=b.owner&&q.diameter<=b.diameter&&b.diameter-q.diameter<=600)}
+}
+type PartIds {seen:Map<String,Bool>,unique:Bool}
+fn review_model_checks(parts:List<AssemblyPart>,interfaces:List<MechanicalInterface>) -> Bool {
+ let ids=fold(parts,init:PartIds {seen:empty_map(),unique:true},f:fn(acc,p){
+ let fresh=match map_lookup(m:acc.seen,key:p.id) {Absent=>true Present {value:_}=>false}
+ PartIds {seen:map_insert(m:acc.seen,key:p.id,value:true),unique:acc.unique&&fresh}
+ })
+ let index=bore_index(parts:parts)
+ length(parts)>0&&ids.unique&&all(interfaces,i=>all(i.members,id=>match map_lookup(m:ids.seen,key:id) {Absent=>false Present {value:_}=>true}))&&all(parts,p=>length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))&&match p.kind {Printed=>within_bed(p:p)&&all(bores(p:p,primitives:p.cuts),b=>bore_has_mate(b:b,index:index)) Purchased=>true Metal=>true Clearance=>true})
+}

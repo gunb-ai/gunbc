@@ -1,0 +1,202 @@
+module test.claim.approval_capability_issuance_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import gunbc.auth.approval_capability {
+  ApprovalCapability, ApprovalCapabilityClaims, CapabilityExpectation,
+  CapabilityVerification, CapabilityAuthentic, CapabilityRefused,
+  CapabilityMacRefused, CapabilityExpired, CapabilityKeyIdDisagrees,
+  CapabilityIssuance, CapabilityIssued, CapabilityIssuanceRefused,
+  IssuanceKeyIdDisagrees, IssuanceKeyMaterialNotHex,
+  ProposeApprove,
+  approval_capability_protocol, issue_capability, capability_tag_hex, verify_capability,
+  approval_capability_signing_input,
+}
+import extdeps.crypto.mac {
+  MacKey, MacKeyId, HmacSha256, MacVerification, MacTagMismatch,
+  mac_verify, mac_verification_from_implementation,
+}
+import std.scoped_authorization { AttemptIdentity }
+import std.types { NonEmptyStr, Timestamp, Secret }
+import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── Issue, then verify through the REAL implementation ───────────────────────────────────────
+// The neighbouring approval_capability_witness_test supplies MacVerification values through the
+// seam, which is right for discriminating verify_capability's policy and says nothing about whether
+// a tag the broker mints actually verifies. This file is that inhabitance claim: every capability
+// below is produced by issue_capability, and every verdict comes from mac_verify running
+// hmac_sha256_verify_hex over the bytes the verifier itself serialized. Deleting issuance, the
+// transcoding, or the shared signing input must turn the round-trip red.
+
+data broker_key_id: MacKeyId = "broker-2026-09" as MacKeyId
+
+data broker_key: MacKey = MacKey {
+  id: broker_key_id,
+  suite: HmacSha256,
+  material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
+}
+
+data expectation: CapabilityExpectation = CapabilityExpectation {
+  issuer: "gunbc-approval-broker" as NonEmptyStr,
+  audience: "srv1" as NonEmptyStr,
+  authority: "gcp.secret_manager" as NonEmptyStr,
+  suite: HmacSha256,
+}
+
+data inside: Timestamp = "2026-09-06T00:07:00Z"
+data after_expiry: Timestamp = "2026-09-06T00:20:00Z"
+
+fn claims_for(escalation_id: NonEmptyStr, key_id: MacKeyId) -> ApprovalCapabilityClaims {
+  ApprovalCapabilityClaims {
+    protocol: approval_capability_protocol,
+    issuer: expectation.issuer,
+    audience: expectation.audience,
+    authority: expectation.authority,
+    escalation_id: escalation_id,
+    request_revision: "rev-1" as NonEmptyStr,
+    decision: ProposeApprove,
+    attempt: "attempt-1" as AttemptIdentity,
+    issued_at: "2026-09-06T00:00:00Z",
+    expires_at: "2026-09-06T00:15:00Z",
+    key_id: key_id,
+  }
+}
+
+data good_claims: ApprovalCapabilityClaims = claims_for(escalation_id: "org-actions-secret-access-1" as NonEmptyStr, key_id: broker_key_id)
+
+// A refused issuance yields a capability whose tag cannot verify, so a broken issuer shows up as a
+// failed round-trip rather than being silently skipped.
+fn issued(claims: ApprovalCapabilityClaims) -> ApprovalCapability {
+  match issue_capability(claims: claims, key: broker_key) {
+    CapabilityIssued { capability: c } => c
+    CapabilityIssuanceRefused { cause: _ } => ApprovalCapability { claims: claims, tag_b64url: "refused" as NonEmptyStr }
+  }
+}
+
+// The verifier's route: transcode the presented tag, run the bound implementation over the claims
+// as PRESENTED, then apply the capability policy. A tag with no canonical spelling is a mismatch.
+fn redeem(capability: ApprovalCapability, key: MacKey, observed_at: Timestamp) -> CapabilityVerification {
+  let message = approval_capability_signing_input(c: capability.claims)
+  let mac = match capability_tag_hex(capability: capability) {
+    Absent => mac_verification_from_implementation(
+      key_id: key.id, suite: key.suite, message: message, implementation_verified: false,
+    )
+    Present { value: tag_hex } => mac_verify(key: key, message: message, tag_hex: tag_hex)
+  }
+  verify_capability(capability: capability, expectation: expectation, mac_result: mac, observed_at: observed_at)
+}
+
+fn is_authentic(v: CapabilityVerification) -> Bool {
+  match v {
+    CapabilityAuthentic { claims: _ } => true
+    CapabilityRefused { cause: _ } => false
+  }
+}
+
+fn refused_as_tag_mismatch(v: CapabilityVerification) -> Bool {
+  match v {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityMacRefused { verification: m } =>
+          match m {
+            MacTagMismatch { key_id: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// ── The positive control ─────────────────────────────────────────────────────────────────────
+test fn an_issued_capability_round_trips_to_authentic() -> Bool {
+  match redeem(capability: issued(claims: good_claims), key: broker_key, observed_at: inside) {
+    CapabilityAuthentic { claims: c } => c == good_claims
+    CapabilityRefused { cause: _ } => false
+  }
+}
+
+// The tag is the RFC 4648 §5 spelling of 32 octets: 44 characters with its one pad, none of + or /.
+test fn the_issued_tag_is_base64url_of_a_32_octet_mac() -> Bool {
+  let tag = issued(claims: good_claims).tag_b64url as String
+  string_length(tag) == 44 && !string_contains(tag, "+") && !string_contains(tag, "/")
+}
+
+// ── Each substitution refuses, under the arm that names it ───────────────────────────────────
+test fn a_tampered_tag_refuses_as_a_tag_mismatch() -> Bool {
+  let good = issued(claims: good_claims)
+  let other = issued(claims: claims_for(escalation_id: "another-escalation" as NonEmptyStr, key_id: broker_key_id))
+  let tampered = ApprovalCapability { claims: good.claims, tag_b64url: other.tag_b64url }
+  refused_as_tag_mismatch(v: redeem(capability: tampered, key: broker_key, observed_at: inside))
+}
+
+// A tag with no canonical base64url spelling never reaches the implementation as a tag.
+test fn a_non_canonical_tag_spelling_refuses_as_a_tag_mismatch() -> Bool {
+  let good = issued(claims: good_claims)
+  let respelled = ApprovalCapability { claims: good.claims, tag_b64url: "not*base64url" as NonEmptyStr }
+  refused_as_tag_mismatch(v: redeem(capability: respelled, key: broker_key, observed_at: inside))
+}
+
+// The same material under a different key id: the MAC verifies, and the join on key identity
+// refuses -- the key the implementation used is not the key the claims name.
+test fn verification_under_a_different_key_id_refuses_as_key_id_disagreement() -> Bool {
+  let other_id_key = MacKey { id: "broker-2026-10" as MacKeyId, suite: HmacSha256, material: broker_key.material }
+  match redeem(capability: issued(claims: good_claims), key: other_id_key, observed_at: inside) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityKeyIdDisagrees { claimed: k, verified_under: v } =>
+          k == broker_key_id && v == other_id_key.id
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+test fn an_issued_capability_past_expires_at_refuses_as_expired() -> Bool {
+  match redeem(capability: issued(claims: good_claims), key: broker_key, observed_at: after_expiry) {
+    CapabilityRefused { cause: c } =>
+      match c {
+        CapabilityExpired { expires_at: x, observed_at: at } => x == good_claims.expires_at && at == after_expiry
+        _ => false
+      }
+    CapabilityAuthentic { claims: _ } => false
+  }
+}
+
+// The escalation is rewritten after issuance; the verifier serializes what it was handed, so the
+// minted tag no longer matches those bytes.
+test fn a_modified_escalation_id_refuses_as_a_tag_mismatch() -> Bool {
+  let good = issued(claims: good_claims)
+  let rewritten = ApprovalCapability {
+    claims: claims_for(escalation_id: "org-actions-secret-access-2" as NonEmptyStr, key_id: broker_key_id),
+    tag_b64url: good.tag_b64url,
+  }
+  refused_as_tag_mismatch(v: redeem(capability: rewritten, key: broker_key, observed_at: inside))
+}
+
+// ── Issuance refuses instead of minting what cannot verify ───────────────────────────────────
+test fn issuance_refuses_claims_naming_a_key_the_issuer_does_not_hold() -> Bool {
+  let foreign = claims_for(escalation_id: "org-actions-secret-access-1" as NonEmptyStr, key_id: "broker-2026-10" as MacKeyId)
+  match issue_capability(claims: foreign, key: broker_key) {
+    CapabilityIssuanceRefused { cause: c } =>
+      match c {
+        IssuanceKeyIdDisagrees { claimed: k, signing_key: s } => k == foreign.key_id && s == broker_key_id
+        _ => false
+      }
+    CapabilityIssued { capability: _ } => false
+  }
+}
+
+test fn issuance_refuses_key_material_that_is_not_hex() -> Bool {
+  let bad_key = MacKey { id: broker_key_id, suite: HmacSha256, material: "Jefe" as Secret }
+  match issue_capability(claims: good_claims, key: bad_key) {
+    CapabilityIssuanceRefused { cause: c } =>
+      match c {
+        IssuanceKeyMaterialNotHex { key_id: k } => k == broker_key_id
+        _ => false
+      }
+    CapabilityIssued { capability: _ } => false
+  }
+}

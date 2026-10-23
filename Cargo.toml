@@ -1,0 +1,82 @@
+[workspace]
+resolver = "2"
+exclude = [".stage1"]
+members = [
+    "src/v1/stage0",
+    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)
+    "src/v1/stage0_runtime",
+    "src/v1/stage0_std_core",
+    "src/v1/stage0_std_surface",
+    "src/v1/stage0_extdeps_languages",
+    "src/v1/stage0_v1_artifact",
+    "src/v1/stage0_v1_infer",
+    "src/v1/stage0_emit_core",
+    # END generated stage0 crate members
+    "src/v1/tests",
+    # Controlled fixture for the behavioral receipt's own arms. Hand-authored, never emitted.
+    #
+    # OUTSIDE src/v1 DELIBERATELY. `regen_source_roots()` seeds EVERY .dag under src/v1 into the
+    # stage0 compile closure, so an authority placed there is compiled and emitted and must then
+    # have a committed mirror. This fixture must never be emitted -- the whole point is that its
+    # input and its expected outcome are independently authored -- so it cannot live under a root
+    # that means "compile me".
+    "fixtures/receipt_fixture",
+]
+
+[workspace.metadata]
+description = "A causal engine for programs — validates declared intent and emits to any target language."
+repository = "https://github.com/gunb-ai/gunbc"
+homepage = "https://github.com/gunb-ai/gunbc"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+thiserror = "1.0"
+toml = "0.8"
+proptest = "=1.4.0"
+sha2 = "0.10"
+# Pinned to the digest 0.10 family that sha2 0.10 already uses, so binding HMAC here is not a
+# repo-wide crypto upgrade. RustCrypto provides Hmac<Sha256> together with verify_slice, which
+# compares in constant time -- the operation gunbc.auth.approval_capability requires and the reason
+# no accessor in extdeps.crypto.mac yields a computed tag for a caller to compare itself.
+hmac = "0.12"
+hex = "0.4"
+glob = "0.3"
+ureq = "2"
+stacker = "0.1"
+num-bigint = { version = "0.4", default-features = false }
+
+# Strip debug info from both profiles — this repo produces dev tools,
+# not debuggable production binaries. Cuts artifact size ~60% and
+# avoids the linker OOM / SIGBUS failures we saw on CI runners.
+[profile.dev]
+debug = 0
+
+# Stage0 generated code uses debug_assert!(Rc::strong_count(...) == 1) to
+# verify ownership for in-place mutation. These fire on shared Rc (expected
+# in interpreter paths); the fallback clone is correct. This suppresses ALL
+# debug_assert! in v1-compiler, not just ownership checks — acceptable
+# because stage0 is generated code with no hand-written debug assertions.
+[profile.dev.package.v1-compiler]
+debug-assertions = false
+opt-level = 2
+
+# v1-compiler under `cargo test` pays a ~30-120s/test amplification cost at opt-level=2
+# because its interpreter runs unoptimised fixture evaluation. opt-level=3 recovers wall
+# time without changing behaviour (no debug_assert! in generated stage0 code — see note
+# on dev.package.v1-compiler above). The one-time optimised build is sccache-cached
+# cross-run; run-2+ is near-instant.
+[profile.test.package.v1-compiler]
+opt-level = 3
+
+[profile.release]
+debug = 0
+# Hand-written seed Rust must refuse on integer overflow, not wrap: the substrate Int refuses
+# (gunbc.recurring_failure_mode hand_written_seed_rust_wraps_silently_in_release). Deliberate
+# wrapping is spelled wrapping_*, which this does not affect; dev/test already trap by default.
+overflow-checks = true

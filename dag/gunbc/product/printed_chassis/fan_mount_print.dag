@@ -1,0 +1,33 @@
+module product.printed_chassis.fan_mount_print
+
+import std.types { String }
+import std.process { ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import product.printed_chassis.fan_mount {
+  arctic_p8_fan_mount, FanMountAdmitted, FanMountBoreReachesMountingHoles, FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern,
+}
+import product.printed_chassis.cadquery_realization {
+  plate_part_from_fan_mount, realize_plate_part, CadQueryEmitted, CadQueryDimensionUnrenderable, cadquery_program_source,
+}
+import product.printed_chassis.export_profile { exercised_stl_knobs }
+import extdeps.cadquery.cadquery { stl_export_call }
+
+// First rear fan carrier part: the existing admitted 92 x 92 x 4 mm plate.
+// Geometry and hole positions remain owned by fan_mount; no duplicate coordinates here.
+// This emits an unpowered assembly-fit prototype, not qualified structural/powered hardware.
+// Cassette attachment and a finger guard are separate, unresolved interfaces.
+fn main() -> CliWireResponse {
+  match arctic_p8_fan_mount {
+    FanMountAdmitted { geometry: g } => match realize_plate_part(p: plate_part_from_fan_mount(g: g)) {
+      CadQueryEmitted { program: p } => CliWirePrintable {
+        bytes: concat(cadquery_program_source(p: p) as String,
+          stl_export_call(destination: "rear-fan-mount.stl", knobs: exercised_stl_knobs)),
+        exit: ExitSuccess,
+      },
+      CadQueryDimensionUnrenderable {micrometres:_} => CliWirePrintable { bytes: "", exit: exit_failure(reason: "Fan mount CAD emission refused") },
+    },
+    FanMountBoreReachesMountingHoles {bore_radius:_,hole_center_distance:_} => CliWirePrintable { bytes: "", exit: exit_failure(reason: "Fan mount geometry refused") },
+    FanMountBoreNotEnclosedByPlate {bore_diameter:_,plate_edge:_} => CliWirePrintable { bytes: "", exit: exit_failure(reason: "Fan mount geometry refused") },
+    FanMountPlateSmallerThanPattern {plate_edge:_,required_edge:_} => CliWirePrintable { bytes: "", exit: exit_failure(reason: "Fan mount geometry refused") },
+  }
+}

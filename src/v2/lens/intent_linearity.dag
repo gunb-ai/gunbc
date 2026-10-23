@@ -1,0 +1,123 @@
+module v2.lens.intent_linearity
+
+type CostAxis = ChangeTime | RunTime
+
+type Representation = TermChain | TypeForest | ImportGraph | DeclForest
+
+type LinearityRule {
+  name: Symbol
+  axis: CostAxis
+  representation: Representation
+  detect: fn(FreeMonoid<Node>) -> Bool
+}
+
+fn unroll_to_fold_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^unroll_to_fold,
+    axis: ChangeTime,
+    representation: TermChain,
+    detect: fn(s) { chain_is_simulated(steps: s) }
+  }
+}
+
+fn chain_has_lowerable_cost(steps: FreeMonoid<Node>) -> Bool {
+  any(xs: steps, predicate: fn(n) { cost_is_lowerable(c: symbolic_cost_of_node(n: n)) })
+}
+
+fn complexity_reducible_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^complexity_reducible,
+    axis: RunTime,
+    representation: TermChain,
+    detect: fn(s) { chain_has_lowerable_cost(steps: s) }
+  }
+}
+
+fn dup_type_to_generic_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^dup_type_to_generic,
+    axis: ChangeTime,
+    representation: TypeForest,
+    detect: fn(s) { type_decls_anti_unify(decls: s) }
+  }
+}
+
+fn sigma_fn_family_rule() -> LinearityRule {
+  LinearityRule {
+    name: ^sigma_fn_family,
+    axis: ChangeTime,
+    representation: DeclForest,
+    detect: fn(s) { length(xs: sigma_families_of_defs(defs: s)) > 0 }
+  }
+}
+
+fn linearity_registry() -> FreeMonoid<LinearityRule> {
+  [ unroll_to_fold_rule(), complexity_reducible_rule(), dup_type_to_generic_rule(), sigma_fn_family_rule() ]
+}
+
+fn rule_fires(rule: LinearityRule, steps: FreeMonoid<Node>) -> Bool {
+  rule.detect(steps)
+}
+
+fn cost_axis_equal(a: CostAxis, b: CostAxis) -> Bool {
+  match a {
+    ChangeTime => match b { ChangeTime => true RunTime => false }
+    RunTime => match b { ChangeTime => false RunTime => true }
+  }
+}
+
+fn representation_eq(a: Representation, b: Representation) -> Bool {
+  match a {
+    TermChain => match b { TermChain => true  TypeForest => false ImportGraph => false DeclForest => false }
+    TypeForest => match b { TermChain => false TypeForest => true  ImportGraph => false DeclForest => false }
+    ImportGraph => match b { TermChain => false TypeForest => false ImportGraph => true  DeclForest => false }
+    DeclForest => match b { TermChain => false TypeForest => false ImportGraph => false DeclForest => true }
+  }
+}
+
+fn input_fires(axis: CostAxis, rep: Representation, input: FreeMonoid<Node>) -> Bool {
+  any(
+    xs: linearity_registry(),
+    predicate: fn(rule) {
+      cost_axis_equal(a: rule.axis, b: axis)
+        && representation_eq(a: rule.representation, b: rep)
+        && rule_fires(rule: rule, steps: input)
+    }
+  )
+}
+
+fn chain_is_redundant(steps: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: ChangeTime, rep: TermChain, input: steps)
+}
+
+fn forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: ChangeTime, rep: TypeForest, input: decls)
+}
+
+fn chain_has_runtime_lowering_candidate(steps: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: RunTime, rep: TermChain, input: steps)
+}
+
+fn decl_forest_is_redundant(decls: FreeMonoid<Node>) -> Bool {
+  input_fires(axis: ChangeTime, rep: DeclForest, input: decls)
+}
+
+fn chain_residual(steps: FreeMonoid<Node>) -> Int {
+  if chain_is_redundant(steps: steps) {
+    length(xs: steps) - 1
+  } else {
+    0
+  }
+}
+
+fn level_is_linear(level: FreeMonoid<Node>) -> Bool {
+  !chain_is_redundant(steps: level)
+}
+
+fn body_is_linear(levels: FreeMonoid<FreeMonoid<Node>>) -> Bool {
+  for_all(xs: levels, predicate: fn(level) { level_is_linear(level: level) })
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

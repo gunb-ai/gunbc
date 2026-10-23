@@ -1,0 +1,36 @@
+module test.claim.unapplied_generic_accumulator_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { any_class_count_for }
+
+// THE EXECUTING EVIDENCE for gunbc.recurring_failure_mode
+// unapplied_generic_accumulator_types_element_as_container. One fold, written twice: once with the
+// accumulator seeded by a bare `Empty`, once with the same accumulator annotated. The step's
+// return names the element type in both, so the argument is present in authored facts either way;
+// the only variable is whether inference carries it to the second fold's receiver.
+//
+// The oracle is any_class_count_for, not a blocking projection: AlgebraApplicationEvidenceUnavailable
+// is non-blocking, so a blocking read would answer 0 by vacancy whatever the compiler did. The
+// InternalError count is the consequence the row names -- the element read back as the container,
+// so `t.v` refuses "no field 'v' on type 'FreeMonoid'" -- and it is asserted beside the advisory so
+// the red cannot green by silencing the advisory while the mistyping stays.
+
+data unannotated_accumulator_source: String = "module test.claim.unapplied_accumulator_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype UgaItem { v: Int }\nfn probe(xs: List<UgaItem>) -> Int {\n  let carried = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+
+data annotated_accumulator_source: String = "module test.claim.annotated_accumulator_probe\nimport std.types { List, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype UgaItem { v: Int }\nfn probe(xs: List<UgaItem>) -> Int {\n  let carried: List<UgaItem> = fold(xs, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e) })\n  fold(carried, init: 0, f: fn(acc, t) { acc + t.v })\n}\n"
+
+// DISCRIMINATING RED, in the repaired direction: on the parent of this change the unannotated
+// fold raises the advisory once and refuses `t.v` once; with the accumulator refined from the
+// step's return it raises neither. It goes red if the refinement stops firing.
+test fn unannotated_empty_accumulator_is_refined_from_the_step_return() -> Bool {
+  any_class_count_for(source: unannotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
+    && any_class_count_for(source: unannotated_accumulator_source, wanted_class: "InternalError") == 0
+}
+
+// ACCEPTED POSITIVE CONTROL: the annotated twin was clean before the change and must stay clean,
+// which is what makes the cell above mean "the argument was present and dropped" rather than
+// "this fold cannot be typed".
+test fn annotated_accumulator_twin_stays_clean() -> Bool {
+  any_class_count_for(source: annotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
+    && any_class_count_for(source: annotated_accumulator_source, wanted_class: "InternalError") == 0
+}

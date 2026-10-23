@@ -1,0 +1,182 @@
+module test.claim.occurrence_identity_witness_test
+
+import std.types { Bool }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  OccurrenceId,
+  OccurrenceIdAllocResult,
+  OccurrenceIdAllocator,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ScopedOccurrenceRef,
+  alloc_occurrence_id,
+  authored_token_ordinal_space_from_allocator,
+  node_occurrence_identity_minted,
+  node_occurrence_identity_projected,
+  occurrence_id_allocator_advance_to,
+  occurrence_id_allocator_initial,
+  occurrence_id_eq,
+  occurrence_identity_acceptance_law_collector_dedupe,
+  occurrence_identity_acceptance_law_distinct_occurrences,
+  occurrence_identity_acceptance_law_parser_isolation,
+  occurrence_identity_acceptance_law_pattern_reachability,
+  occurrence_identity_acceptance_law_rebuilt_reference,
+  occurrence_identity_acceptance_laws,
+  scoped_occurrence_ref_in_scope,
+  scoped_occurrence_ref_same_scope,
+}
+import v2.std.node { Atom, Node, TypeNode }
+
+test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
+  occurrence_id_allocator_initial().next_id == 0
+}
+
+test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
+  let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
+  let second = alloc_occurrence_id(alloc: first.alloc)
+  first.id.value == 0
+    && second.id.value == 1
+    && !occurrence_id_eq(left: first.id, right: second.id)
+}
+
+test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
+  let initial = occurrence_id_allocator_initial()
+  let advanced = occurrence_id_allocator_advance_to(
+    alloc: initial,
+    min_next: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 7 }
+    ),
+  )
+  let unchanged = occurrence_id_allocator_advance_to(
+    alloc: advanced,
+    min_next: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 3 }
+    ),
+  )
+  advanced.next_id == 7 && unchanged.next_id == 7
+}
+
+fn occurrence_identity_typed_ordinal_advance_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module occurrenceordinaltyped\n\nimport std.occurrence_identity { OccurrenceIdAllocator, authored_token_ordinal_space_from_allocator, occurrence_id_allocator_advance_to, occurrence_id_allocator_initial }\n\nfn advance() -> Bool {\n  occurrence_id_allocator_advance_to(\n    alloc: occurrence_id_allocator_initial(),\n    min_next: authored_token_ordinal_space_from_allocator(\n      alloc: OccurrenceIdAllocator { next_id: 7 }\n    )\n  ).next_id == 7\n}\n",
+    "src/occurrenceordinaltyped.rs",
+    [],
+    []
+  )
+}
+
+fn occurrence_identity_raw_scalar_advance_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module occurrenceordinalraw\n\nimport std.occurrence_identity { occurrence_id_allocator_advance_to, occurrence_id_allocator_initial }\n\nfn advance() -> Bool {\n  occurrence_id_allocator_advance_to(\n    alloc: occurrence_id_allocator_initial(),\n    min_next: 7\n  ).next_id == 7\n}\n",
+    "src/occurrenceordinalraw.rs",
+    [],
+    []
+  )
+}
+
+test fn occurrence_identity_typed_ordinal_boundary_refuses_raw_scalar_holds() -> Bool {
+  occurrence_identity_typed_ordinal_advance_compiles()
+    && !occurrence_identity_raw_scalar_advance_compiles()
+}
+
+test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
+  let minted = std.occurrence_identity.node_occurrence_identity_minted(
+    id: std.occurrence_identity.OccurrenceId { value: 4 }
+  )
+  let minted_holds = match minted {
+    OccurrenceMinted { id: id } =>
+      id.value == 4
+    _ => false
+  }
+  let synthetic: NodeOccurrenceIdentity = OccurrenceSynthetic
+  let synthetic_holds = match synthetic {
+    OccurrenceSynthetic => true
+    _ => false
+  }
+  minted_holds && synthetic_holds
+}
+
+test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool {
+  occurrence_identity_acceptance_laws == [
+    occurrence_identity_acceptance_law_rebuilt_reference,
+    occurrence_identity_acceptance_law_collector_dedupe,
+    occurrence_identity_acceptance_law_distinct_occurrences,
+    occurrence_identity_acceptance_law_pattern_reachability,
+    occurrence_identity_acceptance_law_parser_isolation,
+  ]
+}
+
+fn oi_scope_a() -> Fnv1a64Structural {
+  structural_content_hash(digest: "aaaaaaaaaaaaaaaa")
+}
+
+fn oi_scope_b() -> Fnv1a64Structural {
+  structural_content_hash(digest: "bbbbbbbbbbbbbbbb")
+}
+
+// THE THIRD ARM CARRIES A CAUSE THAT SURVIVES CONSTRUCTION, which is the whole content of the
+// change: before it, a projector-created occurrence could only be spelled OccurrenceSynthetic and
+// the causing reference was gone the moment the node was built.
+test fn occurrence_identity_projected_arm_carries_its_scoped_cause_holds() -> Bool {
+  let cause = ScopedOccurrenceRef {
+    scope: oi_scope_a(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  match node_occurrence_identity_projected(
+    id: OccurrenceId { value: 41 },
+    caused_by: cause,
+  ) {
+    OccurrenceProjected { id: id, caused_by: caused_by } =>
+      id.value == 41
+        && caused_by.occurrence.value == 7
+        && scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: oi_scope_a())
+    _ => false
+  }
+}
+
+// AND THE CAUSE IS SCOPED RATHER THAN A BARE ORDINAL, so a cause minted in another allocator domain
+// is distinguishable from one minted in this graph's. Without this the accidental equality of two
+// independently allocated ordinals would read as a real cause.
+test fn occurrence_identity_projected_cause_is_not_in_a_foreign_scope_holds() -> Bool {
+  let cause = ScopedOccurrenceRef {
+    scope: oi_scope_a(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  let foreign = ScopedOccurrenceRef {
+    scope: oi_scope_b(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  !scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: oi_scope_b())
+    && !scoped_occurrence_ref_same_scope(left: cause, right: foreign)
+    && scoped_occurrence_ref_same_scope(left: cause, right: cause)
+}
+
+// THE V2 NODE CARRIER HOLDS THE PROJECTED ARM ITSELF, which is the whole content of the facade
+// cut. Before it, v2.std.node.Node.occurrence_id was a two-arm compatibility coproduct and a
+// projector-created occurrence had no spelling on a Node at all: it had to be narrowed at the
+// conversion, and every caller that ignored the narrowing's refusal arm silently lost the cause.
+// This witness is the discriminating one -- it does not typecheck against the deleted facade, so
+// it goes RED against any reintroduction of a Node carrier that cannot represent a projection.
+test fn occurrence_identity_v2_node_carrier_holds_projected_occurrence_holds() -> Bool {
+  let cause = ScopedOccurrenceRef {
+    scope: oi_scope_a(),
+    occurrence: OccurrenceId { value: 7 },
+  }
+  let n = Node {
+    kind: TypeNode { connective: Atom { identity: ^occurrence_identity_v2_carrier_probe } },
+    children: [],
+    occurrence_id: node_occurrence_identity_projected(
+      id: OccurrenceId { value: 41 },
+      caused_by: cause,
+    ),
+  }
+  match n.occurrence_id {
+    OccurrenceProjected { id: id, caused_by: caused_by } =>
+      id.value == 41
+        && caused_by.occurrence.value == 7
+        && scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: oi_scope_a())
+    _ => false
+  }
+}

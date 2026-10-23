@@ -1,0 +1,32 @@
+module gunbc.host_names_gen_z
+
+import std.types { List, NonEmptyStr }
+import extdeps.illumination.minions { minion_first_names }
+
+// THE GEN Z NAMING SCHEME FOR FLEET HOSTS (operator, 2026-10-07: "make a naming module for gen z").
+// A naming scheme is the fleet's own policy, not a fact about the world, so it is authored here and
+// cited nowhere; another scheme is another module beside this one, and gunbc.hostname_allocation
+// imports the one in force. Every entry is a lowercase ASCII letter string, so each is a legal DNS
+// label alone and every hyphenated form is too. THE ORDER IS PART OF THE FACT: a recorded draw
+// (gunbc.hostname_allocation HumanNameDraw) indexes these lists, so editing or reordering an entry
+// changes what an old draw denotes and reds test.claim.hostname_allocation_witness. Grow a list only
+// by appending.
+
+data gen_z_first_parts: List<NonEmptyStr> = [
+  "rizz", "skibidi", "sigma", "bussin", "slay", "yeet", "sus", "vibe", "drip", "goat", "bet",
+  "cap", "sheesh", "delulu", "bae", "lowkey", "highkey", "based", "cringe", "ick", "rent",
+  "boujee", "extra", "salty", "snatched", "tea", "periodt", "fire", "slaps", "bop", "glowup",
+  "npc", "yap", "aura", "mewing", "ate", "bestie", "fam", "valid", "iconic", "hits", "clutch",
+  "zesty", "demure", "mother", "era"
+]
+
+data gen_z_last_parts: List<NonEmptyStr> = [
+  "ohio", "maxxer", "core", "arc", "check", "ratio", "era", "moment", "energy", "vibes", "hours",
+  "behavior", "szn", "fit", "mode", "diaries", "dump", "unlocked", "tok", "pilled", "coded",
+  "posting", "girlboss", "slaps"
+]
+
+// THE FIRST PARTS A DRAW INDEXES: the scheme's own words, then every named Minion
+// (extdeps.illumination.minions, operator 2026-10-08). The Minion names are read from their upstream
+// module, never copied here, and "stan" appears only there.
+data host_name_first_parts: List<NonEmptyStr> = append(gen_z_first_parts, minion_first_names)

@@ -1,0 +1,69 @@
+module gunbc.site.client_bindings
+import v2.std.algebra { any }
+
+import std.types { String, List }
+import extdeps.languages.typescript.program {
+  TsProgram, TsExpr, TsStmt, TsObjectField,
+  LitStr, LitNum, LitRegex, Ident, Member, Index, Call, New, ArrowFn, BinOp, Prefix,
+  ArrayLit, ObjectLit, Spread, Cond, Field,
+  Const, Let, ExprStmt, If, ForOf, Return, Block, Try,
+}
+
+// Lexical free names of the modeled client program. Platform names are explicit caller
+// inputs, not a growing allowlist hiding missing application bindings. This is scope
+// coverage, not a temporal-dead-zone or invocation-order proof. All declarations in a
+// lexical block are in scope, including references from closures declared before them.
+fn client_block_names(stmts: List<TsStmt>) -> List<String> {
+  flat_map(stmts, s => match s {
+    Const { name, value: _ } => [name]
+    Let { name, value: _ } => [name]
+    ExprStmt { expr: _ } => []
+    If { cond: _, then: _, else_stmt: _ } => []
+    ForOf { var_name: _, iterable: _, body: _ } => []
+    Return { expr: _ } => []
+    Block { stmts: _ } => []
+    Try { body: _, catch_param: _, handler: _ } => []
+  })
+}
+
+fn client_expr_free_names(expr: TsExpr, bound: List<String>) -> List<String> {
+  match expr {
+    LitStr { value: _, quote: _ } => []
+    LitNum { text: _ } => []
+    LitRegex { source: _ } => []
+    Ident { name } => if any(bound, n => n == name) { [] } else { [name] }
+    Member { object, property: _ } => client_expr_free_names(expr: object, bound: bound)
+    Index { object, index } => concat(client_expr_free_names(expr: object, bound: bound), client_expr_free_names(expr: index, bound: bound))
+    Call { callee, args } => concat(client_expr_free_names(expr: callee, bound: bound), flat_map(args, a => client_expr_free_names(expr: a, bound: bound)))
+    New { callee, args } => concat(client_expr_free_names(expr: callee, bound: bound), flat_map(args, a => client_expr_free_names(expr: a, bound: bound)))
+    ArrowFn { params, body } => client_stmt_free_names(stmt: body, bound: concat(bound, params))
+    BinOp { left, op: _, right } => concat(client_expr_free_names(expr: left, bound: bound), client_expr_free_names(expr: right, bound: bound))
+    Prefix { op: _, expr: e } => client_expr_free_names(expr: e, bound: bound)
+    ArrayLit { elements } => flat_map(elements, e => client_expr_free_names(expr: e, bound: bound))
+    ObjectLit { fields } => flat_map(fields, f => match f { Field { key: _, value, quote_key: _ } => client_expr_free_names(expr: value, bound: bound) })
+    Spread { expr: e } => client_expr_free_names(expr: e, bound: bound)
+    Cond { test, consequent, alternate } => concat(client_expr_free_names(expr: test, bound: bound), concat(client_expr_free_names(expr: consequent, bound: bound), client_expr_free_names(expr: alternate, bound: bound)))
+  }
+}
+
+fn client_stmt_free_names(stmt: TsStmt, bound: List<String>) -> List<String> {
+  match stmt {
+    Const { name: _, value } => client_expr_free_names(expr: value, bound: bound)
+    Let { name: _, value } => client_expr_free_names(expr: value, bound: bound)
+    ExprStmt { expr } => client_expr_free_names(expr: expr, bound: bound)
+    If { cond, then, else_stmt } => concat(client_expr_free_names(expr: cond, bound: bound), concat(client_stmt_free_names(stmt: then, bound: bound), match else_stmt { Present { value } => client_stmt_free_names(stmt: value, bound: bound) Absent => [] }))
+    ForOf { var_name, iterable, body } => concat(client_expr_free_names(expr: iterable, bound: bound), client_stmt_free_names(stmt: body, bound: concat(bound, [var_name])))
+    Return { expr } => match expr { Present { value } => client_expr_free_names(expr: value, bound: bound) Absent => [] }
+    Block { stmts } => client_stmts_free_names(stmts: stmts, bound: bound)
+    Try { body, catch_param, handler } => concat(client_stmt_free_names(stmt: body, bound: bound), client_stmt_free_names(stmt: handler, bound: concat(bound, [catch_param])))
+  }
+}
+
+fn client_stmts_free_names(stmts: List<TsStmt>, bound: List<String>) -> List<String> {
+  let scope = concat(bound, client_block_names(stmts: stmts))
+  flat_map(stmts, s => client_stmt_free_names(stmt: s, bound: scope))
+}
+
+fn client_program_free_names(program: TsProgram, platform_names: List<String>) -> List<String> {
+  client_stmts_free_names(stmts: program.statements, bound: platform_names)
+}

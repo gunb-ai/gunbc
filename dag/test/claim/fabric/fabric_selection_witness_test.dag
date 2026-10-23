@@ -1,0 +1,1455 @@
+module test.claim.fabric_selection_witness
+
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_unadmitted_for_offer, fixture_route,
+  fixture_route_sibling_region, fixture_demand_for, fixture_work_for,
+}
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+import std.measure {
+  MoneyAmountMicro, MoneyRate, MoneyPerSecond, money_amount_micro, money_amount_micro_count,
+  Second, second,
+  HardwareThreadCount, hardware_thread_count,
+}
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  EqualCostOfferTieBreak, StableRosterOrder, AffinityKeyedRendezvous, PlacementAffinityKey,
+  SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, ObservedSupply,
+  GrantDuration, ExactGrantDuration, UnobservedGrantDuration,
+}
+import product.fabric.selection {
+  ResourceBudgetPolicy, ResourceBudgetSelected, ResourceBudgetRefused, select_resource_budget_supply,
+  CommitmentUnread, StartCostUnread, TransitionCostUnread, OperatingCostUnread,
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
+  PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
+  CommitmentState, PayAsYouGo, PaidThrough,
+  StartCostObservation, StartCostMeasured,
+  TransitionCostObservation, NoTransitionRequired,
+  OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier,
+  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
+  OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
+  OfferCannotHoldAnUnboundedGrant,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+  AffinityCollision, DuplicateOfferIdentity, AffinityProjectionAmbiguous, DigestCollisionOnDistinctKeys,
+  SelectionCost, selection_total, selection_liability,
+  CostBasis, ExactCost, ProjectedCost, CommitmentFloorCost,
+  CommitmentHorizon, CoveredByCommitment, BilledBeyondCommitment,
+  SpillPricedForUnobservedDuration,
+  select_supply, OpportunityCostAxis, AvailabilityAxis, SelectionInputAxis,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS A CROSS-MODE RANKING, AND EVERY WITNESS BELOW IS A PAIR OF OFFERS THAT
+// DIFFER IN ONE OBSERVED FACT.
+//
+// A suite asserting that some offer can be selected would establish nothing that was in
+// doubt. What is in doubt is that the SAME two offers change places when one input moves --
+// that the ranking is arithmetic over the six observations and not a preference for a mode.
+// So the fixtures below are one owned continuous offer and one hourly rented offer, held
+// fixed, with a single field varying per witness.
+//
+// The operator's falsifier is the first witness: a Hetzner hour we have already paid for
+// beats our own metal, because the cash for that hour is spent and unrecoverable while power
+// and cooling for our own machine are incurred by the act of running. If this file could not
+// express that, the model would be wrong.
+
+fn t_caps() -> CapabilityManifestRef {
+  "gunbc.capabilities.linux-rust-toolchain"
+}
+
+fn t_trust() -> TrustDomainRef {
+  "gunbc.trust.internal-fleet"
+}
+
+fn t_open_isolation() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+fn t_shape(threads: HardwareThreadCount) -> Shape {
+  Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() }
+}
+
+fn t_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: t_shape(threads: hardware_thread_count(count: 8)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+  }
+}
+
+fn t_offer(key: OfferKey, quote: OfferQuote, quantum: Second) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: fixture_route(),
+    shape: t_shape(threads: hardware_thread_count(count: 64)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: quote,
+    billing_quantum: quantum,
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+// OUR OWN METAL. Continuous, so no quantum rounds its bill up, and an EXPLICIT ZERO asking
+// price because we do not invoice ourselves. Its operating cost is NOT zero: a hundred micros
+// a second of power and cooling, incurred by running.
+fn t_owned_offer() -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: "offer-owned-srv1",
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+// A RENTED HOURLY MACHINE. One-hour quantum, ten thousand micros an hour, and its power is
+// the vendor's problem and already inside that rate.
+fn t_rented_offer() -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: "offer-rented-hourly",
+    quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10000), currency: Usd }),
+    quantum: second(count: 3600),
+  )
+}
+
+fn t_inputs(
+  key: OfferKey,
+  availability: AvailabilityObservation,
+  commitment: CommitmentState,
+  operating: OperatingCostObservation,
+  opportunity: OpportunityCostObservation,
+) -> DispatchInputs<NonEmptyStr> {
+  DispatchInputs {
+    offer: FabricIdentity { principal: "gunbc", key: key },
+    availability: availability,
+    commitment: commitment,
+    start: StartCostMeasured {
+      amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      receipt: "gunbc.observation.start-cost-1",
+    },
+    transition: NoTransitionRequired,
+    operating: operating,
+    opportunity: opportunity,
+  }
+}
+
+// The two standing fixtures have NO STATED END -- capacity we own, and a vendor we can keep
+// buying hours from -- so they carry the indefinite arm rather than a large number standing in
+// for it. A finite interval appears only in the two witnesses whose subject IS the window.
+fn t_ready_now() -> AvailabilityObservation {
+  AvailableIndefinitely {
+    delay: second(count: 0),
+    receipt: "gunbc.observation.availability-1",
+  }
+}
+
+fn t_idle() -> OpportunityCostObservation {
+  NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" }
+}
+
+fn t_owned_operating() -> OperatingCostObservation {
+  OperatingCostMeasured {
+    rate: MoneyRate { amount: money_amount_micro(count: 100), currency: Usd },
+    receipt: "gunbc.observation.power-1",
+  }
+}
+
+fn t_owned_candidate(commitment: CommitmentState, opportunity: OpportunityCostObservation) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_owned_offer(),
+    inputs: t_inputs(
+      key: "offer-owned-srv1",
+      availability: t_ready_now(),
+      commitment: commitment,
+      operating: t_owned_operating(),
+      opportunity: opportunity,
+    ),
+  )
+}
+
+fn t_rented_candidate(
+  availability: AvailabilityObservation,
+  commitment: CommitmentState,
+  opportunity: OpportunityCostObservation,
+) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_rented_offer(),
+    inputs: t_inputs(
+      key: "offer-rented-hourly",
+      availability: availability,
+      commitment: commitment,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: opportunity,
+    ),
+  )
+}
+
+// A FIXTURE HELPER MAY NOT INVENT A CANDIDATE ON THE SEAL'S REFUSAL ARM, and it may not
+// silently swallow it either. There is no CandidateOffer to return when binding refuses --
+// that is the whole point of the seal -- so the helper returns a LIST, empty on refusal. A
+// fixture that accidentally mismatched its keys would then present fewer offers than the
+// witness names, and every witness below would go red rather than quietly ranking a shorter
+// roster. Returning an unconstructable value or re-binding in a loop were the alternatives,
+// and both hide the same mistake.
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, inputs: DispatchInputs<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: inputs,
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_ninety_seconds() -> GrantDuration {
+  ExactGrantDuration { seconds: second(count: 90) }
+}
+
+fn t_no_delay_valuation() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+// A TYPED HELPER RATHER THAN A BARE LITERAL AT THE CALL SITE, following this file's own convention
+// two lines up: MoneyPerSecond is MoneyRate at a phantom rate, and a record literal in argument
+// position has no other way to fix it. Spelled inline it did not typecheck and the whole module
+// failed to RESOLVE, so every claim in this file was unreachable rather than failing.
+fn t_five_micros_per_second() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 5), currency: Usd }
+}
+
+fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  t_select_for(candidates: candidates, duration: t_ninety_seconds())
+}
+
+fn t_select_for(
+  candidates: List<CandidateOffer<NonEmptyStr>>,
+  duration: GrantDuration,
+) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: duration,
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay_valuation(),
+    tie: StableRosterOrder,
+    affinity: "test.demand" as PlacementAffinityKey,
+  )
+}
+
+fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
+  match s {
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.key as NonEmptyStr)
+    NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
+  }
+}
+
+fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
+  match s {
+    OfferSelected { candidate: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      money_amount_micro_count(m: selection_total(c: c))
+    NoAdmissibleOffer { considered: _ } => 0
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => 0
+  }
+}
+
+fn considered_of(s: SupplySelection<NonEmptyStr>) -> List<OfferCandidacy<NonEmptyStr>> {
+  match s {
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: cs, tie_policy: _ } => cs
+    NoAdmissibleOffer { considered: cs } => cs
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => cs
+  }
+}
+
+fn unpriced_axes(cs: List<OfferCandidacy<NonEmptyStr>>) -> List<SelectionInputAxis> {
+  fold(cs, init: [], f: (acc, c) =>
+    match c {
+      OfferNotPriceable { offer: _, unpriced: u } => concat(acc, [u.axis])
+      OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => acc
+      OfferNotFungible { offer: _, fungibility: _ } => acc
+      OfferUnavailableForGrant { offer: _, needed: _, available: _ } => acc
+      OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => acc
+      OfferWrongCurrency { offer: _, mismatch: _ } => acc
+      OfferUnaffordable { offer: _, affordability: _ } => acc
+      OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => acc
+    })
+}
+
+fn unavailable_count(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
+  fold(cs, init: 0, f: (n, c) =>
+    match c {
+      OfferUnavailableForGrant { offer: _, needed: _, available: _ } => n + 1
+      OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => n
+      OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => n
+      OfferNotFungible { offer: _, fungibility: _ } => n
+      OfferNotPriceable { offer: _, unpriced: _ } => n
+      OfferWrongCurrency { offer: _, mismatch: _ } => n
+      OfferUnaffordable { offer: _, affordability: _ } => n
+      OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => n
+    })
+}
+
+// THE OPERATOR'S FALSIFIER, AND IT IS THE FIRST WITNESS FOR A REASON.
+//
+// A Hetzner hour bought forty minutes ago has forty minutes left on it. The cash is spent and
+// nothing we do recovers it, so the marginal cost of running a ninety-second job inside that
+// remainder is ZERO. Our own metal is not zero over the same ninety seconds: power and
+// cooling are incurred by running it. The rented machine therefore WINS, and the fold must
+// reach that by arithmetic rather than by any rule about who owns what.
+//
+// Nothing in the selector knows which of these two offers is ours. There is no mode tag, no
+// owned arm and no sunk-cost flag: the only things that differ are the commitment interval,
+// the quantum and who bears the operating cost, all of them facts either offer could carry.
+test fn a_paid_through_rented_hour_beats_our_own_metal() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 2400),
+        receipt: "gunbc.observation.hetzner-hour-1",
+      },
+      opportunity: t_idle(),
+    ),
+  ))
+  selected_key(s: selection) == "offer-rented-hourly" && selected_total(s: selection) == 0
+}
+
+// THE SYMMETRIC ERROR, AND THE SAME TWO OFFERS SAY IT.
+//
+// Sunk is not free-forever. The hour expires in forty seconds, and a ninety-second job runs
+// fifty seconds past the boundary -- which on a one-hour quantum buys a WHOLE SECOND HOUR,
+// the exact wasted-remainder case the billing quantum exists to price. So the winner flips
+// back to our own metal, and it flips on ONE field: the remaining commitment. A selector that
+// treated a rented machine as free because it had once been paid for would still pick it
+// here, and would quietly buy an hour to run a ninety-second job.
+test fn an_expiring_commitment_buys_the_next_unit_and_stops_winning() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 40),
+        receipt: "gunbc.observation.hetzner-hour-2",
+      },
+      opportunity: t_idle(),
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1" && selected_total(s: selection) == 9000
+}
+
+// OPERATING COST IS NOT THE QUOTE, AND THIS IS THE INPUT THAT PROVES IT.
+//
+// Our own metal quotes an explicit zero. If the fold read that zero as the cost of running
+// the machine, its total would be zero and it would win the witness above rather than losing
+// it, and it would win every comparison it ever entered. The total it actually carries is
+// nine thousand micros -- ninety seconds of power at a hundred micros a second -- which is
+// cash the quote never mentioned.
+test fn an_explicit_zero_quote_is_not_a_zero_running_cost() -> Bool {
+  let selection = t_select(
+    candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+  )
+  selected_key(s: selection) == "offer-owned-srv1"
+    && selected_total(s: selection) == 9000
+    && money_amount_micro_count(m: money_amount_micro(count: 0)) == 0
+}
+
+// AN IDLE HOUR DISPLACED NOBODY, AND AN HOUR SOMEONE WOULD HAVE PAID FOR DID.
+//
+// Same paid-through rented hour that won the first witness, with one field moved: the
+// alternative use it displaces is now worth twenty thousand micros. Its total stops being
+// zero and our own metal wins. That is the sixth axis doing real work rather than being
+// carried and ignored -- and it is why a paid-through hour is only free when nothing else
+// wanted it.
+test fn an_alternative_use_displaced_prices_a_paid_through_hour_above_zero() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 2400),
+        receipt: "gunbc.observation.hetzner-hour-3",
+      },
+      opportunity: AlternativeUseDisplaced {
+        forgone: MoneyRate { amount: money_amount_micro(count: 20000), currency: Usd },
+        receipt: "gunbc.observation.alternative-uses-2",
+      },
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1"
+}
+
+// UNREAD IS NOT ZERO, AND THE DISTINCTION IS THE WHOLE POINT OF THE ARM.
+//
+// The winning offer from the first witness, with its alternative uses UNREAD rather than
+// observed to be none. It does not become free and it does not become expensive: it becomes
+// UNPRICEABLE, refused by name on the opportunity-cost axis, and the selection falls to our
+// own metal. If the unread arm defaulted to zero this witness would return the rented offer
+// and be indistinguishable from the first one.
+test fn an_unread_alternative_use_refuses_rather_than_pricing_at_zero() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 2400),
+        receipt: "gunbc.observation.hetzner-hour-4",
+      },
+      opportunity: AlternativeUseUnread {
+        obligation: "Alternative uses for this rented hour have not been read.",
+      },
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1"
+    && unpriced_axes(cs: considered_of(s: selection)).length() == 1
+}
+
+// AN UNOBSERVED AVAILABILITY INTERVAL REFUSES ON ITS OWN AXIS, not on the opportunity one.
+// Two unread axes on two offers must not report as one cause, which is what makes the refusal
+// population countable per measurement rather than as a single blocked total.
+test fn an_unobserved_availability_refuses_on_the_availability_axis() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: AvailabilityUnobserved {
+        obligation: "Provisioning delay for this supplier has not been measured.",
+      },
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1"
+    && unpriced_axes(cs: considered_of(s: selection)).length() == 1
+}
+
+// AN OFFER THAT EXPIRES BEFORE THE GRANT ENDS IS A CAPABILITY REFUSAL, NOT A PRICE ONE.
+//
+// The rented machine is available for thirty seconds and the job needs ninety. That is not
+// expensive, it is impossible, and it is reported as its own arm above the money screens --
+// so a broker reading the receipt is told to find capacity rather than to raise its ceiling.
+test fn an_interval_shorter_than_the_grant_refuses_before_any_price_is_compared() -> Bool {
+  let selection = t_select(candidates: t_rented_candidate(
+      availability: AvailableForInterval {
+        delay: second(count: 0),
+        interval: second(count: 30),
+        receipt: "gunbc.observation.availability-2",
+      },
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ))
+  unavailable_count(cs: considered_of(s: selection)) == 1
+    && selected_key(s: selection) == "none"
+}
+
+// A ROSTER WHOSE EVERY MEMBER REFUSES RETURNS A REFUSAL CARRYING ALL OF THEM, never a
+// degraded pick. The considered list is the receipt: nothing was selected AND here is one
+// typed cause per offer.
+test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bool {
+  let selection = t_select(candidates: t_rented_candidate(
+      availability: AvailabilityUnobserved { obligation: "delay unmeasured" },
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ))
+  match selection {
+    NoAdmissibleOffer { considered: cs } => cs.length() == 1
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+  }
+}
+
+// THE SEAL. Observations naming a different offer refuse at the only place a pair can be
+// formed, so pricing offer A with offer B's measurements has no spelling downstream.
+test fn dispatch_inputs_naming_another_offer_refuse_to_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_inputs(
+      key: "offer-rented-hourly",
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
+    CandidateBound { candidate: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A REAL PERMIT FOR ANOTHER OFFER DOES NOT BIND. The dispatch inputs name the owned offer,
+// so the earlier guard is satisfied and this row can only be answered by the permit check: the
+// admission is genuine and current and is about the rented offer. Binding it would put a candidate
+// into the ranking whose permit authorises somewhere else entirely - and CandidateOffer is sealed,
+// so bind_candidate is the only place that pairing can be formed or refused.
+test fn w_a_permit_for_another_offer_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_rented_offer().id),
+    demand: fixture_demand_for(offer: t_rented_offer().id),
+    work: fixture_work_for(offer: t_rented_offer().id),
+  ) {
+    PermitNamesAnotherOffer { offer: _, permit_names: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR A SIBLING REGION DOES NOT BIND. Everything the two preceding guards look at
+// agrees: the same offer identity throughout, and inputs that name it. The permit was admitted for
+// the same provider and the same service in the region next door, and product.fabric.provider_route
+// rules that a sanction for a sibling region inherits nothing. This is the entrance the ranking
+// path uses, so without this row the route field would be checked only at issuance and selection
+// would rank an offer whose permit is about somewhere else.
+test fn w_a_permit_for_a_sibling_region_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: fixture_route_sibling_region(), offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    PermitNamesAnotherRoute { offer: o } => (o.key as NonEmptyStr) == "offer-owned-srv1"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR ANOTHER WORK DOES NOT BIND. Offer, dispatch inputs and route all agree, so
+// every earlier guard is satisfied and only the work check can answer. This is the arm that had no
+// entrance on the deciding path at all: the same check existed in issue_grant, which the
+// production broker never calls, so a permit admitted for work A could seal a candidate that was
+// then ranked and reserved for work B - the fabricated authority grant_issue's own annotation
+// describes, reachable because the check was on a path nothing executes.
+test fn w_a_permit_for_another_work_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: FabricIdentity { principal: "gunbc", key: "work-somewhere-else" },
+  ) {
+    PermitNamesAnotherWork { permit_work: _, subject_work: w } =>
+      (w.key as NonEmptyStr) == "work-somewhere-else"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// RED - A PERMIT FOR ANOTHER DEMAND DOES NOT BIND, for the same reason one level across: the
+// demand is who is being served, and a permit that named a different one is authority for
+// somebody else.
+test fn w_a_permit_for_another_demand_does_not_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: FabricIdentity { principal: "gunbc", key: "demand-somewhere-else" },
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: d } =>
+      (d.key as NonEmptyStr) == "demand-somewhere-else"
+    CandidateBound { candidate: _ } => false
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+  }
+}
+
+// POSITIVE CONTROL FOR BOTH ROWS ABOVE. Identical offer and identical inputs; the only thing that
+// moves is which offer and which route the admission was evaluated for. Without it, each red would
+// be equally satisfied by a bind_candidate that refused everything.
+test fn w_the_same_offer_and_inputs_bind_on_their_own_route_and_offer() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    dispatch: t_owned_inputs(),
+    admission: fixture_admitted_for_offer(
+      route: t_owned_offer().route, offer: t_owned_offer().id),
+    demand: fixture_demand_for(offer: t_owned_offer().id),
+    work: fixture_work_for(offer: t_owned_offer().id),
+  ) {
+    CandidateBound { candidate: c } => (c.offer.id.key as NonEmptyStr) == "offer-owned-srv1"
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => false
+    OfferNotAdmittedForUse { offer: _, cause: _ } => false
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => false
+    PermitNamesAnotherRoute { offer: _ } => false
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => false
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => false
+  }
+}
+
+// LIABILITY AND COMPARISON COST ARE DIFFERENT NUMBERS, and demand.dag requires that they stay
+// different. The valued delay of a supplier that starts in sixty seconds enters the ranking
+// and must NOT enter the amount reserved: reserving it would reserve money nobody is paid.
+test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
+  let selection = select_supply(
+    requirements: t_requirements(),
+    candidates: t_bound(
+        offer: t_owned_offer(),
+        inputs: t_inputs(
+          key: "offer-owned-srv1",
+          availability: AvailableIndefinitely {
+            delay: second(count: 60),
+            receipt: "gunbc.observation.availability-3",
+          },
+          commitment: PayAsYouGo,
+          operating: t_owned_operating(),
+          opportunity: t_idle(),
+        ),
+    ),
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_five_micros_per_second(),
+    tie: StableRosterOrder,
+    affinity: "test.demand" as PlacementAffinityKey,
+  )
+  match selection {
+    OfferSelected { candidate: _, cost: c, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      money_amount_micro_count(m: selection_liability(c: c)) == 9000
+        && money_amount_micro_count(m: selection_total(c: c)) == 9300
+    NoAdmissibleOffer { considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+  }
+}
+
+// THE UNCERTAINTY FAMILY, AND THE FIRST FOUR MEMBERS ARE ONE OFFER WITH ONE FIELD MOVING.
+//
+// The operator's second ruling is that job duration is NOT KNOWN at selection time and that
+// the unknown must be a modeled state rather than a number. These witnesses hold the rented
+// hourly offer fixed and vary two things independently -- what is known about the duration,
+// and how much of the paid hour is left -- so that the arm the fold takes is visible on each
+// combination rather than inferred from a total.
+
+fn t_unknown_duration() -> GrantDuration {
+  UnobservedGrantDuration {
+    obligation: "This work has never been timed. Record its running time before pricing a rate quote against it.",
+  }
+}
+
+fn t_fifty_minute_job() -> GrantDuration {
+  ExactGrantDuration { seconds: second(count: 3000) }
+}
+
+fn t_rented_with_remainder(remaining: Second) -> List<CandidateOffer<NonEmptyStr>> {
+  t_rented_candidate(
+    availability: AvailableIndefinitely {
+      delay: second(count: 0),
+      receipt: "gunbc.observation.availability-family",
+    },
+    commitment: PaidThrough { remaining: remaining, receipt: "gunbc.observation.remainder" },
+    opportunity: t_idle(),
+  )
+}
+
+fn horizon_of(s: SupplySelection<NonEmptyStr>) -> List<CommitmentHorizon> {
+  match s {
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: h, considered: _, tie_policy: _ } => [h]
+    NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
+  }
+}
+
+fn spill_priced_for_unobserved(hs: List<CommitmentHorizon>) -> Bool {
+  fold(hs, init: false, f: (hit, h) =>
+    match h {
+      SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => true
+      CoveredByCommitment { wall: _, billed: _, remainder: _ } => hit
+      BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => hit
+    })
+}
+
+fn covered_by_commitment(hs: List<CommitmentHorizon>) -> Bool {
+  fold(hs, init: false, f: (hit, h) =>
+    match h {
+      CoveredByCommitment { wall: _, billed: _, remainder: _ } => true
+      SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => hit
+      BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => hit
+    })
+}
+
+fn billed_beyond_commitment(hs: List<CommitmentHorizon>) -> Bool {
+  fold(hs, init: false, f: (hit, h) =>
+    match h {
+      BilledBeyondCommitment { wall: _, billed: _, remainder: _ } => true
+      CoveredByCommitment { wall: _, billed: _, remainder: _ } => hit
+      SpillPricedForUnobservedDuration { wall: _, billed: _, remainder: _ } => hit
+    })
+}
+
+fn basis_of(s: SupplySelection<NonEmptyStr>) -> List<CostBasis> {
+  match s {
+    OfferSelected { candidate: _, cost: _, basis: b, horizon: _, considered: _, tie_policy: _ } => [b]
+    NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
+  }
+}
+
+fn is_commitment_floor(bs: List<CostBasis>) -> Bool {
+  fold(bs, init: false, f: (hit, b) =>
+    match b {
+      CommitmentFloorCost => true
+      ExactCost => hit
+      ProjectedCost => hit
+    })
+}
+
+// FAMILY MEMBER ONE -- THE OPERATOR'S CASE. Seven minutes left on the hour and a job nobody
+// has timed. The remainder does NOT make it free: the fold cannot rule out crossing the
+// boundary, and crossing buys a whole further hour that cannot be unbought, so it prices that
+// hour. The arm says WHY -- spill priced because the duration was unobserved, whose remedy is
+// to measure -- rather than reporting a bare total a reader would have to guess at.
+test fn seven_minutes_left_and_an_untimed_job_prices_the_spill_hour() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_unknown_duration(),
+  )
+  spill_priced_for_unobserved(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 10000
+    && is_commitment_floor(bs: basis_of(s: selection))
+}
+
+// FAMILY MEMBER TWO -- THE SAME UNTIMED JOB AGAINST FIFTY-FIVE MINUTES, AND IT PRICES
+// IDENTICALLY. THAT IS THE MODEL BEING HONEST, NOT THE MODEL BEING BLUNT.
+//
+// A longer remainder is only worth more if something is known about how long the work runs.
+// With nothing known, both remainders commit exactly one further hour, because neither can
+// rule out the crossing -- so the two really are the same decision and pricing them apart
+// would be inventing information. What separates them is a BOUND, and the two witnesses below
+// show it separating them the moment one exists. The remedy this pair points at is to measure
+// the job, which is precisely what the unobserved arm carries as its obligation.
+test fn an_untimed_job_prices_the_same_against_seven_minutes_and_fifty_five() -> Bool {
+  let short = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_unknown_duration(),
+  )
+  let long = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 3300)),
+    duration: t_unknown_duration(),
+  )
+  selected_total(s: short) == selected_total(s: long)
+    && spill_priced_for_unobserved(hs: horizon_of(s: long))
+}
+
+// FAMILY MEMBER THREE -- A HARD BOUND THAT FITS. Ninety seconds inside a seven-minute
+// remainder is genuinely free, and the arm says so by name: covered by the commitment. This is
+// the sunk-cost case with its boundary attached.
+test fn a_bounded_job_that_fits_the_remainder_is_covered_and_free() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_ninety_seconds(),
+  )
+  covered_by_commitment(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 0
+}
+
+// FAMILY MEMBER FOUR -- A HARD BOUND THAT DOES NOT FIT. Fifty minutes against a seven-minute
+// remainder crosses the boundary and buys the next hour, and the arm is BilledBeyondCommitment
+// rather than the unobserved one. Same price as member one, different cause, opposite remedy:
+// here the answer is to choose a different offer, not to go and measure. A model that
+// collapsed these two would send a broker shopping when it should have sent it measuring.
+test fn a_bounded_job_that_exceeds_the_remainder_is_billed_beyond_it() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_with_remainder(remaining: second(count: 420)),
+    duration: t_fifty_minute_job(),
+  )
+  billed_beyond_commitment(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 10000
+}
+
+// FAMILY MEMBER FIVE -- THE CONTROL. The same untimed job against continuous owned capacity,
+// where spill has no meaning at all. Nothing in the fold tests for continuity: the spilled
+// interval is ONE BILLING QUANTUM and this offer's quantum is zero, so the spill term is zero
+// by the same arithmetic that gives an hourly supplier three thousand six hundred seconds.
+//
+// The arm is still the unobserved one, because the duration is still unobserved -- what the
+// quantum decides is the PRICE of that arm, never whether the arm applies. A construction that
+// needed a special case to keep spill from firing on a continuous offer would be bolted on,
+// and this witness is what would catch it: the arm survives and the number is zero.
+test fn spill_costs_nothing_on_continuous_capacity_without_a_special_case() -> Bool {
+  let selection = t_select_for(
+    candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    duration: t_unknown_duration(),
+  )
+  spill_priced_for_unobserved(hs: horizon_of(s: selection))
+    && selected_total(s: selection) == 0
+    && selected_key(s: selection) == "offer-owned-srv1"
+}
+
+// AND THE CROSS-MODE CONSEQUENCE THE FAMILY ADDS UP TO. Untimed work does not belong on seven
+// minutes of somebody else's hour: the rented offer commits an unrecoverable hour it cannot
+// unbuy, our own continuous capacity commits nothing beyond the seconds it actually uses, and
+// the fold picks ours. Compare this with the first witness in the file, where the SAME two
+// offers go the other way because the work was known to fit. Both are true, and a selector
+// needs both.
+test fn untimed_work_does_not_belong_on_a_seven_minute_remainder() -> Bool {
+  let selection = t_select_for(
+    candidates: concat(
+      t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+      t_rented_with_remainder(remaining: second(count: 420)),
+    ),
+    duration: t_unknown_duration(),
+  )
+  selected_key(s: selection) == "offer-owned-srv1"
+}
+
+// A FINITE WINDOW CANNOT HOLD AN UNBOUNDED JOB, AND SAYING SO IS A DIFFERENT REFUSAL FROM
+// SAYING THE WINDOW IS TOO SMALL.
+//
+// An earlier revision of the fold compared the window against the COMMITMENT HORIZON's wall --
+// the remainder plus one billing unit -- and admitted this offer, because that number is
+// finite and small. It was never a duration: the horizon says what the decision commits, not
+// how long the work runs, so the comparison was a fabricated bound standing where a guarantee
+// was required. This witness is that hole nailed shut, and its window is chosen to be the
+// exact fail-open case rather than merely a refusal: five thousand seconds EXCEEDS the old
+// comparison's wall of four thousand and twenty (a seven-minute remainder plus one hour), so
+// the previous fold admitted this offer and priced it. A shorter window would have been
+// refused by both folds, on different arms, and would have proved much less.
+//
+// The arm is its own, not folded into OfferUnavailableForGrant, because the remedies differ:
+// too small says find a bigger window, and cannot-know says measure the job.
+test fn a_finite_window_refuses_an_unbounded_job_rather_than_comparing() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_candidate(
+      availability: AvailableForInterval {
+        delay: second(count: 0),
+        interval: second(count: 5000),
+        receipt: "gunbc.observation.availability-boxed",
+      },
+      commitment: PaidThrough {
+        remaining: second(count: 420),
+        receipt: "gunbc.observation.remainder-boxed",
+      },
+      opportunity: t_idle(),
+    ),
+    duration: t_unknown_duration(),
+  )
+  match selection {
+    NoAdmissibleOffer { considered: cs } => unbounded_refusals(cs: cs) == 1
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+  }
+}
+
+fn unbounded_refusals(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
+  fold(cs, init: 0, f: (n, c) =>
+    match c {
+      OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => n + 1
+      OfferUnavailableForGrant { offer: _, needed: _, available: _ } => n
+      OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => n
+      OfferNotFungible { offer: _, fungibility: _ } => n
+      OfferNotPriceable { offer: _, unpriced: _ } => n
+      OfferWrongCurrency { offer: _, mismatch: _ } => n
+      OfferUnaffordable { offer: _, affordability: _ } => n
+      OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => n
+    })
+}
+
+// AND THE OTHER SIDE OF THAT WALL: the same time-boxed offer with a MEASURED job that fits is
+// admitted normally. Without this control the witness above would be satisfied by a fold that
+// refused every finite window, which would be a wall in the wrong place.
+test fn a_finite_window_still_admits_a_bounded_job_that_fits_it() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_candidate(
+      availability: AvailableForInterval {
+        delay: second(count: 0),
+        interval: second(count: 480),
+        receipt: "gunbc.observation.availability-boxed-2",
+      },
+      commitment: PaidThrough {
+        remaining: second(count: 420),
+        receipt: "gunbc.observation.remainder-boxed-2",
+      },
+      opportunity: t_idle(),
+    ),
+    duration: t_ninety_seconds(),
+  )
+  selected_key(s: selection) == "offer-rented-hourly"
+    && selected_total(s: selection) == 0
+}
+
+
+// THE PROVIDER-USE WALL, READ FROM THE MARKET SIDE. These rows are the reason the permit was put
+// inside the sealed CandidateOffer rather than checked inside the ranking fold: what they assert is
+// not that a check fired, but that the losing state HAS NO SPELLING. An unadmitted offer never
+// becomes a CandidateOffer, so it is not in the population the fold ranks - it cannot win, cannot
+// tie, and cannot be resurrected by being cheap.
+//
+// The owned offer is the right subject for exactly that reason: it is priced at ZERO, so it is the
+// offer any cost-ordered fold must prefer, and it wins the control below. If admission could be
+// bought, this is the offer that would buy it.
+fn t_unadmitted_bound(
+  offer: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
+) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: inputs,
+    admission: fixture_unadmitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_owned_inputs() -> DispatchInputs<NonEmptyStr> {
+  t_inputs(
+    key: "offer-owned-srv1",
+    availability: t_ready_now(),
+    commitment: PayAsYouGo,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: t_idle(),
+  )
+}
+
+// POSITIVE CONTROL, and it is load-bearing for both reds below. Without it, "the zero-priced offer
+// did not win" would be satisfied by a fixture in which it never wins for some unrelated reason,
+// and both reds would be green while asserting nothing about admission.
+test fn w_the_zero_priced_offer_wins_when_it_is_admitted() -> Bool {
+  selected_key(s: t_select(candidates: concat(
+    t_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))) == "offer-owned-srv1"
+}
+
+// RED - THE CHEAPEST OFFER CANNOT WIN UNADMITTED. Identical population to the control; the only
+// thing that moves is whether the zero-priced offer's use was admitted. The dearer rented offer
+// wins, which is the whole claim: price is evaluated after admission, so being free buys nothing.
+test fn w_the_cheapest_offer_cannot_win_unadmitted() -> Bool {
+  selected_key(s: t_select(candidates: concat(
+    t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))) == "offer-rented-hourly"
+}
+
+// RED - A ZERO-COST DEMAND STILL REFUSES WITHOUT A PERMIT. With no admitted alternative to fall
+// back on, the answer is NoAdmissibleOffer rather than the free offer: nothing is selected, and the
+// refusal is the fabric declining to place work rather than placing it for nothing.
+test fn w_a_zero_cost_unadmitted_offer_selects_nothing() -> Bool {
+  selected_key(s: t_select(
+    candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+  )) == "none"
+}
+
+// RED - MONEY CANNOT OVERRIDE A DENIAL, stated as a comparison rather than as a single outcome.
+// The unadmitted zero-priced offer and an EMPTY market produce the SAME answer, which is what
+// "the offer is not in the population" means: adding it changed nothing at all.
+test fn w_an_unadmitted_offer_is_indistinguishable_from_no_offer() -> Bool {
+  selected_key(s: t_select(
+    candidates: t_unadmitted_bound(offer: t_owned_offer(), inputs: t_owned_inputs()),
+  )) == selected_key(s: t_select(candidates: []))
+}
+
+// ── THE EQUAL-COST TIE POLICY, WHICH WAS ROSTER ORDER AND IS NOW NAMED ────────────────────────
+//
+// These fixtures are two IDENTICAL owned offers differing only in their key, which is the shape a
+// fleet of interchangeable machines actually has and the shape under which the implicit policy did
+// its damage: equal totals, so the comparator's strict less-than never displaces the held candidate,
+// so the roster-first offer wins every time and the second machine is never used.
+
+fn t_twin_offer(key: OfferKey) -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: key,
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+fn t_twin_candidate(key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_twin_offer(key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+fn t_twins() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b"))
+}
+
+fn t_twins_reversed() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(t_twin_candidate(key: "offer-group-b"), t_twin_candidate(key: "offer-group-a"))
+}
+
+fn t_select_tie(candidates: List<CandidateOffer<NonEmptyStr>>, tie: EqualCostOfferTieBreak, affinity: PlacementAffinityKey) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay_valuation(),
+    tie: tie,
+    affinity: affinity,
+  )
+}
+
+fn t_rendezvous_winner(affinity: PlacementAffinityKey) -> NonEmptyStr {
+  selected_key(s: t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: affinity))
+}
+
+// TWO EQUAL OFFERS TIE EXACTLY, WHICH IS THE PRECONDITION EVERYTHING BELOW DEPENDS ON. If the
+// fixtures ever stopped tying, every tie witness would still pass while testing nothing -- so the
+// tie itself is asserted first, against the totals rather than against the outcome.
+test fn the_twin_offers_actually_tie() -> Bool {
+  let a = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-a"), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  let b = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  a == b && length(t_twins()) == 2
+}
+
+// ROSTER ORDER IS A POLICY, AND UNDER IT THE ANSWER IS THE ORDER. Held for the consumers pinned to
+// it, and stated as a control rather than as a comment: reversing the candidate list reverses the
+// winner, which is exactly what "the roster decided" means.
+test fn stable_roster_order_returns_the_first_offer_handed_to_it() -> Bool {
+  (selected_key(s: t_select_tie(candidates: t_twins(), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey)) as String) == "offer-group-a"
+    && (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey)) as String) == "offer-group-b"
+}
+
+// AND UNDER THE RENDEZVOUS THE ANSWER DOES NOT DEPEND ON THE ORDER. This is the discriminating
+// control for the whole arm: the same demand over the same offers gets the same winner whichever way
+// the roster is walked, so the outcome is a function of the demand and the offers rather than of the
+// caller's list.
+test fn the_rendezvous_is_invariant_under_roster_order() -> Bool {
+  fold(["alpha" as PlacementAffinityKey, "beta" as PlacementAffinityKey, "gamma" as PlacementAffinityKey, "delta" as PlacementAffinityKey], init: true, f: (acc, d) =>
+    acc && ((selected_key(s: t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: d)) as String)
+             == (selected_key(s: t_select_tie(candidates: t_twins_reversed(), tie: AffinityKeyedRendezvous, affinity: d)) as String)))
+}
+
+// A RETRY OF ONE PLACEMENT LANDS WHERE THE FIRST ATTEMPT DID. A key minted per attempt would spread
+// one demand across offers on successive tries, which is worse than concentrating it: the second
+// attempt would prefill somewhere the first attempt did not warm.
+test fn one_demand_retries_onto_the_same_offer() -> Bool {
+  let first = t_rendezvous_winner(affinity: "worker:/w/session-a" as PlacementAffinityKey)
+  let second = t_rendezvous_winner(affinity: "worker:/w/session-a" as PlacementAffinityKey)
+  let third = t_rendezvous_winner(affinity: "worker:/w/session-a" as PlacementAffinityKey)
+  ((first as String) == (second as String)) && ((second as String) == (third as String))
+}
+
+// AND SEQUENTIAL DIFFERENT DEMANDS DO NOT ALL LAND ON ONE OFFER, which is the defect the arm exists
+// to remove. The claim is deliberately weak -- SOME demand in a small population lands elsewhere --
+// because a hash is not obliged to alternate, and a control asserting a specific split would be
+// asserting the digest's arithmetic rather than the policy's behaviour.
+test fn sequential_demands_do_not_all_take_the_roster_first_offer() -> Bool {
+  let keys = ["worker:/w/one" as PlacementAffinityKey, "worker:/w/two" as PlacementAffinityKey, "worker:/w/three" as PlacementAffinityKey, "worker:/w/four" as PlacementAffinityKey, "reviewer:/v/five" as PlacementAffinityKey, "auditor:/v/six" as PlacementAffinityKey]
+  let on_a = fold(keys, init: 0, f: (n, d) => if (t_rendezvous_winner(affinity: d) as String) == "offer-group-a" { n + 1 } else { n })
+  on_a > 0 && on_a < length(keys)
+}
+
+// THE PRIMARY ORDERING STILL DOMINATES. A tie policy that could overturn a cheaper offer would be a
+// second ranking, not a tie-break, so the cheap-versus-expensive pair must come back cheapest-first
+// under both policies.
+test fn a_cheaper_offer_still_wins_under_the_rendezvous() -> Bool {
+  let mixed = concat(t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), t_twin_candidate(key: "offer-group-b"))
+  let owned_total = selected_total(s: t_select_tie(candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  let twin_total = selected_total(s: t_select_tie(candidates: t_twin_candidate(key: "offer-group-b"), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey))
+  (owned_total != twin_total)
+    && (selected_key(s: t_select_tie(candidates: mixed, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey)) as String)
+        == (if owned_total < twin_total { "offer-owned-srv1" } else { "offer-group-b" })
+}
+
+// THE TIE POLICY RESCUES NOTHING. A refused candidate is refused before any comparison happens, so a
+// demand whose digest would have favoured it does not resurrect it -- a tie-break that could admit an
+// inadmissible offer would be an escape hatch around every wall selection has.
+test fn the_rendezvous_never_rescues_a_refused_offer() -> Bool {
+  let unavailable = t_rented_candidate(
+    availability: AvailabilityUnobserved { obligation: "the vendor's console did not answer" as NonEmptyStr },
+    commitment: PayAsYouGo,
+    opportunity: t_idle(),
+  )
+  let population = concat(unavailable, t_twin_candidate(key: "offer-group-a"))
+  fold(["one" as PlacementAffinityKey, "two" as PlacementAffinityKey, "three" as PlacementAffinityKey, "four" as PlacementAffinityKey], init: true, f: (acc, d) =>
+    acc && ((selected_key(s: t_select_tie(candidates: population, tie: AffinityKeyedRendezvous, affinity: d)) as String) == "offer-group-a"))
+}
+
+// THE SPREAD KEYS ON THE EXACT OFFER IDENTITY. Two offers whose keys differ are two subjects to the
+// policy, which is what makes a restart-keyed offer key meaningful downstream: the same group under a
+// new launch is a new subject and can win a demand its predecessor lost.
+test fn the_digest_keys_on_the_exact_offer_identity() -> Bool {
+  let renamed = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-b@second-launch"))
+  fold(["one" as PlacementAffinityKey, "two" as PlacementAffinityKey, "three" as PlacementAffinityKey, "four" as PlacementAffinityKey, "five" as PlacementAffinityKey, "six" as PlacementAffinityKey], init: false, f: (acc, d) =>
+    acc || ((selected_key(s: t_select_tie(candidates: renamed, tie: AffinityKeyedRendezvous, affinity: d)) as String) == "offer-group-b@second-launch"))
+}
+
+// A COLLISION REFUSES RATHER THAN FALLING BACK, and this fixture is honest about which collision it
+// produces: two candidates carrying the SAME offer identity, which is duplicate identity rather than
+// two distinct identities whose digests happen to agree. A 64-bit digest collision between distinct
+// keys is not authorable in a fixture, and the arm treats both the same way -- the policy cannot
+// choose, so it refuses. Returning the roster-first one would reinstate the policy this arm replaces,
+// in the one case nobody would notice.
+test fn an_unresolvable_tie_refuses_instead_of_taking_the_first() -> Bool {
+  let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 2
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// AND THE COLLISION SURVIVES A LATER EQUAL-COST CANDIDATE. Dropping it there would hand back a winner
+// chosen by the order the collision happened to occur in -- the tie is still unresolved at that cost.
+test fn a_collision_survives_a_later_candidate() -> Bool {
+  let twinned = concat(concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a")), t_twin_candidate(key: "offer-group-b"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 3
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// THE OUTCOME SAYS WHICH POLICY DECIDED, so a reader of a placement receipt can tell a rendezvous
+// answer from a roster-order one without knowing what the caller passed.
+test fn the_outcome_carries_the_policy_that_decided_it() -> Bool {
+  (match t_select_tie(candidates: t_twins(), tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+     OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
+       match p { AffinityKeyedRendezvous => true  StableRosterOrder => false }
+     _ => false
+   })
+    && (match t_select_tie(candidates: t_twins(), tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey) {
+          OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: p } =>
+            match p { StableRosterOrder => true  AffinityKeyedRendezvous => false }
+          _ => false
+        })
+}
+
+// ── A TIE AMONG DEARER OFFERS DOES NOT SUPPRESS A CHEAPER ONE ─────────────────────────────────
+//
+// THE ORDER DEPENDENCE THIS CONTROL EXISTS FOR, which the first shape of the fold had (review
+// 62155). A collision used to stop the ranking: every later candidate was recorded and none was
+// ranked, so [dear, dear-colliding, cheap] refused while [cheap, dear, dear-colliding] selected the
+// cheap one -- the outcome depending on roster order under the policy that exists to remove roster
+// order from the outcome. A tie is only ever a tie at the current minimum.
+fn t_dear_candidate(key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_twin_offer(key: key),
+    inputs: t_inputs(
+      key: key,
+      availability: AvailableIndefinitely { delay: second(count: 60), receipt: "gunbc.observation.availability-2" },
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  )
+}
+
+fn t_select_five_micros(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_five_micros_per_second(),
+    tie: AffinityKeyedRendezvous,
+    affinity: "test.demand" as PlacementAffinityKey,
+  )
+}
+
+test fn a_cheaper_candidate_after_a_collision_still_wins_in_either_order() -> Bool {
+  let dear = concat(t_dear_candidate(key: "offer-dear"), t_dear_candidate(key: "offer-dear"))
+  let cheap = t_twin_candidate(key: "offer-cheap")
+  let dear_total = selected_total(s: t_select_five_micros(candidates: t_dear_candidate(key: "offer-dear")))
+  let cheap_total = selected_total(s: t_select_five_micros(candidates: cheap))
+  (cheap_total < dear_total)
+    && ((selected_key(s: t_select_five_micros(candidates: concat(dear, cheap))) as String) == "offer-cheap")
+    && ((selected_key(s: t_select_five_micros(candidates: concat(cheap, dear))) as String) == "offer-cheap")
+}
+
+// ── AND THE COLLISION IS SEEN WHEREVER IN THE ROSTER IT SITS ──────────────────────────────────
+//
+// THE SECOND ORDER DEPENDENCE, which the pairwise-comparator shape still had after the first was
+// fixed (review 62174). A fold that only ever compares a candidate against the RUNNING BEST cannot
+// see a collision between two candidates neither of which was ever the best: interleave the twinned
+// pair around a third equal-cost offer whose digest wins, and the pair is never compared to itself.
+// The cohort shape has no running best to hide behind -- the tie is resolved over the whole set at
+// the minimum total -- so every permutation of the same population answers the same way.
+fn t_tie_refuses(candidates: List<CandidateOffer<NonEmptyStr>>) -> Bool {
+  match t_select_tie(candidates: candidates, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 3
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+test fn a_collision_refuses_in_every_roster_order() -> Bool {
+  let a = t_twin_candidate(key: "offer-group-a")
+  let b = t_twin_candidate(key: "offer-group-b")
+  t_tie_refuses(candidates: concat(concat(a, a), b))
+    && t_tie_refuses(candidates: concat(concat(a, b), a))
+    && t_tie_refuses(candidates: concat(concat(b, a), a))
+}
+
+// ── SAME KEY, DIFFERENT PRINCIPAL, AND THE POLICY REFUSES RATHER THAN MERGING ─────────────────
+//
+// The rendezvous hashes the offer's KEY, and identity.dag is explicit that identity is the PAIR:
+// dropping the principal "silently merges two tenants who chose the same name for their work". So the
+// question this control answers is what the policy DOES in that case, and the answer must not be
+// "picks one". Two offers under different principals carrying one key produce one digest, which is a
+// duplicate in the cohort, and the duplicate rule refuses -- the cross-principal case fails closed
+// rather than handing a tenant an offer that belongs to another. Hashing sealed identities instead
+// needs a rendering of the principal type, which the fabric core does not have by construction.
+fn t_offer_under(principal: NonEmptyStr, key: OfferKey) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: principal, key: key },
+    route: fixture_route(),
+    executor: principal,
+    shape: t_shape(threads: hardware_thread_count(count: 64)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply { observed_at: "2026-08-27T00:00:00Z", receipt: "gunbc.observation.fleet-1" },
+  }
+}
+
+// THE DISPATCH INPUTS MUST NAME THE SAME PRINCIPAL AS THE OFFER, or this fixture measures nothing.
+// t_inputs fixes the dispatch identity's principal to "gunbc"; handing those inputs to an offer under
+// another principal makes bind_candidate refuse -- it compares the COMPLETE identity, which is the
+// property under test one level up -- so t_bound returns an empty list and the selection never sees a
+// candidate. An earlier spelling of these two controls did exactly that.
+fn t_inputs_under(principal: NonEmptyStr, key: OfferKey) -> DispatchInputs<NonEmptyStr> {
+  DispatchInputs {
+    offer: FabricIdentity { principal: principal, key: key },
+    availability: t_ready_now(),
+    commitment: PayAsYouGo,
+    start: StartCostMeasured {
+      amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      receipt: "gunbc.observation.start-cost-1",
+    },
+    transition: NoTransitionRequired,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: t_idle(),
+  }
+}
+
+fn t_candidate_under(principal: NonEmptyStr, key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(offer: t_offer_under(principal: principal, key: key), inputs: t_inputs_under(principal: principal, key: key))
+}
+
+// AND THE FIXTURE PROVES IT BINDS BEFORE THE CONTROLS ABOVE CLAIM ANYTHING. A control whose
+// population is empty answers the wrong question quietly: it would read "no admissible offer", which
+// is neither the refusal nor the selection either test is about.
+test fn the_cross_principal_fixture_actually_produces_two_candidates() -> Bool {
+  length(t_candidate_under(principal: "tenant-a", key: "offer-shared")) == 1
+    && length(t_candidate_under(principal: "tenant-b", key: "offer-shared")) == 1
+}
+
+// AND THE REFUSAL SAYS WHICH OF THE THREE COLLISIONS IT MET, because they have different repairs: a
+// duplicate identity is an authoring defect, a shared key under two principals is this policy's
+// projection being lossy, and two distinct keys hashing alike is a real 64-bit collision that is
+// nobody's fault. One unexplained digest for all three tells the reader nothing.
+test fn the_refusal_names_the_projection_ambiguity_rather_than_a_bare_digest() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: c, considered: _ } =>
+      match c {
+        AffinityProjectionAmbiguous { conflicting: xs } => length(xs) == 2
+        DuplicateOfferIdentity { offer: _ } => false
+        DigestCollisionOnDistinctKeys { conflicting: _ } => false
+      }
+    _ => false
+  }
+}
+
+// AND A GENUINE DUPLICATE IS CLASSIFIED AS ONE, which is what keeps the arm above from being satisfied
+// by any collision at all: the same offer twice is one identity, not two principals.
+test fn a_repeated_offer_is_classified_as_a_duplicate_identity() -> Bool {
+  let twinned = concat(t_twin_candidate(key: "offer-group-a"), t_twin_candidate(key: "offer-group-a"))
+  match t_select_tie(candidates: twinned, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: c, considered: _ } =>
+      match c {
+        DuplicateOfferIdentity { offer: o } => (o.key as String) == "offer-group-a"
+        AffinityProjectionAmbiguous { conflicting: _ } => false
+        DigestCollisionOnDistinctKeys { conflicting: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn one_key_under_two_principals_refuses_rather_than_merging() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: AffinityKeyedRendezvous, affinity: "d" as PlacementAffinityKey) {
+    EqualCostTieUnresolved { digest: _, cause: _, considered: cs } => length(cs) == 2
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => false
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}
+
+// AND THE ROSTER-ORDER ARM DOES NOT INHERIT THAT REFUSAL, which is what makes the refusal a property
+// of the rendezvous rather than of the fixture: StableRosterOrder never asks the identity question,
+// so it takes the first and this control says so rather than leaving the pair looking equivalent.
+test fn the_roster_arm_still_answers_for_one_key_under_two_principals() -> Bool {
+  let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
+  match t_select_tie(candidates: shared, tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey) {
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.principal as String) == "tenant-a"
+    _ => false
+  }
+}
+
+fn t_resource_policy() -> ResourceBudgetPolicy<NonEmptyStr> {
+  let offer = t_owned_offer()
+  ResourceBudgetPolicy { authority: "test.operator", revision: "test.resource-budget-v1",
+    demand: fixture_demand_for(offer: offer.id), work: fixture_work_for(offer: offer.id), allowed_offers: [offer.id] }
+}
+fn t_unknown_cost_candidates(availability: AvailabilityObservation) -> List<CandidateOffer<NonEmptyStr>> {
+  let offer = t_owned_offer()
+  t_bound(offer: offer, inputs: DispatchInputs { offer: offer.id, availability: availability,
+    commitment: CommitmentUnread { obligation: "not measured" },
+    start: StartCostUnread { obligation: "not measured" },
+    transition: TransitionCostUnread { obligation: "not measured" },
+    operating: OperatingCostUnread { obligation: "not measured" },
+    opportunity: AlternativeUseUnread { obligation: "not measured" } })
+}
+test fn resource_budget_preserves_unknown_costs_without_economic_ranking() -> Bool {
+  let policy = t_resource_policy()
+  let candidates = t_unknown_cost_candidates(availability: t_ready_now())
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: candidates) {
+    ResourceBudgetSelected { candidate, policy: selected_policy } =>
+      selected_policy == policy && (match candidate.dispatch.operating {
+        OperatingCostUnread { obligation: _ } => true
+        _ => false
+      }) && (match t_select(candidates: candidates) {
+        NoAdmissibleOffer { considered: _ } => true
+        _ => false
+      })
+    _ => false
+  }
+}
+test fn resource_budget_still_requires_observed_availability() -> Bool {
+  let policy = t_resource_policy()
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(),
+    candidates: t_unknown_cost_candidates(availability: AvailabilityUnobserved { obligation: "not observed" })) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+test fn resource_budget_cannot_authorize_another_demand() -> Bool {
+  let policy = t_resource_policy()
+  match select_resource_budget_supply(policy: policy, demand: FabricIdentity { principal: "gunbc", key: "different-demand" as DemandKey }, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: t_unknown_cost_candidates(availability: t_ready_now())) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn resource_budget_cannot_buy_paid_capacity() -> Bool {
+  let offer = t_rented_offer()
+  let policy = ResourceBudgetPolicy { authority: "test.operator", revision: "test.resource-budget-v1",
+    demand: fixture_demand_for(offer: offer.id), work: fixture_work_for(offer: offer.id), allowed_offers: [offer.id] }
+  let candidates = t_bound(offer: offer, inputs: t_inputs(key: offer.id.key, availability: t_ready_now(),
+    commitment: PayAsYouGo, operating: OperatingCostBorneBySupplier, opportunity: t_idle()))
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: candidates) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+test fn resource_budget_requires_an_explicit_allowed_offer() -> Bool {
+  let original = t_resource_policy()
+  let policy = ResourceBudgetPolicy { authority: original.authority, revision: original.revision,
+    demand: original.demand, work: original.work, allowed_offers: [] }
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: t_unknown_cost_candidates(availability: t_ready_now())) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn resource_budget_refuses_duplicate_offer_identity() -> Bool {
+  let policy = t_resource_policy()
+  let candidates = t_unknown_cost_candidates(availability: t_ready_now())
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: candidates + candidates) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+test fn resource_budget_requires_availability_for_the_whole_lease() -> Bool {
+  let policy = t_resource_policy()
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(),
+    candidates: t_unknown_cost_candidates(availability: AvailableForInterval {
+      delay: second(count: 0), interval: second(count: 89), receipt: "test.availability" })) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}

@@ -1,0 +1,480 @@
+module gunbc.live_deploy.unit_standing
+
+import std.types { String, Bool, NonEmptyStr, Int, List, list_length }
+import std.algebra { trim }
+import extdeps.systemd.systemctl
+import extdeps.systemd {
+  systemd_unit_property_wire, SystemdUnitProperty,
+  LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
+  SystemdServiceDirective,
+  SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged, MakeDirectory,
+}
+
+// EXACT SYSTEMD UNIT STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE. Readiness alone
+// cannot prove the belt's units are installed and armed. The RLM-2 ruling (section 7) keeps unit
+// standing in scope and rejects the naive 'every unit enabled and active', because
+// gunbc.live_deploy.emit gives the units different semantics -- the dashboard serve service is
+// Type=simple, the belt service is Type=oneshot with no [Install] section, and the belt's event path
+// units are what is enabled, under paths.target. (There was a belt timer; dogfood intervention #4
+// removed it, and with it this module's timer standing.) The positive standing is one row per unit,
+// and the discriminating POSITIVE control is that a correctly completed, currently INACTIVE oneshot
+// stays green.
+//
+// THE OBSERVER IS `systemctl show --property=X --value` (extdeps.systemd.systemctl ShowProperty),
+// system scope. There is still no modeled system-scope `is-enabled` operation (systemctl.dag's own
+// note); UnitFileState carries the same fact through the show surface.
+//
+// WHAT IS COMPARED EXACTLY, member by member, stated so any residue would be visible. ExecStart, User
+// and WorkingDirectory are compared exactly against the directives of R's emitted unit file
+// (gunbc.live_deploy.emit live_deploy_serve_unit_file / live_deploy_belt_service_unit_file), reading
+// systemd's `{ path=... ; argv[]=... ; ... }` rendering by its `argv[]=` segment. A path unit's target
+// is compared exactly through the Unit property; its watched path is NOT read back (see
+// BeltEventPathStanding), which is this module's one declared residue.
+//
+// EVERY REFUSAL NAMES THE UNIT AND THE PROPERTY that disagreed; an unreadable property is a
+// refusal, never a pass by vacancy.
+type UnitPropertyRead
+  = UnitPropertyValue { value: String }
+  | UnitPropertyUnreadable { unit: String, property: String }
+
+fn read_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitPropertyRead {
+  let got = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+  if got.success {
+    UnitPropertyValue { value: trim(s: got.value) }
+  } else {
+    UnitPropertyUnreadable { unit: unit as String, property: systemd_unit_property_wire(property: property) as String }
+  }
+}
+
+type ServiceUnitObserved {
+  load_state: String
+  unit_file_state: String
+  active_state: String
+  sub_state: String
+  result: String
+  exec_main_status: String
+  exec_start: String
+  user: String
+  working_directory: String
+}
+
+type ServiceUnitObservation
+  = ServiceUnitObservedOk { observed: ServiceUnitObserved }
+  | ServiceUnitUnobservable { unit: String, property: String }
+
+fn observe_service_unit(unit: NonEmptyStr) -> ServiceUnitObservation {
+  match read_unit_property(unit: unit, property: LoadState) {
+    UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+    UnitPropertyValue { value: load_state } =>
+      match read_unit_property(unit: unit, property: UnitFileState) {
+        UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+        UnitPropertyValue { value: unit_file_state } =>
+          match read_unit_property(unit: unit, property: ActiveState) {
+            UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+            UnitPropertyValue { value: active_state } =>
+              match read_unit_property(unit: unit, property: SubState) {
+                UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                UnitPropertyValue { value: sub_state } =>
+                  match read_unit_property(unit: unit, property: Result) {
+                    UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                    UnitPropertyValue { value: result } =>
+                      match read_unit_property(unit: unit, property: ExecMainStatus) {
+                        UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                        UnitPropertyValue { value: exec_main_status } =>
+                          match read_unit_property(unit: unit, property: ExecStartProperty) {
+                            UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                            UnitPropertyValue { value: exec_start } =>
+                              match read_unit_property(unit: unit, property: User) {
+                                UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                                UnitPropertyValue { value: user } =>
+                                  match read_unit_property(unit: unit, property: WorkingDirectoryProperty) {
+                                    UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                                    UnitPropertyValue { value: wd } =>
+                                      ServiceUnitObservedOk {
+                                        observed: ServiceUnitObserved {
+                                          load_state: load_state,
+                                          unit_file_state: unit_file_state,
+                                          active_state: active_state,
+                                          sub_state: sub_state,
+                                          result: result,
+                                          exec_main_status: exec_main_status,
+                                          exec_start: exec_start,
+                                          user: user,
+                                          working_directory: wd,
+                                        },
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE EXPECTATION IS DERIVED FROM R'S EMITTED UNIT FILE, never typed beside it.
+type ServiceUnitExpectation {
+  exec_start: String
+  user: String
+  working_directory: String
+}
+
+type ServiceUnitExpectationDerivation
+  = ServiceExpectationDerived { expectation: ServiceUnitExpectation }
+  | ServiceExpectationUnderivable { detail: String }
+
+fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ExecStart { command: c } => Present { value: c as String }
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
+      ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
+    }
+  })
+}
+
+fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceUser { name: n } => Present { value: n as String }
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
+    }
+  })
+}
+
+fn service_directive_working_directory(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      WorkingDirectory { path: p } => Present { value: p as String }
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
+    }
+  })
+}
+
+fn service_unit_expectation_of(file: SystemdUnitFile) -> ServiceUnitExpectationDerivation {
+  match file {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match service_directive_exec_start(directives: directives) {
+        Absent => ServiceExpectationUnderivable { detail: "emitted service unit carries no ExecStart" }
+        Present { value: exec_start } =>
+          match service_directive_user(directives: directives) {
+            Absent => ServiceExpectationUnderivable { detail: "emitted service unit carries no User" }
+            Present { value: user } =>
+              match service_directive_working_directory(directives: directives) {
+                Absent => ServiceExpectationUnderivable { detail: "emitted service unit carries no WorkingDirectory" }
+                Present { value: wd } =>
+                  ServiceExpectationDerived { expectation: ServiceUnitExpectation { exec_start: exec_start, user: user, working_directory: wd } }
+              }
+          }
+      }
+    TimerUnitFile { unit: _, timer: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a timer" }
+    SliceUnitFile { unit: _, slice: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a slice" }
+    PathUnitFile { unit: _, path: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a path unit" }
+  }
+}
+
+// systemctl show renders ExecStart as `{ path=P ; argv[]=A B C ; ignore_errors=no ; ... }`. The
+// argv[] segment is the command line the unit file declared, which is what the emitted ExecStart
+// directive is, so that segment is the exact comparand.
+type ExecStartRead
+  = ExecStartArgv { argv_text: String }
+  | ExecStartUnparseable { value: String }
+
+fn exec_start_argv_of_show_value(value: String) -> ExecStartRead {
+  let parts = split(s: value, delimiter: "argv[]=")
+  if list_length(items: parts) < 2 {
+    ExecStartUnparseable { value: value }
+  } else {
+    let tail = fold(parts, init: "", f: fn(_, seg) { seg })
+    let argv_text = fold(split(s: tail, delimiter: " ; "), init: "", f: fn(acc, seg) { if acc == "" { seg } else { acc } })
+    if argv_text == "" { ExecStartUnparseable { value: value } } else { ExecStartArgv { argv_text: trim(s: argv_text) } }
+  }
+}
+
+type DashboardServiceStanding
+  = DashboardServiceConverged { unit: String }
+  | DashboardServiceRefused { unit: String, property: String, expected: String, observed: String }
+
+// THE BELT'S EVENT PATH UNITS (dogfood intervention #4: there is no belt timer). A path unit is
+// converged when it is loaded, enabled, active and armed (`waiting`, or `running` while its unit runs)
+// and activates the unit the emitted file names. Its watched path is not read back here -- systemctl
+// renders Paths= as a composite this row does not parse -- so the path is established by the emitted
+// file the deploy installed and its byte comparison, not by this read; and this row proves only that
+// the watcher is ARMED. Whether events are CONSUMED is the receipt's event backlog row.
+type BeltEventPathStanding
+  = BeltEventPathConverged { unit: String }
+  | BeltEventPathRefused { unit: String, property: String, expected: String, observed: String }
+
+type BeltOneshotStanding
+  = BeltOneshotConverged { unit: String, active_state: String }
+  | BeltOneshotRefused { unit: String, property: String, expected: String, observed: String }
+
+fn judge_exec_start(unit: String, expected: String, observed_show: String) -> DashboardServiceStanding? {
+  match exec_start_argv_of_show_value(value: observed_show) {
+    ExecStartUnparseable { value: v } =>
+      Present { value: DashboardServiceRefused { unit: unit, property: "ExecStart", expected: expected, observed: v } }
+    ExecStartArgv { argv_text: a } =>
+      if a == expected { none } else {
+        Present { value: DashboardServiceRefused { unit: unit, property: "ExecStart", expected: expected, observed: a } }
+      }
+  }
+}
+
+fn judge_dashboard_service(unit: String, expect: ServiceUnitExpectation, o: ServiceUnitObserved) -> DashboardServiceStanding {
+  if o.load_state != "loaded" {
+    DashboardServiceRefused { unit: unit, property: "LoadState", expected: "loaded", observed: o.load_state }
+  } else if o.unit_file_state != "enabled" {
+    DashboardServiceRefused { unit: unit, property: "UnitFileState", expected: "enabled", observed: o.unit_file_state }
+  } else if o.active_state != "active" {
+    DashboardServiceRefused { unit: unit, property: "ActiveState", expected: "active", observed: o.active_state }
+  } else if o.user != expect.user {
+    DashboardServiceRefused { unit: unit, property: "User", expected: expect.user, observed: o.user }
+  } else if o.working_directory != expect.working_directory {
+    DashboardServiceRefused { unit: unit, property: "WorkingDirectory", expected: expect.working_directory, observed: o.working_directory }
+  } else {
+    match judge_exec_start(unit: unit, expected: expect.exec_start, observed_show: o.exec_start) {
+      Present { value: refused } => refused
+      Absent => DashboardServiceConverged { unit: unit }
+    }
+  }
+}
+
+
+// THE ONESHOT IS NOT SEPARATELY ENABLED (it has no [Install] section, so its UnitFileState is
+// `static`), and it is normally INACTIVE between ticks. Both are the correct state and both are
+// accepted; what is required is that its last run SUCCEEDED and that what it runs is exactly what R
+// emitted.
+fn judge_belt_oneshot(unit: String, expect: ServiceUnitExpectation, o: ServiceUnitObserved) -> BeltOneshotStanding {
+  if o.load_state != "loaded" {
+    BeltOneshotRefused { unit: unit, property: "LoadState", expected: "loaded", observed: o.load_state }
+  } else if o.unit_file_state != "static" {
+    BeltOneshotRefused { unit: unit, property: "UnitFileState", expected: "static", observed: o.unit_file_state }
+  } else if o.active_state != "inactive" && o.active_state != "active" && o.active_state != "activating" {
+    BeltOneshotRefused { unit: unit, property: "ActiveState", expected: "inactive|active|activating", observed: o.active_state }
+  } else if o.result != "success" {
+    BeltOneshotRefused { unit: unit, property: "Result", expected: "success", observed: o.result }
+  } else if o.exec_main_status != "0" {
+    BeltOneshotRefused { unit: unit, property: "ExecMainStatus", expected: "0", observed: o.exec_main_status }
+  } else if o.user != expect.user {
+    BeltOneshotRefused { unit: unit, property: "User", expected: expect.user, observed: o.user }
+  } else if o.working_directory != expect.working_directory {
+    BeltOneshotRefused { unit: unit, property: "WorkingDirectory", expected: expect.working_directory, observed: o.working_directory }
+  } else {
+    match exec_start_argv_of_show_value(value: o.exec_start) {
+      ExecStartUnparseable { value: v } =>
+        BeltOneshotRefused { unit: unit, property: "ExecStart", expected: expect.exec_start, observed: v }
+      ExecStartArgv { argv_text: a } =>
+        if a == expect.exec_start {
+          BeltOneshotConverged { unit: unit, active_state: o.active_state }
+        } else {
+          BeltOneshotRefused { unit: unit, property: "ExecStart", expected: expect.exec_start, observed: a }
+        }
+    }
+  }
+}
+
+type LaunchUnitStanding {
+  dashboard: DashboardServiceStanding
+  exit_path: BeltEventPathStanding
+  answer_path: BeltEventPathStanding
+  oneshot: BeltOneshotStanding
+}
+
+fn dashboard_service_standing_text(s: DashboardServiceStanding) -> String {
+  match s {
+    DashboardServiceConverged { unit: u } => join(["dashboard service ", u, " converged"], "")
+    DashboardServiceRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["dashboard service ", u, " ", p, " expected ", e, " observed ", o], "")
+  }
+}
+
+fn belt_event_path_standing_text(s: BeltEventPathStanding) -> String {
+  match s {
+    BeltEventPathConverged { unit: u } => join(["belt event path ", u, " converged"], "")
+    BeltEventPathRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["belt event path ", u, " ", p, " expected ", e, " observed ", o], "")
+  }
+}
+
+fn belt_oneshot_standing_text(s: BeltOneshotStanding) -> String {
+  match s {
+    BeltOneshotConverged { unit: u, active_state: a } => join(["belt service ", u, " converged (", a, ")"], "")
+    BeltOneshotRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["belt service ", u, " ", p, " expected ", e, " observed ", o], "")
+  }
+}
+
+fn launch_unit_standing_text(s: LaunchUnitStanding) -> String {
+  join([
+    dashboard_service_standing_text(s: s.dashboard), "; ",
+    belt_event_path_standing_text(s: s.exit_path), "; ",
+    belt_event_path_standing_text(s: s.answer_path), "; ",
+    belt_oneshot_standing_text(s: s.oneshot),
+  ], "")
+}
+
+// THE LIVE READ, one per unit, each judged against the expectation derived from R's emission.
+fn observe_dashboard_service_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> DashboardServiceStanding {
+  match service_unit_expectation_of(file: file) {
+    ServiceExpectationUnderivable { detail: d } =>
+      DashboardServiceRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: d }
+    ServiceExpectationDerived { expectation: e } =>
+      match observe_service_unit(unit: unit) {
+        ServiceUnitUnobservable { unit: u, property: p } =>
+          DashboardServiceRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        ServiceUnitObservedOk { observed: o } => judge_dashboard_service(unit: unit as String, expect: e, o: o)
+      }
+  }
+}
+
+fn path_unit_target_of(file: SystemdUnitFile) -> String? {
+  match file {
+    PathUnitFile { unit: _, path: directives, install: _ } =>
+      fold(directives, init: none, f: (acc, d) => match acc {
+        Present { value: v } => Present { value: v }
+        Absent => match d {
+          PathUnit { target: t } => Present { value: t as String }
+          DirectoryNotEmpty { path: _ } => none
+          PathChanged { path: _ } => none
+          MakeDirectory { enabled: _ } => none
+        }
+      })
+    ServiceUnitFile { unit: _, service: _, install: _ } => none
+    TimerUnitFile { unit: _, timer: _, install: _ } => none
+    SliceUnitFile { unit: _, slice: _, install: _ } => none
+  }
+}
+
+fn observe_belt_event_path_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> BeltEventPathStanding {
+  match path_unit_target_of(file: file) {
+    Absent => BeltEventPathRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: "the emitted unit is not a path unit naming a Unit= target" }
+    Present { value: target } =>
+      match read_unit_property(unit: unit, property: LoadState) {
+        UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        UnitPropertyValue { value: load } =>
+          if load != "loaded" { BeltEventPathRefused { unit: unit as String, property: "LoadState", expected: "loaded", observed: load } } else {
+            match read_unit_property(unit: unit, property: UnitFileState) {
+              UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+              UnitPropertyValue { value: file_state } =>
+                if file_state != "enabled" { BeltEventPathRefused { unit: unit as String, property: "UnitFileState", expected: "enabled", observed: file_state } } else {
+                  match read_unit_property(unit: unit, property: ActiveState) {
+                    UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+                    UnitPropertyValue { value: active } =>
+                      if active != "active" { BeltEventPathRefused { unit: unit as String, property: "ActiveState", expected: "active", observed: active } } else {
+                        match read_unit_property(unit: unit, property: SubState) {
+                          UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+                          UnitPropertyValue { value: sub } =>
+                            if sub != "waiting" && sub != "running" { BeltEventPathRefused { unit: unit as String, property: "SubState", expected: "waiting|running", observed: sub } } else {
+                              match read_unit_property(unit: unit, property: Unit) {
+                                UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+                                UnitPropertyValue { value: observed_target } =>
+                                  if observed_target != target { BeltEventPathRefused { unit: unit as String, property: "Unit", expected: target, observed: observed_target } } else { BeltEventPathConverged { unit: unit as String } }
+                              }
+                            }
+                        }
+                      }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn observe_belt_oneshot_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> BeltOneshotStanding {
+  match service_unit_expectation_of(file: file) {
+    ServiceExpectationUnderivable { detail: d } =>
+      BeltOneshotRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: d }
+    ServiceExpectationDerived { expectation: e } =>
+      match observe_service_unit(unit: unit) {
+        ServiceUnitUnobservable { unit: u, property: p } =>
+          BeltOneshotRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        ServiceUnitObservedOk { observed: o } => judge_belt_oneshot(unit: unit as String, expect: e, o: o)
+      }
+  }
+}

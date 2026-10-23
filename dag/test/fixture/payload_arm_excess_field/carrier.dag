@@ -1,0 +1,26 @@
+module test.fixture.payload_arm_excess_field.carrier
+
+import std.types { List, NonEmptyStr, String }
+
+// THE SUBJECT OF THE EXCESS-FIELD ADMISSION MATRIX, DECLARED IN ITS OWN MODULE ON PURPOSE.
+// test.claim.payload_arm_excess_field_admission compiles probe sources that IMPORT this module and
+// construct the arm below, so the declaration and the record literal live in DIFFERENT modules --
+// the same configuration a production construction site has. Declaring the type inside the probe
+// source itself would have been one module, and a same-module literal is not the configuration the
+// matrix means to characterize; the compiler reaches an imported arm through a different resolution
+// path than a locally declared one, and a matrix that quietly tested the local path would report a
+// rung for a path nobody uses.
+//
+// TWO ARMS, NOT ONE, AND THE SECOND IS NOT DECORATION. A single-arm coproduct is a type alias in
+// this substrate, and an alias refuses at the IMPORTER rather than at the declaration, so a
+// one-arm carrier would have made every probe fail to compile for a reason unrelated to the field
+// under test -- the probes would have gone red on the carrier's shape and reported nothing about
+// excess fields.
+//
+// PAYLOAD SHAPES MIRROR THE PRODUCTION CASE: one refinement-typed scalar and one collection, which
+// is the shape whose excess-field judgment the matrix measures. The names are deliberately unlike
+// anything in the production corpus because variant names resolve corpus-wide here, so a generic
+// spelling in a fixture can collide with an unrelated module and turn a distant witness red.
+type PayloadArmExcessFieldCarrier
+  = PayloadArmProbeSubject { probe_carrier_host: NonEmptyStr, probe_carrier_members: List<String> }
+  | PayloadArmProbeSibling { probe_carrier_note: String }

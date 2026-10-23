@@ -1,0 +1,670 @@
+module gunbc.harness.harness_hosted_route
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, EpochSecs }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count_value, Second, second, second_count, MoneyAmountMicro, money_amount_micro_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  ChoiceDomain, ConstraintSatisfied, CausalModelEstablished, DecisionAssessment, DecisionConstraint,
+  DecisionRegion, DecisionSubject, DecisionVariable, ContextParameter, HardConstraint, ObjectiveMeasure,
+  ObjectiveTerm, ParameterBound, PhysicalModelEstablished, RealizationSelectionResult, MonotoneIncreasing,
+  UniqueSurvivorRequired, VariesAlong, VendorDocumentedCoupling, select_realization,
+  SelectedWithin, CandidateFieldUnestablished, NoFeasibleRealization, SelectionNeedsEvidence,
+  SelectionNeedsPolicy, RealizationSelectionRefused,
+}
+import std.upsert_decision { ObservationVerdict, Converged, Inaccessible }
+import extdeps.external_authority { CitedToAuthority }
+import extdeps.api_rate_limit { UpstreamRateLimit }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.secret_manager { SmEnabled }
+import extdeps.http.client
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.openrouter.openrouter {
+  OpenRouterReasoningEffort, openrouter_chat_completions_url, openrouter_key_url, openrouter_authorization_header_line,
+  openrouter_free_models_per_minute, openrouter_free_models_per_day, openrouter_reasoning_authority,
+  CreditsTierObserved, CreditsTierUnrecognized, openrouter_credits_from_daily_limit,
+  OpenRouterKeyRead, OpenRouterKeyDecoded, OpenRouterKeyUndecodable, openrouter_decode_key_read,
+  KeySpendUncapped, KeySpendCappedAtZero, KeySpendCappedAbove, openrouter_key_spend_limit_wire,
+  OpenRouterErrorDecoded, OpenRouterErrorUndecodable, openrouter_decode_error_body, openrouter_error_wire,
+  openrouter_effort_eq,
+}
+import extdeps.openrouter.nvidia_nemotron_3_ultra_free {
+  nemotron_ultra_free_max_completion_tokens, nemotron_ultra_free_supported_efforts,
+  nemotron_ultra_free_price_per_token, nemotron_ultra_free_terms,
+}
+import extdeps.nvidia.api_trial_terms { NvidiaApiTrialTerms, nvidia_api_trial_terms_wire }
+import gunbc.secret_provision { openrouter_free_tier_key_secret_ref }
+import gunbc.auth.access_token_source { AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, resolve_access_token, access_token_upsert_required_reason }
+import gunbc.auth.secret_ref_credential {
+  SecretCredentialReady, SecretCredentialAccessUpsertRequired, SecretCredentialWireDecodeRefused,
+  SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch, fetch_secret_ref_credential_with_token,
+}
+import gunbc.auth.materialized_secret {
+  BearerHeaderFile, with_materialized_secret, MaterializationCompleted, MaterializationRefused,
+  SecretNotLive, SecretVersionUnusable, LivenessProbeNotIndependent,
+}
+import gunbc.readback_independence { ReadBackProbe, ProbeInert }
+import gunbc.fabric_quota {
+  QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease_for, QuotaTermToWindowEnd,
+  fabric_quota_settle, QuotaSettle, QuotaSettled, QuotaSettleRefused, quota_settle_wire,
+  fabric_quota_observe_upstream, QuotaUpstreamRecorded, QuotaObservationRefused,
+}
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter,
+  HarnessReasoningLevel, ReasoningOff, ReasoningStandard, ReasoningMaximum, harness_reasoning_level_wire,
+  harness_openrouter_level_effort, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
+  harness_unit_model_id, harness_serving_unit_wire,
+}
+
+// A HOSTED HARNESS ROUTE: a unit the harness reaches through an upstream it does not operate, admitted by
+// leasing that upstream's quota rather than by taking a seat on a serving group. The seat model
+// (gunbc.harness.harness_seat) is about co-tenancy on an engine with loaded state; a hosted upstream
+// meters REQUESTS against a credential, so the honest capacity fact is the per-request quota and its
+// carrier is gunbc.fabric_quota over the upstream's published UpstreamRateLimit rows.
+//
+// FOUR THINGS HAPPEN HERE AND NOWHERE ELSE: the route's facts are joined from their upstream authorities;
+// the reasoning level a turn on the route runs at is SELECTED, not written down; the credential is
+// materialized and its liveness read before any turn spends it; and each request leases both of the
+// upstream's pools before it goes out and settles them after.
+
+// ── THE ROUTE, JOINED FROM ITS AUTHORITIES ────────────────────────────────────────────────────
+
+type HarnessHostedRoute {
+  unit: HarnessServingUnit
+  url: NonEmptyStr
+  key_url: NonEmptyStr
+  secret: SecretRef
+  per_minute: UpstreamRateLimit
+  max_completion: TokenCount
+  supported_efforts: List<OpenRouterReasoningEffort>
+  price_per_token: MoneyAmountMicro
+  terms: NvidiaApiTrialTerms
+}
+
+// A FLEET UNIT HAS NO HOSTED ROUTE, and the answer is absent rather than a default route: a caller that
+// reached this function with a fleet unit has mis-dispatched, and the seat binder refuses it by name.
+fn harness_hosted_route_for(unit: HarnessServingUnit) -> HarnessHostedRoute? {
+  match unit {
+    DeepseekV4FlashOnVllm => none
+    Glm53FlashOnVllm => none
+    NemotronUltraFreeOnOpenRouter => Present { value: HarnessHostedRoute {
+      unit: unit,
+      url: openrouter_chat_completions_url,
+      key_url: openrouter_key_url,
+      secret: openrouter_free_tier_key_secret_ref,
+      per_minute: openrouter_free_models_per_minute,
+      max_completion: nemotron_ultra_free_max_completion_tokens,
+      supported_efforts: nemotron_ultra_free_supported_efforts,
+      price_per_token: nemotron_ultra_free_price_per_token,
+      terms: nemotron_ultra_free_terms,
+    } }
+  }
+}
+
+// ── THE REASONING LEVEL IS SELECTED, NOT WRITTEN DOWN ─────────────────────────────────────────
+//
+// The fleet harness runs at a declared level (gunbc.harness.harness_cli harness_reasoning_mode), chosen by
+// the operator for an engine whose compute is the fleet's. On a hosted free listing the trade is
+// different and stated by the listing itself: the price is zero per token and the limit is per request,
+// so a deeper effort costs neither money nor quota -- only latency and the completion budget its thinking
+// shares with the answer. That is a selection over a funded field (DESIGN section 3d), so it is asked of
+// std.decision rather than answered by a constant.
+//
+// THE FIELD is the harness's three levels. THE AXES are reasoning depth (higher is better; the rank is the
+// effort's position in the listing's supported_efforts, which the reasoning-tokens guide says are
+// "returned in descending effort order", with disabled below every effort), money per request and quota
+// per request (lower is better; equal across the field by the listing's price and the limits page's
+// per-request metering), and admissibility. THE HARD CONSTRAINT is admissibility: a level the unit cannot
+// express, or a request whose max_tokens exceeds the listing's completion ceiling, reads 0 and is excluded
+// before Pareto, never ranked.
+//
+// LATENCY IS NOT A FUNDED AXIS, and that is the stated reason the answer is the deepest admitted level:
+// nothing in this harness measures per-effort latency on this listing, and a turn's deadline already
+// bounds it (gunbc.harness.harness_cli harness_request_deadline). Funding latency without a reading
+// would answer SelectionNeedsEvidence, which is the honest arm the day a latency budget binds; until then
+// depth dominates on a field where money and quota are equal.
+data harness_hosted_selection_module: String = "gunbc.harness.harness_hosted_route"
+
+fn hosted_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: harness_hosted_selection_module, decl_name: name)
+}
+
+data ax_hosted_reasoning_depth: DeclarationRef = hosted_ref(name: "ax_hosted_reasoning_depth")
+data ax_hosted_money_per_request: DeclarationRef = hosted_ref(name: "ax_hosted_money_per_request")
+data ax_hosted_quota_per_request: DeclarationRef = hosted_ref(name: "ax_hosted_quota_per_request")
+data ax_hosted_level_admitted: DeclarationRef = hosted_ref(name: "ax_hosted_level_admitted")
+
+data harness_hosted_level_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: ax_hosted_reasoning_depth, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_hosted_money_per_request, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_hosted_quota_per_request, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_hosted_level_admitted, goal: HigherIsBetter },
+]
+
+data hosted_level_admitted_constraint: DeclarationRef = hosted_ref(name: "hosted_level_admitted_constraint")
+
+data harness_hosted_level_constraints: List<HardConstraint> = [
+  HardConstraint { identity: hosted_level_admitted_constraint, axis: ax_hosted_level_admitted, bound_micro: 1000000 },
+]
+
+fn hosted_level_identity(level: HarnessReasoningLevel) -> DeclarationRef {
+  hosted_ref(name: join(["hosted_level_", harness_reasoning_level_wire(level: level) as String], ""))
+}
+
+// THE DEPTH RANK, from the listing's own order. Disabled is 0; an effort at index i of an n-long
+// descending list ranks n - i; an effort the listing does not carry has no rank, and the level that maps
+// to it is inadmissible anyway, so its reading is 0 and the hard constraint is what excludes it.
+type HostedRankAcc { seen: Bool, rank: Int }
+
+fn hosted_effort_rank(efforts: List<OpenRouterReasoningEffort>, effort: OpenRouterReasoningEffort) -> Int {
+  let acc = fold(efforts, init: HostedRankAcc { seen: false, rank: 0 }, f: (a, e) => {
+    let seen = a.seen || openrouter_effort_eq(a: e, b: effort)
+    HostedRankAcc { seen: seen, rank: if seen { a.rank + 1 } else { 0 } }
+  })
+  acc.rank
+}
+
+fn hosted_level_depth_rank(route: HarnessHostedRoute, level: HarnessReasoningLevel) -> Int {
+  match harness_openrouter_level_effort(level: level) {
+    Absent => 0
+    Present { value: effort } => hosted_effort_rank(efforts: route.supported_efforts, effort: effort)
+  }
+}
+
+fn hosted_level_admitted(route: HarnessHostedRoute, level: HarnessReasoningLevel, max_tokens: TokenCount) -> Bool {
+  token_count_value(t: max_tokens) <= token_count_value(t: route.max_completion)
+    && (match harness_reasoning_kwargs_for(unit: route.unit, level: level) {
+      ReasoningKwargsAdmitted { kwargs: _ } => true
+      ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+    })
+}
+
+fn hosted_level_entry(route: HarnessHostedRoute, level: HarnessReasoningLevel, max_tokens: TokenCount) -> ParetoEntry {
+  let no_gaps: List<AxisGap> = []
+  ParetoEntry {
+    identity: hosted_level_identity(level: level),
+    display_label: harness_reasoning_level_wire(level: level),
+    readings: [
+      AxisReading { axis: ax_hosted_reasoning_depth, interval_micro: degenerate_interval(point: hosted_level_depth_rank(route: route, level: level) * 1000000) },
+      AxisReading { axis: ax_hosted_money_per_request, interval_micro: degenerate_interval(point: (money_amount_micro_count(m: route.price_per_token) as Int) * token_count_value(t: max_tokens)) },
+      AxisReading { axis: ax_hosted_quota_per_request, interval_micro: degenerate_interval(point: 1000000) },
+      AxisReading { axis: ax_hosted_level_admitted, interval_micro: degenerate_interval(point: if hosted_level_admitted(route: route, level: level, max_tokens: max_tokens) { 1000000 } else { 0 }) },
+    ],
+    missing_inputs: no_gaps,
+  }
+}
+
+data harness_hosted_levels: List<HarnessReasoningLevel> = [ReasoningOff, ReasoningStandard, ReasoningMaximum]
+
+fn harness_hosted_level_field(route: HarnessHostedRoute, max_tokens: TokenCount) -> List<ParetoEntry> {
+  map(harness_hosted_levels, l => hosted_level_entry(route: route, level: l, max_tokens: max_tokens))
+}
+
+fn harness_hosted_level_assessment() -> DecisionAssessment {
+  let subject_id = hosted_ref(name: "harness_hosted_level_subject")
+  let var_id = hosted_ref(name: "harness_hosted_level_variable")
+  let term_id = hosted_ref(name: "harness_hosted_reasoning_depth_term")
+  let param_id = hosted_ref(name: "harness_hosted_route_parameter")
+  DecisionAssessment {
+    subject: DecisionSubject {
+      identity: subject_id,
+      question: "which reasoning level a harness turn on a hosted free listing runs at" as NonEmptyStr,
+      parameters: [ContextParameter { identity: param_id }],
+      constraints: [DecisionConstraint { identity: hosted_level_admitted_constraint }],
+      objective: ObjectiveMeasure {
+        identity: hosted_ref(name: "harness_hosted_level_objective"),
+        goal: HigherIsBetter,
+        terms: [ObjectiveTerm { identity: term_id, ground: CitedToAuthority { authority: openrouter_reasoning_authority } }],
+      },
+      choice_domain: ChoiceDomain {
+        identity: hosted_ref(name: "harness_hosted_level_choice_domain"),
+        variables: [DecisionVariable { identity: var_id }],
+      },
+    },
+    sensitivities: [
+      VariesAlong {
+        term: term_id,
+        variable: var_id,
+        region: DecisionRegion { identity: hosted_ref(name: "harness_hosted_level_region") },
+        relation: MonotoneIncreasing,
+        coupling: CitedToAuthority { authority: openrouter_reasoning_authority },
+      },
+    ],
+    constraints: [
+      ConstraintSatisfied { constraint: hosted_level_admitted_constraint, evidence: "admissibility applied to the field as the hard constraint: the unit's reasoning seam and the listing's completion ceiling" as NonEmptyStr },
+    ],
+    parameters: [
+      ParameterBound { parameter: param_id, evidence: "the hosted route joined from its listing" as NonEmptyStr },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [term_id] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        VendorDocumentedCoupling { authority: openrouter_reasoning_authority, term: term_id, variable: var_id, subject: subject_id },
+      ],
+    },
+  }
+}
+
+fn harness_hosted_level_selection(route: HarnessHostedRoute, max_tokens: TokenCount) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: harness_hosted_level_assessment(),
+    candidate_field_identity: hosted_ref(name: "harness_hosted_level_field"),
+    field: harness_hosted_level_field(route: route, max_tokens: max_tokens),
+    axes: harness_hosted_level_axes,
+    constraints: harness_hosted_level_constraints,
+    constraint_authority: hosted_ref(name: "harness_hosted_level_constraints"),
+    policy: UniqueSurvivorRequired { identity: hosted_ref(name: "harness_hosted_level_policy") },
+    evidence_snapshot: hosted_ref(name: "harness_hosted_route_for"),
+  )
+}
+
+type HostedLevelChoice
+  = HostedLevelSelected { level: HarnessReasoningLevel }
+  | HostedLevelUnselected { cause: String }
+
+fn hosted_level_of_identity(identity: DeclarationRef) -> HarnessReasoningLevel? {
+  match filter(harness_hosted_levels, l => declaration_ref_eq(a: hosted_level_identity(level: l), b: identity)).first() {
+    Absent => none
+    Present { value: l } => Present { value: l }
+  }
+}
+
+// ANY ARM BUT A SELECTION IS A REFUSAL, carried with the arm's name. A turn does not run at a level the
+// selection did not choose: there is no fallback level, because a fallback is exactly the literal this
+// selection replaced.
+fn harness_hosted_level_choice(route: HarnessHostedRoute, max_tokens: TokenCount) -> HostedLevelChoice {
+  match harness_hosted_level_selection(route: route, max_tokens: max_tokens) {
+    SelectedWithin { candidate: c, receipt: _ } =>
+      match hosted_level_of_identity(identity: c.identity) {
+        Present { value: l } => HostedLevelSelected { level: l }
+        Absent => HostedLevelUnselected { cause: "the selection returned a candidate that is not one of the harness's levels" }
+      }
+    CandidateFieldUnestablished { causes: cs } => HostedLevelUnselected { cause: join(["the level field is unestablished: ", join(map(cs, c => c as String), "; ")], "") }
+    NoFeasibleRealization { causes: cs, scope: _ } => HostedLevelUnselected { cause: join(["no level is admissible on this route: ", join(map(cs, c => c as String), "; ")], "") }
+    SelectionNeedsEvidence { needs: _ } => HostedLevelUnselected { cause: "the level selection needs evidence it does not have" }
+    SelectionNeedsPolicy { survivors: _ } => HostedLevelUnselected { cause: "more than one level survives and no policy chooses between them" }
+    RealizationSelectionRefused { defects: ds } => HostedLevelUnselected { cause: join(["the level selection refused: ", join(map(ds, d => d as String), "; ")], "") }
+  }
+}
+
+// ── THE CREDENTIAL: MATERIALIZED, LIVENESS-READ, AND SCOPED TO THE BINDING ──────────────────────
+//
+// The key is fetched from Secret Manager, written as one header line into a 0600 file in a fresh
+// directory, and handed to curl by path (-H @file), so it is never an argv word. Liveness is read by the
+// key endpoint itself: GET /api/v1/key with the same header file asks OpenRouter whether this key is
+// accepted and cannot make a rejected key accepted, so the probe is inert (gunbc.readback_independence)
+// and gunbc.auth.materialized_secret with_materialized_secret is the gate that refuses a key the upstream
+// does not accept. The directory lives as long as the binding and is removed by its release.
+data openrouter_key_read_probe: ReadBackProbe = ReadBackProbe {
+  label: "GET https://openrouter.ai/api/v1/key with the materialized bearer header file",
+  subject: "the key this SecretRef holds is one OpenRouter currently accepts",
+  effect_on_subject: ProbeInert,
+}
+
+data hosted_key_read_deadline: Second = second(count: 20)
+
+type HarnessHostedQuota {
+  short_hostname: String
+  actor: NonEmptyStr
+  per_minute: UpstreamRateLimit
+  per_day: UpstreamRateLimit
+}
+
+// WHAT A HOSTED BINDING HOLDS IN PLACE OF A SEAT: the header file and the directory it lives in, the two
+// quota rows each request leases, the selected level, what the key read reported, and the terms that
+// govern the route. The terms ride the binding so every turn placed on it renders the standing it ran
+// under; they are not a gate this code can evaluate, because what the operator sends is not visible to it.
+type HarnessHostedAccess {
+  header_dir: NonEmptyStr
+  header_file: NonEmptyStr
+  quota: HarnessHostedQuota
+  key: OpenRouterKeyRead
+  terms: NvidiaApiTrialTerms
+}
+
+type HostedBindOutcome
+  = HostedBound { url: NonEmptyStr, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
+  | HostedBindRefused { detail: String }
+
+// EACH WAY THE KEY CAN FAIL TO ARRIVE IS ITS OWN CAUSE, because they have different remedies: no Secret
+// Manager access token to fetch with (a federation or upsert problem, nothing to do with the secret), a
+// refused read (the secret or its accessor cell), a response that did not decode, and a response that
+// answered about another version. Collapsing them to "could not be read" would send the operator to the
+// secret when the fault is the token.
+type HostedKeyFetch
+  = HostedKeyFetched { text: String }
+  | HostedKeyFetchRefused { cause: String }
+
+fn hosted_secret_text(route: HarnessHostedRoute) -> HostedKeyFetch {
+  match resolve_access_token() {
+    AccessTokenReady { token: t } =>
+      match fetch_secret_ref_credential_with_token(secret_ref: route.secret, access_token: t) {
+        SecretCredentialReady { credential: c, resolved_version: _ } => HostedKeyFetched { text: trim(s: c as String) }
+        SecretCredentialAccessUpsertRequired { plan: p } =>
+          HostedKeyFetchRefused { cause: join(["the secret read needs a Secret Manager access upsert first: ", access_token_upsert_required_reason(plan: p)], "") }
+        SecretCredentialWireDecodeRefused { identity_cause: i, payload_cause: pc } =>
+          HostedKeyFetchRefused { cause: join([
+            "the Secret Manager access response did not decode (version identity ", match i { Present { value: _ } => "refused" Absent => "decoded" },
+            ", payload ", match pc { Present { value: _ } => "refused" Absent => "decoded" }, ")",
+          ], "") }
+        SecretCredentialFetchRefused { reason: r } => HostedKeyFetchRefused { cause: join(["the Secret Manager read was refused: ", r as String], "") }
+        SecretCredentialResolvedVersionMismatch { requested: q, resolved: r } =>
+          HostedKeyFetchRefused { cause: join(["the Secret Manager read asked for version ", q, " and was answered about ", r], "") }
+      }
+    AccessTokenUpsertRequired { plan: p } =>
+      HostedKeyFetchRefused { cause: join(["no Secret Manager access token is available and an access upsert is required: ", access_token_upsert_required_reason(plan: p)], "") }
+    AccessTokenEnsureRefused { reason: r } =>
+      HostedKeyFetchRefused { cause: join(["no Secret Manager access token could be ensured: ", r as String], "") }
+  }
+}
+
+// THE KEY READ, AS AN OBSERVATION VERDICT FOR THE MATERIALIZATION GATE, plus the decoded body for the
+// binding. A transport failure is Inaccessible, never Converged: an unread key is not a live one.
+type HostedKeyObservation
+  = HostedKeyObserved { key: OpenRouterKeyRead }
+  | HostedKeyUnobserved { cause: String }
+
+fn hosted_read_key(route: HarnessHostedRoute, header_file: NonEmptyStr) -> HostedKeyObservation {
+  let read = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
+    url: route.key_url,
+    max_seconds: to_string(second_count(s: hosted_key_read_deadline)) as NonEmptyStr,
+    accept: "Accept: application/json" as NonEmptyStr,
+    header_file: header_file,
+  )
+  if !read.success {
+    HostedKeyUnobserved { cause: join(["the key read failed: ", read.body], "") }
+  } else {
+    match openrouter_decode_key_read(body: read.body) {
+      OpenRouterKeyUndecodable { cause: c } => HostedKeyUnobserved { cause: c }
+      OpenRouterKeyDecoded { key: k } => HostedKeyObserved { key: k }
+    }
+  }
+}
+
+fn hosted_key_liveness(observation: HostedKeyObservation) -> ObservationVerdict? {
+  match observation {
+    HostedKeyObserved { key: _ } => Present { value: Converged }
+    HostedKeyUnobserved { cause: _ } => Present { value: Inaccessible }
+  }
+}
+
+// THE KEY MUST BE ONE THAT CANNOT SPEND MONEY, and the binding refuses one that can. The operator capped
+// this key at zero credits so a request that strays onto a priced model answers 402 instead of charging;
+// a key read showing no cap, or a positive one, means that guard is gone, and a free-only route that ran
+// anyway would be the externalized degradation DESIGN section 5 names -- the same name, a different
+// burden. The daily tier is read from the same response: it is per ACCOUNT and the key cap does not
+// change it.
+fn hosted_access_from_key(route: HarnessHostedRoute, key: OpenRouterKeyRead, level: HarnessReasoningLevel, header_dir: NonEmptyStr, header_file: NonEmptyStr, short_hostname: String, actor: NonEmptyStr) -> HostedBindOutcome? {
+  match key.spend_limit {
+    KeySpendUncapped => none
+    KeySpendCappedAbove { lexeme: _ } => none
+    KeySpendCappedAtZero =>
+      match openrouter_credits_from_daily_limit(daily_limit: key.free_daily_limit) {
+        CreditsTierUnrecognized { daily_limit: _ } => none
+        CreditsTierObserved { credits: credits } => Present { value: HostedBound {
+          url: route.url,
+          model: harness_unit_model_id(unit: route.unit),
+          unit: route.unit,
+          level: level,
+          access: HarnessHostedAccess {
+            header_dir: header_dir,
+            header_file: header_file,
+            quota: HarnessHostedQuota { short_hostname: short_hostname, actor: actor, per_minute: route.per_minute, per_day: openrouter_free_models_per_day(credits: credits) },
+            key: key,
+            terms: route.terms,
+          },
+        } }
+      }
+  }
+}
+
+// THE DAY POOL STARTS FROM WHAT THE UPSTREAM SAYS REMAINS, NOT FROM ITS CEILING. The tier sets the
+// ceiling; free_model_daily_requests.remaining says how much of it is left today, including requests
+// another client of this key spent and requests made before this ledger existed. The reading is
+// recorded on the day partition (gunbc.fabric_quota fabric_quota_observe_upstream) before the binding is
+// handed out, so the first lease already sees it. A reading that cannot be recorded refuses the bind:
+// leasing against the bare ceiling would admit requests the upstream has already refused.
+fn hosted_day_remaining(key: OpenRouterKeyRead) -> Nat? {
+  checked_int_to_nat(n: key.free_daily_remaining)
+}
+
+fn hosted_record_day_remaining(bound: HostedBindOutcome, key: OpenRouterKeyRead) -> HostedBindOutcome {
+  match bound {
+    HostedBindRefused { detail: d } => HostedBindRefused { detail: d }
+    HostedBound { url: u, model: m, unit: un, level: l, access: a } =>
+      match hosted_day_remaining(key: key) {
+        Absent => HostedBindRefused { detail: join(["the key read reports a negative free-model remaining count (", to_string(key.free_daily_remaining), ")"], "") }
+        Present { value: remaining } =>
+          match fabric_quota_observe_upstream(short_hostname: a.quota.short_hostname, limit: a.quota.per_day, remaining: remaining, actor: a.quota.actor) {
+            QuotaObservationRefused { detail: d } => HostedBindRefused { detail: join(["the upstream's remaining free-model requests could not be recorded on the day pool: ", d], "") }
+            QuotaUpstreamRecorded { partition: _, remaining: _ } => HostedBound { url: u, model: m, unit: un, level: l, access: a }
+          }
+      }
+  }
+}
+
+fn hosted_key_refusal(key: OpenRouterKeyRead) -> String {
+  match key.spend_limit {
+    KeySpendCappedAtZero =>
+      join(["the key reports a free-model daily limit of ", to_string(key.free_daily_limit), ", which is neither published tier (50 or 1000); refusing to lease against an unpublished ceiling"], "")
+    KeySpendUncapped => "the key reports no credit limit: it can spend money on a priced model, and this route admits only a key capped at zero credits"
+    KeySpendCappedAbove { lexeme: lx } => join(["the key reports a credit limit of ", lx, ": it can spend money on a priced model, and this route admits only a key capped at zero credits"], "")
+  }
+}
+
+fn hosted_bind_with_header(route: HarnessHostedRoute, header_dir: NonEmptyStr, header_file: NonEmptyStr, short_hostname: String, actor: NonEmptyStr, max_tokens: TokenCount) -> HostedBindOutcome {
+  let observation = hosted_read_key(route: route, header_file: header_file)
+  match with_materialized_secret(
+    ref: route.secret,
+    binding: BearerHeaderFile,
+    existence: SmEnabled,
+    probe: openrouter_key_read_probe,
+    liveness_observation: hosted_key_liveness(observation: observation),
+    use: m => observation,
+  ) {
+    MaterializationRefused { cause: SecretNotLive { verdict: _ } } =>
+      HostedBindRefused { detail: match observation { HostedKeyUnobserved { cause: c } => join(["the OpenRouter key is not live: ", c], "") HostedKeyObserved { key: _ } => "the OpenRouter key is not live" } }
+    MaterializationRefused { cause: SecretVersionUnusable { state: _ } } => HostedBindRefused { detail: "the OpenRouter key's secret version is not usable" }
+    MaterializationRefused { cause: LivenessProbeNotIndependent { probe_label: p } } => HostedBindRefused { detail: join(["the key liveness probe is not independent: ", p as String], "") }
+    MaterializationCompleted { value: HostedKeyUnobserved { cause: c } } => HostedBindRefused { detail: c }
+    MaterializationCompleted { value: HostedKeyObserved { key: key } } =>
+      match harness_hosted_level_choice(route: route, max_tokens: max_tokens) {
+        HostedLevelUnselected { cause: c } => HostedBindRefused { detail: c }
+        HostedLevelSelected { level: l } =>
+          match hosted_access_from_key(route: route, key: key, level: l, header_dir: header_dir, header_file: header_file, short_hostname: short_hostname, actor: actor) {
+            Absent => HostedBindRefused { detail: hosted_key_refusal(key: key) }
+            Present { value: bound } => hosted_record_day_remaining(bound: bound, key: key)
+          }
+      }
+  }
+}
+
+// THE BIND. A fetched secret that could not be written leaves nothing behind; any refusal after the
+// header file exists removes its directory before answering, so a refused bind holds no credential on
+// disk.
+fn harness_hosted_bind(unit: HarnessServingUnit, short_hostname: String, actor: NonEmptyStr, max_tokens: TokenCount) -> HostedBindOutcome {
+  match harness_hosted_route_for(unit: unit) {
+    Absent => HostedBindRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat and has no hosted route"], "") }
+    Present { value: route } =>
+      match hosted_secret_text(route: route) {
+        HostedKeyFetchRefused { cause: c } => HostedBindRefused { detail: join(["the OpenRouter key (", route.secret.secret as String, ") could not be fetched: ", c], "") }
+        HostedKeyFetched { text: key_text } =>
+          if key_text == "" {
+            HostedBindRefused { detail: "the OpenRouter key secret is empty" }
+          } else {
+            let dir = shell.Mktemp.Dir()
+            if !dir.success {
+              HostedBindRefused { detail: "mktemp -d failed for the bearer header file" }
+            } else {
+              let header_file = join([dir.path as String, "/authorization"], "") as NonEmptyStr
+              let wrote = Filesystem.WriteOwnerOnly(path: header_file as String, content: openrouter_authorization_header_line(key: key_text as NonEmptyStr))
+              if !wrote.success {
+                let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                HostedBindRefused { detail: "could not write the bearer header file" }
+              } else {
+                match hosted_bind_with_header(route: route, header_dir: dir.path as String as NonEmptyStr, header_file: header_file, short_hostname: short_hostname, actor: actor, max_tokens: max_tokens) {
+                  HostedBindRefused { detail: d } => {
+                    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+                    HostedBindRefused { detail: d }
+                  }
+                  HostedBound { url: u, model: m, unit: un, level: l, access: a } => HostedBound { url: u, model: m, unit: un, level: l, access: a }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+type HostedRelease
+  = HostedReleased
+  | HostedReleaseRefused { detail: String }
+
+fn harness_hosted_release(access: HarnessHostedAccess) -> HostedRelease {
+  let removed = shell.Remove.RecursiveForce(path: access.header_dir as String as FilePath)
+  if removed.success { HostedReleased } else { HostedReleaseRefused { detail: join(["the bearer header directory ", access.header_dir as String, " could not be removed"], "") } }
+}
+
+fn harness_hosted_access_wire(access: HarnessHostedAccess) -> String {
+  join([
+    "hosted quota ", to_string(access.quota.per_minute.requests), "/minute and ", to_string(access.quota.per_day.requests), "/day; ",
+    openrouter_key_spend_limit_wire(l: access.key.spend_limit), "; free-model requests today ", to_string(access.key.free_daily_used), "/", to_string(access.key.free_daily_limit),
+    "; governed by ", nvidia_api_trial_terms_wire(t: access.terms) as String,
+  ], "")
+}
+
+// ── EACH REQUEST IS CHARGED TO BOTH POOLS BEFORE IT IS SENT ───────────────────────────────────
+//
+// THE LOCAL QUOTA IS A CLOSE, CONSERVATIVE PRE-CHECK, NOT AN EXACT GATE, AND THE UPSTREAM'S 429 IS THE
+// BACKSTOP. This route deliberately revises the 2026-09-06 ruling that a caller refuses before the upstream
+// would have answered 429 (gunbc.fabric_quota): the pools below make an over-spend rare and keep the
+// ledger honest, but nothing here can make the local count equal the upstream's at a window boundary --
+// the upstream counts a request when it RECEIVES it, and nothing on this side bounds when a process's first
+// request byte leaves. A 429 that gets through is a typed refusal carrying the upstream's own retry hints
+// (extdeps.openrouter.openrouter OpenRouterRateLimitRefusal), reported in the turn outcome and never
+// retried (operator decision, escalation msg_46a417a3). Machinery whose only job was to make the count
+// exact -- an admission lock, charging every window a request might span -- is deliberately absent.
+//
+// THE CHARGE AND THE RESPONSE ARE TWO LIFETIMES. The upstream counts a request in the window it ARRIVES
+// in, whatever happens to its answer afterwards; the answer may take minutes. An earlier revision held
+// the lease across the response and settled it afterwards, with the response deadline as the term --
+// and a 2,348-second term can never fit a 60-second lapsing window, so the minute pool refused
+// LeaseCrossesLapse on every request and nothing was ever sent. Shortening the term would not have
+// fixed it: a lease held until the answer arrives still outlives a window the request was counted in.
+//
+// SO A REQUEST IS CHARGED, NOT HELD. Each pool is leased for the remainder of its current window
+// (gunbc.fabric_quota QuotaTermToWindowEnd, read off the same clock reading the lease is stamped with),
+// and both leases are settled at one BEFORE the request goes out. The charge then stands for the rest of
+// the window whatever the response does, which is also the conservative accounting for a request whose
+// fate is unknown: a crash after the send, or a transport that failed mid-flight, still counted upstream
+// as far as anyone here can tell, so it is never refunded.
+//
+// BOTH POOLS OR NEITHER. The minute pool is leased first because it refills soonest; if the day pool then
+// refuses, the minute lease is settled at zero so its slot returns at once.
+type HostedRoundLease
+  = HostedRoundCharged
+  | HostedRoundQuotaFull { wire: String }
+  | HostedRoundUnleasable { detail: String }
+
+// THE DECISION IS PURE AND THE LEASING IS NOT. What a pair of lease answers MEANS is decided from
+// supplied answers; the day pool is asked only when the minute pool leased, so its answer is absent
+// otherwise, and a refusal after the minute pool leased names that lease as owed back.
+type HostedRoundDecision
+  = RoundBothLeased { minute: QuotaLease, day: QuotaLease }
+  | RoundRefusedFull { wire: String, minute_to_return: QuotaLease? }
+  | RoundRefusedUnleasable { detail: String, minute_to_return: QuotaLease? }
+
+fn hosted_round_decision(minute: QuotaLease, day: QuotaLease?) -> HostedRoundDecision {
+  match minute {
+    QuotaFull { wire: w } => RoundRefusedFull { wire: w, minute_to_return: none }
+    QuotaLeaseRefused { detail: d } => RoundRefusedUnleasable { detail: d, minute_to_return: none }
+    QuotaLeased { grant: _, partition: _, store: _, limit: _ } =>
+      match day {
+        Absent => RoundRefusedUnleasable { detail: "the minute pool leased but the day pool was never asked", minute_to_return: Present { value: minute } }
+        Present { value: QuotaLeased { grant: g, partition: p, store: st, limit: l } } => RoundBothLeased { minute: minute, day: QuotaLeased { grant: g, partition: p, store: st, limit: l } }
+        Present { value: QuotaFull { wire: w } } => RoundRefusedFull { wire: w, minute_to_return: Present { value: minute } }
+        Present { value: QuotaLeaseRefused { detail: d } } => RoundRefusedUnleasable { detail: d, minute_to_return: Present { value: minute } }
+      }
+  }
+}
+
+fn hosted_return_minute(minute: QuotaLease?) -> String {
+  match minute {
+    Absent => ""
+    Present { value: m } => join(["; minute lease returned: ", quota_settle_wire(s: fabric_quota_settle(lease: m, actual: 0))], "")
+  }
+}
+
+fn hosted_settle_refusal(s: QuotaSettle, pool: String) -> List<String> {
+  match s {
+    QuotaSettled { partition: _, actual: _ } => []
+    QuotaSettleRefused { detail: d } => [join([pool, ": ", d], "")]
+  }
+}
+
+// A CHARGE THAT DID NOT RECORD IS NOT SENT. The request has not gone out yet, so refusing costs nothing
+// upstream; sending it would spend quota the ledger does not show, which is the over-admission the
+// lease exists to prevent. A lease left unsettled by the refusal still charges until its window ends,
+// so the refusal errs on the side of spending less.
+fn hosted_round_charge_both(minute: QuotaLease, day: QuotaLease, minute_amount: Nat, day_amount: Nat) -> HostedRoundLease {
+  let refused = concat(
+    hosted_settle_refusal(s: fabric_quota_settle(lease: minute, actual: minute_amount), pool: "minute"),
+    hosted_settle_refusal(s: fabric_quota_settle(lease: day, actual: day_amount), pool: "day"),
+  )
+  if count(refused) == 0 {
+    HostedRoundCharged
+  } else {
+    HostedRoundUnleasable { detail: join(["the request's charge did not record, so it was not sent: ", join(refused, "; ")], "") }
+  }
+}
+
+// THE CHARGE COVERS THIS SEND AND EVERY SEND STILL IN FLIGHT FROM AN EARLIER WINDOW
+// (gunbc.harness.harness_seat hosted_inflight_carried): each may arrive in this window, and none was
+// charged to it. A refusal carries the held seats' release hint, so a pool starved by seats whose holders
+// died says which seats and how to release them.
+fn harness_hosted_round_charge(quota: HarnessHostedQuota, carried_minute: Nat, carried_day: Nat, release_hint: String) -> HostedRoundLease {
+  let minute_amount = carried_minute + 1
+  let day_amount = carried_day + 1
+  let minute = fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: minute_amount, actor: quota.actor, term: QuotaTermToWindowEnd)
+  let day = match minute {
+    QuotaLeased { grant: _, partition: _, store: _, limit: _ } =>
+      Present { value: fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_day, amount: day_amount, actor: quota.actor, term: QuotaTermToWindowEnd) }
+    QuotaFull { wire: _ } => none
+    QuotaLeaseRefused { detail: _ } => none
+  }
+  match hosted_round_decision(minute: minute, day: day) {
+    RoundBothLeased { minute: m, day: d } => hosted_round_charge_both(minute: m, day: d, minute_amount: minute_amount, day_amount: day_amount)
+    RoundRefusedFull { wire: w, minute_to_return: r } => HostedRoundQuotaFull { wire: join([w, hosted_return_minute(minute: r), release_hint], "") }
+    RoundRefusedUnleasable { detail: d, minute_to_return: r } => HostedRoundUnleasable { detail: join([d, hosted_return_minute(minute: r)], "") }
+  }
+}
+
+// THE UPSTREAM'S REFUSAL, DECODED. An error body is OpenRouter's typed error when it decodes; a body that
+// does not decode is reported as itself, because a transport failure has no error object to read.
+fn harness_hosted_refusal_cause(body: String) -> String {
+  match openrouter_decode_error_body(body: body) {
+    OpenRouterErrorDecoded { error: e } => openrouter_error_wire(e: e)
+    OpenRouterErrorUndecodable { cause: _ } => body
+  }
+}
+
+// ── WHAT A TURN CARRIES ABOUT HOW ITS REQUESTS ARE ADMITTED ───────────────────────────────────
+//
+// A fleet turn's requests are admitted by the seat it already holds, unauthenticated over the fleet's
+// network. A hosted turn's requests each lease quota and carry the bearer header file. The turn config
+// carries which, so the POST is chosen by the binding the turn was placed on, never re-derived from the
+// unit inside the loop.
+type HarnessBackendAccess
+  = BackendAdmittedBySeat
+  | BackendAdmittedByHostedQuota { header_file: NonEmptyStr, quota: HarnessHostedQuota }
+
+fn harness_hosted_backend_access(access: HarnessHostedAccess) -> HarnessBackendAccess {
+  BackendAdmittedByHostedQuota { header_file: access.header_file, quota: access.quota }
+}

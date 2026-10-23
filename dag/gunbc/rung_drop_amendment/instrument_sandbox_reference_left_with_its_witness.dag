@@ -1,0 +1,14 @@
+module gunbc.rung_drop_amendment.instrument_sandbox_reference_left_with_its_witness
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+data instrument_sandbox_reference_left_with_its_witness: RungDropAmendment = RungDropAmendment {
+  drop_identity: "deleted_cadence_reference" as NonEmptyStr,
+
+  amended: "2026-10-04",
+
+  later_event: "the owner ruled the unused /sandbox/instrument served page deleted, and gunbc.roadmap_instrument_sandbox left the tree together with the witness modules that existed only for it: test.claim.instrument_sandbox_witness, whose note at fixture_line_remaining was the population member that cited the deleted falsifier cadence for its live half, and test.claim.long.instrument_sandbox_live_witness, that live half, whose rows in gunbc.ci_layer_roots witness_exclusion_frontier and falsifier_substrate_long_lane_rows were deleted in the same change",
+
+  bearing: "the population shrinks by the one row test.claim.instrument_sandbox_witness fixture_line_remaining, and its PremiseInvalidated row leaves gunbc.deleted_cadence_reference_census with it. The row is NOT restored and NOT rebound to an executing consumer: the authority row that stated the lost enforcement no longer exists, so there is nothing left for the cadence to cover. The loss, reason and restoration trigger are unchanged for every remaining row"
+}

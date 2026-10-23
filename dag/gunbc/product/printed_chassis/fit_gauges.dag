@@ -1,0 +1,99 @@
+module product.printed_chassis.fit_gauges
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.standards.micro_atx {
+  MountingLocationId, LocB, LocC, LocH, LocL, LocM, LocR, micro_atx_mounting_locations,
+}
+import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
+import product.printed_chassis.standoff_gauge {
+  StandoffGaugeAdmission, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,
+  GaugeLocationsCoincide, GaugeExceedsBuildEnvelope, admit_standoff_gauge,
+  gauge_edge_margin, gauge_thickness,
+}
+import product.printed_chassis.cadquery_realization {
+  CadQueryEmitted, CadQueryDimensionUnrenderable, realize_plate_part,
+  plate_part_from_standoff_gauge, cadquery_program_source,
+}
+import product.printed_chassis.export_profile { exercised_stl_knobs }
+import extdeps.cadquery.cadquery { stl_export_call }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess, exit_failure }
+
+// Follow-on experiments to the existing F-C gauge. These five axis-aligned pairs connect
+// the other five inferred board locations to that pair. J is explicitly excluded by the
+// board authority and S is unobserved; neither earns a support by appearing in a standard.
+// This roster selects experiments, not confirmed holes or structural support positions.
+// The connected graph does not determine all relative angles: inspect against board edges
+// and confirm the whole map in the adjustable fixture before freezing it.
+// Each part uses the existing gauge admission, dimensions, build envelope and emitter.
+type FitGaugePair { name: NonEmptyStr, a: MountingLocationId, b: MountingLocationId }
+
+data follow_on_fit_gauge_pairs: List<FitGaugePair> = [
+  FitGaugePair { name: "C-B", a: LocC, b: LocB },
+  FitGaugePair { name: "C-H", a: LocC, b: LocH },
+  FitGaugePair { name: "H-L", a: LocH, b: LocL },
+  FitGaugePair { name: "L-M", a: LocL, b: LocM },
+  FitGaugePair { name: "H-R", a: LocH, b: LocR },
+]
+
+fn fit_gauge_admission(pair: FitGaugePair) -> StandoffGaugeAdmission {
+  admit_standoff_gauge(rows: micro_atx_mounting_locations, envelope: a1_mini_build_envelope,
+    a: pair.a, b: pair.b, margin: gauge_edge_margin, thickness: gauge_thickness)
+}
+
+// This generates a local experiment, not an absolute process-qualification receipt.
+// The measured export knobs are reused without asserting that the unsettled profile is admitted.
+// A refused experiment carries no executable source.
+type FitGaugeSource = FitGaugeSourceReady { source: String } | FitGaugeSourceRefused { cause: NonEmptyStr }
+
+fn fit_gauge_source(pair: String) -> FitGaugeSource {
+  let matches = follow_on_fit_gauge_pairs |> filter(p => (p.name as String) == pair)
+  if (matches |> length) != 1 {
+    FitGaugeSourceRefused { cause: "expected exactly one declared fit gauge pair" }
+  } else {
+    match matches |> first {
+      Absent => FitGaugeSourceRefused { cause: "fit gauge pair absent" }
+      Present { value: p } => match fit_gauge_admission(pair: p) {
+        GaugeAdmitted { geometry: g } => match realize_plate_part(p: plate_part_from_standoff_gauge(g: g)) {
+          CadQueryEmitted { program: program } => FitGaugeSourceReady { source: concat(
+            cadquery_program_source(p: program) as String,
+            stl_export_call(destination: concat(p.name as String, ".stl"), knobs: exercised_stl_knobs)) },
+          CadQueryDimensionUnrenderable { micrometres: _ } => FitGaugeSourceRefused { cause: "unrenderable gauge dimension" },
+        },
+        GaugeLocationNotEnumerated { requested: _ } => FitGaugeSourceRefused { cause: "gauge location absent" },
+        GaugeLocationDuplicated { requested: _, count: _ } => FitGaugeSourceRefused { cause: "gauge location duplicated" },
+        GaugeLocationsCoincide { requested: _ } => FitGaugeSourceRefused { cause: "gauge locations coincide" },
+        GaugeExceedsBuildEnvelope { fit: _ } => FitGaugeSourceRefused { cause: "gauge exceeds build envelope" },
+      },
+    }
+  }
+}
+
+// Machine-readable generated source, without terminal styling or any printer actuation.
+fn main(pair: String) -> CliWireResponse {
+  fit_gauge_source_response(result: fit_gauge_source(pair: pair))
+}
+
+fn fit_gauge_source_response(result: FitGaugeSource) -> CliWireResponse {
+  match result {
+    FitGaugeSourceReady { source: s } => CliWirePrintable { bytes: s, exit: ExitSuccess },
+    FitGaugeSourceRefused { cause: c } => CliWirePrintable { bytes: "", exit: exit_failure(reason: c) },
+  }
+}
+
+// One compiler load prepares the complete experiment set. Any refusal withholds the whole
+// script, so a partial file cannot be mistaken for all five prepared gauges.
+fn batch() -> CliWireResponse {
+  let source = fold(follow_on_fit_gauge_pairs,
+    init: FitGaugeSourceReady { source: "# Generated follow-on Altra fit gauges; experimental spacing checks.\n" },
+    f: fn(acc, pair) {
+      match acc {
+        FitGaugeSourceRefused { cause: c } => FitGaugeSourceRefused { cause: c },
+        FitGaugeSourceReady { source: previous } => match fit_gauge_source(pair: pair.name as String) {
+          FitGaugeSourceReady { source: next } => FitGaugeSourceReady { source: concat(previous, next) },
+          FitGaugeSourceRefused { cause: c } => FitGaugeSourceRefused { cause: c },
+        },
+      }
+    })
+  fit_gauge_source_response(result: source)
+}

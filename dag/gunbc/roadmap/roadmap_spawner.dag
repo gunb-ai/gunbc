@@ -1,0 +1,493 @@
+module gunbc.roadmap_spawner
+
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
+  Acceptance, PrsMerged, ManualAcceptance,
+  WorkItemDispatch, NotDispatchable, Dispatchable,
+  node_sizing_derivation,
+  SectionElement, Prose, Group, SectionGroup,
+  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
+  section_group, roadmap_nodes_by_id, roadmap_nodes_with_id, roadmap_parent_index, roadmap_parent_ids_in,
+}
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import gunbc.roadmap.roadmap_lineage { lineage_index, lineage_walk_in }
+import gunbc.roadmap_sizing {
+  NodeSizingDerivation, SizingDerived, SizingNotDerivable,
+  intricacy_label, volume_label,
+}
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts, node_title }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load,
+  roadmap_authority, authored_merged_prs,
+  roadmap_authority_projection,
+  RoadmapAuthorityProjection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  declared_roadmap_nodes,
+  closing_contract_task_pairs_projection,
+  ClosingContractTaskPairsProjected,
+  ClosingContractTaskPairsProjectionRefused,
+  roadmap_node,
+  ticket,
+  dispatchable,
+  carrier,
+  fields,
+}
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue,
+  serialize_json,
+  quote_json_string,
+  json_null,
+  json_string,
+  json_int,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
+  json_str_list,
+}
+
+fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.nodes
+  }
+}
+
+fn element_edges(e: SectionElement) -> List<RoadmapEdge> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.edges
+  }
+}
+
+fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_nodes(e: e)))
+}
+
+fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_edges(e: e)))
+}
+
+fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
+  let lane_nodes = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_nodes(s: s)))
+  fold(doc.sections, init: lane_nodes, f: (acc, s) => concat(acc, section_nodes(s: s)))
+}
+
+fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
+  let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
+  fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
+}
+
+// RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE,
+// never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker.
+// The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a
+// section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted,
+// receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity
+// witnesses. The section was deleted and the nodes joined the declared graph; these predicates
+// close the CLASS: every node any rendered document carries must be value-equal to a declared node
+// or a projection-derived closing-contract task. Two refused first cuts are recorded because each
+// was a review catch of this wall violating the laws it enforces: identity-only membership (review
+// 45406 — an altered copy reusing a declared identity would pass as sanctioned while forking
+// content, the drifting duplicate authority DESIGN 3 forbids) and a hand-rolled document walker
+// beside doc_all_nodes (review 45412 — a traversal fork; the predicates live HERE, in the walker's
+// module, because roadmap_spawner already imports roadmap_authority and the reverse import would
+// cycle). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and
+// an altered copy of a real declared node (same identity, one field changed — derived from the
+// canonical node so the probe duplicates no literals). Neither probe node enters the declared
+// graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly
+// rather than vacuously passing.
+
+fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
+  match closing_contract_task_pairs_projection() {
+    ClosingContractTaskPairsProjectionRefused { detail: _ } =>
+      count(doc_all_nodes(doc: doc))
+    ClosingContractTaskPairsProjected { pairs: pairs } =>
+      let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
+      doc_all_nodes(doc: doc)
+        |> filter(n => !any(roadmap_nodes_with_id(index: sanctioned, id: n.node), s => s == n))
+        |> count
+  }
+}
+
+fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
+  let base = roadmap_authority()
+  RoadmapDocument {
+    preamble: base.preamble,
+    lead_lanes: base.lead_lanes,
+    sections: concat(base.sections, [RoadmapSection {
+      title: "SYNTHETIC ghost section (test probe only)",
+      elements: [section_group(label: "", nodes: [ghost], edges: [])],
+    }]),
+  }
+}
+
+fn roadmap_ghost_node_red_probe_count() -> Int {
+  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: roadmap_node(
+    identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
+    owner: "compiler-guarantee",
+    carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+    line: ticket(t: fields(
+      headline: "SYNTHETIC: a rendered node that no declared authority carries",
+      boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
+      displaced_cost: "None; this row exists to be caught.",
+      first_slice: "None.",
+      red_control: "Its own detection: the containment predicate must count exactly this node.",
+      out_of_scope: "Everything.",
+      handback: "None."
+    )),
+    dispatch: dispatchable(),
+  )))
+}
+
+// THE ALTERED-COPY PROBE COPIES THE FIRST DECLARED NODE rather than a named one. It used to look up
+// one id and answer 0 when that id was absent, so deleting the row would have turned the probe into
+// a count that no longer probes anything; the first declared node is absent only when the authority
+// declares nothing, and the witness asserting a count of exactly 1 reds on that too.
+fn roadmap_altered_copy_red_probe_count() -> Int {
+  match declared_roadmap_nodes() |> first {
+    Absent => 0
+    Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: RoadmapNode {
+      identity: n.identity,
+      node: n.node,
+      line: n.line,
+      carriers: n.carriers,
+      dispatch: n.dispatch,
+      execution: n.execution,
+      owner: "SYNTHETIC-altered-copy-probe",
+      signoff: n.signoff,
+      parent: n.parent,
+      centering: n.centering,
+    }))
+  }
+}
+
+// Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket
+// checkbox moves the page status to review, but never completes the node, removes its dispatch
+// action, or unblocks a dependent node. Only an accepting operator sign-off completes work.
+// Supersession is a separate terminal disposition: it never enters the done bucket, but it closes
+// dependency edges because the named successor owns the work. The same acceptance and
+// dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections.
+
+fn node_is_accepted(n: RoadmapNode) -> Bool {
+  signoff_accepts(s: n.signoff)
+}
+
+fn node_is_complete(n: RoadmapNode) -> Bool {
+  node_is_accepted(n: n)
+}
+
+fn frontier_node_is_superseded(n: RoadmapNode) -> Bool {
+  !(item_superseded_by(item: n.line) == "")
+}
+
+fn node_closes_dependency(n: RoadmapNode) -> Bool {
+  node_is_accepted(n: n) || frontier_node_is_superseded(n: n)
+}
+
+fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> Bool {
+  all(roadmap_parent_ids(edges: edges, node: id), pid =>
+    any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+}
+
+fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
+  match n.dispatch {
+    NotDispatchable => false
+    Dispatchable { repo: _, acceptance: _ } =>
+      !node_is_complete(n: n)
+        && !frontier_node_is_superseded(n: n)
+        && node_dep_done(nodes: nodes, edges: edges, id: n.node)
+  }
+}
+
+fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges))
+}
+
+// Renamed from node_is_sized with the fact it actually reads. It never consulted a size: it asked
+// whether the row carries a dispatch binding at all, which is what the coproduct's discriminant
+// always meant. Keeping the old name after the unbundling would be a section 3 meaning fork.
+fn node_is_dispatchable(n: RoadmapNode) -> Bool {
+  match n.dispatch {
+    NotDispatchable => false
+    Dispatchable { repo: _, acceptance: _ } => true
+  }
+}
+
+fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
+  node_is_dispatchable(n: n)
+    && !node_is_complete(n: n)
+    && !frontier_node_is_superseded(n: n)
+    && !node_dep_done(nodes: nodes, edges: edges, id: n.node)
+}
+
+fn node_is_frontier_done(n: RoadmapNode) -> Bool {
+  node_is_dispatchable(n: n)
+    && node_is_complete(n: n)
+    && !frontier_node_is_superseded(n: n)
+}
+
+type SpawnFrontier {
+  ready: List<RoadmapNode>
+  upcoming: List<RoadmapNode>
+  done: List<RoadmapNode>
+  superseded: List<RoadmapNode>
+}
+
+fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  SpawnFrontier {
+    ready: next_spawnable(doc: doc, merged: merged),
+    upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges)),
+    done: nodes |> filter(n => node_is_frontier_done(n: n)),
+    superseded: nodes |> filter(n => !(item_superseded_by(item: n.line) == "")),
+  }
+}
+
+fn json_str(s: String) -> String {
+  quote_json_string(s: s)
+}
+
+fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
+  match a {
+    PrsMerged => match line {
+      DerivableLine { prs, title: _, description: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged")),
+          json_kv(key: "prs", value: json_array(elements: prs |> map(n => json_int(n: n)))),
+        ])
+      AuthoredLine { done: _, content: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
+      PlainLine { content: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
+      SupersededLine { by: _, content: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
+      TicketLine { done: _, ticket: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
+    }
+    ManualAcceptance =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "manual")),
+      ])
+  }
+}
+
+fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
+  match (carriers |> filter(p => p.label == "plan")).first() {
+    Present { value: p } => json_string(s: p.path)
+    Absent => json_null()
+  }
+}
+
+// THE SIZE KEYS ARE OMITTED WHEN NO SIZE WAS DERIVED, never defaulted -- and THAT IS WHY THE
+// SCHEMA STRING MOVED TO v2. A substituted cell would publish the stub's silence as a measurement,
+// so omission is the only honest arm; but omission is a MATERIAL change to the wire contract, not a
+// cosmetic one. docs/plans/roadmap-spawner.md declares v1 a frozen interface in which intricacy and
+// volume are present and "drive ctrl's tier grid", so every v1 consumer is entitled to read them.
+// Emitting objects without them under the v1 name is precisely the meaning fork DESIGN section 3
+// forbids: one spelling, one declared version, materially different obligations. A materially
+// different contract needs a materially different name, so this is roadmap-spawn-request/v2 and
+// roadmap-dispatch/v2.
+//
+// WHAT THE BUMP DOES AND WHERE THE CLAIM STOPS: it withdraws v1's obligation. This emitter no
+// longer says the object it produces satisfies the contract a v1 reader was entitled to, so a
+// consumer that checks the schema string HAS the fact it needs to decide. It does NOT establish
+// that any consumer refuses: whether a v1-pinned reader rejects, ignores the field, or never reads
+// the string is a property of that consumer, and nothing on this side of the wire executes over it.
+// An earlier draft of this note said a v1-pinned consumer refuses loudly, which claimed an outcome
+// at the far end of a boundary this module cannot observe.
+fn sizing_json_members(derivation: NodeSizingDerivation) -> List<JsonKeyValue> {
+  match derivation {
+    SizingDerived { subject: _, sizing } => [
+      json_kv(key: "intricacy", value: json_string(s: intricacy_label(i: sizing.intricacy))),
+      json_kv(key: "volume", value: json_string(s: volume_label(v: sizing.volume))),
+    ]
+    SizingNotDerivable { subject: _, detail: _ } => []
+  }
+}
+
+fn node_json_value(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> JsonValue {
+  let parent_id_value = match roadmap_primary_parent(edges: edges, node: n.node) {
+    TopLevel => json_null()
+    UnderParent { parent: pid } => json_string(s: pid)
+  }
+  let owner_value = if n.owner == "" { json_null() } else { json_string(s: n.owner) }
+  let title = node_title(item: n.line)
+  json_object(members: concat([
+    json_kv(key: "node_id", value: json_string(s: n.node)),
+    json_kv(key: "title", value: json_string(s: title)),
+    json_kv(key: "repo", value: json_string(s: repo)),
+  ], concat(sizing_json_members(derivation: node_sizing_derivation(rn: n)), [
+    json_kv(key: "parent_node_id", value: parent_id_value),
+    json_kv(key: "parent_node_ids", value: json_array(elements: roadmap_parent_ids(edges: edges, node: n.node) |> map(id => json_string(s: id)))),
+    json_kv(key: "owner", value: owner_value),
+    json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
+    json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
+  ])))
+}
+
+fn node_json(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
+  serialize_json(v: node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges))
+}
+
+fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
+  node_unmet_parent_ids_in(graph: readiness_graph(nodes: nodes, edges: edges), id: id)
+}
+
+// THE READINESS GRAPH, indexed once per graph. Readiness asks every node of one graph the same
+// three questions -- its lineage walk, its prerequisites, which of them are closed -- so a fold over
+// a graph (a page's rows, the dispatcher's admission) indexes it once: lineage by id, parents by
+// child, the ids some node closes as a dependency. Asked of the raw lists per node, the parents and
+// closed reads made the fold nodes x edges and nodes x prerequisites x nodes, and the page and the
+// admission each paid it for the same rows.
+type ReadinessGraph {
+  lineage: Map<String, RoadmapNode>
+  fuel: Int
+  parents: Map<String, List<RoadmapNodeId>>
+  closes: Map<String, Bool>
+}
+
+fn readiness_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
+  let empty: Map<String, Bool> = empty_map()
+  ReadinessGraph {
+    lineage: lineage_index(nodes: nodes),
+    fuel: count(nodes) + 1,
+    parents: roadmap_parent_index(edges: edges),
+    closes: fold(nodes |> filter(n => node_closes_dependency(n: n)), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true)),
+  }
+}
+
+fn readiness_graph_closes(graph: ReadinessGraph, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: graph.closes, key: id as String) { Present { value: _ } => true  Absent => false }
+}
+
+fn node_unmet_parent_ids_in(graph: ReadinessGraph, id: RoadmapNodeId) -> List<RoadmapNodeId> {
+  roadmap_parent_ids_in(parents: graph.parents, node: id)
+    |> filter(pid => !readiness_graph_closes(graph: graph, id: pid))
+}
+
+// The one readiness of a node over an indexed graph: the page's scheduling and the dispatcher's
+// readiness gate both read this value.
+fn node_readiness_in_graph(node: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
+  node_readiness(
+    node: node,
+    lineage: lineage_walk_in(node_id: node.node as String, index: graph.lineage, fuel: graph.fuel),
+    unmet_parents: node_unmet_parent_ids_in(graph: graph, id: node.node) |> map(p => p as String),
+    merged: merged,
+  )
+}
+
+fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
+  serialize_json(v: json_array(elements: nodes |> map(n => match n.dispatch {
+    NotDispatchable => json_object(members: [])
+    Dispatchable { repo, acceptance } =>
+      node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
+  })))
+}
+
+fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
+  let nodes = next_spawnable(doc: doc, merged: merged)
+  let edges = doc_all_edges(doc: doc)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v2")),
+    json_kv(key: "anchor_commit", value: json_string(s: anchor_commit)),
+    json_kv(key: "ready", value: json_array(elements: nodes |> map(n => match n.dispatch {
+      NotDispatchable => json_object(members: [])
+      Dispatchable { repo, acceptance } =>
+        node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
+    }))),
+  ]))
+}
+
+fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: n.node)),
+    json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
+    json_kv(key: "unmet_parents", value: json_array(elements: unmet |> map(id => json_string(s: id)))),
+  ]))
+}
+
+fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+  serialize_json(v: json_array(elements: frontier_upcoming |> map(n =>
+    json_object(members: [
+      json_kv(key: "node_id", value: json_string(s: n.node)),
+      json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
+      json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
+    ])
+  )))
+}
+
+fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
+  json_str_list(items: frontier_done |> map(n => n.node))
+}
+
+data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
+
+fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonValue {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  let frontier = spawn_frontier(doc: doc, merged: merged)
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v2")),
+    json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.dispatch {
+      NotDispatchable => json_object(members: [])
+      Dispatchable { repo, acceptance } =>
+        node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
+    }))),
+    json_kv(key: "upcoming", value: json_array(elements: frontier.upcoming |> map(n =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: n.node)),
+        json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
+        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
+      ])
+    ))),
+    json_kv(key: "done", value: json_array(elements: frontier.done |> map(n => json_string(s: n.node)))),
+    json_kv(key: "superseded", value: json_array(elements: frontier.superseded |> map(n =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: n.node)),
+        json_kv(key: "superseded_by", value: json_string(s: item_superseded_by(item: n.line))),
+      ])
+    ))),
+  ])
+}
+
+fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
+  serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
+}
+
+fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection) -> String {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
+        json_kv(key: "refused", value: json_bool(b: true)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ]))
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
+        json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),
+        json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: doc, merged: authored_merged_prs())),
+      ]))
+  }
+}
+
+fn roadmap_dispatch_file_content() -> String {
+  roadmap_dispatch_file_content_for_projection(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()))
+}

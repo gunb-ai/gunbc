@@ -1,0 +1,464 @@
+module gunbc.legacy_test_behavior_disposition
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.dissolution { DissolutionCondition }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  FalsifierSubstrateLongLane,
+  witness_cadence_has_scheduled_route,
+}
+import gunbc.deleted_cadence_reference_census {
+  ExecutingConsumerReceipt,
+  PastExecutionReceipt,
+  executing_consumer_receipt_holds,
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+
+type LegacyTestBehavior {
+  source_file: FilePath
+  test_fn: NonEmptyStr
+}
+
+type TestBehaviorWitness {
+  entry: FilePath
+  test_fn: NonEmptyStr
+}
+
+type LegacyTestBehaviorDisposition
+  = CoveredByWitness {
+      behavior: LegacyTestBehavior,
+      witness: TestBehaviorWitness,
+      distinguishing_failure: NonEmptyStr,
+    }
+  | DeleteLowValueBehavior {
+      behavior: LegacyTestBehavior,
+      reason: NonEmptyStr,
+    }
+  | RetainedNonMigratableBehavior {
+      behavior: LegacyTestBehavior,
+      reason: NonEmptyStr,
+      dissolution: DissolutionCondition,
+    }
+
+// BEHAVIOR GRAIN, NOT MODULE GRAIN. The discovered subject is every line-anchored #[test] function
+// under src/v1/tests/src, identified by its source file and function name. A disposition is
+// admitted only for one such identity. CoveredByWitness additionally names a discovered `test fn`
+// in the floor corpus and the failure that distinguishes equivalent coverage from a guard that
+// merely stays quiet. DeleteLowValueBehavior and RetainedNonMigratableBehavior require their own
+// reasons; retention also names its dissolution trigger and never authorizes deletion. Unclassified
+// is deliberately not a disposition someone can author: it is the set difference discovered legacy
+// behaviors minus disposition identities. Completion is that difference at zero together with no
+// stale or duplicate dispositions and no unresolved witness reference. No numeric snapshot is an
+// oracle.
+
+// DECLARED SEED SCAFFOLD for the missing list-directory effect. cli_run.rs
+// test_migration_behavior_discovery_report walks the legacy Rust test directory and the existing
+// corpus_dag_files floor population, extracting line-anchored #[test] and `test fn` declarations.
+// Discovery errors make test_migration_behavior_discovery_holds false rather than fabricating an
+// empty population. The identities cross the interpreter boundary as canonical
+// source-file::function strings; this module derives the same serialization from typed fields.
+// DEFERRAL OWNER: the self-host lane's v1-hand-queue-drain ROADMAP node ('Work through the
+// remaining hand-written files the products need'); this product-reachable cli_run.rs bridge is one
+// of that node's hand-written files and cannot silently fall outside its derived queue. DISSOLVES
+// WHEN .dag can enumerate repository files and read the parsed Rust/DAG declaration trees directly;
+// the graph and its dispositions stay, only the host observation bridge deletes.
+
+fn legacy_test_behavior_id(behavior: LegacyTestBehavior) -> String {
+  concat(concat(behavior.source_file as String, "::"), behavior.test_fn as String)
+}
+
+fn test_behavior_witness_id(witness: TestBehaviorWitness) -> String {
+  concat(concat(witness.entry as String, "::"), witness.test_fn as String)
+}
+
+fn legacy_test_disposition_behavior(
+  disposition: LegacyTestBehaviorDisposition,
+) -> LegacyTestBehavior {
+  match disposition {
+    CoveredByWitness { behavior, witness: _, distinguishing_failure: _ } => behavior
+    DeleteLowValueBehavior { behavior, reason: _ } => behavior
+    RetainedNonMigratableBehavior {
+      behavior,
+      reason: _,
+      dissolution: _,
+    } => behavior
+  }
+}
+
+fn legacy_test_disposition_id(disposition: LegacyTestBehaviorDisposition) -> String {
+  legacy_test_behavior_id(
+    behavior: legacy_test_disposition_behavior(disposition: disposition),
+  )
+}
+
+fn legacy_test_disposition_same_behavior(
+  a: LegacyTestBehaviorDisposition,
+  b: LegacyTestBehaviorDisposition,
+) -> Bool {
+  legacy_test_disposition_id(disposition: a) == legacy_test_disposition_id(disposition: b)
+}
+
+fn legacy_test_disposition_witness_resolves(
+  disposition: LegacyTestBehaviorDisposition,
+  discovered_witnesses: List<String>,
+) -> Bool {
+  match disposition {
+    CoveredByWitness { behavior: _, witness, distinguishing_failure: _ } =>
+      discovered_witnesses |> any(id => id == test_behavior_witness_id(witness: witness))
+    DeleteLowValueBehavior { behavior: _, reason: _ } => true
+    RetainedNonMigratableBehavior {
+      behavior: _,
+      reason: _,
+      dissolution: _,
+    } => true
+  }
+}
+
+fn legacy_test_behavior_unclassified(
+  discovered_legacy: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<String> {
+  discovered_legacy
+    |> filter(id => !(dispositions |> any(d => legacy_test_disposition_id(disposition: d) == id)))
+}
+
+fn legacy_test_behavior_stale_dispositions(
+  discovered_legacy: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => !(discovered_legacy |> any(id => id == legacy_test_disposition_id(disposition: d))))
+}
+
+fn legacy_test_behavior_duplicate_dispositions(
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => count(
+      dispositions
+        |> filter(peer => legacy_test_disposition_same_behavior(a: peer, b: d))
+    ) > 1)
+}
+
+fn legacy_test_behavior_unresolved_witness_dispositions(
+  discovered_witnesses: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => !legacy_test_disposition_witness_resolves(
+      disposition: d,
+      discovered_witnesses: discovered_witnesses,
+    ))
+}
+
+// A FAMILY IS A SCOPE OVER THE ONE GRAPH, NOT A SECOND CLASSIFICATION SCHEME. Migration proceeds
+// family by family while the closing contract stays red on the rest of the corpus, so a family
+// needs its own completion reading — but membership is derived by matching discovered behavior
+// identities against the family's declared source files, never by listing the behaviors, so a
+// #[test] added to a member module lands in the family's unclassified set and reds its completion
+// the same way it reds the global frontier. Two states are refused rather than passed: a family
+// whose declared source files discover no behavior at all is Incomplete, not vacuously complete (a
+// renamed or misspelled path cannot read as finished work), and the family's own dispositions are
+// checked for staleness against the WHOLE discovered population, so moving a behavior out of a
+// member module refuses instead of quietly narrowing. Completion of a family is not completion of
+// the contract and does not authorize deletion; it is the unit in which the frontier shrinks.
+
+type LegacyTestBehaviorFamily {
+  name: NonEmptyStr
+  source_files: List<FilePath>
+}
+
+fn legacy_test_behavior_family_owns(
+  family: LegacyTestBehaviorFamily,
+  behavior_id: String,
+) -> Bool {
+  family.source_files
+    |> any(source_file => starts_with(
+      s: behavior_id,
+      prefix: concat(source_file as String, "::"),
+    ))
+}
+
+fn legacy_test_behavior_family_discovered(
+  family: LegacyTestBehaviorFamily,
+  discovered_legacy: List<String>,
+) -> List<String> {
+  discovered_legacy
+    |> filter(id => legacy_test_behavior_family_owns(family: family, behavior_id: id))
+}
+
+fn legacy_test_behavior_family_dispositions(
+  family: LegacyTestBehaviorFamily,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<LegacyTestBehaviorDisposition> {
+  dispositions
+    |> filter(d => legacy_test_behavior_family_owns(
+      family: family,
+      behavior_id: legacy_test_disposition_id(disposition: d),
+    ))
+}
+
+fn legacy_test_behavior_family_unclassified(
+  family: LegacyTestBehaviorFamily,
+  discovered_legacy: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> List<String> {
+  legacy_test_behavior_unclassified(
+    discovered_legacy: legacy_test_behavior_family_discovered(
+      family: family,
+      discovered_legacy: discovered_legacy,
+    ),
+    dispositions: legacy_test_behavior_family_dispositions(
+      family: family,
+      dispositions: dispositions,
+    ),
+  )
+}
+
+fn legacy_test_behavior_family_complete(
+  discovery_holds: Bool,
+  family: LegacyTestBehaviorFamily,
+  discovered_legacy: List<String>,
+  discovered_witnesses: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> Bool {
+  let family_dispositions = legacy_test_behavior_family_dispositions(
+    family: family,
+    dispositions: dispositions,
+  )
+  discovery_holds
+    && count(legacy_test_behavior_family_discovered(
+      family: family,
+      discovered_legacy: discovered_legacy,
+    )) > 0
+    && count(legacy_test_behavior_family_unclassified(
+      family: family,
+      discovered_legacy: discovered_legacy,
+      dispositions: dispositions,
+    )) == 0
+    && count(legacy_test_behavior_stale_dispositions(
+      discovered_legacy: discovered_legacy,
+      dispositions: family_dispositions,
+    )) == 0
+    && count(legacy_test_behavior_duplicate_dispositions(
+      dispositions: family_dispositions,
+    )) == 0
+    && count(legacy_test_behavior_unresolved_witness_dispositions(
+      discovered_witnesses: discovered_witnesses,
+      dispositions: family_dispositions,
+    )) == 0
+}
+
+fn legacy_test_behavior_disposition_graph_holds(
+  discovery_holds: Bool,
+  discovered_legacy: List<String>,
+  discovered_witnesses: List<String>,
+  dispositions: List<LegacyTestBehaviorDisposition>,
+) -> Bool {
+  discovery_holds
+    && count(legacy_test_behavior_unclassified(
+      discovered_legacy: discovered_legacy,
+      dispositions: dispositions,
+    )) == 0
+    && count(legacy_test_behavior_stale_dispositions(
+      discovered_legacy: discovered_legacy,
+      dispositions: dispositions,
+    )) == 0
+    && count(legacy_test_behavior_duplicate_dispositions(dispositions: dispositions)) == 0
+    && count(legacy_test_behavior_unresolved_witness_dispositions(
+      discovered_witnesses: discovered_witnesses,
+      dispositions: dispositions,
+    )) == 0
+}
+
+// TWO CLOCKS, SPLIT INTO TWO FACTS, AND THE SPLIT IS THE POINT RATHER THAN THE PROSE.
+//
+// This site carried ONE string answering two questions with different expiry dates: what was
+// true at the moment a decision was taken, and what is true about coverage now. A historical
+// deletion receipt does not expire. A coverage claim expires the moment its consumer stops
+// running. Fusing them means every later reader has to decide which half a sentence belongs
+// to, and every later AUTHOR repairs the whole paragraph by reversing its tense -- which is
+// what happened here three times: the loop had closed, then the probes never execute, then
+// the probes execute on the cadence. Each was true when written. Each was stale within weeks.
+// A fourth reversal would have produced a fourth transcription.
+//
+// So the receipt below records the decision at its own date and never speaks about today, and
+// the coverage standing beside it names an INSTRUMENT instead of a state: it asks
+// std.witness_admission witness_cadence_has_scheduled_route, which is the single authority for
+// whether a cadence executes anything. That row becomes correct again with no edit the moment a
+// lane enrols these probes, and REFUSES if the cadence returns while the row still claims
+// nothing runs.
+type LegacyTestDeletionReceipt {
+  decision: DeclarationRef
+  deleted_behavior_population: List<String>
+  replacement_witness_population: List<String>
+  execution_receipt_at_decision_time: PastExecutionReceipt
+}
+
+type ReplacementWitnessCoverageStanding
+  = ReplacementWitnessesExecuting { consumer: ExecutingConsumerReceipt }
+  | ReplacementWitnessesUnconsumed {
+      lost_with: WitnessConsumerCadence,
+      restoration_trigger: NonEmptyStr,
+    }
+
+// THE POLARITY, and it is the same one gunbc.deleted_cadence_reference_census carries: an
+// EXECUTING claim must produce a receipt whose cadence has a live route, and an UNCONSUMED
+// claim must be false the moment that cadence acquires one. Neither arm is a transcription
+// and neither can be satisfied by a surviving witness file, a local recipe or a command name.
+fn replacement_witness_coverage_standing_holds(standing: ReplacementWitnessCoverageStanding) -> Bool {
+  match standing {
+    ReplacementWitnessesExecuting { consumer: c } => executing_consumer_receipt_holds(receipt: c)
+    ReplacementWitnessesUnconsumed { lost_with: cadence, restoration_trigger: _ } =>
+      !witness_cadence_has_scheduled_route(cadence: cadence)
+  }
+}
+
+// FACT ONE, AND IT IS STILL TRUE. At the moment the four Rust behaviors were deleted
+// (gunbc#7690) the four .dag probes that replaced them had executed and passed on a named
+// cold-cadence run, and the deleted module had no CI consumer at all -- the Rust suite was
+// removed from CI on 2026-07-11 by operator ruling. So the deletion INCREASED executed
+// coverage on the day it was taken. Nothing since falsifies that, and this row is not gated
+// on any current route for exactly that reason.
+data dag_comment_wall_deletion_receipt: LegacyTestDeletionReceipt = LegacyTestDeletionReceipt {
+  decision: decl_ref(module_path: "gunbc.commit_workflow", decl_name: "commit_gate_rust_suite_removed_disposition"),
+  deleted_behavior_population: [
+    "src/v1/tests/src/dag_comment_wall_test.rs (four line-anchored behaviors, deleted with their four CoveredByWitness rows at gunbc#7690)",
+  ],
+  replacement_witness_population: [
+    "src/v2/test/claim/round_trip/dag_comment_wall_test.dag (four probes: dag_comment_wall_line_comment_refused, dag_comment_wall_block_comment_refused, dag_comment_wall_slash_slash_inside_string_compiles, dag_comment_wall_clean_source_compiles)",
+  ],
+  execution_receipt_at_decision_time: PastExecutionReceipt {
+    cadence: FalsifierSubstrateLongLane,
+    run_identity: "run 30766839943, 6382 witnesses, all four probes green" as NonEmptyStr,
+    observed_population: "the four dag comment-wall probes named above" as NonEmptyStr,
+  },
+}
+
+// FACT TWO, AND IT IS A DIFFERENT FACT RATHER THAN A CORRECTION OF FACT ONE. The probes
+// execute if and only if some enrolled lane runs them. The cold cadence WAS that lane;
+// falsifier.yml was deleted at 611fd02770 (#8283, 2026-08-15); the repository carries three
+// workflows and none runs a predict-only cold comparison. Therefore: nowhere today.
+//
+// WHAT THIS DOES NOT SAY, because the boundary is easy to cross by accident: it does NOT
+// argue for restoring the removed Rust suite, which is a recorded operator ruling and not
+// this row's to reverse. It says only that the deletion receipt above no longer establishes
+// CURRENT protection, which is precisely what a receipt dated at a decision cannot do.
+data dag_comment_wall_replacement_coverage: ReplacementWitnessCoverageStanding = ReplacementWitnessesUnconsumed {
+  lost_with: FalsifierSubstrateLongLane,
+  restoration_trigger: "the four probes are enrolled in a lane a workflow invokes, at which point this row becomes ReplacementWitnessesExecuting carrying that lane's receipt" as NonEmptyStr,
+}
+
+fn dag_comment_wall_replacement_coverage_holds() -> Bool {
+  replacement_witness_coverage_standing_holds(standing: dag_comment_wall_replacement_coverage)
+}
+
+// THE RULE THAT SURVIVES THE SPLIT, and it is the reason the split was worth making rather
+// than a taxonomy exercise: a CoveredByWitness row claims a named witness goes red for the
+// same reason the deleted test existed, so the row is only as good as that witness's
+// EXECUTED consumer -- and which executor ran it is part of the claim, not a detail.
+// Co-greenness on a developer machine is not coverage, and neither is a receipt from a lane
+// that has since been deleted.
+//
+// THE NUMBER A READER WILL GET WRONG, kept because it is a property of the mechanism and not
+// of any date: a deletion does NOT move the unclassified frontier. Discovered behaviors and
+// their dispositions depart together, so the difference is unchanged and only the denominator
+// shrinks. The frontier moves on CLASSIFICATION alone. A flat frontier across a deletion wave
+// is the mechanism working, not a stalled lane.
+data dag_comment_wall_family_closed_loop_note: String = "SUPERSEDED BY THE TWO TYPED ROWS ABOVE (dag_comment_wall_deletion_receipt and dag_comment_wall_replacement_coverage), and this row is kept as the pointer rather than deleted because the paragraph it replaced was cited from outside this module. What it used to hold was one string carrying a historical deletion receipt AND a current coverage claim, whose truth values move on different clocks; the split is above, and the current-coverage half is now derived from std.witness_admission witness_cadence_has_scheduled_route rather than transcribed."
+
+// FAMILY TWO DEPARTED HERE, and this records why its rows left with its behaviors rather
+// than outliving them. The v1-emitter optional-rendering family covered two halves of one
+// repair: rendering an optional return as Option<..> is what EXPOSED the optional-into-required
+// mismatch at call sites, and the fail-closed unwrap is what closes it. Six behaviors migrated
+// 1:1 to floor witnesses of the same function names; a seventh asserted only that Option::expect
+// panics, which no change to this repository can falsify, so it was classified low-value and
+// dropped rather than migrated.
+//
+// The family ROW had to depart in the same motion, and that is a property of the mechanism, not
+// a preference: legacy_test_behavior_family_complete requires count(discovered) > 0, so a family
+// whose source files no longer exist reports incomplete rather than vacuously complete. Keeping
+// the row would have redded a live consumer for a reason unrelated to any defect; relaxing that
+// count would have made an emptied family indistinguishable from a classified one. Deletion is
+// the only arm that keeps the distinction real.
+//
+// The number a reader will get wrong: a deletion does NOT move the unclassified frontier.
+// Behaviors and dispositions depart together, so the difference is unchanged and only the
+// denominator shrinks. The frontier moves on classification alone.
+fn legacy_test_behavior_dispositions() -> List<LegacyTestBehaviorDisposition> {
+  [
+  ]
+}
+
+fn legacy_test_behavior_ids_live() -> List<String> {
+  test_migration_legacy_behavior_ids()
+}
+
+fn test_behavior_witness_ids_live() -> List<String> {
+  test_migration_witness_behavior_ids()
+}
+
+fn legacy_test_behavior_unclassified_live() -> List<String> {
+  legacy_test_behavior_unclassified(
+    discovered_legacy: legacy_test_behavior_ids_live(),
+    dispositions: legacy_test_behavior_dispositions(),
+  )
+}
+
+fn legacy_test_behavior_unclassified_count_live() -> Int {
+  count(legacy_test_behavior_unclassified_live())
+}
+
+// KNOWN POSITIVES FOR THE TWO DISCOVERY SCANNERS.
+//
+// The deleted anchor was self-referential — it asserted the presence of a
+// behavior this very migration was removing, so it could only ever go green by
+// its own subject departing. Replacing it with `count(...) > 0` was WORSE, not
+// merely weaker: a nonempty population proves a scanner returned SOMETHING, not
+// that it can see the kind of thing the control exists to observe, so a scanner
+// silently returning an unrelated partial population reads as healthy.
+//
+// Each side therefore names ONE exact identity that exists independently of
+// this migration. Both are full `path::fn` identities, the format the scanners
+// actually emit (verified by execution, not assumed).
+data legacy_discovery_known_positive: String = "src/v1/tests/src/class_b_trim_specimen_test.rs::trim_free_call_refuses_in_narrow_pool_without_algebra_authority"
+
+// Deliberately a witness with no relationship to test migration, so that
+// draining the retained kernel to zero cannot silently drain this control too.
+data witness_discovery_known_positive: String = "dag/test/claim/content_hash_family_grounded_witness_test.dag::content_hash_cited_sha256_literals_validate"
+
+fn legacy_discovery_known_positive_present(discovered_legacy: List<String>) -> Bool {
+  discovered_legacy |> any(id => id == legacy_discovery_known_positive)
+}
+
+fn witness_discovery_known_positive_present(discovered_witnesses: List<String>) -> Bool {
+  discovered_witnesses |> any(id => id == witness_discovery_known_positive)
+}
+
+fn legacy_test_behavior_declared_slice_holds() -> Bool {
+  let discovered_legacy = legacy_test_behavior_ids_live()
+  let discovered_witnesses = test_behavior_witness_ids_live()
+  test_migration_behavior_discovery_holds()
+    && legacy_discovery_known_positive_present(discovered_legacy: discovered_legacy)
+    && witness_discovery_known_positive_present(discovered_witnesses: discovered_witnesses)
+    && count(legacy_test_behavior_stale_dispositions(
+      discovered_legacy: discovered_legacy,
+      dispositions: legacy_test_behavior_dispositions(),
+    )) == 0
+    && count(legacy_test_behavior_duplicate_dispositions(
+      dispositions: legacy_test_behavior_dispositions(),
+    )) == 0
+    && count(legacy_test_behavior_unresolved_witness_dispositions(
+      discovered_witnesses: discovered_witnesses,
+      dispositions: legacy_test_behavior_dispositions(),
+    )) == 0
+}
+
+fn legacy_test_behavior_closing_contract_holds() -> Bool {
+  legacy_test_behavior_disposition_graph_holds(
+    discovery_holds: test_migration_behavior_discovery_holds(),
+    discovered_legacy: legacy_test_behavior_ids_live(),
+    discovered_witnesses: test_behavior_witness_ids_live(),
+    dispositions: legacy_test_behavior_dispositions(),
+  )
+}

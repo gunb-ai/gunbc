@@ -1,0 +1,281 @@
+module test.claim.printed_chassis_measurement_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Millimeter, millimeter }
+import std.interval { IntervalReady, IntervalRefused, degenerate_interval }
+import std.claim_evidence {
+  RecordedFact,
+  EvidenceLink,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+}
+import std.spatial_knowledge {
+  SpatialMeasured,
+  SpatialUnknown,
+  SpatialRequirement,
+  MeasuredOnly,
+  SpatialAdmittedMeasured,
+  SpatialAdmittedEstimated,
+  SpatialRefused,
+  SpatialGeometryUnknown,
+  SpatialHypothesisNotAdmissible,
+  SpatialStandingBelowMinimum,
+  SpatialUncertaintyExceedsBudget,
+}
+import product.spatial_dimension { LengthInterval, length_interval }
+import product.printed_chassis.measurement {
+  ChassisMeasurementEvidence,
+  ChassisLengthStanding,
+  ChassisLengthAdmission,
+  ChassisMeasurementOutcome,
+  ChassisMeasurementJudged,
+  ChassisRosterConflict,
+  FabricationMeasurement,
+  fabrication_measurement,
+  FabricationMeasurementKey,
+  fabrication_measurement_key,
+  Altrad8udBoard,
+  CpuCoolerFourU,
+  CpuCoolerTwoU,
+  NodePowerSupply,
+  Fan80mm,
+  FabWidth,
+  FabDepth,
+  FabHeight,
+  required_chassis_length,
+  mvp_measurement_roster,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn caliper_evidence() -> ChassisMeasurementEvidence {
+  EvidenceLink {
+    fact: RecordedFact { id: "fact-4u-cooler-overall-height", value: "overall height of the held 4U cooler" },
+    direction: EvidenceSupports,
+    inference_rule: "direct-caliper-read",
+    authority: "operator",
+    provenance: EvidenceProvenance {
+      entity: "held-4u-cooler",
+      activity: "operator-caliper-measurement",
+      agent: "operator",
+    },
+    freshness: EvidenceFreshness { maximum_conclusion: "as-held", basis: "measured on the unit in hand" },
+    fidelity: EvidenceFidelity { boundary: "overall envelope only", losses: ["fin tip burrs not characterised"] },
+    probe_independence: "independent-of-vendor-collateral",
+  }
+}
+
+// AN UNBUILDABLE FIXTURE BECOMES UNKNOWN, NOT PERFECT, and the arm this replaces was the worst
+// fallback in the PR because it sat in the fixtures every other witness is measured against.
+//
+// The earlier `interval_or_degenerate` turned a REFUSED interval into `degenerate_interval(0 mm)` --
+// uncertainty [0,0], which is MAXIMALLY PRECISE. So a fixture that failed to build did not merely
+// survive: it became the most precise measurement expressible, satisfying every precision budget
+// downstream. A fail-open, pointing the wrong way, inside the test data.
+//
+// `std.interval` states the rule this broke in its own annotation: the degenerate constructor "is
+// not a default -- a caller wanting a WIDTH still goes through the refusing mint."
+//
+// The refusal now lands in SpatialUnknown, which is vocabulary this module already refuses on
+// (SpatialGeometryUnknown), so an unbuildable fixture reddens the witness that depends on it instead
+// of flattering it. No new refusal path was invented for this; the existing one was routed to.
+fn measured_with_half_width(value: Nat, half_width: Nat, obligation: NonEmptyStr) -> ChassisLengthStanding {
+  match length_interval(
+    low: millimeter(count: value - half_width),
+    high: millimeter(count: value + half_width),
+  ) {
+    IntervalReady { interval: i } =>
+      SpatialMeasured {
+        value: millimeter(count: value),
+        uncertainty: i,
+        evidence: caliper_evidence(),
+      }
+    IntervalRefused { reason: _ } => SpatialUnknown { obligation: obligation }
+  }
+}
+
+// Measured to +/- 1 mm.
+fn measured_precise(value: Nat) -> ChassisLengthStanding {
+  measured_with_half_width(value: value, half_width: 1, obligation: "fixture-interval-unbuildable-precise")
+}
+
+// Same STANDING, +/- 15 mm. A cooler height known only to 30 mm cannot set a bay pitch.
+fn measured_coarse(value: Nat) -> ChassisLengthStanding {
+  measured_with_half_width(value: value, half_width: 15, obligation: "fixture-interval-unbuildable-coarse")
+}
+
+fn cooler_height_key() -> FabricationMeasurementKey {
+  fabrication_measurement_key(subject: CpuCoolerFourU, axis: FabHeight)
+}
+
+// A millimetre budget: the bay pitch is a stack of tolerances, so the consuming decision demands
+// each contributor be known to a couple of millimetres.
+// THE BUDGET IS NOT RECOVERED FROM A REFUSAL, AND AN EARLIER REVISION OF THIS FILE ARGUED THAT IT
+// COULD BE. The argument was that [0,0] is fail-CLOSED in budget position -- as an observation it
+// claims perfect precision and admits everything, but as a budget it admits nothing, so substituting
+// it on refusal was safe. That is wrong, and the reason is about EVIDENCE rather than about safety.
+//
+// If constructing the intended [0,4] budget ever refused, the substitute would make the negative
+// witnesses below stay GREEN FOR THE WRONG REASON: "a coarse measurement is refused" would hold
+// because the budget collapsed, not because the four-millimetre policy rejected it. A fixture
+// construction failure would have been silently converted into a policy verdict, and the witness
+// would report that the policy works while never having exercised it.
+//
+// Negative witnesses are especially exposed to this, because MORE refusal leaves them green. It is
+// the same family as the placeholder ladder already removed from this program -- a wall greening on
+// a substitute subject -- wearing a conservative disguise, which is how it survived a round of
+// review including my own defence of it.
+//
+// The FIRST attempt at this repair reproduced the defect one layer out: it routed the refused arm to
+// a synthesised ChassisRosterConflict so that callers could stay unchanged. That is the same
+// fabrication with a different value. There is no safe substitute, because the problem is not which
+// value is chosen -- it is that a value exists at all.
+//
+// So the budget is threaded, not recovered. with_budget runs the witness body only on the READY arm
+// and answers false on the refused one, which is the only structure under which a green result means
+// the intended budget was actually exercised.
+fn with_budget(body: fn(LengthInterval) -> Bool) -> Bool {
+  match length_interval(low: millimeter(count: 0), high: millimeter(count: 4)) {
+    IntervalReady { interval: i } => body(i)
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+fn ask(roster: List<FabricationMeasurement>, budget: LengthInterval) -> ChassisMeasurementOutcome {
+  required_chassis_length(
+    roster: roster,
+    key: cooler_height_key(),
+    obligation: "measure-4u-cooler-overall-height",
+    requirement: SpatialRequirement {
+      minimum_standing: MeasuredOnly,
+      maximum_uncertainty: budget,
+    },
+  )
+}
+
+// Locally named rather than `admitted`, because three other witness modules declare that spelling
+// and the whole-tree namespace is flat. The earlier bare `admitted` here resolved to nothing after a
+// refactor removed it, and the compiler refused with an ambiguous-reference diagnostic naming all
+// three candidates rather than silently binding this file to a stranger's predicate -- which is the
+// fail-closed behaviour the v2.compiler.body_producer_forward defect earlier today did NOT get,
+// because there the colliding name resolved successfully to the wrong type.
+fn chassis_outcome_is_admitted(a: ChassisMeasurementOutcome) -> Bool {
+  match a {
+    ChassisMeasurementJudged { admission: adm } =>
+      match adm {
+        SpatialAdmittedMeasured { value: _, uncertainty: _ } => true
+        SpatialAdmittedEstimated { region: _ } => true
+        SpatialRefused { cause: _ } => false
+      }
+    ChassisRosterConflict { key: _, count: _ } => false
+  }
+}
+
+// WITNESS 1 — THE PROGRAM'S CENTRAL REFUSAL. The MVP roster is empty today, so the generator's own
+// entry point must refuse for a dimension nobody has measured. This is the arm that makes the
+// fabrication program fail closed: while it holds, no printed part can be generated against an
+// invented cooler height.
+test fn w_unmeasured_dimension_refuses_on_the_live_roster() -> Bool {
+  with_budget(body: fn(budget) {
+    match ask(budget: budget, roster: mvp_measurement_roster) {
+      ChassisMeasurementJudged { admission: SpatialRefused { cause: SpatialGeometryUnknown { obligation: o } } } =>
+        o == "measure-4u-cooler-overall-height"
+      _ => false
+    }
+  })
+}
+
+// WITNESS 2 — THE POSITIVE CONTROL. Without this, witness 1 is satisfied by an interface that
+// refuses everything, which would be a wall that never admits rather than a wall that discriminates.
+test fn w_a_precise_measurement_is_admitted() -> Bool {
+  with_budget(body: fn(budget) {
+    let roster = [fabrication_measurement(key: cooler_height_key(), standing: measured_precise(value: 150))]
+    match ask(budget: budget, roster: roster) {
+      ChassisMeasurementJudged { admission: SpatialAdmittedMeasured { value: v, uncertainty: _ } } =>
+        v == millimeter(count: 150)
+      _ => false
+    }
+  })
+}
+
+// WITNESS 3 — THE DISCRIMINATING PAIR, and the one that would have caught a lookup keyed on
+// non-emptiness rather than identity. The roster is POPULATED, and populated with lengths in the
+// same units and the same plausible range — but for other subjects and other axes. A fold that
+// returned the first row, or any row, would answer 80 mm or 244 mm for the cooler's height and the
+// bay pitch would be built from a fan's width. The ask must still refuse.
+test fn w_a_different_subjects_measurement_does_not_satisfy_the_ask() -> Bool {
+  with_budget(body: fn(budget) {
+    let roster = [
+      fabrication_measurement(
+        key: fabrication_measurement_key(subject: Fan80mm, axis: FabWidth),
+        standing: measured_precise(value: 80),
+      ),
+      fabrication_measurement(
+        key: fabrication_measurement_key(subject: NodePowerSupply, axis: FabHeight),
+        standing: measured_precise(value: 86),
+      ),
+      fabrication_measurement(
+        key: fabrication_measurement_key(subject: CpuCoolerTwoU, axis: FabHeight),
+        standing: measured_precise(value: 70),
+      ),
+      fabrication_measurement(
+        key: fabrication_measurement_key(subject: CpuCoolerFourU, axis: FabDepth),
+        standing: measured_precise(value: 120),
+      ),
+    ]
+    !chassis_outcome_is_admitted(a: ask(budget: budget, roster: roster))
+  })
+}
+
+// WITNESS 4 — SUBJECT MATCHES, AXIS DOES NOT, ISOLATED. The last row of witness 3 already carries
+// this case, and it is asserted alone because a key comparison that ignored the axis would still
+// pass witness 3 on the strength of its first three rows. A 4U cooler's DEPTH is not its HEIGHT.
+test fn w_the_right_subject_on_the_wrong_axis_refuses() -> Bool {
+  with_budget(body: fn(budget) {
+    let roster = [
+      fabrication_measurement(
+        key: fabrication_measurement_key(subject: CpuCoolerFourU, axis: FabDepth),
+        standing: measured_precise(value: 120),
+      ),
+    ]
+    match ask(budget: budget, roster: roster) {
+      ChassisMeasurementJudged { admission: SpatialRefused { cause: SpatialGeometryUnknown { obligation: _ } } } => true
+      _ => false
+    }
+  })
+}
+
+// WITNESS 5 — STANDING IS NOT SUFFICIENCY. A real caliper read, correctly keyed, that is simply too
+// coarse for a stacked-tolerance decision. It must refuse on the BUDGET rather than on the standing,
+// which is what distinguishes a precision check from a provenance check.
+test fn w_a_measurement_too_coarse_for_the_decision_refuses_on_budget() -> Bool {
+  with_budget(body: fn(budget) {
+    let roster = [fabrication_measurement(key: cooler_height_key(), standing: measured_coarse(value: 150))]
+    match ask(budget: budget, roster: roster) {
+      ChassisMeasurementJudged { admission: SpatialRefused { cause: SpatialUncertaintyExceedsBudget { actual: _, budget: _ } } } => true
+      _ => false
+    }
+  })
+}
+
+// WITNESS 6 — TWO MEASUREMENTS THAT DISAGREE MUST NOT RESOLVE. This is the regression control for a
+// real defect in the first revision of this module: the fold returned row.standing on every match,
+// so the LAST matching row silently won and the roster's own contradiction was discarded. Both rows
+// below are correctly keyed, both are precise, and they disagree by 15 mm. Nothing here is entitled
+// to pick one, so the outcome is a conflict naming the key and the count — never an admitted 165.
+test fn w_two_disagreeing_rows_for_one_key_refuse_as_a_conflict() -> Bool {
+  with_budget(body: fn(budget) {
+    let roster = [
+      fabrication_measurement(key: cooler_height_key(), standing: measured_precise(value: 150)),
+      fabrication_measurement(key: cooler_height_key(), standing: measured_precise(value: 165)),
+    ]
+    match ask(budget: budget, roster: roster) {
+      ChassisRosterConflict { key: _, count: c } => c == 2
+      _ => false
+    }
+  })
+}

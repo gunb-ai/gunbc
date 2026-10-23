@@ -1,0 +1,45 @@
+module test.claim.interpreter_match_guard_witness_test
+
+import std.types { Bool, Int }
+
+// A MATCH-ARM GUARD IS PART OF THE ARM'S ADMISSION IN THE INTERPRETER, AS IT IS IN EMITTED RUST.
+// Before the fix the seed interpreter's eval_match never read arm_guard: the first arm whose
+// pattern fit won, guard or not, while the emitter renders `pat if guard =>` and honours it. Run
+// over the same source, pick(n: 3) answered 1 interpreted and 2 emitted (receipt on
+// gunbc.recurring_failure_mode interpreter_ignores_match_arm_guards). Each rejecting claim below
+// is the discriminating red; each admitting claim is its positive control, so a fix that skipped
+// guarded arms outright would go red on the control instead.
+
+type Shape = Dot | Bar { len: Int }
+
+fn pick(n: Int) -> Int {
+  match n {
+    x if x > 10 => 1
+    _ => 2
+  }
+}
+
+// The guard reads a binding its own pattern introduced, so it must run in the arm's bindings.
+fn size(s: Shape) -> Int {
+  match s {
+    Bar { len: l } if l > 5 => 2
+    Bar { len: _ } => 1
+    Dot => 0
+  }
+}
+
+test fn a_false_guard_falls_through_to_the_next_arm() -> Bool {
+  pick(n: 3) == 2
+}
+
+test fn a_true_guard_admits_its_arm() -> Bool {
+  pick(n: 30) == 1
+}
+
+test fn a_false_guard_over_a_variant_binding_falls_through() -> Bool {
+  size(s: Bar { len: 2 }) == 1
+}
+
+test fn a_true_guard_over_a_variant_binding_admits() -> Bool {
+  size(s: Bar { len: 9 }) == 2
+}

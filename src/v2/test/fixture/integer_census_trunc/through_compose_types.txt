@@ -1,0 +1,58 @@
+module v2.std.integer
+
+import v2.std.algebra {
+  AbelianGroup,
+  Cons,
+  Empty,
+  fold_list_node,
+  FreeMonoid,
+  Group,
+  length,
+  Magma,
+  Monoid,
+  OrderedRing,
+  Ordering,
+  Ring,
+  Semigroup
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.machine {
+  MachineWidth,
+  PointerWidth,
+  Word8,
+  Word16,
+  Word32,
+  Word64,
+  Word128
+}
+import v2.std.nat { Nat }
+type GroupCompletion<M>
+type Int = GroupCompletion<Nat>
+type UInt = Nat
+type Compose<carrier, dimension>
+
+type Signedness = Signed | Unsigned
+
+type Representation
+  = TwosComplement
+  | OnesComplement
+  | SignMagnitude
+
+type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
+
+type Int8 = Compose<Int, MachineWidth<Word8>>
+type Int16 = Compose<Int, MachineWidth<Word16>>
+type Int32 = Compose<Int, MachineWidth<Word32>>
+type Int64 = Compose<Int, MachineWidth<Word64>>
+type Int128 = Compose<Int, MachineWidth<Word128>>
+
+type UInt8 = Compose<UInt, MachineWidth<Word8>>
+type UInt16 = Compose<UInt, MachineWidth<Word16>>
+type UInt32 = Compose<UInt, MachineWidth<Word32>>
+type UInt64 = Compose<UInt, MachineWidth<Word64>>
+type UInt128 = Compose<UInt, MachineWidth<Word128>>
+
+type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
+type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>

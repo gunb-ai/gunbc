@@ -1,0 +1,45 @@
+module test.claim.fleet_generation_publication_witness
+
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { parse_content_hash }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet_generation_publication {
+  fleet_generation_publication_decode, fleet_generation_publication_owned,
+  FleetGenerationLegacy, FleetGenerationUnreadable, fleet_generation_native_read_script, fleet_generation_native_publication_script,
+}
+
+test fn equal_numbers_do_not_identify_the_applying_plan() -> Bool {
+  match parse_content_hash(wire: "0123456789abcdef") {
+    Absent => false
+    Present { value: owner } =>
+      fleet_generation_publication_owned(observed: fleet_generation_publication_decode(content: "18 0123456789abcdef"), generation: 18, plan_hash: owner)
+      && !fleet_generation_publication_owned(observed: fleet_generation_publication_decode(content: "18 fedcba9876543210"), generation: 18, plan_hash: owner)
+      && !fleet_generation_publication_owned(observed: fleet_generation_publication_decode(content: "18"), generation: 18, plan_hash: owner)
+      && !fleet_generation_publication_owned(observed: fleet_generation_publication_decode(content: "19 0123456789abcdef"), generation: 18, plan_hash: owner)
+  }
+}
+
+test fn old_counter_remains_readable_without_inventing_provenance() -> Bool {
+  match fleet_generation_publication_decode(content: "17\n") {
+    FleetGenerationLegacy { generation } => generation == 17
+    _ => false
+  }
+}
+
+test fn malformed_suffix_is_not_discarded() -> Bool {
+  (match fleet_generation_publication_decode(content: "18 0123456789abcdef unknown") { FleetGenerationUnreadable => true _ => false })
+    && (match fleet_generation_publication_decode(content: "18 nope") { FleetGenerationUnreadable => true _ => false })
+    && (match fleet_generation_publication_decode(content: "18  0123456789abcdef") { FleetGenerationUnreadable => true _ => false })
+}
+
+fn export_generation_reader() -> ProcessExit {
+  let result = Filesystem.Write(path: "target/fleet-generation-reader.sh", content: fleet_generation_native_read_script)
+  if result.success { ExitSuccess } else { exit_failure(reason: result.error) }
+}
+
+
+fn export_generation_publication() -> ProcessExit {
+  let result = Filesystem.Write(path: "target/fleet-generation-publication.sh", content: fleet_generation_native_publication_script)
+  if result.success { ExitSuccess } else { exit_failure(reason: result.error) }
+}

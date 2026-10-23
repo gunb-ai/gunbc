@@ -1,0 +1,343 @@
+module tools.multi_module_compile_fixture
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+
+// THE ISOLATED MULTI-MODULE COMPILE FIXTURE. A caller authors a MANIFEST of `.dag` modules and
+// an entry among them; the instrument compiles exactly those bytes through the v1 pipeline with
+// no module index, no corpus roots, and no filesystem read, and returns what the compile decided.
+//
+// WHY IT EXISTS BESIDE THE SINGLE-MODULE CENSUS RATHER THAN INSIDE IT. `compile_dag_diagnostic_census`
+// resolves its one synthetic module's imports against the live checkout, so the corpus is always
+// in the pool and a SECOND module can never be authored. That makes every question whose subject
+// is the relationship between two modules unaskable on it: a cross-module name collision, an
+// import that must not bind, a spelling held by both a fixture declaration and a corpus one.
+// Three consumers hit that wall independently before this instrument existed -- invalid fixtures
+// relocated out of the corpus for want of it, an ambiguity arm measured and deleted for want of
+// it, and DESIGN naming the missing multi-module compile fixture as the next-rung trigger for the
+// acyclicity class, whose own receipt records that the single-module harness returns ParseError
+// for the ACYCLIC control as well as the cyclic one and so could never reach the wall.
+//
+// IT IS AN INSTRUMENT AND NOT A GATE. Its outcome reports what the compile decided; nothing here
+// judges acceptance, and no workflow invokes it. Callers judge.
+
+// CORPUS ISOLATION IS BY CONSTRUCTION, NOT BY A FLAG, and that is the property the whole instrument
+// rests on. The supplied manifest IS the source vector handed to the pipeline: there is no code
+// path in the host realization that consults a module index, so a fixture module may reuse a corpus
+// module's SPELLING and bind its own declaration. THE OPEN QUESTION THIS ANSWERS, recorded because
+// upstream did not know the answer and asked for it either way: under whole-corpus floor
+// preparation the required floor folds every witness through ONE prepared subject, so a name
+// collision between a witness and the corpus is unconditional there. That preparation is a fact
+// about how WITNESSES are compiled, not about this nested compile - the prepared authority is
+// consulted by unrelated censuses and never by compile_to_resolved - so a fixture compiled through
+// this instrument is isolated even when the caller itself was prepared whole-corpus. Control 5 of
+// the witness measures exactly that rather than assuming it.
+
+// PHASE-GRAINED STANDING IS THE POINT OF THE COPRODUCT. FixtureInstrumentRefused is the HARNESS's
+// fault - a ragged manifest, a duplicate path, an entry naming no supplied module, a panic.
+// FixtureCompileRefused is the SUBJECT's fault and carries the compiler's own judgment.
+// FixtureCompileCompleted is the subject passing. Collapsing the first two hands a broken harness
+// the compiler's message, which is the not-applicable-versus-malformed conflation DESIGN records as
+// a recurring failure mode, applied to the instrument itself: one reason symbol over 'the input is
+// wrong' and 'this instrument had nothing to say about it', which have opposite owners and opposite
+// repairs. EXECUTION PROVENANCE IS STRUCTURAL AND NOT A FIELD ANYONE MUST REMEMBER TO READ:
+// FixtureCompileCompleted is constructed at exactly one place in the host, after the emit returned
+// and after the blocking population was counted, so an unreached or killed compile HAS NO SPELLING
+// in which it renders as zero diagnostics. That is the positive-artifact rule moved into the type
+// rather than asserted about it.
+
+// THE TWO DIGESTS TRAVEL WITH THE RESULT so a receipt quoting this instrument names the subject it
+// measured and the compiler that measured it. source_digest is a structural fnv1a64 over the entry
+// spelling and every (path, content) pair in the order supplied - a reordering is a different
+// subject and a whitespace edit is a different subject. compiler_digest is closure_identity
+// transform_content_digest, the content hash of the running compiler binary, which is already the
+// single authority every identity key in the seed consumes for compiler identity rather than a
+// second executable read. Both are absent from the FixtureInstrumentRefused arm on purpose: that
+// arm reports that no subject was formed, and stamping a digest on it would name a measurement that
+// did not happen.
+
+// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN 4b: a class's rung is
+// the MINIMUM across its in-scope paths). This is the v1 pipeline to the RUST render target over an
+// authored multi-module subject. It observes NOTHING about the interpreter's disposition of the
+// same program, nothing about other emission targets, and nothing about corpus-grain prevalence.
+// Unlike the single-module census it does NOT arm with_type_ref_hit_ne_bind_measure: the census
+// arms that bracket to sharpen masked type refs against a corpus pool this instrument does not
+// have, so arming it here would be a knob with no subject. WHAT module_count MEANS: the number of
+// modules the RESOLVE stage produced, read from the resolved graph - not the length of the supplied
+// list. A control comparing it against the manifest is therefore a join between two different
+// producers rather than measure() == measure().
+//
+// SIGNATURE SHAPE IS OBSERVABLE AS A STRUCTURED RUST PROJECTION OVER THE RESOLVED
+// REGISTRY, not as contents-by-path and not as a read of emitted bytes. On
+// FixtureCompileCompleted the field resolved_rust_functions carries List<ResolvedRustFnSignature>
+// — per FnItem in item_registry: source owner_module + declaration_name and the
+// ordered parameter name list derived from that registry row (emit_ident / service_var_name
+// transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
+// surface. Discriminating RED: test.claim.resolved_rust_fn_projection_witness.
+//
+// THIS IS NOT AN EMITTED-ARTIFACT OBSERVATION. The projection runs on the resolved graph before
+// emit_resolved_for_target; a defect solely inside emit_func_params / emit_func_def can leave
+// witnesses green. The subject grain is the registry binding the emitter *will read*, not the
+// bytes it writes. Next-rung trigger below covers climbing to a true emit join.
+
+type FixtureSource {
+  path: NonEmptyStr
+  content: String
+}
+
+type MultiModuleCompileFixture {
+  sources: List<FixtureSource>
+  entry: NonEmptyStr
+}
+
+// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per resolved FnItem on each
+// TypedModule.item_registry (NOT the bare-name-merged ResolvedGraph.item_registry): source
+// identity (owning module + declaration name) and the PARAMETER NAME LIST taken from ItemInfo
+// with the same per-arm name transforms emit_func_params applies today (emit_ident for authored
+// and resource arms; service_var_name for services), concatenated authored → resource → service.
+// The merged graph registry is bare-name keyed across the closure; publishing from it alone would
+// drop colliding names and make lookup report Absent for a function that resolved — fail-open on
+// every negative control if we only published the survivor. So the walk is per TypedModule and
+// rows are keyed (owner_module, declaration_name). When the same bare Fn/Func name appears in two
+// or more modules, those rows are OMITTED (lookup → ResolvedRustFnAbsent) — never
+// FixtureInstrumentRefused, and never a fallback to the un-expanded per-module ItemInfo.
+// expand_transitive_services writes only the merged registry, and emit_func_def looks up services
+// by bare name on that same map; publishing the loser's un-expanded row would omit service_names
+// while the emitter still binds the survivor's — a silent wrong answer. Present/absent consumers
+// already treat Absent as false on both polarities, so omission is fail-closed. Non-colliding
+// names overlay the expanded graph row when it still names this module under that bare name.
+
+// The type name says Rust because compile_fixture is Rust-target only; a target-agnostic name
+// over that reader would be the DESIGN section 3 meaning fork. The field name
+// resolved_rust_functions / ResolvedRustFnSignature names the registry grain (and the Rust
+// target); it does not claim a read of emitted file bytes — an `emitted_*` spelling over this
+// pre-emit reader would be the meaning fork DESIGN §3 forbids.
+//
+// NAMES ONLY — PERMANENT CEILING, NO NEXT-RUNG TRIGGER. Parameter TYPES and return types are
+// absent on purpose: asserting over emitted type spellings turns a control into a change detector
+// for Rc<Vec<T>> renderings. Consequence: this projection cannot distinguish two parameters that
+// differ only in type, and cannot see a type-only change that matters. That is a deliberate
+// boundary of this carrier's contract, not a stall below a higher rung — there is no capability
+// this instrument is waiting on that would lift it; a type-sensitive claim needs a different
+// projection. Do not assert type-sensitivity over it.
+//
+// REGISTRY MIRROR, NOT EMIT JOIN — BELOW CEILING (ORDER AND MEMBERSHIP). DESIGN §3b middle
+// value: deliberate divergence from single-authority emit binding, WITH A STATED REASON — not
+// an unstated fork. The projection is a second walk over ItemInfo, not a consumption of
+// emit_func_params' value. WHAT REFUSES IF emit_func_params (or emit_func_def's use of it) AND
+// THIS PROJECTION DISAGREE — on order OR on who is present? Nothing. Concrete drift surface
+// already visible: emit_func_params' resource arm folds `uses` nodes via resource_use_name_at;
+// this walk reads ItemInfo.resource_names. A reorder, a dropped service_names arm inside emit,
+// or resource-name divergence leaves every witness green while the artifact binds differently
+// (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters).
+//
+// WHY THE DIVERGENCE IS THE RIGHT SHAPE FOR THIS INSTRUMENT (the §3b reason, not a manager
+// citation). Consumers of compile_fixture need a membership surface over resolved fn bindings
+// without coupling every fixture witness to emit_rust regeneration. The durable contract here is
+// registry-grain lookup + resolved_rust_fn_has_parameter; that API is what must survive. The
+// second walk is the temporary producer — §6's "will this artifact survive" test applies to the
+// throwaway walk, which the next-rung trigger deletes, not to the carrier or its consumers.
+// Joining emit on this same PR would turn an instrument lane into an emit_rust regen lane and
+// couple it to #10688's live surface on the same files — two held PRs each waiting on the other.
+// DESIGN §5: an in-diff row claiming approval does not authorize the debt; the reason above is
+// what admits the middle value.
+//
+// NEXT-RUNG TRIGGER (DESIGN 4b(2) — the CAPABILITY, not an artifact): the projection is DERIVED
+// from the same source emit_func_params reads (or from the emit result that source produces),
+// rather than mirroring ItemInfo by a second walk, so neither order nor membership can
+// desynchronise from what the Rust emitter binds into the artifact. WHY UNBUILT (reason, not
+// trigger): that derivation lives in the emit_rust / emit_core_support seed surface; landing it
+// here means regenerating those modules and crossing #10688's open edit surface on the same
+// files. Until the trigger capability holds, this remains a registry projection. The honest rung
+// (§4b(1) minimum across paths) is this order/membership stall, not the names-only permanent
+// ceiling above it.
+//
+// THIS IS NOT A CONTENTS GREP SURFACE. Emitted file paths still travel on FixtureCompileCompleted
+// for provenance; the projection is the only population a witness may ask about signature shape
+// at this grain. A consumer that wants raw text is outside this instrument's contract — handing
+// String would re-author the permanently-green substring trap this projection exists to make
+// unwritable.
+type ResolvedRustFnSignature {
+  owner_module: String
+  declaration_name: String
+  ordered_parameter_names: List<String>
+}
+
+type ResolvedRustFnLookup
+  = ResolvedRustFnFound { signature: ResolvedRustFnSignature }
+  | ResolvedRustFnAbsent
+
+type MultiModuleCompileFixtureOutcome
+  = FixtureInstrumentRefused { cause: NonEmptyStr }
+  | FixtureCompileRefused {
+      module_count: Int
+      diagnostics: List<CompileDiagnosticCensusRow>
+      source_digest: NonEmptyStr
+      compiler_digest: NonEmptyStr
+    }
+  | FixtureCompileCompleted {
+      module_count: Int
+      emitted_files: List<String>
+      resolved_rust_functions: List<ResolvedRustFnSignature>
+      diagnostics: List<CompileDiagnosticCensusRow>
+      source_digest: NonEmptyStr
+      compiler_digest: NonEmptyStr
+    }
+
+fn fixture_source(path: String, content: String) -> FixtureSource {
+  FixtureSource { path: path, content: content }
+}
+
+fn compile_fixture(fixture: MultiModuleCompileFixture) -> MultiModuleCompileFixtureOutcome {
+  compile_dag_multi_module_fixture(
+    fixture.sources |> map(s => s.path as String),
+    fixture.sources |> map(s => s.content),
+    fixture.entry as String
+  )
+}
+
+// PURE READS OVER ROWS, never over the outcome -- the same construction gunbc.compile_diagnostic_census
+// adopted after an accessor answering [] on the not-runnable arm was found to be the fail-open it
+// exists to prevent. The only way to obtain a diagnostic list here is to MATCH the coproduct, so
+// reading zero diagnostics out of a refused instrument is structurally unwritable.
+fn fixture_blocking_rows(rows: List<CompileDiagnosticCensusRow>) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => r.blocking)
+}
+
+fn fixture_rows_of_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => (r.diagnostic_class as String) == wanted)
+}
+
+fn fixture_has_class(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> Bool {
+  count(fixture_rows_of_class(rows, wanted)) > 0
+}
+
+// PURE READS OVER THE PROJECTION LIST, never over the outcome. Looking up a function by source
+// identity returns ResolvedRustFnAbsent when no row matches — never an empty parameter list wearing
+// a found answer (DESIGN section 5: blank is not evidence of a nullary function). Consumers that
+// assert a parameter is ABSENT must require ResolvedRustFnFound and then negate membership —
+// mapping Absent to "lacks parameter" greens when the row was dropped entirely.
+fn resolved_rust_fn_lookup(
+  functions: List<ResolvedRustFnSignature>,
+  owner_module: String,
+  declaration_name: String
+) -> ResolvedRustFnLookup {
+  let matches = functions |> filter(f =>
+    f.owner_module == owner_module && f.declaration_name == declaration_name
+  )
+  match matches |> first {
+    Present { value: sig } => ResolvedRustFnFound { signature: sig }
+    Absent => ResolvedRustFnAbsent
+  }
+}
+
+// MEMBERSHIP, not position. Prefer this over indexing ordered_parameter_names unless the
+// subject's claim is specifically about emit_func_params layout.
+fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_name: String) -> Bool {
+  signature.ordered_parameter_names |> any(n => n == parameter_name)
+}
+
+// BUILDING A CLAIM SCOPE OVER THE SAME MANIFEST, which is a different question from compiling it.
+//
+// `compile_fixture` above stops at `compile_to_resolved`. The bare-name-ambiguity refusal lives
+// in `claim_scope_for` -- the scope builder the required floor calls once per claim module, and
+// the same call whose `ambiguous_reads` vector the floor's census lines are printed from. So a
+// control written over `compile_fixture` cannot see that refusal at all, and the refusal's
+// discriminating RED is not authorable in the CORPUS either: a module carrying a deliberately
+// ambiguous read would refuse the whole floor rather than sit in it as a probe. DESIGN section 4b
+// answers exactly that shape -- a state unrepresentable in the accepted corpus may still be
+// representable as source handed to the compiler by a fixture, and declining to enrol it there is
+// specification-without-execution.
+//
+// ONE DETECTOR, NOT TWO. The host builtin behind this calls `claim_scope_for_with_memos`, the
+// same function the floor's own entry point calls. It does not re-derive the ambiguity
+// population, so the refusal a control observes IS the refusal the corpus floor raises, from one
+// computation. A second copy here -- even a faithful one -- would be the second authority the
+// census exists to prevent, and would be free to drift from it silently. What differs from the
+// floor's call is the memo arguments, which is a caching decision rather than a semantic one.
+//
+// THE ENTRY IS A MODULE PATH, not a file path, because that is what `claim_scope_for` is keyed on.
+// `cause` is `NonEmptyStr`, matching `MultiModuleCompileFixtureOutcome`'s arm one screen up
+// rather than weakening to bare `String` for the same fact. Every producer builds a non-empty
+// literal, so the brand costs nothing and makes an empty cause unwritable instead of merely
+// unwritten -- §5's construction over validation, applied to a refusal whose whole value is the
+// text it carries.
+type ClaimScopeFixtureOutcome
+  = ClaimScopeInstrumentRefused { cause: NonEmptyStr }
+  | ClaimScopeCompileRefused { blocking_count: Int, diagnostics: List<CompileDiagnosticCensusRow> }
+  | ClaimScopeRefused { cause: NonEmptyStr }
+  | ClaimScopeAccepted { module_count: Int }
+
+fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_dag_multi_module_fixture(
+    fixture.sources |> map(s => s.path as String),
+    fixture.sources |> map(s => s.content),
+    entry_module_path
+  )
+}
+
+// AND WHICH REFUSAL IT WAS -- the only refusal reader this instrument offers, deliberately.
+//
+// A reader that answered "did the scope builder refuse" would say nothing about WHY, and a probe
+// satisfied by ANY refusal goes green the day an unrelated one starts firing first, and would
+// then be cited as coverage for a cause it never observed. One was written here and deleted
+// rather than shipped beside this: two readers, one of them strictly weaker, is an invitation to
+// reach for the weaker.
+//
+// So this reader matches the arm AND requires the cause to name the expected refusal: a red has
+// to be the red the caller meant.
+//
+// Containment through `string_contains`, the corpus authority for this predicate (declared at
+// `std.methods` `string_contains_method`, and what the sibling instruments in this directory
+// already call). An earlier revision hand-rolled it as `split(..) |> count > 1` and defended that
+// as "the idiom the corpus already uses" -- true of the weaker idiom only, and §2's re-invention:
+// net concepts must not grow when an authority exists. `cause` is coerced to `String` at the call
+// because the `NonEmptyStr` brand establishes no method surface of its own; the brand is worth
+// keeping on the FIELD, where it makes an empty cause unwritable, and costs one ascription here.
+fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) -> Bool {
+  match o {
+    ClaimScopeRefused { cause: c } => string_contains(s: c as String, pattern: cause_marker)
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// WHY A FIXTURE FAILED TO COMPILE, readable from `.dag` rather than only from a hand-run compile.
+// `ClaimScopeCompileRefused` carries the diagnostic rows, so a control that expects a scope verdict
+// and gets a compile refusal can name the class instead of reporting a bare non-acceptance. This
+// exists because its absence cost a wrong diagnosis: a manifest was refused with `undefined
+// variable`, the instrument could report only that it was not accepted, and the cause was supplied
+// by inference from prose rather than read -- the same arm-for-cause conflation this outcome type
+// was split to prevent.
+fn claim_scope_compile_refusal_has_class(o: ClaimScopeFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => fixture_has_class(rows: d, wanted: wanted)
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// WHAT ACCEPTANCE MEANS ON THIS BRANCH, AND IT CHANGED HERE. An earlier version of this block said
+// "ACCEPTANCE IS SILENT ABOUT AMBIGUITY... a row asserting it establishes nothing about that class,
+// and must not be cited as coverage for a refusal that is not in this change." All three clauses
+// are false once the wall lands: the scope builder REFUSES on an ambiguous bare value read rather
+// than collecting it, the field it collected into is deleted, and the negative control rows in
+// `test.claim.bare_name_ambiguity_wall_witness` assert through this reader precisely as coverage
+// for that refusal. Its Rust twin `ClaimScopeFixtureOutcome::ScopeAccepted` was rewritten to say so
+// and this one was not, which left one fact carrying two annotations with opposite obligations --
+// §3's meaning fork, between a `.dag` reader and the host value it projects.
+//
+// So: acceptance now DOES exclude the census population, which is what makes a
+// `claim_scope_was_accepted` row a usable negative control. The scope is narrower than "no
+// ambiguity": it means no VALUE-POSITION read of a name two transitively-reached modules declare.
+// Type-position collisions are outside it, as the wall's own annotation states.
+fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
+  match o {
+    ClaimScopeAccepted { module_count: n } => true
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}

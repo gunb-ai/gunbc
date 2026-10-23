@@ -1,0 +1,16 @@
+module gunbc.primitive_runtime_body_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data primitive_runtime_body_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.bin.claim_executor", decl_name: "run_required_primitive_runtime_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_executor.tests", decl_name: "primitive_runtime_body_phase_executes_the_live_gate", field: WholeDeclaration },
+  ],
+  reason: "The required phase dispatcher is still a retained host CLI. This adapter invokes the already-built sibling gunbc binary through its existing run transport against v1.compiler.primitive_runtime_body.check; all definition discovery, registry admission, mutation-control verdicts and diagnostic reasons are .dag facts. No Rust bridge/body validator, runtime roster, new CLI flag or new job is introduced. A child process releases the extra preparation caches before the floor starts. Its separate source universe includes the live runtime producer without widening the default floor subject across the src/v1 name collisions documented by gunbc.ci_layer_roots. The second declaration executes the exact production adapter as an integration control. Existing required-phase enum, lane match, roster labels and standing-pair test are amended, not replaced with a second dispatcher.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the adapter and its host integration test when the required dispatcher consumes modeled phase entry points and source universes directly and runs this same .dag acceptance door. Preserve the live population check and its permanent missing-map_insert-body control; removing the control is not dissolution.",
+  current_boundary: "claim_executor run_required_primitive_runtime_body -> gunbc run -> v1.compiler.primitive_runtime_body check -> gunbc.primitive_runtime_body_gate runtime_body_required_check_in"
+}

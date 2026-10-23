@@ -1,0 +1,34 @@
+module v2.compiler.discovery_enumeration
+
+import v2.std.node { Symbol }
+
+type ResolvedDeclRef {
+  module: String
+  name: Symbol
+}
+
+data unified_claim_arm_bool_witness_claim_module: String = "v2.std.verification"
+data unified_claim_arm_node_corpus_module: String = "v2.std.verification"
+
+type OwnedDataDeclInitializer
+  = OwnedBoolWitnessClaimInit {
+      witness_entry: String
+      witness_function: String
+    }
+  | OwnedNodeCorpusInit
+  | OwnedOtherInit { resolved: ResolvedDeclRef }
+
+type OwnedDataDeclRecord {
+  entry: String
+  module: String
+  decl_name: String
+  initializer: OwnedDataDeclInitializer
+}
+
+type OwnedDataDiscoveryReceipt {
+  unified_claim_arm_count: Int
+  bool_witness_claim_arm_count: Int
+  illegal_other_init_count: Int
+  bool_witness_transport_row_count: Int
+  transport_projection_complete: Bool
+}

@@ -1,0 +1,24 @@
+module test.claim.roadmap_view_preferences_witness
+
+import gunbc.roadmap_view_preferences { IssueViewPreferences, ViewSortTerm, ViewAscending, ViewDescending, issue_view_preferences_json, issue_view_preferences_of, view_sort_of }
+import extdeps.google.issue_tracker { IssueSortStatus, IssueSortPriority }
+import extdeps.languages.json.emit { serialize_json }
+
+
+fn view_fixture() -> IssueViewPreferences {
+  IssueViewPreferences { sorts: [ViewSortTerm { key: IssueSortStatus, direction: ViewDescending }, ViewSortTerm { key: IssueSortPriority, direction: ViewAscending }], query: "shell", band: "ready", project: "project", selected: "issue", expanded: true }
+}
+test fn ordered_sorts_and_filters_round_trip_without_losing_precedence() -> Bool {
+  let prefs = view_fixture()
+  issue_view_preferences_of(text: serialize_json(v: issue_view_preferences_json(prefs: prefs))) == Present { value: prefs }
+}
+test fn invalid_sort_directions_and_duplicate_columns_are_refused() -> Bool {
+  view_sort_of(raw: "status:sideways") == none
+    && view_sort_of(raw: "unknown:asc") == none
+    && issue_view_preferences_of(text: serialize_json(v: issue_view_preferences_json(prefs: IssueViewPreferences { sorts: [ViewSortTerm { key: IssueSortStatus, direction: ViewDescending }, ViewSortTerm { key: IssueSortStatus, direction: ViewAscending }], query: "", band: "all", project: "", selected: "", expanded: false }))) == none
+}
+test fn invalid_preference_schema_and_filter_are_refused() -> Bool {
+  issue_view_preferences_of(text: "\{\}") == none
+    && issue_view_preferences_of(text: serialize_json(v: issue_view_preferences_json(prefs: IssueViewPreferences { sorts: [], query: "", band: "invented", project: "", selected: "", expanded: false }))) == none
+}
+

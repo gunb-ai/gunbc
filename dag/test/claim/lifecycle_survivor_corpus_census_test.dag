@@ -1,0 +1,54 @@
+module dag.test.claim.lifecycle_survivor_corpus_census
+
+import gunbc.lifecycle_survivor_scan {
+  no_raw_lifecycle_string_survivors,
+  scan_projects_every_declared_type,
+  scan_reaches_test_modules,
+  scan_reads_a_real_corpus,
+  scan_sees_bare_string_declarations,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// The irreducible half of the lifecycle-carrier census: its subject IS the breadth of the
+// live corpus, so it walks all ~16,975 data declarations under both roots and cannot be made
+// smaller without measuring less. Split from the mechanism controls in
+// lifecycle_survivor_scan_witness_test.dag per the witness-cost ruling: a live population
+// whose breadth is the subject decomposes into small discriminating fixtures per PR plus the
+// irreducible census on an enrolled cadence. The fixtures there are the per-PR half and run
+// in ~0ms; this is the cadence half.
+//
+// MEASURED: 18482ms eval for the gate below (claim_batch, whole corpus, 3475 modules),
+// against the 5s per-witness fast-lane budget gunbc_ci_fast_lane_eval_budget_ms. Enrolled on
+// FalsifierSubstrateLongLane rather than relocated -- the file is excluded from per-PR
+// discovery by a WitnessExclusionRow AND carries a FalsifierCadenceJob enrollment, so it has
+// a named executing consumer. A witness moved out of discovery without one executes nowhere,
+// which is deletion of the evidence with the file retained.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// The claim. Not "every survivor is classified" -- there are none to classify, which is the
+// stronger statement and the one the migration is for. A newly authored
+// `data x_dissolve_on: String = "..."` anywhere under either root reds this; proven by
+// planting exactly that declaration in an isolated worktree and observing FAIL.
+test fn no_raw_lifecycle_string_survivors_remain() -> Bool {
+  no_raw_lifecycle_string_survivors()
+}
+
+// Zero is also what a producer that read nothing returns, so the gate above is only
+// meaningful beside these four. Each rules out a distinct route to a false zero: an empty
+// walk, a walk seeing no bare strings, a type projection returning empty names, and a walk
+// that skips the test subtree where a survivor could hide.
+test fn scan_denominator_is_a_real_corpus() -> Bool {
+  scan_reads_a_real_corpus()
+}
+
+test fn scan_denominator_contains_bare_string_declarations() -> Bool {
+  scan_sees_bare_string_declarations()
+}
+
+test fn scan_reads_a_declared_type_for_every_declaration() -> Bool {
+  scan_projects_every_declared_type()
+}
+
+test fn scan_denominator_includes_test_modules() -> Bool {
+  scan_reaches_test_modules()
+}

@@ -1,0 +1,149 @@
+module test.claim.algebra_receiver_callable_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for }
+
+// EVERY CELL IS A SOURCE STRING, NOT A CALL IN THIS MODULE. The subject of these witnesses is a
+// construct the compiler currently REFUSES TO RESOLVE, so writing it directly here would make
+// the module fail to resolve -- and a resolve failure takes the whole module with it, including
+// the cells that pass. The accepted positive controls would become casualties rather than
+// controls, and DESIGN 4b(4) requires the discriminating RED and an accepted positive control to
+// stand together. Compiling the construct as a String keeps this module resolvable, so every
+// assertion RUNS and returns a real verdict.
+//
+// THE ASSERTIONS ARE WRITTEN IN THE ACCEPTANCE DIRECTION -- "this is callable, so nothing
+// blocks" -- and several are FALSE today. That polarity is deliberate: asserting the refusal
+// instead would encode the DEFECT as the expected state, and when the wall lands the witness
+// would have to be rewritten. Written this way, the fix flips each assertion to TRUE and the
+// cell becomes a permanent regression control with no edit.
+//
+// WHAT THE CELLS VARY, and why there are this many. The subject is that A CALLABLE REACHED
+// THROUGH A GENERIC TYPE ALIAS IS NOT RECOGNISED AS CALLABLE, and five earlier hypotheses each
+// died to a specific cell rather than to argument. Binder SPELLING (shorthand vs explicit), NAME
+// (whether a same-named declaration exists elsewhere), BINDER KIND (match binder vs let vs
+// parameter), POSITION (top-level vs inside a match arm), and finally the ALIAS itself are each
+// varied against a control holding the others fixed.
+//
+// THE CELLS THAT DECIDE IT are inline_typed_field_match_binder_is_callable and
+// inline_typed_parameter_is_callable. They are cells A and H with the function type written as a
+// literal arrow instead of ApplicationUnary<Int>, and they PASS. Binder kind, position and
+// parameters are therefore all innocent: the alias is the only variable that moves a verdict.
+//
+// A WARNING TO WHOEVER EDITS THIS FILE, because it cost this lane most of a night: the alias was
+// held CONSTANT across every refusing cell and absent from every passing one, so a table without
+// the two literal-arrow cells reads equally well as a story about binders or about position. Both
+// of those stories were believed and reported here before a cell separated them. If you add a
+// cell, vary ONE axis against a control that holds the rest fixed.
+
+// A: match binder, shorthand, name that a declaration elsewhere in the corpus also carries.
+// THE ORACLE IS SCOPED TO A CLASS AND SUBJECT, NEVER TO THE WHOLE COMPILE. A census carries every
+// diagnostic the compile produced, the imported closure's included, so `census_total_count == 0`
+// asserts a property of the CORPUS rather than of the fixture -- gunbc.compile_diagnostic_census
+// says so directly and names the two exact forms, of which a count scoped to class AND
+// subject_name is the one used here. Each cell therefore asks only whether ITS OWN call refused,
+// and stays true or false for that reason alone; an unrelated blocking row anywhere in the
+// closure cannot redden a cell, and cannot green one either.
+//
+// The subject spelling is not arbitrary: v1.compiler.cli_run.compile_clean_internal_error_histogram_name
+// keys `function 'X' not found in scope` as `function:X` under class InternalError, so
+// "function:bound_step" names exactly the call this cell is about.
+
+data shorthand_colliding_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype ApplicationCallback = CallbackPresent { step: ApplicationUnary<Int> } | CallbackAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_application_callback() -> ApplicationCallback { CallbackPresent { step: application_increment } }\nfn probe() -> Bool { match declared_application_callback() { CallbackPresent { step } => step(41) == 42  CallbackAbsent => false } }\n"
+
+// B: match binder, explicit, pool-free name. Differs from A in BOTH spelling and name, which is
+// why neither alone can be read off this pair -- C and D are what separate them.
+data explicit_pool_free_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype ApplicationCallback = CallbackPresent { step: ApplicationUnary<Int> } | CallbackAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_application_callback() -> ApplicationCallback { CallbackPresent { step: application_increment } }\nfn probe() -> Bool { match declared_application_callback() { CallbackPresent { step: bound_step } => bound_step(41) == 42  CallbackAbsent => false } }\n"
+
+// C: match binder, shorthand, pool-free name. Holds spelling fixed against A and varies the
+// name; holds the name fixed against B and varies the spelling.
+data shorthand_pool_free_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_pool_free_callback() -> PoolFreeCallback { PoolFreePresent { zq_apply: application_increment } }\nfn probe() -> Bool { match declared_pool_free_callback() { PoolFreePresent { zq_apply } => zq_apply(41) == 42  PoolFreeAbsent => false } }\n"
+
+// D: match binder, explicit, bound to a colliding name over a pool-free FIELD. The field and the
+// called name deliberately disagree, so a resolution here cannot be coming from the field label.
+data explicit_colliding_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_pool_free_callback() -> PoolFreeCallback { PoolFreePresent { zq_apply: application_increment } }\nfn probe() -> Bool { match declared_pool_free_callback() { PoolFreePresent { zq_apply: step } => step(41) == 42  PoolFreeAbsent => false } }\n"
+
+// E: let binding at the TOP LEVEL of a function body, pool-free name. Accepted control.
+data top_level_let_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\nfn application_increment(value: Int) -> Int { value + 1 }\nfn probe() -> Bool { let zq_bound = application_increment\n  zq_bound(41) == 42 }\n"
+
+// F: the same top-level let under a colliding name. Paired with E so that a difference between
+// them would be attributable to the name and nothing else.
+data top_level_let_colliding_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\nfn application_increment(value: Int) -> Int { value + 1 }\nfn probe() -> Bool { let step = application_increment\n  step(41) == 42 }\n"
+
+// G: a let inside a match arm, bound from an alias-typed field. It was authored as a POSITION
+// cell -- a let is callable at a body's top level, is it callable one level in? -- and that
+// reading is RETIRED: E and F bind a function declaration directly while this binds through the
+// alias, so position never varied alone. It is kept for what it still shows, which no other cell
+// does: the BINDING SUCCEEDS AND ONLY THE CALL FAILS. The let initializer reads the match binder
+// with no complaint and the refusal names `rebound`, the let's own name, not the binder's.
+data nested_let_in_match_arm_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\ntype PoolFreeCallback = PoolFreePresent { zq_apply: ApplicationUnary<Int> } | PoolFreeAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_pool_free_callback() -> PoolFreeCallback { PoolFreePresent { zq_apply: application_increment } }\nfn probe() -> Bool { match declared_pool_free_callback() { PoolFreePresent { zq_apply: bound } => let rebound = bound\n    rebound(41) == 42  PoolFreeAbsent => false } }\n"
+
+// H: an ordinary higher-order call -- a function PARAMETER of declared function type, called by
+// name, with no match and no pattern anywhere near it. This cell was not designed. It was
+// scaffolding written to create a non-call position for G, and it refused on its own parameter
+// before the cell it served ever ran.
+data function_parameter_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype ApplicationUnary<T> = fn(T) -> T\nfn application_increment(value: Int) -> Int { value + 1 }\nfn parameter_call_probe(f: ApplicationUnary<Int>) -> Bool { f(41) == 42 }\nfn probe() -> Bool { parameter_call_probe(f: application_increment) }\n"
+
+test fn top_level_let_is_callable() -> Bool {
+  blocking_subject_count_for(source: top_level_let_source, wanted_class: "InternalError", wanted_subject: "function:zq_bound") == 0
+}
+
+test fn top_level_let_colliding_name_is_callable() -> Bool {
+  blocking_subject_count_for(source: top_level_let_colliding_source, wanted_class: "InternalError", wanted_subject: "function:step") == 0
+}
+
+test fn shorthand_match_binder_is_callable() -> Bool {
+  blocking_subject_count_for(source: shorthand_colliding_source, wanted_class: "InternalError", wanted_subject: "function:step") == 0
+}
+
+test fn explicit_match_binder_pool_free_name_is_callable() -> Bool {
+  blocking_subject_count_for(source: explicit_pool_free_source, wanted_class: "InternalError", wanted_subject: "function:bound_step") == 0
+}
+
+test fn shorthand_match_binder_pool_free_name_is_callable() -> Bool {
+  blocking_subject_count_for(source: shorthand_pool_free_source, wanted_class: "InternalError", wanted_subject: "function:zq_apply") == 0
+}
+
+test fn explicit_match_binder_colliding_name_is_callable() -> Bool {
+  blocking_subject_count_for(source: explicit_colliding_source, wanted_class: "InternalError", wanted_subject: "function:step") == 0
+}
+
+test fn nested_let_in_match_arm_is_callable() -> Bool {
+  blocking_subject_count_for(source: nested_let_in_match_arm_source, wanted_class: "InternalError", wanted_subject: "function:rebound") == 0
+}
+
+test fn function_parameter_is_callable() -> Bool {
+  blocking_subject_count_for(source: function_parameter_source, wanted_class: "InternalError", wanted_subject: "function:f") == 0
+}
+
+// I: a function PARAMETER whose type is written INLINE rather than through a generic alias.
+// Cell H is the same shape with the type spelled ApplicationUnary<Int>. This pair is what
+// separates "a parameter is not callable" from "a function type reached through a generic ALIAS
+// is not callable", and the corpus already votes: 115 sites bare-call an fn-typed parameter and
+// compile, every one of them declaring the type inline.
+data inline_typed_parameter_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\nfn application_increment(value: Int) -> Int { value + 1 }\nfn parameter_call_probe(f: fn(Int) -> Int) -> Bool { f(41) == 42 }\nfn probe() -> Bool { parameter_call_probe(f: application_increment) }\n"
+
+// J: a match binder over a field whose function type is INLINE. Cells A-D are the same shape
+// with the field typed ApplicationUnary<Int>, so this holds binder kind and position fixed and
+// varies ONLY whether the type went through the alias.
+data inline_typed_field_match_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype InlineCallback = InlinePresent { g: fn(Int) -> Int } | InlineAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_inline_callback() -> InlineCallback { InlinePresent { g: application_increment } }\nfn probe() -> Bool { match declared_inline_callback() { InlinePresent { g } => g(41) == 42  InlineAbsent => false } }\n"
+
+test fn inline_typed_parameter_is_callable() -> Bool {
+  blocking_subject_count_for(source: inline_typed_parameter_source, wanted_class: "InternalError", wanted_subject: "function:f") == 0
+}
+
+test fn inline_typed_field_match_binder_is_callable() -> Bool {
+  blocking_subject_count_for(source: inline_typed_field_match_source, wanted_class: "InternalError", wanted_subject: "function:g") == 0
+}
+
+// K: a NON-GENERIC alias of a function type. Every other alias cell uses ApplicationUnary<Int>,
+// a GENERIC alias instantiated at Int, so the table so far cannot separate "no function-type
+// alias is peeled" from "a generic alias is not INSTANTIATED to its arrow". This cell holds the
+// alias and the binder fixed and removes only the type parameter. It decides which repair the
+// class names, and those are different repairs in different places: peeling aliases before
+// callability, versus instantiating a generic alias to an arrow -- the latter being the same
+// machinery this branch already repairs for application evidence.
+data non_generic_alias_field_source: String = "module test.claim.tmp_callable_probe\nimport std.types { Bool, Int }\ntype IntFn = fn(Int) -> Int\ntype NonGenCallback = NgPresent { h: IntFn } | NgAbsent\nfn application_increment(value: Int) -> Int { value + 1 }\nfn declared_non_generic_callback() -> NonGenCallback { NgPresent { h: application_increment } }\nfn probe() -> Bool { match declared_non_generic_callback() { NgPresent { h } => h(41) == 42  NgAbsent => false } }\n"
+
+test fn non_generic_alias_field_match_binder_is_callable() -> Bool {
+  blocking_subject_count_for(source: non_generic_alias_field_source, wanted_class: "InternalError", wanted_subject: "function:h") == 0
+}

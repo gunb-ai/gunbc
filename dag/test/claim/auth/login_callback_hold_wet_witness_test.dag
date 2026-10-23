@@ -1,0 +1,43 @@
+module test.claim.auth.login_callback_hold_wet_witness
+
+import std.types { NonEmptyStr, Bool, FilePath, String }
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import extdeps.shell
+import gunbc.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
+import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_save, login_transaction_store_lookup, LoginTransactionSaved, LoginTransactionStoreFound, LoginTransactionStoreUnknown }
+import gunbc.auth.login_browser_binding { auth_login_browser_binding }
+import gunbc.roadmap_auth_routes { auth_google_callback_response, auth_callback_transaction }
+
+// Two independent browser cookie contexts and two already-read copies of one transaction.
+// No code is supplied, so even configured CI cannot contact Google's token endpoint.
+test fn foreign_browser_cannot_consume_and_cached_replay_cannot_exchange() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  if !directory.success { false } else {
+    let instance = isolated_dashboard_instance(deployment: deployment_id(name: "login-hold-fixture" as NonEmptyStr), instance_id: "login-hold-fixture", layout: srv1_host_layout(), root: directory.path as FilePath,
+      serve_function: "unused", listen_port: 18744, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+    let layout = login_transaction_store_layout_for_instance(instance: instance)
+    let made = shell.Mkdir.Parents(path: layout.root as String)
+    let transaction = OidcLoginTransaction { state: "hold-browser-state", nonce: "hold-browser-nonce", created_at: "2026-09-28T00:00:00Z", expires_at: "2099-01-01T00:00:00Z",
+      verifier: OidcPkceCodeVerifier { verifier: "fixture-pkce-only-never-a-google-code" }, return_path: RelativeReturnPath { path: "/" } }
+    if !made.success { false } else { match login_transaction_store_save(layout: layout, transaction: transaction) {
+      LoginTransactionSaved { state: _ } => {
+        let wrong = auth_google_callback_response(instance: instance, path: "/auth/google/callback?state=hold-browser-state", cookie_header: "__Host-gunbc-login=another-browser")
+        let missing = auth_google_callback_response(instance: instance, path: "/auth/google/callback?state=hold-browser-state", cookie_header: "")
+        if wrong.status != 400 || missing.status != 400 { false } else { match login_transaction_store_lookup(layout: layout, state: transaction.state) {
+          LoginTransactionStoreFound { transaction: cached } => {
+            let initiated = auth_google_callback_response(instance: instance, path: "/auth/google/callback?state=hold-browser-state",
+              cookie_header: concat("__Host-gunbc-login=", auth_login_browser_binding(transaction: transaction)))
+            let replay = auth_callback_transaction(instance: instance, layout: layout, transaction: cached, path: "/auth/google/callback?state=hold-browser-state")
+            (initiated.status == 400 || initiated.status == 503) && replay.status == 400
+              && string_contains(s: replay.body, pattern: "no live login transaction")
+              && match login_transaction_store_lookup(layout: layout, state: transaction.state) { LoginTransactionStoreUnknown { state: _ } => true _ => false }
+          }
+          _ => false
+        } }
+      }
+      _ => false
+    } }
+  }
+}

@@ -1,0 +1,132 @@
+module v2.test.claim.enforcement_inventory_witness
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Operator-ruled OFFLINE (review 47569): the global inventory receipt calls
+// lens_enforcement_inventory_live, which reads decl_facts over the whole corpus, ONCE and folds the
+// seven assertions over that one value. The former seven-test shape rebuilt the same immutable
+// world fact seven times and safety-interrupted every identity before verdict; required-floor run
+// 32794539384 measured the seven interruptions, and this consolidation is their bounded reshape.
+// Excluded from per-PR discovery via witness_exclusion_frontier row
+// enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as
+// enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root
+// src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --function
+// enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests
+// (enforcement_live specimen + row-count) are cheap but share this file grain.
+
+// Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through
+// lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool
+// predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored
+// ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots
+// witness_exclusion_frontier (no hand-authored scheduling). Support status is on
+// LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts
+// evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant
+// were not modified. 0A red-control evidence is construction in the production fold; discriminating
+// witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row).
+
+data enforcement_live_witness_pattern: String = "enforcement_live_witness_test.dag"
+
+test fn enforcement_live_witness_exclusion_inventory_matches_frontier() -> Bool {
+  match find_witness_admission_row_for_pattern(
+    inventory: witness_admission_inventory_live(),
+    pattern: enforcement_live_witness_pattern
+  ) {
+    WitnessAdmissionRowAbsent => false
+    WitnessAdmissionRowFound { value: row } =>
+      match row.exclusion {
+        ExclusionRowFound { value: excl } =>
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion)
+            && !(excl.reason == "")
+            && scheduling_disposition_is_enrolled(disposition: cadence_disposition_for_offline_recipe(rows: row.cadence_rows))
+            && scheduling_disposition_is_excluded(disposition: cadence_disposition_for_pr_floor(rows: row.cadence_rows))
+            && scheduling_disposition_is_excluded(disposition: cadence_disposition_for_main_push(rows: row.cadence_rows))
+        ExclusionRowAbsent => false
+      }
+  }
+}
+
+test fn witness_admission_inventory_reconciles_exclusion_frontier() -> Bool {
+  length(xs: witness_admission_inventory_live()) == length(xs: witness_exclusion_frontier)
+}
+
+data enforcement_inventory_witness_pattern: String = "enforcement_inventory_witness_test.dag"
+
+test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
+  match find_witness_admission_row_for_pattern(
+    inventory: witness_admission_inventory_live(),
+    pattern: enforcement_inventory_witness_pattern
+  ) {
+    WitnessAdmissionRowAbsent => false
+    WitnessAdmissionRowFound { value: row } =>
+      match row.exclusion {
+        ExclusionRowFound { value: excl } =>
+          witness_exclusion_lookup_is_offline(lookup: row.exclusion)
+        ExclusionRowAbsent => false
+      }
+  }
+}
+
+// One whole-corpus acquisition, seven inventory assertions. The facts are genuinely global, but
+// acquiring the same `enforcement_corpus_facts` once per test identity made six of seven walks pure
+// repetition and safety-interrupted every row before verdict.
+test fn enforcement_inventory_global_receipt_holds() -> Bool {
+  let inventory = lens_enforcement_inventory_live()
+  inventory_reconciles_registry_both_ways(
+    inventory: inventory,
+    contracts: lens_contract_registry
+  )
+  && inventory_unbound_rows_match_contract_unbound(
+    inventory: inventory,
+    contracts: lens_contract_registry
+  )
+  && unbound_contract_count() > 0
+    && inventory_contains_lens_id(
+      inventory: inventory,
+      id: ComplexityDerivedKernel
+    )
+    && inventory_contains_lens_id(
+      inventory: inventory,
+      id: ComplexityOptimality
+    )
+    && inventory_contains_lens_id(
+      inventory: inventory,
+      id: EffectReach
+    )
+  && inventory_application_count_for_lens(
+    inventory: inventory,
+    id: Cost
+  ) >= 2
+  && match find_inventory_row(inventory: inventory, id: Cost) {
+    InventoryRowAbsent => false
+    InventoryRowFound { value: row } =>
+      fold_list(
+        xs: row.applications,
+        empty: false,
+        cons: fn(found, app) {
+          found || ((app.standing_intent_id == "complexity.repo-wide")
+            && match app.support {
+              SupportGap { gap: _ } => true
+              SupportHeld => false
+            })
+        }
+      )
+  }
+  && match find_inventory_row(inventory: inventory, id: Cost) {
+    InventoryRowAbsent => false
+    InventoryRowFound { value: row } =>
+      fold_list(
+        xs: row.applications,
+        empty: false,
+        cons: fn(found, app) {
+          found || ((app.application_id == "contract.consumer.src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag::complexity_budget_roster_family_gate_holds")
+            && match app.support {
+              SupportHeld => true
+              SupportGap { gap: _ } => false
+            })
+        }
+      )
+  }
+  && for_all(xs: inventory, predicate: fn(row) {
+    inventory_row_evaluated_scope_absent(row: row)
+  })
+}

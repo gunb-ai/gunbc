@@ -1,0 +1,2085 @@
+module gunbc.v1_consumer_census
+
+import gunbc.ci_release_bins { ci_floor_required_artifact_names }
+import std.types { List, String, NonEmptyStr, CommitSha, Bool, Int }
+import std.content_hash { Sha1Digest }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.algebra { fold_list }
+import std.algebra { list_append, list_snoc_item }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.process { ProcessExit, ExitFailure }
+import gunbc.replacement_cut {
+  BoundaryConsumer, BoundaryCensus, ConsumersEnumerated,
+  ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
+  CoverageClaim, Covered, CoverageOpen
+}
+import gunbc.stage0_partition_package_graph {
+  stage0_partition_package_dependency_names, stage0_host_shell_package_name, stage0_host_shell_dependency_names
+}
+import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+import std.decl_ref { declaration_ref_eq, declaration_ref_display_key }
+import gunbc.rust_item_identity { rust_item_identity_key }
+import gunbc.rust_item_host_observation {
+  ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused,
+  RustReferenceRow, RustReferenceUnattributed,
+  RustReferenceObservation, RustReferencesObserved, RustReferenceHostRefused, RustObservedTree,
+  RustFileChangeInput, HeadRustSources, HeadRustSourcesRead, HeadRustSourcesRefused, head_rust_sources,
+  observe_rust_references, rust_source_namespace_rows
+}
+
+// XL-5's FIRST DELIVERABLE: the population that has to be EMPTY before the bankruptcy transaction
+// can execute, remeasured at the grain gunbc.replacement_cut requires. XL-5 is primarily a
+// deletion, and a deletion's only real question is who is still holding on. This carrier answers
+// it at consumer x consumed-authority identity, one disposition per relation, so "is v1
+// unreachable yet" is a JOIN rather than a recollection.
+//
+// WHY THIS CARRIER SPEAKS gunbc.replacement_cut's VOCABULARY AND MINTS NONE OF ITS OWN. The exact
+// cut carrier already owns ConsumerDisposition and BoundaryConsumer, and gunbc.interpreter_replacement_cut
+// registered its v1 survey as RegisteredCutRemeasureRequired precisely because that survey was
+// authored at module-or-binary grain over a ten-of-125 sample -- a universe too coarse to inhabit
+// the exact relation. This census IS that remeasurement (XL-N Manager ruling, 2026-08-29: XL-5 is
+// the sole producer of the exact census and discharges the registered obligation). An earlier
+// revision of this file minted a four-arm V1ConsumerDisposition beside ConsumerDisposition; that
+// was a nickname for a concept with an authority, the DESIGN section 3 fork, and it is gone. The
+// four names the XL-5 brief uses map onto the authority's arms without loss: replaced-by-native-v2
+// is ReplacedByY; retired-with-deleted-subject is Retire; still-required-and-blocking is
+// RetainSameContract or RetainChangedContract with CoverageOpen -- which admit_replacement_cut_plan
+// already refuses as UncoveredSurvivingConsumer; and replaced-by-stronger-witness is ReplacedByY
+// naming the witness, with the STRENGTHENING carried by the witness census's evidence rows.
+//
+// WHAT THIS IS NOT. It is not the v1 exit model: gunbc.v1_deletion_plan owns the four finish lines
+// and says it owns nothing else. This census discharges two of them -- InterpreterDeleted and
+// ProductsV1Free -- and names them rather than restating their claims. It is not the maintenance
+// standing: gunbc.v1_maintenance_standing governs v1 while it lives; this governs what must be
+// true for it to stop living.
+
+// WHAT IS BEING CONSUMED, at the grain a deletion actually operates on. These are not folders:
+// src/v1 contains all of them and deleting the folder is the transaction, not the model. The axis
+// matters because the dispositions differ per subject in a way a path cannot express -- the v1 CLI
+// is REPLACED (v2 has to grow the verb), the generated stage0 mirrors are RETIRED WITH THEIR
+// SUBJECT (they are projections of .dag authorities that move), and the v1 .dag source is neither:
+// it is the regeneration loop's SUBJECT, so deleting it retires the loop rather than orphaning it.
+// V1RuntimeBridge is separate from V1CompilerCrate because the bridge is reached by EMITTED code
+// rather than by a caller in the tree, so its consumer population is discovered by a different
+// instrument -- and the floor-cut plan's third measured bound says a reach measurement over one
+// medium reads exactly like a reach measurement over all of them.
+
+type V1Subject
+  = V1CompilerCrate
+  | V1Interpreter
+  | V1RuntimeBridge
+  | V1Cli
+  | V1HostedCiBinary
+  | V1DagSource
+  | V1GeneratedStage0Mirror
+  | V1SerializedArtifact
+
+fn v1_subject_key(s: V1Subject) -> String {
+  match s {
+    V1CompilerCrate => "v1-compiler-crate"
+    V1Interpreter => "v1-interpreter"
+    V1RuntimeBridge => "v1-runtime-bridge"
+    V1Cli => "v1-cli"
+    V1HostedCiBinary => "v1-hosted-ci-binary"
+    V1DagSource => "v1-dag-source"
+    V1GeneratedStage0Mirror => "v1-generated-stage0-mirror"
+    V1SerializedArtifact => "v1-serialized-artifact"
+  }
+}
+
+// HOW THE DEPENDENCY IS SPELLED, and it is a KEY field rather than a note because the discovery
+// instrument is per-medium and nothing in a per-medium answer announces the media it omitted. The
+// floor-cut replacement plan measured this directly: eight orphan candidates by import graph fell
+// to three once roster rows, test discovery, workflow argv and Cargo bin targets were joined, a
+// five-in-eight false-positive rate produced entirely by asking one medium. A consumer census that
+// swept only Rust `use` edges would have reported this repository's CI as v1-free, because CI
+// reaches v1 through an argv string that no Rust instrument reads. Carrying the medium is what
+// makes the omission of a medium a visible hole rather than a silent green.
+
+// RustSourceReference, NOT RustUseEdge: the arm was named for `use` edges when its rows were
+// authored by hand, and the produced population attributes ANY token-carrying line to its item --
+// a `pub use`, a `pub mod v1_rt;`, a `v1_rt::answer()` call in a body -- so the old name said less
+// than the rows carried. One name, one meaning: a reference in Rust source to the named authority.
+type ConsumerMedium
+  = CargoManifestDependency
+  | CargoBinTarget
+  | WorkflowArgv
+  | DagArgvRow
+  | RustSourceReference
+  | GitHookScript
+  | CommittedGeneratedMirror
+  | SerializedArtifactPath
+  | RustcExternLink
+
+fn consumer_medium_key(m: ConsumerMedium) -> String {
+  match m {
+    CargoManifestDependency => "cargo-manifest-dependency"
+    CargoBinTarget => "cargo-bin-target"
+    WorkflowArgv => "workflow-argv"
+    DagArgvRow => "dag-argv-row"
+    RustSourceReference => "rust-source-reference"
+    GitHookScript => "git-hook-script"
+    CommittedGeneratedMirror => "committed-generated-mirror"
+    SerializedArtifactPath => "serialized-artifact-path"
+    RustcExternLink => "rustc-extern-link"
+  }
+}
+
+// EVERY ROW NAMES THE INSTRUMENT THAT FOUND IT, AND THE COMMAND THAT RE-DERIVES IT. XL-5's standing
+// rule is that a number without a producer, a source revision and a command is not a number, and
+// DESIGN section 6 states the general form: name the instrument, never transcribe its output.
+// Making the producer a REQUIRED FIELD turns that from a review habit into a construction -- a row
+// with no producer has no constructor, so an author cannot file a consumer they merely remember.
+// The command is carried verbatim so a reader re-derives rather than trusts; the revision is
+// carried because a command's answer is a timestamped observation of a moving tree, not an
+// identifier.
+
+// A PRODUCER EITHER RECORDS THE TREE IT READ OR SAYS IT DID NOT, and there is no third spelling.
+// An earlier revision of this lane typed the pin as a required CommitSha plus a required
+// FloorDiscoveryTreeId and then filled both for producers that had observed neither -- a commit sha
+// standing where a TREE id is declared (a commit is never its own tree; the pre-existing rows above
+// keep the two distinct, 0bdb8dc3's tree really is 168f313c), and for the unmerged-head producer a
+// prose phrase standing where a hex digest is declared. Both type-checked and both were fabricated
+// plausible output, which DESIGN section 5 forbids outright. The repair is the modelling the pin
+// was missing rather than better strings: a producer that read a tree carries its identity, and a
+// producer that did not carries the basis for why -- an unmerged head, a live corpus walk whose
+// subject is whatever tree the lane runs on. The unobserved arm is not a weaker pin; it is the only
+// honest one for a producer whose subject is not a fixed revision, and it is visibly different from
+// an observed one at every read.
+type DiscoverySourcePin
+  = PinObserved { source_revision: CommitSha, source_tree: FloorDiscoveryTreeId }
+  | PinUnobserved { basis: NonEmptyStr }
+
+type DiscoveryProducer {
+  instrument: String
+  command: String
+  pin: DiscoverySourcePin
+}
+
+
+// THE REVISION AND THE TREE ARE TYPED, AND THE TREE IS THE ONE THAT DECIDES. A String revision is a
+// spelling that any later tree can wear; std.types CommitSha is the Git-head vocabulary every
+// consumer already names, and v2.workflow.floor_discovery FloorDiscoveryTreeId is what the floor
+// itself keys a discovery on -- a tree, not a commit, because two commits can carry one tree and
+// one commit is an observation of exactly one. Carrying both makes a row say which tree it
+// observed, so that after an upstream change lands (XL-0, #9676) the census reads as an observation
+// of an OLDER tree rather than as a current fact, and the rebind is a visible edit to two typed
+// fields rather than a stale string nobody re-reads (XL-N Manager ruling, 2026-08-29).
+
+fn discovery_producer(instrument: String, command: String, source_revision: String, source_tree_hex: String) -> DiscoveryProducer {
+  DiscoveryProducer {
+    instrument: instrument,
+    command: command,
+    pin: PinObserved {
+      source_revision: source_revision as CommitSha,
+      source_tree: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: source_tree_hex } }),
+    },
+  }
+}
+
+fn discovery_producer_unobserved(instrument: String, command: String, basis: String) -> DiscoveryProducer {
+  DiscoveryProducer {
+    instrument: instrument,
+    command: command,
+    pin: PinUnobserved { basis: v1cc_nes(s: basis) },
+  }
+}
+
+// THE ROW. The relation itself -- consumer x consumed_old_authority x disposition -- is the
+// authority's BoundaryConsumer, carried whole rather than re-spelled, so v1_boundary_census() below
+// projects straight into the exact carrier's BoundaryCensus. The three fields beside it are this
+// census's own facts about how the relation was found.
+type V1ConsumerRow {
+  boundary: BoundaryConsumer
+  medium: ConsumerMedium
+  subject: V1Subject
+  discovered_by: DiscoveryProducer
+}
+
+fn v1cc_nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn v1_row_key(r: V1ConsumerRow) -> String {
+  concat(concat(concat(concat(r.boundary.consumer.module_path as String, "."), r.boundary.consumer.decl_name as String), " -> "),
+    concat(concat(r.boundary.consumed_old_authority.module_path as String, "."), r.boundary.consumed_old_authority.decl_name as String))
+}
+
+// WHICH ARMS BLOCK THE TRANSACTION, read off the authority's own vocabulary. A retained consumer
+// with CoverageOpen is exactly what admit_replacement_cut_plan refuses as UncoveredSurvivingConsumer,
+// and Undecided is what it refuses as UndispositionedConsumer; this predicate is those two causes
+// asked of one row, so the blocking column here and the refusal there cannot disagree.
+fn consumer_disposition_blocks(d: ConsumerDisposition) -> Bool {
+  match d {
+    RetainSameContract { justification: _, coverage: c } => v1cc_coverage_is_open(c: c)
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: c } => v1cc_coverage_is_open(c: c)
+    ReplacedByY { new_authority: _ } => false
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+    Retire { reason: _ } => false
+    Undecided => true
+  }
+}
+
+fn v1cc_coverage_is_open(c: CoverageClaim) -> Bool {
+  match c {
+    Covered { by: _ } => false
+    CoverageOpen => true
+  }
+}
+
+fn consumer_disposition_successors(d: ConsumerDisposition) -> List<String> {
+  match d {
+    RetainSameContract { justification: _, coverage: c } => coverage_authorities(c: c)
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: c } => coverage_authorities(c: c)
+    ReplacedByY { new_authority: a } => [a as String]
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: w } => [w as String]
+    Retire { reason: _ } => []
+    Undecided => []
+  }
+}
+
+fn coverage_authorities(c: CoverageClaim) -> List<String> {
+  match c {
+    Covered { by: b } => [b as String]
+    CoverageOpen => []
+  }
+}
+
+// A CONSUMER THE EXACT VOCABULARY CANNOT SPELL IS CARRIED AS A REFUSAL, NEVER AS A FABRICATED
+// REFERENCE. gunbc.rust_item_host_observation item_declaration_ref projects a Rust item into
+// DeclarationRef through rust_source_namespace_rows, and a BoundaryConsumer needs a DeclarationRef
+// on both sides. The four self-host shim crates under dag/gunbc/instruments/ are hand-authored Rust
+// that reaches v1_rt; until this lane added the tooling namespace row the projection REFUSED them,
+// and the two dishonest moves were to invent a module path the projection did not produce, or to
+// drop the four because the carrier had no slot for them. So citability is DERIVED, never authored:
+// gunbc.rust_item_host_observation observe_rust_references folds the item scan over the hand-Rust
+// reference population against a supplied namespace table and carries the projection on each row;
+// v1_shim_partition_over then lands a reference as a BoundaryConsumer row when the projection
+// answered and in this refusal shape when it did not. Under the live table every shim reference is
+// cited and this list is empty by construction; under the live table with the tooling row removed
+// every one returns here -- which is the falsifier the paired witness executes over planted
+// sources, and the reason the table is a parameter of the producer.
+
+// THE UNCITABLE ROW CARRIES THE AUTHORITY IT REACHES, because the census's grain is consumer x
+// consumed authority and a row without the second half cannot be joined at that grain: one item
+// naming two authorities would dedup to one relation, an undercount in the fail-open direction.
+// The authority is a coproduct because an unknown token has none to name.
+type V1UncitableAuthority
+  = V1UncitableAuthorityKnown { authority: DeclarationRef }
+  | V1UncitableAuthorityUnknownToken { token: String }
+
+fn v1_uncitable_authority_key(a: V1UncitableAuthority) -> String {
+  match a {
+    V1UncitableAuthorityKnown { authority: r } => declaration_ref_display_key(ref: r)
+    V1UncitableAuthorityUnknownToken { token: t } => concat("unknown-token:", t)
+  }
+}
+
+type V1UncitableConsumer {
+  item_key: String
+  consumed_old_authority: V1UncitableAuthority
+  refusal_detail: String
+  medium: ConsumerMedium
+  subject: V1Subject
+  disposition: ConsumerDisposition
+  discovered_by: DiscoveryProducer
+}
+
+// COMPLETENESS IS A STRUCTURAL FACT, NOT A CLAIM IN A COMMENT. The three arms answer the
+// transaction's admission gate OPPOSITELY, and a bare List cannot tell them apart: an empty
+// blocking column means 'nothing blocks' under Complete, 'nothing was measured' under Unmeasured,
+// and 'nothing blocks among what was measured' under MeasuredLowerBound -- three different facts
+// one `[]` would spell identically. gunbc.replacement_cut BoundaryCensus carries
+// ConsumersEnumerated | BoundaryDeclaredEmpty and has no lower-bound arm, because an exact cut may
+// not be authored over a lower bound at all; this carrier is what stands BETWEEN a measurement and
+// that census, and the lower-bound arm is where a partial measurement lives while it is still
+// partial. v2.compiler.effect_demand DemandPopulation carries the same three-way shape for XL-1's
+// demand rows; the two are one concept at two subjects and are not consolidated here because that
+// module is in flight on XL-1's branch and does not exist on main. The dissolution condition below
+// names the merge, not the file.
+
+type ConsumerPopulation
+  = PopulationMeasuredComplete { rows: List<V1ConsumerRow>, joined_media: List<ConsumerMedium> }
+  | PopulationMeasuredLowerBound { rows: List<V1ConsumerRow>, uncitable: List<V1UncitableConsumer>, missing_basis: String }
+  | PopulationUnmeasured { reason: String }
+
+fn consumer_population_rows(p: ConsumerPopulation) -> List<V1ConsumerRow> {
+  match p {
+    PopulationMeasuredComplete { rows: r, joined_media: _ } => r
+    PopulationMeasuredLowerBound { rows: r, uncitable: _, missing_basis: _ } => r
+    PopulationUnmeasured { reason: _ } => []
+  }
+}
+
+fn consumer_population_uncitable(p: ConsumerPopulation) -> List<V1UncitableConsumer> {
+  match p {
+    PopulationMeasuredComplete { rows: _, joined_media: _ } => []
+    PopulationMeasuredLowerBound { rows: _, uncitable: u, missing_basis: _ } => u
+    PopulationUnmeasured { reason: _ } => []
+  }
+}
+
+fn consumer_population_is_complete(p: ConsumerPopulation) -> Bool {
+  match p {
+    PopulationMeasuredComplete { rows: _, joined_media: _ } => true
+    PopulationMeasuredLowerBound { rows: _, uncitable: _, missing_basis: _ } => false
+    PopulationUnmeasured { reason: _ } => false
+  }
+}
+
+data v1_consumer_census_population_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: a single generic completeness carrier is declared once and consumed by BOTH this census and v2.compiler.effect_demand, after XL-1's branch merges to main. Until then the two lanes carry the shape separately, which is a known duplicate held deliberately rather than an unnoticed fork. NOT satisfied by either lane deleting its own copy and importing the other's while the other is unmerged -- that produces a carrier whose provider does not exist on main, which is a worse state than the duplicate. The capability this names is one completeness axis with one declaring module reachable from main, not the deletion of a type.")
+
+// THE PRODUCERS. One declaration per instrument, so a row cites a producer rather than restating a
+// command, and re-deriving the whole census is reading the commands below rather than every row.
+
+data v1_census_revision: String = "0bdb8dc3a22cd4cb7736b7e83d4df6c132051259"
+
+data v1_census_tree: String = "168f313cdd9562ff01334c3ac2d154f4c5db6d96"
+
+data producer_workflow_argv: DiscoveryProducer = discovery_producer(
+  instrument: "argv and cargo invocations in the emitted workflow surface, traced back to the .dag step declaration that emits each one",
+  command: "grep -nE 'target/release/|cargo (build|test).*v1-compiler' .github/workflows/*.yml; then the emitting declaration in gunbc.witness_floor_workflow / gunbc.fleet_desired_admission_workflow / gunbc.fleet_converge_workflow",
+  source_revision: v1_census_revision,
+  source_tree_hex: v1_census_tree,
+)
+
+data producer_cargo_manifest_graph: DiscoveryProducer = discovery_producer(
+  instrument: "path dependencies among the v1 crate manifests and the workspace member region",
+  command: "git grep -n 'path = \"\\.\\./stage0' -- '*/Cargo.toml'; sed -n 1,20p Cargo.toml",
+  source_revision: v1_census_revision,
+  source_tree_hex: v1_census_tree,
+)
+
+// THE RUST ROWS ARE PRODUCED AT RUN TIME, SO THEIR PRODUCER IS MINTED FROM THE TREE THE FOLD READ.
+// DiscoveryProducer's revision and tree exist so a row says which tree it observed; stamping a
+// live HEAD reading with the hand sweep's pin would label a current observation as an older one --
+// one field, two meanings. So this producer is a function of the observation: the revision and
+// tree object id gunbc.rust_item_host_observation head_rust_sources carried with the sources.
+fn producer_rust_bridge_edge_at(observed_at: RustObservedTree) -> DiscoveryProducer {
+  discovery_producer(
+    instrument: "hand-Rust items outside src/v1 whose text names a v1 reference token, folded by gunbc.rust_item_host_observation observe_rust_references over head_rust_sources and projected through item_declaration_ref_in",
+    command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_blocking_consumer_count_report",
+    source_revision: observed_at.revision,
+    source_tree_hex: observed_at.tree,
+  )
+}
+
+data producer_generated_mirror: DiscoveryProducer = discovery_producer(
+  instrument: "the committed generated Rust under src/v1, defined by its header rather than by basename, and the .gitattributes rows projected from the artifact registry",
+  command: "grep -rl 'Generated by' src/v1 --include=*.rs | wc -l; grep -c 'generated-artifact' .gitattributes",
+  source_revision: v1_census_revision,
+  source_tree_hex: v1_census_tree,
+)
+
+data producer_serialized_artifact: DiscoveryProducer = discovery_producer(
+  instrument: "the receipt paths the required workflow uploads, read from the declarations that name them",
+  command: "grep -oE '[a-z_]+\\.tsv' .github/workflows/witnesses.yml | sort -u; git grep -nE '^data [a-z_]+_path: String = \"[a-z_]+\\.tsv\"' -- dag/gunbc/witness/witness_floor_workflow.dag",
+  source_revision: v1_census_revision,
+  source_tree_hex: v1_census_tree,
+)
+
+data producer_git_hook: DiscoveryProducer = discovery_producer(
+  instrument: "v1 binary invocations inside the repository-local git hooks, traced to the emitting declaration",
+  command: "git grep -n 'target/release' .githooks/; git grep -ln 'generated-artifact-merge' -- 'dag/**/*.dag'",
+  source_revision: v1_census_revision,
+  source_tree_hex: v1_census_tree,
+)
+
+data producer_bin_roster_row: DiscoveryProducer = discovery_producer(
+  instrument: ".dag roster rows that enumerate v1 binary names for a workflow to build",
+  command: "git grep -n 'ci_floor_invoked_bins\\|witness_declared_release_bins' -- 'dag/gunbc/**/*.dag'",
+  source_revision: v1_census_revision,
+  source_tree_hex: v1_census_tree,
+)
+
+// IDENTITIES, declared once each. The Rust-item identities follow gunbc.rust_item_host_observation
+// rust_source_namespace_rows exactly: src/v1/stage0/src/bin/<stem>.rs projects to
+// v1_compiler.bin.<stem>, src/v1/stage0/src/<stem>.rs to v1_compiler.<stem>, src/v1/tests/src/<stem>.rs
+// to v1_compiler_tests.<stem>. Nothing here is a spelling the projection would not produce.
+
+data claim_executor_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.claim_executor", decl_name: "main")
+data gunbc_cli_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.main", decl_name: "main")
+data claim_batch_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.claim_batch", decl_name: "main")
+data codex_session_bin: DeclarationRef = decl_ref(module_path: "v1_compiler.bin.codex_app_server_stdio_session", decl_name: "main")
+data v1_compiler_crate_root: DeclarationRef = decl_ref(module_path: "v1_compiler.lib", decl_name: "lib")
+data stage0_partition_rows: DeclarationRef = decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows")
+data invoked_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "ci_floor_invoked_bins")
+data declared_release_bins_row: DeclarationRef = decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
+data witness_census_gate: String = "gunbc.v1_witness_census v1_claim_conservation_holds"
+
+// THE LITERAL-TO-AUTHORITY SIGNATURE TABLE, homed here rather than in the producer that folds it.
+// What a `"claim_executor"` atom NAMES is a fact about this census's subjects, and the identity
+// spellings it resolves to are the DeclarationRef declarations directly above; a table living in
+// the instrument would have been a second copy of those references, which is the fork DESIGN
+// section 3 names. The instrument imports it. It also keeps the light half of the producer out of
+// the heavy closure: the paired witness can ask what a lexeme means without pulling the declaration
+// index into a required-floor entry's dependency closure.
+
+type V1LiteralSignature {
+  lexeme: String
+  authority: DeclarationRef
+  medium: ConsumerMedium
+  subject: V1Subject
+}
+
+fn v1cd_signature(lexeme: String, authority: DeclarationRef, subject: V1Subject) -> V1LiteralSignature {
+  V1LiteralSignature { lexeme: lexeme, authority: authority, medium: DagArgvRow, subject: subject }
+}
+
+// THE MATCH THESE ROWS ARE FOR IS WHOLE-ATOM EQUALITY, NEVER A SUBSTRING, and the cost of that is
+// declared rather than discovered. An argv row spells its binary as its own atom; a prose data row
+// that mentions the same word is a sentence and never equals one. Substring matching would sweep
+// every note in the corpus into the consumer population, and a census whose blocking column is
+// mostly prose has stopped meaning anything. What whole-atom equality LOSES is a binary reached
+// through a composed path -- a concat over a prefix and a variable -- and that loss is one of the
+// reasons this population stays PopulationMeasuredLowerBound after the producer lands.
+//
+// THE BARE CLI NAME IS DELIBERATELY ABSENT. "gunbc" is the project's name as well as the v1
+// binary's, so a bare-"gunbc" atom says nothing about which of the two a declaration meant, and
+// admitting it would fill the blocking column with rows nobody can disposition. The path-qualified
+// spellings are the discriminating ones, and the exclusion is EXECUTED by the paired witness rather
+// than asserted here.
+fn v1_literal_signatures() -> List<V1LiteralSignature> {
+  [
+    v1cd_signature(lexeme: "v1-compiler", authority: v1_compiler_crate_root, subject: V1CompilerCrate),
+    v1cd_signature(lexeme: "claim_executor", authority: claim_executor_bin, subject: V1HostedCiBinary),
+    v1cd_signature(lexeme: "target/release/claim_executor", authority: claim_executor_bin, subject: V1HostedCiBinary),
+    v1cd_signature(lexeme: "claim_batch", authority: claim_batch_bin, subject: V1Interpreter),
+    v1cd_signature(lexeme: "target/release/claim_batch", authority: claim_batch_bin, subject: V1Interpreter),
+    v1cd_signature(lexeme: "target/release/gunbc", authority: gunbc_cli_bin, subject: V1Cli),
+    v1cd_signature(lexeme: "target/debug/gunbc", authority: gunbc_cli_bin, subject: V1Cli),
+  ]
+}
+
+fn v1cd_signature_lexemes() -> List<String> {
+  v1_literal_signatures() |> map(sig => sig.lexeme)
+}
+
+fn v1cd_lexeme_is_a_signature(lexeme: String) -> Bool {
+  v1cd_signature_lexemes() |> any(x => x == lexeme)
+}
+
+// THE CONSUMER HALF OF A DISCOVERED KEY IS DERIVED FROM THE DECLARATION FACT, never authored.
+// v2.std.decl_index strips a leading "v2." from the qualified name of a module rooted under src/v2,
+// while this census's rows carry the unstripped path, so the projection restores it from the fact's
+// own rel_path. It takes the three fields rather than the fact so that it is executable without
+// fabricating a declaration node -- and the re-prefixing rule is exactly the half whose failure
+// would silently report every src/v2 consumer as undisposed.
+
+data v1cd_v2_root_prefix: String = "src/v2/"
+
+fn v1cd_module_path_from(qualified_name: String, name: String, rel_path: String) -> String {
+  let cut = string_length(s: qualified_name) - (string_length(s: name) + 1)
+  let base = if cut > 0 { substring(s: qualified_name, start: 0, end: cut) } else { qualified_name }
+  if starts_with(s: rel_path, prefix: v1cd_v2_root_prefix) {
+    concat("v2.", base)
+  } else {
+    base
+  }
+}
+
+fn retained_open(justification: String) -> ConsumerDisposition {
+  RetainSameContract { justification: v1cc_nes(s: justification), coverage: CoverageOpen }
+}
+
+fn retired(reason: String) -> ConsumerDisposition {
+  Retire { reason: v1cc_nes(s: reason) }
+}
+
+fn wfw(decl: String) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.witness_floor_workflow", decl_name: decl)
+}
+
+fn v1cc_boundary(consumer: DeclarationRef, authority: DeclarationRef, disposition: ConsumerDisposition) -> BoundaryConsumer {
+  BoundaryConsumer { consumer: consumer, consumed_old_authority: authority, disposition: disposition }
+}
+
+data stage0_core_deletion_search_receipt: String = "SEARCH RECEIPT (2026-08-30): searched the workspace member declarations and every tracked Cargo.toml for a stage0_core member or path dependency; searched workflow, emission and tooling sources for stage0_core; and checked both the authored partition authority v2.workflow.rust_crate_partition and its gunbc.stage0_crate_partition_generated projection. No builder or owner names src/v1/stage0_core. The only hits outside the orphan directory were this retirement receipt and the lifecycle residue contradiction whose own dissolution condition selected crate deletion. Therefore the directory deletes; it is not enrolled or frozen."
+
+fn tsv_row(path_decl: String) -> V1ConsumerRow {
+  {
+    boundary: v1cc_boundary(
+      consumer: wfw(decl: "witness_floor_tsv_upload_step"),
+      authority: wfw(decl: path_decl),
+      disposition: ReplacedByY { new_authority: v1cc_nes(s: witness_census_gate) },
+    ),
+    medium: SerializedArtifactPath,
+    subject: V1SerializedArtifact,
+    discovered_by: producer_serialized_artifact,
+  }
+}
+
+// THE ROSTER. Every relation was established by running its cited producer against the revision
+// above and reading the emitting declaration, and each row's identity is the relation a deletion
+// would break, not the file the evidence was read in. Rows are not ordered by severity: the
+// floor-cut plan's bounds say the dangerous member is the one nobody thought to look for, and
+// ordering by an author's judgement is what lets a reader stop early.
+//
+// THE RETAINED-OPEN ROWS ARE THE TRANSACTION. Everything else is discharged by deleting a subject
+// or by a successor that already exists; the rows carrying CoverageOpen are the entire content of
+// 'XL-5 cannot run yet', and each justification names the CAPABILITY that closes it -- never an
+// artifact that would contribute to one, which DESIGN section 4b(3) rules is satisfied while the
+// capability stays dead. That is the honest shape of a bankruptcy: the estate is mostly worthless,
+// and the whole question is the creditors who are still owed.
+//
+// THE TSV ROWS ARE FOUR RELATIONS, NOT ONE, because the authority's key is consumer x consumed
+// authority and one upload step consumes four path declarations. Collapsing them would let one
+// disposition stand for four dependencies, which is the exact conflation the key exists to refuse.
+
+data v1_static_consumers: List<V1ConsumerRow> = [
+  {
+    boundary: v1cc_boundary(
+      consumer: wfw(decl: "build_lane_run_step"),
+      authority: claim_executor_bin,
+      disposition: retained_open(justification: "the build lane of the required merge gate runs inside this binary. Closes on: an admitted native v2 compiler that executes the required gate roster end to end on a cold runner with no preinstalled gunbc and no src/v1 present -- NOT the existence of an emitted crate that cargo-checks, which is XL-0's gate and runs nothing"),
+    ),
+    medium: WorkflowArgv,
+    subject: V1HostedCiBinary,
+    discovered_by: producer_workflow_argv,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: wfw(decl: "witness_floor_run_step"),
+      authority: claim_executor_bin,
+      disposition: retained_open(justification: "the witness floor roster executes inside this binary, so every witness identity in the repository is reached through v1 today. Closes on: a native v2 witness fold that executes the same witness identities and refuses on subject loss -- the identity join gunbc.v1_witness_census carries, never a count of witnesses run"),
+    ),
+    medium: WorkflowArgv,
+    subject: V1HostedCiBinary,
+    discovered_by: producer_workflow_argv,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: wfw(decl: "rust_unit_tests_step"),
+      authority: v1_compiler_crate_root,
+      disposition: retired(reason: "the job's entire subject is the v1 crate's own #[test] functions, none of which asserts anything outside v1. #9663 added it because those tests ran on no CI path; it is one merge window old and retires with the code it was built to cover rather than being ported. DELETED 2026-09-04 under the runner-capacity ruling, ahead of the crate it covered: the carrier no longer exists in gunbc.witness_floor_workflow and the loss is declared at gunbc.rung_drop rust_unit_tests_off_the_merge_path. This row is kept rather than dropped because the census is a record of what consumed v1, not of what still does"),
+    ),
+    medium: WorkflowArgv,
+    subject: V1CompilerCrate,
+    discovered_by: producer_workflow_argv,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_build_step"),
+      authority: gunbc_cli_bin,
+      disposition: retained_open(justification: "fleet desired-state admission builds the gunbc binary; a product workflow outside the floor cut's boundary by that cut's own exclusion. Closes on: the native v2 binary answering the verbs the fleet workflows actually pass among the five the v1 clap surface declares (Compile, Test, Run, Converge, Serve), with a REFUSAL for any verb it does not answer -- a verb that silently forwards is the falsifier XL-5 lists, not the migration"),
+    ),
+    medium: WorkflowArgv,
+    subject: V1Cli,
+    discovered_by: producer_workflow_argv,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "fleet_desired_admission_decide_push_step"),
+      authority: gunbc_cli_bin,
+      disposition: retained_open(justification: "the decide step owns the argv and invokes `gunbc run` over the corpus to evaluate the admission. It was one of two, one per admission route, until the workflow_run route was deleted with the push-on-main required run. Same closing capability as the build step's row; a separate relation because the key is consumer x authority and this step depends on the RUN verb, not merely on the binary existing"),
+    ),
+    medium: WorkflowArgv,
+    subject: V1Cli,
+    discovered_by: producer_workflow_argv,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
+      authority: invoked_bins_row,
+      disposition: retained_open(justification: "the converge build job packs every bin this roster names; the roster names claim_executor and gunbc. Closes with the two CLI rows above; a separate relation because the consumer reaches the bins through a .dag roster row rather than through a literal, and gunbc.ci_release_bins records that this exact roster stranded fleet-converge for two days after FLOOR-Y when a member was removed without draining the row"),
+    ),
+    medium: DagArgvRow,
+    subject: V1HostedCiBinary,
+    discovered_by: producer_bin_roster_row,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_build_job"),
+      authority: declared_release_bins_row,
+      disposition: retained_open(justification: "the same build job packs every witness-declared release bin, all of which are v1-compiler bin targets. Closes on: every member of this roster having its own disposition here -- the roster is a population, and gunbc.ci_release_bins's own lesson is that removing a consumer and removing a member are different edits"),
+    ),
+    medium: DagArgvRow,
+    subject: V1HostedCiBinary,
+    discovered_by: producer_bin_roster_row,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.host_effect_codex_supervised_turn", decl_name: "host_effect_codex_supervised_turn_bin_name"),
+      authority: codex_session_bin,
+      disposition: retained_open(justification: "a PRODUCT integration, not a compiler consumer: the codex stdio session transport is a v1-compiler bin target whose subject has nothing to do with compiling .dag. Its disposition is genuinely open rather than assumed retired, and deleting it as CI cruft would be the deletion-inside-the-deletion-set blind spot the floor cut measured. Closes on: either a native successor for this transport or a retirement with the product owner's cause -- not on the compiler cutover"),
+    ),
+    medium: CargoBinTarget,
+    subject: V1HostedCiBinary,
+    discovered_by: producer_workflow_argv,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "generated_artifact_merge_driver_repair_steps"),
+      authority: claim_executor_bin,
+      disposition: retired(reason: "the repair recipe names claim_executor --required-regen as the route to regenerate a conflicted src/v1 mirror; with the regeneration SUBJECT deleted the recipe has nothing to regenerate. This retires the RECIPE TEXT for the src/v1 population, not the driver: the driver survives for the surviving generated artifacts, and dropping it would drop the merge protection #7836 twice needed"),
+    ),
+    medium: GitHookScript,
+    subject: V1DagSource,
+    discovered_by: producer_git_hook,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "v1.compiler.workspace_members", decl_name: "workspace_members_region_begin_marker"),
+      authority: stage0_partition_rows,
+      disposition: retired(reason: "the workspace-member region writer is itself under src/v1 and consumes the partition rows to emit the generated member list; it is a consumer INSIDE the deletion set and cannot refuse when both go. Filed as Retire rather than omitted because the floor cut's first measured bound is exactly this class -- a consumer defined and consumed inside the deletion set leaves no diagnostic, so its retirement must be a row, not an absence"),
+    ),
+    medium: CargoManifestDependency,
+    subject: V1GeneratedStage0Mirror,
+    discovered_by: producer_cargo_manifest_graph,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "v1_compiler_tests.lib", decl_name: "helpers"),
+      authority: v1_compiler_crate_root,
+      disposition: retired(reason: "the src/v1/tests crate depends only on v1-compiler, with three features that exist to expose v1 internals to v1's own tests. No manifest outside src/v1 names it"),
+    ),
+    medium: CargoManifestDependency,
+    subject: V1CompilerCrate,
+    discovered_by: producer_cargo_manifest_graph,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.v1_consumer_census", decl_name: "stage0_core_deletion_search_receipt"),
+      authority: stage0_partition_rows,
+      disposition: retired(reason: "an ALREADY-DECLARED open authority contradiction, not a discovery of this census: src/v1/stage0_core/src/lib.rs is tracked on disk, absent from the partition rows and absent from the workspace member list, and the residue row's dissolution reads 'stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes'. XL-5 satisfies the second arm. Recorded so the transaction is known to DISCHARGE that row rather than orphan it"),
+    ),
+    medium: CargoManifestDependency,
+    subject: V1GeneratedStage0Mirror,
+    discovered_by: producer_cargo_manifest_graph,
+  },
+  {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "stage0_partition_crate_rows_authority_ref"),
+      authority: stage0_partition_rows,
+      disposition: retired(reason: "the committed generated mirrors under src/v1 and the .gitattributes rows that route their merges are projections of src/v1 .dag authorities; with the authority deleted a mirror has no producer and is not a survivor to re-home. The .gitattributes rows go with their registry entries, the same motion #9663 performed for the js_site rows"),
+    ),
+    medium: CommittedGeneratedMirror,
+    subject: V1GeneratedStage0Mirror,
+    discovered_by: producer_generated_mirror,
+  },
+  tsv_row(path_decl: "required_floor_disposition_path"),
+  tsv_row(path_decl: "expected_red_roster_join_path"),
+  tsv_row(path_decl: "long_home_storage_agreement_path"),
+  tsv_row(path_decl: "required_floor_claim_cost_path"),
+]
+
+fn v1_shim_disposition() -> ConsumerDisposition {
+  retained_open(justification: "a hand-authored shim standing in for primitive arms the emitted v2 closure does not yet realize; the only Rust outside src/v1 that reaches the v1 runtime bridge. These shims are themselves v1 CONSUMERS slated for a disposition, not infrastructure that survives the cut. Closes on: the emitted v2 closure realizing those arms so the shim has nothing to bridge -- XL-0's arms-to-zero milestone AS EXECUTED, meaning the emitted crate compiles without a v1_rt path rather than merely cargo-checking with one")
+}
+
+data v1_rt_bridge_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.v1_rt", decl_name: "v1_rt")
+
+data v1_interpreter_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "v1_interpreter")
+
+// THE RUST REFERENCE POPULATION IS PRODUCED, NOT LISTED. This used to be four hand-named crate
+// roots (v1_shim_items), a measurement copied from the tree at one revision -- exactly the oracle
+// DESIGN section 5 refuses, because a fifth shim added tomorrow would not enter the census until an
+// author remembered it. gunbc.rust_item_host_observation observe_rust_references now folds the
+// existing item scan over every hand-Rust file outside the deletion set whose text names one of the
+// tokens below, attributes each token-carrying line to the innermost enclosing item and projects
+// that item through the same namespace table the shim rows always used. The census supplies the two
+// facts that are ITS: which authorities are hunted (a token per authority, joined back to the
+// authority it names) and where the deletion set begins (a reference inside src/v1 is v1 consuming
+// v1 -- hole two, not a consumer).
+//
+// WHAT THE PRODUCER ANSWERS is read from the instrument, never written here:
+// v1_blocking_consumer_count_report re-derives the rows from HEAD on every run. One grain fact is
+// structural rather than a count: `pub mod v1_rt;` is an item the scan mints, so such a consumer is
+// that module declaration rather than the crate root that encloses it. A host refusal is carried
+// as PopulationUnmeasured, never as an empty shim list; an unattributed token line lands in the
+// uncitable column with its path and line, never dropped.
+type V1ReferenceAuthority {
+  token: String
+  authority: DeclarationRef
+  subject: V1Subject
+}
+
+data v1_reference_authorities: List<V1ReferenceAuthority> = [
+  V1ReferenceAuthority { token: "v1_rt", authority: v1_rt_bridge_authority, subject: V1RuntimeBridge },
+  V1ReferenceAuthority { token: "v1_interpreter", authority: v1_interpreter_authority, subject: V1Interpreter },
+]
+
+data v1_deletion_set_prefix: String = "src/v1/"
+
+fn v1_reference_tokens() -> List<String> {
+  v1_reference_authorities |> map(a => a.token)
+}
+
+// THE TOKEN IS THE JOIN KEY BACK TO THE AUTHORITY, AND A TOKEN THE TABLE DOES NOT CARRY REFUSES.
+// The producer is handed exactly this table's tokens, so the unknown arm is unreachable by
+// construction today -- but the types leave it representable, and an earlier revision resolved it
+// by answering the first row, which would have filed a confidently mis-attributed V1RuntimeBridge
+// consumer for the admission gate to read. The lookup is a coproduct; the unknown arm lands in the
+// uncitable column as an Undecided consumer, which blocks, naming the token it could not join.
+type V1ReferenceAuthorityLookup
+  = V1ReferenceAuthorityFound { authority: V1ReferenceAuthority }
+  | V1ReferenceTokenUnknown { token: String }
+
+fn v1_reference_authority_for(token: String) -> V1ReferenceAuthorityLookup {
+  fold_list(
+    xs: v1_reference_authorities |> filter(a => a.token == token),
+    empty: V1ReferenceTokenUnknown { token: token },
+    cons: fn(_acc, a) { V1ReferenceAuthorityFound { authority: a } }
+  )
+}
+
+// THE TWO MEDIA ARE PARTITIONS OF ONE READ OF HEAD. The Rust-reference medium folds the hand Rust
+// OUTSIDE the deletion set and the seed-link medium folds the Rust UNDER it; both are the same
+// HEAD, the same tree listing and the same generated population, split by one predicate. Reading
+// HEAD twice would be the authored duplication DESIGN section 2 prices at the visible ancestor --
+// and worse, two HeadCommit resolutions can straddle a push, so one census would report two trees
+// with nothing refusing. So the read happens once, here, and each medium takes its half.
+fn v1_rust_references_over(sources: HeadRustSources) -> RustReferenceObservation {
+  match sources {
+    HeadRustSourcesRefused { detail: d } => RustReferenceHostRefused { detail: d }
+    HeadRustSourcesRead { observed_at: v1cc_seen_tree, sources: ss, generated_repo_paths: g } =>
+      observe_rust_references(
+        observed_at: v1cc_seen_tree,
+        sources: ss |> filter(f => !starts_with(s: f.repo_path, prefix: v1_deletion_set_prefix)),
+        generated_repo_paths: g, tokens: v1_reference_tokens(), rows: rust_source_namespace_rows
+      )
+  }
+}
+
+fn v1_current_head_rust_sources() -> HeadRustSources {
+  head_rust_sources(select: fn(path) { true })
+}
+
+type V1ShimPartition {
+  cited: List<V1ConsumerRow>
+  uncitable: List<V1UncitableConsumer>
+}
+
+fn v1_shim_cited_row(ref: DeclarationRef, authority: V1ReferenceAuthority, discovered_by: DiscoveryProducer) -> V1ConsumerRow {
+  {
+    boundary: v1cc_boundary(consumer: ref, authority: authority.authority, disposition: v1_shim_disposition()),
+    medium: RustSourceReference,
+    subject: authority.subject,
+    discovered_by: discovered_by,
+  }
+}
+
+fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1ReferenceAuthority, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
+  {
+    item_key: item_key,
+    consumed_old_authority: V1UncitableAuthorityKnown { authority: authority.authority },
+    refusal_detail: detail,
+    medium: RustSourceReference,
+    subject: authority.subject,
+    disposition: v1_shim_disposition(),
+    discovered_by: discovered_by,
+  }
+}
+
+fn v1_unattributed_key(u: RustReferenceUnattributed) -> String {
+  concat(concat(u.repo_path, ":"), u.line as String)
+}
+
+// CITABILITY IS THE PROJECTION'S ANSWER, CARRIED ON EACH PRODUCED ROW. One fold, two accumulators;
+// a reference cannot be in both and cannot be in neither, and the unattributed rows join the
+// uncitable column so the partition's member count equals the producer's row count.
+fn v1_unknown_token_row(item_key: String, token: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
+  {
+    item_key: item_key,
+    consumed_old_authority: V1UncitableAuthorityUnknownToken { token: token },
+    refusal_detail: concat("reference token the authority table does not carry: ", token),
+    medium: RustSourceReference,
+    subject: V1CompilerCrate,
+    disposition: Undecided,
+    discovered_by: discovered_by,
+  }
+}
+
+fn v1_shim_absorb_row(acc: V1ShimPartition, row: RustReferenceRow, discovered_by: DiscoveryProducer) -> V1ShimPartition {
+  match v1_reference_authority_for(token: row.token) {
+    V1ReferenceTokenUnknown { token: t } =>
+      V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_unknown_token_row(item_key: rust_item_identity_key(item: row.item), token: t, discovered_by: discovered_by)) }
+    V1ReferenceAuthorityFound { authority: authority } =>
+      match row.projection {
+        ItemDeclarationRefProjected { ref: r } =>
+          V1ShimPartition { cited: list_snoc_item(xs: acc.cited, item: v1_shim_cited_row(ref: r, authority: authority, discovered_by: discovered_by)), uncitable: acc.uncitable }
+        ItemDeclarationRefUncitable { item_key: k, detail: d } =>
+          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority, discovered_by: discovered_by)) }
+        ItemDeclarationRefRefused { item_key: k, detail: d } =>
+          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d, authority: authority, discovered_by: discovered_by)) }
+      }
+  }
+}
+
+fn v1_shim_unattributed_row(u: RustReferenceUnattributed, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
+  match v1_reference_authority_for(token: u.token) {
+    V1ReferenceTokenUnknown { token: t } => v1_unknown_token_row(item_key: v1_unattributed_key(u: u), token: t, discovered_by: discovered_by)
+    V1ReferenceAuthorityFound { authority: authority } => v1_shim_uncitable_row(item_key: v1_unattributed_key(u: u), detail: u.detail, authority: authority, discovered_by: discovered_by)
+  }
+}
+
+// THE PRODUCED GRAIN IS THE LINE; THE CENSUS GRAIN IS CONSUMER x AUTHORITY. One item may name the
+// same authority on several lines -- a crate root carrying two file-level `use` lines for v1_rt --
+// and each line is one produced row. Filing each as a consumer
+// would count one relation twice in the blocking column and carry a duplicate key into refusal
+// one. So the fold joins to the census's key: a cited row whose v1_row_key is already present is
+// the same relation seen again, and an uncitable row is likewise keyed on its item and detail.
+fn v1_shim_cited_absent(acc: List<V1ConsumerRow>, row: V1ConsumerRow) -> Bool {
+  !(acc |> any(r => v1_row_key(r: r) == v1_row_key(r: row)))
+}
+
+// THE UNCITABLE KEY IS item x authority -- the census grain, not the item alone: the same item
+// naming two known authorities is two relations, and the same item naming one authority on two
+// lines is one. The refusal detail is evidence on the row, not part of its identity.
+fn v1_uncitable_row_key(r: V1UncitableConsumer) -> String {
+  concat(concat(r.item_key, " -> "), v1_uncitable_authority_key(a: r.consumed_old_authority))
+}
+
+fn v1_shim_uncitable_absent(acc: List<V1UncitableConsumer>, row: V1UncitableConsumer) -> Bool {
+  !(acc |> any(r => v1_uncitable_row_key(r: r) == v1_uncitable_row_key(r: row)))
+}
+
+fn v1_shim_join_to_census_grain(p: V1ShimPartition) -> V1ShimPartition {
+  V1ShimPartition {
+    cited: fold_list(xs: p.cited, empty: [], cons: fn(acc, r) { if v1_shim_cited_absent(acc: acc, row: r) { list_snoc_item(xs: acc, item: r) } else { acc } }),
+    uncitable: fold_list(xs: p.uncitable, empty: [], cons: fn(acc, r) { if v1_shim_uncitable_absent(acc: acc, row: r) { list_snoc_item(xs: acc, item: r) } else { acc } })
+  }
+}
+
+fn v1_shim_partition_over(observed_at: RustObservedTree, rows: List<RustReferenceRow>, unattributed: List<RustReferenceUnattributed>) -> V1ShimPartition {
+  let discovered_by = producer_rust_bridge_edge_at(observed_at: observed_at)
+  let attributed = fold_list(xs: rows, empty: V1ShimPartition { cited: [], uncitable: [] }, cons: fn(acc, row) { v1_shim_absorb_row(acc: acc, row: row, discovered_by: discovered_by) })
+  v1_shim_join_to_census_grain(p: V1ShimPartition {
+    cited: attributed.cited,
+    uncitable: list_append(left: attributed.uncitable, right: unattributed |> map(u => v1_shim_unattributed_row(u: u, discovered_by: discovered_by)))
+  })
+}
+
+type V1ShimPopulation
+  = V1ShimPopulationObserved { partition: V1ShimPartition }
+  | V1ShimPopulationRefused { reason: String }
+
+fn v1_shim_population_of(observation: RustReferenceObservation) -> V1ShimPopulation {
+  match observation {
+    RustReferenceHostRefused { detail: d } =>
+      V1ShimPopulationRefused { reason: concat("the Rust reference population could not be observed: ", d) }
+    RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rows, unattributed: u, unscannable: unscannable } =>
+      if count(unscannable) > 0 {
+        V1ShimPopulationRefused { reason: concat(count(unscannable) as String, " token-carrying Rust file(s) could not be scanned, so the reference population is not closed") }
+      } else {
+        V1ShimPopulationObserved { partition: v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rows, unattributed: u) }
+      }
+  }
+}
+
+// L4 operational selector trace. These are additional relations in THIS census, not a
+// second cutover roster. The command records the method: inspect the live selector's
+// body and its callers, including argv and in-process linkage. This establishes the
+// named paths below, NOT whole-repository reachability or an execution receipt.
+// Historical producers above keep their original source pins; remeasuring these roots
+// does not retroactively remeasure the older rows.
+data producer_native_cutover_selectors: DiscoveryProducer = discovery_producer(
+  instrument: "operational selector and call-body trace, including rebuilt-seed regeneration",
+  command: "rg -n 'repo_self_build_package|witness_bin_build_args|witness_bin_ensure_built_typed|run_gunbc_claims_ready|heal_regen_step|heal_repair_declaration_step|heal_repo_local_git_config_step|ci_floor_required_artifact_names' dag/gunbc; rg -n 'compile_sources_selected|run_built_seed_regen|Command::new|run_in_context_with_args' src/v1/stage0/src/required_regen_host.rs src/v1/stage0/src/main.rs; rg -n '^name =|^path =' src/v1/stage0/Cargo.toml",
+  source_revision: "06a30d90376d5fb1fef91d6963604e3b053b9df1",
+  source_tree_hex: "16cb8f059c6e34120632cb34094be27b5ebddb42",
+)
+
+fn v1_operational_consumer(
+  consumer: DeclarationRef,
+  authority: DeclarationRef,
+  medium: ConsumerMedium,
+  subject: V1Subject,
+  obligation: String
+) -> V1ConsumerRow {
+  V1ConsumerRow {
+    boundary: v1cc_boundary(
+      consumer: consumer,
+      authority: authority,
+      disposition: retained_open(justification: obligation)
+    ),
+    medium: medium,
+    subject: subject,
+    discovered_by: producer_native_cutover_selectors
+  }
+}
+
+// The pack's population is derived from its existing authority, never copied into
+// a list of bin names here. Each relation now names ONE executable main, rather
+// than treating disposition of the pack as disposition of all its members. The
+// Cargo manifest at the discovery pin establishes this name-to-entry mapping;
+// targets outside the pack and future manifest path changes remain census work.
+fn v1_release_bin_main(bin: String) -> DeclarationRef {
+  if bin == "gunbc" {
+    gunbc_cli_bin
+  } else {
+    decl_ref(module_path: concat("v1_compiler.bin.", bin), decl_name: "main")
+  }
+}
+
+fn v1_release_pack_consumers() -> List<V1ConsumerRow> {
+  ci_floor_required_artifact_names() |> map(bin => v1_operational_consumer(
+    consumer: decl_ref(module_path: "gunbc.ci_release_bins", decl_name: "ci_floor_required_artifact_names"),
+    authority: v1_release_bin_main(bin: bin),
+    medium: CargoBinTarget,
+    subject: V1HostedCiBinary,
+    obligation: "This executable is included in the pack built, verified and unpacked by the required and fleet workflows. Packing is not proof that every member executes. Its target and callers require individual replacement or an explicit retirement; retaining the package build leaves a required v1 dependency even if another CLI is installed."
+  ))
+}
+
+fn v1_native_cutover_selector_consumers() -> List<V1ConsumerRow> {
+  [
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "gunbc.repo_self_build", decl_name: "repo_self_build_package"),
+      authority: v1_compiler_crate_root,
+      medium: DagArgvRow, subject: V1CompilerCrate,
+      obligation: "repo_self_build_command and repo_self_build_all_bins_command choose v1-compiler for required CI and fleet builds. Replacing target/release/gunbc alone does not retire the cold-build route. The admitted replacement must supply the required target population on a cold runner."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "tools.host_prelude", decl_name: "witness_bin_build_args"),
+      authority: v1_compiler_crate_root,
+      medium: DagArgvRow, subject: V1CompilerCrate,
+      obligation: "witness_bin_ensure_built_typed calls BuildInheritEnv with these v1-compiler args when an enrolled executable is absent. A warm-path native binary does not discharge this reachable cold-path seed build. Cutover must remove this rebuild route, with missing-artifact refusal tested."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "tools.host_prelude", decl_name: "run_gunbc_claims_ready"),
+      authority: decl_ref(module_path: "v1_compiler.bin.claim_batch", decl_name: "main"),
+      medium: DagArgvRow, subject: V1Interpreter,
+      obligation: "The claim transport invokes target/release/claim_batch; claim_batch links v1_interpreter and evaluates claims through it. A native compiler CLI does not replace this dispatch. Preserve required case identities, positive and refusal outcomes, and wet effect execution."
+    ),
+    v1_operational_consumer(
+      consumer: wfw(decl: "heal_regen_step"), authority: gunbc_cli_bin,
+      medium: WorkflowArgv, subject: V1Cli,
+      obligation: "The heal job runs tools.generated_artifact_gate main_wet through gunbc run, then main to check generated-file agreement. Keep the committed_generated_artifacts population and byte-agreement contract when moving execution to the admitted native generation."
+    ),
+    v1_operational_consumer(
+      consumer: wfw(decl: "heal_repair_declaration_step"), authority: gunbc_cli_bin,
+      medium: WorkflowArgv, subject: V1Cli,
+      obligation: "The heal job executes heal_repair_declaration through gunbc run before regeneration. This predecessor observation must survive cutover; running only the regenerator loses the repair declaration."
+    ),
+    v1_operational_consumer(
+      consumer: wfw(decl: "heal_repo_local_git_config_step"), authority: gunbc_cli_bin,
+      medium: WorkflowArgv, subject: V1Cli,
+      obligation: "The heal job executes repo_local_git_config converge through gunbc run. The generated git hooks themselves only configure git and run formatting; this CI invocation is a separate live interpreter dependency."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "v1_compiler.main", decl_name: "run_verb"),
+      authority: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "run_in_context_with_args"),
+      medium: RustSourceReference, subject: V1Interpreter,
+      obligation: "The ordinary CLI Run arm executes through the linked v1 interpreter. This reaches product workflows and generated-artifact producers, not only compiler tests. Retire the operational interpreter route after the native run contract is satisfied."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "v1_compiler.required_regen_host", decl_name: "compile_stage0"),
+      authority: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_sources_selected"),
+      medium: RustSourceReference, subject: V1CompilerCrate,
+      obligation: "Required regeneration calls the linked v1 compile_sources_selected over regen_input_sources. This is an internal dependency inside the deletion set. Preserve required source and generated-file populations; a passing byte comparison is not native successor production."
+    ),
+    v1_operational_consumer(
+      consumer: decl_ref(module_path: "v1_compiler.required_regen_host", decl_name: "run_built_seed_regen"),
+      authority: claim_executor_bin,
+      medium: RustSourceReference, subject: V1HostedCiBinary,
+      obligation: "The convergence driver hashes current_exe and launches the rebuilt executable with --required-regen. That artifact is the seed claim_executor and its regeneration calls compile_stage0. This existing second-generation route cannot be relabeled as seed-independent G1-to-G2 production."
+    )
+  ]
+}
+
+// THE REQUIRED-LANE STEP TRACE. The rows above reached the required workflow through its ROSTERS
+// and its RUN steps; these are the relations the emitted job carries that no roster names -- the
+// cargo invocations that put the seed on the runner in the first place, and the two measurement
+// steps that ADJUDICATE inside it. They were absent because the earlier sweeps asked "what names a
+// v1 binary" and a `cargo build -p v1-compiler` step names a PACKAGE, while an adjudication step
+// names a FLAG on a binary a previous step produced.
+//
+// WHAT THIS TRACE ALSO ESTABLISHES IN THE NEGATIVE, recorded because an unstated absence and an
+// unmeasured one read identically: the aggregating `witnesses` job reaches no v1 subject. Its one
+// step is shell over the two lane results, and it is the job that makes a lane BLOCK rather than
+// merely be waited on. So the required workflow's v1 surface is three jobs, not four, and the
+// fourth is declared empty with the basis rather than left out of the roster.
+
+
+data v1_census_step_trace_revision: String = "8d4158e1c4e0e5dd45bbba7d3e46b3fb0f5ff0e7"
+
+data v1_census_step_trace_tree: String = "ee597647395aa4f1541e0900e034d2339a67f777"
+
+data producer_required_lane_step_trace: DiscoveryProducer = discovery_producer(
+  instrument: "every `run:` step of the emitted required workflow read against the declaration that emits it, classified by what the step DOES with v1 rather than by whether it spells a binary name",
+  command: "grep -nE '^      - name:|cargo (build|clippy)|target/release/' .github/workflows/witnesses.yml; then the emitting declarations in gunbc.witness_floor_workflow",
+  source_revision: v1_census_step_trace_revision,
+  source_tree_hex: v1_census_step_trace_tree,
+)
+
+fn v1_step_trace_consumer(
+  consumer: DeclarationRef,
+  authority: DeclarationRef,
+  medium: ConsumerMedium,
+  subject: V1Subject,
+  obligation: String
+) -> V1ConsumerRow {
+  V1ConsumerRow {
+    boundary: v1cc_boundary(
+      consumer: consumer,
+      authority: authority,
+      disposition: retained_open(justification: obligation)
+    ),
+    medium: medium,
+    subject: subject,
+    discovered_by: producer_required_lane_step_trace,
+  }
+}
+
+data emitted_closure_manifest_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "probe_manifest")
+
+fn v1_required_lane_step_consumers() -> List<V1ConsumerRow> {
+  [
+    v1_step_trace_consumer(
+      consumer: wfw(decl: "witness_floor_build_step"),
+      authority: v1_compiler_crate_root,
+      medium: WorkflowArgv, subject: V1CompilerCrate,
+      obligation: "the step that puts the seed on the runner at all: `cargo build --release -p v1-compiler --bins` is the FIRST step of both required lanes, so every later relation in this census is downstream of it. gunbc.repo_self_build repo_self_build_package is a separate relation naming the same crate through the roster; this one is the emitted step, and a cutover that replaced the roster without replacing the step would leave the seed built on every push. Closes on: both required lanes reaching green on a runner whose checkout contains no v1-compiler package -- the whole-lane condition, never a per-binary substitution"
+    ),
+    v1_step_trace_consumer(
+      consumer: wfw(decl: "witness_floor_build_step"),
+      authority: stage0_partition_rows,
+      medium: WorkflowArgv, subject: V1CompilerCrate,
+      obligation: "the same step's second command builds the seven stage0 partition crates by name. A separate relation because the key is consumer x authority and these are seven packages the partition rows own, not the v1-compiler package: retiring the monolith without draining the partition leaves the step naming crates nothing produces, which is the exact stranding gunbc.ci_release_bins records for the bin roster. Closes with the row above and by the same condition"
+    ),
+    v1_step_trace_consumer(
+      consumer: wfw(decl: "rust_clippy_all_targets_step"),
+      authority: v1_compiler_crate_root,
+      medium: WorkflowArgv, subject: V1CompilerCrate,
+      obligation: "the required merge gate DESIGN names as the only command that compiles the integration-test and example targets. It compiles the v1 crate and everything in the workspace, so a clippy red in v1 blocks a merge today. Its subject is not the v1 binary but the v1 SOURCE, which is why it survives the binary substitution and dies only with the crate. Closes on: the crate being absent, at which point the command's v1 population is empty and the gate keeps its meaning for what remains"
+    ),
+    v1_step_trace_consumer(
+      consumer: wfw(decl: "required_ci_measurement_finalize_step"),
+      authority: claim_executor_bin,
+      medium: WorkflowArgv, subject: V1HostedCiBinary,
+      obligation: "when the floor instrument returns no receipt, this step SEALS one by invoking the seed binary with --measurement-unreached-receipt. It is the arm that keeps an unreached measurement from reading as a green one, so it is a fail-closed mechanism that itself runs inside v1. Closes on: a native successor that can seal the same unreached receipt -- replacing the measuring path alone would leave the unreached arm without a producer, which is worse than either half"
+    ),
+    v1_step_trace_consumer(
+      consumer: wfw(decl: "required_ci_measurement_adjudicate_step"),
+      authority: claim_executor_bin,
+      medium: WorkflowArgv, subject: V1HostedCiBinary,
+      obligation: "the ADJUDICATION of the published measurement receipt runs in the seed binary: this step decides, in v1, whether the floor's own measurement stands. A cutover that moved execution to a native compiler and left adjudication here would have the new route judged by the old one, which the replacement doctrine forbids in the same words it forbids Y resolving through X. Closes on: the adjudication fold executing outside the seed over the same receipt shape, with its refusal arms preserved"
+    ),
+    v1_step_trace_consumer(
+      consumer: emitted_closure_manifest_authority,
+      authority: v1_compiler_crate_root,
+      medium: CargoManifestDependency, subject: V1CompilerCrate,
+      obligation: "THE SELF-HOST LINK, and the one relation in this census that runs the other way: the crate the v2 closure is emitted INTO carries `v1-compiler = { path = src/v1/stage0 }`, because the emitted code links the seed's runtime surface (v1_rt and friends) rather than emitting it. So the emitted compiler is not seed-free even when every source of it is self-emitted, and a fixed point measured on emitted BYTES says nothing about this edge. Same closing capability as the four shim rows -- the emitted crate compiling with no v1-compiler path dependency -- and a separate relation because the shims are Rust use edges in the corpus while this is a manifest dependency the emitter MINTS on every run"
+    ),
+  ]
+}
+
+// THE .dag ARGV POPULATION, DISPOSITIONED. Most of these rows were produced by
+// tools.v1_consumer_discovery folding the corpus's declarations and reporting the relations no row
+// here disposed. Review 63229 found seven relations by reading the corpus directly while the
+// producer was blind to a declaration whose initializer is the literal itself; that LitStr
+// channel is now closed (discovery_fold_sees_a_bare_string_initializer is the permanent
+// positive control). Those seven stay hand-authored as JUDGEMENTS, not as a coverage hole:
+// what the instrument supplies is the RELATION; what this roster supplies is the JUDGEMENT,
+// and the two are separate on purpose -- discovery cannot disposition itself, and a disposition
+// an instrument wrote would be a fact with no author. The remaining lower bound is the
+// unenrolled whole-corpus join and the media that still have no DeclarationRef projection, not
+// an open bare-string blind spot.
+//
+// SO THE INSTRUMENT'S OUTPUT IS NOT COPIED INTO A LIST HERE AND CALLED DONE. Each relation below was
+// read at its declaration and judged against the terminal design, which is why several of them are
+// Retire rather than retained: a witness transport that shells out to claim_batch has no successor
+// obligation at all, it simply stops existing with the binary it drives, and filing it as retained
+// would inflate the blocking column with work nobody owes.
+
+data producer_dag_argv_join: DiscoveryProducer = discovery_producer(
+  instrument: "tools.v1_consumer_discovery -- the joined .dag producer: every declaration v2.std.decl_index decl_facts answers for the source roots, folded for whole-atom matches against v1_literal_signatures",
+  command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/v1_consumer_discovery.dag --function v1_discovery_gate",
+  source_revision: v1_census_step_trace_revision,
+  source_tree_hex: v1_census_step_trace_tree,
+)
+
+fn v1_dag_argv_consumer(
+  module_path: String,
+  decl_name: String,
+  authority: DeclarationRef,
+  subject: V1Subject,
+  disposition: ConsumerDisposition
+) -> V1ConsumerRow {
+  V1ConsumerRow {
+    boundary: v1cc_boundary(
+      consumer: decl_ref(module_path: module_path, decl_name: decl_name),
+      authority: authority,
+      disposition: disposition,
+    ),
+    medium: DagArgvRow,
+    subject: subject,
+    discovered_by: producer_dag_argv_join,
+  }
+}
+
+fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
+  [
+    v1_dag_argv_consumer(
+      module_path: "gunbc.cli_run_hand_rust_area_ledger", decl_name: "cli_run_hand_rust_area_rows",
+      authority: claim_executor_bin, subject: V1HostedCiBinary,
+      disposition: retired(reason: "the hollowing ledger for cli_run's hand-Rust areas names the binaries whose areas it is describing. Its whole subject is v1 source that the cutover deletes, so the ledger retires with it rather than acquiring a native successor -- a ledger of what remains to hollow out has nothing to describe once the thing is gone")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.cli_run_hand_rust_area_ledger", decl_name: "cli_run_hand_rust_area_rows",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retired(reason: "the same ledger's second named binary. Two relations rather than one because the key is consumer x authority, and collapsing them would let one retirement stand for two dependencies")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.compute.work_provider_local", decl_name: "compute_command_argv",
+      authority: v1_compiler_crate_root, subject: V1CompilerCrate,
+      disposition: retained_open(justification: "the local work provider's BuildGunbcBinaries operation renders `cargo build -p v1-compiler --bin <b>` for the fabric. This is the build route a WORK REQUEST takes, distinct from the CI step and from repo_self_build's roster: three consumers of one package through three different callers, and a cutover that fixed only the ones it could see in the workflow would leave the fabric building a package that no longer exists. Closes on: the work-operation vocabulary naming a package the native toolchain produces, with a refusal for a build request naming an absent package")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.devboot.program", decl_name: "offered_programs",
+      authority: claim_executor_bin, subject: V1HostedCiBinary,
+      disposition: retained_open(justification: "devboot OFFERS this program to a fresh developer machine, so it is the first v1 binary a new environment builds and the one whose absence is felt earliest. Its roster is three literal names and its selection fold maps each to a v1-compiler bin target. Closes on: the offered set naming native programs, and on the ProgramNotOffered refusal still firing for a name the new toolchain does not produce -- a devboot that silently offers nothing is worse than one that refuses")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.devboot.program", decl_name: "offered_programs",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retained_open(justification: "the same roster's second offered program, and the one that carries the INTERPRETER rather than the compiler: a developer machine that can build claim_batch can evaluate the corpus. Separate relation, same closing capability as the row above")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "tools.host_prelude", decl_name: "gunbc_claims_readiness",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retained_open(justification: "the readiness probe that ENSURES claim_batch is built before a witness transport uses it, through witness_bin_ensure_built_typed. It is the cold-path arm of the transport rows: a warm native binary does not discharge it, because this is the code that reaches for the seed when nothing is there. Closes with tools.host_prelude witness_bin_build_args, whose row states the condition; a separate relation because that row is the ARGV and this is the readiness decision that consumes it")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "tools.interp_recorded_fixture_witness_transport", decl_name: "run_interp_recorded_fixture_witness",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retired(reason: "a witness transport whose SUBJECT is the v1 interpreter's own recorded-fixture behaviour. It shells out to claim_batch to observe the interpreter; with the interpreter deleted there is nothing for it to record, so it retires with its subject rather than being ported. This is the disposition-census distinction the doctrine draws: currently consumed is not required to survive, and a consumer built to observe X is deletion population once X goes")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "tools.merge_admission_capture_transport", decl_name: "run_merge_admission_capture_subprocess",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retained_open(justification: "the merge-admission capture runs the claim batch in a subprocess to observe a merge's admission. Unlike the recorded-fixture transport its subject is the MERGE decision rather than the interpreter, so the obligation survives the cutover and only its execution route moves. Closes on: the capture invoking a native evaluator over the same claim identities, with the subprocess refusal preserved -- a capture that silently records nothing is the failure this transport exists to make loud")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "tools.interpreter_dispatch_bijection_real_roster_transport", decl_name: "real_roster_test_extra_args",
+      authority: v1_compiler_crate_root, subject: V1CompilerCrate,
+      disposition: retired(reason: "the transport's cargo args name the v1-compiler package to run the interpreter-dispatch bijection roster, whose subject is the v1 interpreter's dispatch table. Same class as the recorded-fixture transport: an instrument built to measure a property OF the seed has no successor obligation once the seed is gone")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.live_deploy.emit", decl_name: "emit_artifact_upsert",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retained_open(justification: "the DEPLOYED PRODUCT: the live-deploy pipeline installs the gunbc source tree and binary onto a served host, so v1 is not only a build-time dependency of this repository but a shipped artifact on srv1. This is the relation that makes ProductsV1Free a separate finish line from InterpreterDeleted -- deleting the crate does not by itself remove it from a machine that already runs it. Closes on: the deployment artifact naming a native binary AND the deployed hosts having converged onto it, which is a fleet condition rather than a repository one")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.namespace_step0_candidate_run", decl_name: "run_current_step0_candidate",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retained_open(justification: "the namespace cut's step-0 candidate is EVALUATED by running the v1 CLI over the candidate tree, so the migration that is supposed to remove a v1-era representation is itself measured by v1. Closes on: the candidate run executing through a native evaluator; until then the namespace lane's own receipts are seed-produced, which is a fact about their evidence rather than about their conclusions")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.namespace_step0_candidate_run", decl_name: "step0_candidate_receipt_of_run",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retained_open(justification: "the receipt projection reads the run above. A separate relation because a cutover could move the RUN to a native evaluator and leave the receipt shape assuming the seed's output, which is the adjudication-lags-execution split the required-lane measurement rows already carry")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.namespace_step0_canary_v2", decl_name: "admit_namespace_step0_v2_receipt",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retained_open(justification: "the v2 canary's admission reads a receipt produced by a v1 CLI run. Closes with the candidate-run rows above and by the same capability")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.namespace_step0_canary_v1_history", decl_name: "namespace_step0_canary_v1_historical_receipt",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retired(reason: "a HISTORICAL receipt: the row records what a v1 canary run answered at a past revision, and the doctrine explicitly admits X serving from history as an offline differential oracle. A recorded observation of a run that already happened is not a live consumer, so it retires as a citation rather than as a dependency -- and it is filed rather than dropped because a reader who found the literal and no row would have to re-establish that distinction")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.roadmap_dashboard_instance", decl_name: "dashboard_instance_provision_plan",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retained_open(justification: "provisioning a dashboard instance installs and runs the v1 CLI on the instance. Same PRODUCT class as the live-deploy row and outside the compiler cutover's boundary: it closes on a native binary the provisioner can install, not on the emitter reaching a fixed point")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.devboot.program", decl_name: "devboot_program_package",
+      authority: v1_compiler_crate_root, subject: V1CompilerCrate,
+      disposition: retained_open(justification: "the cargo PACKAGE devboot builds from, beside the program roster already rostered above. Two relations rather than one because a cutover could rename the offered programs while still building them out of the seed package, which is the half that keeps v1 alive. Closes with the offered-programs rows and by the same condition")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.compute.work_request", decl_name: "work_default_bins",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retained_open(justification: "the DEFAULT bin set a work request carries when a caller names none, so this is the population the fabric builds by omission rather than by choice -- the hardest kind of dependency to notice, since no caller spells it. Closes with gunbc.compute.work_provider_local compute_command_argv and by the same condition")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.live_deploy.member_observe", decl_name: "release_executable_source_path",
+      authority: gunbc_cli_bin, subject: V1Cli,
+      disposition: retained_open(justification: "the path live-deploy READS to observe what a served member is running, the observation twin of gunbc.live_deploy.emit emit_artifact_upsert. Closes on the same fleet condition: a deployed member running a native binary AND this observation naming it, since an observer left pointed at the old path reports absence rather than the truth")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.cli_invoke", decl_name: "claim_executor_bin_name",
+      authority: claim_executor_bin, subject: V1HostedCiBinary,
+      disposition: retained_open(justification: "the CLI-invocation carrier's name for the floor binary. Closes with the required-lane rows: it is the spelling those steps reach the binary through")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_program",
+      authority: claim_executor_bin, subject: V1HostedCiBinary,
+      disposition: retained_open(justification: "the built path the claim-executor CLI surface names. A separate relation from the bin NAME above because a native successor could take the name and not the path, or the reverse, and each leaves a live reach the other does not")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "gunbc.offline_local_recipe", decl_name: "claim_batch_bin_name",
+      authority: claim_batch_bin, subject: V1Interpreter,
+      disposition: retained_open(justification: "the offline recipe -- what a developer runs with no network -- names the interpreter binary. Closes with tools.host_prelude run_gunbc_claims_ready: the same claim transport reached through the documented offline route")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "test.claim.stage0_regen_convergence_real_execution", decl_name: "regen_stage0_verify_converges_by_real_execution",
+      authority: v1_compiler_crate_root, subject: V1CompilerCrate,
+      disposition: retired(reason: "the witness drives a `regen_stage0` bin target that NO LONGER EXISTS -- absent from src/v1/stage0/Cargo.toml and from src/v1/stage0/src/bin/, surviving only as a prose mention in a Cargo.toml comment. So this is not a live consumer of the seed but a witness whose subject was deleted out from under it, and it retires with the target rather than acquiring a successor. Filed rather than dropped because the literal is still in the tree and a reader who greps for it deserves to find the disposition rather than re-derive the deletion. An earlier revision of THIS census made the opposite mistake over the same name, minting v1_compiler.bin.regen_stage0 as a live DeclarationRef (review 63229) -- a deleted binary is exactly the kind of thing a census fabricates when it reads a literal and assumes a target")
+    ),
+    v1_dag_argv_consumer(
+      module_path: "ctl.pos_emit2", decl_name: "emits_a_two_segment_call",
+      authority: v1_compiler_crate_root, subject: V1CompilerCrate,
+      disposition: RetainChangedContract {
+        terminal_contract: v1cc_nes(s: "a cargo control that names the package and bin of whatever compiler the repository ships, rather than the seed by name"),
+        justification: v1cc_nes(s: "a control fixture that builds and runs the CLI to observe a two-segment call. Its SUBJECT -- that the emitter renders a two-segment call correctly -- survives the cutover untouched; what does not survive is the package literal it reaches for. Filed as a changed contract rather than retained-same because the fixture keeps its obligation under a different name, and rather than retired because deleting it would delete a live emitter control along with the binary it happens to invoke"),
+        coverage: CoverageOpen
+      }
+    ),
+    v1_dag_argv_consumer(
+      module_path: "v2.test.claim.bash_program_fold_support", decl_name: "bash_program_fixture_build_bin_if_absent",
+      authority: v1_compiler_crate_root, subject: V1CompilerCrate,
+      disposition: RetainChangedContract {
+        terminal_contract: v1cc_nes(s: "the same cargo control, reached from the bash-program fold's fixture support"),
+        justification: v1cc_nes(s: "the bash-program fold's fixture builds the seed package when the binary is absent -- the same cold-path reach tools.host_prelude witness_bin_build_args carries, arriving here through a second caller. Two relations rather than one because the census keys on consumer x authority and this caller can be migrated while the other is not. Closes with that row and by the same condition"),
+        coverage: CoverageOpen
+      }
+    ),
+  ]
+}
+
+
+// THE CARGO MANIFEST MEDIUM, AS A RELATION KEYED ON PACKAGE IDENTITY. A `path = "../stage0"` line
+// has a declaration identity on neither side, which is why this medium could not become keyed rows
+// without an author inventing one. What it DOES have is a package identity on both sides, and the
+// package names are already decided in one place: gunbc.stage0_partition_package_graph, the
+// authority v1.compiler.stage0_crates renders the partition manifests from and
+// gunbc.stage0_partition_rebuild_scope walks. So the rows here take their names from that graph and
+// never restate an edge it carries: the partition-internal edges and the host-shell edge are
+// DERIVED from its functions, and only the edges no partition authority renders are authored --
+// the hand-maintained tests manifest, and the manifests v1 host sites MINT at run time into crates
+// outside the working tree, which no tracked-file producer can see.
+//
+// WHY THE RELATION IS DECLARED HERE AND NOT IN THE GRAPH. The graph is inside the stage0 compile
+// closure (src/v1/stage0_crates.dag and src/v1/05_emit_rust.dag import it), so it is emitted into
+// the seed and consumed by the renderer of the partition manifests; rows about the harnesses that
+// mint manifests AROUND the seed are facts about v1's consumers, not about the partition, and
+// carrying them there would put the census's subject into the artifact it is a census of. The
+// identities are the graph's; the relation is this census's.
+//
+// THE SEED-LINKAGE AXIS is the fact the minted rows exist to carry: whether the manifest a renderer
+// writes puts the seed INTO the dependency graph of emitted code (the emitted closure links
+// v1-compiler for the runtime surface it does not emit -- v1_rt and friends -- so the compiler is
+// not seed-free even when every source of it is self-emitted, and a fixed point measured on
+// emitted bytes says nothing about this edge) or BESIDE it as an oracle (the seed is built and
+// consulted, never linked into the artifact under test). The seed-free lane retires a row of the
+// first kind by identity; a row of the second kind is not retired by that lane at all.
+type SeedLinkage
+  = NotASeedEdge
+  | SeedLinkedIntoHandRust
+  | SeedLinkedIntoEmittedCode
+  | SeedBesideEmittedCodeAsOracle
+
+// WHERE THE LINE LIVES. A rendered manifest names the .dag renderer the partition projects it
+// through; a hand manifest names its tracked path; a minted manifest names the declaration that
+// writes it at run time -- a .dag renderer or a Rust item projected through the same namespace
+// table the Rust rows use, so the seed-free lane and this census spell one site one way.
+type CargoManifestOrigin
+  = CargoManifestRenderedFromPartition { renderer: DeclarationRef }
+  | CargoManifestHandMaintained { repo_path: String }
+  | CargoManifestMinted { renderer: DeclarationRef }
+
+// THE CONSUMING CRATE of a minted manifest is named the way the renderer names it: a fixed package
+// name where the renderer writes one, and the declaration that derives it where the name is
+// computed per shard -- never a glob standing in for a set of names.
+type MintedPackageName
+  = FixedPackageName { name: String }
+  | PackageNameDerivedBy { authority: DeclarationRef }
+
+type CargoPathDependency {
+  consumer_package: MintedPackageName
+  dependency_package: String
+  origin: CargoManifestOrigin
+  linkage: SeedLinkage
+}
+
+data partition_manifest_renderer: DeclarationRef = decl_ref(module_path: "v1.compiler.stage0_crates", decl_name: "render_stage0_crate_dep")
+
+fn v1_partition_manifest_dependencies() -> List<CargoPathDependency> {
+  generated_partition_crate_rows |> flat_map(row =>
+    stage0_partition_package_dependency_names(row: row) |> map(dep => CargoPathDependency {
+      consumer_package: FixedPackageName { name: row.package_name },
+      dependency_package: dep,
+      origin: CargoManifestRenderedFromPartition { renderer: partition_manifest_renderer },
+      linkage: NotASeedEdge,
+    })
+  )
+}
+
+data host_shell_manifest_path: String = "src/v1/stage0/Cargo.toml"
+
+fn v1_host_shell_manifest_dependencies() -> List<CargoPathDependency> {
+  stage0_host_shell_dependency_names() |> map(dep => CargoPathDependency {
+    consumer_package: FixedPackageName { name: stage0_host_shell_package_name() },
+    dependency_package: dep,
+    origin: CargoManifestHandMaintained { repo_path: host_shell_manifest_path },
+    linkage: NotASeedEdge,
+  })
+}
+
+data v1_tests_manifest_path: String = "src/v1/tests/Cargo.toml"
+
+data v1_tests_manifest_dependency: CargoPathDependency = CargoPathDependency {
+  consumer_package: FixedPackageName { name: "v1-compiler-tests" },
+  dependency_package: stage0_host_shell_package_name(),
+  origin: CargoManifestHandMaintained { repo_path: v1_tests_manifest_path },
+  linkage: SeedLinkedIntoHandRust,
+}
+
+// THE MINTED MANIFESTS, ONE ROW PER RENDERER, AND THE ROSTER IS A DISPOSITION TABLE JOINED AGAINST
+// A PRODUCED POPULATION, NOT A LIST SOMEONE REMEMBERS. Which Rust sites mint a manifest that names
+// the seed is PRODUCED: gunbc.rust_item_host_observation observe_rust_references over src/v1 with
+// the manifest-shaped tokens below (v1_seed_link_tokens, derived from the package name's authority), which is the same fold the Rust medium
+// uses with the deletion set as the SUBJECT rather than the exclusion. v1_minted_manifest_join
+// refuses in both directions -- a produced site with no row here is undisposed, a row here naming
+// no produced site is stale -- so the table cannot drift from the tree in either direction without
+// the instrument saying which row -- both directions land in the uncitable column as Undecided
+// consumers and the report entry renders the join. THE REACH OF THAT CLAIM IS THE TOKENS': a
+// renderer that spells the seed's package name some other way (a `const`, `.to_owned()`, a
+// `[dependencies.v1-compiler]` table header) is outside the produced population and is neither
+// joined nor reported; widening the tokens is how the reach grows, and the tokens are derived from
+// the package name's authority so the spelling they do cover cannot drift. The .dag renderers are cited by declaration and the
+// citation wall refuses a stale name; their join to a produced .dag literal population is the
+// declared frontier tools.v1_consumer_discovery (PR #10939) closes.
+//
+// probe_manifest (v1_compiler.emitted_closure_compile_host) is DELIBERATELY NOT A ROW: #10988
+// removes the seed path dependency it minted, and this table is authored to the post-#10988 shape.
+// On a tree where that edge still exists the join reports probe_manifest as an undisposed produced
+// site, which is the true state of that tree and not a defect of this table.
+// THE TOKENS ARE DERIVED FROM THE PACKAGE NAME'S AUTHORITY, never spelled beside it: the produced
+// side and the disposition side key on one value, so a rename of the host-shell package moves
+// both or neither. A literal here would drift in the fail-open direction -- the tokens stop
+// matching, the produced population goes empty, every rostered renderer reads as stale and is
+// excluded, and the census reports a cleaner tree than it has.
+fn v1_seed_link_tokens() -> List<String> {
+  [
+    concat(stage0_host_shell_package_name(), " = {"),
+    concat(concat("\"", stage0_host_shell_package_name()), "\".to_string()"),
+  ]
+}
+
+data v1_seed_link_population_prefix: String = "src/v1/"
+
+fn v1_minted_manifest_dependencies() -> List<CargoPathDependency> {
+  [
+    CargoPathDependency {
+      consumer_package: PackageNameDerivedBy { authority: decl_ref(module_path: "gunbc.emit_copy_qualification_fixture_gen", decl_name: "shard_crate_name") },
+      dependency_package: stage0_host_shell_package_name(),
+      origin: CargoManifestMinted { renderer: decl_ref(module_path: "gunbc.emit_copy_qualification_fixture_gen", decl_name: "shard_manifest_text") },
+      linkage: SeedLinkedIntoEmittedCode,
+    },
+    CargoPathDependency {
+      consumer_package: FixedPackageName { name: "v1_compiled" },
+      dependency_package: stage0_host_shell_package_name(),
+      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.emitted_crate_harness_manifest", decl_name: "harness_seed_link_dependency_table") },
+      linkage: SeedLinkedIntoEmittedCode,
+    },
+    CargoPathDependency {
+      consumer_package: FixedPackageName { name: "stale_red" },
+      dependency_package: stage0_host_shell_package_name(),
+      origin: CargoManifestMinted { renderer: decl_ref(module_path: "v1_compiler.cssl_seed_linked_closure_assembly.tests", decl_name: "normalize_stale_narrow_lib_without_namespace_graft_refuses_cargo") },
+      linkage: SeedLinkedIntoEmittedCode,
+    },
+  ]
+}
+
+fn v1_cargo_manifest_dependencies() -> List<CargoPathDependency> {
+  list_append(
+    left: list_append(left: v1_partition_manifest_dependencies(), right: v1_host_shell_manifest_dependencies()),
+    right: list_append(left: [v1_tests_manifest_dependency], right: v1_minted_manifest_dependencies())
+  )
+}
+
+fn cargo_dependency_is_seed_edge(d: CargoPathDependency) -> Bool {
+  match d.linkage {
+    NotASeedEdge => false
+    SeedLinkedIntoHandRust => true
+    SeedLinkedIntoEmittedCode => true
+    SeedBesideEmittedCodeAsOracle => true
+  }
+}
+
+fn v1_seed_manifest_dependencies() -> List<CargoPathDependency> {
+  v1_cargo_manifest_dependencies() |> filter(d => cargo_dependency_is_seed_edge(d: d))
+}
+
+fn cargo_manifest_renderer(d: CargoPathDependency) -> List<DeclarationRef> {
+  match d.origin {
+    CargoManifestRenderedFromPartition { renderer: r } => [r]
+    CargoManifestHandMaintained { repo_path: _ } => []
+    CargoManifestMinted { renderer: r } => [r]
+  }
+}
+
+// THE SEED'S PACKAGE NAME SPELLED AS A RUST LITERAL is the population the tokens select, and it is
+// wider than manifests on purpose: a renderer that builds a CargoDependency VALUE named for the seed
+// (the pre-#10988 probe_manifest) and a host that builds `-p v1-compiler` and links the rlib with
+// --extern (behavioral_receipt_host ReceiptCrate::v1_compiler) both spell the seed's package name,
+// and both are seed edges a manifest-only token would miss. The second is not a manifest at all:
+// the seed is built BESIDE the receipt driver and linked as its oracle, which is the
+// SeedBesideEmittedCodeAsOracle arm, carried under its own medium (RustcExternLink) because a
+// --extern rlib link is neither a Cargo dependency nor a `use` edge. That site is an impl method,
+// which std.decl_ref cannot cite, so it is rostered by item key in the uncitable column exactly as
+// the shim rows are when their namespace row is missing -- carried and counted, never dropped.
+type SeedLinkSiteDisposition {
+  item_key: String
+  medium: ConsumerMedium
+  subject: V1Subject
+  linkage: SeedLinkage
+}
+
+data v1_uncitable_seed_link_sites: List<SeedLinkSiteDisposition> = [
+  SeedLinkSiteDisposition {
+    item_key: "src/v1/stage0/src/behavioral_receipt_host.rs::impl_method::ReceiptCrate::v1_compiler",
+    medium: RustcExternLink,
+    subject: V1CompilerCrate,
+    linkage: SeedBesideEmittedCodeAsOracle,
+  },
+]
+
+// THE JOIN IN BOTH DIRECTIONS, over the produced Rust population. A produced citable site with no
+// minted-manifest row is UNDISPOSED and becomes an Undecided consumer, which blocks; a produced
+// uncitable site with no roster row above is undisposed the same way; a row on either roster
+// naming no produced site is STALE and is excluded from the consumers rather than counted as one
+// that exists. Only Rust renderers can be produced today; the rows whose renderer sits under a
+// .dag module are outside this join's reach and are named in the frontier above.
+type MintedManifestJoin
+  = MintedManifestJoined {
+      observed_at: RustObservedTree,
+      produced: List<DeclarationRef>,
+      undisposed_sites: List<DeclarationRef>,
+      undisposed_uncitable: List<String>,
+      uncitable: List<V1UncitableConsumer>,
+      stale_rows: List<DeclarationRef>,
+      stale_uncitable: List<String>,
+      unattributed_lines: List<String>
+    }
+  | MintedManifestJoinUnobserved { reason: String }
+
+fn v1_seed_link_sites_over(sources: HeadRustSources) -> RustReferenceObservation {
+  match sources {
+    HeadRustSourcesRefused { detail: d } => RustReferenceHostRefused { detail: d }
+    HeadRustSourcesRead { observed_at: v1cc_seen_tree, sources: ss, generated_repo_paths: g } =>
+      observe_rust_references(
+        observed_at: v1cc_seen_tree,
+        sources: ss |> filter(f => starts_with(s: f.repo_path, prefix: v1_seed_link_population_prefix)),
+        generated_repo_paths: g, tokens: v1_seed_link_tokens(), rows: rust_source_namespace_rows
+      )
+  }
+}
+
+fn v1_current_seed_link_sites() -> RustReferenceObservation {
+  v1_seed_link_sites_over(sources: v1_current_head_rust_sources())
+}
+
+fn v1_minted_rust_renderers() -> List<DeclarationRef> {
+  v1_minted_manifest_dependencies()
+    |> flat_map(d => cargo_manifest_renderer(d: d))
+    |> filter(r => starts_with(s: r.module_path as String, prefix: "v1_compiler."))
+}
+
+fn v1_uncitable_seed_link_row(site: SeedLinkSiteDisposition, detail: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
+  {
+    item_key: site.item_key,
+    consumed_old_authority: V1UncitableAuthorityKnown { authority: v1_compiler_crate_root },
+    refusal_detail: detail,
+    medium: site.medium,
+    subject: site.subject,
+    disposition: v1_seed_manifest_disposition(linkage: site.linkage),
+    discovered_by: discovered_by,
+  }
+}
+
+fn v1_undisposed_site_row(item_key: String, detail: String, discovered_by: DiscoveryProducer) -> V1UncitableConsumer {
+  {
+    item_key: item_key,
+    consumed_old_authority: V1UncitableAuthorityKnown { authority: v1_compiler_crate_root },
+    refusal_detail: detail,
+    medium: CargoManifestDependency,
+    subject: V1CompilerCrate,
+    disposition: Undecided,
+    discovered_by: discovered_by,
+  }
+}
+
+// A PRODUCED SITE THE VOCABULARY CANNOT CITE, as the projection reported it: the item key and the
+// projection's own detail, two named fields rather than a positional pair.
+type UncitableSeedLinkSite {
+  item_key: String
+  detail: String
+}
+
+fn v1_key_of_site(xs: List<SeedLinkSiteDisposition>, key: String) -> List<SeedLinkSiteDisposition> {
+  xs |> filter(x => x.item_key == key)
+}
+
+fn v1_minted_manifest_join_over(observation: RustReferenceObservation) -> MintedManifestJoin {
+  match observation {
+    RustReferenceHostRefused { detail: d } => MintedManifestJoinUnobserved { reason: d }
+    RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rows, unattributed: u, unscannable: un } =>
+      if count(un) > 0 {
+        MintedManifestJoinUnobserved { reason: concat(count(un) as String, " token-carrying Rust file(s) could not be scanned") }
+      } else {
+        let produced = rows |> flat_map(r => match r.projection {
+          ItemDeclarationRefProjected { ref: x } => [x]
+          ItemDeclarationRefUncitable { item_key: _, detail: _ } => []
+          ItemDeclarationRefRefused { item_key: _, detail: _ } => []
+        })
+        let uncitable_keys = rows |> flat_map(r => match r.projection {
+          ItemDeclarationRefProjected { ref: _ } => []
+          ItemDeclarationRefUncitable { item_key: k, detail: d } => [UncitableSeedLinkSite { item_key: k, detail: d }]
+          ItemDeclarationRefRefused { item_key: k, detail: d } => [UncitableSeedLinkSite { item_key: k, detail: d }]
+        })
+        let rostered = v1_minted_rust_renderers()
+        let undisposed = produced |> filter(p => !(rostered |> any(r => declaration_ref_eq(a: r, b: p))))
+        let stale = rostered |> filter(r => !(produced |> any(p => declaration_ref_eq(a: r, b: p))))
+        let uncitable_rows = uncitable_keys |> flat_map(u =>
+          v1_key_of_site(xs: v1_uncitable_seed_link_sites, key: u.item_key)
+            |> map(site => v1_uncitable_seed_link_row(site: site, detail: u.detail, discovered_by: producer_cargo_manifest_relation_at(observed_at: v1cc_seen_tree)))
+        )
+        let undisposed_uncitable = uncitable_keys
+          |> filter(u => count(v1_key_of_site(xs: v1_uncitable_seed_link_sites, key: u.item_key)) == 0)
+          |> map(u => u.item_key)
+        let stale_uncitable = v1_uncitable_seed_link_sites
+          |> filter(site => !(uncitable_keys |> any(u => u.item_key == site.item_key)))
+          |> map(site => site.item_key)
+        let unattributed = u |> map(x => concat(concat(concat(x.repo_path, ":"), x.line as String), concat(" ", x.detail)))
+        MintedManifestJoined {
+          observed_at: v1cc_seen_tree,
+          produced: produced,
+          undisposed_sites: undisposed,
+          undisposed_uncitable: undisposed_uncitable,
+          uncitable: uncitable_rows,
+          stale_rows: stale,
+          stale_uncitable: stale_uncitable,
+          unattributed_lines: unattributed
+        }
+      }
+  }
+}
+
+fn v1_minted_manifest_join() -> MintedManifestJoin {
+  v1_minted_manifest_join_over(observation: v1_current_seed_link_sites())
+}
+
+fn minted_manifest_join_is_clean(j: MintedManifestJoin) -> Bool {
+  match j {
+    MintedManifestJoinUnobserved { reason: _ } => false
+    MintedManifestJoined { observed_at: _, produced: _, undisposed_sites: a, undisposed_uncitable: b, uncitable: _, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
+      count(a) == 0 && count(b) == 0 && count(c) == 0 && count(d) == 0 && count(e) == 0
+  }
+}
+
+// WHAT THE JOIN CONTRIBUTES TO THE POPULATION: every undisposed site as an Undecided uncitable
+// consumer (blocks); every rostered uncitable site with its disposition; and every STALE row -- a
+// rostered renderer or site the tree no longer carries -- ALSO as an Undecided uncitable consumer,
+// so a roster that drifted subtracts a consumer row only by adding a blocking one that names it.
+// The citable minted rows minus the stale ones are the consumer rows. An unobserved join
+// contributes nothing and the population reads it as Unmeasured, never as an empty column.
+fn v1_join_uncitable_consumers(j: MintedManifestJoin) -> List<V1UncitableConsumer> {
+  match j {
+    MintedManifestJoinUnobserved { reason: _ } => []
+    MintedManifestJoined { observed_at: v1cc_seen_tree, produced: _, undisposed_sites: a, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } => {
+      let discovered_by = producer_cargo_manifest_relation_at(observed_at: v1cc_seen_tree)
+      list_append(
+        left: list_append(
+          left: a |> map(r => v1_undisposed_site_row(item_key: declaration_ref_display_key(ref: r), detail: "produced seed-link site with no minted-manifest row", discovered_by: discovered_by)),
+          right: b |> map(k => v1_undisposed_site_row(item_key: k, detail: "produced uncitable seed-link site with no roster row", discovered_by: discovered_by))
+        ),
+        right: list_append(
+          left: list_append(
+            left: uc,
+            right: e |> map(k => v1_undisposed_site_row(item_key: k, detail: "seed-link token on a line no item encloses", discovered_by: discovered_by))
+          ),
+          right: list_append(
+            left: c |> map(r => v1_undisposed_site_row(item_key: declaration_ref_display_key(ref: r), detail: "rostered minted-manifest renderer the tree no longer carries (stale row)", discovered_by: discovered_by)),
+            right: d |> map(k => v1_undisposed_site_row(item_key: k, detail: "rostered uncitable seed-link site the tree no longer carries (stale row)", discovered_by: discovered_by))
+          )
+        )
+      )
+    }
+  }
+}
+
+fn v1_join_stale_renderers(j: MintedManifestJoin) -> List<DeclarationRef> {
+  match j {
+    MintedManifestJoinUnobserved { reason: _ } => []
+    MintedManifestJoined { observed_at: _, produced: _, undisposed_sites: _, undisposed_uncitable: _, uncitable: _, stale_rows: c, stale_uncitable: _, unattributed_lines: _ } => c
+  }
+}
+
+fn minted_manifest_join_rendered(j: MintedManifestJoin) -> String {
+  match j {
+    MintedManifestJoinUnobserved { reason: r } => concat("unobserved: ", r)
+    MintedManifestJoined { observed_at: _, produced: p, undisposed_sites: a, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
+      concat("produced=", concat(count(p) as String,
+      concat(" uncitable=", concat(count(uc) as String,
+      concat(" undisposed=[", concat(join_keys(xs: a |> map(r => declaration_ref_display_key(ref: r))),
+      concat("] undisposed_uncitable=[", concat(join_keys(xs: b),
+      concat("] stale=[", concat(join_keys(xs: c |> map(r => declaration_ref_display_key(ref: r))),
+      concat("] stale_uncitable=[", concat(join_keys(xs: d),
+      concat("] unattributed=[", concat(join_keys(xs: e), "]"))))))))))))))
+  }
+}
+
+fn join_keys(xs: List<String>) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { concat(acc, concat(", ", x)) } })
+}
+
+// THE CENSUS ROWS THE SEED EDGES BECOME. A minted manifest is a relation between its renderer and
+// the seed crate root; the hand tests manifest is the tests crate root reaching the seed, deleted
+// with it. Partition-internal and host-shell edges are the seed's own graph and are not consumers.
+fn producer_cargo_manifest_relation_at(observed_at: RustObservedTree) -> DiscoveryProducer {
+  discovery_producer(
+    instrument: "the Cargo manifest relation keyed on gunbc.stage0_partition_package_graph identities: partition and host-shell edges derived, hand and minted manifests authored, Rust renderers joined against observe_rust_references over head_rust_sources over src/v1 with v1_seed_link_tokens",
+    command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/v1/v1_consumer_census.dag --function v1_minted_manifest_join",
+    source_revision: observed_at.revision,
+    source_tree_hex: observed_at.tree,
+  )
+}
+
+data v1_tests_crate_root: DeclarationRef = decl_ref(module_path: "v1_compiler_tests.lib", decl_name: "lib")
+
+fn v1_seed_manifest_disposition(linkage: SeedLinkage) -> ConsumerDisposition {
+  match linkage {
+    NotASeedEdge => retired(reason: "not a seed edge; the partition's own graph, deleted with it")
+    SeedLinkedIntoHandRust => retired(reason: "a hand crate inside the deletion set linking the seed; deleted with it")
+    SeedLinkedIntoEmittedCode => retained_open(justification: "the crate this renderer mints links the seed for the runtime surface the emitted closure does not emit (v1_rt and friends), so the emitted compiler is not seed-free even when every source of it is self-emitted. Closes on: the emitted crate compiling with no v1-compiler path dependency -- the same capability as the shim rows, executed, not cargo-checked")
+    SeedBesideEmittedCodeAsOracle => retained_open(justification: "the seed is built and consulted beside the artifact under test; this edge is not retired by the seed-free lane and needs its own successor oracle")
+  }
+}
+
+fn v1_seed_manifest_consumer(d: CargoPathDependency, discovered_by: DiscoveryProducer) -> List<V1ConsumerRow> {
+  match d.origin {
+    CargoManifestRenderedFromPartition { renderer: _ } => []
+    CargoManifestHandMaintained { repo_path: _ } =>
+      [V1ConsumerRow {
+        boundary: v1cc_boundary(consumer: v1_tests_crate_root, authority: v1_compiler_crate_root, disposition: v1_seed_manifest_disposition(linkage: d.linkage)),
+        medium: CargoManifestDependency,
+        subject: V1CompilerCrate,
+        discovered_by: discovered_by,
+      }]
+    CargoManifestMinted { renderer: r } =>
+      [V1ConsumerRow {
+        boundary: v1cc_boundary(consumer: r, authority: v1_compiler_crate_root, disposition: v1_seed_manifest_disposition(linkage: d.linkage)),
+        medium: CargoManifestDependency,
+        subject: V1CompilerCrate,
+        discovered_by: discovered_by,
+      }]
+  }
+}
+
+fn cargo_dependency_is_stale(d: CargoPathDependency, stale: List<DeclarationRef>) -> Bool {
+  cargo_manifest_renderer(d: d) |> any(r => stale |> any(x => declaration_ref_eq(a: x, b: r)))
+}
+
+fn v1_seed_manifest_consumers(join: MintedManifestJoin) -> List<V1ConsumerRow> {
+  match join {
+    MintedManifestJoinUnobserved { reason: _ } => []
+    MintedManifestJoined { observed_at: v1cc_seen_tree, produced: _, undisposed_sites: _, undisposed_uncitable: _, uncitable: _, stale_rows: stale, stale_uncitable: _, unattributed_lines: _ } =>
+      v1_seed_manifest_dependencies()
+        |> filter(d => !cargo_dependency_is_stale(d: d, stale: stale))
+        |> flat_map(d => v1_seed_manifest_consumer(d: d, discovered_by: producer_cargo_manifest_relation_at(observed_at: v1cc_seen_tree)))
+  }
+}
+
+fn v1_consumers_for(partition: V1ShimPartition, join: MintedManifestJoin) -> List<V1ConsumerRow> {
+  list_append(
+    left: list_append(
+      left: list_append(left: v1_static_consumers, right: v1_native_cutover_selector_consumers()),
+      right: list_append(
+        left: v1_required_lane_step_consumers(),
+        right: list_append(left: v1_dag_argv_consumers(), right: v1_native_lane_consumers())
+      )
+    ),
+    right: list_append(left: list_append(left: v1_release_pack_consumers(), right: v1_seed_manifest_consumers(join: join)), right: partition.cited)
+  )
+}
+
+// THE LIVE POPULATION IS READ ONCE PER QUESTION. Every derivation below takes the population as a
+// parameter and reads it through the population accessors; the zero-argument forms exist for the
+// operator instrument and read the tree exactly once each. A caller asking several questions of
+// one tree binds v1_consumer_population() once and hands it down -- two calls are two scans of
+// HEAD, which DESIGN section 2 prices as authored duplication at a visible ancestor.
+
+// THE POPULATION THIS ROSTER CONSTITUTES TODAY, and it is deliberately not the Complete arm. Seven
+// producers were run and none of them joins the others. Filing this as Complete would be the rung
+// inflation DESIGN section 4b names as worse than sitting low, because the admission gate below
+// reads this field and an inflated Complete would let the transaction execute against a population
+// that was never closed.
+fn v1_consumer_population_for(observation: RustReferenceObservation, seed_links: RustReferenceObservation) -> ConsumerPopulation {
+  v1_consumer_population_with(observation: observation, join: v1_minted_manifest_join_over(observation: seed_links))
+}
+
+// THE JOIN IS A PARAMETER HERE so a caller that also renders it (the report entry) computes it
+// once and hands the same value to both demands.
+fn v1_consumer_population_with(observation: RustReferenceObservation, join: MintedManifestJoin) -> ConsumerPopulation {
+  match v1_shim_population_of(observation: observation) {
+    V1ShimPopulationRefused { reason: r } => PopulationUnmeasured { reason: r }
+    V1ShimPopulationObserved { partition: partition } =>
+  match join {
+    MintedManifestJoinUnobserved { reason: r } => PopulationUnmeasured { reason: concat("the seed-link site population could not be observed: ", r) }
+    MintedManifestJoined { observed_at: _, produced: _, undisposed_sites: _, undisposed_uncitable: _, uncitable: _, stale_rows: _, stale_uncitable: _, unattributed_lines: _ } =>
+  PopulationMeasuredLowerBound {
+
+    rows: v1_consumers_for(partition: partition, join: join),
+    uncitable: list_append(left: partition.uncitable, right: v1_join_uncitable_consumers(j: join)),
+    missing_basis: "per-medium sweeps, the L4 operational selector trace, the required-lane step trace, and ONE joined producer over the .dag medium (tools.v1_consumer_discovery). The population is still a lower bound and the arm does not move, because the join is complete for one medium of eight rather than for all of them. WHAT CHANGED, hole by hole. HOLE ONE NARROWED, NOT CLOSED: the .dag argv rows are now classified by a producer that folds every declaration v2.std.decl_index decl_facts answers for the source roots and joins its literal atoms to the v1 authority each one names, so a .dag consumer added tomorrow enters the population without an author remembering to file it. THE MECHANISM EXECUTES, THE WHOLE-CORPUS CLAIM DOES NOT -- two remaining facts; a third, the authoring-position blind spot, is closed. (i) The fold is exercised on the merge path against a real declaration node fetched by name, with a red control on a declaration naming no v1 binary and a control that it does not count its own signature table, plus the permanent positive control that a bare String initializer is visible (discovery_fold_sees_a_bare_string_initializer). (ii) The JOIN over the whole corpus is not enrolled: as long-home witnesses it was interrupted before verdict by the floor's cost budget, so it runs on demand at tools.v1_consumer_discovery v1_discovery_gate. (iii) THE BARE, LIST, AND CONCAT LitStr CHANNEL IS CLOSED. DataItem decl_facts carry authored LitStr atoms from the parse tree so v2.std.fn_index atom_identities_in_node and tools.v1_consumer_discovery see them; the expecting-red that named this hole flipped to that positive control rather than retiring. Review 63229's seven hand-authored relations remain as judgements on this roster, not as evidence the producer is still blind. The .dag medium is therefore joined for those initializer shapes at declaration grain. The population stays a lower bound because of (ii) and because the join is complete for one medium of eight, not because LitStr positions are still dark. HOLE TWO UNCHANGED: the deletion-set blind spot still has no complete instrument. The step trace added the emitted-closure manifest relation, which is one more consumer defined inside src/v1 and consumed by the v2 self-host path, but a consumer defined inside src/v1 AND consumed inside src/v1 still cannot refuse when both go, and only a per-deleted-file question finds the rest. HOLE THREE UNCHANGED: whole-repository reachability is still not measured. The step trace establishes that the emitted required workflow reaches v1 in three of its four jobs and that the fourth reaches none of it -- the aggregating `witnesses` job consumes needs[...].result for the two lanes through shell test expressions and invokes no binary, no cargo target and no source root, read at the revision this producer names -- which is a closed answer over ONE emitted artifact and carries no claim about the corpus. Presence still over-approximates demand. THE FOUR MEDIA WITH NO DECLARATION NAMESPACE remain the structural reason a single joined instrument cannot exist yet: a hit in Rust, a Cargo manifest, a committed mirror or a serialized artifact path has no declaration identity for the consumer half of the key, so it cannot become a keyed row without an author inventing one -- which is what V1UncitableConsumer refuses. Closing the remaining media therefore needs a projection from those file grains into DeclarationRef, not more sweeping -- AND THAT IS THREE DIFFERENT OBLIGATIONS RATHER THAN ONE, which is recorded here so the next reader starts from this carrier instead of re-deriving it. (A) FOUR OF THE SEVEN ARE NOT A SEPARATE MEDIUM AT ALL. Workflow YAML, .gitattributes, the git hooks and the committed stage0 mirrors are GENERATED, and gunbc.generated_artifact_registry generated_artifact_registry is a closed typed roster of exactly that population; a v1 reference in one of them is a projection of a literal in the .dag declaration that emits it. CLOSED AS A REFUSAL, NOT A SCANNER: gunbc.generated_artifact artifact_producer names each artifact's producer declaration and gunbc.generated_artifact_producer_coverage generated_artifact_producer_refusals refuses an artifact whose producer the .dag population cannot resolve (gunbc#11005); this census may count those four media as joined only when gunbc.generated_artifact_producer_coverage every_generated_artifact_producer_covered holds over the same pool roots the .dag producer folds, which is the read that moves them out of this string. (B) RUST IS PRODUCED, NOT LISTED. gunbc.rust_item_host_observation head_rust_sources plus observe_rust_references fold the item scan over every hand-Rust file outside the deletion set whose text names a v1 reference token and carry the DeclarationRef projection on each row; v1_consumer_population_for consumes that observation, the four hand-named shim items are gone, a host refusal is PopulationUnmeasured and an unattributed line is an uncitable row. WHAT KEEPS THE MEDIUM FROM COUNTING AS COMPLETE: the population is one HEAD read and its tokens reach only the spellings v1_reference_authorities declares; a reference spelled some other way is outside it, silently, which is the same token-reach boundary the seed-link join states for (C). (C) CARGO MANIFESTS ARE A RELATION KEYED ON PACKAGE IDENTITY, declared here and taking its names from gunbc.stage0_partition_package_graph (v1_cargo_manifest_dependencies): partition and host-shell edges derived from the graph, the hand tests manifest and the minted manifests authored with their SeedLinkage, and the Rust renderers joined in both directions against the produced seed-link population (v1_minted_manifest_join). The three .dag renderers are cited and wall-checked but their join to a produced .dag literal population is the frontier tools.v1_consumer_discovery's whole-corpus fold closes. THE ARM STAYS LowerBound because no medium's join is complete for every authoring position and the media are not yet joined to one another; the per-medium state that would let the arm move is the next carrier, not a sentence here.",
+  }
+  }
+  }
+}
+
+// THE NATIVE-LANE RELATIONS, NOW ORDINARY CURRENT-TREE ROWS. They were carried in this census's
+// UNCITABLE shape while gunbc#10882 was unmerged -- their consumers were declarations only that
+// head declared, and a DeclarationRef to one of them is a citation the corpus cannot resolve, which
+// the required floor said by name on this branch's first run. #10882 has merged, so the citations
+// resolve and the rows join the roster: the frontier dissolved into the population, which is what a
+// declared frontier is FOR. Nothing about the relations changed; only whether the tree can spell
+// them.
+//
+// WHAT THEY MEAN FOR THE COUNT, and it is the direction a reader will get wrong: landing the lane
+// called `required-v2-native` ADDED three v1 relations and removed none. The lane is
+// interpreter-bracketed at both ends -- its universe is derived by folding
+// discover_floor_rows_for_source through the seed interpreter, and its census receipt is
+// adjudicated by two more calls into the same interpreter -- with the emitted native binary
+// answering the members in between. A deletion inventory that scored it as progress toward the cut
+// would be counting backwards.
+
+data producer_native_lane_head: DiscoveryProducer = discovery_producer(
+  instrument: "every v1_interpreter entry point the merged native-lane harness calls, and the job its lane authority declares, read against the merge that landed them",
+  command: "rg -n 'run_in_context_with_args|discover_floor_rows_for_source' src/v1/stage0/src/cli_run/native_lane_runner.rs; rg -n 'required_v2_native_job_name' dag/gunbc/witness/v2_native_route.dag",
+  source_revision: v1_census_step_trace_revision,
+  source_tree_hex: v1_census_step_trace_tree,
+)
+
+data v1_interpreter_run_in_context: DeclarationRef = decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "run_in_context_with_args")
+
+data native_lane_runner_ref: DeclarationRef = decl_ref(module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "run_required_v2_native")
+
+fn v1_native_lane_consumer(
+  consumer: DeclarationRef,
+  authority: DeclarationRef,
+  medium: ConsumerMedium,
+  subject: V1Subject,
+  obligation: String
+) -> V1ConsumerRow {
+  V1ConsumerRow {
+    boundary: v1cc_boundary(consumer: consumer, authority: authority, disposition: retained_open(justification: obligation)),
+    medium: medium,
+    subject: subject,
+    discovered_by: producer_native_lane_head,
+  }
+}
+
+fn v1_native_lane_consumers() -> List<V1ConsumerRow> {
+  [
+    v1_native_lane_consumer(
+      consumer: native_lane_runner_ref,
+      authority: v1_interpreter_run_in_context,
+      medium: RustSourceReference, subject: V1Interpreter,
+      obligation: "THE LANE IS INTERPRETER-BRACKETED AT BOTH ENDS, and this is ONE relation rather than two because both ends are the same consumer reaching the same authority. Its population is derived by calling discover_floor_rows_for_source through the seed interpreter over the whole source population, so the set of modules the native route is asked about is chosen by v1; and its census receipt is adjudicated by two further run_in_context_with_args calls in the same function, so the verdict on whether the native route stood is computed by the route it is judging the replacement of. An earlier revision split these into two rows and paid for the split by inventing a symbol for the second consumer -- which is the fabrication this census exists to refuse, so the split is withdrawn rather than repaired: the census keys on consumer x authority, and one function reaching one authority is one relation however many roles it plays. Closes on: the universe deriving AND the admission fold executing outside the seed. The derivation half is the same discovery fold the required floor already runs, so that half closes for both lanes at once or for neither"
+    ),
+    v1_native_lane_consumer(
+      consumer: decl_ref(module_path: "gunbc.witness_v2_native_route", decl_name: "required_v2_native_job_name"),
+      authority: claim_executor_bin,
+      medium: WorkflowArgv, subject: V1HostedCiBinary,
+      obligation: "THE JOB RUNS INSIDE THE SEED BINARY: the lane harness is a claim_executor subcommand, so the lane adds a fourth required use of the v1 executable rather than replacing any of the three this census already carries. Closes on: the lane's harness being a native entry point -- which is downstream of, and not the same as, the emitted compiler accepting a member"
+    ),
+  ]
+}
+
+fn v1_native_lane_row_count() -> Int {
+  count(v1_native_lane_consumers())
+}
+
+fn v1_consumer_population() -> ConsumerPopulation {
+  let head = v1_current_head_rust_sources()
+  v1_consumer_population_for(observation: v1_rust_references_over(sources: head), seed_links: v1_seed_link_sites_over(sources: head))
+}
+
+// THE PROJECTION INTO THE EXACT CARRIER. When the population reaches Complete, this is the
+// BoundaryCensus the RegisteredExactCut for cut-v1-interpreter is authored over; until then the
+// projection exists so the shape is executed now rather than discovered at release, and so the
+// consumer identities XL-3 consumes are the authority's BoundaryConsumer rather than a private row.
+fn v1_boundary_census(rows: List<V1ConsumerRow>) -> BoundaryCensus {
+  ConsumersEnumerated { consumers: rows |> map(r => r.boundary) }
+}
+
+// REFUSAL ONE, in the direction a census is most likely to fail: something is reachable and no row
+// disposes it. The discovered population is supplied by the CALLER rather than read from a field
+// here, because a census that supplies its own denominator is asserting completeness by writing it
+// down -- the change-detector shape DESIGN section 5 names, where automating the literal collapses
+// the assertion to measure() == measure().
+fn v1_row_keys(rows: List<V1ConsumerRow>) -> List<String> {
+  rows |> map(r => v1_row_key(r: r))
+}
+
+fn v1_key_in(needle: String, xs: List<String>) -> Bool {
+  xs |> any(x => x == needle)
+}
+
+fn v1_consumers_undisposed(discovered: List<String>, rows: List<V1ConsumerRow>) -> List<String> {
+  discovered |> filter(d => !v1_key_in(needle: d, xs: v1_row_keys(rows: rows)))
+}
+
+fn v1_every_discovered_consumer_disposed(discovered: List<String>, rows: List<V1ConsumerRow>) -> Bool {
+  count(v1_consumers_undisposed(discovered: discovered, rows: rows)) == 0
+}
+
+// REFUSAL TWO, the opposite direction: a row names a relation the discovery population does not
+// contain. This catches a roster going stale rather than short -- a consumer repaired upstream
+// leaves a row behind, and a stale row is indistinguishable from a live one to every reader who is
+// not re-running the producer.
+fn v1_rows_naming_no_live_consumer(discovered: List<String>, rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
+  rows |> filter(r => !v1_key_in(needle: v1_row_key(r: r), xs: discovered))
+}
+
+fn v1_every_row_names_a_live_consumer(discovered: List<String>, rows: List<V1ConsumerRow>) -> Bool {
+  count(v1_rows_naming_no_live_consumer(discovered: discovered, rows: rows)) == 0
+}
+
+// REFUSAL THREE, the load-bearing one: A DISPOSITION CANNOT BE MADE TRUE BY EDITING IT. A row may
+// CLAIM a successor authority; the claim holds only if that authority appears in a realized
+// population supplied from outside this module. Without this arm, ReplacedByY is an author's
+// intention typed into a field -- the tell DESIGN section 5 gives for validation standing where
+// construction was available.
+fn v1_claimed_successors(rows: List<V1ConsumerRow>) -> List<String> {
+  rows |> flat_map(r => consumer_disposition_successors(d: r.boundary.disposition))
+}
+
+fn v1_unrealized_successors(rows: List<V1ConsumerRow>, realized: List<String>) -> List<String> {
+  v1_claimed_successors(rows: rows) |> filter(s => !v1_key_in(needle: s, xs: realized))
+}
+
+fn v1_every_claimed_successor_is_realized(rows: List<V1ConsumerRow>, realized: List<String>) -> Bool {
+  count(v1_unrealized_successors(rows: rows, realized: realized)) == 0
+}
+
+// THE BLOCKING COLUMN, derived rather than authored, over BOTH the citable rows and the uncitable
+// ones. This is the number XL-5 reports upward; a filter over the roster rather than a literal, so
+// it cannot be edited down without deleting a row -- and deleting a row is what refusal two catches.
+fn v1_blocking_consumers(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
+  rows |> filter(r => consumer_disposition_blocks(d: r.boundary.disposition))
+}
+
+fn v1_blocking_uncitable(uncitable: List<V1UncitableConsumer>) -> List<V1UncitableConsumer> {
+  uncitable |> filter(u => consumer_disposition_blocks(d: u.disposition))
+}
+
+// THE THREE-WAY PARTITION, TAKEN ONCE, AS AN ELIMINATION OF ConsumerDisposition RATHER THAN A
+// PREDICATE OVER IT. An earlier revision asked "is this Undecided?" as a Bool and then filtered the
+// population three times against combinations of it -- which is the predicate-dissolution shape
+// (review 63245), and it also let the three classes drift apart, since nothing forced them to
+// cover the population exactly once. This fold eliminates the coproduct in ONE place: every arm
+// lands in exactly one bucket by construction, so the partition is exhaustive and disjoint because
+// there is nowhere else for a row to go, and the worklist below is a reordering of the buckets
+// rather than three independent sweeps that happen to agree.
+//
+// WHY UNKNOWN IS ITS OWN BUCKET AND NOT PART OF BLOCKING. They say different things: a retained row
+// with CoverageOpen is a KNOWN obligation nobody has covered, and an Undecided row is a relation
+// nobody has judged at all. Collapsing them lets the second hide inside the first, and the second is
+// the worse state -- a known-but-uncovered consumer at least names the capability that closes it,
+// while an undecided one names nothing. THIS IS ALSO THE ARM THE JOINED PRODUCER FILLS:
+// tools.v1_consumer_discovery emits every relation it discovers as Undecided by construction, so a
+// newly discovered .dag consumer arrives here as an unknown row and stays one until an author
+// judges it. The count is the discovery backlog and cannot be reduced by editing a number.
+type WorklistPartition {
+  unjudged: List<V1ConsumerRow>
+  retained_open: List<V1ConsumerRow>
+  discharged: List<V1ConsumerRow>
+}
+
+data v1cc_empty_partition: WorklistPartition = WorklistPartition { unjudged: [], retained_open: [], discharged: [] }
+
+fn v1cc_place_row(acc: WorklistPartition, row: V1ConsumerRow) -> WorklistPartition {
+  match row.boundary.disposition {
+    Undecided =>
+      WorklistPartition { unjudged: list_snoc_item(xs: acc.unjudged, item: row), retained_open: acc.retained_open, discharged: acc.discharged }
+    RetainSameContract { justification: _, coverage: c } =>
+      v1cc_place_by_coverage(acc: acc, row: row, c: c)
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: c } =>
+      v1cc_place_by_coverage(acc: acc, row: row, c: c)
+    ReplacedByY { new_authority: _ } =>
+      WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } =>
+      WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+    Retire { reason: _ } =>
+      WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+  }
+}
+
+fn v1cc_place_by_coverage(acc: WorklistPartition, row: V1ConsumerRow, c: CoverageClaim) -> WorklistPartition {
+  if v1cc_coverage_is_open(c: c) {
+    WorklistPartition { unjudged: acc.unjudged, retained_open: list_snoc_item(xs: acc.retained_open, item: row), discharged: acc.discharged }
+  } else {
+    WorklistPartition { unjudged: acc.unjudged, retained_open: acc.retained_open, discharged: list_snoc_item(xs: acc.discharged, item: row) }
+  }
+}
+
+fn v1_worklist_partition(rows: List<V1ConsumerRow>) -> WorklistPartition {
+  fold_list(xs: rows, empty: v1cc_empty_partition, cons: fn(acc, row) { v1cc_place_row(acc: acc, row: row) })
+}
+
+fn v1_rows_undecided(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
+  v1_worklist_partition(rows: rows).unjudged
+}
+
+fn v1_undecided_row_count(rows: List<V1ConsumerRow>) -> Int {
+  count(v1_rows_undecided(rows: rows))
+}
+
+// THE ORDERED WORKLIST, DERIVED AND EXECUTING NOTHING. The order is the doctrine's, not an author's
+// judgement of severity: an UNDECIDED relation comes first because nothing downstream of it can be
+// planned -- the disposition census admits a cut only when undispositioned consumers reach zero, so
+// an undecided row blocks every other row's schedule as well as its own. Then the RETAINED-OPEN
+// rows, which are the transaction's real content: each names a capability that does not exist yet.
+// Then the discharged rows -- replaced, evidence-only, retired -- ordered last precisely because
+// they need no work; they are carried so the worklist is the whole population and a reader can see
+// that a row was decided rather than forgotten.
+//
+// IT IS A PROJECTION OF THE ROSTER, NOT A SECOND ROSTER: it concatenates the three buckets of one
+// partition, so nothing is added and nothing is dropped by construction rather than by three
+// filters agreeing. A worklist that could contain a row the census does not would be the parallel
+// authority DESIGN section 3 forbids.
+fn v1_deletion_worklist(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
+  let p = v1_worklist_partition(rows: rows)
+  list_append(left: p.unjudged, right: list_append(left: p.retained_open, right: p.discharged))
+}
+
+fn v1_worklist_is_a_permutation(rows: List<V1ConsumerRow>) -> Bool {
+  count(v1_deletion_worklist(rows: rows)) == count(rows)
+}
+
+// THE ORDERING, ASKED OF THE PRODUCED LIST RATHER THAN OF THE FOLD THAT PRODUCED IT. This counts
+// how many unjudged rows stand before the first judged one; when that equals the unjudged total,
+// every unjudged row is in the leading segment, which is the ordering claim. Reading it off the
+// output is what makes the assertion independent of the implementation -- a check that restated the
+// concatenation order would be the second representation section 3 forbids, and would stay green if
+// the ordering were reversed and the check reversed with it.
+type WorklistLeadScan {
+  still_leading: Bool
+  leading: Int
+}
+
+fn v1cc_row_is_unjudged_in(p: WorklistPartition, row: V1ConsumerRow) -> Bool {
+  p.unjudged |> any(u => v1_row_key(r: u) == v1_row_key(r: row))
+}
+
+fn v1_worklist_lead_scan(rows: List<V1ConsumerRow>) -> WorklistLeadScan {
+  let p = v1_worklist_partition(rows: rows)
+  fold_list(
+    xs: v1_deletion_worklist(rows: rows),
+    empty: WorklistLeadScan { still_leading: true, leading: 0 },
+    cons: fn(acc, row) {
+      if acc.still_leading && v1cc_row_is_unjudged_in(p: p, row: row) {
+        WorklistLeadScan { still_leading: true, leading: acc.leading + 1 }
+      } else {
+        WorklistLeadScan { still_leading: false, leading: acc.leading }
+      }
+    }
+  )
+}
+
+fn v1_worklist_leading_unjudged_count(rows: List<V1ConsumerRow>) -> Int {
+  v1_worklist_lead_scan(rows: rows).leading
+}
+
+fn v1_worklist_leads_with_the_unjudged(rows: List<V1ConsumerRow>) -> Bool {
+  v1_worklist_leading_unjudged_count(rows: rows) == v1_undecided_row_count(rows: rows)
+}
+
+// THE COUNT CARRIES ITS OWN REFUSAL. Since the population became a produced observation,
+// PopulationUnmeasured is REACHABLE (a host refusal, an unscannable token-carrying file), and the
+// row projections answer [] on that arm -- so a bare Int here would print 0 blocking consumers on
+// a git refusal: the most reassuring answer, from ignorance rather than measurement, on the one
+// instrument the drop row names as the census's executing consumer. The count is therefore a
+// coproduct; a caller that wants a number must match, and the unmeasured arm carries the reason.
+type V1BlockingCount
+  = V1BlockingCounted { blocking: Int, members: Int }
+  | V1BlockingUnmeasured { reason: String }
+
+fn v1_blocking_count_of(p: ConsumerPopulation) -> V1BlockingCount {
+  match p {
+    PopulationUnmeasured { reason: r } => V1BlockingUnmeasured { reason: r }
+    PopulationMeasuredComplete { rows: _, joined_media: _ } => v1_blocking_counted(p: p)
+    PopulationMeasuredLowerBound { rows: _, uncitable: _, missing_basis: _ } => v1_blocking_counted(p: p)
+  }
+}
+
+fn v1_blocking_counted(p: ConsumerPopulation) -> V1BlockingCount {
+  V1BlockingCounted {
+    blocking: count(v1_blocking_consumers(rows: consumer_population_rows(p: p))) + count(v1_blocking_uncitable(uncitable: consumer_population_uncitable(p: p))),
+    members: count(consumer_population_rows(p: p)) + count(consumer_population_uncitable(p: p)),
+  }
+}
+
+// THE OPERATOR INSTRUMENT: one read of the tree, rendered with its arm named, so an unmeasured
+// population reads as "unmeasured: <reason>" and never as a number.
+fn v1_blocking_consumer_count() -> V1BlockingCount {
+  v1_blocking_count_of(p: v1_consumer_population())
+}
+
+// THE INSTRUMENT AS A RUN ENTRY: `gunbc run` maps only a ProcessExit to an exit code, so the
+// count is rendered into the reason of a deliberate ExitFailure -- the run is a report, not a
+// verdict, and a report that exited 0 would read as "nothing blocks". An unmeasured population
+// renders as its reason, never as a number.
+fn v1_blocking_consumer_count_report() -> ProcessExit {
+  let head = v1_current_head_rust_sources()
+  let join = v1_minted_manifest_join_over(observation: v1_seed_link_sites_over(sources: head))
+  let population = v1_consumer_population_with(observation: v1_rust_references_over(sources: head), join: join)
+  ExitFailure {
+    code: 1,
+    reason: concat(
+      v1_blocking_count_rendered(c: v1_blocking_count_of(p: population)),
+      concat(" | seed-link join: ", minted_manifest_join_rendered(j: join))
+    )
+  }
+}
+
+fn v1_blocking_count_rendered(c: V1BlockingCount) -> String {
+  match c {
+    V1BlockingCounted { blocking: b, members: m } => concat(concat("blocking=", b as String), concat(" members=", m as String))
+    V1BlockingUnmeasured { reason: r } => concat("unmeasured: ", r)
+  }
+}
+
+// THE ADMISSION GATE FOR THE BANKRUPTCY TRANSACTION. All four conditions, and the first is the one
+// a reader will be tempted to drop: a lower-bound population with an empty blocking column says
+// nothing blocks AMONG WHAT WAS MEASURED, not the claim the transaction needs. Executing the
+// cutover on that is the absorbing-fallback shape read backwards -- ignorance taken as an answer --
+// and it is why completeness is a field the gate reads rather than a sentence in a note. The
+// fourth condition is that no uncitable consumer remains, since a consumer the vocabulary cannot
+// spell is one the exact cut cannot disposition.
+fn v1_bankruptcy_transaction_admitted(population: ConsumerPopulation, realized: List<String>) -> Bool {
+  let rows = consumer_population_rows(p: population)
+  consumer_population_is_complete(p: population)
+    && count(v1_blocking_consumers(rows: rows)) == 0
+    && count(consumer_population_uncitable(p: population)) == 0
+    && v1_every_claimed_successor_is_realized(rows: rows, realized: realized)
+}
+
+// RUNG, at the honest grain, separated from what the roster claims about v1.
+//
+// THE CLASS -- 'the cutover deletes a subject nothing succeeded' -- sits at MITIGATABLE today, and
+// this carrier does not move it. Nothing refuses when a consumer is added to the tree; the roster
+// is a hand sweep and an author who forgets to file a row leaves no trace.
+//
+// WHAT IS CONSTRUCTED, and it is the only rung claim made here: the relation is the authority's own
+// BoundaryConsumer, so a row cannot name a consumer without naming what it consumes; a row has no
+// constructor without a producer carrying a command and a revision; the blocking predicate is
+// derived from the same two arms admit_replacement_cut_plan refuses on, so the blocking column here
+// and the refusal there cannot disagree; and the successor claim is not self-satisfiable at all --
+// refusal three joins it against a population this module cannot write.
+//
+// WHAT IS NOT CONSTRUCTED, stated because the gap is the next lane's work rather than an omission:
+// completeness. PopulationMeasuredLowerBound is the honest arm and the admission gate reads it, so
+// the transaction refuses by construction today -- but nothing stops an author from writing
+// PopulationMeasuredComplete over the same unjoined rows. That edit is the one way this carrier can
+// lie, and it is exactly what the next-rung trigger closes.
+
+data v1_consumer_census_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the discovered consumer population is produced by ONE joined instrument over all eight media -- manifests, bin targets, workflow argv, .dag argv rows, Rust use edges, hook scripts, committed mirrors and serialized artifact paths -- so that adding a consumer in any medium appears in the census without an author remembering to file it, and PopulationMeasuredComplete becomes a fact the instrument establishes rather than a value an author types. NOT satisfied by an instrument covering some media however many rows it finds: a per-medium answer is indistinguishable from a joined one, so a partial join has the same blind spot as no join. NOT satisfied by adding rows by hand.")

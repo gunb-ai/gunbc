@@ -1,0 +1,15 @@
+module gunbc.regen_scope_worktree_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data regen_scope_worktree_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "regen_scope_worktree_admitted", field: WholeDeclaration }
+  ],
+  reason: "A CALL SITE, NOT AN AUTHORITY. The predicate, the observation (git.Inspect.WorkingTreeStatus through extdeps.git.inspect) and the refusal text all live in v2.workflow.regen_scope_worktree; this function only locates that entry under the declared source roots, evaluates regen_scope_observe_worktree_refusal in the interpreter's wet mode, and maps its String answer to Ok (empty) or Err (the refusal verbatim). It is retained in the seed because its caller is: regen_emission_scope_for_diff, the scoped regen round, is hand-authored host Rust in v1_compiler.required_regen_host, and the admission must run before that host reads the diff. It adds no flag, no mode that skips a check, and no second representation of the rule; it adds a refusal on a path that previously proceeded over an edit it could not see.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this declaration together with its caller, when the scoped regen round's orchestration (regen_emission_scope_for_diff and run_required_regen_scoped) is a .dag fold rather than host Rust, at which point the admission is an ordinary call inside that fold. WHAT DOES NOT RETIRE IT: moving the predicate again, which it does not own, or a witness over a mocked status, which exercises the model and not this call site.",
+  current_boundary: "src/v1/stage0/src/required_regen_host.rs (regen_scope_worktree_admitted, called first in regen_emission_scope_for_diff)"
+}

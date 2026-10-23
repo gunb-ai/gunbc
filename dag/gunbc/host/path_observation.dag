@@ -1,0 +1,108 @@
+module gunbc.host.path_observation
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import extdeps.tools.stat { StatFileKind, RegularFileKind, DirectoryKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_word, StatFileTypeOutcome, StatFileTypeObserved, StatPathAbsent, StatFileTypeUnread, stat_file_type_outcome }
+import gunbc.host_operation_exec { HostOperation, StatFileType, HeadBytes, host_operation_label }
+import gunbc.compute.host_occupancy { host_operation_ran, HostOperationRan, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
+import gunbc.spark.host_effect_quiescence { ArgvRun }
+
+// ── WHAT IS AT A PATH ON A HOST, AND A BOUNDED READ OF IT, AS TYPED LEGS ─────────────────────
+//
+// DECLARED FRONTIER (DESIGN section 3c): host_path_kind and small_file_read have no executing consumer
+// on main in this change. Their consumer is gunbc.spark.arm_convergence, whose rank observe reads the
+// committed-arm record and the retired transaction files through them and deletes
+// arm_rank_observe_script; it lands in gunbc#13365. Trigger: #13365's next head after this change
+// lands consumes both and drops that script. The stat-word decoding these read is not new: it is
+// extdeps.tools.stat stat_file_type_reading, executed today by gunbc.fabric.fabric_cell_acquire.
+//
+// THE CONSUMER THIS EXISTS FOR (valiant-crab-775, after review 76640 on #13365): the arm convergence
+// observe reads, on each rank, whether a record file is present and what it says, and whether retired
+// transaction files remain. It did so in a string-assembled shell body, which is the unmodeled
+// realization DESIGN section 6 names; this module is the typed route that body is replaced by. Each
+// question is one HostOperation run through the caller's ArgvRun, so the privileged transport is the
+// caller's (the same seam gunbc.compute.host_occupancy read_unit_activity uses), and each answer is
+// decided here, in .dag, from the exit code and the operation's own output.
+//
+// THREE ANSWERS, NEVER TWO. A path is present (of a stat-decoded kind), or is absent -- and when the
+// read itself fails for any other reason it is UNREAD, which is not absent. Collapsing unread into
+// absent would answer "no record" for a host whose read was refused, which is the fabricated default
+// DESIGN section 5 forbids.
+
+// THE KIND ITSELF IS extdeps.tools.stat StatFileKind, decoded there by stat_file_type_reading -- the one
+// decoder of stat's %F for every consumer (gunbc.fabric.fabric_cell_acquire reads it too). What this
+// module adds is only what the decoder deliberately leaves to its consumer: which non-completion means
+// the path is ABSENT.
+type HostPathKind
+  = HostPathPresent { kind: StatFileKind }
+  | HostPathAbsent
+  | HostPathUnread { cause: String }
+
+// ABSENCE IS extdeps.tools.stat's decision (stat_file_type_outcome), read from stat's TERMINAL reason
+// only, so a path that spells the ENOENT phrase cannot make a refused read absent (side-chat ruling on
+// #13427).
+fn host_path_kind_of_exit(code: Int, stdout: String, stderr: String, operation: HostOperation) -> HostPathKind {
+  match stat_file_type_outcome(exit_code: code, stdout: stdout, stderr: stderr) {
+    StatFileTypeObserved { kind: k } => HostPathPresent { kind: k }
+    StatPathAbsent => HostPathAbsent
+    StatFileTypeUnread { cause: c } => HostPathUnread { cause: join([host_operation_label(operation: operation), ": ", c], "") }
+  }
+}
+
+fn host_path_kind(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> HostPathKind {
+  let operation = StatFileType { path: path }
+  match host_operation_ran(run: run, operation: operation) {
+    HostOperationNotRun { cause: c } => HostPathUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => HostPathUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } => host_path_kind_of_exit(code: code, stdout: out, stderr: err, operation: operation)
+  }
+}
+
+// SmallFileText IS THE WHOLE FILE (side-chat ruling on #13427): the read asks for limit + 1 bytes, and a
+// file that yielded more than limit bytes is SmallFileTooLarge, never its first limit bytes standing for
+// the whole. The count is of the bytes the text re-encodes to; the remote leg decodes stdout lossily,
+// replacing an invalid sequence with U+FFFD (three bytes) rather than dropping it, so a multi-byte
+// character cut at the bound can only make the count larger, the refusing direction.
+type SmallFileRead
+  = SmallFileText { text: String }
+  | SmallFileAbsent
+  | SmallFileTooLarge { limit: ByteSize }
+  | SmallFileUnread { cause: String }
+
+// A SMALL FILE, READ AFTER ITS KIND IS KNOWN. Only a regular file is read, and only its first `limit`
+// bytes; an absent path is absent; anything else at the path -- a directory where the record should be
+// -- is unread, never empty text.
+fn small_file_read(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: ByteSize) -> SmallFileRead {
+  match host_path_kind(run: run, path: path) {
+    HostPathAbsent => SmallFileAbsent
+    HostPathUnread { cause: c } => SmallFileUnread { cause: c }
+    HostPathPresent { kind: k } =>
+      match k {
+        RegularFileKind => small_file_head(run: run, path: path, limit: limit)
+        DirectoryKind => small_file_not_regular(path: path, kind: k)
+        SymbolicLinkKind => small_file_not_regular(path: path, kind: k)
+        SocketKind => small_file_not_regular(path: path, kind: k)
+        FifoKind => small_file_not_regular(path: path, kind: k)
+        CharacterDeviceKind => small_file_not_regular(path: path, kind: k)
+        BlockDeviceKind => small_file_not_regular(path: path, kind: k)
+        UnknownKind { word: _ } => small_file_not_regular(path: path, kind: k)
+      }
+  }
+}
+
+fn small_file_not_regular(path: NonEmptyStr, kind: StatFileKind) -> SmallFileRead {
+  SmallFileUnread { cause: join([path as String, " is a ", stat_file_kind_word(kind: kind), ", not a regular file"], "") }
+}
+
+fn small_file_head(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: ByteSize) -> SmallFileRead {
+  let operation = HeadBytes { path: path, count: byte_size(count: byte_size_count(b: limit) + 1) }
+  match host_operation_ran(run: run, operation: operation) {
+    HostOperationNotRun { cause: c } => SmallFileUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => SmallFileUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { SmallFileUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+      else if count(bytes_octets(b: utf8_encode_bytes(s: out))) > byte_size_count(b: limit) { SmallFileTooLarge { limit: limit } }
+      else { SmallFileText { text: out } }
+  }
+}

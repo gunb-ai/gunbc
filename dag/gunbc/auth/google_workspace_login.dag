@@ -1,0 +1,57 @@
+module gunbc.auth.google_workspace_login
+
+import std.types { NonEmptyStr }
+import extdeps.auth.jwt { JwtStringOrUri, JwtUriString, NumericDate }
+import extdeps.auth.oidc { OidcHostedDomain, OidcIdTokenVerdictPolicy }
+import gunbc.principal_projection { google_oidc_issuer }
+
+// gunb.ai POLICY OVER GOOGLE OIDC (docs/plans/human-identity-authorization.md authority
+// placement): the Workspace-domain gate, the per-client audience roster, and the login
+// transaction vocabulary. This module owns WHAT the deployment admits; extdeps.auth.oidc owns
+// the protocol and the verdict fold; gunbc.principal_projection owns who a verified human IS.
+// Google is the AUTHENTICATION authority only — no API scope is ever requested, admitted, or
+// modeled here (the OidcLoginScope coproduct has no API-scope constructor).
+
+// THE WORKSPACE DOMAIN, the one hosted-domain fact the deployment admits. hd == gunb.ai is
+// org membership; it is never approval authority (the approval roster is the approvals lane's)
+// and it is compared as the hd claim, never parsed out of an email address.
+data gunb_ai_hosted_domain: OidcHostedDomain = OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr }
+
+// THE ISSUER, projected once from the principal authority's binding row: the verdict policy's
+// expected issuer and the minted principals' denoted issuer are one fact, spelled in
+// gunbc.principal_projection.google_oidc_issuer.
+fn google_workspace_issuer() -> JwtStringOrUri {
+  JwtUriString { value: google_oidc_issuer, scheme: "https" as NonEmptyStr }
+}
+
+// THE ADMITTED AUDIENCE for one login is the OAuth client the flow ran for. Clients are separate
+// per app x environment (tracker web dev/prod, approvals web dev/prod, native apps later), and
+// the verdict policy admits EXACTLY the caller's own audience — a token minted for another app
+// or another environment refuses at the audience arm rather than being silently accepted.
+type GoogleLoginClient
+  = GoogleLoginClientTrackerWeb
+  | GoogleLoginClientApprovalsWeb
+
+fn google_login_client_label(client: GoogleLoginClient) -> NonEmptyStr {
+  match client {
+    GoogleLoginClientTrackerWeb => "tracker-web" as NonEmptyStr
+    GoogleLoginClientApprovalsWeb => "approvals-web" as NonEmptyStr
+  }
+}
+
+// THE LOGIN POLICY, one value binding every expectation: the Google issuer, exactly this
+// client's admitted audience, hd == gunb.ai, the login transaction's nonce, and the observed
+// clock. A caller cannot widen any of these by omitting an argument — the policy is whole.
+fn gunb_ai_login_policy(
+  client_audience: JwtStringOrUri,
+  transaction_nonce: NonEmptyStr,
+  observed_at: NumericDate,
+) -> OidcIdTokenVerdictPolicy {
+  OidcIdTokenVerdictPolicy {
+    expected_issuer: google_workspace_issuer(),
+    admitted_audiences: [client_audience],
+    expected_hosted_domain: gunb_ai_hosted_domain,
+    expected_nonce: Present { value: transaction_nonce },
+    observed_at: observed_at,
+  }
+}

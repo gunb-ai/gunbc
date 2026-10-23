@@ -1,0 +1,1540 @@
+module test.claim.spark.serving_deployment_selection_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, VllmKvCacheDtypeRequest, KvFp8DsMla, KvFp8, KvAuto, KvNvfp4,
+  vllm_kv_cache_dtype_wire, vllm_kv_cache_dtype_request_matching_wire,
+}
+import std.optional { Present, Absent }
+import std.interval { IntervalReady, IntervalRefused }
+import gunbc.spark.pair_serving_observed {
+  GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,
+  group_rank_free_memory_region, group_rank_free_memory_observed,
+}
+import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
+import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
+import std.roster_frontier {
+  FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
+}
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey, keyed_roster_build }
+import gunbc.spark.v41_published_image_observation {
+  v41_published_arm64_reference,
+  v41_published_distribution_name,
+  v41_published_stamped_identifier_lookup,
+  PublicCommitAbsent, PublicCommitPresent, PublicCommitUnasked,
+}
+import gunbc.spark.runtime_architecture_registry_reading {
+  gunbc_vllm_dsv41_gb10_registry_reading,
+}
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
+import gunbc.spark.serving_subject {
+  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_group_b_serving_subject,
+}
+import gunbc.spark.serving_deployment_selection {
+  ModelArtifact, DeploymentCandidate, deployment_candidate,
+  ExecutorRayProfile, ExecutorMpProfile, SpeculationOff, SpeculationOn, SpeculationDraft,
+  WeightTreatment, PublishedNativeWeights, RequantisedWeights,
+  RuntimeRevision, runtime_revision,
+  ServingDecisionParameters, serving_decision_parameters,
+  ServingExecutionProfile, execution_profile_of,
+  ServingQualityReport, serving_quality_report,
+  QualityRequirement, quality_requirement,
+  ServingQualityAssessment, QualityPassed, QualityFailed, QualityUnobserved, assess_quality,
+  RuntimeFeasibility, RuntimeFeasibilityUnestablished,
+  WorkloadDemandStanding, WorkloadDemandEstablished, WorkloadDemandUnestablished, ContextReservePolicy, context_reserve_policy,
+  WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
+  per_rank_bytes_ceiling,
+  FleetFit, FleetFitWithinAdmissible, FleetFitExceedsAdmissible, FleetFitDegenerate, fleet_fit_of, fleet_fit_admits,
+  FleetSnapshot, spark_unified_memory_per_host, spark_unified_memory_how, covering_topologies_over,
+  ax_host_fit,
+  glm_group_b_fleet_snapshot, glm_group_b_evidence_current,
+  serving_parameters_current, spark_runtime,
+  artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
+  artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
+  fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
+  topology_shape_eq,
+  serving_selection_constraints, id_constraint_authority, ax_quality,
+  v4_1_declared_profiles,
+  TopologyShape, topology_shape,
+  ServingDeploymentChoiceDomain, serving_deployment_domain,
+  ServingDeploymentCandidateField, serving_candidate_field,
+  ServingFieldEstablished, ServingFieldUnestablished, establish_serving_candidate_field,
+  ServingDeploymentEvidenceSnapshot, serving_evidence_snapshot,
+  ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
+  ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
+  ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy, NoFeasibleServingDeployment,
+  select_serving_deployment,
+  v4_1_profile_standings_from,
+  v4_1_declared_profile_standings, ServingProfileReady, ServingProfileSm12JoinFailed,
+  v4_1_profile_from_standing, serving_deployment_domain_over_standings, derived_candidates_for,
+  id_v4_1_constraint_authority,
+  ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
+  glm_decision_input,
+  deepseek_quality_requirement,
+  deepseek_v4_1_selection_policy,
+  derived_candidate_identity, v4_1_profile_at, v4_1_runtime_vllm_gb10_lead,
+  ax_no_redundancy, ax_authorized_runtime, authorized_v4_1_runtime_holds,
+  glm_candidate_field, glm_domain,
+  unique_constraint_identities, constraint_native_quality, constraint_no_redundancy, constraint_authorized_runtime,
+  serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
+  sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
+  engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
+  ax_component_route, constraint_component_route,
+  ArtifactComponent, artifact_component, ArtifactComponentPlacement, ComponentResident, ComponentPlacedByRoute,
+  v4_1_artifact_components, legacy_undecomposed_artifact,
+  artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
+  artifact_upstream_agreement_defect,
+  artifact_decomposition_digest, artifact_component_digest, candidate_combination, combination_key_eq,
+  footprint_bytes, component_route_reading,
+  route_obligation_marker, route_obligation_cause, route_obligation_prefix, id_route_consumer,
+  candidate_route_context, CandidateComponentRoutes,
+  routed_candidates, RoutedCandidate, candidate_component_route_standings,
+  FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
+  kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
+  v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
+  VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
+  v4_1_selection_frontier,
+}
+import gunbc.fabric.engram_materialization {
+  ax_route_per_rank_resident_lower_bound,
+  engram_component_identity,
+  component_route_standing_component, component_route_standing_context, route_subject_key_eq,
+  ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority,
+  ComponentRouteDecided,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementNotThisSubject,
+  ComponentPlacementExcluded, ComponentPlacementOpen, component_route_placement_standing,
+}
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_total_size }
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  v41_sm12_kv_layout,
+  v41_sm12_kv_cache_dtype_admitted,
+  v41_sm12_admitted_kv_cache_dtypes,
+}
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
+
+test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
+  match select_serving_deployment(input: glm_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+    _ => false
+  }
+}
+
+// ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
+data suite_ref: DeclarationRef = decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref")
+
+// AN EIGHT-HOST FIXTURE FLEET, FOR THE CLAIMS THAT ARE NOT ABOUT ADMISSIBILITY. The covering-partition
+// and identity-join claims below exercise a field over eight hosts, which no production subject is
+// admitted any more; a fixture subject over the eight named units keeps those claims about what they
+// were about. The identities are named, not counted, and the fixture subject is a fixture arm so it
+// can never be mistaken for a production subject's set.
+data fixture_subject: ServingSubject = PlacedServingArm { arm: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_subject") }
+
+fn fixture_fleet_over(hosts: List<HostIdentity>) -> FleetSnapshot {
+  FleetSnapshot {
+    subject: fixture_subject,
+    admissible_hosts: hosts,
+    bytes_per_host: spark_unified_memory_per_host,
+    how: spark_unified_memory_how,
+  }
+}
+
+data fixture_host_1: HostIdentity = "fixture-host-1" as HostIdentity
+data fixture_host_2: HostIdentity = "fixture-host-2" as HostIdentity
+data fixture_host_3: HostIdentity = "fixture-host-3" as HostIdentity
+data fixture_host_4: HostIdentity = "fixture-host-4" as HostIdentity
+
+data fixture_eight_host_fleet: FleetSnapshot = fixture_fleet_over(hosts: [
+  fixture_host_1, fixture_host_2, fixture_host_3, fixture_host_4,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+])
+
+data fixture_fleet_ref: DeclarationRef = decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_eight_host_fleet")
+
+fn contains_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
+  any(hosts, h => host_identity_eq(a: h, b: host))
+}
+
+data deepseek_ref: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.spark.serving_deployment_selection",
+  decl_name: "artifact_deepseek_v4_flash_native",
+  field: WholeDeclaration,
+}
+
+fn cand(name: String, art: ModelArtifact, t: TopologyShape) -> DeploymentCandidate {
+  deployment_candidate(
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: name),
+    label: name as NonEmptyStr,
+    artifact: art,
+    topology: t,
+  )
+}
+
+data native_tp8_x1: DeploymentCandidate = cand(name: "native_tp8_x1", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+data native_tp4_x2: DeploymentCandidate = cand(name: "native_tp4_x2", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+data native_tp2_x4: DeploymentCandidate = cand(name: "native_tp2_x4", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4))
+data native_tp1_x8: DeploymentCandidate = cand(name: "native_tp1_x8", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8))
+
+// ── CONTROL 1: A PUBLIC HELPER CANNOT MINT A PASSING VERDICT ───────────────────────────────────
+//
+// The only way to a QualityPassed is a REPORT evaluated against a REQUIREMENT. A report is ordinary
+// data -- writing down what a run produced is not a claim it passed -- and the passing arm's payload
+// has no exported builder, so no importer can assert admission.
+//
+// THE PREVIOUS VERSION EXPORTED `serving_quality_receipt`, which took a subject, an arbitrary
+// authority name and a prose note and returned an admitted receipt. Anyone could mint "quality is
+// fine" and satisfy the hard quality axis with no evaluation. This row is the positive control that
+// the replacement path still works; the guarantee that the OLD path is gone is that the function no
+// longer exists, which the corpus's own citation and resolution walls enforce.
+fn report_at(tp: Nat, divergence: Nat, score_delta: Int) -> ServingQualityReport {
+  serving_quality_report(
+    subject: execution_profile_of(c: cand(name: "probe", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: 1)), p: serving_parameters_current),
+    suite: suite_ref,
+    reference_profile: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+    max_selected_token_divergence_millinats: divergence,
+    task_score_delta_hundredths: score_delta,
+    how: "fixture report" as NonEmptyStr,
+  )
+}
+
+test fn a_report_within_the_bar_assesses_as_passed() -> Bool {
+  match assess_quality(report: report_at(tp: 4, divergence: 0, score_delta: 0), requirement: deepseek_quality_requirement) {
+    QualityPassed { verdict: _ } => true
+    _ => false
+  }
+}
+
+// ── CONTROL 3: A MEASURED FAILURE IS REFUSED, NOT LEFT OPEN ───────────────────────────────────
+//
+// A same-artifact profile that was TESTED AND FAILED is a decided negative. The previous version
+// could not express it: QualityRefused fired only on artifact mismatch, so a tested-and-bad profile
+// collapsed into the same absent-receipt state as one nobody had run.
+test fn a_measured_quality_failure_is_failed_rather_than_unobserved() -> Bool {
+  match assess_quality(report: report_at(tp: 2, divergence: 2238, score_delta: 0), requirement: deepseek_quality_requirement) {
+    QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}
+
+test fn a_task_score_regression_is_also_a_failure() -> Bool {
+  match assess_quality(report: report_at(tp: 4, divergence: 0, score_delta: -150), requirement: deepseek_quality_requirement) {
+    QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}
+
+// ── CONTROL 2: A RECEIPT FOR ONE EXECUTION PROFILE DOES NOT ADMIT ANOTHER ──────────────────────
+//
+// The profile digest carries context, memory fraction, batch budget, sequence population, executor,
+// KV layout, speculative policy and runtime revision. A receipt acquired at one is not transportable
+// to another, which is why quality and runtime feasibility share this exact subject.
+data other_runtime_parameters: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 300000),
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorMpProfile,
+  kv_cache_dtype: KvFp8DsMla,
+  speculative: SpeculationOff,
+  runtime: runtime_revision(image: "a different image" as NonEmptyStr, vllm_revision: "a different revision" as NonEmptyStr),
+)
+
+data wider_context_parameters: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 400000),
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_cache_dtype: KvFp8DsMla,
+  speculative: SpeculationOff,
+  runtime: spark_runtime,
+)
+
+fn evidence_admitting(profiles: List<ServingQualityAssessment>, w: WorkloadDemandStanding) -> ServingDeploymentEvidenceSnapshot {
+  serving_evidence_snapshot(
+    quality: profiles,
+    runtime_feasibility: [],
+    workload: w,
+    fleet: fixture_eight_host_fleet,
+    fleet_receipt: fixture_fleet_ref,
+  )
+}
+
+test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bool {
+  execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
+    != execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters)
+    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
+      != execution_profile_of(c: native_tp4_x2, p: wider_context_parameters)
+    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
+      != execution_profile_of(c: native_tp2_x4, p: serving_parameters_current)
+}
+
+// ── CONTROL 6: A MEMORY FRACTION ABOVE THE DEVICE REFUSES ─────────────────────────────────────
+//
+// Above 100 percent the lower-bound screen is handed more usable memory than the host has, turning an
+// impossible weight profile into a passing one -- generous in the one direction it must never be.
+data impossible_utilisation: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 300000),
+  memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 15000) }, kv_cache_bytes: none },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_cache_dtype: KvFp8DsMla,
+  speculative: SpeculationOff,
+  runtime: spark_runtime,
+)
+
+data over_utilised_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "over_utilised_field"),
+  domain: serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)], parameters: impossible_utilisation),
+  candidates: [native_tp4_x2],
+)
+
+test fn a_memory_fraction_above_the_device_makes_the_field_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: over_utilised_field) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// ── CONTROL 5: A DUPLICATE IN THE DECLARED DOMAIN REFUSES ─────────────────────────────────────
+//
+// Previously two identical expected keys both matched the same single actual row, so a duplicated
+// declaration passed unnoticed and the expected population was silently ambiguous.
+data duplicated_domain_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "duplicated_domain_field"),
+  domain: serving_deployment_domain(
+    artifacts: [artifact_deepseek_v4_flash_native],
+    topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2), topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+    parameters: serving_parameters_current),
+  candidates: [native_tp4_x2],
+)
+
+test fn a_duplicated_value_in_the_declared_domain_refuses() -> Bool {
+  match establish_serving_candidate_field(field: duplicated_domain_field) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// ── COMPLETENESS IS A JOIN, IN BOTH DIRECTIONS ────────────────────────────────────────────────
+data fixture_four_covering_topologies: List<TopologyShape> = [
+  topology_shape(tensor_parallel_degree: 1, replica_count: 8),
+  topology_shape(tensor_parallel_degree: 2, replica_count: 4),
+  topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+  topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+]
+
+data full_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
+  artifacts: [artifact_deepseek_v4_flash_native],
+  topologies: fixture_four_covering_topologies,
+  parameters: serving_parameters_current,
+)
+
+data complete_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "complete_field"),
+  domain: full_domain,
+  candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8],
+)
+
+data field_missing_one: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_missing_one"),
+  domain: full_domain,
+  candidates: [native_tp8_x1, native_tp4_x2, native_tp1_x8],
+)
+
+test fn the_complete_field_is_established() -> Bool {
+  match establish_serving_candidate_field(field: complete_field) {
+    ServingFieldEstablished => true
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
+test fn a_field_missing_a_combination_its_domain_admits_is_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: field_missing_one) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+data field_with_extra: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "field_with_extra"),
+  domain: full_domain,
+  candidates: [native_tp8_x1, native_tp4_x2, native_tp2_x4, native_tp1_x8, cand(name: "undeclared_tp2_x2", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2))],
+)
+
+test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool {
+  match establish_serving_candidate_field(field: field_with_extra) {
+    ServingFieldUnestablished { causes: c } => count(c) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// ── CONTROL 7: THE DECISION IDENTITY MOVES WITH EVERY LOAD-BEARING INPUT ───────────────────────
+//
+// The previous version passed identities BESIDE values and joined neither, so changing the demand
+// from 300K to 400K produced a different answer under a receipt whose named authorities were
+// byte-identical. This key is derived from the values themselves, so there is no second spelling.
+data established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "established_demand"),
+  required_context: token_count(count: 300000),
+  population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+  reserve: context_reserve_policy(retained_context: token_count(count: 200000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+}
+
+data wider_established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "wider_established_demand"),
+  required_context: token_count(count: 400000),
+  population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+  reserve: context_reserve_policy(retained_context: token_count(count: 300000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+}
+
+data unestablished_demand: WorkloadDemandStanding = WorkloadDemandUnestablished {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "unestablished_demand"),
+  scenario_value: token_count(count: 300000),
+  obligation: "fixture: no derived context population" as NonEmptyStr,
+}
+
+fn passing_quality_for(tp: Nat) -> ServingQualityAssessment {
+  assess_quality(report: report_at(tp: tp, divergence: 0, score_delta: 0), requirement: deepseek_quality_requirement)
+}
+
+fn input_with(field: ServingDeploymentCandidateField, w: WorkloadDemandStanding) -> ServingDeploymentDecisionInput {
+  serving_decision_input(
+    field: field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: w),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: serving_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: serving_selection_axes,
+  )
+}
+
+data settled_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "settled_field"),
+  domain: serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)], parameters: serving_parameters_current),
+  candidates: [native_tp4_x2],
+)
+
+// ── A DESIGNED FOUR-CANDIDATE V4.1 FIELD, FOR THE CLAIMS WHOSE SUBJECT IS NOT THE FIELD ────────
+//
+// MEASURED, not guessed (CI run 34794567396, required_floor_claim_cost.tsv): six claims in this suite
+// and its Engram sibling carry 75.8% of their 2,947,650 eval_steps, then a 5.2x cliff, and every one of
+// the six drives the LIVE V4.1 field. The cross-subject control is what identifies the cause -- the same
+// claim shape costs 438,272 steps for V4.1, 46,261 for GLM and 34,956 for V4-Flash, 9.5x to 12.5x apart
+// on identical assertions -- because V4.1 alone enumerates `fleet_admitted_topologies` (twenty topologies
+// over eight hosts) where the others use the four-element covering cartesian.
+//
+// AND THE COST IS IN `routed_candidates`, NOT IN THE SELECTION FOLD. Two of the six call
+// `select_serving_deployment` zero times and still cost 239k and 325k steps, because route-standing
+// production runs per candidate per component either way. So only a SMALLER FIELD helps; avoiding the
+// selection call does not.
+//
+// THIS FIELD IS DESIGNED TO DISCRIMINATE, NOT TRUNCATED. Each property the claims below assert has a way
+// to fail against it:
+//   FOUR candidates over TWO distinct execution contexts (tp4 and tp8, two replica counts each), so
+//     `count(demands) < count(candidates)` is a real assertion -- candidates SHARE a demand rather than
+//     the inequality holding trivially. A single-context field would make it vacuous; a field of one
+//     would make it false.
+//   the V4.1 artifact, so every candidate carries the Engram component `ComponentPlacedByRoute` and
+//     `count(rc.route_standings) == count(components)` has something to align.
+//   DISTINCT identities, so the keyed-roster build can actually report a duplicate if the producer ever
+//     emits one.
+// What it deliberately does NOT carry is the twenty-topology enumeration, because none of these claims
+// is about how many topologies the fleet admits.
+// WHY THERE IS NO HAND-BUILT V4.1 INPUT HERE, recorded because two successive attempts at one built it
+// wrong and a third reader would try again.
+//
+// A V4.1 DECISION NEEDS MORE THAN A FIELD OF V4.1 CANDIDATES. First attempt used `input_with`, which
+// supplies V4-FLASH axes, constraints and quality -- and the axes and constraints ARE part of the decision
+// identity (DESIGN 3d), so that is a DIFFERENT decision, not a cheaper one. Second attempt supplied the
+// V4.1 axes but built candidates with `cand`, which defaults `profile: serving_parameters_current` -- so
+// the candidates carried a V4-Flash execution profile while the V4.1 axes read V4.1 profile facts.
+//
+// BOTH FAILURES COMPILED CLEAN AND WERE CAUGHT ONLY BY RUNNING. The lesson is in the construction that
+// works: a V4.1 candidate must come from `derived_candidates_for` over a domain built from V4.1 PROFILE
+// STANDINGS, which is what `v4_1_input_for_runtime` does. So the claims below reuse that builder -- now
+// narrowed to two designed topologies -- rather than assembling an input from parts.
+fn v4_1_fixture_candidate(name: String, tp: Nat, replicas: Nat) -> DeploymentCandidate {
+  cand(name: name, art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: replicas))
+}
+
+data v4_1_designed_field: ServingDeploymentCandidateField = serving_candidate_field(
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "v4_1_designed_field"),
+  domain: serving_deployment_domain(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2), topology_shape(tensor_parallel_degree: 8, replica_count: 1)],
+    parameters: serving_parameters_current),
+  candidates: [
+    v4_1_fixture_candidate(name: "designed_tp4_x2", tp: 4, replicas: 2),
+    v4_1_fixture_candidate(name: "designed_tp4_x1", tp: 4, replicas: 1),
+    v4_1_fixture_candidate(name: "designed_tp8_x1", tp: 8, replicas: 1),
+    v4_1_fixture_candidate(name: "designed_tp2_x4", tp: 2, replicas: 4),
+  ],
+)
+
+data no_redundancy_goal_flip_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
+  HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
+])
+
+test fn changing_the_workload_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: settled_field, w: wider_established_demand))
+}
+
+test fn changing_the_candidate_roster_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: complete_field, w: established_demand))
+}
+
+test fn an_unchanged_input_keeps_its_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    == decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+}
+
+fn profile_with_layout(p: ServingDecisionParameters, k: VllmKvCacheDtypeRequest) -> ServingDecisionParameters {
+  serving_decision_parameters(
+    max_model_len: p.max_model_len,
+    memory_request: p.memory_request,
+    max_num_batched_tokens: p.max_num_batched_tokens,
+    max_num_seqs: p.max_num_seqs,
+    executor: p.executor,
+    kv_cache_dtype: k,
+    speculative: p.speculative,
+    runtime: p.runtime,
+  )
+}
+
+test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
+  let requant_art = ModelArtifact {
+    identity: artifact_deepseek_v4_flash_native.identity,
+    label: artifact_deepseek_v4_flash_native.label,
+    footprint: artifact_deepseek_v4_flash_native.footprint,
+    weight_treatment: RequantisedWeights { distinction: "identity-collision-probe" as NonEmptyStr },
+    components: artifact_deepseek_v4_flash_native.components,
+    upstream_total: artifact_deepseek_v4_flash_native.upstream_total,
+  }
+  let requant_field = serving_candidate_field(
+    identity: settled_field.identity,
+    domain: serving_deployment_domain(
+      artifacts: [requant_art],
+      topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "requant_same_id", art: requant_art, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))],
+  )
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: requant_field, w: established_demand))
+}
+
+test fn candidate_identity_includes_the_complete_profile() -> Bool {
+  let t = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
+  match v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead) {
+    ServingProfileSm12JoinFailed { runtime: _, standing: _ } => false
+    ServingProfileReady { profile: p } =>
+      !declaration_ref_eq(
+        a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
+        b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvNvfp4)),
+      )
+  }
+}
+
+test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: serving_decision_input(
+      field: settled_field,
+      evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+      quality_requirement: deepseek_quality_requirement,
+      selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+      constraints: map(serving_selection_constraints, c =>
+        if declaration_ref_eq(a: c.axis, b: ax_quality) {
+          HardConstraint { identity: c.identity, axis: c.axis, bound_micro: c.bound_micro + 1 }
+        } else { c }),
+      constraint_authority: id_constraint_authority,
+      axes: serving_selection_axes,
+    ))
+}
+
+test fn changing_axis_goal_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) != decision_snapshot_key(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: map(v4_1_selection_axes, a =>
+      if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
+        SelectionAxis { identity: a.identity, goal: LowerIsBetter }
+      } else { a }),
+  ))
+}
+
+test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
+  match select_serving_deployment(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: no_redundancy_goal_flip_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) {
+    NoFeasibleServingDeployment { causes: _ } =>
+      match select_serving_deployment(input: serving_decision_input(
+        field: settled_field,
+        evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+        quality_requirement: deepseek_quality_requirement,
+        selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+        constraints: no_redundancy_goal_flip_constraints,
+        constraint_authority: id_constraint_authority,
+        axes: map(v4_1_selection_axes, a =>
+          if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
+            SelectionAxis { identity: a.identity, goal: LowerIsBetter }
+          } else { a }),
+      )) {
+        ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn changing_funded_axes_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: serving_decision_input(
+      field: settled_field,
+      evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+      quality_requirement: deepseek_quality_requirement,
+      selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+      constraints: serving_selection_constraints,
+      constraint_authority: id_constraint_authority,
+      axes: v4_1_selection_axes,
+    ))
+}
+
+test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool {
+  match select_serving_deployment(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) {
+    NoFeasibleServingDeployment { causes: _ } => true
+    _ => false
+  }
+}
+
+// ── CONTROL 9: AN UNESTABLISHED DEMAND KEEPS THE DECISION AT NEEDS-EVIDENCE ────────────────────
+//
+// Even beside a passing quality assessment, a scenario workload must not settle a deployment. It has
+// its own hard-bounded axis so it cannot hide behind whichever other evidence is missing first.
+test fn an_unestablished_workload_alone_keeps_the_decision_at_needs_evidence() -> Bool {
+  match select_serving_deployment(input: input_with(field: settled_field, w: unestablished_demand)) {
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+    _ => false
+  }
+}
+
+// AND THE UNFUNDED PERFORMANCE ROSTER DOES THE SAME. Quality passing and the workload established is
+// still not enough, because ten dimensions that could change the decision have no reading. This is
+// the row that stops a future selection going green on a narrow question.
+test fn a_passing_quality_and_established_demand_still_need_the_performance_evidence() -> Bool {
+  match select_serving_deployment(input: input_with(field: settled_field, w: established_demand)) {
+    ServingDeploymentNeedsEvidence { needs: n, component_routes: _ } => count(n) > 0
+    _ => false
+  }
+}
+
+// ── CONTROL 10: NOTHING HERE CAN MINT A LAUNCH ────────────────────────────────────────────────
+//
+// The admission's positive arm is ShapeAdmittedForPlacement over a ServingDeploymentShape. There is
+// no launch vocabulary in this module at all: binding replica shapes to exact hosts, failure domains
+// and endpoints is the fabric's relation, and the shape carries replica ORDINALS rather than host
+// identities so it cannot pretend otherwise.
+test fn an_under_evidenced_decision_cannot_reach_placement() -> Bool {
+  match admit_shape(s: select_serving_deployment(input: glm_decision_input)) {
+    FabricPlacementRequired { because: _ } => true
+    ShapeAdmittedForPlacement { shape: _ } => false
+  }
+}
+
+// ── THE LOWER BOUND DISPROVES; IT DOES NOT ESTABLISH ──────────────────────────────────────────
+test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
+  match weight_fit_of(c: native_tp1_x8, fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
+    _ => false
+  } && match weight_fit_of(c: native_tp4_x2, fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    _ => false
+  }
+}
+
+// AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE. The 2.05-bpw figure
+// came from someone else's deployment write-up; the previous version typed it identically to a byte
+// count read on a Spark, so it looked exact.
+test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
+  match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    _ => false
+  } && match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: fixture_eight_host_fleet, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    _ => false
+  }
+}
+
+// CEILING, AND THE HELPER REFUSES ZERO RANKS ITSELF rather than trusting a guard at its call site.
+test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool {
+  match per_rank_bytes_ceiling(total: byte_size(101), ranks: 2) {
+    Present { value: v } => byte_size_count(b: v) == 51
+    Absent => false
+  } && match per_rank_bytes_ceiling(total: byte_size(100), ranks: 2) {
+    Present { value: v } => byte_size_count(b: v) == 50
+    Absent => false
+  } && match per_rank_bytes_ceiling(total: byte_size(1), ranks: 0) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── A DEGENERATE SHAPE IS NOT A CHEAP ONE ─────────────────────────────────────────────────────
+test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
+  (match fleet_fit_of(c: cand(name: "zero_replicas", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 0)), fleet: fixture_eight_host_fleet) {
+     FleetFitDegenerate { because: _ } => true
+     _ => false
+   })
+    && (match fleet_fit_of(c: cand(name: "zero_ranks", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 0, replica_count: 2)), fleet: fixture_eight_host_fleet) {
+         FleetFitDegenerate { because: _ } => true
+         _ => false
+       })
+    && fleet_fit_admits(f: fleet_fit_of(c: native_tp4_x2, fleet: fixture_eight_host_fleet))
+}
+
+// ── RED: A SHAPE NEEDING MORE HOSTS THAN THE SUBJECT IS ADMITTED REFUSES, NAMING THE HOSTS ─────
+//
+// THIS IS THE FAIL-OPEN THE SCALAR CARRIED. Against group B's assigned subject, a two-replica
+// four-rank shape needs eight hosts and the subject is admitted four: the refusal carries exactly
+// srv9-srv12 by identity and a shortfall of four, and the positive control -- the one-replica shape --
+// is admitted over the same four identities. Before the admissible set existed the same call answered
+// true against `host_count: 8`.
+test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool {
+  (match fleet_fit_of(c: native_tp4_x2, fleet: glm_group_b_fleet_snapshot) {
+     FleetFitExceedsAdmissible { subject: s, required: r, admissible: hs, short_by: k } =>
+       serving_subject_eq(a: s, b: glm_group_b_serving_subject)
+         && r == 8 && k == 4
+         && contains_host(hosts: hs, host: operator_host_srv9)
+         && contains_host(hosts: hs, host: operator_host_srv10)
+         && contains_host(hosts: hs, host: operator_host_srv11)
+         && contains_host(hosts: hs, host: operator_host_srv12)
+     _ => false
+   })
+    && (match fleet_fit_of(c: cand(name: "tp4x1_on_b", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)), fleet: glm_group_b_fleet_snapshot) {
+         FleetFitWithinAdmissible { subject: _, required: r, admissible: hs } =>
+           r == 4 && contains_host(hosts: hs, host: operator_host_srv9) && contains_host(hosts: hs, host: operator_host_srv12)
+         _ => false
+       })
+}
+
+// THE PRODUCTION SET, BY IDENTITY. The GLM subject is admitted srv9-srv12, the hosts of its cage. A set
+// of the right size holding the wrong hosts is exactly what a count could not detect, so no length
+// appears here.
+test fn the_canary_subject_is_admitted_group_b() -> Bool {
+  let b = glm_group_b_fleet_snapshot.admissible_hosts
+  serving_subject_eq(a: glm_group_b_fleet_snapshot.subject, b: glm_group_b_serving_subject)
+    && contains_host(hosts: b, host: operator_host_srv9) && contains_host(hosts: b, host: operator_host_srv10)
+    && contains_host(hosts: b, host: operator_host_srv11) && contains_host(hosts: b, host: operator_host_srv12)
+}
+
+// THE EVIDENCE IDENTITY MOVES WITH THE HOST IDENTITIES, NOT WITH THEIR NUMBER. Two fixture fleets of
+// the same size over different units are different evidence, which is what a `host_count` in the key
+// could never say and what makes a stale decision over a re-cabled fleet mechanically detectable.
+fn settled_input_over(f: FleetSnapshot) -> ServingDeploymentDecisionInput {
+  serving_decision_input(
+    field: settled_field,
+    evidence: serving_evidence_snapshot(quality: [passing_quality_for(tp: 4)], runtime_feasibility: [], workload: established_demand, fleet: f, fleet_receipt: fixture_fleet_ref),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: suite_ref,
+    constraints: serving_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: serving_selection_axes,
+  )
+}
+
+test fn swapping_one_admissible_host_for_another_changes_the_decision_identity() -> Bool {
+  let left = fixture_fleet_over(hosts: [fixture_host_1, fixture_host_2, fixture_host_3, fixture_host_4])
+  let right = fixture_fleet_over(hosts: [fixture_host_1, fixture_host_2, fixture_host_3, operator_host_srv9])
+  decision_snapshot_key(input: settled_input_over(f: left)) != decision_snapshot_key(input: settled_input_over(f: right))
+    && decision_snapshot_key(input: settled_input_over(f: left)) == decision_snapshot_key(input: settled_input_over(f: left))
+}
+
+// ── A DIFFERENT ARTIFACT IS A DECIDED NEGATIVE ────────────────────────────────────────────────
+//
+// The requantised build is not a cheaper way to serve the native checkpoint; it is other weights.
+// No report about it can pass a requirement whose subject is the native artifact.
+test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool {
+  native_quality_holds(c: native_tp4_x2)
+    && native_quality_holds(c: cand(name: "v41", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)))
+    && !native_quality_holds(c: cand(name: "twobit_fact", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)))
+}
+
+test fn replica_count_above_one_fails_no_redundancy() -> Bool {
+  no_redundancy_holds(c: native_tp8_x1)
+    && no_redundancy_holds(c: cand(name: "tp2x1", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 1)))
+    && no_redundancy_holds(c: cand(name: "tp4x1", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
+    && !no_redundancy_holds(c: native_tp4_x2)
+    && !no_redundancy_holds(c: cand(name: "two_replicas", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2)))
+}
+
+fn topology_in(shapes: List<TopologyShape>, tp: Nat, replicas: Nat) -> Bool {
+  any(shapes, t => topology_shape_eq(a: t, b: topology_shape(tensor_parallel_degree: tp, replica_count: replicas)))
+}
+
+test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished() -> Bool {
+  token_count_value(t: serving_parameters_current.max_model_len) == 300000
+    && all(v4_1_declared_profiles, p =>
+      token_count_value(t: p.max_model_len) == 1048576
+        && match p.speculative {
+          SpeculationDraft { algorithm: _ } => true
+          SpeculationOff => false
+          SpeculationOn => false
+        }
+        && w_kv_is(k: p.kv_cache_dtype, w: "fp8_ds_mla"))
+    && match v4_1_gb10_kv_layout {
+      Sm12KvLayoutAdmitted { policy: k } =>
+        w_kv_is(k: k, w: "fp8_ds_mla")
+        && (vllm_kv_cache_dtype_wire(request: k) as String) == (v41_sm12_kv_layout as String)
+        && v41_sm12_kv_cache_dtype_admitted(dtype: vllm_kv_cache_dtype_wire(request: k))
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+    }
+    && !v41_sm12_kv_cache_dtype_admitted(dtype: vllm_kv_cache_dtype_wire(request: KvAuto))
+    && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
+    && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
+      KvBytesPerTokenUnestablished { layout: k, obligation: _ } =>
+        w_kv_is(k: k, w: "fp8_ds_mla")
+      KvBytesPerTokenNotThisSubject => false
+    }
+}
+
+fn names_sm12_kv_join(s: NonEmptyStr) -> Bool {
+  string_contains(s: s as String, pattern: "v41_sm12_kv_layout")
+    && string_contains(s: s as String, pattern: "supports_combination")
+    && string_contains(s: s as String, pattern: "v41_sm12_admitted_kv_cache_dtypes")
+}
+
+fn planted_join_is_named_failure(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
+  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      false
+    Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
+  }
+}
+
+fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
+  let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
+  let domain = serving_deployment_domain_over_standings(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 1)],
+    standings: standings,
+  )
+  let field = serving_candidate_field(
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "planted_field_names_join_and_keeps_profiles"),
+    domain: domain,
+    candidates: derived_candidates_for(stem: "planted_sm12", domain: domain),
+  )
+  count(standings) == 3
+    && all(standings, s => match s {
+      ServingProfileReady { profile: p } =>
+        false
+      ServingProfileSm12JoinFailed { runtime: _, standing: st } =>
+        match st {
+          Sm12KvLayoutAdmitted { policy: k } =>
+            false
+          Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
+        }
+    })
+    && match establish_serving_candidate_field(field: field) {
+      ServingFieldEstablished => false
+      ServingFieldUnestablished { causes: cs } =>
+        any(cs, c => names_sm12_kv_join(s: c))
+          && !any(cs, c => string_contains(s: c as String, pattern: "no serving profiles"))
+    }
+}
+
+// ONE WITNESS PER PLANTED WIRE, BECAUSE THREE FIELD CONSTRUCTIONS IN ONE CLAIM IS THREE CLAIMS
+// WEARING A CONJUNCTION. Each of these builds a planted V4.1 field once, and the previous
+// single claim drove it three times for 110,408 eval steps against a 72,300 new-witness budget. The
+// split loses no coverage -- every conjunct survives, attached to the wire it is about -- which is the
+// difference between splitting and dropping a case. Operator ruling 2026-09-14: a witness
+// discriminates at ONE interface, not over cases.
+test fn a_planted_unadmitted_wire_keeps_a_named_join_standing() -> Bool {
+  let unadmitted = vllm_kv_cache_dtype_wire(request: KvAuto)
+  !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
+    && match vllm_kv_cache_dtype_request_matching_wire(wire: unadmitted) {
+      Present { value: k } =>
+        w_kv_is(k: k, w: "auto")
+      Absent => false
+    }
+    && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+    && match sm12_kv_layout_standing(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
+      Sm12KvLayoutAdmitted { policy: _ } => false
+    }
+}
+
+// THE NOMATCH WIRE IS PLANTED, because the real roster no longer holds one: fp8_e4m3 was it until the
+// canonical request vocabulary gained KvFp8E4m3 (extdeps.vllm.engine_args). The join's behaviour on a
+// wire it admits but cannot name is still a case worth pinning, so the roster here is the real one
+// plus a spelling no request renders.
+fn w_planted_nomatch_roster() -> List<NonEmptyStr> {
+  concat(v41_sm12_admitted_kv_cache_dtypes, ["fp8_planted_nomatch" as NonEmptyStr])
+}
+
+// A WIRE THE ROSTER ADMITS BUT NO POLICY MATCHES is the case the unadmitted one cannot reach: admission
+// and policy matching are two joins, and a wire can pass the first and fail the second.
+test fn a_planted_nomatch_wire_keeps_a_named_join_standing() -> Bool {
+  let planted_admit = w_planted_nomatch_roster()
+  let nomatch_opt = (filter(planted_admit, d =>
+    match vllm_kv_cache_dtype_request_matching_wire(wire: d) {
+      Absent => true
+      Present { value: _ } => false
+    })).first()
+  match nomatch_opt {
+    Absent => false
+    Present { value: nomatch } =>
+      count(filter(planted_admit, d => (d as String) == (nomatch as String))) == 1
+        && match vllm_kv_cache_dtype_request_matching_wire(wire: nomatch) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        && planted_join_is_named_failure(wire: nomatch, admitted: planted_admit)
+        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: planted_admit)
+        && match sm12_kv_layout_standing(wire: nomatch, admitted: planted_admit) {
+          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
+          Sm12KvLayoutAdmitted { policy: _ } => false
+        }
+  }
+}
+
+// AN EMPTY ADMITTED ROSTER FAILS THE JOIN FOR A WIRE THAT IS OTHERWISE THE REAL ONE, which is what
+// separates "this wire is wrong" from "there is nothing to join against". The positive controls ride
+// here because they are about the same real wire: the real wire
+// against the real roster IS admitted as fp8_ds_mla -- so the three negatives above are failing for
+// the planted reason rather than because this join never succeeds.
+test fn an_empty_admitted_roster_keeps_a_named_join_standing() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
+    && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
+}
+
+// THE POSITIVE CONTROL FOR THE PLANTED FAMILY. The three planted claims assert that a BROKEN join is
+// named; this asserts the join SUCCEEDS for the real wire against the real roster. Without it all
+// three negatives could be passing because that join never succeeds at all.
+test fn the_real_sm12_wire_joins_as_fp8_ds_mla() -> Bool {
+  match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      w_kv_is(k: k, w: "fp8_ds_mla")
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+  }
+}
+
+// THE ASSERTION IS AN IDENTITY JOIN, NOT A CARDINALITY. A first cut asserted `count(built) == 3`
+// beside three `contains` checks, and when the frontier grew to five subjects the three it named were
+// all still present while the count no longer described the producer -- so the witness went red on the
+// one thing about it that carried no meaning. Replacing 3 with 5 would have been worse: a count that
+// tracks whatever the producer happens to hold is a derivation compared with itself, which DESIGN §5
+// names exactly ("if automating the literal's update collapses the assertion to measure() == measure()").
+//
+// So the expected POPULATION is declared here, and the join is in BOTH directions: every expected
+// subject is built, and every built subject is expected. Adding a frontier row without declaring it
+// here reds the second direction; dropping one reds the first. Neither can be satisfied by editing a
+// number, and the roster build still has to be duplicate-free for either direction to mean anything.
+// candidate_component_budget IS ENROLLED HERE because the declaration it defers is this module's. It
+// was briefly filed in the route authority's roster instead and that roster refused -- its expected
+// subjects are all built with the route module's path, so a row pointing at a serving declaration had
+// no counterpart. The join that caught it is the reason both rosters check membership in both
+// directions at identity grain rather than comparing counts.
+data v4_1_expected_frontier_subjects: List<String> = [
+  "fleet_admitted_topologies",
+  "v4_1_gb10_kv_bytes_obligation",
+  "engram_standing",
+  "component_route_gap_over",
+  "execution_profile_of",
+  "candidate_component_budget",
+]
+
+fn v4_1_frontier_subject_key(decl_name: String) -> String {
+  declaration_ref_display_key(ref: DeclarationRef {
+    module_path: "gunbc.spark.serving_deployment_selection" as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  })
+}
+
+test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
+  let expected = map(v4_1_expected_frontier_subjects, n => v4_1_frontier_subject_key(decl_name: n))
+  let actual = frontier_path_subjects(rows: v4_1_selection_frontier)
+  frontier_rows_well_formed(rows: v4_1_selection_frontier)
+    && match frontier_rows_keyed_roster_build(rows: v4_1_selection_frontier) {
+      KeyedRosterBuilt { rows: built } => count(built) == count(actual)
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && all(expected, e => any(actual, a => a == e))
+    && all(actual, a => any(expected, e => e == a))
+}
+
+test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
+  !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
+    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
+    && match kv_bytes_per_token_standing(c: cand(name: "glm_kv", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))) {
+      KvBytesPerTokenNotThisSubject => true
+      KvBytesPerTokenUnestablished { layout: _, obligation: _ } => false
+    }
+    && match engram_standing(art: artifact_deepseek_v4_1_flash_native) {
+      EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => true
+      EngramNotAComponentOfThisArtifact => false
+    }
+    && match engram_standing(art: artifact_glm_53_flash_native) {
+      EngramNotAComponentOfThisArtifact => true
+      EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => false
+    }
+}
+
+// THE EXPECTED CONSTRAINT AUTHORITIES ARE NAMED, AND THE JOIN RUNS BOTH WAYS. A first cut asserted
+// `count(v41_ids) == 4` beside three `any` checks; adding `constraint_component_route` made it five, and
+// the three named identities were all still present, so the witness failed on the assertion that said
+// the least. The identities are declared here as a population and joined in both directions, so a new
+// constraint authority on either input must be declared here to pass -- and no edit to a number can
+// satisfy it. The GLM roster is asserted the same way, which is what keeps V4.1's additions from
+// silently widening the shared subject.
+data expected_glm_constraint_authorities: List<DeclarationRef> = [
+  id_constraint_authority,
+  constraint_native_quality,
+]
+
+data expected_v4_1_constraint_authorities: List<DeclarationRef> = [
+  id_constraint_authority,
+  constraint_native_quality,
+  constraint_no_redundancy,
+  constraint_authorized_runtime,
+  constraint_component_route,
+]
+
+fn identity_populations_agree(actual: List<DeclarationRef>, expected: List<DeclarationRef>) -> Bool {
+  all(expected, e => any(actual, a => declaration_ref_eq(a: a, b: e)))
+    && all(actual, a => any(expected, e => declaration_ref_eq(a: a, b: e)))
+}
+
+test fn assessment_dispositions_join_the_constraint_identities_on_the_input() -> Bool {
+  let glm_ids = unique_constraint_identities(cs: glm_decision_input.constraints)
+  let v41_ids = unique_constraint_identities(cs: v4_1_selection_constraints)
+  identity_populations_agree(actual: glm_ids, expected: expected_glm_constraint_authorities)
+    && identity_populations_agree(actual: v41_ids, expected: expected_v4_1_constraint_authorities)
+    && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
+    && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_component_route))
+}
+
+// THE COVERING CARTESIAN IS OVER THE SUBJECT'S ADMISSIBLE SET. GLM covers the canary's four hosts,
+// so tp4 x1 is in and tp4 x2 -- eight hosts -- is not; before the admissible set existed the same
+// claim asserted the reverse over a scalar eight.
+test fn glm_field_is_the_derived_admitted_cartesian() -> Bool {
+  match establish_serving_candidate_field(field: glm_candidate_field) {
+    ServingFieldEstablished =>
+      count(glm_candidate_field.candidates)
+        == count(glm_domain.artifacts) * count(glm_domain.topologies) * count(glm_domain.profiles)
+        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
+        && topology_in(shapes: glm_domain.topologies, tp: 1, replicas: 4)
+        && !topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 2)
+        && !topology_in(shapes: glm_domain.topologies, tp: 8, replicas: 1)
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
+test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
+  match assess_quality(
+    report: serving_quality_report(
+      subject: execution_profile_of(c: cand(name: "twobit", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), p: serving_parameters_current),
+      suite: suite_ref,
+      reference_profile: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      max_selected_token_divergence_millinats: 0,
+      task_score_delta_hundredths: 0,
+      how: "fixture: a perfect report about the wrong weights" as NonEmptyStr),
+    requirement: deepseek_quality_requirement) {
+    QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// DSV41-10: THE ENGRAM ROUTE INTEGRATION, CHECKED AT THE PRODUCT ROOT
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+// AN UNFUNDED-AXIS NEED NAMES ITS AXIS. The route oracle below is checked against this so a generic
+// missing-axis gap is shown to be a gap on the axis and still not a route-produced obligation.
+fn needs_name_axis(needs: List<SelectionEvidenceNeed>, axis: DeclarationRef) -> Bool {
+  any(needs, n => match n {
+    UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: axis)
+    CandidateStandingIncomplete { candidate: _, cause: _ } => false
+    SubjectClosureIncomplete { subject: _, obligation: _ } => false
+  })
+}
+
+// OBSERVING AN AXIS NAME IS NOT EVIDENCE THE ROUTE'S RESULT REACHED THE ROOT. A first cut asserted
+// only that some UnfundedAxis named ax_component_route -- and `std.decision` `unread_axis_gaps`
+// synthesises exactly that on any hard-constrained axis with no reading. So removing the route
+// contribution from candidate_gaps, while keeping the funded axis, its constraint and the open
+// placement's absent reading, left the selector fabricating a gap on the same axis and the control
+// accepted it identically: it could not distinguish the connected path from the disconnected one.
+//
+// The oracle now requires a ROUTE-PRODUCED obligation -- marked with the component identity and the
+// exact serving context it was decided under, neither of which the selector's fallback knows. The
+// negative below is the disconnection itself, expressed as the selector's own generic gap, and it is
+// rejected.
+// THE THREE THINGS A ROUTE-PRODUCED OBLIGATION CARRIES AND THE SELECTOR'S FALLBACK CANNOT: the
+// marker, the component SUBJECT the route authority decided about, and the consumer that derived the
+// serving context. Each is computed from the same declaration production uses, so this oracle carries
+// no transcribed string that could drift away from what the code emits.
+// THE THREE DISCRIMINATORS ARE COMPUTED ONCE, not once per need. The needs list for the live V4.1
+// decision runs to hundreds, and recomputing two declaration keys inside the scan was the same
+// copied-accumulator shape the production fold had -- in a control whose whole problem is that it must
+// afford to render a verdict.
+data expected_route_component_key: String = declaration_ref_display_key(ref: engram_component_identity)
+data expected_route_consumer_key: String = declaration_ref_display_key(ref: id_route_consumer)
+
+// THE CONTEXT DIGEST IS PART OF THE DISCRIMINATOR, NOT JUST THE CONSUMER. A first cut asked for the
+// marker, the component key and the consumer key, and a cause naming this component and this consumer
+// under a DIFFERENT execution profile satisfied all three -- so the oracle would have accepted a route
+// obligation decided for another topology, which is precisely the foreign-profile reuse the route model
+// refuses. The exact prefixes production can emit for THIS field are derived here, once, from the same
+// two folds production uses, and the cause must carry one of them whole.
+data expected_route_prefixes: List<String> = map(
+  v4_1_designed_field.candidates,
+  k => route_obligation_prefix(
+    component: engram_component_identity,
+    context: candidate_route_context(c: k, p: k.profile)))
+
+fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr> {
+  flat_map(needs, n => match n {
+    UnfundedAxis { gap: g } =>
+      if declaration_ref_eq(a: g.axis, b: ax_component_route)
+        && string_contains(s: g.cause as String, pattern: route_obligation_marker as String)
+        && string_contains(s: g.cause as String, pattern: expected_route_component_key)
+        && string_contains(s: g.cause as String, pattern: expected_route_consumer_key)
+        && any(expected_route_prefixes, px => string_contains(s: g.cause as String, pattern: px)) {
+        [g.cause]
+      } else { [] }
+    CandidateStandingIncomplete { candidate: _, cause: _ } => []
+    SubjectClosureIncomplete { subject: _, obligation: _ } => []
+  })
+}
+
+// ── THE FIELD SURVIVES, AND THE SHARING ITSELF IS NOT OBSERVABLE FROM HERE ────────────────────
+//
+// THE EXACTLY-ONCE CHECK WAS QUADRATIC IN THIS WITNESS'S OWN ARITHMETIC, which DESIGN section 6 says
+// is always fixed regardless of the realized n. It ran one `filter` over the routed rows PER candidate
+// -- about 3600 `declaration_ref_eq` calls at sixty candidates -- and that cost was the INSTRUMENT's,
+// not the subject's, so it inflated the only completing full-field measurement this cut has.
+//
+// AND MOST OF WHAT IT ASSERTED WAS TRUE BY CONSTRUCTION. `routed_candidates` is `map(field.candidates,
+// k => RoutedCandidate { candidate: k, ... })`, so each row CARRIES THE CANDIDATE VALUE ITSELF rather
+// than a key that has to be resolved back: "every routed candidate belongs to the field" cannot fail,
+// and "every field candidate appears in routed" follows from `map` together with the count equality
+// below. What remains at risk is a producer that drops one candidate and duplicates another, which
+// count equality alone would not see -- so uniqueness is the whole residual content, and
+// `std.keyed_roster` is its authority, the same one this cut consumed for the safetensors rosters.
+//
+// WHAT THIS ESTABLISHES, and the claim is deliberately narrower than the one it replaces. It checks
+// that the parent population is preserved -- every candidate returns exactly once, each with a
+// standings list positionally aligned to its own artifact's component list -- and that this field
+// genuinely CONTAINS candidates sharing a (component, context) demand, which is the precondition that
+// makes sharing possible at all. Both are facts about values this entry point returns.
+//
+// WHAT IT DOES NOT ESTABLISH, corrected from a claim I made and should not have. It does NOT show that
+// removing the sharing would red it. An earlier version asserted `count(demands) < count(candidates)`
+// and called that a wall against reverting to per-candidate production -- but the witness computes
+// `resolved_route_demands` ITSELF, separately from `routed_candidates`. Restore the per-candidate
+// implementation and the returned candidate values and cardinalities are identical while the witness's
+// own independent demand census still returns fewer, so every assertion stays true with production no
+// longer sharing. Checking the right helper independently does not prove the claimed path uses it.
+//
+// AND THE DEEPER REASON NO OUTPUT-LEVEL CONTROL CAN DO BETTER: the reduction is answer-preserving BY
+// CONSTRUCTION -- `engram_route_standing` reads only the component and the context, so two candidates
+// with an equal pair cannot differ in any returned value. That property is exactly why the reuse is
+// safe and exactly why its removal is invisible to any assertion over outputs. What would detect it is
+// a cost measurement, and at this head the full-field controls are censored at the floor's ceiling, so
+// that instrument is unavailable. The honest position is that the sharing is currently unwitnessed,
+// stated here rather than implied by a control that reads as a wall and is not one.
+// THIS CLAIM'S SUBJECT IS THE PRODUCER, NOT THE FIELD. It asserts that route production preserves the
+// candidate population, that the roster it builds is duplicate-free, that standings align positionally
+// with each artifact's components, and that candidates SHARE demands rather than each minting its own.
+// Every one of those is a property of `routed_candidates` and `distinct_route_demands`, and none of them
+// is a property of how many topologies the fleet admits -- so it runs on the designed four-candidate
+// field. It cost 239,298 eval_steps on the live field with ZERO select_serving_deployment calls, which is
+// what located the cost in route-standing production rather than in the selection.
+test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool {
+  let field = v4_1_designed_field
+  let routed = routed_candidates(field: field)
+  let demands = distinct_route_demands(routed: routed)
+  count(routed) == count(field.candidates)
+    && match keyed_roster_build(
+      incomings: map(routed, rc => KeyedRow { row_key: rc.candidate.identity, value: rc }),
+      key_eq: declaration_ref_eq,
+    ) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && all(routed, rc => count(rc.route_standings) == count(rc.candidate.artifact.components))
+    && count(demands) > 0
+    && count(demands) < count(field.candidates)
+    && all(demands, d => declaration_ref_eq(a: component_route_standing_component(s: d), b: engram_component_identity))
+}
+
+// THE DEMAND POPULATION IS READ OFF THE ROWS ALREADY PRODUCED, NOT COMPUTED A SECOND TIME. A first
+// cut called `routed_candidates(field)` AND `resolved_route_demands(field)` -- and `routed_candidates`
+// computes the demand table internally, so the expensive half ran TWICE: sixteen route selections where
+// eight suffice. That is the authored duplication with a shared-state ancestor that DESIGN section 2
+// says to rewire rather than cache, committed inside the instrument that measures the repair of exactly
+// that defect in production.
+//
+// The distinct (component, context) pairs are folded out of the standings the rows already carry. The
+// accumulator holds one entry per distinct demand -- eight, not sixty -- so this is roughly sixty short
+// scans of a very small list rather than a second full route analysis.
+//
+// AND THE RESIDENT COMPONENTS ARE EXCLUDED, WHICH IS NOT A DETAIL. `resolved_route_demands` accumulates
+// only components declared `ComponentPlacedByRoute`; this artifact ALSO carries a `ComponentResident`
+// backbone, whose standing is `ComponentRouteNotThisSubject` with `no_routed_component` as its subject.
+// A first cut of this fold read every standing and so admitted that one, which silently changed the
+// POPULATION rather than only how it was computed -- nine entries instead of eight, one of them naming
+// no component at all. The arm is discriminated here so the two definitions agree.
+fn routed_demand_standings(routed: List<RoutedCandidate>) -> List<ComponentRouteStanding> {
+  filter(flat_map(routed, rc => rc.route_standings), st => match st {
+    ComponentRouteNotThisSubject => false
+    ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => true
+    ComponentRouteDecided { component: _, context: _, result: _, routes: _, evidence: _ } => true
+  })
+}
+
+fn distinct_route_demands(routed: List<RoutedCandidate>) -> List<ComponentRouteStanding> {
+  fold(routed_demand_standings(routed: routed), init: [], f: (acc, st) =>
+    if any(acc, a =>
+      declaration_ref_eq(
+        a: component_route_standing_component(s: a),
+        b: component_route_standing_component(s: st))
+        && route_subject_key_eq(
+          a: component_route_standing_context(s: a),
+          b: component_route_standing_context(s: st))) {
+      acc
+    } else {
+      concat(acc, [st])
+    })
+}
+
+// WHY candidate_component_budget MAY READ ONE GROUP'S FIGURE FOR EVERY CANDIDATE TODAY, DERIVED OVER
+// THE POPULATION THAT CAN ACTUALLY REACH IT RATHER THAN OVER NAMED ARTIFACTS.
+//
+// THE PREVIOUS SHAPE OF THIS GUARD WAS THE CLASS THIS PR ITSELF FILES. It hand-enumerated four
+// artifact declarations and was named "only one artifact is decomposed", while what executed was
+// "these four named ones are not" -- so a FIFTH decomposed artifact, precisely the change the guard
+// exists to intercept, would have left it green. A hand-picked fixture frozen against the population
+// that existed when it was chosen, which is `a_designed_narrowing_stops_inhabiting_the_subject_it_
+// narrowed`, and a name claiming more than the execution, which is section 4b rung honesty. Review
+// 66350 found it in the guard written to answer review 66293 -- the repair reintroduced the class it
+// was repairing.
+//
+// WHAT IS DERIVED NOW: the fold reaches an artifact ONLY through a candidate in a field, so the
+// candidates of the live field are the population, not the artifacts. Every candidate in the live
+// GLM field whose artifact carries components must be the V4.1 artifact. Add a decomposed artifact to
+// that field and this reds, however it is declared and whatever it is called. Since the DeepSeek
+// fields were decommissioned with Group A, no live candidate is decomposed at all.
+//
+// THE RESIDUAL LIMIT, STATED RATHER THAN NAMED AWAY: this enumerates the one live FIELD. A second
+// field would sit outside it. That is one level up from where the defect was and it is not derivable
+// without a field roster this module does not have -- so it is named here as the limit, and the claim
+// is named for what it executes.
+test fn every_decomposed_candidate_in_the_live_fields_is_the_v4_1_artifact() -> Bool {
+  let live = glm_candidate_field.candidates
+  count(legacy_undecomposed_artifact) == 0
+    && count(live) > 0
+    && all(live, k =>
+         if count(k.artifact.components) > 0 {
+           declaration_ref_eq(a: k.artifact.identity, b: artifact_deepseek_v4_1_flash_native.identity)
+         } else {
+           true
+         })
+}
+
+// THE DISCONNECTION NEGATIVE. This is what the field looks like when the route contribution is gone
+// but the axis, the constraint and the absent reading remain: the selector still reports a gap on
+// ax_component_route, and the oracle above must NOT accept it. Without this arm the positive control
+// is satisfied by the very state it is supposed to detect.
+fn disconnected_route_gap() -> AxisGap {
+  AxisGap {
+    axis: ax_component_route,
+    cause: "required funded-axis reading absent" as NonEmptyStr,
+  }
+}
+
+test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle() -> Bool {
+  count(route_produced_causes(needs: [UnfundedAxis { gap: disconnected_route_gap() }])) == 0
+    && needs_name_axis(needs: [UnfundedAxis { gap: disconnected_route_gap() }], axis: ax_component_route)
+    && count(route_produced_causes(needs: [UnfundedAxis {
+      gap: AxisGap {
+        axis: ax_component_route,
+        cause: join([route_obligation_marker as String, "[some.other.component@some.other.context] open"], "") as NonEmptyStr,
+      },
+    }])) == 0
+    && count(route_produced_causes(needs: [UnfundedAxis {
+      gap: AxisGap {
+        axis: ax_component_route,
+        cause: route_obligation_cause(
+          component: engram_component_identity,
+          context: route_subject_key(consumer: id_route_consumer, context_digest: "a-profile-this-field-does-not-contain"),
+          cause: "open" as NonEmptyStr),
+      },
+    }])) == 0
+}
+
+// AND THE ROUTE AXIS IS THIS SUBJECT'S, NOT EVERY SUBJECT'S. GLM and V4-Flash declare no components,
+// so neither the axis nor its hard constraint appears in their populations and their results are
+// reached exactly as before.
+test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool {
+  any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
+    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
+    && any(v4_1_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
+    && !any(serving_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
+    && count(artifact_glm_53_flash_native.components) == 0
+    && count(artifact_deepseek_v4_flash_native.components) == 0
+    && count(artifact_glm_53_flash_2bit.components) == 0
+    && count(artifact_deepseek_v4_1_flash_native.components) == 4
+}
+
+// THE DECOMPOSITION AGREES WITH AN INDEPENDENT UPSTREAM FIGURE, and that is the only version of this
+// check worth running. A first cut compared the component sum against the artifact's own footprint --
+// which IS that sum, so the assertion was an identity -- and pinned it to a transcribed literal
+// 510286023000 beside it. Both halves were wrong in the way DESIGN section 6 names: the oracle has to
+// be an independent referent, and it is named rather than copied.
+test fn the_v4_1_decomposition_agrees_with_the_cited_upstream_total() -> Bool {
+  match artifact_deepseek_v4_1_flash_native.upstream_total {
+    Absent => false
+    Present { value: upstream } =>
+      byte_size_count(b: upstream) == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
+        && match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
+          Absent => false
+          Present { value: parts } => byte_size_count(b: parts) == byte_size_count(b: upstream)
+        }
+  } && match artifact_decomposition_defect(art: artifact_deepseek_v4_1_flash_native) {
+    Absent => true
+    Present { value: _ } => false
+  } && count(v4_1_artifact_components) == 4
+}
+
+// AND A DECOMPOSITION THAT DISAGREES WITH ITS CITED UPSTREAM TOTAL REFUSES. This is the red the
+// identity-comparison could never produce: the components sum correctly to the artifact's own derived
+// footprint and still contradict the publisher's figure for the same population.
+fn artifact_with_wrong_upstream_total() -> ModelArtifact {
+  ModelArtifact {
+    identity: artifact_deepseek_v4_1_flash_native.identity,
+    label: artifact_deepseek_v4_1_flash_native.label,
+    footprint: sum_component_footprints(cps: v4_1_artifact_components),
+    weight_treatment: PublishedNativeWeights,
+    components: v4_1_artifact_components,
+    upstream_total: Present { value: byte_size(count: 1 + byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)) },
+  }
+}
+
+// ── ONE FIELD CHANGES, AND THE COMBINATION IS A DIFFERENT DECISION ────────────────────────────
+//
+// `upstream_total` is read by `artifact_upstream_agreement_defect`, so it decides admission -- and it
+// was absent from `artifact_decomposition_digest` and therefore from the combination key and the
+// snapshot key. Two artifacts identical in every other field would have shared a key, so a result
+// computed under one would have carried across the change with nothing able to notice. These two
+// differ ONLY in that field; dropping it from the digest reds this.
+test fn changing_only_the_upstream_total_changes_the_combination_identity() -> Bool {
+  let sound = artifact_deepseek_v4_1_flash_native
+  let shifted = artifact_with_wrong_upstream_total()
+  count(shifted.components) == count(sound.components)
+    && artifact_component_digest(art: shifted) == artifact_component_digest(art: sound)
+    && artifact_decomposition_digest(art: shifted) != artifact_decomposition_digest(art: sound)
+    && !combination_key_eq(
+      a: candidate_combination(c: cand(name: "identity_probe", art: sound, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))),
+      b: candidate_combination(c: cand(name: "identity_probe", art: shifted, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))))
+}
+
+test fn a_decomposition_disagreeing_with_its_upstream_total_refuses() -> Bool {
+  match artifact_decomposition_defect(art: artifact_with_wrong_upstream_total()) {
+    Present { value: d } => string_contains(s: d as String, pattern: "different tensor populations")
+    Absent => false
+  } && match establish_serving_candidate_field(field: serving_candidate_field(
+    identity: fixture_upstream_mismatch_field_id(),
+    domain: serving_deployment_domain(
+      artifacts: [artifact_with_wrong_upstream_total()],
+      topologies: [topology_shape(tensor_parallel_degree: 8, replica_count: 1)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "upstream_mismatch", art: artifact_with_wrong_upstream_total(), t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))])) {
+    ServingFieldUnestablished { causes: cs } => count(cs) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// AND A DECOMPOSITION THAT DOES NOT SUM IS A STRUCTURAL REFUSAL, not a rounding note. The field
+// carrying such an artifact is unestablished, which the product root turns into
+// `ServingDeploymentSelectionRefused` rather than a decision over a quantity nobody can name.
+fn mismatched_artifact() -> ModelArtifact {
+  ModelArtifact {
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_artifact"),
+    label: "fixture: components that do not sum to the whole" as NonEmptyStr,
+    footprint: FootprintObservedOnFleet { bytes: byte_size(count: 1000), how: "fixture" as NonEmptyStr },
+    weight_treatment: PublishedNativeWeights,
+    components: [
+      artifact_component(
+        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_artifact"),
+        label: "fixture part" as NonEmptyStr,
+        footprint: FootprintObservedOnFleet { bytes: byte_size(count: 999), how: "fixture" as NonEmptyStr },
+        placement: ComponentResident),
+    ],
+    upstream_total: none,
+  }
+}
+
+test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool {
+  match artifact_decomposition_defect(art: mismatched_artifact()) {
+    Present { value: _ } => true
+    Absent => false
+  } && match establish_serving_candidate_field(field: serving_candidate_field(
+    identity: fixture_mismatched_sum_field_id(),
+    domain: serving_deployment_domain(
+      artifacts: [mismatched_artifact()],
+      topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "mismatched", art: mismatched_artifact(), t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))])) {
+    ServingFieldUnestablished { causes: cs } => count(cs) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// LEGACY BEHAVIOUR IS UNCHANGED OUTSIDE THE NEW SUBJECT. An artifact with no components has a
+// resident footprint that IS its whole-artifact footprint, arm for arm and byte for byte, so the
+// screen divides exactly what it divided before this change.
+test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Bool {
+  let v4 = cand(name: "legacy_v4", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+  match candidate_resident_footprint(c: v4, p: serving_parameters_current) {
+    FootprintObservedOnFleet { bytes: b, how: _ } => byte_size_count(b: b) == 168683720987
+    FootprintReportedExternally { bytes: _, source: _ } => false
+    FootprintUnread { obligation: _ } => false
+  } && match weight_fit_of(c: v4, fleet: glm_group_b_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
+    WeightFitUnderivable { because: _ } => false
+  } && match candidate_resident_footprint(
+    c: cand(name: "legacy_glm", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)),
+    p: serving_parameters_current) {
+    FootprintUnread { obligation: _ } => true
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  } && match component_route_reading(route_standings: []) {
+    Present { value: r } => r.interval_micro.low == 1
+    Absent => false
+  }
+}
+
+// AND THE V4.1 CANDIDATE'S RESIDENT FOOTPRINT IS UNREAD RATHER THAN SMALLER. With no route selected,
+// the Engram component contributes an obligation, so the sum is `FootprintUnread` and the fit stays
+// underivable. That is the arm that would be a silent zero if the route's working set were assumed
+// away -- and a zero here is exactly what would make a narrow topology look feasible.
+test fn a_routed_component_leaves_the_resident_footprint_unread_rather_than_zero() -> Bool {
+  let v41 = cand(name: "v41_routed", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+  match candidate_resident_footprint(c: v41, p: serving_parameters_current) {
+    FootprintUnread { obligation: o } => count(o as String) > 0
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  } && match weight_fit_of(c: v41, fleet: glm_group_b_fleet_snapshot, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => false
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
+  }
+}
+
+// FIXTURE FIELD IDENTITIES CITE A DECLARATION THAT EXISTS -- a decl_ref naming nothing is a §3
+// citation defect the floor's declarations phase reports as CITED-DECLARATION-ABSENT.
+fn fixture_upstream_mismatch_field_id() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_upstream_mismatch_field_id")
+}
+
+fn fixture_mismatched_sum_field_id() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_mismatched_sum_field_id")
+}
+
+
+// THE ENDPOINTS OF THE IDLE FREE-MEMORY READING CANNOT BE TRANSPOSED WITHOUT REFUSAL. Before this
+// pair went through `std.interval`, the reading was two sibling `ByteSize` fields hand-typed as
+// hundredths of a GiB, and a transposed row would have been a region that denotes nothing which the
+// per-rank memory screen then subtracts against. The mint is the wall; these two claims are the
+// executing evidence that it is reached FROM THIS SITE rather than only available in `std`.
+test fn the_free_memory_mint_refuses_transposed_endpoints() -> Bool {
+  match gib_hundredths_interval(low_hundredths: 11695, high_hundredths: 11685) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
+  }
+}
+
+test fn the_observed_free_memory_endpoints_are_ordered_as_authored() -> Bool {
+  match gib_hundredths_interval(low_hundredths: 11685, high_hundredths: 11695) {
+    IntervalReady { interval: _ } => true
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// A REFUSED REGION REACHES THE CONSUMER AS A REFUSAL WITH ITS REASON, not as an absence. This is the
+// half that matters to the memory screen: the budget fold takes its unestablished arm and quotes the
+// mint's own words rather than subtracting against a region that denotes nothing, so the diagnosis
+// stays correct if `closed_interval` ever refuses for a second cause.
+fn free_memory_row_with(free_construction_low: Nat, free_construction_high: Nat) -> GroupRankFreeMemoryObserved {
+  GroupRankFreeMemoryObserved {
+    group: FabricGroupB {},
+    reported_free_wire: "a designed row whose endpoints are supplied by this claim" as NonEmptyStr,
+    free: gib_hundredths_interval(low_hundredths: free_construction_low, high_hundredths: free_construction_high),
+    probed_at: "2026-09-15" as NonEmptyStr,
+    instrument: "no instrument: this row exists to exercise the refused-region arm of the accessor" as NonEmptyStr,
+    precision_caveat: "not a reading" as NonEmptyStr,
+  }
+}
+
+test fn a_refused_free_memory_region_carries_the_mints_reason() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11695, free_construction_high: 11685)) {
+    IntervalRefused { reason: r } => count(r as String) > 0
+    IntervalReady { interval: _ } => false
+  }
+}
+
+test fn an_ordered_free_memory_region_offers_its_upper_endpoint() -> Bool {
+  match group_rank_free_memory_region(r: free_memory_row_with(free_construction_low: 11685, free_construction_high: 11695)) {
+    IntervalReady { interval: i } => byte_size_count(b: group_rank_free_memory_upper(i: i)) > 0
+    IntervalRefused { reason: _ } => false
+  }
+}
+
+// THE REQUEST VOCABULARY IS UPSTREAM'S AND OPEN-ENDED, so a witness that wants one request asks by its
+// canonical wire rather than enumerating every constructor -- a new upstream spelling then costs no
+// edit here.
+fn w_kv_is(k: VllmKvCacheDtypeRequest, w: String) -> Bool {
+  (vllm_kv_cache_dtype_wire(request: k) as String) == w
+}

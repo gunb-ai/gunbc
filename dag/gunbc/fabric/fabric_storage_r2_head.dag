@@ -1,0 +1,408 @@
+module gunbc.fabric_storage_r2_head
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.durable_compare_and_set {
+  CasGeneration, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted,
+  CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
+  CasUnreadableMalformed, CasUnreadableReadRefused, cas_generation_count,
+}
+import std.fabric_storage {
+  FabricObjectRef, FabricHeadReading, FabricHeadAbsent, FabricHeadAt, fabric_object_ref_eq,
+  FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt, fabric_head_admits,
+  FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
+  FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused,
+}
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutIfAbsent, PutIfMatch }
+import extdeps.tools.curl { ReportStatusAndEntityTag }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, cited_figure_read_obligation }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloudflare.r2 { R2ObjectLocator, r2_put_object_conditional_standing }
+import gunbc.cloudflare.r2_conditional_put_race_probe { r2_conditional_put_linearizability_ground }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_staged_transfer {
+  R2TransferTarget, R2Put, R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
+  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  R2StagingCustody, R2StagingNotCreated, R2StagingRemoved, R2StagingResidue, r2_release_staging,
+  WriteCredentialCustody, WriteCredentialShredded,
+  r2_put_staged_file, r2_fetch_into_staging,
+}
+import gunbc.fabric_storage_wire { reading_words, decode_reading }
+
+// A std.fabric_storage HEAD WHOSE STORE IS ONE R2 OBJECT (docs/plans/fabric-storage.md step 4B). One head
+// is one R2 object; its body is the head reading in the fabric wire's own words
+// (gunbc.fabric_storage_wire reading_words), so the R2 head and the served file store spell a head one
+// way. The compare-and-set is R2's conditional PutObject (extdeps.cloudflare.r2
+// r2_put_object_conditional_standing): a writer reads the head and its entity tag, compares the object
+// it built on (fabric_head_admits), and puts the successor generation with If-Match on that tag -- or
+// If-None-Match: * when it expects the head absent. A 412 is the lost race, never a fault.
+//
+// FOUR BOUNDARIES THIS MODULE HOLDS BY CONSTRUCTION:
+//   * ONE HEAD, ONE LOCATOR. R2HeadBinding is sole_constructor and carries a single locator (endpoint,
+//     bucket, key) with separate read and write credentials; every transfer target is derived from it
+//     inside the operation, so a head cannot be read from one object and written to another.
+//   * AN AMBIGUOUS PUT IS NOT "UNREACHABLE". A put with no verdict (5xx, no status) may have committed,
+//     so it is R2HeadAdvanceOutcomeUnknown carrying the attempted successor, reconciled only by a
+//     readback of the same bound head: the attempted successor is an advance; another object at the
+//     successor's own generation is a move; anything else, a later generation included, stays unknown
+//     (the OriginPutOutcomeUnknown precedent). A store that answered and refused, on a put or a get, is
+//     store-refused, kept apart from no answer (gunbc.cloudflare.r2_staged_transfer R2Fetch).
+//   * THE LINEARIZABILITY GROUND GATES THE PROJECTION. The raw outcome is this module's own type. It
+//     becomes a std.fabric_storage FabricHeadAdvance only through r2_head_fabric_advance, which
+//     requires a sealed R2HeadCasAdmitted -- minted only when the concurrent If-Match guarantee is
+//     grounded -- cited upstream or observed by this repository's race probe receipt
+//     (gunbc.cloudflare.r2_conditional_put_race_probe r2_conditional_put_linearizability_ground). So no
+//     consumer can treat an R2 head as a linearization point on the strength of a bet.
+//   * STAGING IS CLEANED UP AND ITS RESIDUE IS A FACT. The transport discharges every directory it does
+//     not hand over; this module releases the ones it is handed and the put's own. Custody
+//     (r2_staged_transfer R2StagingCustody) is reported beside every outcome and every standalone read,
+//     and never erases a commit that happened.
+//
+// WHAT THIS IS NOT: an object store. A head names an object some realization holds; never publishing a
+// head over a missing object is owed by the composed R2 realization (objects and heads behind one
+// binding), the named next change, before it projects through r2_head_fabric_advance.
+
+// ── THE CAS GROUND, AND THE SEALED ADMISSION ───────────────────────────────────────────────────
+type R2HeadCasGround sole_constructor {
+  conditional_headers: CitedFigureStanding
+  linearizability: CitedFigureStanding
+}
+
+fn r2_head_cas_ground() -> R2HeadCasGround {
+  R2HeadCasGround { conditional_headers: r2_put_object_conditional_standing, linearizability: r2_conditional_put_linearizability_ground() }
+}
+
+fn r2_head_cas_ground_headers(ground: R2HeadCasGround) -> CitedFigureStanding { ground.conditional_headers }
+fn r2_head_cas_ground_linearizability(ground: R2HeadCasGround) -> CitedFigureStanding { ground.linearizability }
+
+type R2HeadCasAdmitted sole_constructor {
+  ground: R2HeadCasGround
+}
+
+type R2HeadCasAdmission
+  = R2HeadCasAdmittedArm { admitted: R2HeadCasAdmitted }
+  | R2HeadCasNotGrounded { read_obligation: NonEmptyStr }
+
+// A HALF IS GROUNDED WHEN IT OWES NO READ: cited to an external authority or observed by a receipt
+// (extdeps.external_authority cited_figure_read_obligation answers that for every arm).
+fn r2_head_cas_admission(ground: R2HeadCasGround) -> R2HeadCasAdmission {
+  match cited_figure_read_obligation(standing: ground.conditional_headers) {
+    Present { value: o } => R2HeadCasNotGrounded { read_obligation: o }
+    Absent =>
+      match cited_figure_read_obligation(standing: ground.linearizability) {
+        Present { value: o } => R2HeadCasNotGrounded { read_obligation: o }
+        Absent => R2HeadCasAdmittedArm { admitted: R2HeadCasAdmitted { ground: ground } }
+      }
+  }
+}
+
+// ── THE BINDING: ONE LOCATOR, TWO CREDENTIALS ──────────────────────────────────────────────────
+type R2HeadCredential {
+  access_key_id: NonEmptyStr
+  token_value: SecretRef
+}
+
+type R2HeadBinding sole_constructor {
+  locator: R2ObjectLocator
+  read: R2HeadCredential
+  write: R2HeadCredential
+}
+
+fn r2_head_binding(locator: R2ObjectLocator, read: R2HeadCredential, write: R2HeadCredential) -> R2HeadBinding {
+  R2HeadBinding { locator: locator, read: read, write: write }
+}
+
+fn r2_head_binding_locator(binding: R2HeadBinding) -> R2ObjectLocator { binding.locator }
+
+fn r2_head_read_target(binding: R2HeadBinding) -> R2TransferTarget {
+  R2TransferTarget { locator: binding.locator, access_key_id: binding.read.access_key_id, token_value: binding.read.token_value, precondition: PutIfAbsent, report: ReportStatusAndEntityTag }
+}
+
+fn r2_head_write_target(binding: R2HeadBinding, precondition: ObjectPutPrecondition) -> R2TransferTarget {
+  R2TransferTarget { locator: binding.locator, access_key_id: binding.write.access_key_id, token_value: binding.write.token_value, precondition: precondition, report: ReportStatusAndEntityTag }
+}
+
+data r2_head_body_prefix: String = "fabric_storage.r2_head"
+
+fn r2_head_body(reading: FabricHeadReading) -> NonEmptyStr {
+  join([r2_head_body_prefix, " ", join(reading_words(reading: reading), " ")], "") as NonEmptyStr
+}
+
+fn r2_head_body_reading(text: String) -> FabricHeadReading? {
+  let ws = split(s: trim(s: text), delimiter: " ")
+  match first(ws) {
+    Present { value: p } => if p == r2_head_body_prefix { decode_reading(ws: ws, i: 1) } else { none }
+    Absent => none
+  }
+}
+
+// What one read of the head object established: the reading, and the tag the next put must match.
+// An absent object is FabricHeadAbsent with no tag; the next put is create-only.
+type R2HeadObserved
+  = R2HeadObservedAbsent
+  | R2HeadObservedAt { reading: FabricHeadReading, tag: ObjectEntityTag }
+  | R2HeadObservedRefused { read: FabricHeadRead }
+
+fn r2_head_observed_reading(observed: R2HeadObserved) -> FabricHeadRead {
+  match observed {
+    R2HeadObservedAbsent => FabricHeadObserved { reading: FabricHeadAbsent }
+    R2HeadObservedAt { reading: r, tag: _ } => FabricHeadObserved { reading: r }
+    R2HeadObservedRefused { read: rr } => rr
+  }
+}
+
+// THE FETCHED BODY AND TAG, CLASSIFIED. Pure, so every arm is reachable from a fixture. A present head
+// object with no entity tag cannot be compared-and-set, and a body that is not a head reading is not
+// this protocol; both refuse, never default.
+fn r2_head_observed_of(fetch: R2Fetch, body: String?) -> R2HeadObserved {
+  match fetch {
+    R2FetchObjectAbsent { staging: _ } => R2HeadObservedAbsent
+    R2FetchStoreRefused { cause: c, staging: _ } => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: c } } } } }
+    R2FetchTransportUnanswered { cause: c, staging: _ } => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: c } } }
+    R2FetchLocalFailure { cause: c, staging: _ } => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: c } } }
+    R2FetchStaged { staged_path: _, staging_dir: _, tag: tag } =>
+      match body {
+        Absent => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "the staged head object could not be read" } } } } }
+        Present { value: text } =>
+          match r2_head_body_reading(text: text) {
+            Absent => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableMalformed { detail: "the head object's body is not a fabric head reading" } } } } }
+            Present { value: FabricHeadAbsent } => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableMalformed { detail: "a present head object reads as absent" } } } } }
+            Present { value: reading } =>
+              match tag {
+                Present { value: t } => R2HeadObservedAt { reading: reading, tag: t }
+                Absent => R2HeadObservedRefused { read: FabricHeadReadRefused { fault: FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "the store returned the head object without an entity tag, so it cannot be compared-and-set" } } } } }
+              }
+          }
+      }
+  }
+}
+
+// ── THE RAW OUTCOME, THIS MODULE'S OWN TYPE ────────────────────────────────────────────────────
+type R2HeadSettled
+  = R2HeadAdvancedTo { object: FabricObjectRef, generation: CasGeneration }
+  | R2HeadMovedFrom { expected: FabricHeadExpectation, observed: FabricHeadReading }
+  | R2HeadStoreRefused { fault: FabricStorageFault }
+
+// THE ADVANCE PLAN, PURE: from what was observed and what the writer expects, either a settled
+// outcome with nothing written, or the successor reading to put under its precondition.
+type R2HeadAdvancePlan
+  = R2HeadAdvanceSettledUnwritten { settled: R2HeadSettled }
+  | R2HeadAdvancePut { successor: FabricHeadReading, precondition: ObjectPutPrecondition }
+
+fn r2_head_advance_plan(expected: FabricHeadExpectation, observed: R2HeadObserved, to: FabricObjectRef) -> R2HeadAdvancePlan {
+  match observed {
+    R2HeadObservedRefused { read: FabricHeadReadRefused { fault: f } } => R2HeadAdvanceSettledUnwritten { settled: R2HeadStoreRefused { fault: f } }
+    R2HeadObservedRefused { read: FabricHeadObserved { reading: _ } } => R2HeadAdvanceSettledUnwritten { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "an observation was classified refused while carrying a reading" } } } }
+    R2HeadObservedAbsent =>
+      if fabric_head_admits(expected: expected, observed: FabricHeadAbsent) {
+        R2HeadAdvancePut { successor: FabricHeadAt { object: to, generation: cas_generation_first() }, precondition: PutIfAbsent }
+      } else {
+        R2HeadAdvanceSettledUnwritten { settled: R2HeadMovedFrom { expected: expected, observed: FabricHeadAbsent } }
+      }
+    R2HeadObservedAt { reading: r, tag: t } =>
+      if fabric_head_admits(expected: expected, observed: r) {
+        match r {
+          FabricHeadAbsent => R2HeadAdvanceSettledUnwritten { settled: R2HeadMovedFrom { expected: expected, observed: r } }
+          FabricHeadAt { object: _, generation: g } =>
+            match cas_generation_successor(g: g) {
+              CasSuccessorExhausted { head: h } => R2HeadAdvanceSettledUnwritten { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationSpaceExhausted { head: h } } } }
+              CasSuccessorGeneration { generation: n } => R2HeadAdvancePut { successor: FabricHeadAt { object: to, generation: n }, precondition: PutIfMatch { tag: t } }
+            }
+        }
+      } else {
+        R2HeadAdvanceSettledUnwritten { settled: R2HeadMovedFrom { expected: expected, observed: r } }
+      }
+  }
+}
+
+// THE ADVANCE'S STAGING CUSTODY: one advance may clean up as many as three directories (the first
+// observe, the staged successor body, the readback), so its custody is the list of every directory
+// left behind, composed by concatenation -- a later residue is never shadowed by an earlier one.
+type R2HeadStagingCustody {
+  residue_paths: List<NonEmptyStr>
+}
+
+fn r2_head_staging_of(custody: R2StagingCustody) -> R2HeadStagingCustody {
+  match custody {
+    R2StagingResidue { path: p } => R2HeadStagingCustody { residue_paths: [p] }
+    R2StagingRemoved => R2HeadStagingCustody { residue_paths: [] }
+    R2StagingNotCreated => R2HeadStagingCustody { residue_paths: [] }
+  }
+}
+
+fn r2_head_staging_join(a: R2HeadStagingCustody, b: R2HeadStagingCustody) -> R2HeadStagingCustody {
+  R2HeadStagingCustody { residue_paths: concat(a.residue_paths, b.residue_paths) }
+}
+
+// THE ADVANCE RESULT. Known when the put's verdict, or a readback, establishes the outcome; unknown when
+// the put may have committed and no readback established whether it did. Custody of the write
+// credential and of the staging directory ride beside both arms and never change the outcome.
+type R2HeadAdvanceResult
+  = R2HeadAdvanceKnown { settled: R2HeadSettled, credential: WriteCredentialCustody, staging: R2HeadStagingCustody }
+  | R2HeadAdvanceOutcomeUnknown { expected: FabricHeadExpectation, attempted_successor: FabricHeadReading, cause: NonEmptyStr, credential: WriteCredentialCustody, staging: R2HeadStagingCustody }
+
+fn r2_head_reading_eq(a: FabricHeadReading, b: FabricHeadReading) -> Bool {
+  match a {
+    FabricHeadAbsent => match b { FabricHeadAbsent => true  FabricHeadAt { object: _, generation: _ } => false }
+    FabricHeadAt { object: x, generation: g } => match b {
+      FabricHeadAbsent => false
+      FabricHeadAt { object: y, generation: h } => fabric_object_ref_eq(a: x, b: y) && cas_generation_count(g: g) == cas_generation_count(g: h)
+    }
+  }
+}
+
+// THE PUT'S VERDICT AS THE HEAD'S OUTCOME, PURE. Stored is advanced to the successor; a 412 under
+// either precondition is the lost race, whose observed side is the readback; a store that answered and
+// refused is store-refused. An outcome-unknown put is reconciled by the readback of the same head:
+// the attempted successor read back is the commit; another reading that the expectation no longer
+// admits is a move (the tag the put carried is gone, so it cannot commit later); anything else -- the
+// head still admitting the expectation, or no readback -- stays unknown.
+fn r2_head_result_of(expected: FabricHeadExpectation, successor: FabricHeadReading, verdict: R2PutVerdict, readback: FabricHeadRead?, credential: WriteCredentialCustody, staging: R2HeadStagingCustody) -> R2HeadAdvanceResult {
+  match verdict {
+    R2ObjectStored { tag: _ } =>
+      match successor {
+        FabricHeadAt { object: o, generation: g } => R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: o, generation: g }, credential: credential, staging: staging }
+        FabricHeadAbsent => R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "a head cannot be advanced to absent" } } }, credential: credential, staging: staging }
+      }
+    R2ObjectAlreadyPresent => r2_head_lost_race(expected: expected, successor: successor, readback: readback, credential: credential, staging: staging)
+    R2ObjectTagMoved => r2_head_lost_race(expected: expected, successor: successor, readback: readback, credential: credential, staging: staging)
+    R2PutRefused { cause: c } => R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }, credential: credential, staging: staging }
+    R2PutOutcomeUnknown { cause: c } =>
+      match readback {
+        Present { value: FabricHeadObserved { reading: r } } =>
+          if r2_head_reading_eq(a: r, b: successor) {
+            r2_head_successor_known(successor: successor, credential: credential, staging: staging)
+          } else if r2_head_other_object_at_successor_generation(observed: r, successor: successor) {
+            R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: expected, observed: r }, credential: credential, staging: staging }
+          } else {
+            R2HeadAdvanceOutcomeUnknown { expected: expected, attempted_successor: successor, cause: c, credential: credential, staging: staging }
+          }
+        Present { value: FabricHeadReadRefused { fault: _ } } => R2HeadAdvanceOutcomeUnknown { expected: expected, attempted_successor: successor, cause: c, credential: credential, staging: staging }
+        Absent => R2HeadAdvanceOutcomeUnknown { expected: expected, attempted_successor: successor, cause: c, credential: credential, staging: staging }
+      }
+  }
+}
+
+// ONLY ANOTHER OBJECT AT THE SUCCESSOR'S OWN GENERATION SETTLES AN AMBIGUOUS PUT AS MOVED: some other
+// writer took that generation, so this put did not. A LATER generation settles nothing -- this put may
+// have advanced and been built upon (A/g4 -> B/g5 committed, then B -> C/g6) -- and stays unknown, as
+// does the head still at the expected generation and any reading that cannot be compared. (Moved here
+// is the raw outcome; it reaches a std.fabric_storage consumer only through the sealed admission.)
+fn r2_head_other_object_at_successor_generation(observed: FabricHeadReading, successor: FabricHeadReading) -> Bool {
+  match observed {
+    FabricHeadAbsent => false
+    FabricHeadAt { object: o, generation: g } =>
+      match successor {
+        FabricHeadAbsent => false
+        FabricHeadAt { object: so, generation: sg } => cas_generation_count(g: g) == cas_generation_count(g: sg) && !fabric_object_ref_eq(a: o, b: so)
+      }
+  }
+}
+
+fn r2_head_successor_known(successor: FabricHeadReading, credential: WriteCredentialCustody, staging: R2HeadStagingCustody) -> R2HeadAdvanceResult {
+  match successor {
+    FabricHeadAt { object: o, generation: g } => R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: o, generation: g }, credential: credential, staging: staging }
+    FabricHeadAbsent => R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "a head cannot be advanced to absent" } } }, credential: credential, staging: staging }
+  }
+}
+
+// A 412 whose readback cannot be taken is not a move the caller can rebuild on: it is the store
+// refusing the read, carried as such.
+fn r2_head_lost_race(expected: FabricHeadExpectation, successor: FabricHeadReading, readback: FabricHeadRead?, credential: WriteCredentialCustody, staging: R2HeadStagingCustody) -> R2HeadAdvanceResult {
+  match readback {
+    Present { value: FabricHeadObserved { reading: r } } => R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: expected, observed: r }, credential: credential, staging: staging }
+    Present { value: FabricHeadReadRefused { fault: f } } => R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: f }, credential: credential, staging: staging }
+    Absent => R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "a 412 was answered but the head was not read back" } } }, credential: credential, staging: staging }
+  }
+}
+
+// THE PROJECTION TO THE INTERFACE, GATED BY THE SEALED ADMISSION. Only a known outcome projects; an
+// unknown one has no FabricHeadAdvance to become.
+fn r2_head_fabric_advance(admitted: R2HeadCasAdmitted, result: R2HeadAdvanceResult) -> FabricHeadAdvance? {
+  match result {
+    R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => none
+    R2HeadAdvanceKnown { settled: s, credential: _, staging: _ } =>
+      match s {
+        R2HeadAdvancedTo { object: o, generation: g } => Present { value: FabricHeadAdvanced { object: o, generation: g } }
+        R2HeadMovedFrom { expected: e, observed: r } => Present { value: FabricHeadMoved { expected: e, observed: r } }
+        R2HeadStoreRefused { fault: f } => Present { value: FabricHeadAdvanceRefused { fault: f } }
+      }
+  }
+}
+
+// ── EFFECTS ────────────────────────────────────────────────────────────────────────────────────
+
+type R2HeadObservation {
+  observed: R2HeadObserved
+  staging: R2StagingCustody
+}
+
+fn r2_head_observe(binding: R2HeadBinding, token_source: AccessTokenSource) -> R2HeadObservation {
+  let fetch = r2_fetch_into_staging(target: r2_head_read_target(binding: binding), token_source: token_source)
+  match fetch {
+    R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } => {
+      let read = Filesystem.Read(path: p as String)
+      let observed = r2_head_observed_of(fetch: fetch, body: if read.success { Present { value: read.content } } else { none })
+      R2HeadObservation { observed: observed, staging: r2_release_staging(dir: d) }
+    }
+    R2FetchObjectAbsent { staging: c } => R2HeadObservation { observed: r2_head_observed_of(fetch: fetch, body: none), staging: c }
+    R2FetchStoreRefused { cause: _, staging: c } => R2HeadObservation { observed: r2_head_observed_of(fetch: fetch, body: none), staging: c }
+    R2FetchTransportUnanswered { cause: _, staging: c } => R2HeadObservation { observed: r2_head_observed_of(fetch: fetch, body: none), staging: c }
+    R2FetchLocalFailure { cause: _, staging: c } => R2HeadObservation { observed: r2_head_observed_of(fetch: fetch, body: none), staging: c }
+  }
+}
+
+// A STANDALONE READ KEEPS ITS CUSTODY: the reading and what became of the staging directory.
+type R2HeadReadResult {
+  read: FabricHeadRead
+  staging: R2StagingCustody
+}
+
+fn r2_head_read(binding: R2HeadBinding, token_source: AccessTokenSource) -> R2HeadReadResult {
+  let o = r2_head_observe(binding: binding, token_source: token_source)
+  R2HeadReadResult { read: r2_head_observed_reading(observed: o.observed), staging: o.staging }
+}
+
+
+fn r2_head_advance(binding: R2HeadBinding, expected: FabricHeadExpectation, to: FabricObjectRef, token_source: AccessTokenSource) -> R2HeadAdvanceResult {
+  let first = r2_head_observe(binding: binding, token_source: token_source)
+  match r2_head_advance_plan(expected: expected, observed: first.observed, to: to) {
+    R2HeadAdvanceSettledUnwritten { settled: s } => R2HeadAdvanceKnown { settled: s, credential: WriteCredentialShredded, staging: r2_head_staging_of(custody: first.staging) }
+    R2HeadAdvancePut { successor: s, precondition: pre } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "no private directory could be minted to stage the head body; nothing was put" } } }, credential: WriteCredentialShredded, staging: r2_head_staging_of(custody: first.staging) }
+      } else {
+        let dir = staging.path as NonEmptyStr
+        let path = join([dir as String, "/head"], "")
+        let w = Filesystem.Write(path: path, content: r2_head_body(reading: s) as String)
+        if w.success == false {
+          R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: concat("the head body could not be staged: ", w.error) as NonEmptyStr } } }, credential: WriteCredentialShredded, staging: r2_head_staging_join(a: r2_head_staging_of(custody: first.staging), b: r2_head_staging_of(custody: r2_release_staging(dir: dir))) }
+        } else {
+          let put = r2_put_staged_file(target: r2_head_write_target(binding: binding, precondition: pre), local_path: path as FilePath, token_source: token_source)
+          let put_staging = r2_release_staging(dir: dir)
+          let readback = match put.verdict {
+            R2ObjectStored { tag: _ } => none
+            R2PutRefused { cause: _ } => none
+            R2ObjectAlreadyPresent => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
+            R2ObjectTagMoved => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
+            R2PutOutcomeUnknown { cause: _ } => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
+          }
+          let readback_staging = match readback { Present { value: o } => o.staging  Absent => R2StagingNotCreated }
+          r2_head_result_of(
+            expected: expected,
+            successor: s,
+            verdict: put.verdict,
+            readback: match readback { Present { value: o } => Present { value: r2_head_observed_reading(observed: o.observed) }  Absent => none },
+            credential: put.credential,
+            staging: r2_head_staging_join(a: r2_head_staging_of(custody: first.staging), b: r2_head_staging_join(a: r2_head_staging_of(custody: put_staging), b: r2_head_staging_of(custody: readback_staging))),
+          )
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+module extdeps.network.mcx4421a_acan
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.nic_attachment { NicAttachmentClass, OcpNic2 }
+import extdeps.standards.ocp_nic_2_0 { Type1 }
+
+// The part owns its attachment, independently of Ampere or any other card.
+// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// The cited NVIDIA product brief Table 2 lists this part under OCP 2.0 Type 1.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https, locator: "network.nvidia.com/files/doc-2020/pb-connectx-4-lx-en-card.pdf",
+} }
+
+data mcx4421a_acan_attachment: NicAttachmentClass = OcpNic2 { physical_variant: Type1 }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.network.mcx4421a_acan", decl_name: "mcx4421a_acan_attachment", field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

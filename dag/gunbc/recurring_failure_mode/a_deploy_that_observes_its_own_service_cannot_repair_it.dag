@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_deploy_that_observes_its_own_service_cannot_repair_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_deploy_that_observes_its_own_service_cannot_repair_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_deploy_that_observes_its_own_service_cannot_repair_it" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the modeled deploy route (fleet-converge dashboard_deploy, gunbc.live_deploy) derives its plan by observing the running service, and a running service whose /healthz answers non-2xx makes that observation REFUSE -- so the only sanctioned route to replace a broken release requires the release not to be broken. The route can install a release that breaks the service and then cannot install any release at all, rollback included.",
+
+    "HARM, 2026-09-29: after dashboard_deploy run 36584004074 left gunbc-roadmap answering HTTP 500 (gunbc.recurring_failure_mode a_serve_contract_widened_for_one_handler_refuses_every_other), the rollback dashboard_deploy run 36593744640 at 361db9017b refused before acting: 'the deployment plan could not be derived from the host: service-process: refused -- could not observe the host: the process is active but /healthz refused'. Recovery needed an out-of-band operator step (stopping gunbc-roadmap.service by hand at 16:25) before the modeled route could proceed.",
+
+    "WHY IT IS A CLASS AND NOT AN INCIDENT: the observation conflates two facts -- 'the host cannot be observed' (a transport or principal failure, where refusing is right) and 'the service is observed and unhealthy' (a reading, where the plan's job is to replace it). Treating the second as the first makes health a precondition of repair. DESIGN section 5 wants the unhealthy reading to be a typed observed state the plan can act on, not an absorbing refusal of the whole transaction.",
+
+    "RUNG FOUND AT: mitigatable (the failure is loud and located, and an operator can break the deadlock by hand). CEILING: 3 -- the service-process observation can type an unhealthy-but-observed process as its own arm and the plan can derive a replace-release step from it. NEXT TRIGGER: the live_deploy service-process observation distinguishes observed-unhealthy from unobservable, and a dashboard_deploy over an observed-unhealthy process at a different expected_revision plans the replacement instead of refusing; evidence is a fixture with a 500-answering /healthz that plans, beside the existing refusal for an unreachable host.",
+  ],
+
+  evidence: [],
+}

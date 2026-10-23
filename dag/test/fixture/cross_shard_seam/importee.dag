@@ -1,0 +1,10 @@
+module test.fixture.cross_shard_seam.importee
+
+type SeamMarker = SeamAlpha | SeamBeta
+
+fn seam_marker_id(m: SeamMarker) -> String {
+  match m {
+    SeamAlpha => "alpha"
+    SeamBeta => "beta"
+  }
+}

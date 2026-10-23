@@ -1,0 +1,18 @@
+module gunbc.site.choice
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+
+// Shared markup owns the listbox relationship. Callers supply domain options and commit forms.
+fn site_choice_list(id: String, options: List<Fragment>, hidden: Bool, empty_label: String = "") -> Fragment {
+  el_attrs("div", concat([attr(name: "class", value: "site-choice-list"), attr(name: "id", value: id), attr(name: "role", value: "listbox"), attr(name: "data-choice-list", value: "")], if hidden { [attr(name: "hidden", value: "")] } else { [] }), concat(options,
+    if empty_label == "" { [] } else { [el_attrs("p", [attr(name: "data-choice-empty", value: ""), attr(name: "hidden", value: ""), attr(name: "role", value: "status")], [txt(empty_label)])] }))
+}
+fn site_compact_choice(id: String, label: String, accessible_label: String, options: List<Fragment>) -> Fragment {
+  el_attrs("details", [attr(name: "class", value: "site-choice site-choice-compact"), attr(name: "data-site-choice", value: "compact")], [
+    el_attrs("summary", [attr(name: "data-choice-trigger", value: ""), attr(name: "aria-label", value: accessible_label), attr(name: "aria-controls", value: id)], [el_attrs("span", [attr(name: "data-choice-label", value: "")], [txt(label)])]),
+    site_choice_list(id: id, options: options, hidden: false),
+  ])
+}
+fn site_choice_input(id: String, name: String, class_name: String, label: String, placeholder: String, value: String, list_id: String) -> Fragment {
+  el_attrs("input", [attr(name: "class", value: class_name), attr(name: "name", value: name), attr(name: "id", value: id), attr(name: "type", value: "text"), attr(name: "data-choice-trigger", value: ""), attr(name: "role", value: "combobox"), attr(name: "aria-label", value: label), attr(name: "aria-expanded", value: "false"), attr(name: "aria-autocomplete", value: "list"), attr(name: "aria-controls", value: list_id), attr(name: "placeholder", value: placeholder), attr(name: "value", value: value), attr(name: "autocomplete", value: "off")], [])
+}

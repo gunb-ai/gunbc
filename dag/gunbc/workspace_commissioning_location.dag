@@ -1,0 +1,7 @@
+module gunbc.workspace_commissioning_location
+
+import std.types { String }
+
+// Separate from the readiness directory: its CAS generations are commissioning transaction
+// generations, not allocation or cell generations, and must not enter the readiness file census.
+data workspace_commissioning_store_location: String = "/var/lib/gunbc/workspace-commissioning"

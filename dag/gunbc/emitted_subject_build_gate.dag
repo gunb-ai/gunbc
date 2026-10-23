@@ -1,0 +1,374 @@
+module gunbc.emitted_subject_build_gate
+
+import std.types { Bool, String, List }
+import v2.std.algebra { list_map }
+import std.algebra { list_append }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization_width { byte_size_saturating_sub }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.gunbc_cli_command { gunbc_test_command }
+import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+import gunbc.runner_slot_desired {
+  gunbc_runner_slot_desired,
+  SlotJobCgroupOwnership, JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup,
+}
+import gunbc.memory_envelope { memory_envelope_slot_requirement_value }
+
+// THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
+//
+// WHAT IT IS. Two instruments, each of which asks the seed to EMIT a retained v2 closure and then
+// asks cargo to BUILD the emitted crate: `//gunbc/instruments:self-host` over `v2.compiler.compile`
+// and `//gunbc/instruments:v2-native-cli` over `v2.cli.compile_cli`. Both also start what they
+// built -- the self-host row's census-mode pair, the CLI row's `cli_no_entry` refusal arm -- and
+// the self-host row injects a type error into its own emitted module and requires cargo to fail
+// alone on a diagnostic naming it, so a fingerprint alias or a replayed cached verdict cannot stand
+// in for a compile. Those controls are the instruments' own and are not restated here; this module
+// decides only WHICH subjects the required lane runs and with what argv.
+//
+// WHAT ITS RED DISCRIMINATES, AND WHY IT LANDED BESIDE LANES THAT ALREADY READ THE CORPUS. Every
+// other required lane of that day read the corpus through the INTERPRETER or through the SEED's own
+// Rust: the floor evaluated witnesses, the generated lane linted hand-written and stage0-mirrored
+// Rust and regenerated the stage0 mirrors, and both built the seed binary. NOTHING ON THE MERGE
+// PATH EMITTED A V2 CLOSURE AND COMPILED THE RESULT, so a defect invisible under evaluation and
+// fatal under emission reached main green. Those lanes were withdrawn on 2026-10-09 and this is now
+// the only required lane (gunbc.compiler_gate_workflow header); the argument below is why it is the
+// one that was kept. That is not a hypothesis: `gunbc.recurring_failure_mode`
+// `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
+// `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
+// merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every
+// closure. It happened again on 2026-09-21 when gunbc#12004 pulled `base16` into the closure and
+// broke main's native self-host build with no required check noticing.
+//
+// THE CAUSE IS NAMED CORRECTLY HERE BECAUSE THE FIRST READING OF IT WAS WRONG, and the wrong one
+// is the one that reads plausibly. The emitted `extdeps_numeric_base16.rs` refused with E0425
+// `UInt8 not found in this scope`, which looks exactly like a dropped import and was first
+// recorded here as "a latent emitter import gap". It was not: `extdeps.numeric.base16` was
+// SPELLING THE UNINHABITED `UInt8` CARRIER where values are put, and the repair (gunbc#12056,
+// sharp-bear-756) carries `std.integer` `QualifiedOctets` through its codec surface instead --
+// the emitter is untouched by it. This is the same rostered class the paragraph above cites,
+// not a second defect.
+//
+// A DROPPED-USE-LINE EMITTER DEFECT DOES EXIST and is deliberately not conflated with this one:
+// an authored `import M { T }` emits no use-line when two modules in the closure declare the
+// short spelling, the named declaration is a non-nominal alias, and the second declarer arrives
+// through a module the consumer does not import. It is real, reproduced under a one-variable
+// experiment, and UNFIXED -- so this lane will meet it again on any module satisfying all three,
+// and a reader must not treat base16's repair as having closed it.
+//
+// This lane is the check that would have noticed, and its red is structural to the diff --
+// it names the emitted module and the compiler diagnostic -- rather than a host or shared-runner
+// signal.
+//
+// WHAT IT IS NOT, AND THE NAMING IS LOAD-BEARING. This lane is EMIT-AND-BUILD. It is not the native
+// ROUTE, and it touches no line of `gunbc.rung_drop` `v2_native_route_off_the_merge_path`'s declared
+// population -- every one of those five lines is route adjudication or execution of the derived
+// `v2.test.*` universe by the emitted-native compiler, and nothing here executes that universe,
+// mints a `NativeRouteReceipt`, or evaluates a clause of `native_route_admission`. That drop stays
+// STANDING and UNNARROWED, and its restoration trigger is untouched by this change. The lane is
+// therefore named for emit-and-build rather than for the native route, so a reader meeting the
+// green does not read it as coverage of the drop: a true sentence under a name that suggests more
+// is rung inflation by naming (DESIGN section 4b(1)), and the cheapest place to prevent it is the
+// name.
+
+// ONE SUBJECT PER LABEL, AND TWO LABELS RATHER THAN ONE. `gunbc.instrument_targets` states why
+// these are two instruments and not one: the two closures are DIFFERENT rather than nested, neither
+// contains the other's `compiler_pipeline_entry`, and the CLI closure reaches modules
+// `v2.compiler.compile`'s does not. A green on one is not evidence about the other. The lane
+// therefore runs them as two STEPS with two step ids, so a regression is reported under a name that
+// says which compilation broke -- the same reason the labels are two.
+type EmittedSubjectBuildRow {
+  label: Label
+  step_id: String
+}
+
+// THE STEP ID IS A ROW FIELD, NOT A TRANSFORMATION OF THE LABEL. A GitHub step id and a Bazel
+// label are two different namespaces with two different alphabets -- a label carries `/` and `:`,
+// neither of which an id admits -- so deriving one from the other means authoring a mangling rule
+// whose only consumer is this list. Two rows say the same thing with no rule to maintain, and the
+// pairing stays visible at the one place a subject is added.
+fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
+  [
+    EmittedSubjectBuildRow { label: self_host_label(), step_id: "emit_build_self_host" },
+    EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: "emit_build_v2_native_cli" },
+  ]
+}
+
+// THE LABEL TEXT IS RENDERED FROM THE DECLARATION, never typed. `render_label` is the upstream
+// spelling authority (extdeps.bazel.label); a step that spelled `//gunbc/instruments:self-host`
+// itself would be a second name for a target this repository already declares (DESIGN section 3).
+fn emitted_subject_build_label_text(row: EmittedSubjectBuildRow) -> String {
+  render_label(l: row.label)
+}
+
+// THE FAULT EXPERIMENT IS DECIDED BY A MODELED INPUT THE WORKFLOW PASSES, NOT BY THE RUNNER READING
+// THE EVENT ITSELF. The env var below is set per step by gunbc.compiler_gate_workflow from the
+// workflow event; native_lane_runner reads it and states the decision in the run log. Absent or any
+// other value RUNS the experiment (fail toward the control, never toward skipping it). The skip is
+// the declared drop gunbc.rung_drop native_fault_experiment_off_pull_requests; merge_group and
+// workflow_dispatch keep the experiment, and every other control runs on pull requests.
+data native_fault_experiment_env_name: String = "GUNBC_NATIVE_FAULT_EXPERIMENT"
+data native_fault_experiment_skip_value: String = "skip_pull_request"
+data native_fault_experiment_run_value: String = "run"
+
+// THE REQUIRED JOB EMITS AND BUILDS BOTH PRODUCTS FRESH (operator ruling 2026-10-09: "this version
+// requires fresh emission/build of both retained products and refuses a restored final-product
+// hit. Ordinary Cargo reuse may remain"). The workflow passes this input on every subject step;
+// native_lane_runner reads it and, under `fresh`, consults no native product store and commits
+// nothing -- and REFUSES a run that also binds a store root, because an invocation asking for a
+// fresh product while offering a store to serve it from is a contradiction, not a miss. The store
+// steps (job-private root, the two federations, the save) left the required job with this ruling;
+// cargo's own dependency reuse inside the job's checkout is untouched.
+data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
+data native_product_reuse_fresh_value: String = "fresh"
+
+// THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
+// hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
+// runner retry"). The fleet slot is the fixed hard maximum and the ONE authority for its numbers
+// (gunbc.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Two inputs carry
+// the envelope to gunbc test, and which of them a subject step passes is decided by ONE fleet fact
+// (native_step_memory_inputs over gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership):
+//
+// 1. native_step_memory_envelope_env_name REQUIRES an envelope; its one value is the projection of
+//    gunbc.memory_envelope EnvelopeSlotRequired: a cgroup with a NUMERIC memory.max must already
+//    bind the step -- the fleet slot's -- and gunbc test refuses a run that none binds
+//    (memory_envelope_decision over the governor's binding_cap_cgroup_dir walk, which reads `max`
+//    as unset), reads that cgroup before the producer, prints a MEMORY RECEIPT at exit (the OOM
+//    kills and high/max events the step added, swap resident at exit, whether the swap peak rose,
+//    the slot's memory.swap.max, the peak) and REFUSES the run on any OOM kill or any swap
+//    (memory_envelope_verdict), whatever the producer answered. Every subject step passes it: a
+//    required step that cannot say what bounded it is not the measurement the gate names.
+// 2. native_step_memory_bind_env_name asks gunbc test to bind the step's OWN cgroup at the TRIP
+//    (memory_governor BIND_MEMORY_CGROUP_ENV, the bind claim_executor already takes), so a product
+//    build that outgrows the envelope trips inside the step -- exit 137 -- before the slot's
+//    throttle line, with a receipt at the step's own grain. THE TRIP IS DERIVED, NOT AUTHORED: it
+//    is the slot's MemoryHigh less the headroom declared here, so this module states only how far
+//    under the throttle line the compiler trips, a slot change moves the trip with it, and a step
+//    cannot be bound above the slot that holds it. The required steps pass this input ONLY WHERE A
+//    JOB OWNS A BOUNDED CGROUP: today a fleet job runs as the deprivileged job user under a root
+//    unit and the governor creates its leaf at the cgroup root, so the first required run that
+//    asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused). That fact is the
+//    slot row's gunbc_runner_slot_job_cgroup_ownership; the climb it blocks is rostered as
+//    gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall; and flipping the fact
+//    when the fleet earns it puts the bind back on every subject step with no other edit.
+//
+// There is no larger runner and no retry: a trip, at either grain, is the line stopping.
+data native_step_memory_envelope_env_name: String = "GUNBC_MEMORY_ENVELOPE_REQUIRED"
+data native_step_memory_envelope_slot_value: String = memory_envelope_slot_requirement_value()
+data native_step_memory_bind_env_name: String = "GUNBC_BIND_MEMORY_CGROUP_BYTES"
+data native_step_memory_headroom: ByteSize = byte_size(1073741824)
+
+fn native_step_memory_trip() -> ByteSize {
+  let slot = gunbc_runner_slot_desired()
+  byte_size_saturating_sub(total: slot.memory_high, reserved: native_step_memory_headroom)
+}
+
+fn native_step_memory_trip_text() -> String {
+  to_string(byte_size_count(b: native_step_memory_trip()))
+}
+
+fn slot_memory_max_text() -> String {
+  to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max))
+}
+
+// ONE ENVELOPE INPUT OF A SUBJECT STEP: the environment name and the value it carries. The workflow
+// renders these as the step's env rows; the shape is this module's so the decision below owes
+// nothing to YAML.
+type NativeStepMemoryInput {
+  env_name: String
+  env_value: String
+}
+
+// WHICH ENVELOPE INPUTS A SUBJECT STEP PASSES, AS A FUNCTION OF THE FLEET FACT. The fact is a
+// parameter so a claim can exercise both arms by supplying it, and the workflow passes the live
+// row's. A job that owns no bounded cgroup gets the slot requirement alone; a job that does gets
+// the requirement and the bind at the derived trip.
+fn native_step_memory_inputs(ownership: SlotJobCgroupOwnership) -> List<NativeStepMemoryInput> {
+  let required = NativeStepMemoryInput { env_name: native_step_memory_envelope_env_name, env_value: native_step_memory_envelope_slot_value }
+  let bind = NativeStepMemoryInput { env_name: native_step_memory_bind_env_name, env_value: native_step_memory_trip_text() }
+  match ownership {
+    JobOwnsNoBoundedCgroup { why: _ } => [required]
+    JobOwnsBoundedCgroup { staged_by: _ } => [required, bind]
+  }
+}
+
+// THE LINES THE FAILURE NOTICE CARRIES ABOUT THE ENVELOPE, a function of the same fact so the notice
+// cannot outlive it: which grain bounded the step and the input that required it, what the trip is
+// and why it is or is not asked for, the exit code the kernel leaves, and that nothing retries bigger.
+fn emit_build_memory_envelope_lines(ownership: SlotJobCgroupOwnership) -> List<String> {
+  let trip_line = match ownership {
+    JobOwnsNoBoundedCgroup { why: why } =>
+      join(["The per-step trip at ", native_step_memory_trip_text(), " bytes is not asked for: ", why, " (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall)."], "")
+    JobOwnsBoundedCgroup { staged_by: staged_by } =>
+      join(["This step also asked the kernel for its own bound at ", native_step_memory_trip_text(), " bytes (", staged_by, "), so an exit of 137 may be that trip rather than the slot's."], "")
+  }
+  [
+    join(["This step ran inside the fleet slot's memory envelope (gunbc.runner_slot_desired: MemoryMax ", slot_memory_max_text(), " bytes, no swap once converged), which gunbc test required (", native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value, ") and receipted at exit."], ""),
+    trip_line,
+    "An exit of 137 here is the kernel tripping the envelope's memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
+    "A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.",
+  ]
+}
+
+fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
+  gunbc_test_command(label: emitted_subject_build_label_text(row: row))
+}
+
+// THE STEP NAME CARRIES THE LABEL, for the same reason the labels are two: a run log naming only
+// "emit and build" would not say which compilation refused.
+fn emitted_subject_build_step_name(row: EmittedSubjectBuildRow) -> String {
+  join(["emit and build ", emitted_subject_build_label_text(row: row)], "")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE LANE'S STANDING, AND WHY IT IS A TYPED ROW RATHER THAN A SENTENCE IN A STEP
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// FROM THE MOMENT THIS LANE LANDED, EVERY PULL REQUEST IN THE REPOSITORY RUNS IT -- and while main
+// cannot self-host, every one of them goes RED for a defect the author did not introduce and
+// cannot fix. That is a standing cost this lane imposes on every other lane, and it is paid by
+// whoever clicks the red X expecting to find their own mistake.
+//
+// The manager made exactly that mistake on gunbc#12043 with ONE instance in front of him: he read
+// `mergeStateStatus: UNSTABLE`, took the red as a blocker, and dropped the PR from the merge card.
+// It is now offered to every lane at once.
+//
+// WHY A TYPED STANDING AND NOT PROSE IN THE STEP. A note saying "this red is expected" is TRUE
+// only while it is, and a lane still printing it after main self-hosts would be a lie that nobody
+// owns -- the inert-annotation failure, on the one surface a stranger actually reads. The standing
+// is a row, so retiring it is a visible edit with a name, and `EmitBuildExpectedGreen` makes the
+// reassurance UNPRINTABLE the moment it stops being true.
+//
+// THE ROW CARRIES NO OWNING PR, AND THAT IS A CORRECTION RATHER THAN AN OMISSION. The first cut
+// had an `owned_by` field naming gunbc#12070, which was FALSE within the hour: that repair was
+// measured insufficient for this site -- it keeps a use-line when the provider's binding is a type
+// declaration, and this binding is a variant -- and ownership then moved twice in one evening while
+// two theories were proposed and falsified by the lanes that proposed them.
+//
+// THE LESSON IS ABOUT WHAT A TYPE PROTECTS. The standing being a typed row makes the REASSURANCE
+// unprintable once it stops being true; it does nothing whatever for a volatile fact sitting in a
+// field beside it. A `String` naming a PR is exactly as rottable inside a well-typed row as it
+// would be in a comment, and this one rotted onto the surface a stranger reads before the PR that
+// added it had even landed.
+//
+// SO THE FIELDS ARE RESTRICTED TO WHAT IS STABLE FOR THE STANDING'S LIFETIME: the signature, which
+// is a property of the break, and the retirement condition, which is a capability. Ownership is a
+// property of the ORGANISATION and belongs nowhere near a generated CI surface. The signature is
+// also the durable handle -- searching for it finds whoever currently holds the investigation,
+// which a stale PR number actively prevents.
+//
+// THE DISCRIMINATOR IS THE HALF THAT MATTERS, and the reassurance alone would be worse than
+// nothing. A standing red teaches every lane to ignore this lane, which is how a detector dies
+// without anyone deciding to kill it. So the row carries the KNOWN SIGNATURE and the message tells
+// a reader what would be a genuinely new finding: a different error code, or a different emitted
+// file. Matching red -- noise, do nothing. Different red -- a second defect, report it.
+type NativeEmitBuildStanding
+  = EmitBuildExpectedGreen
+  | EmitBuildExpectedRed { known_signature: EmittedBuildSignature }
+
+// THE SIGNATURE'S THREE PARTS ARE FIELDS, because the notice tells a reader to compare two of them
+// SEPARATELY -- a different error code, or a different emitted file, is a new finding -- and a
+// single string would leave that comparison to eyes (DESIGN section 2). The error code is rustc's
+// own vocabulary; the path is the emitted crate's, relative to its root.
+type EmittedBuildSignature {
+  error_code: String
+  symbol: String
+  emitted_path: String
+}
+
+fn render_emitted_build_signature(sig: EmittedBuildSignature) -> String {
+  join([sig.error_code, " ", sig.symbol, " at ", sig.emitted_path], "")
+}
+
+// THE RETIREMENT CONDITION IS NOT A FIELD: it is rendered from `emitted_subject_build_rows`, so it
+// names exactly the instruments this lane runs, by their declared labels, and a subject added to
+// the lane joins the condition without anyone restating it.
+fn emit_build_standing_retirement() -> String {
+  join([
+    "a head of main on which ",
+    join(list_map(xs: emitted_subject_build_rows(), f: emitted_subject_build_retirement_clause), " and "),
+    " all exit zero",
+  ], "")
+}
+
+fn emitted_subject_build_retirement_clause(row: EmittedSubjectBuildRow) -> String {
+  join(["`gunbc test ", emitted_subject_build_label_text(row: row), "`"], "")
+}
+
+// THE ONE ROW TO EDIT WHEN MAIN SELF-HOSTS AGAIN. Flipping it to `EmitBuildExpectedGreen` deletes
+// the notice from every future run; leaving it stale keeps printing a reassurance for a red that
+// is no longer expected, which is why the type has only two arms and no "probably fine" middle.
+//
+// RETIRED 2026-09-27 (operator ruling): the retirement condition held on main 5bfe79be45c -- both
+// instruments exited zero on srv1 (neat-boar-16, MemoryMax=45G), and the lane's own merge_group runs
+// were green on the hosted runner (e.g. run 36344502292, job 108690877383, tested tree 12ab6d1439a).
+// The E0573 PointerWidth at src/std_integer.rs signature is no longer expected.
+data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedGreen
+
+// THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the standing row above AND from
+// whether the lane blocks -- a SUPPLIED Bool, because that fact's one home is the lane row in
+// `gunbc.compiler_gate_workflow` (`LaneBlocks` / `LaneAnnouncedNotBlocking`), which imports this
+// module and composes the live notice. A hard-coded "does NOT block your merge" would go false the
+// moment that row flips, on exactly the surface this rendering exists to keep honest.
+//
+// The retirement condition is PRINTED, so a reader who can see main self-host again knows the row
+// is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
+// that is review diligence, stated here rather than implied.
+fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
+  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
+}
+
+fn emit_build_lane_blocking_lines(lane_blocks: Bool) -> List<String> {
+  if lane_blocks {
+    [
+      "emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.",
+    ]
+  } else {
+    [
+      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
+      "the required context is `witnesses`, and this job is not an input to it.",
+    ]
+  }
+}
+
+// A BLOCKING LANE WITH A RED STANDING IS A CONTRADICTION, not a state to reassure anyone about:
+// the flip trigger is main self-hosting, which is the standing's retirement condition. So that
+// combination prints no "nothing for you to fix" -- it tells the reader the two rows disagree.
+fn emit_build_standing_lines(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
+  match standing {
+    EmitBuildExpectedGreen => [
+      "No standing break is declared, so a red here is a REAL FINDING -- most likely yours.",
+    ]
+    EmitBuildExpectedRed { known_signature: sig } => if lane_blocks {
+      [
+        "",
+        "CONTRADICTION: this lane blocks, yet its standing still declares an expected red with signature",
+        join(["  ", render_emitted_build_signature(sig: sig)], ""),
+        "The lane was to become required only once main self-hosts, which retires that standing.",
+        "One of gunbc.compiler_gate_workflow's emit-build lane row or",
+        "gunbc.emitted_subject_build_gate emit_build_standing is stale. Report it; do not assume this red is yours or not.",
+      ]
+    } else {
+    [
+      "",
+      "A RED IS CURRENTLY EXPECTED: main cannot self-host, and the break has this signature --",
+      join(["  ", render_emitted_build_signature(sig: sig)], ""),
+      "",
+      "This notice names no owning pull request ON PURPOSE. Ownership of a standing break moves,",
+      "and a stale pointer here would be read as authoritative by someone who has no other source.",
+      "The SIGNATURE is the durable handle: search it to find whoever currently holds it.",
+      "",
+      "WHAT TO DO: if the failure above matches that signature, this is not your defect and",
+      "there is nothing for you to fix. Do not patch around it in your branch.",
+      "",
+      "WHAT IS A REAL FINDING: a DIFFERENT error code, or a different emitted file. That is a",
+      "second defect this lane just caught, and it should be reported rather than assumed to be",
+      "the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the",
+      "cause line does not discriminate and the ERROR CODE is what you compare.",
+      "",
+      join(["THIS STANDING RETIRES WHEN: ", emit_build_standing_retirement()], ""),
+      "If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.",
+    ]
+    }
+  }
+}

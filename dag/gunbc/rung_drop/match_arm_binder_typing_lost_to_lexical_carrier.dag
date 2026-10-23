@@ -1,0 +1,51 @@
+module gunbc.rung_drop.match_arm_binder_typing_lost_to_lexical_carrier
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+
+// THE DECLARED RUNG DROP for match-arm binder typing (DESIGN 4b(3)), landed in gunbc#12506 under
+// calm-boar-904's ruling of 2026-10-02.
+//
+// WHAT IS DROPPED. gunbc#12641 typed a match-arm binder as the matched variant field's type at the
+// scrutinee's instantiation, so `artifact.tree` inside `Accepted { value: artifact, ... } => ...` was a
+// typed projection: an undeclared field off the binder refused, and the match was typed by its arms. That
+// typing rode on v2.compiler.infer infer_parameter_scope_search's arm-binder variants. gunbc#12766
+// restricted that search to lambda parameters, and main's lexical-reference cut (gunbc#12947) deleted it,
+// recording each binder's use in ResolvedTree.lexical_bindings instead -- with no declared type for a
+// pattern binder. So today the binder's use is underived, the arm body that projects off it is accepted at
+// the frontier with infer_match_arm_body_type_underived at its own locus, and the match is untyped.
+//
+// WHY StructurallyGuaranteed -> Mitigatable. Before, a field read off a match-arm binder that its variant
+// does not declare was refused by the compiler from the modeled payload. Now it is not judged at all: the
+// arm body is reported underived, typed and located, and nothing is fabricated -- the loud side of the
+// ladder, below the rung it held.
+//
+// THE TRIGGER NAMES THE CAPABILITY, and the population rows below are its executing evidence: each asserts
+// today's state EXACTLY (the binder's use underived, and in the match_binder rows the reason symbol at the
+// binder projection's locus), so an unrelated refusal reds it rather than greening it, and each flips back to its
+// #12641 assertion when the capability lands.
+data match_arm_binder_typing_lost_to_lexical_carrier: RungDrop = RungDrop {
+  identity: "match_arm_binder_typing_lost_to_lexical_carrier" as NonEmptyStr,
+
+  subject: "match-arm binder typing (gunbc#12641): a binder bound by a coproduct arm pattern is typed as its variant field's type at the scrutinee's instantiation, so projections off it are judged",
+
+  declared: "2026-10-02",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "gunbc#12641 subject: v2.compiler.infer typing of match-arm binders through the scope search's arm-binder arms",
+      "v2.test.claim.match_binder.match_binder_typing mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported_holds",
+      "v2.test.claim.match_binder.match_binder_typing mbt_match_is_not_yet_typed_at_the_binder_arm_holds",
+      "v2.test.claim.match_binder.match_binder_typing mbt_an_underived_arm_body_is_a_counted_frontier_holds",
+      "v2.test.claim.field_projection.field_projection_stages fps_a_match_binder_receiver_is_not_yet_typed_holds",
+      "v2.test.claim.field_projection.field_projection_stages fps_a_match_binder_projection_is_in_the_resolved_tree_holds",
+    ],
+    restoration_trigger: "match-arm binder typing through the lexical-binding carrier (N7-3): v2.compiler.resolve records a pattern binder's binding with the variant field it binds, and v2.compiler.infer types the binder's use from that binding at the scrutinee's instantiation, SUFFICIENT FOR mbt_binder_is_not_yet_typed_and_its_arm_body_is_reported to flip to the binder's use typed ParseArtifact, mbt_match_is_not_yet_typed_at_the_binder_arm to the match typed ParseTree, and a field off a match-arm binder its variant does not declare to refuse. Observed at retirement: those rows are flipped in the same change and pass on the required floor."
+  }
+}

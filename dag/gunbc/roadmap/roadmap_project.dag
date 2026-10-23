@@ -1,0 +1,153 @@
+module gunbc.roadmap.roadmap_project
+
+import std.types { String, List, Bool }
+import gunbc.roadmap_nesting { RoadmapMembership }
+import v2.std.algebra { any }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
+// One independently authored nesting relation serves UI, alignment, supervision and fanin.
+// A shared prerequisite is not a member of each project that it blocks.
+type ProjectMembership
+  = MembershipStandalone
+  | MembershipMember { arc: String }
+  | MembershipAmbiguous { arcs: List<String> }
+
+// Duplicate rows for the SAME (member, project) pair are not a fork -- the ownership question is
+// which PROJECT owns the node, so arcs dedupe by project; whether the duplicated rows agree on the
+// contribution argument is the contribution read's question (gunbc.roadmap.roadmap_alignment
+// alignment_membership_contribution_read), never this one's.
+fn project_distinct_strings(items: List<String>) -> List<String> {
+  fold(items, init: [] as List<String>, f: fn(acc, item) {
+    if any(acc, x => x == item) {
+      acc
+    } else {
+      concat(acc, [item])
+    }
+  })
+}
+
+fn node_project_membership(node_id: String, memberships: List<RoadmapMembership>) -> ProjectMembership {
+  let arcs = project_distinct_strings(items: memberships
+    |> filter(e => e.member == node_id)
+    |> map(e => e.project))
+  if count(arcs) == 0 {
+    MembershipStandalone
+  } else if count(arcs) == 1 {
+    match arcs.first() {
+      Present { value: arc } => MembershipMember { arc: arc }
+      Absent => MembershipAmbiguous { arcs: [] }
+    }
+  } else {
+    MembershipAmbiguous { arcs: arcs }
+  }
+}
+
+// THE ENVELOPE KEY: the arc's id for a member, the node's own id for a standalone task. One
+// project, one envelope, one integration head -- and the key is derived by the same rule every
+// consumer uses, so capture, fanin and publication cannot disagree about which envelope a
+// candidate belongs to. Ambiguous membership has no key: there is no honest envelope to name.
+fn project_key_for_node(node_id: String, memberships: List<RoadmapMembership>) -> String? {
+  match project_root_for_node(node_id: node_id, memberships: memberships) {
+    Absent => none
+    Present { value: _ } => match node_project_membership(node_id: node_id, memberships: memberships) {
+      MembershipStandalone => Present { value: node_id }
+      MembershipMember { arc } => Present { value: arc }
+      MembershipAmbiguous { arcs: _ } => none
+    }
+  }
+}
+
+// Immediate children, in authored order. Further levels use the same relation recursively.
+fn project_member_ids(arc: String, memberships: List<RoadmapMembership>) -> List<String> {
+  memberships
+    |> filter(e => (e.project) == arc)
+    |> map(e => e.member)
+}
+
+type ProjectRootWalk { current: String, visited: List<String>, refused: Bool, done: Bool }
+
+fn project_root_for_node(node_id: String, memberships: List<RoadmapMembership>) -> String? {
+  project_root_for_node_in(node_id: node_id, index: membership_index(memberships: memberships))
+}
+
+// ── THE MEMBERSHIP INDEX ─────────────────────────────────────────────────────────────────────
+// A consumer that asks every row for its membership, members or root (the page's issue table, the
+// shown-row filter) builds this once from the relation and reads it per row. Each per-row form
+// above filtered the whole relation, and the root walk re-filtered it at every level of a fold that
+// spent one step per membership row whether or not the walk had resolved -- quadratic per node
+// (measured 2026-10-01: the root walk over the declared authority's 170 nodes cost 460k eval steps).
+// by_member keeps each member's distinct arcs in first-occurrence order (project_distinct_strings'
+// order); by_project keeps each arc's members in authored order with duplicates (the filter's).
+type RoadmapMembershipIndex {
+  by_member: Map<String, List<String>>
+  by_project: Map<String, List<String>>
+  rows: Int
+}
+
+fn membership_strings_of(m: Map<String, List<String>>, key: String) -> List<String>? {
+  map_lookup(m: m, key: key)
+}
+
+fn membership_index(memberships: List<RoadmapMembership>) -> RoadmapMembershipIndex {
+  let empty: Map<String, List<String>> = empty_map()
+  let by_member = fold(memberships, init: empty, f: fn(acc, e) {
+    match membership_strings_of(m: acc, key: e.member) {
+      Absent => map_insert(m: acc, key: e.member, value: [e.project])
+      Present { value: arcs } =>
+        if any(arcs, a => a == e.project) { acc } else { map_insert(m: acc, key: e.member, value: concat(arcs, [e.project])) }
+    }
+  })
+  let by_project = fold(memberships, init: empty, f: fn(acc, e) {
+    match membership_strings_of(m: acc, key: e.project) {
+      Absent => map_insert(m: acc, key: e.project, value: [e.member])
+      Present { value: members } => map_insert(m: acc, key: e.project, value: concat(members, [e.member]))
+    }
+  })
+  RoadmapMembershipIndex { by_member: by_member, by_project: by_project, rows: count(memberships) }
+}
+
+fn node_project_membership_in(node_id: String, index: RoadmapMembershipIndex) -> ProjectMembership {
+  match membership_strings_of(m: index.by_member, key: node_id) {
+    Absent => MembershipStandalone
+    Present { value: arcs } =>
+      if count(arcs) == 1 {
+        match arcs.first() {
+          Present { value: arc } => MembershipMember { arc: arc }
+          Absent => MembershipAmbiguous { arcs: [] }
+        }
+      } else {
+        MembershipAmbiguous { arcs: arcs }
+      }
+  }
+}
+
+fn project_member_ids_in(arc: String, index: RoadmapMembershipIndex) -> List<String> {
+  match membership_strings_of(m: index.by_project, key: arc) {
+    Absent => []
+    Present { value: members } => members
+  }
+}
+
+// The walk keeps its fuel (one step per membership row, as the fold spent it) and stops once it is
+// done or refused, where the fold stepped the settled state through the rest unchanged.
+fn project_root_walk_in(index: RoadmapMembershipIndex, acc: ProjectRootWalk, fuel: Int) -> ProjectRootWalk {
+  if fuel <= 0 || acc.done || acc.refused {
+    acc
+  } else {
+    let next = match node_project_membership_in(node_id: acc.current, index: index) {
+      MembershipStandalone => ProjectRootWalk { current: acc.current, visited: acc.visited, refused: false, done: true }
+      MembershipAmbiguous { arcs: _ } => ProjectRootWalk { current: acc.current, visited: acc.visited, refused: true, done: false }
+      MembershipMember { arc } => ProjectRootWalk { current: arc, visited: concat(acc.visited, [arc]), refused: any(acc.visited, v => v == arc), done: false }
+    }
+    project_root_walk_in(index: index, acc: next, fuel: fuel - 1)
+  }
+}
+
+fn project_root_for_node_in(node_id: String, index: RoadmapMembershipIndex) -> String? {
+  let walked = project_root_walk_in(index: index, acc: ProjectRootWalk { current: node_id, visited: [node_id], refused: false, done: false }, fuel: index.rows)
+  if walked.refused { none } else { match node_project_membership_in(node_id: walked.current, index: index) {
+    MembershipStandalone => Present { value: walked.current }
+    MembershipMember { arc: _ } => none
+    MembershipAmbiguous { arcs: _ } => none
+  } }
+}

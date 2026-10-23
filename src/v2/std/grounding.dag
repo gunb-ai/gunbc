@@ -1,0 +1,294 @@
+module v2.std.grounding
+
+import std.types { Map }
+import v2.std.collection { empty_map, map_insert }
+import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary,
+  invariant_port_locus,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisOverflowDisposition,
+  ModelCoreFactAxisRange,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth,
+  ModelCorePrimitiveFactAxis,
+  PrimitiveFactBundle
+}
+import v2.std.node { Node, Symbol }
+import std.optional { Absent, Present }
+
+type PerLanguageFactBundleKey {
+  subject_carrier: Node
+  target: TargetModel
+  fact_axis: ModelCorePrimitiveFactAxis
+}
+
+type PerLanguageFactBundleEntry {
+  key: PerLanguageFactBundleKey
+  fact_value: Node
+}
+
+type PerLanguageFactBundleRegistry {
+  by_key: Map<PerLanguageFactBundleKey, Node>
+}
+
+type PerLanguageFactBundleSpecFactsFoldState {
+  spec_facts: Map<Symbol, Node>
+  saw_fact: Bool
+}
+
+fn empty_per_language_fact_bundle_registry() -> PerLanguageFactBundleRegistry {
+  PerLanguageFactBundleRegistry { by_key: empty_map() }
+}
+
+fn per_language_fact_bundle_duplicate_key_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^per_language_fact_bundle_duplicate_key_reason,
+    at: invariant_port_locus(
+      port: ^per_language_fact_bundle_insert_port,
+      invariant: ^per_language_fact_bundle_duplicate_key_reason
+    ),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^per_language_fact_bundle_ungrounded_subject_reason,
+    at: node_locus(node: subject_carrier),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn insert_per_language_fact_bundle_entry(
+  registry: PerLanguageFactBundleRegistry,
+  key: PerLanguageFactBundleKey,
+  fact_value: Node
+) -> Outcome<PerLanguageFactBundleRegistry> {
+  match v2.std.collection.map_get_checked(m: registry.by_key, key: key) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: _ } =>
+        outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
+      Absent =>
+        outcome_accepted(
+          value: PerLanguageFactBundleRegistry {
+            by_key: map_insert(m: registry.by_key, key: key, value: fact_value)
+          }
+        )
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn per_language_fact_bundle_subject_axis_key(
+  subject_carrier: Node,
+  target: TargetModel,
+  fact_axis: ModelCorePrimitiveFactAxis
+) -> PerLanguageFactBundleKey {
+  PerLanguageFactBundleKey {
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: fact_axis
+  }
+}
+
+fn per_language_fact_bundle_insert_subject_axis(
+  registry: PerLanguageFactBundleRegistry,
+  state: PerLanguageFactBundleSpecFactsFoldState,
+  subject_carrier: Node,
+  target: TargetModel,
+  fact_axis: ModelCorePrimitiveFactAxis
+) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
+  match v2.std.collection.map_get_checked(
+    m: registry.by_key,
+    key: per_language_fact_bundle_subject_axis_key(
+      subject_carrier: subject_carrier,
+      target: target,
+      fact_axis: fact_axis
+    )
+  ) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: fact_value } =>
+        outcome_accepted(
+          value: PerLanguageFactBundleSpecFactsFoldState {
+            spec_facts: map_insert(
+              m: state.spec_facts,
+              key: discriminant(v: fact_axis),
+              value: fact_value
+            ),
+            saw_fact: true
+          }
+        )
+      Absent =>
+        outcome_accepted(value: state)
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn per_language_fact_bundle_spec_facts_after_axis(
+  acc: Outcome<PerLanguageFactBundleSpecFactsFoldState>,
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target: TargetModel,
+  fact_axis: ModelCorePrimitiveFactAxis
+) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
+  match acc {
+    Accepted { value: state, diagnostics: _ } =>
+      per_language_fact_bundle_insert_subject_axis(
+        registry: registry,
+        state: state,
+        subject_carrier: subject_carrier,
+        target: target,
+        fact_axis: fact_axis
+      )
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn per_language_fact_bundle_spec_facts_state_for_subject(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target: TargetModel
+) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
+  let width = per_language_fact_bundle_insert_subject_axis(
+    registry: registry,
+    state: PerLanguageFactBundleSpecFactsFoldState {
+      spec_facts: empty_map(),
+      saw_fact: false
+    },
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisWidth {}
+  )
+  let signedness = per_language_fact_bundle_spec_facts_after_axis(
+    acc: width,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisSignedness {}
+  )
+  let range = per_language_fact_bundle_spec_facts_after_axis(
+    acc: signedness,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisRange {}
+  )
+  let encoding = per_language_fact_bundle_spec_facts_after_axis(
+    acc: range,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisEncoding {}
+  )
+  let surface = per_language_fact_bundle_spec_facts_after_axis(
+    acc: encoding,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisSurfaceSpelling {}
+  )
+  per_language_fact_bundle_spec_facts_after_axis(
+    acc: surface,
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target,
+    fact_axis: ModelCoreFactAxisOverflowDisposition {}
+  )
+}
+
+fn per_language_fact_bundle_spec_facts_for_subject(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target: TargetModel
+) -> Outcome<Map<Symbol, Node>> {
+  match per_language_fact_bundle_spec_facts_state_for_subject(
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target
+  ) {
+    Accepted { value: state, diagnostics: d } => match state.saw_fact {
+      true =>
+        Accepted { value: state.spec_facts, diagnostics: d }
+      false =>
+        outcome_rejected(d: per_language_fact_bundle_ungrounded_subject_diagnostic(subject_carrier: subject_carrier))
+    }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn primitive_fact_bundle_for_subject(
+  registry: PerLanguageFactBundleRegistry,
+  subject_carrier: Node,
+  target: TargetModel
+) -> Outcome<PrimitiveFactBundle> {
+  match per_language_fact_bundle_spec_facts_for_subject(
+    registry: registry,
+    subject_carrier: subject_carrier,
+    target: target
+  ) {
+    Accepted { value: spec_facts, diagnostics: d } =>
+      Accepted {
+        value: PrimitiveFactBundle {
+          substrate_carrier: subject_carrier,
+          spec_facts: spec_facts
+        },
+        diagnostics: d
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+type HollowAliasGovernanceBar
+  = HollowAliasRequiresNamedFieldsAndKernelAmbient {}
+
+fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
+  HollowAliasRequiresNamedFieldsAndKernelAmbient {}
+}
+
+type GroundingEvidenceSchema
+  = Sg1Evidence { source_carrier: Node }
+  | Sg1bEvidence { source_carrier: Node, boundary_site: FunctionBoundarySite }
+  | Sg2Evidence { source_carrier: Node }
+  | Sg5Evidence { source_carrier: Node }
+
+type PerTargetGroundingReceipt {
+  host_run: v2.std.host_run.EmitHostRunReceipt
+}
+
+fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
+  receipt.host_run.target
+}
+
+type HostVerdictSurfaceExecutionStatus
+  = RuntimeVerdicts
+  | AuthoringTimeVerdictSurface
+
+type PerTargetTestClaimReceipt {
+  host_run: v2.std.host_run.EmitHostRunReceipt
+  execution_status: HostVerdictSurfaceExecutionStatus
+  verdict_tally: v2.std.verdict.VerdictTally
+}
+
+fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> TargetModel {
+  receipt.host_run.target
+}
+
+fn host_verdict_surface_runtime_authoritative(receipt: PerTargetTestClaimReceipt) -> Bool {
+  match receipt.execution_status {
+    RuntimeVerdicts => true
+    AuthoringTimeVerdictSurface => false
+  }
+}

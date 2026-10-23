@@ -1,0 +1,164 @@
+module v2.test.claim.compiler.dependency_demand
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.dependency_demand { CalleeOutsideClosure, resource_set_empty, resource_set_of, DemandDidNotSettle, dependency_demand_of_bounded, DemandDerived, DemandUndecided, DependencyDemand, DependencyDemandRow, FunctionFact, FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources, RequiresUndeclared, UndeclaredOperationCalled, dependency_demand_of, demand_equal }
+import v2.std.algebra { fold_list, length }
+import std.types { List }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+
+// The reducer's interface is its fact rows, so each claim SUPPLIES them (DESIGN section 3). The real
+// producer of the rows -- the per-module reader over resolved modules -- is the census route of D13 step
+// b2, which carries the inhabitance claim for that route.
+
+fn q(dotted: String) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: dotted)
+}
+
+fn net() -> QualifiedName {
+  q(dotted: "std.net.Network")
+}
+
+fn ops() -> List<OperationFact> {
+  [
+    OperationFact { path: q(dotted: "m.Http.Get"), requirement: RequiresResources { resources: [net()] } },
+    OperationFact { path: q(dotted: "m.Clock.Now"), requirement: RequiresNone },
+    OperationFact { path: q(dotted: "m.Shell.Exec"), requirement: RequiresOpaque },
+    OperationFact { path: q(dotted: "m.Legacy.Call"), requirement: RequiresUndeclared }
+  ]
+}
+
+fn plain(path: String, callees: List<QualifiedName>) -> FunctionFact {
+  FunctionFact { path: q(dotted: path), callees: callees, calls_function_value: false }
+}
+
+fn demand_for(rows: List<DependencyDemandRow>, path: String) -> DependencyDemand {
+  fold_list(xs: rows, empty: DemandUndecided { cause: CalleeOutsideClosure { callee: q(dotted: "absent") } }, cons: fn(acc, r) {
+    if r.function == q(dotted: path) { r.demand } else { acc }
+  })
+}
+
+fn is_network(d: DependencyDemand) -> Bool {
+  demand_equal(left: d, right: DemandDerived { resources: resource_set_of(paths: [net()]) })
+}
+
+test fn an_operation_requiring_network_derives_network_holds() -> Bool {
+  let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Http.Get"), q(dotted: "m.Clock.Now")])], operations: ops())
+  is_network(d: demand_for(rows: rows, path: "m.f"))
+}
+
+test fn demand_flows_through_a_transparent_callee_holds() -> Bool {
+  let rows = dependency_demand_of(
+    functions: [plain(path: "m.outer", callees: [q(dotted: "m.inner")]), plain(path: "m.inner", callees: [q(dotted: "m.Http.Get")])],
+    operations: ops()
+  )
+  is_network(d: demand_for(rows: rows, path: "m.outer"))
+}
+
+test fn a_cycle_settles_on_the_union_holds() -> Bool {
+  let rows = dependency_demand_of(
+    functions: [plain(path: "m.a", callees: [q(dotted: "m.b")]), plain(path: "m.b", callees: [q(dotted: "m.a"), q(dotted: "m.Http.Get")])],
+    operations: ops()
+  )
+  is_network(d: demand_for(rows: rows, path: "m.a")) && is_network(d: demand_for(rows: rows, path: "m.b"))
+}
+
+test fn a_none_only_fn_derives_the_empty_demand_holds() -> Bool {
+  let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Clock.Now")])], operations: ops())
+  demand_equal(left: demand_for(rows: rows, path: "m.f"), right: DemandDerived { resources: resource_set_empty() })
+}
+
+test fn an_opaque_operation_is_undecided_by_its_cause_RED() -> Bool {
+  let rows = dependency_demand_of(functions: [plain(path: "m.outer", callees: [q(dotted: "m.inner")]), plain(path: "m.inner", callees: [q(dotted: "m.Shell.Exec"), q(dotted: "m.Http.Get")])], operations: ops())
+  match demand_for(rows: rows, path: "m.outer") {
+    DemandUndecided { cause: OpaqueOperationCalled { operation: o } } => o == q(dotted: "m.Shell.Exec")
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
+  }
+}
+
+test fn an_undeclared_operation_is_never_read_as_none_RED() -> Bool {
+  let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "m.Legacy.Call")])], operations: ops())
+  match demand_for(rows: rows, path: "m.f") {
+    DemandUndecided { cause: UndeclaredOperationCalled { operation: _ } } => true
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
+  }
+}
+
+test fn a_function_value_call_is_undecided_RED() -> Bool {
+  let rows = dependency_demand_of(functions: [FunctionFact { path: q(dotted: "m.f"), callees: [], calls_function_value: true }], operations: ops())
+  match demand_for(rows: rows, path: "m.f") {
+    DemandUndecided { cause: FunctionValueCalled { function: _ } } => true
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
+  }
+}
+
+test fn a_callee_outside_the_closure_is_undecided_RED() -> Bool {
+  let rows = dependency_demand_of(functions: [plain(path: "m.f", callees: [q(dotted: "elsewhere.g")])], operations: ops())
+  match demand_for(rows: rows, path: "m.f") {
+    DemandUndecided { cause: CalleeOutsideClosure { callee: c } } => c == q(dotted: "elsewhere.g")
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
+  }
+}
+
+// THE COMPETING-CAUSE CYCLE (review of gunbc#12985). a and b call each other and each reaches a
+// DIFFERENT opaque operation. With "keep the first cause found" the two causes swapped every round and
+// any-undecided-equals-any-undecided read the swap as settled, so the answer depended on iteration
+// parity. With the cause order, both settle on the cause whose operation precedes in the fact rows:
+// Oa is listed before Ob, so a and b both read OpaqueOperationCalled { Oa }, whatever order the rounds
+// visit them in.
+fn competing_ops() -> List<OperationFact> {
+  [
+    OperationFact { path: q(dotted: "m.Oa"), requirement: RequiresOpaque },
+    OperationFact { path: q(dotted: "m.Ob"), requirement: RequiresOpaque }
+  ]
+}
+
+fn settles_on_oa(d: DependencyDemand) -> Bool {
+  match d {
+    DemandUndecided { cause: OpaqueOperationCalled { operation: o } } => o == q(dotted: "m.Oa")
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
+  }
+}
+
+test fn a_competing_cause_cycle_settles_on_one_stable_cause_at_every_fn_RED() -> Bool {
+  let forward = dependency_demand_of(
+    functions: [plain(path: "m.a", callees: [q(dotted: "m.b"), q(dotted: "m.Oa")]), plain(path: "m.b", callees: [q(dotted: "m.a"), q(dotted: "m.Ob")])],
+    operations: competing_ops()
+  )
+  let reversed = dependency_demand_of(
+    functions: [plain(path: "m.b", callees: [q(dotted: "m.Ob"), q(dotted: "m.a")]), plain(path: "m.a", callees: [q(dotted: "m.Oa"), q(dotted: "m.b")])],
+    operations: competing_ops()
+  )
+  settles_on_oa(d: demand_for(rows: forward, path: "m.a"))
+    && settles_on_oa(d: demand_for(rows: forward, path: "m.b"))
+    && settles_on_oa(d: demand_for(rows: reversed, path: "m.a"))
+    && settles_on_oa(d: demand_for(rows: reversed, path: "m.b"))
+}
+
+// THE FAIL-CLOSED ARM, AUTHORED RED. A chain three calls deep needs three rounds to carry Network to
+// its head; bounded to one round, the table has not settled and every fn reads DemandDidNotSettle
+// rather than the partial table.
+test fn a_table_that_does_not_settle_within_its_bound_refuses_at_every_fn_RED() -> Bool {
+  let rows = dependency_demand_of_bounded(
+    functions: [
+      plain(path: "m.c1", callees: [q(dotted: "m.c2")]),
+      plain(path: "m.c2", callees: [q(dotted: "m.c3")]),
+      plain(path: "m.c3", callees: [q(dotted: "m.Http.Get")])
+    ],
+    operations: ops(),
+    rounds: 1
+  )
+  (length(xs: rows) == 3) && fold_list(xs: rows, empty: true, cons: fn(all, r) { all && did_not_settle_at(row: r) })
+}
+
+fn did_not_settle_at(row: DependencyDemandRow) -> Bool {
+  match row.demand {
+    DemandUndecided { cause: DemandDidNotSettle { function: f } } => f == row.function
+    DemandUndecided { cause: _ } => false
+    DemandDerived { resources: _ } => false
+  }
+}

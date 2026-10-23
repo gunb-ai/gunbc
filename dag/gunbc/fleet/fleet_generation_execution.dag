@@ -1,0 +1,32 @@
+module gunbc.fleet_generation_execution
+
+import std.types { String, NonEmptyStr, Int }
+import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_principal, grounded_posix_principal_name }
+import gunbc.fleet_generation_publication { fleet_generation_native_publication_script }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.sudo.elevation { sudo_elevate_as_command }
+import extdeps.languages.bash.invocation { bash_program }
+
+// Shared location and writer authority. The fleet planner retains its public wrappers; the
+// bounded commissioning helper consumes these facts without importing the full planning graph.
+data fleet_generation_directory: String = "/var/lib/gunbc/fleet-converge"
+data fleet_generation_lock: String = concat(fleet_generation_directory, "/plan_generation.lock")
+
+fn fleet_generation_path(host: NonEmptyStr) -> String {
+  join([fleet_generation_directory, "/plan_generation.", host as String], "")
+}
+
+fn fleet_generation_writer() -> NonEmptyStr {
+  grounded_posix_principal_name(p: fleet_posix_ci_runner_principal())
+}
+
+// Caller holds the existing fleet flock. Even when the enclosing executor is root, publication
+// runs as the existing lease owner: a mutable generation path must not become a root file write.
+fn fleet_generation_publication_as_owner(action: NonEmptyStr, host: NonEmptyStr,
+  prior: Int, planned: Int, bundle: NonEmptyStr) -> ArgvCommand {
+  sudo_elevate_as_command(user: fleet_generation_writer(), command: [
+    bash_program().invocation as String, "-c", fleet_generation_native_publication_script,
+    "fleet-generation-publication", action as String, fleet_generation_path(host: host),
+    to_string(prior), to_string(planned), bundle as String,
+  ])
+}

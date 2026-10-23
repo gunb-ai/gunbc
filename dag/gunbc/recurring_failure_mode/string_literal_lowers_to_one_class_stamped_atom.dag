@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.string_literal_lowers_to_one_class_stamped_atom
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data string_literal_lowers_to_one_class_stamped_atom: RecurringFailureMode = RecurringFailureMode {
+  identity: "string_literal_lowers_to_one_class_stamped_atom" as NonEmptyStr,
+
+  receipts: [
+    "a string literal lowers to one class-stamped atom: v2 lowers every string literal to the same childless atom, `dag_token_string_literal`. The terminal is class-stamped, so the authored text is not in the tree, and `\"abc\"` and `\"xyz\"` lower to one node. It is the class the caret symbol had before MQ-1 PR-2 (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form, reference_conservation_population_omits_class_stamped_terminals), for strings.",
+
+    "FOUND 2026-09-30 by neat-ibex-696, probing v2 before adding the kernel host-text String (the successor of #12549). tpb_assemble plus infer on `let y: Int = \"abc\"` showed one childless string-literal atom and an underived literal. Typing the literal as host text does not need its value, so the kernel String change types the literal (v2.extdeps.languages.dag DagCanonicalStringLiteral, v2.std.node host_text_type_node) and leaves the value missing. neat-boar-16 ruled the value fix out of that change and routed it to gentle-koi-724's lane, which owns the same machinery as #12420.",
+
+    "HARM, AND WHERE IT BLOCKS: the declared route from host text to the structural carrier is the literal homomorphism (gunbc.structural_realization_bindings literal_homomorphism_rows, UnicodeScalarSequenceUnfold), and it needs the literal's scalars. Without them, a string literal at a v2.std.text String (FreeMonoid<Char>) position cannot be unfolded, so v2 infer REFUSES it at the annotation rather than admitting it (v2.test.claim.body_let_annotation bla_host_text_literal_at_structural_string_refuses). Any consumer that needs the text itself, such as evaluation, emission or equality between two literals, has nothing to read.",
+
+    "CURRENT RUNG: below the floor for the value (two different literals are one node, silently); refused for the structural crossing. CEILING: structurally impossible, because a string literal lowers to a literal carrying its text. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the dag grammar lexeme-stamps the string-literal terminal, and body lowering carries it as the literal's payload with its occurrence, as `dag_symbol_literal_node` carries the caret's name. Then two literals with different text are two nodes, and the unfold row can read the scalars. The literal-at-structural-String refusal row then flips to an unfold control.",
+
+    "CLIMBED BY gunbc#12759 (sleek-owl-120), THE TRIGGER'S CAPABILITY. A string literal now lowers to the string-literal atom with its decoded value as one named payload (`v2.extdeps.languages.dag` `dag_string_literal_node`, `string_literal_value_field`), so two literals with different text are two nodes. #12760's literal arm reads that value (`DagCanonicalStringLiteral { value }` through `dag_string_literal_value_symbol_optional`), and infer types the payload atom as host text by its own family (`InferStringValuePayload`), never as a digit. jolly-boar-246's map-literal key rows, which could not flip on the collapsed atom, flip with #12759 plus #12760 (measured by claim_batch). RESIDUAL, A DIFFERENT OBSTACLE: a string literal at a v2.std.text String (FreeMonoid<Char>) position still REFUSES instead of unfolding, because v2 infer does not peel an alias to its body at a use site, so it cannot recognize that destination as the unfold row's FreeMonoid over Char (`gunbc.structural_realization_bindings` `literal_homomorphism_rows`). That refusal is located and never an admit, and it is a STOPGAP: the lawful route is the unfold, not a refusal (neat-boar-16's ruling on #12760). Its trigger is gunbc#12809 (v2 String literal typed through the declared unfold, in the one judge infer_judge_declared_position), which is parked on #12726 PR2 and #12506. That PR resolves the annotation's declaration through its alias to the row's destination and elaborates the literal through UnicodeScalarSequenceUnfold, and v2.test.claim.body_let_annotation bla_host_text_literal_at_structural_string_refuses flips from a refusal to an unfold control. Every corpus site this stopgap newly refuses is listed on #12760.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_canonical_literal_from_node", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.languages.dag", decl_name: "dag_string_literal_node", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_let_annotation", decl_name: "bla_host_text_literal_at_structural_string_refuses", field: WholeDeclaration },
+  ],
+}

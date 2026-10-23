@@ -1,0 +1,15 @@
+module gunbc.site.status
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+
+// The status inks these badges read are slots of gunbc.site.element.palette.
+// Blue also paints the graph's selected-node ink. Completion remains subdued.
+fn status_tone(label: String) -> String {
+  if label == "Ready" || label == "ready" { "ready" }
+  else if label == "Assigned" || label == "assigned" || label == "Active" || label == "active" || label == "Review" || label == "review" { "assigned" }
+  else if label == "Blocked" || label == "blocked" || label == "Returned" || label == "returned" || label == "not-ready" { "blocked" }
+  else { "neutral" }
+}
+fn status_badge(label: String) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: "site-status"), attr(name: "data-status-tone", value: status_tone(label: label))], [txt(label)])
+}

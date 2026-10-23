@@ -1,0 +1,42 @@
+module v2.test.claim.self_host_contract.ingest_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.ingest { parse_atom_frontier_class }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, Symbol, Atom, TypeNode, node_synthetic }
+
+// THE 03_ingest ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.ingest parse_atom_frontier_class recovers an atom's token class through its binding
+// class, or directly when the atom is itself a token class, and refuses an atom neither names.
+type IgcReading = IgcClass { class: Symbol } | IgcRefused
+
+fn igc_class_of(identity: Symbol) -> IgcReading {
+  match parse_atom_frontier_class(
+    atom: node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: []),
+    atom_identity: identity,
+    binding_to_class: map_insert(m: empty_map(), key: ^fn_name, value: ^Ident),
+    token_classes: map_insert(m: empty_map(), key: ^LParen, value: ^LParen)
+  ) {
+    Accepted { value: class, diagnostics: _ } => IgcClass { class: class }
+    Rejected { diagnostics: _ } => IgcRefused
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: an atom with no recoverable class getting
+// one.
+fn ingest_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let unrecoverable_refused = igc_class_of(identity: ^unbound_atom) == IgcRefused
+  if inject_fault {
+    !unrecoverable_refused
+  } else {
+    igc_class_of(identity: ^fn_name) == IgcClass { class: ^Ident }
+      && igc_class_of(identity: ^LParen) == IgcClass { class: ^LParen }
+      && unrecoverable_refused
+  }
+}
+
+test fn ingest_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  ingest_emitted_contract_holds(inject_fault: false)
+    && !ingest_emitted_contract_holds(inject_fault: true)
+}

@@ -1,0 +1,56 @@
+module test.claim.uri_percent_decode_witness
+
+import std.types { Bool, String }
+import extdeps.uri {
+  uri_percent_decode_component, UriPercentComponentDecoded, UriPercentComponentDecodeRefused,
+  UriPercentDecodeTruncatedEscape, UriPercentDecodeNonHexDigit, UriPercentDecodeNotUtf8,
+}
+
+fn decodes_to(wire: String, expected: String) -> Bool {
+  match uri_percent_decode_component(value: wire) {
+    UriPercentComponentDecoded { value: v } => v == expected
+    UriPercentComponentDecodeRefused { cause: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: an authorization-code-shaped value with the reserved escapes, either hex case.
+test fn escapes_decode_once_in_either_hex_case() -> Bool {
+  decodes_to(wire: "4%2F0Ab%3d%3D%2b", expected: "4/0Ab==+")
+}
+
+// DECODED EXACTLY ONCE: an encoded percent sign yields "%2F", never a second decode to "/".
+test fn an_encoded_percent_is_not_decoded_twice() -> Bool {
+  decodes_to(wire: "%252F", expected: "%2F")
+}
+
+// ANY OCTET, NOT A RESERVED SET: a multi-octet UTF-8 scalar decodes from its triplets.
+test fn a_multi_octet_scalar_decodes_from_its_triplets() -> Bool {
+  decodes_to(wire: "caf%C3%A9", expected: "café")
+}
+
+test fn a_trailing_or_short_escape_refuses() -> Bool {
+  all(["abc%", "abc%4"], wire => match uri_percent_decode_component(value: wire) {
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape } => true
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: _ } } => false
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 } => false
+    UriPercentComponentDecoded { value: _ } => false
+  })
+}
+
+test fn a_non_hex_escape_refuses() -> Bool {
+  match uri_percent_decode_component(value: "%G1") {
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: c } } => c == 71
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape } => false
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 } => false
+    UriPercentComponentDecoded { value: _ } => false
+  }
+}
+
+test fn octets_that_are_not_utf8_refuse() -> Bool {
+  match uri_percent_decode_component(value: "%C3%28") {
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 } => true
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape } => false
+    UriPercentComponentDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: _ } } => false
+    UriPercentComponentDecoded { value: _ } => false
+  }
+}

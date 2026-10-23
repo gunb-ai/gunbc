@@ -1,0 +1,84 @@
+module test.claim.managed_host_forged_probe_witness
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MANAGED-HOST SEALS, ENROLLED AS EXECUTED REDS (eager-gull-22's review of gunbc#13055). The
+// probe source below authors a ManagedHost, a ManagedHostBinding, an AdmittedResetSubject and an
+// AdmittedBootSubject (with the reset arm's selection) outside their modules, mints a row through
+// managed_host_fixture from an unadmitted caller, and drives host_reset_return_issue_and_watch and
+// boot_drive_handoff with the forged subjects. This witness hands that source to the compiler
+// through the diagnostic-census harness and requires the refusal CLASS at each SUBJECT by name. It
+// is an identity join, so a probe refusing for any other reason measures another wall, and the
+// harness control shows the census ran.
+data forged_probe_source: String = "module probe_managed_host_forged\n\nimport std.types { EpochMs, NonEmptyStr, String }\nimport gunbc.host_reset_return { ObserverSelfIdentity, ResetAttemptMint, ResetIssuanceRoute, ResetObserverSelection }\nimport extdeps.bmc.access_profile { BmcAccessObserved }\nimport gunbc.fleet_host_identity { operator_host_mtcollins1 }\nimport gunbc.managed_host { ManagedHost, ManagedHostBinding, ResetNoUnitHold, managed_host_fixture }\nimport gunbc.host_reset_subject_roster { AdmittedResetSubject }\nimport gunbc.host_reset_return_run { host_reset_return_issue_and_watch }\nimport gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_observation, mtcollins1_capability_row }\nimport gunbc.host_reset_boot_selection { reset_boot_selection }\nimport extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }\nimport gunbc.managed_host_boot { AdmittedBootSubject }\nimport gunbc.boot_medium { stock_installer_boot_medium }\nimport gunbc.managed_host_unit_hold { UnitHoldProof }\nimport gunbc.managed_host_boot_handoff { BootHandoffResult, boot_drive_handoff }\nimport gunbc.managed_host_boot_image_fetch { fetch_boot_medium }\nimport std.process { ProcessExit }\n\nfn forged_row_named_mtcollins1(h: ManagedHost) -> ManagedHost {\n  ManagedHost {\n    host: operator_host_mtcollins1,\n    access: BmcAccessObserved { observation: mtcollins1_access_observation },\n    capability_row: mtcollins1_capability_row,\n    secure: h.secure,\n    unit_hold: ResetNoUnitHold,\n  }\n}\n\nfn forged_row_through_the_fixture(h: ManagedHost) -> ManagedHost {\n  managed_host_fixture(host: operator_host_mtcollins1, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold)\n}\n\nfn forged_binding(h: ManagedHost) -> ManagedHostBinding {\n  ManagedHostBinding { host: h, observation: mtcollins1_access_observation, account: \"forger\" }\n}\n\nfn forged_subject(h: ManagedHost) -> AdmittedResetSubject {\n  AdmittedResetSubject { binding: forged_binding(h: h), boot_selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom) }\n}\n\nfn drive_the_run_with_a_forged_subject(\n  h: ManagedHost,\n  selection: ResetObserverSelection,\n  identity: ObserverSelfIdentity,\n  route: ResetIssuanceRoute,\n  issued_at: EpochMs,\n) -> ResetAttemptMint {\n  host_reset_return_issue_and_watch(\n    proof: none,\n    candidate: forged_subject(h: h),\n    selection: selection,\n    identity: identity,\n    attempt: \"forged\",\n    route: route,\n    password_file: \"/tmp/pw\",\n    issued_at: issued_at,\n  )\n}\n\nfn forged_boot_subject_with_the_reset_selection(h: ManagedHost) -> AdmittedBootSubject {\n  match reset_boot_selection(host: h) {\n    Present { value: sel } => AdmittedBootSubject { binding: forged_binding(h: h), medium: stock_installer_boot_medium, selection: sel, execution_revision: \"forged\" }\n    Absent => AdmittedBootSubject { binding: forged_binding(h: h), medium: stock_installer_boot_medium, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), execution_revision: \"forged\" }\n  }\n}\n\nfn drive_the_boot_handoff_from_outside(proof: UnitHoldProof, h: ManagedHost) -> BootHandoffResult {\n  boot_drive_handoff(proof: proof, subject: forged_boot_subject_with_the_reset_selection(h: h), label: \"forged\", password_file_raw: \"/tmp/pw\")\n}\n\nfn fetch_a_medium_from_outside_its_entries() -> ProcessExit {\n  fetch_boot_medium(medium: stock_installer_boot_medium, url: \"https://example.invalid/x.iso\")\n}\n"
+
+fn probe() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(forged_probe_source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data harness_control_source: String = "module probe_managed_host_harness_control\nimport std.types { List }\nimport gunbc.managed_host { ManagedHost, managed_hosts }\nfn rows() -> List<ManagedHost> { managed_hosts() }\n"
+
+// THE CONTROL IS CLASS-SCOPED: a clean source reading the same module through its real producer
+// yields NO row of either class the reds count, so a red below is the probe's own forgery or outside
+// call, joined by class and subject, and not background the harness emits for any importer.
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// A ROW, A BINDING AND AN ADMITTED SUBJECT CANNOT BE AUTHORED OUTSIDE THEIR MINTS.
+test fn each_forged_managed_host_carrier_is_refused_at_its_literal() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ManagedHost") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ManagedHostBinding") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AdmittedResetSubject") >= 1
+}
+
+// A BOOT SUBJECT CANNOT BE AUTHORED OUTSIDE ITS ADMISSION, and in particular not with the reset arm's
+// selection: the forgery pairs a forged binding with reset_boot_selection's value, and the compiler
+// refuses the literal, so the two arms' selections cannot be cross-wired by construction.
+test fn a_forged_boot_subject_carrying_the_reset_selection_is_refused_at_its_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "SoleConstructorViolation", subject: "AdmittedBootSubject") >= 1
+}
+
+// THE FIXTURE MINT AND THE RUN'S ISSUING STEP REFUSE A CALLER OUTSIDE THEIR ADMITTED ROOTS.
+test fn the_fixture_mint_and_the_issuing_step_refuse_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "managed_host_fixture") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "host_reset_return_issue_and_watch") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "boot_drive_handoff") >= 1
+}
+
+// THE BOOT-MEDIUM FETCH IS SEALED TO ITS ENTRIES: it publishes on the host it runs on and does not reach
+// the medium's export target, so an outside caller pairing some medium with some host is refused at
+// compile time. The control is the class-scoped harness control above: a clean source emits no
+// ConstructorCallAdmissionRefused, so this red is the outside call itself.
+test fn a_boot_medium_fetch_from_outside_its_entries_is_refused() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "fetch_boot_medium") >= 1
+}

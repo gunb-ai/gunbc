@@ -1,0 +1,13 @@
+module gunbc.roadmap_launch_canary_sentinel
+
+import std.types { NonEmptyStr }
+
+// THE SUBJECT OF THE ROADMAP LAUNCH CANARY, AND NOTHING ELSE. This module is the one path the
+// canary task (gunbc.roadmap_launch_canary) is permitted to change, and the only edit it may make
+// is `pending:<nonce>` -> `completed:<nonce>` on this row. It is deliberately a separate module
+// from the oracle that judges it (test.manual.roadmap_launch_canary_oracle): the pinned-oracle
+// grain is the ENTRY FILE (gunbc.roadmap_validation_oracle validation_oracle_grain_note), so the
+// judged value and the judging claim cannot share a file without the authorized mutation moving
+// the pin it is verified against. The nonce is authored once, in the oracle, and copied here as
+// the value under judgment; the oracle decides equality, this row only carries the state.
+data roadmap_launch_canary_sentinel: NonEmptyStr = "pending:FRYKV2DT7ZMYQ6NCMZSQ"

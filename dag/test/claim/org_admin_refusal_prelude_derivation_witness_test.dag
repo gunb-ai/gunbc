@@ -1,0 +1,87 @@
+module test.claim.org_admin_refusal_prelude_derivation_witness_test
+
+// WHAT THESE WITNESSES COVER, STATED AT THE GRAIN THEY ACTUALLY HOLD: the prelude's command list
+// INCLUDES the message the shared renderer produces. That is inclusion coverage over one shared
+// helper, and it is worth executing -- if the prelude stops echoing the rendered sentence, or
+// corrupts it on the way through the shell quoting, these go red.
+//
+// AN EARLIER REVISION OF THIS HEADER CLAIMED A DISCRIMINATING RED IT DOES NOT HAVE. It said
+// "change either message function and the corresponding test fails". It does not. Both the expected
+// string and the prelude bytes are computed from the SAME helper, so editing the helper's wording
+// moves both sides together and every test here stays green. A check whose two sides share their
+// only authority cannot detect a change to that authority; what it detects is the two sides coming
+// APART.
+//
+// THE FIX IS NOT A SECOND COPY OF THE MESSAGE. Manufacturing a discriminating red by maintaining an
+// independently authored expected string would reintroduce exactly the duplicated sentence this
+// arrangement removed, and it would rot the moment either copy moved. The honest move is to say
+// what the coverage is and stop citing more.
+//
+// AND THIS IS NOT THE TYPED-REFUSAL JOIN. Nothing here constructs or matches
+// OrgAdminCredentialRefusal; gunbc.auth.org_admin_credential records why, and what would change it.
+// These witnesses say the words have one home and reach the runner -- not that a refusal VALUE ever
+// exists on the CI path.
+import gunbc.ci_spec { gunbc_ci_org_admin_app_token_prelude }
+import gunbc.auth.org_admin_credential {
+  org_admin_app_key_unreadable_message,
+  org_admin_installation_token_refused_message,
+}
+import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
+import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
+import v2.std.orchestration { PipelineStep, Do, Run }
+import std.types { String }
+import std.logic { Bool }
+
+fn step_commands(steps: List<PipelineStep>) -> List<String> {
+  fold(steps, init: [], f: (acc, s) => match s {
+    Do { run: r } => concat(acc, [r.command])
+    _ => acc
+  })
+}
+
+fn any_command_contains(cmds: List<String>, want: String) -> Bool {
+  fold(cmds, init: false, f: (acc, c) => acc || string_contains(s: c, pattern: want))
+}
+
+fn prelude_commands() -> List<String> {
+  step_commands(steps: gunbc_ci_org_admin_app_token_prelude())
+}
+
+// The App-key refusal the operator actually saw on 2026-09-05, rendered from the arm and found in
+// the bytes. The status is the unexpanded shell word the prelude holds at that point, which is why
+// the renderer takes it as a String rather than fabricating an integer.
+test fn the_app_key_refusal_sentence_in_the_prelude_comes_from_the_typed_renderer() -> Bool {
+  any_command_contains(
+    cmds: prelude_commands(),
+    want: org_admin_app_key_unreadable_message(
+      resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+      http_status: "$SM_CODE"
+    )
+  )
+}
+
+test fn the_installation_token_refusal_sentence_in_the_prelude_comes_from_the_typed_renderer() -> Bool {
+  any_command_contains(
+    cmds: prelude_commands(),
+    want: org_admin_installation_token_refused_message(
+      installation: "gunbai-ci",
+      status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+    )
+  )
+}
+
+// THE POSITIVE CONTROL ON THE MATCHER. Both tests above are satisfied by a `string_contains` that
+// answers true for anything, so the matcher is driven to false over the same command list with a
+// sentence nothing renders. Without this the pair would pass on a broken predicate and the join
+// would be decorative.
+test fn the_prelude_matcher_can_say_no() -> Bool {
+  !any_command_contains(
+    cmds: prelude_commands(),
+    want: "OrgAdminNoSuchRefusal: a sentence no renderer in this tree produces"
+  )
+}
+
+// And the command list must be non-empty, or every containment check above is vacuous over nothing.
+test fn the_prelude_actually_carries_commands() -> Bool {
+  count(prelude_commands()) > 0
+}

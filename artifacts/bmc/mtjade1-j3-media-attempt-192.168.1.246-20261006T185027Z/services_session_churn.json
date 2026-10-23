@@ -1,0 +1,7 @@
+{
+  "argv": "GET https://192.168.1.246/api/settings/services (session cookie, password not recorded)",
+  "web_active_session": 137,
+  "web_maximum_sessions": 148,
+  "kvm_viewer_count": 0,
+  "kvm_active_session": 128
+}

@@ -1,0 +1,242 @@
+module test.claim.brand_nominal_identity_witness_test
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS WITNESS PROVES.
+//
+// A `where brand("...")` refinement is a NOMINAL claim: two independently declared types are
+// different types, and a value of one must not become a value of the other. Before this witness,
+// brand identity was the LITERAL STRING -- v1.compiler.infer where_refinement_predicates_equivalent
+// dispatched Brand to where_predicate_literal_string_args_match -- so two declarations sharing a
+// spelling were ONE type and the cast between them was not merely unenforced, it was not a cast at
+// all. That is DESIGN section 3's meaning fork with the two halves swapped: not one concept wearing
+// two names, but one name silently merging two concepts.
+//
+// THE COLLISION WAS AUTHORED IN THIS REPOSITORY AND ACCEPTED SILENTLY. gunbc.fleet
+// fleet_site_locale carries an annotation recording that its first revision minted a second
+// `HostIdentity` beside the one in product.placement_supply and that it did NOT surface as a
+// duplicate-declaration diagnostic. A person caught it and wrote the incident into prose because
+// there was no mechanism to write it into. Arm one is that incident, made executable.
+
+// WHY SIX ARMS AND NOT ONE.
+//
+// A bare "does the collision refuse" probe returns a count, and before the wall exists that count
+// is zero -- indistinguishable from a probe that never compiled, and from a compiler that refuses
+// everything. The three controls are what turn the collision result into evidence:
+//
+//   COLLISION  -- two declarations, ONE literal, a cast between them. Must REFUSE. This is the red.
+//   MISMATCH   -- two declarations, TWO literals, the same cast. Must REFUSE, for the same reason.
+//   CONSTRUCT  -- base String asserted INTO a brand. Must be ACCEPTED, and this is the arm that
+//                 keeps the wall honest: `as` exists to express exactly this assertion, no brand
+//                 check can verify it, and a wall that blocked it would refuse every legitimate
+//                 construction site in the corpus. Measured on the pre-change compiler, CONSTRUCT
+//                 and MISMATCH emitted the IDENTICAL deferred advisory, so the diagnostic carried
+//                 no information separating a violation from a correct construction.
+//   STRIP      -- brand to BASE to brand, `a as String as BniB`. Must be ACCEPTED. The author casts
+//                 down to the base type precisely to SHED the brand, then re-brands; that is the
+//                 same assertion CONSTRUCT protects, reached from a branded value instead of a bare
+//                 one. THIS ARM EXISTS BECAUSE ITS ABSENCE WAS A REGRESSION: the first version of
+//                 this wall had CONSTRUCT and DUAL and neither covered this third legitimate shape,
+//                 so the check peeled through the intervening cast and refused four
+//                 spice_passive_projection sites the corpus relies on. An incomplete partition of
+//                 the ACCEPTING cases does not fail loudly -- it routes the unclassified case to
+//                 whichever arm is nearest, and here that was "refuse".
+//   DUAL       -- ONE declaration reached from two use sites. Must be ACCEPTED. This is the trap in
+//                 the repair rather than in the defect: a key that is occurrence-derived or
+//                 position-derived makes the collision refuse AND makes a type stop being itself
+//                 when it is used twice, and that failure is silent in the opposite direction.
+//
+// DUAL and CONSTRUCT were green before the change and must stay green; COLLISION and MISMATCH were
+// green before the change and must now be red. Neither pair retires: per DESIGN section 4b(4) the
+// expecting-red arms flip to permanent regression controls rather than dissolving, and the
+// accepting arms are what prove the wall did not swallow legitimate construction.
+
+type BrandArm {
+  name: String
+  source: String
+  expect_blocking: Bool
+  expect_class: String
+}
+
+// THE REFUSING FIXTURES ARE INVALID PROGRAMS HANDED TO THE COMPILER, WHICH IS WHY THE RED IS
+// AUTHORABLE AT ALL. (The accepting arms are VALID programs, and prove the wall does not swallow
+// them; only the refusing three are the invalid-program half of this argument.) DESIGN
+// section 4b's top-rung question asks whether the forbidden state can be
+// expressed anywhere the check could run. It cannot be expressed in the ACCEPTED corpus -- the
+// annotation-erased census finds 236 brand declarations carrying 236 distinct literals, zero
+// duplicates -- but a compiler's regression probes are precisely invalid programs, and here the
+// fixture harness expresses it directly.
+
+data brand_arms: List<BrandArm> = [
+  BrandArm {
+    name: "collision",
+    source: "module bni_probe\ntype BniA = String where brand(\"bni_collide\")\ntype BniB = String where brand(\"bni_collide\")\nfn bni_f(a: BniA) -> BniB { a as BniB }\n",
+    expect_blocking: true,
+    expect_class: "TypeMismatch"
+  },
+  BrandArm {
+    name: "mismatch",
+    source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: BniA) -> BniB { a as BniB }\n",
+    expect_blocking: true,
+    expect_class: "TypeMismatch"
+  },
+  BrandArm {
+    name: "construct",
+    source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\nfn bni_f(s: String) -> BniA { s as BniA }\n",
+    expect_blocking: false,
+    expect_class: ""
+  },
+  BrandArm {
+    name: "dual",
+    source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\nfn bni_g(a: BniA) -> BniA { a }\nfn bni_f(a: BniA) -> BniA { bni_g(a: a) }\n",
+    expect_blocking: false,
+    expect_class: ""
+  },
+  BrandArm {
+    name: "strip",
+    source: "module bni_probe\ntype BniA = String where brand(\"bni_alpha\")\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: BniA) -> BniB { a as String as BniB }\n",
+    expect_blocking: false,
+    expect_class: ""
+  },
+  BrandArm {
+    name: "undeclared_site",
+    source: "module bni_probe\ntype BniB = String where brand(\"bni_beta\")\nfn bni_f(a: String where brand(\"bni_inline\")) -> BniB { a as BniB }\n",
+    expect_blocking: true,
+    expect_class: "InternalError"
+  }
+]
+
+// A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO. CensusNotRunnable is an
+// infrastructural failure of the probe compile; folding it to 0 would make a broken harness read as
+// an accepted source, which is the top-as-answer conflation DESIGN section 5 forbids. Every
+// assertion below compares against a non-negative expectation, so an unrunnable probe reds.
+
+fn arm_blocking_count(a: BrandArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// COUNT THE INTENDED DIAGNOSTIC, NOT ANY REFUSAL. gunbc.compile_diagnostic_census states that the
+// row set is the WHOLE COMPILE's and that only a count scoped to a class -- or a differential --
+// is exact. A bare `blocking >= 1` therefore accepts ANY blocking diagnostic as evidence of this
+// wall, so the arm would stay green if the nominal check regressed while some unrelated refusal
+// appeared in its place. That is a check whose subject is wider than the claim it is cited for
+// (codex review 60451).
+fn arm_class_blocking_count(a: BrandArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: a.expect_class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE SECOND CONJUNCT IS WHAT MAKES THE SCOPE EXACT RATHER THAN MERELY NARROWER. Requiring the
+// targeted count to EQUAL the total blocking count means an unrelated blocking diagnostic in the
+// same fixture reds the arm instead of silently satisfying it, so the arm cannot be carried by a
+// refusal it did not intend. Together the two conjuncts say: this fixture refuses, it refuses with
+// the class this wall emits, and it refuses with NOTHING ELSE.
+fn arm_agrees(a: BrandArm) -> Bool {
+  let blocking = arm_blocking_count(a: a)
+  let targeted = arm_class_blocking_count(a: a)
+  if a.expect_blocking { targeted >= 1 && targeted == blocking } else { blocking == 0 }
+}
+
+fn arm_names() -> List<String> {
+  brand_arms |> map(a => a.name)
+}
+
+fn count_occurrences(xs: List<String>, wanted: String) -> Int {
+  xs |> filter(x => x == wanted) |> count
+}
+
+// ASSERT CHECKED EQUALS TOTAL. The next assertion ranges over brand_arms, so a fixture silently
+// dropped from the list would shrink the population without shrinking the green. This states the
+// arity the wall's evidence requires -- three refusing arms and three accepting arms -- so removing
+// any one of them reds here rather than passing quietly with a narrowed subject.
+
+test fn b_all_six_arms_are_enrolled() -> Bool {
+  let total = brand_arms |> count
+  let refusing = brand_arms |> filter(a => a.expect_blocking) |> count
+  let accepting = brand_arms |> filter(a => !a.expect_blocking) |> count
+  total == 6 && refusing == 3 && accepting == 3 && refusing + accepting == total
+}
+
+test fn b_arm_names_are_pairwise_distinct() -> Bool {
+  arm_names() |> all(n => count_occurrences(xs: arm_names(), wanted: n) == 1)
+}
+
+// THE WALL ITSELF, BOTH DIRECTIONS IN ONE ASSERTION. Splitting refusal and acceptance into separate
+// tests would let a compiler that refuses everything green the refusing half while the accepting
+// half reds somewhere else in the report; joined, the only way to pass is to draw the line exactly
+// where the six fixtures put it.
+
+test fn b_every_arm_behaves_as_declared() -> Bool {
+  brand_arms |> all(a => arm_agrees(a: a))
+}
+
+// LOOK AN ARM UP BY NAME WITHOUT AN OPTIONAL CARRIER. The fold seeds the could-not-measure value,
+// so a name that matches no arm yields the same negative that an unrunnable probe does and reds
+// against every non-negative expectation below, rather than silently selecting nothing.
+
+// BY-NAME LOOKUPS COUNT THE INTENDED CLASS for the same reason arm_agrees does; the accepting
+// side keeps a TOTAL count below, because "accepted" must mean no blocking diagnostic of ANY class
+// rather than merely none of the class this wall emits.
+fn arm_total_blocking_by_name(wanted: String) -> Int {
+  brand_arms
+    |> filter(a => a.name == wanted)
+    |> map(a => arm_blocking_count(a: a))
+    |> fold(init: 0, f: (acc, n) => acc + n)
+}
+
+fn arm_blocking_by_name(wanted: String) -> Int {
+  brand_arms
+    |> filter(a => a.name == wanted)
+    |> map(a => arm_class_blocking_count(a: a))
+    |> fold(init: 0 - 1, f: (acc, v) => v)
+}
+
+// THE DISCRIMINATING CONTRAST, STATED AS A DIFFERENCE RATHER THAN AS TWO ABSOLUTES. Before the
+// change, collision and dual produced the SAME observation -- zero blocking -- and so did mismatch
+// and construct. These assert the pairs have come apart, which is the single fact the repair adds
+// and the one a permanently-green decoration could not carry.
+
+test fn b_collision_and_dual_are_distinguished() -> Bool {
+  arm_blocking_by_name(wanted: "collision") >= 1 && arm_total_blocking_by_name(wanted: "dual") == 0
+}
+
+test fn b_mismatch_and_construct_are_distinguished() -> Bool {
+  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_total_blocking_by_name(wanted: "construct") == 0
+}
+
+// THE REGRESSION CONTROL. mismatch and strip differ ONLY by the intervening `as String`, so this
+// asserts the check reads the immediate operand rather than peeling to the original value. It is
+// the assertion the first version of this wall would have failed, and it does not retire.
+
+test fn b_strip_is_accepted_where_bare_mismatch_refuses() -> Bool {
+  arm_blocking_by_name(wanted: "mismatch") >= 1 && arm_total_blocking_by_name(wanted: "strip") == 0
+}
+
+// THE UNDETERMINABLE-SITE RED. This is the arm the first wall got WRONG rather than missing: the
+// declaration key returned "" for a type with no declaring span and the consumer read "" as skip,
+// so this cast -- brand bni_inline flowing into brand bni_beta, the same violation `mismatch`
+// refuses -- COMPILED CLEAN. It is authorable as an ordinary inline refinement, so the state is
+// reachable by fixture and the guard is a wall rather than a decoration. Paired with `mismatch`
+// it asserts that the two forms of one violation now agree.
+
+test fn b_undeclared_site_refuses_like_a_declared_mismatch() -> Bool {
+  arm_blocking_by_name(wanted: "undeclared_site") >= 1 && arm_blocking_by_name(wanted: "mismatch") >= 1
+}

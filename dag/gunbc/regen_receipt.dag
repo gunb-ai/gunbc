@@ -1,0 +1,62 @@
+module gunbc.regen_receipt
+
+import std.types { String, Int, List, Bool }
+
+// ONE PASS, ONE RECEIPT (operator ruling 2026-10-04: "we don't need to run multiple times - we are
+// not that particular about determinism in v1 anymore"). The regen used to answer two questions
+// in two process invocations against one receipt file -- first_generation_equal (does a fresh
+// emit match the committed seed) and fixed_point_equal (does the emit reproduce itself on a second
+// pass) -- and this module carried a FixedPoint variant plus a PriorReceiptRef so the second pass
+// could reference the first's evidence without impersonating it (operator ruling 2026-08-20). The
+// second pass re-emitted with the SAME binary, so it could only ever see nondeterminism; the
+// 2026-10-04 ruling waives that, the pass is deleted, and its variant and reference type went with
+// it rather than staying as vocabulary nothing constructs. The declared drop is gunbc.rung_drop
+// floor_cut_regen_second_generation_agreement.
+//
+// WHAT SURVIVES OF THE 2026-08-20 ARGUMENT is the half that never depended on two passes: a
+// receipt variant carries only what its pass measured. FIRST GENERATION measures everything it
+// reports; REFUSED measures nothing but its cause.
+//
+// THE SAME ARGUMENT, APPLIED TO THE FIRST PASS ITSELF. A population refusal happens before any
+// content comparison, so there is no digest to have and no equality to answer. Written as
+// FirstGeneration that forced three inventions into a persisted artifact -- two digest strings and
+// first_generation_equal. The Bool is the load bearing one, because unlike a sentinel string it is
+// INDISTINGUISHABLE from a real answer: false is exactly what an honest unequal comparison writes.
+// Refused therefore has no digest fields and no equality field, so there is nothing to invent --
+// DESIGN 4b structural impossibility, not a check added beside it. What it carries instead is the
+// one thing a refusal genuinely measured: why it refused.
+type RegenReceipt
+  = FirstGeneration {
+      commit_sha: String
+      authority_digest: String
+      committed_generated_digest: String
+      candidate_generated_digest: String
+      first_generation_equal: Bool
+      changed_paths: List<String>
+      candidate_artifact: String
+    }
+  | Refused {
+      commit_sha: String
+      authority_digest: String
+      reason: String
+      candidate_artifact: String
+    }
+
+data stage0_regen_candidate_dir_rel: String = "target/stage0-regen-candidate"
+
+data stage0_regen_receipt_rel: String = "target/stage0-regen-receipt.json"
+
+data stage0_regen_candidate_artifact_name: String = "stage0-regen-candidate"
+
+data stage0_regen_receipt_artifact_name: String = "stage0-regen-receipt"
+
+// The one fact a refusal genuinely measured. Total by returning the empty string for the variants
+// that did not refuse, rather than an optional carrier: the question "why did this refuse" has a
+// well-formed answer of "it did not" for a measured pass, and the variants that measured are
+// distinguishable by their own fields without consulting this.
+fn refusal_reason(receipt: RegenReceipt) -> String {
+  match receipt {
+    FirstGeneration { commit_sha: _, authority_digest: _, committed_generated_digest: _, candidate_generated_digest: _, first_generation_equal: _, changed_paths: _, candidate_artifact: _ } => "",
+    Refused { commit_sha: _, authority_digest: _, reason, candidate_artifact: _ } => reason
+  }
+}

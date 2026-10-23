@@ -1,0 +1,128 @@
+module v2.test.claim.compiler.generic_closure_outcome_construct_probe
+
+import v2.compiler.infer {
+  infer,
+  infer_kernel_value_type_optional,
+  infer_type_equal_ignoring_provenance
+}
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, Some, diagnostics_fatal_reason }
+import v2.std.integer { integer_int_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
+import std.optional { Absent, Present }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
+  rcf_member_accepted_and_decided,
+  rcf_read
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: infer_declared_type_obligation's kernel-value join (infer_kernel_value_type_optional, applied at
+// every step of infer_type_alias_normalized). A position declared with the kernel Int (dag_binding_type_int)
+// and one declared with the corpus v2.std.integer.Int (type Int = GroupCompletion<Nat>) are one value type. The
+// join keys the kernel declaration roster (full path) and dag_binding_denotation, never a last-segment Int.
+//
+// SUPPLIED claims judge the join at its own interface. ONE claim runs the real ingest -> resolve -> infer route
+// (the alias claim). The negative side of the join is
+// supplied (gbo_a_bool_name_is_not_the_kernel_int_holds), not re-run end to end.
+//
+// DECLARED FRONTIER, NOT CLAIMED HERE: generic-variant constructs undecided. A direct generic-variant construct
+// (Acc { value: 1, n: 0 } at Out<Int>) is not accepted-and-decided on this base, with or without the join (measured
+// at 41afbbbb, BuildBuddy 36e48268). Owner: gunbc#13558 (payload binders over Outcome<T> via #13210's formal-payload
+// obligation), which carries the claim that turns it green.
+
+data gbo_integer_stub_source: String = "module v2.std.integer\n\ntype Nat = Zero | One\n\ntype Int = Nat\n"
+
+data gbo_alias_source: String = "module v2.test.gbo_alias\n\nimport v2.std.integer { Int }\n\ntype Alias = v2.std.integer.Int\n\nfn one() -> Alias {\n  1\n}\n"
+
+data gbo_ingest: SourceRootIngest = [
+  rcf_read(source: gbo_integer_stub_source, id: ^gbo_integer_stub_read, unit: ^gbo_integer_stub_cu, path: "src/v2/test/fixture/gbo/integer.dag"),
+  rcf_read(source: gbo_alias_source, id: ^gbo_alias_read, unit: ^gbo_alias_cu, path: "src/v2/test/fixture/gbo/alias.dag")
+]
+
+fn gbo_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: gbo_ingest, lm: dag_language_model())
+}
+
+fn gbo_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match gbo_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn gbo_resolved_alias() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_alias") }
+
+fn gbo_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn gbo_is_kernel_int(t: Node) -> Bool {
+  match infer_kernel_value_type_optional(t: t) {
+    Absent => false
+    Present { value: k } => infer_type_equal_ignoring_provenance(a: k, b: integer_int_type_node())
+  }
+}
+
+test fn gbo_an_int_spelling_atom_is_not_the_kernel_int_holds() -> Bool {
+  !gbo_is_kernel_int(t: gbo_atom(id: ^Int))
+}
+
+test fn gbo_a_module_int_declaration_is_not_the_kernel_int_holds() -> Bool {
+  !gbo_is_kernel_int(
+    t: declaration_reference_node(
+      qn: qualified_name_from_dotted_string(dotted: "v2.test.gbo_shadow.Int"),
+      occurrence_id: OccurrenceSynthetic
+    )
+  )
+}
+
+test fn gbo_the_integer_int_declaration_is_the_kernel_int_holds() -> Bool {
+  gbo_is_kernel_int(
+    t: declaration_reference_node(
+      qn: qualified_name_from_dotted_string(dotted: "v2.std.integer.Int"),
+      occurrence_id: OccurrenceSynthetic
+    )
+  )
+}
+
+test fn gbo_a_kernel_int_atom_is_the_kernel_int_holds() -> Bool {
+  gbo_is_kernel_int(t: gbo_atom(id: ^dag_binding_type_int))
+}
+
+test fn gbo_a_bool_name_is_not_the_kernel_int_holds() -> Bool {
+  !gbo_is_kernel_int(t: gbo_atom(id: ^Bool))
+}
+
+// THE ROUTE: a kernel Int literal returned at a declared `Alias` of the corpus Int (`fn one() -> Alias { 1 }`),
+// on the real ingest -> resolve -> infer path, ACCEPTED AND DECIDED. The literal is the kernel atom; the declared
+// side reaches the kernel atom only through the join, and only if recognition re-enters after the alias step. So it
+// goes red both when the join is deleted (Alias unfolds to its right-hand side) and when recognition happens only at
+// the input -- the integration and the regression in one claim (BuildBuddy 50c58a76 and 2002ea86).
+test fn gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: gbo_resolved_alias(), member: ^one)
+}

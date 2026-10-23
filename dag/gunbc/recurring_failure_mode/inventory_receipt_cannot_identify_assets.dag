@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.inventory_receipt_cannot_identify_assets
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data inventory_receipt_cannot_identify_assets: RecurringFailureMode = RecurringFailureMode {
+  identity: "inventory_receipt_cannot_identify_assets" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a vendor receipt identifies physical units before any installation, but the inventory event authority can name assets only in QuantityInstalled. HARM: known receipt serialization has no canonical source-lot representation; a caller is tempted to invent installation or add a parallel asset-to-lot field. product.inventory asset_source_lot_standing must not be bypassed with a second provenance interpretation.",
+    "RECEIPT, gunbc#11182: the Micro Center receipt description NVIDIADGX DGX SPARK GB10/128/4/L establishes its six-unit acquisition as the 4 TB configuration. Its six serials are retained as PhysicalAsset facts in gunbc.fleet_physical_inventory dgx_spark_serialized_assets, with the exact catalog reference. That receipt covers only Micro Center; the eBay pair remains CatalogRowUnread. No receipt serial has been matched to a host. Inventory identity labels follow the supplied serial order without asserting host-slot order.",
+    "EXECUTED CONSUMER: test.claim.dgx_spark_inventory_witness w_receipt_serials_do_not_fabricate_installation_provenance reads those serialized assets and queries asset_source_lot_standing over the admitted acquisition ledgers; the canonical answer remains AssetSourceLotUnobserved. The same module exercises the population through admit_ledger_evidence and sum_inventory_balances in w_independent_acquisitions_reconcile_eight, discovered by the required witness lane. No production asset-register consumer yet reads the derived population; private integration is outside this public change.",
+    "DISTINGUISHING FACTS: a source receipt can establish which serials were acquired without establishing where those units are installed. Knowing a receipt serial is not observing a serial-to-host join. FOUND AT MITIGATABLE: source-lot evidence is recorded here but cannot be returned by the admitted-event query. CEILING: STRUCTURALLY GUARANTEED for keeping receipt identification and installation distinct, with observed identity bindings required for each. NEXT TRIGGER: inventory receipt-time identification carries physical asset identities in the existing admitted ledger and is consumed by the canonical provenance query without fabricating installation; actual host joins remain separately observed.",
+  ],
+  evidence: [],
+}

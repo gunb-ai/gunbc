@@ -1,0 +1,156 @@
+module gunbc.hostname_set
+
+import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.tools.hostname
+import gunbc.hostname_read {
+  hostname_short_read,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_ssh,
+  typed_argv_shell_safe_refusal_argv,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+
+type HostnameSetCasOutcome
+  = HostnameSetCasApplied
+  | HostnameSetCasReadRefused { reason: String }
+  | HostnameSetCasBaseMismatch { observed: String, base: DnsLabel }
+  | HostnameSetCasApplyFailed { stderr: String }
+
+// THE PRIVILEGED ARGV, DERIVED. The `sudo -n` wrapper and the ABSOLUTE hostnamectl path are the
+// elevation/authority shape a sudoers NOPASSWD rule matches -- they stay here, on the SSH
+// realization edge. The VERB is the cited row (hostnamectl_set_hostname_verb), so a hand-typed
+// subcommand cannot drift from the one the local leg executes: one verb, one spelling, both
+// legs. The desired label is the invocation's operand.
+fn hostname_set_privileged_operation_argv(
+  hostnamectl_path: NonEmptyStr,
+  desired: DnsLabel,
+) -> List<String> {
+  ["sudo", "-n", hostnamectl_path as String, hostnamectl_set_hostname_verb as String, desired as String]
+}
+
+fn hostname_set_privileged_operation_argv_matches_fleet_grant(
+  hostnamectl_path: NonEmptyStr,
+  desired: DnsLabel,
+) -> Bool {
+  join(
+    hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
+    " ",
+  ) == concat(
+    concat("sudo -n ", hostnamectl_path as String),
+    concat(" set-hostname ", desired as String),
+  )
+}
+
+// THE LOCAL LEG: the caller describes the invocation, the model derives the argv, the handler
+// executes it. `os.Hostname.Set`'s hand-authored transport row is deleted with this function's
+// migration onto extdeps.tools.hostname's hostname_set_invocation_process_plan -- the argv
+// reaching the process is the one the row-driven lowering produced, and the exit contract is
+// read by hostname_set_classify_observation, never by a domain-side exit-code comparison.
+fn hostname_set_local(desired: DnsLabel) -> HostnameSetCasOutcome {
+  match hostname_set_invocation_process_plan(invocation: HostnameSetInvocation { desired: desired }) {
+    Rejected { diagnostics: _ } =>
+      HostnameSetCasApplyFailed { stderr: "hostname set invocation could not be lowered to a hostnamectl argv" }
+    Accepted { value: plan, diagnostics: _ } =>
+      hostname_set_cas_from_set_outcome(
+        outcome: hostname_set_classify_observation(
+          observation: hostname_set_execute_plan(plan: plan),
+        ),
+      )
+  }
+}
+
+fn hostname_set_cas_from_set_outcome(outcome: HostnameSetOutcome) -> HostnameSetCasOutcome {
+  match outcome {
+    HostnameSetApplied => HostnameSetCasApplied
+    HostnameSetFailed { exit_code: _, stderr: e } => HostnameSetCasApplyFailed { stderr: e }
+  }
+}
+
+// The outcome handler is shared, but note the refusal arm: a leg that was never attempted must not
+// render as HostnameSetCasApplyFailed with an empty stderr, because "we refused to try" and "the
+// host rejected it" call for different responses. It carries the refusal reason as the stderr so the
+// distinction survives into whatever reads it -- the field is the only channel this type has.
+fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCasOutcome {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      if r.success { HostnameSetCasApplied } else { HostnameSetCasApplyFailed { stderr: r.stderr } }
+    TypedArgvExecRefused { reason: why } =>
+      HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", why) }
+  }
+}
+
+fn hostname_set_fleet_ssh(
+  hostnamectl_path: NonEmptyStr,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  hostname_set_cas_from_outcome(
+    outcome: typed_argv_exec_over_fleet_ssh(
+      target: target,
+      context: context,
+      argv: hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
+    ),
+  )
+}
+
+fn hostname_set_ssh(
+  hostnamectl_path: NonEmptyStr,
+  host: NonEmptyStr,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  let argv = hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired)
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: _ } => HostnameSetCasApplyFailed { stderr: "typed argv shell-safe refusal" }
+    Absent =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result: r } =>
+          if r.success {
+            HostnameSetCasApplied
+          } else {
+            HostnameSetCasApplyFailed { stderr: r.stderr }
+          }
+        TypedArgvExecRefused { reason: why } => HostnameSetCasApplyFailed { stderr: why }
+      }
+  }
+}
+
+fn hostname_set_apply(
+  hostnamectl_path: NonEmptyStr,
+  transport: HostEffectTransport,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  match transport {
+    LocalShell => hostname_set_local(desired: desired)
+    SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
+    FleetSsh { target: t, context: c } => hostname_set_fleet_ssh(hostnamectl_path: hostnamectl_path, target: t, context: c, desired: desired)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HostnameSetCasApplyFailed { stderr: "EmitArtifactThenThinRun unsupported for hostname set" }
+  }
+}
+
+fn hostname_set_cas(
+  hostnamectl_path: NonEmptyStr,
+  transport: HostEffectTransport,
+  base: DnsLabel,
+  desired: DnsLabel,
+) -> HostnameSetCasOutcome {
+  match hostname_short_read(transport: transport) {
+    HostnameShortCaptured { value: observed } =>
+      if observed == (base as String) {
+        hostname_set_apply(hostnamectl_path: hostnamectl_path, transport: transport, desired: desired)
+      } else {
+        HostnameSetCasBaseMismatch { observed: observed, base: base }
+      }
+    HostnameShortCaptureRefused { reason: why } => HostnameSetCasReadRefused { reason: why }
+  }
+}

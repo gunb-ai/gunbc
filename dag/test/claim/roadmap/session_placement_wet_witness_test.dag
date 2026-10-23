@@ -1,0 +1,421 @@
+module test.claim.roadmap.session_placement_wet_witness
+
+import extdeps.shell
+import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
+import std.measure { kibibyte, kibibyte_count }
+import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, compute_reserve_against, compute_capacity_store, compute_release_on,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
+  ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
+}
+import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
+import gunbc.compute.work_provider_local { compute_layout, compute_unit_properties }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptReserved, AttemptLaunching, AttemptTerminal,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
+}
+import gunbc.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import gunbc.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap_session_placement {
+  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit, session_attempt_record,
+  session_placement_record_of, session_placement_record_json, session_placement_record_write,
+  session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
+  SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
+  session_placement_observation_of, session_placement_observe_at,
+  SessionAbandonment, session_placement_abandon_at,
+  SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide,
+  SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at,
+  SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
+}
+import extdeps.languages.json.emit { serialize_json }
+
+// G5 WET CONTROLS (side-chat ruling on #13074 at b4d4a42): the settlement PASS run for real over a
+// slot store and records directory the witness creates with shell.Mktemp.DirWithTemplate, interrupted
+// at each point the ruling names, plus the foreign-record negative. Every transition is a real
+// compare-and-set against a real generation-file store; the ledger is a file store under the same
+// directory, so a release proposes against a real (empty) partition. On the required floor's
+// local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), every test fn in
+// this file, with the exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+data node_a: String = "g5-node-a"
+data key_a: String = "feedfacefeedface"
+data node_b: String = "g5-node-b"
+data key_b: String = "0123456789abcdef"
+data host: String = "srv2"
+
+fn unit_a() -> String { session_unit(node_id: node_a, attempt_key: key_a) as String }
+fn unit_b() -> String { session_unit(node_id: node_b, attempt_key: key_b) as String }
+
+fn fresh_dir(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_g5_", tag, ".XXXXXX"], "")).path
+}
+
+// THE LEDGER IS REAL AND THE SEAT IS REAL (side-chat ruling on #13074 at c6d50f1): every control
+// that claims a release first charges the attempt's own reference through the production seam,
+// gunbc.compute.host_capacity compute_reserve_against, over a file-store ledger in the witness's own
+// directory, and counts a release only when the ledger answers ComputeReleased -- an empty partition
+// answering NothingToRelease or a refusal can never read as a returned seat.
+fn subject_at(dir: String) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: join([dir, "/capacity"], "") as NonEmptyStr,
+    partition: "session-memory-g5-witness" as NonEmptyStr as PartitionId,
+    appropriation: kibibyte(count: 1048576),
+    request: kibibyte(count: 1024),
+  }
+}
+
+fn stores_at(dir: String) -> SessionPlacementStores {
+  SessionPlacementStores {
+    slots_root: dir as NonEmptyStr,
+    records_dir: dir,
+    store: compute_capacity_store(subject: subject_at(dir: dir)),
+    partition: subject_at(dir: dir).partition,
+  }
+}
+
+fn reserve_real(dir: String) -> LeaseGrant? {
+  match compute_reserve_against(subject: subject_at(dir: dir), reference: unit_a() as NonEmptyStr, term_seconds: 14400, total: kibibyte(count: 1073741824), available: kibibyte(count: 1073741824)) {
+    ComputeReserved { grant, partition: _, amount: _, store: _ } => Present { value: grant }
+    ComputeCapacityFull { wire: _ } => none
+    ComputeHostBelowFloor { requested: _, available: _ } => none
+    ComputeReservationRefused { detail: _ } => none
+  }
+}
+
+// THE LEDGER STILL HOLDS THE REFERENCE iff a release proposed now returns it. Destructive, so it is
+// each control's LAST read.
+fn ledger_still_holds(dir: String) -> Bool {
+  match compute_release_on(store: compute_capacity_store(subject: subject_at(dir: dir)), partition: subject_at(dir: dir).partition, appropriation: kibibyte(count: 0), reference: unit_a() as NonEmptyStr, reason: "witness probe") {
+    ComputeReleased { partition: _, reference: _, reason: _ } => true
+    ComputeNothingToRelease { detail: _ } => false
+    ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn ledger_returned(r: ComputeRelease?) -> Bool {
+  match r {
+    Present { value: ComputeReleased { partition: _, reference: _, reason: _ } } => true
+    Present { value: ComputeNothingToRelease { detail: _ } } => false
+    Present { value: ComputeReleaseRefused { detail: _ } } => false
+    Absent => false
+  }
+}
+
+
+fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> SessionPlacementGrant {
+  SessionPlacementGrant {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    unit: session_unit(node_id: node_id, attempt_key: attempt_key),
+    lease: LeaseGrant {
+      reference: session_unit(node_id: node_id, attempt_key: attempt_key),
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      granted_at: 1000,
+      maximum_duration_seconds: 14400,
+      expires_at: 15400,
+    },
+    partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
+    amount: kibibyte(count: 8388608),
+    class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
+    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
+    slot: slot,
+    slot_generation: cas_generation_first(),
+  }
+}
+
+fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: CasGeneration) -> SessionPlacementGrant {
+  SessionPlacementGrant {
+    node_id: node_a, attempt_key: key_a, unit: unit_a() as NonEmptyStr, lease: lease,
+    partition: subject_at(dir: dir).partition, amount: kibibyte(count: 1024),
+    class_grant: GrantAtCeiling { class: WorkClassAgentSession, amount: kibibyte(count: 1024), reason: ClassUnmeasured },
+    store: compute_capacity_store(subject: subject_at(dir: dir)), slot: slot, slot_generation: generation,
+  }
+}
+
+fn slot_a(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_a, attempt_key: key_a, granted: kibibyte(count: 8388608), now: opened)
+}
+
+fn record_bytes(node_id: String, attempt_key: String) -> String {
+  serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: host, grant: grant_for(node_id: node_id, attempt_key: attempt_key, slot: slot_a(opened: 1000)), unit_properties: ["MemoryMax=8589934592", "CPUQuota=800%", "TasksMax=4096"])))
+}
+
+fn planted(name: String, content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/state", success: true, entries: join(["unrelated", name], "\n"), error: ""),
+    name: name, path: join(["/state/", name], ""),
+    read: filesystem_read_outcome(content: content, success: true, error: ""),
+  )
+}
+
+fn missing(name: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/state", success: true, entries: "unrelated", error: ""),
+    name: name, path: join(["/state/", name], ""),
+    read: filesystem_read_outcome(content: "", success: false, error: "ENOENT"),
+  )
+}
+
+fn held(rec: AttemptRecord) -> AttemptSlotReading { AttemptSlotHeld { record: rec, generation: cas_generation_first() } }
+
+fn release_for(node_id: String, attempt_key: String, grant_identity: String, fence: String) -> String {
+  join(["{\"schema\":\"gunbc.session-placement/v1\",\"node_id\":\"", node_id, "\",\"attempt_key\":\"", attempt_key,
+    "\",\"reference\":\"", session_unit(node_id: node_id, attempt_key: attempt_key) as String,
+    "\",\"outcome\":\"released\",\"reason\":\"session unit exited 0\",\"detail\":\"released\",\"grant\":{\"grant_identity\":\"", grant_identity, "\",\"fence_generation\":", fence, "}}"], "")
+}
+
+fn observe_a(slot: AttemptSlotReading, record: FilesystemFileObservation, released: FilesystemFileObservation) -> SessionPlacementObservation {
+  session_placement_observation_of(
+    node_id: node_a, attempt_key: key_a, host: host, slot: slot,
+    record_path: "/state/r", record: record, release_path: "/state/x", released: released,
+  )
+}
+
+fn rec_name() -> String { session_placement_record_basename(node_id: node_a, attempt_key: key_a) }
+fn rel_name() -> String { session_placement_release_basename(node_id: node_a, attempt_key: key_a) }
+
+// ── THE PASS, WET ──────────────────────────────────────────────────────────────────────────────
+fn lifecycle_absent(u: NonEmptyStr) -> UnitLifecycle { UnitTerminatedCauseUnknown { detail: "the user manager has no such unit" } }
+fn lifecycle_running(u: NonEmptyStr) -> UnitLifecycle { UnitStillRunning { detail: "the unit is active" } }
+
+fn settlement_of(p: SessionSettlePass) -> SessionSettlement {
+  match p {
+    SessionSettlePassRan { settlements } => match settlements.first() { Present { value: s } => s  Absent => SessionSettlementRefused { unit: "", detail: "no settlement" } }
+    SessionSettlePassRefused { detail } => SessionSettlementRefused { unit: "", detail: detail }
+  }
+}
+
+fn released_unit(s: SessionSettlement) -> String {
+  match s {
+    SessionSettlementReleaseAttempted { unit, freed, detail: _ } => match freed {
+      ComputeReleased { partition: _, reference: _, reason: _ } => unit
+      ComputeNothingToRelease { detail: _ } => ""
+      ComputeReleaseRefused { detail: _ } => ""
+    }
+    SessionSettlementKept { unit: _, why: _ } => ""
+    SessionSettlementDone { unit: _, why: _ } => ""
+    SessionSettlementRefused { unit: _, detail: _ } => ""
+  }
+}
+
+fn kept(s: SessionSettlement) -> Bool {
+  match s {
+    SessionSettlementKept { unit: _, why: _ } => true
+    SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
+    SessionSettlementDone { unit: _, why: _ } => false
+    SessionSettlementRefused { unit: _, detail: _ } => false
+  }
+}
+
+fn slot_is_terminal(dir: String) -> Bool {
+  match attempt_slot_read(root: dir as NonEmptyStr, reference: unit_a() as NonEmptyStr) {
+    AttemptSlotHeld { record, generation: _ } => match record.state { AttemptTerminal { verdict: _, detail: _ } => true  AttemptReserved => false  AttemptLaunching => false }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn opened_ok(dir: String, rec: AttemptRecord) -> Bool {
+  match attempt_open(root: dir as NonEmptyStr, record: rec) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+fn launched_ok(dir: String, rec: AttemptRecord) -> Bool {
+  match attempt_open(root: dir as NonEmptyStr, record: rec) {
+    AttemptAdvanced { state: _, generation: g } =>
+      match attempt_begin_launch(root: dir as NonEmptyStr, record: rec, expected: g) {
+        AttemptAdvanced { state: _, generation: _ } => true
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+}
+
+fn release_text(dir: String) -> String {
+  let r = Filesystem.Read(path: join([dir, "/", rel_name()], ""))
+  if r.success { r.content } else { "" }
+}
+
+// CONTROL 1, ACQUIRE -> NO PLACEMENT RECORD: the slot opened before the reservation is all that
+// survives. Inside its declared window the seat is kept; past it, with no unit, the slot is closed and
+// the seat released by reference, with a durable release record that binds no grant.
+test fn a_slot_with_no_placement_record_is_kept_in_window_and_released_after() -> Bool {
+  let dir = fresh_dir(tag: "c1")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let rec = slot_a(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let early = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline - 1))
+  let late = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
+  let rel = release_text(dir: dir)
+  charged && opened && kept(s: early) && released_unit(s: late) == unit_a() && slot_is_terminal(dir: dir)
+    && string_contains(s: rel, pattern: unit_a()) && !string_contains(s: rel, pattern: "\"grant\"")
+}
+
+// CONTROL 2, A MALFORMED SLOT: an unreadable slot keeps its seat and leaves a durable note naming why.
+test fn an_unreadable_slot_keeps_its_seat_and_writes_a_note() -> Bool {
+  let dir = fresh_dir(tag: "c2")
+  let stores = stores_at(dir: dir)
+  let torn = Filesystem.Write(path: join([dir, "/", unit_a(), ".1"], ""), content: "{\"identity\":")
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  let note = Filesystem.Read(path: join([dir, "/", session_placement_note_basename(unit: unit_a())], ""))
+  torn.success && kept(s: s) && note.success && string_contains(s: note.content, pattern: "unreadable")
+}
+
+// CONTROL 3, PLACEMENT RECORD -> NO UNIT START: the real writer's record and a Reserved slot past its
+// window release the seat, and the release record is read back through the real reader, which
+// accepts it only as bound to the recorded grant identity and fence (a release naming another grant
+// or fence reads Unreadable there, as the pure control above shows).
+test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_grant() -> Bool {
+  let dir = fresh_dir(tag: "c3")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let rec = slot_a(opened: 1000)
+  let opened = opened_ok(dir: dir, rec: rec)
+  let wrote = session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: rec.launch_deadline + 1))
+  let bound = match session_placement_observe_at(stores: stores, host: host, node_id: node_a, attempt_key: key_a) {
+    SessionPlacementObserved { slot: _, grant, returned } =>
+      (match grant {
+        SessionGrantRecorded { record } => record.grant_identity == "evt-7" && record.fence_generation == 7
+        SessionGrantNotRecorded { path: _ } => false
+        SessionGrantUnreadable { path: _, detail: _ } => false
+        SessionGrantForeign { path: _, detail: _ } => false
+      })
+        && (match returned {
+          SessionReleased { reason: _, detail: _ } => true
+          SessionReleaseNothingHeld { reason: _, detail: _ } => false
+          SessionReleaseRefused { reason: _, detail: _ } => false
+          SessionReleaseNotRecorded { path: _ } => false
+          SessionReleaseUnreadable { path: _, detail: _ } => false
+        })
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
+    SessionPlacementForeign { unit: _, detail: _ } => false
+  }
+  charged && opened && released_unit(s: s) == unit_a() && bound
+}
+
+// CONTROL 4, UNIT START -> CONTROLLER TERMINATION: a Launching slot is kept while its unit runs and
+// released once the unit is gone.
+test fn a_launched_session_is_kept_while_running_and_released_when_ended() -> Bool {
+  let dir = fresh_dir(tag: "c4")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let running = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_running, now: 99999))
+  let ended = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  charged && launched && kept(s: running) && released_unit(s: ended) == unit_a() && slot_is_terminal(dir: dir)
+}
+
+// FINDING 3, WET NEGATIVE: attempt B's placement record planted at attempt A's path, A's unit absent.
+// Settlement releases A's own reference (the slot's key) -- never B's -- and binds no grant, because
+// the record at that path is foreign to A.
+test fn a_foreign_placement_record_cannot_release_another_attempts_grant() -> Bool {
+  let dir = fresh_dir(tag: "f3")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let launched = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let planted_b = Filesystem.Write(path: join([dir, "/", rec_name()], ""), content: record_bytes(node_id: node_b, attempt_key: key_b))
+  let reads_foreign = match session_placement_observe_at(stores: stores, host: host, node_id: node_a, attempt_key: key_a) {
+    SessionPlacementForeign { unit: _, detail: _ } => true
+    SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
+  }
+  let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
+  let rel = release_text(dir: dir)
+  charged && launched && planted_b.success && reads_foreign && released_unit(s: s) == unit_a()
+    && string_contains(s: rel, pattern: unit_a()) && !string_contains(s: rel, pattern: unit_b()) && !string_contains(s: rel, pattern: "\"grant\"")
+}
+
+
+// ── THE POST-GATE FAILURE (side-chat ruling on #13074 at c6d50f1) ──────────────────────────────
+//
+// The production sequence the ruling named: a REAL reservation, the slot opened Reserved at G1, the
+// launch gate advancing it to Launching at G2, and the unit start failing -- after which the spawn
+// wrapper calls session_placement_abandon with the grant it held BEFORE the gate, i.e. at G1. These
+// controls call session_placement_abandon_at with exactly that stale grant (the same function the
+// wrapper reaches, with the unit observation planted), and read the ledger afterwards.
+fn launched_with_real_seat(dir: String) -> SessionPlacementGrant? {
+  match reserve_real(dir: dir) {
+    Absent => none
+    Present { value: lease } => {
+      let rec = slot_a(opened: 1000)
+      match attempt_open(root: dir as NonEmptyStr, record: rec) {
+        AttemptAdvanced { state: _, generation: g1 } =>
+          match attempt_begin_launch(root: dir as NonEmptyStr, record: rec, expected: g1) {
+            AttemptAdvanced { state: _, generation: _ } => Present { value: real_grant(dir: dir, lease: lease, slot: rec, generation: g1) }
+            AttemptLostRace { expected: _, observed: _ } => none
+            AttemptTransitionRefused { detail: _ } => none
+          }
+        AttemptLostRace { expected: _, observed: _ } => none
+        AttemptTransitionRefused { detail: _ } => none
+      }
+    }
+  }
+}
+
+fn slot_is_launching(dir: String) -> Bool {
+  match attempt_slot_read(root: dir as NonEmptyStr, reference: unit_a() as NonEmptyStr) {
+    AttemptSlotHeld { record, generation: _ } => match record.state { AttemptLaunching => true  AttemptReserved => false  AttemptTerminal { verdict: _, detail: _ } => false }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn lifecycle_unreadable(u: NonEmptyStr) -> UnitLifecycle { UnitLifecycleUnknown { detail: "systemctl --user show refused" } }
+
+// DISCRIMINATING RED: with the unit ACTIVE, and again with it UNREADABLE, the stale-generation abandon
+// releases NOTHING -- the slot stays Launching and the ledger still holds the reference. (At c6d50f1
+// this released the seat: the G1 close lost and compute_release_on ran anyway.)
+test fn a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat() -> Bool {
+  let dir_active = fresh_dir(tag: "pa")
+  let active = match launched_with_real_seat(dir: dir_active) {
+    Absent => false
+    Present { value: stale } => {
+      let a = session_placement_abandon_at(stores: stores_at(dir: dir_active), grant: stale, reason: "harness-unit-start failed", lifecycle_of: lifecycle_running)
+      (match a.freed { Absent => true  Present { value: _ } => false }) && slot_is_launching(dir: dir_active) && ledger_still_holds(dir: dir_active)
+    }
+  }
+  let dir_unknown = fresh_dir(tag: "pu")
+  let unknown = match launched_with_real_seat(dir: dir_unknown) {
+    Absent => false
+    Present { value: stale } => {
+      let a = session_placement_abandon_at(stores: stores_at(dir: dir_unknown), grant: stale, reason: "harness-unit-start failed", lifecycle_of: lifecycle_unreadable)
+      (match a.freed { Absent => true  Present { value: _ } => false }) && slot_is_launching(dir: dir_unknown) && ledger_still_holds(dir: dir_unknown)
+    }
+  }
+  active && unknown
+}
+
+// POSITIVE CONTROL ON THE SAME ROUTE: with the unit ENDED (absent, or finished), the stale-generation
+// abandon re-reads the slot, closes it from G2, and the ledger reports ComputeReleased -- not
+// NothingToRelease, not a refusal -- after which nothing is left to return.
+test fn a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation() -> Bool {
+  let dir = fresh_dir(tag: "pe")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: stale } => {
+      let a = session_placement_abandon_at(stores: stores_at(dir: dir), grant: stale, reason: "harness-unit-start failed", lifecycle_of: lifecycle_absent)
+      ledger_returned(r: a.freed) && slot_is_terminal(dir: dir) && !ledger_still_holds(dir: dir)
+    }
+  }
+}

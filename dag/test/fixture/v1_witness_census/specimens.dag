@@ -1,0 +1,121 @@
+module test.fixture.v1_witness_census.specimens
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.workflow.required_floor { RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember }
+import gunbc.v1_witness_census {
+  V1ClaimCutoverRow, ClaimCutoverDisposition, ClaimPopulation, ClaimRosterComplete, ClaimRosterUnmeasured,
+  Retired, ReplacedByStronger, StillRequired
+}
+
+// CONTROLLED POPULATIONS FOR THE CLAIM CONSERVATION WALL. The live roster is unmeasured, so every
+// assertion in the paired witness would be vacuously true over it -- a join against an empty
+// denominator is total for free. That is why these fixtures are not optional: without them the
+// conservation wall would be a permanently green check, which DESIGN section 4b calls worse than
+// an absent one because it will be cited as coverage.
+//
+// The five plants are the five ways a total-looking accounting loses a subject, and they are
+// deliberately NOT five flavours of the same mistake: a missing row, an invented row, a merge onto
+// one native identity, a self-referential red control, and a support module folded in as a claim.
+// Only the first is caught by asking 'does every claim have a disposition'. The rest answer yes.
+
+// EVERY CITATION HERE NAMES A DECLARATION THAT EXISTS, and it is this module's own. The required
+// floor resolves every decl_ref in the corpus (CITED-MODULE-ABSENT refused the first push of this
+// file, which cited invented fixture modules), so a plant may be absent from a ROSTER but never from
+// the TREE. Roles are carried by the declaration names; membership is what each roster controls.
+data fixture_module: String = "test.fixture.v1_witness_census.specimens"
+data claim_a: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_a")
+data claim_b: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_b")
+data claim_c: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_c")
+data claim_delta_unaccounted: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_delta_unaccounted")
+data claim_never_in_roster: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_never_in_roster")
+
+data native_a: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "native_a")
+data native_b: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "native_b")
+data control_b: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "control_b")
+data deleted_subject: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "deleted_subject")
+
+fn v1wc_fixture_row(identity: DeclarationRef, standing: RequiredFloorDisposition, disposition: ClaimCutoverDisposition) -> V1ClaimCutoverRow {
+  { pre_cutover_identity: identity, floor_standing: standing, disposition: disposition }
+}
+
+// THE CLEAN ACCOUNTING: three pre-cutover claims, all three arms inhabited on purpose -- an
+// accounting exercised only over its most common arm says nothing about the other two. beta is
+// floor-declined by module name AND still required, which is the ruling's point: standing is not
+// evidence, and a declined claim enters the native roster regardless.
+data clean_rows: List<V1ClaimCutoverRow> = [
+  v1wc_fixture_row(identity: claim_a, standing: Planned, disposition: StillRequired { surviving_subject: claim_a, native_identity: native_a }),
+  v1wc_fixture_row(identity: claim_b, standing: DeclinedLongModule { matched_prefix: "test.claim.long." }, disposition: ReplacedByStronger {
+    replacement: native_b,
+    covering_relation: "controlled specimen: the replacement asserts the old claim's property over a strict superset of inputs",
+    executed_red: control_b,
+  }),
+  v1wc_fixture_row(identity: claim_c, standing: Planned, disposition: Retired {
+    deleted_subject: deleted_subject,
+    evidence: "controlled specimen: the subject is deleted by the same transaction, and no surviving declaration reaches it",
+  }),
+]
+
+data clean_roster: List<DeclarationRef> = [ claim_a, claim_b, claim_c ]
+
+data clean_population: ClaimPopulation = ClaimRosterComplete { rows: clean_rows, roster_producer: "controlled fixture; no floor run" }
+
+// PLANT ONE -- a roster identity with no row. The lost subject in its purest form.
+data planted_unaccounted_roster: List<DeclarationRef> = [ claim_a, claim_b, claim_c, claim_delta_unaccounted ]
+
+// PLANT TWO -- a row for a claim the roster does not contain. Row count unchanged, subject invented.
+data planted_fabricated_rows: List<V1ClaimCutoverRow> = [
+  v1wc_fixture_row(identity: claim_a, standing: Planned, disposition: StillRequired { surviving_subject: claim_a, native_identity: native_a }),
+  v1wc_fixture_row(identity: claim_never_in_roster, standing: Planned, disposition: StillRequired { surviving_subject: claim_b, native_identity: native_b }),
+]
+
+data planted_fabricated_roster: List<DeclarationRef> = [ claim_a, claim_delta_unaccounted ]
+
+data planted_fabricated_population: ClaimPopulation = ClaimRosterComplete { rows: planted_fabricated_rows, roster_producer: "controlled fixture" }
+
+// PLANT THREE -- two claims mapped onto ONE native identity. Every roster entry has a row, every row
+// is in the roster, and one subject is no longer independently checked.
+data planted_merged_rows: List<V1ClaimCutoverRow> = [
+  v1wc_fixture_row(identity: claim_a, standing: Planned, disposition: StillRequired { surviving_subject: claim_a, native_identity: native_a }),
+  v1wc_fixture_row(identity: claim_b, standing: Planned, disposition: StillRequired { surviving_subject: claim_b, native_identity: native_a }),
+]
+
+data planted_merged_roster: List<DeclarationRef> = [ claim_a, claim_b ]
+
+data planted_merged_population: ClaimPopulation = ClaimRosterComplete { rows: planted_merged_rows, roster_producer: "controlled fixture" }
+
+// PLANT FOUR -- a replacement whose executed red is the replacement itself. One keystroke from the
+// honest form, invisible to every other direction of the join.
+data planted_self_control_rows: List<V1ClaimCutoverRow> = [
+  v1wc_fixture_row(identity: claim_b, standing: Planned, disposition: ReplacedByStronger {
+    replacement: native_b,
+    covering_relation: "controlled specimen",
+    executed_red: native_b,
+  }),
+]
+
+data planted_self_control_roster: List<DeclarationRef> = [ claim_b ]
+
+data planted_self_control_population: ClaimPopulation = ClaimRosterComplete { rows: planted_self_control_rows, roster_producer: "controlled fixture" }
+
+// PLANT FIVE -- a fixture member given a disposition. The floor already says this module is a
+// support module by its structural relation to claims; a row for it closes a count with a subject
+// that was never a claim.
+data planted_fixture_member_rows: List<V1ClaimCutoverRow> = [
+  v1wc_fixture_row(identity: claim_a, standing: Planned, disposition: StillRequired { surviving_subject: claim_a, native_identity: native_a }),
+  v1wc_fixture_row(identity: claim_c, standing: DeclinedFixtureMember { matched_prefix: "test.fixture." }, disposition: Retired {
+    deleted_subject: deleted_subject,
+    evidence: "controlled specimen: a support module folded in to close the count",
+  }),
+]
+
+data planted_fixture_member_roster: List<DeclarationRef> = [ claim_a, claim_c ]
+
+data planted_fixture_member_population: ClaimPopulation = ClaimRosterComplete { rows: planted_fixture_member_rows, roster_producer: "controlled fixture" }
+
+// PLANT SIX -- the clean rows over an UNMEASURED roster. Nothing is wrong with any row; the gate must
+// still refuse, because a join whose denominator was never read is total for free.
+data planted_unmeasured_population: ClaimPopulation = ClaimRosterUnmeasured {
+  reason: "controlled specimen: the roster was not read",
+  what_would_settle_it: "controlled specimen",
+}

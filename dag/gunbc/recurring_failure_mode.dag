@@ -1,0 +1,186 @@
+module gunbc.recurring_failure_mode
+
+// ONE ROW PER FAILURE CLASS, BECAUSE ONE SENTENCE PER FLEET WAS THE DEFECT.
+//
+// These classes lived in a single 11,751-character `p(text:)` blob in gunbc.design_document. Every
+// lane that named a new class appended to that one line, so two lanes naming two UNRELATED classes
+// collided on every merge -- five conflict cycles on one PR in one night, every resolution purely
+// additive, zero sentences ever lost. That is textual contention standing in for semantic
+// contention: the classes are independent, and only the line was shared. Split into rows, two lanes
+// touch two declarations and never collide, while two lanes editing the SAME class still conflict --
+// which is correct, because that is real disagreement about one fact (DESIGN section 2).
+//
+// THIS CUT IS MECHANICAL AND ITS ORACLE IS AN EMPTY DIFF. Each row carries its authored sentence
+// BYTE-FOR-BYTE and the projection renders them in roster order, so regenerating DESIGN.md after the
+// split produces no change at all. Sorting the rows by identity would reorder the paragraph and
+// destroy that oracle -- a projection defect would then be indistinguishable from an intended edit --
+// so order is carried by the roster and determinism comes from the roster being source-ordered.
+//
+// WHAT IS DELIBERATELY ABSENT: the analytic fields (misleading surface, actual question, failure
+// mechanism, required guard) that these rows will eventually carry. Filling them for seventeen
+// classes means authoring analysis that does not exist in the text today, which is semantic
+// rewriting inside a structural cut and has no oracle. They land in a follow-up where each class is
+// a readable diff.
+//
+// WHY CHECKED EVIDENCE IS NOT YET A RENDERED CITATION. The earlier decision to leave this field
+// empty relied on the enrollment limit of the now-deleted `v2.lens.cited_symbol_resolution`.
+// Its retirement is recorded by `gunbc.rung_drop.cited_symbol_census`; the replacement is the parse-phase
+// `v1_compiler.declaration_index` check in `v1_compiler.bin.claim_executor`. It harvests literal
+// DeclarationRef records and constructors in non-fixture modules across carriers, including this
+// one, and indexes test declarations too. Computed references remain a separate coverage boundary. A target outside the indexed namespace roots, including the Rust seed, is
+// accounted as outside_index rather than resolved; that boundary shrinks with seed migration.
+//
+// Checking and publishing remain different capabilities: `gunbc.design_ledgers` renders `authored`,
+// whose fold consumes receipts alone. Copying a citation from receipt prose into `evidence` would
+// therefore leave a checked but invisible copy beside a visible but unchecked one (DESIGN sections
+// 2 and 3). Nor is this field a general citation bucket: the distinction recorded by
+// `gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end` is that
+// evidence witnesses the class, while a sibling-boundary citation names a different relation.
+// NEXT CAPABILITY: one role-preserving citation authority rendered inline through the authored
+// fold, with the existing byte-identity oracle preserved. Wider resolver enrollment has already
+// arrived; it is no longer the trigger for that rendering cut.
+//
+// WHY A ROW IS A LIST OF RECEIPTS, AND THE TWO REPAIRS THIS SUPERSEDES.
+//
+// FIRST REPAIR, blob to rows: these classes lived in one 11,751-character `p(text:)` blob and every
+// lane appending collided -- five conflict cycles on one PR in one night. Split into `data` rows.
+// SECOND REPAIR, rows to one line each: that split left a shared BLOCK TAIL, `evidence: [],` then
+// `}`, which a three-way merge factored out of the conflict region -- one tail below the markers for
+// two half-blocks above -- so the additive resolution yielded a first block whose closing lines
+// belonged to the second. Measured with `git merge-file` at merge base d0009ca531.
+//
+// BOTH REPAIRS MEASURED ONLY THE APPEND OF A WHOLE ROW, and both rested on one premise, stated in
+// the first: that two lanes editing the SAME class conflicting is "correct, because that is real
+// disagreement about one fact." THAT PREMISE IS FALSE FOR THIS CARRIER, and it is why nobody looked
+// inside a row for two repairs -- it made intra-row contention look correct, so it was never
+// measured. What accretes on a class is INDEPENDENT RECEIPTS from unrelated lanes, not competing
+// claims about one fact: on 2026-09-02/03 three lanes appended three independent receipts to
+// `state_space_conflation` and resolved it by hand-negotiating byte order, and one row reached
+// 23,023 characters. Independent accretion is not disagreement. The class is filed as
+// `premise_that_a_shared_subject_means_disagreement`.
+//
+// SO THE RECEIPTS ARE MODELLED AS SEVERABLE PARTS -- SEVERABLE, NOT TYPED; see the classification
+// paragraph below, which is the honest limit of what this buys. Two lanes amending two receipts now
+// touch two line regions with an unchanged line between them, which is what a three-way merge needs.
+// MEASURED on this carrier's own `state_space_conflation` with `git merge-file`, base/ours/theirs:
+// two lanes EDITING different receipts -> 0 conflicts; two lanes APPENDING a receipt -> 1 conflict.
+//
+// THE APPEND CASE IS NOT ZERO AND MUST NOT BE READ AS ZERO. Two lanes appending still collide,
+// because both insert at the same point. What changed is the SHAPE: the region holds one whole list
+// element per side, the `],` / `evidence: [],` / `}` tail stays OUTSIDE it rather than being factored
+// in, and the additive resolution is total. Before this change the same collision presented as two
+// 23,023-character lines and was resolved by negotiating byte order by hand. This makes survivors
+// safely resolvable; it does not remove them.
+//
+// EVERY ELEMENT CARRIES A TRAILING COMMA, INCLUDING THE LAST, AND THIS IS LOAD-BEARING RATHER THAN
+// STYLE. Without it, appending a receipt must also add a comma to the previous line, which drags the
+// preceding receipt into the conflict region and destroys the minimality measured above. A
+// reformatter that "tidies" the final comma away silently restores the worse geometry. Nothing
+// enforces this; it is the one property here held by this paragraph.
+//
+// TEN ROWS CARRIED `authored: "..." as NonEmptyStr`, a cast on a field declared `String`, dropped
+// here because a list has no such cast. Recorded rather than silently removed: the cast bought
+// nothing, and its presence on ten rows and absence on seventy-one is the kind of drift a per-part
+// declaration makes visible. Those counts are read off the derivation base named in the PR body; they are a
+// dated observation about that tree, not an invariant.
+//
+// THE RECEIPTS ARE STILL `String` AND THAT IS AN OPEN SECTION 4c GAP, NAMED HERE RATHER THAN LEFT
+// FOR A READER TO DISCOVER. Section 4c says any invariant, receipt, ruling, citation, status, count
+// or dissolution condition belongs in a typed carrier, and a `List<String>` element still mixes all
+// of those inside one prose blob. THIS CHANGE NEITHER CREATES NOR REPAIRS THAT: the field it
+// replaces was `authored: String`, one larger blob of exactly the same unclassified prose, so the
+// classification rung is unmoved and only the merge geometry improved. Saying the parts are TYPED
+// would be the section 4b(1) inflation this file already warns about one paragraph down, which is
+// why the wording above says SEVERABLE.
+//
+// WHY CLASSIFICATION IS NOT DONE HERE, since a gap named without a reason is just an excuse. The
+// population is derivable from `gunbc.recurring_failure_mode.roster::recurring_failure_mode_roster`
+// and the receipts lists of its row declarations, rather than a count transcribed here. Classifying
+// each receipt is an authored judgement, not a derivation, so it cannot ride in on a re-derivation
+// the way this split does and it
+// cannot be verified by the content-hash identity that makes this change safe. Attempting both at
+// once would give up the one property that lets this land at all: that every carried byte is
+// provably unchanged. NEXT-RUNG TRIGGER, a capability rather than an artifact: a receipt variant
+// model whose constructors cover the kinds section 4c enumerates, sufficient for an EXHAUSTIVE
+// match over a row's parts -- at which point an unclassified receipt has no constructor and the
+// prose cannot be written, which is rung 4 rather than a lens. THE SPLIT IS WHAT MAKES THAT
+// AFFORDABLE: classifying a row becomes an edit to one file that conflicts with nobody, where
+// today it is an edit to a shared blob that collides with every concurrent lane.
+//
+// THE RUNG, STATED HONESTLY BECAUSE THIS PARAGRAPH IS WHAT THE NEXT APPENDER READS. The population
+// carries no severable tail. The SHAPE IS NOT ENFORCED -- no lens covers row shape on this carrier
+// -- so one hand-authored multi-line row restores the two-line tail and the whole geometry with it.
+// The invalid state therefore stays WRITABLE and this is mechanically preventable at best, not
+// structural; calling the shape construction would be the rung inflation DESIGN section 4b(1) names,
+// sitting in the annotation an author consults before appending. NEXT-RUNG TRIGGER, named as the
+// capability and not as an artifact that would contribute to one: a row-shape obligation DECIDED for
+// every declaration of a growth-surface type rather than observed on the rows that happen to exist
+// -- the corpus already reads declared types per declaration through `v2.std.decl_index`
+// `data_decl_type_facts`, and what is missing is a producer carrying each declaration's source
+// EXTENT, sufficient for refusing a multi-line row of such a type at authoring time. Until that
+// exists, the shape is a convention held by review and by this paragraph.
+//
+// THE LOSS STATES ARE MEASURED AND THE SET IS COMPLETE, which is why no check is written here.
+// Against a gunbc built from source at d0009ca531, severing a multi-line row is loud in every one of
+// the three ways the two-line tail can be cut: losing BOTH lines and losing `}` alone are PARSE
+// refusals at the module index (`expected expression, found Eq` -- a `data` keyword landing in
+// record-field position), and losing `evidence: [],` alone is a RESOLVE refusal (`missing required
+// field 'evidence' in literal of type 'RecurringFailureMode'`). Nothing silent was found in that
+// set. A brace-balance or declared-versus-rostered check would be the DESIGN section 4b decoration:
+// permanently green, because the only corpus it could fire on never reaches it.
+//
+// A THIRD CONSEQUENCE NOBODY ARGUED FOR IN ADVANCE, appended by a later lane rather than authored
+// here: THE SPLIT MADE A QUESTION DECIDABLE THAT WAS PREVIOUSLY ONLY SEARCHABLE. This cut was
+// justified on merge geometry, and then on making a duplicate declaration unwritable because two
+// files cannot share a name. But the question a lane most often needs to answer about a contended
+// carrier is "which identities do I add?" -- and under the blob that was a substring search inside
+// an 11,751-character line, which is how two duplicate declarations hid in plain sight for two hours
+// on 2026-09-03 while three separate instruments read the file and reported clean. After the split
+// it is a set difference over filenames against the roster directory, and it returns an EMPTY RESULT
+// A READER CAN TRUST. A SET DIFFERENCE OVER FILENAMES HAS A MEANING; A GREP INSIDE A MEGA-LINE HAS A
+// HIT COUNT. The occasion was a parked branch carrying 83 stale declarations of this shape: the
+// emptiness of its own contribution was decidable in one command, and that is what made the
+// resolution safe to perform without its author.
+//
+// AN UNPREDICTED BENEFIT IS WORTH MORE IN THIS RECORD THAN A PREDICTED ONE, because it is evidence
+// the cut fell at a real joint rather than at a convenient one.
+//
+// AND THE SHARED-BLOCK-TAIL GEOMETRY ABOVE IS NOT A PROPERTY OF THIS CARRIER, OR OF `.dag` AT ALL.
+// The SECOND REPAIR paragraph measures it on rows -- a block whose `evidence: [],` / `}` tail is
+// factored out of the conflict region, so an additive resolution yields a first block whose closing
+// lines belong to the second. On 2026-09-03 the IDENTICAL geometry appeared in Rust, in
+// `v1_compiler.cli_run`, merging gunbc#10267 into gunbc#9725: both sides appended a `pub fn` at one
+// insertion point, BOTH BODIES WERE TRUNCATED AT THE MARKERS, and the single closing brace sat below
+// the region, shared. It is a property of ANY three-way merge where a block's tail is factored out,
+// and brace-delimited languages are exposed exactly as row files are.
+//
+// THE RUST FORM IS WORSE THAN THE ROW FORM, WHICH IS WHY IT IS RECORDED HERE RATHER THAN LEFT AS AN
+// ANECDOTE. Two row-bodies above one tail fail loudly -- the loss states are measured above and every
+// one of them is a parse or resolve refusal. Two FUNCTION bodies above one brace need not fail at
+// all: the outcome can be a function that SWALLOWED THE OTHER'S SIGNATURE AND COMPILED. A silently
+// wrong merge that typechecks is the artifact DESIGN section 5 ranks worst, and the reflexive
+// additive resolution is precisely what produces it.
+//
+// THE READ THAT CATCHES IT COSTS NOTHING: before unioning, look at the LAST line of each side and the
+// line immediately AFTER the closing marker. If neither side closes itself and the text below supplies
+// the closer, the union needs one inserted between them.
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef }
+
+type RecurringFailureMode {
+  identity: NonEmptyStr
+  receipts: List<String>
+  evidence: List<DeclarationRef>
+}
+
+// THE RECEIPTS ARE THE ROW'S PARTS AND THE JOIN IS RENDERING, WHICH IS WHY THIS FOLD LIVES HERE.
+// Join with a single space is the separator. A trailing-space-on-every-receipt convention is
+// deleted: it was a migration-time oracle against the one string the list replaced, and it is
+// not a wall — an author dropping the space glued two receipts with nothing between them and
+// nothing in the corpus refused. After the split the consumer is the projection; the check is
+// that rendered projection bytes match for every row that already carried a separator, and a
+// row whose rendering changes was already missing one.
+fn authored(r: RecurringFailureMode) -> String {
+  join(r.receipts, " ")
+}

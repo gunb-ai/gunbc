@@ -1,0 +1,66 @@
+module std.kernel_type_denotation
+
+import std.types { Bool, List, String }
+import std.kernel_type_name { KernelTypeName, KernelTypeNameAdmission, KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name }
+import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
+
+// WHAT A KERNEL TYPE NAME MEANS, INDEPENDENT OF ANY TARGET. The kernel names are rostered in
+// std.types kernel_type_set; how each one is REALIZED on a target is that target's binding (for
+// Rust, gunbc.rust_source_type_bindings and extdeps.languages.rust.representation), and none of
+// those is the definition. This module is the one home for the definition: one row per kernel name
+// whose meaning is a cited external authority. It carries one row today, Float -> IEEE 754-2019
+// binary64 (operator ruling relayed 2026-09-28, the Float de-fork). A later row for String, Int or
+// Bool is an ADDITION HERE -- a new KernelTypeMeaning arm and a row -- never a new home. Every
+// target's check reads its expected semantics from kernel_type_denotation_for, so two targets
+// realizing one kernel name are checked against the same denotation rather than against each other.
+//
+// It lives above std.types and std.algebra rather than inside them because both sit below
+// std.decl_ref and below every extdeps module in the import graph; carrying the denotation there
+// would need an import cycle or a stringly reference (the two alternatives refused on the ruling).
+
+type KernelTypeMeaning
+  = BinaryInterchangeFormatMeaning { format: BinaryInterchangeFormat }
+
+type KernelTypeDenotation {
+  kernel_name: KernelTypeName
+  meaning: KernelTypeMeaning
+}
+
+type KernelTypeDenotationAdmission
+  = KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation }
+  | KernelTypeDenotationRefused { refusal: KernelTypeNameAdmission }
+
+fn kernel_type_denotation_row(kernel_name: String, meaning: KernelTypeMeaning) -> KernelTypeDenotationAdmission {
+  let admission = kernel_type_name(name: kernel_name)
+  match admission {
+    KernelTypeNameAdmitted { kernel_name: k } => KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation { kernel_name: k, meaning: meaning } }
+    NotAKernelTypeName { name: _ } => KernelTypeDenotationRefused { refusal: admission }
+  }
+}
+
+data kernel_type_denotation_rows: List<KernelTypeDenotationAdmission> = [
+  kernel_type_denotation_row(kernel_name: "Float", meaning: BinaryInterchangeFormatMeaning { format: binary64 })
+]
+
+fn kernel_type_denotation_rows_admitted(rows: List<KernelTypeDenotationAdmission>) -> Bool {
+  rows |> all(r => match r {
+    KernelTypeDenotationAdmitted { denotation: _ } => true
+    KernelTypeDenotationRefused { refusal: _ } => false
+  })
+}
+
+type KernelTypeDenotationLookup
+  = KernelTypeDenoted { meaning: KernelTypeMeaning }
+  | KernelTypeUndenoted { kernel_name: KernelTypeName }
+
+// The rows are a parameter so a claim can supply a planted table at this one interface; the
+// production reading is kernel_type_denotation_for(kernel_name, rows: kernel_type_denotation_rows).
+fn kernel_type_denotation_for(kernel_name: KernelTypeName, rows: List<KernelTypeDenotationAdmission>) -> KernelTypeDenotationLookup {
+  rows |> fold(init: KernelTypeUndenoted { kernel_name: kernel_name }, f: (acc, r) => match acc {
+    KernelTypeDenoted { meaning: _ } => acc
+    KernelTypeUndenoted { kernel_name: _ } => match r {
+      KernelTypeDenotationAdmitted { denotation: d } => if d.kernel_name.name == kernel_name.name { KernelTypeDenoted { meaning: d.meaning } } else { acc }
+      KernelTypeDenotationRefused { refusal: _ } => acc
+    }
+  })
+}

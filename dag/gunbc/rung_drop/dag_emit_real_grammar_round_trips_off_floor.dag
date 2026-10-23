@@ -1,0 +1,49 @@
+module gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.instruments.dag_emit_real_grammar_round_trips { dag_emit_real_grammar_round_trip_expected_identities }
+
+// DECLARED 4b(3) DROP (gunbc#12878, 2026-10-01). The dag target's per-construct round trips over the
+// REAL grammar -- ingest, emit by reading dag_grammar_root backward, re-ingest, identical tree --
+// do not run on the required floor. Each is two real parses of its construct; each exceeds the
+// new-witness eval-step budget, and six of them cross the wall clock. A declared eval-step drop would
+// not help those six, because it does not lift the wall clock.
+//
+// WHAT STILL EXECUTES ON THE FLOOR, so the loss is stated against what remains:
+//   - the real path itself, once: v2.test.execution.dag_grammar_backward_round_trip
+//     a_data_declaration_round_trips_holds (under its own declared eval-step drop);
+//   - the missing-production red over the real grammar, and its positive control, in that module;
+//   - each construct's discriminating content at its own interface, under budget, in
+//     v2.test.execution.dag_emit_interface: string escapes, int, float and caret spelling; a quoted
+//     key emitted quoted, a bare key bare, and an escaped key escaped, selected by production stamp.
+// WHAT IS LOST is the required floor's evidence that each REAL production below round-trips through
+// the real parser.
+//
+// THE INSTRUMENT THAT STILL RUNS THEM, by name rather than by a hand run:
+// `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`
+// (gunbc.instrument_targets dag_emit_real_grammar_round_trips_label). Its program is
+// gunbc.instruments.dag_emit_real_grammar_round_trips, and its declared roster IS this drop's
+// population, so a case cannot leave the instrument without leaving this population too.
+data dag_emit_real_grammar_round_trips_off_floor_population: List<String> = dag_emit_real_grammar_round_trip_expected_identities |> map(i => concat(concat("//gunbc/instruments:dag-emit-real-grammar-round-trips case ", i), ": the real-grammar round trip of this construct, run by the named instrument and not on the required floor"))
+
+data dag_emit_real_grammar_round_trips_off_floor: RungDrop = RungDrop {
+  identity: "dag_emit_real_grammar_round_trips_off_floor" as NonEmptyStr,
+
+  subject: "the dag target's per-construct real-grammar round trips (fn declaration, record type, coproduct, match, let, list, map literal, string escapes, caret symbol, quoted/bare/escaped keys): executed off the required floor by the named instrument //gunbc/instruments:dag-emit-real-grammar-round-trips instead of on it",
+
+  declared: "2026-10-01",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a real-route dag parse cheap enough that each construct's two-parse round trip fits the per-claim budget",
+    },
+    population: dag_emit_real_grammar_round_trips_off_floor_population,
+    restoration_trigger: "THE CAPABILITY: a real-route parse of each construct in this population (v2.compiler.parse parse_module_prepared over v2.compiler.program_assembly dag_prepared_grammar) fits the per-claim eval-step budget and wall clock that v2.workflow.required_floor derives, twice over, so that every member, run as a test fn on the floor, measures under the NewWitnessTier budget while still running the real parser on both sides. The parser's prepared choice plan (gunbc#11422) is one contributor and does not satisfy this trigger on its own. WHAT IT MUST BE SUFFICIENT FOR: EVERY member of the population, not one of them, re-enrolled as a test fn and passing on the floor. Re-enrolling a subset is a partial retirement and is recorded as one. Moving a member under another drop, or supplying its tree, does not satisfy this trigger.",
+  }
+}

@@ -1,0 +1,23 @@
+module extdeps.editor.visual_studio_code
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, PerDeveloperState }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "code.visualstudio.com"
+  }
+}
+
+// WORKSPACE FOOTPRINT. VS Code keeps per-folder workspace settings in .vscode/.
+fn vscode_workspace_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "VS Code workspace state", upstream: "code.visualstudio.com" },
+    artifacts: [
+      WorkspaceArtifact { pattern: ".vscode/", meaning: "per-folder workspace settings", reason: PerDeveloperState }
+    ]
+  }
+}

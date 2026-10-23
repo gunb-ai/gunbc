@@ -1,0 +1,48 @@
+module gunbc.rung_drop.approval_intent_digest_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_approval_intent_digest_rows }
+
+// DECLARED 4b(3) DROP (gunbc#13004, 2026-10-02; granted by the allocation landing lane,
+// snappy-gull-889 msg_75d78dfe). The DECLARATION lives here; the POPULATION's authority is
+// `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_approval_intent_digest_rows`.
+// It is its own list because growing another drop's list is a new drop.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The two identities are planned, executed
+// and measured on every pull request that edits them; a semantic red and a wall-clock crossing
+// still block. Only an eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop`
+// rather than refusing. The budget is not raised.
+//
+// WHY THE OVERRUN IS THE PRIMITIVE'S AND NOT THE CLAIM'S. An approval request digests its intent
+// with SHA-256, which the seed interpreter realizes as Word32 folds because it reifies no machine
+// width -- the same realization the app-attest interpreted-crypto drop prices. The claims' subjects
+// were split first: the intent is derived once (gunbc.auth.approved_secret_grants
+// secret_grants_intent, gunbc.fabric_storage_state_provision fabric_state_provision_intent), and
+// every binding and separation claim reads the intent as a supplied value inside the budget. What
+// remains here is ONE inhabitance claim per constructor: the real digest, and the gate admitting
+// exactly that revision while refusing another. Supplying the digest as a fixture would remove the
+// last execution of the real request path (DESIGN section 3, the pairing obligation). Both members
+// are also admitted at `v2.workflow.floor_cost_debt_admission` `approval_intent_digest_typed_admissions`.
+data approval_intent_digest_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_approval_intent_digest_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_approval_intent_digest_rows; measured by "), m.measured_by))
+
+data approval_intent_digest_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "approval_intent_digest_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one real-path claim of each approval-request constructor (secret grants, fabric-state material): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-10-02",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "SHA-256 executing as natively emitted code rather than as interpreted Word32 folds inside a claim frame",
+    },
+    population: approval_intent_digest_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: SHA-256 EXECUTING AS NATIVELY EMITTED CODE ON THE MERGE PATH, i.e. a required-floor claim frame that evaluates extdeps.crypto.sha2 sha256_hex over a real approval intent reaches the digest without an interpreted Word32 fold. WHAT THAT MUST BE SUFFICIENT FOR: both member identities, still building their real request through the real digest and still asserting the gate admits only that revision, measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. A native SHA-256 row that runs by name off the acceptance path retires nothing. Supplying the digest as a fixture, deleting the identities, or relocating them to a home that does not execute them satisfies none of it.",
+  }
+}

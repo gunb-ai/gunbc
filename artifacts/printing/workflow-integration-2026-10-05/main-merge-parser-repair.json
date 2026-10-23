@@ -1,0 +1,125 @@
+{
+  "merged_main": "aae7da34ca897006e04635dd11ea8be9506e15fc",
+  "prior_ci_run": 37270693830,
+  "cause": "Two comments inside durable_claim_is_bound_to_approval_identity were refused by the source annotation parser; both emit-build and floor stopped on this.",
+  "resolution": [
+    "Move comments to declaration grain.",
+    "Use main approval writer authority and its tests.",
+    "Retain printer and Spark CI targets and all main fleet modes.",
+    "Regenerate fleet-converge.yml through generated_artifact_gate.main_wet_one."
+  ],
+  "validation": {
+    "parse_clean_files": 8088,
+    "approval_tests": [
+      {
+        "function": "submit_and_status_urls_follow_the_srv1_instance_listen_bind_while_the_roadmap_writes",
+        "cpu_ms": 1,
+        "wall_ms": 1,
+        "eval_steps": 389
+      },
+      {
+        "function": "submit_and_status_urls_dial_the_declared_writer",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 332
+      },
+      {
+        "function": "submit_body_nests_the_stored_request_as_a_json_string",
+        "cpu_ms": 18,
+        "wall_ms": 18,
+        "eval_steps": 12647
+      },
+      {
+        "function": "status_words_are_closed",
+        "cpu_ms": 3,
+        "wall_ms": 3,
+        "eval_steps": 2117
+      },
+      {
+        "function": "injected_kv_lines_in_expires_at_are_unreadable_not_approved",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 80
+      },
+      {
+        "function": "poll_expires_after_expires_at_unless_already_decided",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 68
+      },
+      {
+        "function": "a_pending_filing_expires_by_its_filed_window_not_the_callers",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 66
+      },
+      {
+        "function": "the_exact_expiry_instant_is_expired_and_one_second_before_is_live",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 63
+      },
+      {
+        "function": "post_filed_token_admits_poll_including_notify_failure",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 322
+      },
+      {
+        "function": "status_text_round_trips_through_the_same_grammar",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 785
+      },
+      {
+        "function": "approval_subject_changes_with_device_bytes_version_or_attempt",
+        "cpu_ms": 17,
+        "wall_ms": 17,
+        "eval_steps": 11004
+      },
+      {
+        "function": "completed_or_idle_job_needs_nonblocking_error",
+        "cpu_ms": 27,
+        "wall_ms": 27,
+        "eval_steps": 18691
+      },
+      {
+        "function": "unknown_errors_and_incomplete_reports_remain_refused",
+        "cpu_ms": 11,
+        "wall_ms": 11,
+        "eval_steps": 7517
+      },
+      {
+        "function": "help_exit_one_needs_the_actual_supported_version_banner",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 112
+      },
+      {
+        "function": "partial_telemetry_does_not_count_as_a_complete_observation",
+        "cpu_ms": 3,
+        "wall_ms": 3,
+        "eval_steps": 2611
+      },
+      {
+        "function": "durable_claim_is_bound_to_approval_identity",
+        "cpu_ms": 0,
+        "wall_ms": 0,
+        "eval_steps": 27
+      }
+    ],
+    "seed_mirrors": {
+      "first_generation_equal": true,
+      "planned": 163,
+      "executed": 163,
+      "adjudicated": 163
+    },
+    "workflow_generation_exit": 0
+  },
+  "limits": [
+    "Full remote floor and emit-build must run on this revision.",
+    "No second-generation check: removed on main by operator ruling.",
+    "No printer actions."
+  ],
+  "workflow_sha256": "02642516b652253b832c4a22bb86f1d7f4246a95ee23a6928cfc67c06cb9e9a1"
+}

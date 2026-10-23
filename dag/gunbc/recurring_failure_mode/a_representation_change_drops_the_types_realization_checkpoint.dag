@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_representation_change_drops_the_types_realization_checkpoint
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_representation_change_drops_the_types_realization_checkpoint: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_representation_change_drops_the_types_realization_checkpoint" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a type keeps its target realization (the declaration still emits as the host primitive) while a consumer that decides the primitive's OPERATOR SEMANTICS asks a different question of the type and gets no answer. Specimen: the Nat de-fork (gunbc#12846) redeclared std.nat Nat from an alias over the kernel integer to the inductive Zero | Succ { prev: Nat }, bound to the kernel integer by gunbc.structural_realization_bindings kernel_grounding_rows. The declaration emitted `pub type Nat = i64;` and every signature stayed i64, but v1.compiler.emit_rust expr_realizes_as_refusing_int reads a realization CHECKPOINT off the operand's inferred type, and the inductive declaration has none of its own -- so the check answered false and Nat + - * emitted Rust's wrapping infix operators instead of v1_rt::int_add/sub/mul.",
+
+    "HARM: silent wrongness on the source-to-Rust path (DESIGN section 5), the partition-W harm of gunbc.recurring_failure_mode emitted_int_arithmetic_wraps_where_the_interpreter_refuses re-opened for one type: in an emitted crate's release profile Nat overflow wraps where the interpreter refuses. Every gate passed it: the floor, the generated-artifact fixed point, emit-build, the whole-corpus compile pair (no blocking or advisory change can show it) and the interpreted-equals-emitted agreement control, whose inputs stayed in range. It was found by the self-host crate diff BY NAME, which listed std_measure, std_compiler_entry, extdeps_units_iso_80000_3 and three std_realization_* files outside the modules that consumed Nat's old body.",
+
+    "WHAT KEYED THE DECISION TO THE OLD SHAPE: two readers answered 'what is this type on the target' through two authorities. The declaration-site reader (rust_kernel_grounded_type_decl) consults the kernel grounding binding by declaration identity; the operator reader consults the checkpoint table through the operand's inferred type, where the native answer existed only because an alias resolved into a numeric-realization row. Changing the representation moved the type from the second authority to the first, and only the reader that had been taught the first followed. REPAIR: expr_realizes_as_refusing_int consults the same binding by the DeclarationRef the operand's type reference carries (Node.declaration, std.nat::Nat) and answers with the Int checkpoint the declaration is spelled from. A first repair that looked the spelling up through the type environment did not reach call-result operands and was replaced.",
+
+    "OTHER TYPES ASKED THE SAME QUESTION: the Int widths (std.integer Int8..UInt128) are Compose<Int, MachineWidth<N>> rows realized through checkpoint rows of their own, not through a representation change, so the operator reader still answers for them; std.magnitude Magnitude is deleted by the same change; kernel_grounding_rows holds exactly one row (std.nat Nat). So the population today is one type, and the class recurs the moment a second carrier is bound by kernel grounding, or any realized type changes representation, unless every realization reader consults one authority.",
+
+    "RUNG: MECHANICALLY PREVENTABLE for the bound carrier. ROUTE: test.claim.emitter_refusing_int_operator_witness_test w_nat_binary_operators_route_through_refusing_helpers (red executed on the pre-repair seed: FAIL, with the Int control PASS on the same binary). EXECUTION: the compiler test ct_std_nat_operators_refuse_overflow_test runs the seed's own emitted std.realization_schedule runnable_batch_clamp_ms, whose `second_count(overhead) * 1000` is a Nat product of a call result, and requires an overflowing clamp to refuse with v1_rt's 'integer overflow:' text (the seed builds with overflow-checks on, so the discriminator is the refusal text, not the panic), plus an in-range control (2015). Red executed on the pre-repair mirror: the raw product panicked with rustc's text and the assertion failed. A first control over std.nat nat_mul did NOT discriminate: a Nat operand that is a parameter of std.nat's own functions was already routed, so the defect lived only in operands whose reference the spelling-keyed decision could not answer.",
+
+    "CEILING AND NEXT TRIGGER, as a capability: ONE declaration-to-realization authority that every realization reader consults -- type spelling, operator semantics, literal elaboration, constructor and pattern realization -- so a type cannot be realized as a primitive by one reader and not by another. That is the target-agnostic declaration-to-realization binding v1.compiler.coercion names as the dissolution of its numeric_realization_declaring_modules path roster; until it lands, each new reader of the checkpoint table is a site where this class can recur.",
+
+    "RESIDUE, stated: subtraction below zero. Nat `-` routes through v1_rt::int_sub, which refuses only i64 overflow, so `a - b` with b > a yields a negative value typed Nat on BOTH routes (interpreter and emitted) -- on base as on this head, because the alias realized the same way. That is not this class (the routes agree) but a separate gap: Nat's subtraction is std.nat nat_sub, which returns NatSubtraction and refuses; the infix operator on Nat has no Nat-specific realization."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_nat_binary_operators_route_through_refusing_helpers", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_int_binary_operators_route_through_refusing_helpers", field: WholeDeclaration },
+  ],
+}

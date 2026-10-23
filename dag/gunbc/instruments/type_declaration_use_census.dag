@@ -1,0 +1,992 @@
+module gunbc.instruments.type_declaration_use_census
+
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node {
+  Edge, Authored, StructuralLabel, Positional, Node, Symbol, symbol_lexeme, node_subtree_nodes,
+  TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Cardinality, Instantiation,
+  Transform, Value, Branch, Loop, Bind, Match
+}
+import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Optional, Present, Absent }
+import v2.std.grammar { node_atom_identity_optional }
+
+import v2.compiler.infer { RefinementDeclaration, refinement_declaration_of_node }
+import v2.compiler.symbol_index_fill { symbol_index_binder_type_or_target }
+import v2.compiler.inferred_tree { InferredTree, authored_occurrence_id }
+import v2.compiler.infer { infer_branch_operand_resolved_type_in_tree, infer_transform_is_cast }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.type_binder { cast_target_optional }
+import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
+import v2.std.node_query { node_positional_child_targets, find_arrow_body_child }
+import v2.std.collection { list_at_optional }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.std.witness { Holds, Violates }
+import std.compiler_entry { NativeClaimTerminal, NativeClaimHeld, NativeClaimNoObservation }
+import v2.std.compilers.target_model {
+  canonical_operation_wire_matches_operation, canonical_operation_op_eq, canonical_operation_op_ne,
+  canonical_operation_op_lt, canonical_operation_op_le, canonical_operation_op_gt, canonical_operation_op_ge,
+  canonical_operation_op_add
+}
+import v2.compiler.body_lowering_fold {
+  DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind, declared_resource_names,
+  DeclaredTypeModifiers, NominalOpaqueModifier, SoleConstructorModifier, TypeDeclModifier
+}
+import v2.compiler.emit_produced {
+  ModuleMemberClass, ModuleMemberBodiedArrow, ModuleMemberBodylessArrow, ModuleMemberCoproduct,
+  ModuleMemberRecord, ModuleMemberRefinement, ModuleMemberRecordOrRefinement, ModuleMemberAlias,
+  ModuleMemberOpaque, ModuleMemberGeneric, ModuleMemberUnsupported,
+  module_member_class, module_member_conj_class, module_bodies_in_tree, module_body_member_edges
+}
+
+// THE TYPE-DECLARATION AND CAST CENSUS -- M0 of the nominal-type plan
+// (docs/plans/nominal-type-declaration-plan.md section 2). It reads the RESOLVED tree, never text:
+// this module is the per-module fold, run once per module inside the native driver's census walk
+// (v2.compiler.compile), and the reader that joins the rows across modules. Numbers it produces are a
+// receipt and are not transcribed into committed prose (DESIGN section 6).
+//
+// THIS HALF: every type declaration a module declares, by DECLARATION FORM. The form is decided by the
+// one authority emission uses for the same question (v2.compiler.emit_produced module_member_class),
+// so the census and the emitter cannot disagree about what a member is. A plain Conj the module's
+// captured kinds do not name (ModuleMemberRecordOrRefinement) is UNDECIDED, and an undecided row makes
+// the whole run refuse with no observation -- never a default form. Arrows (fns and `data`, which
+// lowers to a zero-parameter Arrow) are not type declarations and produce no row.
+
+type TypeDeclForm
+  = AliasForm
+  | BodylessForm
+  | CoproductForm { variants: Int }
+  | RecordForm { fields: Int }
+  | RefinementForm
+  | ResourceForm
+  | FormUndecided
+
+type TypeDeclRow {
+  module: String
+  symbol: String
+  generic: Bool
+  form: TypeDeclForm
+  modifiers: FreeMonoid<TypeDeclModifier>
+  base: TypeRefText
+  predicates: FreeMonoid<String>
+}
+
+// A TYPE POSITION, NAMED BY WHAT IT RESOLVES TO: the declaring path of a resolved declaration
+// reference, the kernel atom's own identity where resolve leaves a kernel leaf an atom, or Structural
+// for an applied or composite expression (`List<Int>`), which no single declaration answers. NoBase is
+// a form with no single representation (a coproduct, a multi-field record, a bodyless declaration).
+type TypeRefText
+  = DeclaredRef { path: String }
+  | KernelRef { name: String }
+  | ParamRef { name: String }
+  | StructuralRef
+  | NoBase
+
+fn type_ref_text(n: Node) -> TypeRefText {
+  match declaration_reference_path_optional(node: n) {
+    Present { value: qn } => DeclaredRef { path: qualified_name_to_dotted_string(qn: qn) }
+    Absent =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } => KernelRef { name: symbol_lexeme(sym: id) }
+        Absent => StructuralRef
+      }
+  }
+}
+
+// Every declaration a where-clause references, by declaring path -- the predicates and anything
+// they name. `brand` resolves to its declared nominal marker (std.types brand), so a brand-like
+// declaration is told from a checked one by WHICH declaration its clause resolves to, never by
+// the predicate's spelling.
+fn where_clause_references(clause: Node) -> FreeMonoid<String> {
+  fold_list(xs: node_subtree_nodes(root: clause), empty: Empty, cons: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: qn } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: qn))
+      Absent => acc
+    }
+  })
+}
+
+type TdcBaseRead {
+  base: TypeRefText
+  predicates: FreeMonoid<String>
+}
+
+fn tdc_no_base() -> TdcBaseRead {
+  TdcBaseRead { base: NoBase, predicates: Empty }
+}
+
+// The single representation a declaration names, where it names one: an alias's aliased type, a
+// refinement's carrier (with its clause's references), a one-field record's field type.
+fn tdc_base_read(form: TypeDeclForm, member: Node) -> TdcBaseRead {
+  match form {
+    AliasForm =>
+      match type_decl_view(target: member) {
+        TypeAlias { binders: _, aliased: a } => TdcBaseRead { base: type_ref_text(n: a), predicates: Empty }
+        GenericTypeDecl { binders: _, member: _ } => tdc_no_base()
+        OpaqueTypeDecl { binders: _ } => tdc_no_base()
+        PlainTypeDecl { member: _ } => tdc_no_base()
+      }
+    RefinementForm =>
+      match refinement_declaration_of_node(decl: member) {
+        Present { value: r } => TdcBaseRead { base: type_ref_text(n: r.carrier), predicates: where_clause_references(clause: r.where_clause) }
+        Absent => tdc_no_base()
+      }
+    RecordForm { fields: f } =>
+      if f == 1 {
+        match first(member.children) {
+          Present { value: e } => TdcBaseRead { base: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)), predicates: Empty }
+          Absent => tdc_no_base()
+        }
+      } else { tdc_no_base() }
+    BodylessForm => tdc_no_base()
+    CoproductForm { variants: _ } => tdc_no_base()
+    ResourceForm => tdc_no_base()
+    FormUndecided => tdc_no_base()
+  }
+}
+
+fn tdc_modifiers_of(name: Symbol, modifiers: FreeMonoid<DeclaredTypeModifiers>) -> FreeMonoid<TypeDeclModifier> {
+  fold_list(xs: modifiers, empty: Empty, cons: fn(acc, row) {
+    if row.name == name { row.modifiers } else { acc }
+  })
+}
+
+// "Is this declaration a resource" has one authority: the resource projection of the module's captured
+// kinds (v2.compiler.body_lowering_fold declared_resource_names), the same one symbol_index_fill reads.
+fn tdc_is_resource(name: Symbol, kinds: FreeMonoid<DeclaredTypeKind>) -> Bool {
+  fold_list(xs: declared_resource_names(kinds: kinds), empty: false, cons: fn(acc, r) { acc || (r == name) })
+}
+
+// The form of a declaration's MEMBER (the plain body, or a generic declaration's body inside its
+// wrapper), by the same class module_member_class gives a plain member.
+fn tdc_member_form(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> TypeDeclForm {
+  match module_member_conj_class(name: name, member: member, kinds: kinds) {
+    ModuleMemberRecord { name: _, record: r } => RecordForm { fields: count(r.children) }
+    ModuleMemberRefinement { name: _, refinement: _ } => RefinementForm
+    ModuleMemberRecordOrRefinement => FormUndecided
+    ModuleMemberUnsupported => if tdc_is_resource(name: name, kinds: kinds) { ResourceForm } else { FormUndecided }
+    ModuleMemberBodiedArrow => FormUndecided
+    ModuleMemberBodylessArrow => FormUndecided
+    ModuleMemberCoproduct { name: _, coproduct: _ } => FormUndecided
+    ModuleMemberAlias => FormUndecided
+    ModuleMemberOpaque => FormUndecided
+    ModuleMemberGeneric => FormUndecided
+  }
+}
+
+fn tdc_generic_form(name: Symbol, target: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> TypeDeclForm {
+  match type_decl_view(target: target) {
+    GenericTypeDecl { binders: _, member: m } =>
+      match m.kind {
+        TypeNode { connective: c } =>
+          match c {
+            Disj => CoproductForm { variants: count(m.children) }
+            Conj => tdc_member_form(name: name, member: m, kinds: kinds)
+            Atom { identity: _ } => FormUndecided
+            Arrow => FormUndecided
+            Cardinality => FormUndecided
+            Instantiation => FormUndecided
+          }
+        ComputationNode { behavior: _ } => FormUndecided
+      }
+    TypeAlias { binders: _, aliased: _ } => FormUndecided
+    OpaqueTypeDecl { binders: _ } => FormUndecided
+    PlainTypeDecl { member: _ } => FormUndecided
+  }
+}
+
+fn tdc_generic_member(target: Node) -> Node {
+  match type_decl_view(target: target) {
+    GenericTypeDecl { binders: _, member: m } => m
+    TypeAlias { binders: _, aliased: _ } => target
+    OpaqueTypeDecl { binders: _ } => target
+    PlainTypeDecl { member: m } => m
+  }
+}
+
+// A generic declaration's base that is one of its OWN binders (`type G<T> = T`) is a parameter,
+// never a kernel type: the binder names resolve leaves as atoms are read back off the declaration.
+fn tdc_base_as_param(read: TdcBaseRead, params: List<Symbol>) -> TdcBaseRead {
+  match read.base {
+    KernelRef { name: n } =>
+      if fold(params, init: false, f: fn(acc, p) { acc || (symbol_lexeme(sym: p) == n) }) {
+        TdcBaseRead { base: ParamRef { name: n }, predicates: read.predicates }
+      } else { read }
+    DeclaredRef { path: _ } => read
+    ParamRef { name: _ } => read
+    StructuralRef => read
+    NoBase => read
+  }
+}
+
+type TdcMemberRead
+  = TdcNotAType
+  | TdcTypeDecl { generic: Bool, form: TypeDeclForm, member: Node }
+
+fn tdc_member_read(name: Symbol, edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> TdcMemberRead {
+  match module_member_class(edge: edge, kinds: kinds) {
+    ModuleMemberBodiedArrow => TdcNotAType
+    ModuleMemberBodylessArrow => TdcNotAType
+    ModuleMemberCoproduct { name: _, coproduct: c } => TdcTypeDecl { generic: false, form: CoproductForm { variants: count(c.children) }, member: c }
+    ModuleMemberRecord { name: _, record: r } => TdcTypeDecl { generic: false, form: RecordForm { fields: count(r.children) }, member: r }
+    ModuleMemberRefinement { name: _, refinement: m } => TdcTypeDecl { generic: false, form: RefinementForm, member: m }
+    ModuleMemberRecordOrRefinement => TdcTypeDecl { generic: false, form: FormUndecided, member: edge.target }
+    ModuleMemberAlias => TdcTypeDecl { generic: false, form: AliasForm, member: edge.target }
+    ModuleMemberOpaque => TdcTypeDecl { generic: false, form: BodylessForm, member: edge.target }
+    ModuleMemberGeneric => TdcTypeDecl { generic: true, form: tdc_generic_form(name: name, target: edge.target, kinds: kinds), member: tdc_generic_member(target: edge.target) }
+    ModuleMemberUnsupported =>
+      if tdc_is_resource(name: name, kinds: kinds) { TdcTypeDecl { generic: false, form: ResourceForm, member: edge.target } } else { TdcNotAType }
+  }
+}
+
+// ONE MODULE'S TYPE-DECLARATION ROWS, in member order. `module` is the module's dotted name as the
+// census walk names it; `kinds` and `modifiers` are that module's NormalizedTree carriers.
+fn type_declaration_rows(
+  module: String,
+  root: Node,
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  modifiers: FreeMonoid<DeclaredTypeModifiers>
+) -> FreeMonoid<TypeDeclRow> {
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
+  })
+  fold_list(xs: members, empty: Empty, cons: fn(acc, edge) {
+    match edge.label {
+      Authored { name: n } =>
+        match tdc_member_read(name: n, edge: edge, kinds: kinds) {
+          TdcNotAType => acc
+          TdcTypeDecl { generic: g, form: f, member: m } =>
+            let based = tdc_base_as_param(read: tdc_base_read(form: f, member: m), params: type_param_names(n: edge.target))
+            list_snoc_item(xs: acc, item: TypeDeclRow {
+              module: module,
+              symbol: symbol_lexeme(sym: n),
+              generic: g,
+              form: f,
+              modifiers: tdc_modifiers_of(name: n, modifiers: modifiers),
+              base: based.base,
+              predicates: based.predicates
+            })
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// THE CAST HALF: every `as` site, read off the module's INFERRED tree.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// A cast is Transform[coerce, operand] + <cast-target> T (v2.std.type_binder cast_target_edge), told
+// apart from every other Transform by infer's own predicate (v2.compiler.infer infer_transform_is_cast).
+// Each row carries what the class is decided FROM, never the class itself -- the class is a join the
+// receipt makes across modules, because the target's declaration usually lives elsewhere:
+//   - the target, as the declaration it RESOLVES to (type_ref_text over the resolved cast target);
+//   - the operand's TYPE, from infer's fact for the operand (v2.compiler.infer
+//     inferred_facts_resolved_type). Where the module did not infer, or infer left the operand on its
+//     counted frontier, the operand is OperandTypeUndecided with the cause -- counted, never guessed;
+//   - the IMMEDIATE PARENT OPERATION, the evidence an OperationWorkaround or a NominalProjection needs:
+//     a canonical comparison, ordering or add; a call, by its callee's declaring path and the declared
+//     type of the parameter the cast is passed to; a fn's return position and its declared return.
+// The witness site is the module, the declaration the cast sits in, and the cast's authored occurrence
+// (DESIGN section 3: a symbol, with a position only where no symbol names the site).
+
+type AsOperandRead
+  = OperandTyped { type_ref: TypeRefText }
+  | OperandTypeUndecided { cause: String }
+
+type AsParentRead
+  = ParentCompare
+  | ParentOrder
+  | ParentAdd
+  | ParentCall { callee: TypeRefText, declared: TypeRefText }
+  | ParentReturn { declared: TypeRefText }
+  | ParentOther
+
+type AsSiteRow {
+  module: String
+  enclosing: String
+  occurrence: Int
+  target: TypeRefText
+  operand: AsOperandRead
+  parent: AsParentRead
+}
+
+// Where the operand's type comes from: the module's inferred facts beside the resolved tree infer
+// read them from, or the reason there are none.
+type AsTyping
+  = AsTypedBy { tree: InferredTree, resolved: ResolvedTree }
+  | AsUntyped { cause: String }
+
+// The cast's authored occurrence. The lowered Transform is synthetic (lowering builds it), so the
+// witness falls back to the operand's, then the target's -- both authored -- and is -1 only when
+// none of the three carries one.
+fn as_occurrence(n: Node, operand: Node, target: Node) -> Int {
+  match authored_occurrence_id(n: n) {
+    Present { value: id } => id.value
+    Absent =>
+      match authored_occurrence_id(n: operand) {
+        Present { value: id } => id.value
+        Absent =>
+          match authored_occurrence_id(n: target) {
+            Present { value: id } => id.value
+            Absent => 0 - 1
+          }
+      }
+  }
+}
+
+// INFER'S OWN READING OF AN OPERAND'S TYPE: a literal's type, a lexical reference's declared binding
+// type, else the operand's derived grounding (v2.compiler.infer
+// infer_branch_operand_resolved_type_in_tree). A parameter reference is typed by its binding, not by
+// a grounding fact, so asking the facts alone would leave every parameter undecided.
+fn as_operand_read(typing: AsTyping, operand: Node) -> AsOperandRead {
+  match typing {
+    AsUntyped { cause: c } => OperandTypeUndecided { cause: c }
+    AsTypedBy { tree: t, resolved: r } =>
+      match t.facts.lookup(operand) {
+        Absent => OperandTypeUndecided { cause: "infer_facts_lookup_miss" }
+        Present { value: facts } =>
+          match infer_branch_operand_resolved_type_in_tree(node: operand, facts: facts, resolved: r) {
+            Holds { value: ty } => OperandTyped { type_ref: type_ref_text(n: ty) }
+            Violates { diagnostic: d } => OperandTypeUndecided { cause: symbol_lexeme(sym: d.reason) }
+          }
+      }
+  }
+}
+
+// The declared type of the parameter named `param` on the Arrow a callee path declares, read through
+// the ingest-wide symbol index; Absent when the callee is not a declaration this index holds or does
+// not declare that parameter.
+fn as_callee_param_type(index: SymbolIndex, callee: Node, param: Symbol) -> TypeRefText {
+  match declaration_reference_path_optional(node: callee) {
+    Absent => NoBase
+    Present { value: qn } =>
+      match symbol_index_lookup(index: index, qualified_path: qn) {
+        Absent => NoBase
+        Present { value: decl } =>
+          match first(decl.children) {
+            Absent => NoBase
+            Present { value: domain_edge } =>
+              fold(domain_edge.target.children, init: NoBase, f: fn(acc, e) {
+                match e.label {
+                  Authored { name: n } => if n == param { type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)) } else { acc }
+                  StructuralLabel { label: _ } => acc
+                  Positional => acc
+                }
+              })
+          }
+      }
+  }
+}
+
+fn as_parent_of_transform(index: SymbolIndex, parent: Node, edge: Edge) -> AsParentRead {
+  match first(node_positional_child_targets(node: parent)) {
+    Absent => ParentOther
+    Present { value: op } =>
+      if canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_eq())
+        || canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_ne()) {
+        ParentCompare
+      } else if canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_lt())
+        || canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_le())
+        || canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_gt())
+        || canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_ge()) {
+        ParentOrder
+      } else if canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_add()) {
+        ParentAdd
+      } else {
+        match edge.label {
+          Authored { name: param } => ParentCall { callee: type_ref_text(n: op), declared: as_callee_param_type(index: index, callee: op, param: param) }
+          Positional => ParentCall { callee: type_ref_text(n: op), declared: NoBase }
+          StructuralLabel { label: _ } => ParentOther
+        }
+      }
+  }
+}
+
+// The walk carries the immediate parent's reading down one level: a node's parent operation is
+// decided where the parent is visited, from the edge the child hangs off.
+fn as_walk(
+  module: String,
+  enclosing: String,
+  typing: AsTyping,
+  index: SymbolIndex,
+  n: Node,
+  parent: AsParentRead,
+  acc: FreeMonoid<AsSiteRow>
+) -> FreeMonoid<AsSiteRow> {
+  let here = if infer_transform_is_cast(node: n) {
+    match cast_target_optional(n: n) {
+      Absent => acc
+      Present { value: target } =>
+        match list_at_optional(xs: node_positional_child_targets(node: n), index: 1) {
+          Absent => acc
+          Present { value: operand } =>
+            list_snoc_item(xs: acc, item: AsSiteRow {
+              module: module,
+              enclosing: enclosing,
+              occurrence: as_occurrence(n: n, operand: operand, target: target),
+              target: type_ref_text(n: target),
+              operand: as_operand_read(typing: typing, operand: operand),
+              parent: parent
+            })
+        }
+    }
+  } else { acc }
+  fold(n.children, init: here, f: fn(a, e) {
+    let child_parent = match n.kind {
+      ComputationNode { behavior: b } =>
+        match b {
+          Transform => as_parent_of_transform(index: index, parent: n, edge: e)
+          Value => ParentOther
+          Branch => ParentOther
+          Loop => ParentOther
+          Bind => ParentOther
+          Match => ParentOther
+        }
+      TypeNode { connective: _ } => ParentOther
+    }
+    as_walk(module: module, enclosing: enclosing, typing: typing, index: index, n: e.target, parent: child_parent, acc: a)
+  })
+}
+
+// Every cast in one module, member by member; an Arrow member's body starts with its declared
+// return as the parent reading, so a cast in return position carries that evidence.
+fn as_site_rows(module: String, root: Node, typing: AsTyping, index: SymbolIndex) -> FreeMonoid<AsSiteRow> {
+  let members = fold(module_bodies_in_tree(node: root, acc: []), init: [], f: fn(acc, b) {
+    concat(acc, module_body_member_edges(body: b))
+  })
+  fold_list(xs: members, empty: Empty, cons: fn(acc, edge) {
+    match edge.label {
+      Authored { name: n } =>
+        match find_arrow_body_child(root: edge.target) {
+          Accepted { value: body, diagnostics: _ } =>
+            as_walk(
+              module: module,
+              enclosing: symbol_lexeme(sym: n),
+              typing: typing,
+              index: index,
+              n: body,
+              parent: ParentReturn { declared: as_arrow_return(arrow: edge.target) },
+              acc: acc
+            )
+          Rejected { diagnostics: _ } => acc
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+// An Arrow's declared return: its second positional child (domain, return, return, order, body).
+fn as_arrow_return(arrow: Node) -> TypeRefText {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+    Present { value: r } => type_ref_text(n: r)
+    Absent => NoBase
+  }
+}
+
+// EVERY DECLARATION THE MODULE REFERENCES, by declaring path, once each -- the "is it used at all"
+// fact a declaration needs before any class but UNCONSUMED can be said of it. Read off the resolved
+// tree's reference spines, the same reader every consumer of a resolved reference asks
+// (v2.std.qualified_name declaration_reference_path_optional).
+fn module_referenced_paths(root: Node) -> Map<String, Bool> {
+  fold_list(xs: node_subtree_nodes(root: root), empty: empty_map(), cons: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: qn } => map_insert(acc, qualified_name_to_dotted_string(qn: qn), true)
+      Absent => acc
+    }
+  })
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// THE RECEIPT: the cross-module join, and the classes.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// One module's contribution, as the census walk hands it over. `inferred` is false when the module
+// resolved but did not infer: its declarations are still read (they are resolve-level facts), and its
+// casts are all OperandTypeUndecided under the module's infer cause.
+type TypeCensusModule {
+  module: String
+  declarations: FreeMonoid<TypeDeclRow>
+  casts: FreeMonoid<AsSiteRow>
+  references: Map<String, Bool>
+}
+
+fn type_census_module(
+  module: String,
+  root: Node,
+  kinds: FreeMonoid<DeclaredTypeKind>,
+  modifiers: FreeMonoid<DeclaredTypeModifiers>,
+  typing: AsTyping,
+  index: SymbolIndex
+) -> TypeCensusModule {
+  TypeCensusModule {
+    module: module,
+    declarations: type_declaration_rows(module: module, root: root, kinds: kinds, modifiers: modifiers),
+    casts: as_site_rows(module: module, root: root, typing: typing, index: index),
+    references: module_referenced_paths(root: root)
+  }
+}
+
+// THE DECLARATION CLASSES (plan section 2), plus the two the plan's table has no row for, named so
+// the gap is reported rather than hidden: a BODYLESS declaration (`type MachineWidth<bits>`) without
+// nominal_opaque, and a RESOURCE. UNCONSUMED precedes every other class: a declaration nothing
+// outside its own declaration references has no use to classify.
+type DeclarationClass
+  = TrueAlias
+  | UnconstrainedNominal
+  | CheckedConstructionStage
+  | Opaque
+  | MultiFieldRecord
+  | Sum
+  | Unconsumed
+  | BodylessUnclassified
+  | ResourceUnclassified
+  | DeclarationUndecided
+
+// WHY A CLASS WAS GIVEN, as the evidence the row carries beside it.
+type DeclarationVerdict {
+  row: TypeDeclRow
+  class: DeclarationClass
+  evidence: String
+}
+
+data brand_marker_path: String = "std.types.brand"
+
+fn has_nominal_opaque(ms: FreeMonoid<TypeDeclModifier>) -> Bool {
+  fold_list(xs: ms, empty: false, cons: fn(acc, m) {
+    match m {
+      NominalOpaqueModifier => true
+      SoleConstructorModifier => acc
+    }
+  })
+}
+
+fn only_brand(predicates: FreeMonoid<String>) -> Bool {
+  fold_list(xs: predicates, empty: true, cons: fn(acc, p) { acc && (p == brand_marker_path) })
+    && (count(predicates) > 0)
+}
+
+fn declaration_verdict(row: TypeDeclRow, consumed: Bool) -> DeclarationVerdict {
+  if !consumed {
+    DeclarationVerdict { row: row, class: Unconsumed, evidence: "no module references " + row.module + "." + row.symbol }
+  } else if has_nominal_opaque(ms: row.modifiers) {
+    DeclarationVerdict { row: row, class: Opaque, evidence: "modifier nominal_opaque" }
+  } else {
+    match row.form {
+      AliasForm => DeclarationVerdict { row: row, class: TrueAlias, evidence: "alias form" }
+      RefinementForm =>
+        if only_brand(predicates: row.predicates) {
+          DeclarationVerdict { row: row, class: UnconstrainedNominal, evidence: "where-clause resolves only to " + brand_marker_path }
+        } else {
+          DeclarationVerdict { row: row, class: CheckedConstructionStage, evidence: "where-clause predicates resolve to " + fold_list(xs: row.predicates, empty: "", cons: fn(a, p) { a + p + " " }) }
+        }
+      RecordForm { fields: f } =>
+        if f > 1 {
+          DeclarationVerdict { row: row, class: MultiFieldRecord, evidence: "record of " + to_string(f) + " fields" }
+        } else {
+          DeclarationVerdict { row: row, class: UnconstrainedNominal, evidence: "one-field record (a public raw constructor over its field)" }
+        }
+      CoproductForm { variants: v } => DeclarationVerdict { row: row, class: Sum, evidence: "coproduct of " + to_string(v) + " variants" }
+      BodylessForm => DeclarationVerdict { row: row, class: BodylessUnclassified, evidence: "bodyless declaration, no nominal_opaque" }
+      ResourceForm => DeclarationVerdict { row: row, class: ResourceUnclassified, evidence: "resource declaration" }
+      FormUndecided => DeclarationVerdict { row: row, class: DeclarationUndecided, evidence: "module_member_class left the member undecided" }
+    }
+  }
+}
+
+// THE CAST CLASSES (plan section 2). An Exception is a site with neither kind of evidence a class
+// needs (ruling by the plan author: never a default bucket); OperandTypeUndecided is a site whose
+// operand infer did not type.
+type WorkaroundOperation
+  = WorkaroundCompare
+  | WorkaroundOrder
+  | WorkaroundConcat
+  | WorkaroundHash
+
+type CastClass
+  = AliasNoOp
+  | NominalIntroduction
+  | NominalProjection
+  | OperationWorkaround { operation: WorkaroundOperation }
+  | GenuineConversion
+  | CastOperandTypeUndecided
+  | CastException
+
+type CastVerdict {
+  row: AsSiteRow
+  class: CastClass
+  evidence: String
+}
+
+fn ref_text(t: TypeRefText) -> String {
+  match t {
+    DeclaredRef { path: p } => p
+    KernelRef { name: n } => n
+    ParamRef { name: n } => "param " + n
+    StructuralRef => "<structural>"
+    NoBase => "<none>"
+  }
+}
+
+fn ref_equal(a: TypeRefText, b: TypeRefText) -> Bool {
+  match a {
+    DeclaredRef { path: p } => match b { DeclaredRef { path: q } => p == q  KernelRef { name: _ } => false  ParamRef { name: _ } => false  StructuralRef => false  NoBase => false }
+    KernelRef { name: p } => match b { KernelRef { name: q } => p == q  DeclaredRef { path: _ } => false  ParamRef { name: _ } => false  StructuralRef => false  NoBase => false }
+    ParamRef { name: _ } => false
+    StructuralRef => false
+    NoBase => false
+  }
+}
+
+fn is_true_alias(v: DeclarationVerdict) -> Bool {
+  match v.class {
+    TrueAlias => true
+    UnconstrainedNominal => false
+    CheckedConstructionStage => false
+    Opaque => false
+    MultiFieldRecord => false
+    Sum => false
+    Unconsumed => false
+    BodylessUnclassified => false
+    ResourceUnclassified => false
+    DeclarationUndecided => false
+  }
+}
+
+// A declaration whose base is a single representation another type can be cast into or out of.
+fn nominal_over(v: DeclarationVerdict) -> Bool {
+  match v.class {
+    UnconstrainedNominal => true
+    CheckedConstructionStage => true
+    Opaque => true
+    TrueAlias => false
+    MultiFieldRecord => false
+    Sum => false
+    Unconsumed => true
+    BodylessUnclassified => false
+    ResourceUnclassified => false
+    DeclarationUndecided => false
+  }
+}
+
+fn declared_verdict(index: Map<String, DeclarationVerdict>, t: TypeRefText) -> Optional<DeclarationVerdict> {
+  match t {
+    DeclaredRef { path: p } => map_get(index, p)
+    KernelRef { name: _ } => Absent
+    ParamRef { name: _ } => Absent
+    StructuralRef => Absent
+    NoBase => Absent
+  }
+}
+
+fn hash_callee(callee: TypeRefText) -> Bool {
+  match callee {
+    DeclaredRef { path: p } => starts_with(s: p, prefix: "std.content_hash.")
+    KernelRef { name: _ } => false
+    ParamRef { name: _ } => false
+    StructuralRef => false
+    NoBase => false
+  }
+}
+
+fn concat_callee(callee: TypeRefText) -> Bool {
+  match callee {
+    KernelRef { name: n } => (n == "concat") || (n == "join")
+    DeclaredRef { path: _ } => false
+    ParamRef { name: _ } => false
+    StructuralRef => false
+    NoBase => false
+  }
+}
+
+// nominal -> base: which use of the raw value the site has evidence for.
+fn projection_verdict(row: AsSiteRow, target: TypeRefText) -> CastVerdict {
+  match row.parent {
+    ParentCompare => CastVerdict { row: row, class: OperationWorkaround { operation: WorkaroundCompare }, evidence: "stripped then compared (==/!=)" }
+    ParentOrder => CastVerdict { row: row, class: OperationWorkaround { operation: WorkaroundOrder }, evidence: "stripped then ordered (</<=/>/>=)" }
+    ParentAdd => CastVerdict { row: row, class: OperationWorkaround { operation: WorkaroundConcat }, evidence: "stripped then added/concatenated" }
+    ParentCall { callee: c, declared: d } =>
+      if hash_callee(callee: c) {
+        CastVerdict { row: row, class: OperationWorkaround { operation: WorkaroundHash }, evidence: "stripped then hashed by " + ref_text(t: c) }
+      } else if concat_callee(callee: c) {
+        CastVerdict { row: row, class: OperationWorkaround { operation: WorkaroundConcat }, evidence: "stripped then passed to " + ref_text(t: c) }
+      } else if ref_equal(a: d, b: target) {
+        CastVerdict { row: row, class: NominalProjection, evidence: "passed to " + ref_text(t: c) + " whose parameter is declared " + ref_text(t: d) }
+      } else {
+        CastVerdict { row: row, class: CastException, evidence: "passed to " + ref_text(t: c) + ", parameter declared " + ref_text(t: d) + "; no workaround or projection evidence" }
+      }
+    ParentReturn { declared: d } =>
+      if ref_equal(a: d, b: target) {
+        CastVerdict { row: row, class: NominalProjection, evidence: "returned where the fn declares " + ref_text(t: d) }
+      } else {
+        CastVerdict { row: row, class: CastException, evidence: "returned where the fn declares " + ref_text(t: d) }
+      }
+    ParentOther => CastVerdict { row: row, class: CastException, evidence: "no parent evidence (field, let, branch or other position)" }
+  }
+}
+
+fn cast_verdict(index: Map<String, DeclarationVerdict>, row: AsSiteRow) -> CastVerdict {
+  match row.operand {
+    OperandTypeUndecided { cause: c } => CastVerdict { row: row, class: CastOperandTypeUndecided, evidence: c }
+    OperandTyped { type_ref: source } =>
+      match declared_verdict(index: index, t: row.target) {
+        Present { value: tv } =>
+          if is_true_alias(v: tv) && ref_equal(a: tv.row.base, b: source) {
+            CastVerdict { row: row, class: AliasNoOp, evidence: ref_text(t: row.target) + " is an alias of " + ref_text(t: source) }
+          } else if nominal_over(v: tv) && ref_equal(a: tv.row.base, b: source) {
+            CastVerdict { row: row, class: NominalIntroduction, evidence: ref_text(t: source) + " into " + ref_text(t: row.target) + " (" + tv.evidence + ")" }
+          } else {
+            cast_from_source(index: index, row: row, source: source)
+          }
+        Absent => cast_from_source(index: index, row: row, source: source)
+      }
+  }
+}
+
+fn cast_from_source(index: Map<String, DeclarationVerdict>, row: AsSiteRow, source: TypeRefText) -> CastVerdict {
+  match declared_verdict(index: index, t: source) {
+    Present { value: sv } =>
+      if nominal_over(v: sv) && ref_equal(a: sv.row.base, b: row.target) {
+        projection_verdict(row: row, target: row.target)
+      } else {
+        CastVerdict { row: row, class: CastException, evidence: ref_text(t: source) + " to " + ref_text(t: row.target) + ": neither is the other's base" }
+      }
+    Absent =>
+      if ref_equal(a: source, b: row.target) {
+        CastVerdict { row: row, class: AliasNoOp, evidence: "identity cast " + ref_text(t: source) }
+      } else {
+        match declared_verdict(index: index, t: row.target) {
+          Present { value: _ } => CastVerdict { row: row, class: CastException, evidence: ref_text(t: source) + " into " + ref_text(t: row.target) + ", which is not over it" }
+          Absent => CastVerdict { row: row, class: GenuineConversion, evidence: ref_text(t: source) + " to " + ref_text(t: row.target) + ", admitted by infer's coercion" }
+        }
+      }
+  }
+}
+
+// THE RUN'S SUBJECT, AND WHY A RUN REFUSES. Every module the census walk enrolled must have
+// contributed (`modules`), or be named with the stage that stopped it (`unreached`): a module that
+// did not resolve has no reference index, so its declarations and its casts are unknown, and the run
+// REFUSES -- could-not-tell is exit 2, never a class (brief; DESIGN section 5). A declaration whose
+// form is undecided refuses the same way.
+type UnreachedModule {
+  module: String
+  stage: String
+  cause: String
+}
+
+type TypeCensusRun {
+  modules: FreeMonoid<TypeCensusModule>
+  unreached: FreeMonoid<UnreachedModule>
+}
+
+type TypeCensusReceipt {
+  lines: FreeMonoid<String>
+  terminal: NativeClaimTerminal
+}
+
+fn declaration_index(vs: FreeMonoid<DeclarationVerdict>) -> Map<String, DeclarationVerdict> {
+  fold_list(xs: vs, empty: empty_map(), cons: fn(acc, v) { map_insert(acc, v.row.module + "." + v.row.symbol, v) })
+}
+
+fn referenced_anywhere(run: TypeCensusRun, path: String) -> Bool {
+  fold_list(xs: run.modules, empty: false, cons: fn(acc, m) {
+    acc || match map_get(m.references, path) { Present { value: _ } => true  Absent => false }
+  })
+}
+
+fn decl_class_text(c: DeclarationClass) -> String {
+  match c {
+    TrueAlias => "TrueAlias"
+    UnconstrainedNominal => "UnconstrainedNominal"
+    CheckedConstructionStage => "CheckedConstructionStage"
+    Opaque => "Opaque"
+    MultiFieldRecord => "MultiFieldRecord"
+    Sum => "Sum"
+    Unconsumed => "UNCONSUMED"
+    BodylessUnclassified => "BodylessUnclassified"
+    ResourceUnclassified => "ResourceUnclassified"
+    DeclarationUndecided => "DeclarationUndecided"
+  }
+}
+
+fn cast_class_text(c: CastClass) -> String {
+  match c {
+    AliasNoOp => "AliasNoOp"
+    NominalIntroduction => "NominalIntroduction"
+    NominalProjection => "NominalProjection"
+    OperationWorkaround { operation: o } =>
+      match o {
+        WorkaroundCompare => "OperationWorkaround:compare"
+        WorkaroundOrder => "OperationWorkaround:order"
+        WorkaroundConcat => "OperationWorkaround:concat"
+        WorkaroundHash => "OperationWorkaround:hash"
+      }
+    GenuineConversion => "GenuineConversion"
+    CastOperandTypeUndecided => "OperandTypeUndecided"
+    CastException => "EXCEPTION"
+  }
+}
+
+fn form_text(f: TypeDeclForm) -> String {
+  match f {
+    AliasForm => "alias"
+    BodylessForm => "bodyless"
+    CoproductForm { variants: _ } => "sum"
+    RecordForm { fields: _ } => "record"
+    RefinementForm => "refinement"
+    ResourceForm => "resource"
+    FormUndecided => "undecided"
+  }
+}
+
+fn tally(acc: Map<String, Int>, key: String) -> Map<String, Int> {
+  match map_get(acc, key) {
+    Present { value: n } => map_insert(acc, key, n + 1)
+    Absent => map_insert(acc, key, 1)
+  }
+}
+
+fn tally_lines(kind: String, m: Map<String, Int>) -> List<String> {
+  map(map_keys(m), k => "summary " + kind + " " + k + " " + to_string(match map_get(m, k) { Present { value: n } => n  Absent => 0 }))
+}
+
+// EVERY MODULE CARRYING AN AFFECTED DECLARATION OR CAST. Which of them the required gate does not
+// admit -- the ones that will not refuse loudly when M4 deletes the old forms (DESIGN section 3), which
+// M2's PR body names -- is decided by gunbc.instruments.type_declaration_use_census_gate on the host,
+// because the gate's authority (v2.workflow.required_floor required_gate_admits) is a workflow module
+// the emitted compiler's closure has no business carrying.
+fn affected_modules(decls: FreeMonoid<DeclarationVerdict>, casts: FreeMonoid<CastVerdict>) -> List<String> {
+  let affected = fold_list(xs: casts, empty: fold_list(xs: decls, empty: empty_map(), cons: fn(acc, v) {
+    match v.class {
+      UnconstrainedNominal => map_insert(acc, v.row.module, true)
+      CheckedConstructionStage => map_insert(acc, v.row.module, true)
+      Opaque => map_insert(acc, v.row.module, true)
+      TrueAlias => acc
+      MultiFieldRecord => acc
+      Sum => acc
+      Unconsumed => acc
+      BodylessUnclassified => acc
+      ResourceUnclassified => acc
+      DeclarationUndecided => acc
+    }
+  }), cons: fn(acc, v) {
+    match v.class {
+      AliasNoOp => map_insert(acc, v.row.module, true)
+      NominalIntroduction => map_insert(acc, v.row.module, true)
+      NominalProjection => map_insert(acc, v.row.module, true)
+      OperationWorkaround { operation: _ } => map_insert(acc, v.row.module, true)
+      CastException => map_insert(acc, v.row.module, true)
+      CastOperandTypeUndecided => map_insert(acc, v.row.module, true)
+      GenuineConversion => acc
+    }
+  })
+  map_keys(affected)
+}
+
+fn type_census_receipt(run: TypeCensusRun) -> TypeCensusReceipt {
+  let decl_rows: FreeMonoid<TypeDeclRow> = fold_list(xs: run.modules, empty: Empty, cons: fn(acc, m) {
+    fold_list(xs: m.declarations, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: r) })
+  })
+  let decls: FreeMonoid<DeclarationVerdict> = fold_list(xs: decl_rows, empty: Empty, cons: fn(acc, r) {
+    list_snoc_item(xs: acc, item: declaration_verdict(row: r, consumed: referenced_anywhere(run: run, path: r.module + "." + r.symbol)))
+  })
+  let index: Map<String, DeclarationVerdict> = declaration_index(vs: decls)
+  let casts: FreeMonoid<CastVerdict> = fold_list(xs: run.modules, empty: Empty, cons: fn(acc, m) {
+    fold_list(xs: m.casts, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: cast_verdict(index: index, row: r)) })
+  })
+  let unreached_lines: FreeMonoid<String> = fold_list(xs: run.unreached, empty: Empty, cons: fn(acc, u) { list_snoc_item(xs: acc, item: "unreached " + u.module + " stage=" + u.stage + " cause=" + u.cause) })
+  let with_decls: FreeMonoid<String> = fold_list(xs: decls, empty: unreached_lines, cons: fn(acc, v) {
+    list_snoc_item(xs: acc, item: "decl " + v.row.module + " " + v.row.symbol + " form=" + form_text(f: v.row.form) + " class=" + decl_class_text(c: v.class) + " witness=" + v.row.module + "." + v.row.symbol + " evidence=" + v.evidence)
+  })
+  let with_casts: FreeMonoid<String> = fold_list(xs: casts, empty: with_decls, cons: fn(acc, v) {
+    list_snoc_item(xs: acc, item: "cast " + v.row.module + " " + v.row.enclosing + "@" + to_string(v.row.occurrence) + " target=" + ref_text(t: v.row.target) + " class=" + cast_class_text(c: v.class) + " witness=" + v.row.module + "." + v.row.enclosing + "@" + to_string(v.row.occurrence) + " evidence=" + v.evidence)
+  })
+  let with_affected: FreeMonoid<String> = fold(affected_modules(decls: decls, casts: casts), init: with_casts, f: fn(acc, m) { list_snoc_item(xs: acc, item: "affected " + m) })
+  let decl_tally: Map<String, Int> = fold_list(xs: decls, empty: empty_map(), cons: fn(acc, v) { tally(acc: acc, key: decl_class_text(c: v.class)) })
+  let cast_tally: Map<String, Int> = fold_list(xs: casts, empty: empty_map(), cons: fn(acc, v) { tally(acc: acc, key: cast_class_text(c: v.class)) })
+  let with_tallies: FreeMonoid<String> = fold(concat(tally_lines(kind: "decl", m: decl_tally), tally_lines(kind: "cast", m: cast_tally)), init: with_affected, f: fn(acc, l) { list_snoc_item(xs: acc, item: l) })
+  let lines: FreeMonoid<String> = list_snoc_item(xs: with_tallies, item: "summary modules " + to_string(length(xs: run.modules)) + " unreached " + to_string(length(xs: run.unreached)))
+  let undecided: Int = fold_list(xs: decls, empty: 0, cons: fn(acc, v) {
+    match v.class {
+      DeclarationUndecided => acc + 1
+      TrueAlias => acc
+      UnconstrainedNominal => acc
+      CheckedConstructionStage => acc
+      Opaque => acc
+      MultiFieldRecord => acc
+      Sum => acc
+      Unconsumed => acc
+      BodylessUnclassified => acc
+      ResourceUnclassified => acc
+    }
+  })
+  if length(xs: run.unreached) > 0 {
+    TypeCensusReceipt { lines: lines, terminal: NativeClaimNoObservation { reason: to_string(length(xs: run.unreached)) + " modules have no reference index (listed as unreached)" } }
+  } else if undecided > 0 {
+    TypeCensusReceipt { lines: lines, terminal: NativeClaimNoObservation { reason: to_string(undecided) + " declarations have an undecided form" } }
+  } else {
+    TypeCensusReceipt { lines: lines, terminal: NativeClaimHeld }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// THE WALK'S SIDE: one module in, one contribution out. The dispatch over the census-infer step's
+// outcome lives in the walk (v2.compiler.compile native_census_infer_type_contribution), which owns
+// that outcome; this module imports nothing from it, so the compiler can import this one.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// The native driver's census-infer loop hands each module's step here and keeps what comes back; at
+// the end it hands the run to type_census_receipt. A module whose file the context refused, or which
+// did not resolve, has no reference index: it is UNREACHED, named with its stage and fatal reason, and
+// any unreached module makes the run refuse. A module that resolved but did not infer still
+// contributes its declarations, and its casts are OperandTypeUndecided under the infer cause.
+type TypeCensusContribution
+  = TypeCensusContributed { module: TypeCensusModule }
+  | TypeCensusUnreached { unreached: UnreachedModule }
+
+// One module that resolved, with the normalized tree the context holds for it (Absent when it holds
+// none under that name, which is unreached, never an empty module) and the source of its operand types.
+fn type_census_contribution(
+  module: String,
+  resolved: ResolvedTree,
+  normalized: Optional<NormalizedTree>,
+  typing: AsTyping
+) -> TypeCensusContribution {
+  match normalized {
+    Absent =>
+      TypeCensusUnreached { unreached: UnreachedModule { module: module, stage: "normalize", cause: "resolved, but the context holds no normalized tree under this name" } }
+    Present { value: nt } =>
+      TypeCensusContributed { module: type_census_module(
+        module: module,
+        root: resolved.root,
+        kinds: nt.type_declaration_kinds,
+        modifiers: nt.type_declaration_modifiers,
+        typing: typing,
+        index: resolved.symbol_index
+      ) }
+  }
+}
+
+fn type_census_unreached(module: String, stage: String, cause: String) -> TypeCensusContribution {
+  TypeCensusUnreached { unreached: UnreachedModule { module: module, stage: stage, cause: cause } }
+}
+
+// The run, accumulated contribution by contribution; the driver folds every step through this.
+fn type_census_run_add(run: TypeCensusRun, c: TypeCensusContribution) -> TypeCensusRun {
+  match c {
+    TypeCensusContributed { module: m } => TypeCensusRun { modules: list_snoc_item(xs: run.modules, item: m), unreached: run.unreached }
+    TypeCensusUnreached { unreached: u } => TypeCensusRun { modules: run.modules, unreached: list_snoc_item(xs: run.unreached, item: u) }
+  }
+}
+
+fn type_census_run_empty() -> TypeCensusRun {
+  TypeCensusRun { modules: Empty, unreached: Empty }
+}

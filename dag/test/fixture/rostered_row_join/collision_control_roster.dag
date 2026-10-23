@@ -1,0 +1,11 @@
+module test.fixture.rostered_row_join.collision_control_roster
+
+import std.types { List }
+import test.fixture.rostered_row_join.collision_control_rostered { CollisionControlRow, collision_row }
+
+// THE ROSTER OF THE BARE-NAME COLLISION CONTROL: it names ONE of the two `collision_row`
+// declarations, by importing the one it means. The import claim is what makes the spelling
+// resolvable to a single module, and it is the surface `rostered_identities` reads.
+data collision_control_roster: List<CollisionControlRow> = [
+  collision_row,
+]

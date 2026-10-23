@@ -1,0 +1,19 @@
+module test.claim.printer_batch_witness_test
+import std.types {Bool}
+import gunbc.fleet.printer_batch {BatchPlate,PrinterQueue,queues_valid,batch_counts,QueueReady,QueueDone,QueueAttention}
+import gunbc.fleet_asset_identity {printer_01,printer_02}
+
+test fn two_printers_have_independent_work_and_attention() -> Bool {
+ let c=batch_counts(phases:[QueueAttention {reason:"one printer unavailable"},QueueReady,QueueDone])
+ c.pending==1 && c.attention==1 && c.done==1 && c.printing==0
+}
+test fn duplicate_lane_or_attempt_is_refused_before_effects() -> Bool {
+ let p=BatchPlate {path:"/tmp/one.3mf",digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",attempt:"stable-slot-one"}
+ let other=BatchPlate {path:"/tmp/two.3mf",digest:p.digest,attempt:"stable-slot-two"}
+ let q=PrinterQueue {printer:printer_01,version:"1",plates:[p]}
+ queues_valid(queues:[q,PrinterQueue {printer:printer_02,version:"2",plates:[other]}]) &&
+ !queues_valid(queues:[q,PrinterQueue {printer:printer_02,version:"2",plates:[BatchPlate {path:"/new/location.3mf",digest:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",attempt:p.attempt}]}]) &&
+ !queues_valid(queues:[q,q]) &&
+ !queues_valid(queues:[PrinterQueue {printer:printer_01,version:"1",plates:[p,p]}]) &&
+ !queues_valid(queues:[])
+}

@@ -1,0 +1,188 @@
+module test.claim.roadmap_closing_contract_execution_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.inspect
+import extdeps.shell
+import gunbc.roadmap_validation_oracle { ValidationOracleRef }
+import gunbc.roadmap_closing_contract_authoring {
+  ClosingContractWitnessRun,
+  ClosingContractWitnessPassed,
+  ClosingContractWitnessResolveRefused,
+  ClosingContractWitnessRefused,
+  ClosingContractRunner,
+  ClosingContractRunnerResolved,
+  ClosingContractRunnerUnavailable,
+  closing_contract_default_runner,
+  closing_contract_execute_oracle,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BEHAVIORAL DISCRIMINATION CONTROLS for the execution arm of the closing-contract authoring
+// oracle (gunbc.roadmap_closing_contract_authoring, module-head note owns the production failure
+// that motivated it: a witness that could not resolve 21 invented imports passed a textual oracle
+// on a live dispatch). Every claim below executes a REAL child claim-run of a PLANTED witness --
+// the fixtures are written into a mktemp source root under target/ at run time, never committed,
+// because a committed witness with unresolvable imports would fail every whole-root resolve it was
+// swept into (compile-clean, discovery batching), while a mktemp root reaches nothing but the one
+// child run this file spawns. WET: every fn here drives shell.Mktemp, Filesystem.Write,
+// gunbc.WitnessBin.Run and shell.Remove -- enrolled as a wet row in gunbc.ci_layer_roots beside the
+// other exit-status witnesses; the hermetic envelope refuses these effects by construction and the
+// refusal is correct (a mocked Run would let the discrimination claims pass against a fabricated
+// exit status, which is precisely the defect they exist to detect).
+
+data planted_pass_fixture: String = "module test.planted.closing_contract_pass_fixture
+
+import std.types { Bool }
+
+test fn planted_pass_holds() -> Bool {
+  true
+}
+"
+
+data planted_failing_fixture: String = "module test.planted.closing_contract_failing_fixture
+
+import std.types { Bool }
+
+test fn planted_failing_holds() -> Bool {
+  false
+}
+"
+
+// The shape of the production failure, reduced: imports of names that do not exist in the
+// imported module. Two invented names stand for the 21 the live witness carried -- the resolve
+// refusal does not depend on the count.
+data planted_unresolvable_fixture: String = "module test.planted.closing_contract_unresolvable_fixture
+
+import std.types { Bool }
+import gunbc.ci_gate { HostLoad, gate_verdict }
+
+test fn planted_unresolvable_holds() -> Bool {
+  true
+}
+"
+
+type PlantedFixture
+  = PlantedFixturesReady { dir: String }
+  | PlantedFixturesUnwritable { detail: String }
+
+fn plant_fixtures(root: String) -> PlantedFixture {
+  let dir = shell.Mktemp.DirWithTemplate(
+    template: concat(root, "/target/closing-contract-planted-XXXXXX") as FilePath,
+  )
+  if !dir.success {
+    PlantedFixturesUnwritable { detail: "mktemp under target/ failed" }
+  } else {
+    let d = dir.path as String
+    let p = Filesystem.Write(path: concat(d, "/planted_pass_fixture_test.dag"), content: planted_pass_fixture)
+    let f = Filesystem.Write(path: concat(d, "/planted_failing_fixture_test.dag"), content: planted_failing_fixture)
+    let u = Filesystem.Write(path: concat(d, "/planted_unresolvable_fixture_test.dag"), content: planted_unresolvable_fixture)
+    if p.success && f.success && u.success {
+      PlantedFixturesReady { dir: d }
+    } else {
+      PlantedFixturesUnwritable {
+        detail: join(["fixture write failed: ", p.error, f.error, u.error], ""),
+      }
+    }
+  }
+}
+
+fn planted_source_root_args(dir: String) -> List<String> {
+  ["--source-root", "dag", "--source-root", "src/v2", "--source-root", dir]
+}
+
+fn planted_oracle(dir: String, file: String, function: String) -> ValidationOracleRef {
+  ValidationOracleRef {
+    entry: join([dir, "/", file], "") as FilePath,
+    function: function as NonEmptyStr,
+  }
+}
+
+fn run_planted(
+  root: String,
+  runner: FilePath,
+  dir: String,
+  file: String,
+  function: String,
+) -> ClosingContractWitnessRun {
+  closing_contract_execute_oracle(
+    oracle: planted_oracle(dir: dir, file: file, function: function),
+    runner_binary: runner,
+    source_root_args: planted_source_root_args(dir: dir),
+    workdir: root,
+  )
+}
+
+// One test fn per outcome of the classifier, each with its own planted root so a failure leaves
+// its own evidence. The runner is resolved through the same default the production predicate
+// uses, so these claims also inhabit the runner-resolution path by hand.
+
+test fn a_planted_witness_that_resolves_and_passes_executes_green() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match closing_contract_default_runner(root: root) {
+    ClosingContractRunnerUnavailable { detail: _ } => false
+    ClosingContractRunnerResolved { binary } =>
+      match plant_fixtures(root: root) {
+        PlantedFixturesUnwritable { detail: _ } => false
+        PlantedFixturesReady { dir } => {
+          let run = run_planted(root: root, runner: binary, dir: dir, file: "planted_pass_fixture_test.dag", function: "planted_pass_holds")
+          let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+          cleaned.success && match run {
+            ClosingContractWitnessPassed { entry, function } =>
+              string_contains(s: entry as String, pattern: "planted_pass_fixture_test.dag")
+                && (function as String) == "planted_pass_holds"
+            ClosingContractWitnessResolveRefused { entry: _, function: _, exit_code: _, detail: _ } => false
+            ClosingContractWitnessRefused { entry: _, function: _, exit_code: _, detail: _ } => false
+          }
+        }
+      }
+  }
+}
+
+test fn a_planted_witness_with_unresolvable_imports_refuses_as_resolve() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match closing_contract_default_runner(root: root) {
+    ClosingContractRunnerUnavailable { detail: _ } => false
+    ClosingContractRunnerResolved { binary } =>
+      match plant_fixtures(root: root) {
+        PlantedFixturesUnwritable { detail: _ } => false
+        PlantedFixturesReady { dir } => {
+          let run = run_planted(root: root, runner: binary, dir: dir, file: "planted_unresolvable_fixture_test.dag", function: "planted_unresolvable_holds")
+          let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+          cleaned.success && match run {
+            ClosingContractWitnessResolveRefused { entry, function, exit_code, detail } =>
+              string_contains(s: entry as String, pattern: "planted_unresolvable_fixture_test.dag")
+                && exit_code != 0
+                && string_contains(s: detail, pattern: "not found in module")
+            ClosingContractWitnessPassed { entry: _, function: _ } => false
+            ClosingContractWitnessRefused { entry: _, function: _, exit_code: _, detail: _ } => false
+          }
+        }
+      }
+  }
+}
+
+test fn a_planted_witness_whose_arm_fails_refuses_as_failed() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match closing_contract_default_runner(root: root) {
+    ClosingContractRunnerUnavailable { detail: _ } => false
+    ClosingContractRunnerResolved { binary } =>
+      match plant_fixtures(root: root) {
+        PlantedFixturesUnwritable { detail: _ } => false
+        PlantedFixturesReady { dir } => {
+          let run = run_planted(root: root, runner: binary, dir: dir, file: "planted_failing_fixture_test.dag", function: "planted_failing_holds")
+          let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+          cleaned.success && match run {
+            ClosingContractWitnessRefused { entry, function, exit_code, detail } =>
+              string_contains(s: entry as String, pattern: "planted_failing_fixture_test.dag")
+                && exit_code != 0
+                && string_contains(s: detail, pattern: "FAIL planted_failing_holds")
+            ClosingContractWitnessPassed { entry: _, function: _ } => false
+            ClosingContractWitnessResolveRefused { entry: _, function: _, exit_code: _, detail: _ } => false
+          }
+        }
+      }
+  }
+}

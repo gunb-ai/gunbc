@@ -1,0 +1,52 @@
+module extdeps.docker.images.xomoxcc_dgx_spark_sglang
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "hub.docker.com/r/xomoxcc/dgx-spark-sglang"
+  },
+}
+
+// THE SUBJECT THIS MODULE SPEAKS FOR IS THE PUBLISHED IMAGE, named by the repository the publisher
+// owns. Everything else here -- the digest, the tag, the version the image declares -- is that
+// publisher's statement about that subject. What this repository OBSERVED inside the image is not
+// in this module at all; readings live in gunbc.spark.runtime_architecture_registry_reading.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.docker.images.xomoxcc_dgx_spark_sglang",
+      decl_name: "xomoxcc_dgx_spark_sglang_repository",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// AN SGLANG BUILD FOR GB10, pinned by registry digest, carried for the same reason as the
+// timothystewart6 row: it is a probed candidate in the DeepSeek V4.1 runtime search, and a search
+// that only ever probed vLLM images would be answering a narrower question than it claims to.
+//
+// ITS REGISTRY IS SGLANG'S OWN AND IS READ BY SGLANG'S OWN CALL, and that reading is ours rather
+// than the publisher's: it lives in gunbc.spark.runtime_architecture_registry_reading keyed by this
+// digest, beside the host and date it was taken on.
+//
+// THE VERSION IS THE IMAGE TAG AND NOT A DISTRIBUTION VERSION: `importlib.metadata.version("sglang")`
+// inside the image returns 0.0.0, which is the build's own metadata rather than a usable fact, so the
+// tag is what is recorded and it is labelled as a tag.
+
+data xomoxcc_dgx_spark_sglang_repository: NonEmptyStr = "xomoxcc/dgx-spark-sglang" as NonEmptyStr
+data xomoxcc_dgx_spark_sglang_digest_sha256_hex: NonEmptyStr = "6f578ee2eaccb594891b5ff409612e27841cd72bb7237b96cf079a5ba90712c5" as NonEmptyStr
+data xomoxcc_dgx_spark_sglang_framework_version: NonEmptyStr = "0.5.18-sm121 (image tag; the installed distribution reports 0.0.0)" as NonEmptyStr
+data xomoxcc_dgx_spark_sglang_tag: NonEmptyStr = "0.5.18-sm121" as NonEmptyStr
+
+// The pinned reference every probe and every create names: repository@sha256:digest, never the tag.
+fn xomoxcc_dgx_spark_sglang_pinned_reference() -> NonEmptyStr {
+  join([xomoxcc_dgx_spark_sglang_repository as String, "@sha256:", xomoxcc_dgx_spark_sglang_digest_sha256_hex as String], "") as NonEmptyStr
+}
+

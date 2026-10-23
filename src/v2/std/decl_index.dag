@@ -1,0 +1,204 @@
+module v2.std.decl_index
+import std.types { List }
+import v2.std.arrow_signature { declared_signature_arrow }
+import std.algebra { Empty, list_snoc_item }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
+import v2.std.node { Arrow, Conj, Node, TypeNode, all_edges_named, all_edges_positional }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { Absent, Present, list_at_optional }
+type ItemKind
+  = FnItem
+  | TypeItem
+  | DataItem
+  | ServiceItem
+  | OtherItem
+
+type DeclFact {
+  qualified_name: String
+  name: String
+  kind: ItemKind
+  node: Node
+  rel_path: String
+}
+
+fn decl_facts(pool_roots: List<String>) -> List<DeclFact> {
+  decl_facts(pool_roots: pool_roots)
+}
+
+// THE KEYED READ. `decl_facts` answers "what does the corpus declare"; this answers "what does the
+// corpus declare under THIS qualified name", which is the question nearly every citation consumer
+// actually asks. Both project one census, so a row here is a row there — the filter runs on the
+// host side of the seam, before any of it becomes interpreter values, which is where the cost was.
+// Zero rows means no such declaration; more than one is a real ambiguity and is CARRIED, because
+// the resolver derives `DeclarationRefAmbiguous` from exactly that multiplicity.
+fn decl_facts_at(pool_roots: List<String>, qualified_name: String) -> List<DeclFact> {
+  decl_facts_at(pool_roots: pool_roots, qualified_name: qualified_name)
+}
+
+// THE KEYED BARE-NAME READ, AND WHY IT IS A SEAM RATHER THAN A FOLD OVER decl_facts.
+// `decl_facts_at` answers "what is declared under this QUALIFIED name", which is the wrong question
+// for a bare spelling: a bare name has no module, so no qualified key can express it. The only
+// substrate answer was to fold the whole corpus, and that was MEASURED at roughly 3.6s per call
+// against 1ms for the keyed read, sharing at no grain -- four calls in one claim frame cost four
+// times one. That is gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame
+// in the very route meant to make the reflection memo key sound, which is why this seam exists.
+//
+// IT RETURNS THE CANDIDATES, NEVER A CHOICE. The host filters the SAME memoized declaration pool
+// `decl_facts_at` reads -- no second parse and no second memo -- and marshals no declaration nodes,
+// which is where the whole-pool cost lived. What comes back is every qualified name declaring this
+// bare spelling as a type, so the multiplicity AND the candidate identities are both the caller's
+// to judge: the refusal is located and names its candidates in the substrate, and the host never
+// picks a match. That boundary is the condition under which this seed arm was admitted at all.
+//
+// Consumer: `v2.std.node_reflection` type_declarer_names, the one reader of this seam, which both
+// guarded routes go through -- resolve_type_node for a bare spelling and resolve_type_node_at
+// for a citation. Each establishes multiplicity from what this returns and shape from the keyed
+// declaration read, before accept_sole_declaration will hand back a node.
+fn type_declarer_qualified_names(pool_roots: List<String>, bare_name: String) -> List<String> {
+  type_declarer_qualified_names(pool_roots: pool_roots, bare_name: bare_name)
+}
+
+fn export_signature_facts(pool_roots: List<String>) -> List<DeclFact> {
+  export_signature_facts(pool_roots: pool_roots)
+}
+
+// THE EXPORTED SIGNATURE, IN THE ONE ARROW ENCODING. The host seam above hands a function's Arrow as
+// [domain, return]: the domain a Conj of Named edges, one per value parameter, labelled with its
+// authored name, in authored order, and no order edge. This lifts it through
+// v2.std.arrow_signature declared_signature, the one constructor of a domain and its declared order,
+// so an anonymous `_` becomes its minted binder and parameter order is carried by the order edge
+// rather than by the Conj's sequence. The seam mints no second constructor; every consumer of an
+// exported signature reads it here.
+fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<DeclFact>> {
+  fold(export_signature_facts(pool_roots: pool_roots), init: outcome_accepted(value: Empty), f: fn(acc, fact) {
+    bind_outcome(o: acc, f: fn(facts) {
+      match fact.kind {
+        FnItem =>
+          bind_outcome(o: export_signature_declared_arrow(arrow: fact.node), f: fn(node) {
+            outcome_accepted(value: list_snoc_item(xs: facts, item: DeclFact {
+              qualified_name: fact.qualified_name,
+              name: fact.name,
+              kind: fact.kind,
+              node: node,
+              rel_path: fact.rel_path
+            }))
+          })
+        _ => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+      }
+    })
+  })
+}
+
+// The host's shape is exactly an Arrow whose OUTER children are two Positional edges, [domain, return],
+// with the domain a Conj of Named edges. Anything else REFUSES at the node's locus rather than passing
+// through: a node of another connective is never relabelled an Arrow, an extra outer edge (Named or
+// Positional) is never dropped, and a host that regresses to positional types never reaches a
+// fingerprint.
+fn export_signature_declared_arrow(arrow: Node) -> Outcome<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      if (count(arrow.children) != 2) || !all_edges_positional(children: arrow.children) {
+        outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+      } else {
+        let targets = node_positional_child_targets(node: arrow)
+        match list_at_optional(xs: targets, index: 0) {
+          Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+          Present { value: domain } =>
+            match list_at_optional(xs: targets, index: 1) {
+              Absent => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+              Present { value: ret } =>
+                match domain.kind {
+                  TypeNode { connective: Conj } =>
+                    if all_edges_named(children: domain.children) {
+                      export_signature_declared_from(arrow: arrow, domain: domain, ret: ret)
+                    } else {
+                      outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+                    }
+                  _ => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+                }
+            }
+        }
+      }
+    _ => outcome_rejected(d: export_signature_host_shape_diagnostic(arrow: arrow))
+  }
+}
+
+fn export_signature_declared_from(arrow: Node, domain: Node, ret: Node) -> Outcome<Node> {
+  outcome_accepted(value: declared_signature_arrow(params: domain.children, codomain: ret, source: arrow))
+}
+
+fn export_signature_host_shape_diagnostic(arrow: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^export_signature_host_arrow_not_named_domain,
+    at: node_locus(node: arrow),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A top-level `data` declaration with its DECLARED TYPE, keyed at declaration identity.
+// `DeclFact` cannot answer this: for a DataItem its `node` is the initializer projection,
+// which drops the type annotation, so no consumer of `decl_facts` can decide whether a
+// declaration is still typed `String`. `module_path` is authored and UNSTRIPPED (`v2.`
+// retained) so it composes with `DeclarationRef` directly.
+type DataDeclTypeFact {
+  module_path: String
+  decl_name: String
+  type_name: String
+  rel_path: String
+}
+
+fn data_decl_type_facts(pool_roots: List<String>) -> List<DataDeclTypeFact> {
+  data_decl_type_facts(pool_roots: pool_roots)
+}
+
+data export_signature_facts_host_scaffold_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.interface_summary",
+    decl_name: "interface_summary_v0_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+fn logical_qualified_name_from_module(module_name: String, name: String) -> String {
+  let start = if module_name.starts_with(prefix: "v2.") { 3 } else { 0 }
+  let logical = module_name.substring(start: start, end: module_name.length())
+  if logical.length() == 0 {
+    name
+  } else {
+    concat(logical, ".", name)
+  }
+}
+
+fn decl_facts_is_fn_like(kind: ItemKind) -> Bool {
+  match kind {
+    FnItem => true
+    TypeItem => false
+    DataItem => false
+    ServiceItem => false
+    OtherItem => false
+  }
+}
+
+fn decl_fact_node_has_body(node: Node) -> Bool {
+  (length(xs: node_labeled_child_edges(node: node)) > 0)
+    || (length(xs: node_positional_child_targets(node: node)) > 0)
+}
+
+fn decl_facts_fn_items(facts: List<DeclFact>) -> List<DeclFact> {
+  fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
+    if decl_facts_is_fn_like(kind: fact.kind) {
+      list_snoc_item(xs: acc, item: fact)
+    } else {
+      acc
+    }
+  })
+}
+
+fn decl_facts_count(pool_roots: List<String>) -> Int {
+  length(xs: decl_facts(pool_roots: pool_roots))
+}
+
+fn decl_facts_fn_item_count(pool_roots: List<String>) -> Int {
+  length(xs: decl_facts_fn_items(facts: decl_facts(pool_roots: pool_roots)))
+}

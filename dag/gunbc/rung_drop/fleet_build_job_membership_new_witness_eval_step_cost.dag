@@ -1,0 +1,45 @@
+module gunbc.rung_drop.fleet_build_job_membership_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_build_job_membership_rows }
+
+// DECLARED 4b(3) DROP, OPERATOR-ADMITTED (eager-owl-205, 2026-09-30, on gunbc#12800, escalation
+// msg_00eaf0e6, option 1 with conditions). The DECLARATION lives here; the POPULATION's authority is
+// `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_build_job_membership_rows`.
+//
+// EXACTLY ONE IDENTITY, THE MEMBERSHIP HALF. test.claim.workflow_dispatch_input_witness
+// the_build_job_carries_the_reset_observer_dispatch_admission is the only claim that runs the real
+// build-job producer, gunbc.fleet_converge_workflow fleet_converge_build_job_own_steps, and asserts
+// the dispatch admission step is one of its steps. DESIGN section 3's pairing obligation forbids
+// supplying that list, so the real producer runs. The step's CONTENT -- gate, entry, both dispatch
+// inputs -- is held by the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs
+// over the step's own producer, under the budget and outside this drop.
+//
+// THE COST IS THE PRODUCER'S, AND IT PREDATES gunbc#12800. The admission step is cheap to build;
+// the bill is gunbc.fleet_workflow_steps constructing every sibling release-bins step (key, lookup,
+// outcome, pack) whenever the list is demanded, although this claim inspects none of them. It was
+// paid before gunbc#12437 and first re-adjudicated when that change touched the claim. The
+// measurement is named in the population row, not transcribed here.
+data fleet_build_job_membership_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_build_job_membership_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_build_job_membership_rows; measured by "), m.measured_by))
+
+data fleet_build_job_membership_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "fleet_build_job_membership_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one claim that runs the real fleet-converge build-job step list to hold the reset-observer dispatch admission's membership: it still executes, eval_steps stay recorded, a semantic red still blocks; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-09-30",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.fleet_workflow_steps constructing only the steps a consumer demands, so demanding the build-job list does not construct the sibling release-bins steps at the cost it does today",
+    },
+    population: fleet_build_job_membership_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: gunbc.fleet_workflow_steps constructs only the steps a consumer demands -- building the build-job admission step and establishing its membership does not construct the sibling release-bins steps (key, lookup, outcome, pack). WHAT THAT MUST BE SUFFICIENT FOR: test.claim.workflow_dispatch_input_witness the_build_job_carries_the_reset_observer_dispatch_admission measures under the NewWitnessTier budget v2.workflow.required_floor claim_ceiling_eval_step_budget derives, on the acceptance path, still running the real fleet_converge_build_job_own_steps and still asserting structural membership. Supplying the list, narrowing the claim to the step's id, moving the bill to another claim, deleting the identity or raising the budget retires nothing.",
+  }
+}

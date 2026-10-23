@@ -1,0 +1,174 @@
+module gunbc.runner_qemu_toolchain
+
+import std.types { Bool, List, NonEmptyStr, FilePath }
+import std.algebra { list_append, trim }
+import std.content_hash { content_hash_atom }
+import v2.std.orchestration { EnvBinding, EnvSet }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand, env_cleared_command_in }
+import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage, ubuntu_ports_package_url }
+import extdeps.virtualization.qemu { QemuDistributionBuild, qemu_8_2_2_ubuntu_noble_arm64 }
+import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, aavmf_2024_02_ubuntu_noble }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command }
+import extdeps.posix.test_utility { test_exists_command }
+import gunbc.verified_archive_install {
+  ArchiveSha256, StagedArchive, ExtractDebData, ArchivePlacement, archive_placements_text,
+  stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
+}
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+
+// A PINNED QEMU TOOLCHAIN ON AN EXECUTOR HOST, PLACED AS THE JOB USER WITH NO ADMINISTRATOR AND NO
+// APT. This is an EXECUTOR-HOST operation: its subject is the machine the job runs on and the job
+// user's home there, never a managed host a booted image may later describe (managed-host cut 4b).
+// First placed (eager-owl-205, 2026-10-01; the srv1 receipt of run 36813288438 read qemu=absent and
+// aavmf=unreadable). Every archive is a .deb from the Ubuntu ports archive, verified against the
+// Packages index SHA256 through gunbc.verified_archive_install and only then unpacked with
+// `dpkg-deb -x` into one root: no maintainer script runs, the dpkg database is untouched, and NOTHING
+// is pulled in that is not named below -- never a Recommends (qemu-system-arm's closure with them
+// is 366 packages), and not even a Depends unless the host's own ldd reading says the binary needs it.
+//
+// WHICH LIBRARIES IS A HOST FACT. The libraries qemu-system-aarch64 needs that the host's base does
+// not carry are read by ldd ON THE HOST, under the declared environment below, and never guessed:
+// qemu_toolchain_library_packages is the set that reading named, each row transcribed from the noble
+// ports Packages index. An unresolved soname on any later host is a readback refusal naming it.
+//
+// THE ROOT IS NAMED BY ITS RECIPE: <home>/.local/share/<install dir>/<hash of every archive's
+// filename and pin>, so a changed pin set lands at a different path and never over a tree a consumer
+// may hold paths into. The install directory is the CALLER's: it names which consumer's tree this is
+// on the executor, and an existing tree stays where its consumers hold paths into it. Archives are kept under <base>/archives at their pool paths, re-verified
+// before reuse, and the tree is built in a staging directory under the base and published by one
+// `mv -T`, which only ever fills an absent path (the gunbc.runner_browser_toolchain discipline).
+
+type QemuToolchainLocation {
+  base: NonEmptyStr
+  root: NonEmptyStr
+  archives: NonEmptyStr
+}
+
+// Libraries the srv1 executor's base does not carry for qemu-system-aarch64, as its ldd named them.
+data qemu_toolchain_library_packages: List<UbuntuArchiveBinaryPackage> = []
+
+fn qemu_toolchain_archives_of(build: QemuDistributionBuild, firmware: AavmfDistributionBuild, libraries: List<UbuntuArchiveBinaryPackage>) -> List<UbuntuArchiveBinaryPackage> {
+  list_append(left: [build.archive, firmware.archive], right: libraries)
+}
+
+fn qemu_toolchain_archives() -> List<UbuntuArchiveBinaryPackage> {
+  qemu_toolchain_archives_of(build: qemu_8_2_2_ubuntu_noble_arm64, firmware: aavmf_2024_02_ubuntu_noble, libraries: qemu_toolchain_library_packages)
+}
+
+fn qemu_toolchain_recipe_text(archives: List<UbuntuArchiveBinaryPackage>) -> String {
+  join(map(archives, a => join([a.filename as String, " sha256:", a.sha256 as String], "")), "\n")
+}
+
+fn qemu_toolchain_recipe_identity(archives: List<UbuntuArchiveBinaryPackage>) -> NonEmptyStr {
+  ((content_hash_atom(value: qemu_toolchain_recipe_text(archives: archives) as NonEmptyStr).digest as String) as NonEmptyStr)
+}
+
+fn qemu_toolchain_base(home: String, install_dir: NonEmptyStr) -> String {
+  join([home, "/.local/share/", install_dir as String], "")
+}
+
+fn qemu_toolchain_location_of(home: String, install_dir: NonEmptyStr, archives: List<UbuntuArchiveBinaryPackage>) -> QemuToolchainLocation {
+  let base = qemu_toolchain_base(home: home, install_dir: install_dir)
+  QemuToolchainLocation {
+    base: base as NonEmptyStr,
+    root: join([base, "/", qemu_toolchain_recipe_identity(archives: archives) as String], "") as NonEmptyStr,
+    archives: join([base, "/archives"], "") as NonEmptyStr,
+  }
+}
+
+fn qemu_toolchain_location(home: String, install_dir: NonEmptyStr) -> QemuToolchainLocation {
+  qemu_toolchain_location_of(home: home, install_dir: install_dir, archives: qemu_toolchain_archives())
+}
+
+// A PACKAGED PATH UNDER THE ROOT: the package's absolute path, re-rooted.
+fn qemu_toolchain_rooted(root: String, packaged: FilePath) -> String {
+  concat(root, packaged as String)
+}
+
+// THE ONE DECLARED ENVIRONMENT every candidate subprocess (ldd, --version, the boot) starts under,
+// with nothing inherited: env -i, then exactly the multiarch library directories of the root -- so the
+// dynamic linker resolves the extracted libraries first and the host's base for the rest -- and a
+// fixed PATH, because ldd is a shell script and an inherited search path is not a declared one.
+data qemu_toolchain_system_path: String = "/usr/sbin:/usr/bin:/sbin:/bin"
+
+fn qemu_toolchain_library_path(root: String) -> String {
+  join([root, "/usr/lib/aarch64-linux-gnu:", root, "/lib/aarch64-linux-gnu"], "")
+}
+
+fn qemu_toolchain_env(root: String) -> List<EnvBinding> {
+  [
+    EnvSet { name: "LD_LIBRARY_PATH", value: qemu_toolchain_library_path(root: root) },
+    EnvSet { name: "PATH", value: qemu_toolchain_system_path },
+  ]
+}
+
+fn qemu_toolchain_cleared_command(root: String, command: ArgvCommand) -> ArgvCommand {
+  env_cleared_command_in(directory: root, bindings: qemu_toolchain_env(root: root), command: command)
+}
+
+// ---------------------------------------------------------------------------------------------
+// PLACEMENT, through the shared staging procedure of gunbc.verified_archive_install
+// ---------------------------------------------------------------------------------------------
+
+// A .deb is kept at its pool path under the archives directory and its data member is unpacked at the
+// tree's root, so every packaged absolute path lands at <root><path>.
+fn qemu_toolchain_staged_archive(a: UbuntuArchiveBinaryPackage) -> StagedArchive {
+  StagedArchive {
+    file_name: a.filename,
+    url: ubuntu_ports_package_url(p: a) as NonEmptyStr,
+    pin: ArchiveSha256 { hex: a.sha256 },
+    destination_relative: ".",
+    extraction: ExtractDebData,
+  }
+}
+
+type QemuToolchainPlacement
+  = QemuToolchainTreePresent
+  | QemuToolchainPublished { archives: List<ArchivePlacement> }
+  | QemuToolchainPlacementRefused { archives: List<ArchivePlacement>, cause: String }
+
+fn qemu_toolchain_placement_text(p: QemuToolchainPlacement) -> String {
+  match p {
+    QemuToolchainTreePresent => "placement=present (the recipe's tree already exists; nothing fetched or extracted -- the readback judges it)"
+    QemuToolchainPublished { archives: ps } => join(["placement=published ", archive_placements_text(ps: ps)], "")
+    QemuToolchainPlacementRefused { archives: ps, cause: c } => join(["placement=REFUSED (", c, ") ", archive_placements_text(ps: ps)], "")
+  }
+}
+
+fn qemu_toolchain_run_ok(command: ArgvCommand) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+}
+
+// AN EXISTING TREE IS NEVER REPLACED. Its path is the recipe's, so it was published from these
+// verified archives; whether it still holds is the readback's question, and a tree that fails it is
+// reported, not rebuilt over, because a consumer may hold paths into it. Unlike the browser toolchain
+// there is no whole-tree digest to admit before publishing: every archive's pin was verified before
+// extraction, and the readback hashes the files QEMU actually maps.
+fn place_qemu_toolchain_wet(location: QemuToolchainLocation, archives: List<UbuntuArchiveBinaryPackage>) -> QemuToolchainPlacement {
+  let staged_archives = map(archives, a => qemu_toolchain_staged_archive(a: a))
+  if qemu_toolchain_run_ok(command: test_exists_command(path: location.root as String)) {
+    QemuToolchainTreePresent
+  } else if qemu_toolchain_run_ok(command: mkdir_parents_command(path: location.archives as String)) == false {
+    QemuToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
+  } else {
+    let made = shell.Mktemp.DirWithTemplate(template: join([location.base as String, "/staging.XXXXXXXX"], "") as FilePath)
+    if made.success == false {
+      QemuToolchainPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
+    } else {
+      let staging = trim(s: made.path as String)
+      let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: staged_archives)
+      let result = if archives_all_staged(ps: staged, archives: staged_archives) == false {
+        QemuToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
+      } else if publish_staged_tree_wet(staging: staging, root: location.root as String) {
+        QemuToolchainPublished { archives: staged }
+      } else {
+        QemuToolchainPlacementRefused { archives: staged, cause: join(["the staged tree could not be published over ", location.root as String, " (a concurrent converge may have published first; the readback decides)"], "") }
+      }
+      let dropped = qemu_toolchain_run_ok(command: rm_recursive_force_command(path: staging))
+      result
+    }
+  }
+}

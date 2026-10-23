@@ -1,0 +1,17 @@
+module gunbc.filesystem_link_create_new_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data filesystem_link_create_new_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "dispatch_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "io_error_kind_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_rt", decl_name: "gunbc_file_link_create_new", field: WholeDeclaration },
+  ],
+  reason: "extdeps.filesystem.filesystem_io declares Filesystem.LinkCreateNew (link(2), create-only, typed already_exists and cross_device refusals). Its production consumer is extdeps.realization.materialization_store_local local_store_publish_part, which publishes the store's OWN verified copy of a staged byte part (a store-created inode no producer holds a path or descriptor to) create-only under the part's name, inside the family's exclusive hold (gunbc#13095). Its one realization is authored in extdeps.filesystem.filesystem_rust_realization and generated into gunbc_file_transport_generated. The seed adds no second realization: dispatch_file gains one arm that calls that generated function, io_error_kind_name gains one ErrorKind row so a cross-device refusal is typed rather than falling to other, and v1_rt gains the emitted programs' runtime entry beside its existing gunbc_file_write_create_new sibling, which the emitter's FileLinkCreateNew lowering calls. No fallback to a copy exists on any path. Executed by test.claim.filesystem_link_create_new_wet_witness, enrolled on the wet schedule.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the dispatch_file arm and the v1_rt entry when the interpreter and the emitted runtime both bind Filesystem operations through the modeled filesystem realization rows rather than hand-matched operation names, so LinkCreateNew reaches gunbc_file_link_create_new with no per-operation host code. The wet witness's cross-device and occupied-target reds must remain enrolled; removing them is not dissolution.",
+  current_boundary: "Filesystem.LinkCreateNew -> v1_interpreter dispatch_file link_create_new -> gunbc_file_transport_generated gunbc_file_link_create_new -> std::fs::hard_link"
+}

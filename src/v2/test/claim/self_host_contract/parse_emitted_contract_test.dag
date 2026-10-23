@@ -1,0 +1,66 @@
+module v2.test.claim.self_host_contract.parse_emitted_contract
+
+import std.logic { Bool }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.compiler.parse { prepare_grammar }
+import v2.extdeps.languages.dag { dag_grammar }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { ParseGrammar, ModeledGrammar, VoidGrammar, GrammarRoot, GrammarProduction, Nonterminal }
+
+// THE 02_parse ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.parse prepare_grammar accepts the dag grammar and refuses a grammar carrying a
+// production whose expression names a nonterminal no production defines.
+fn psc_prepares(grammar: ParseGrammar) -> Bool {
+  match prepare_grammar(grammar: grammar) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The dag grammar plus one production referring to an undefined nonterminal. The donor production
+// supplies only the emitted node the record requires.
+fn psc_grammar_with_undefined_nonterminal() -> ParseGrammar {
+  match dag_grammar() {
+    VoidGrammar => VoidGrammar
+    ModeledGrammar { root: root } => match root.productions {
+      Empty => VoidGrammar
+      Cons { head: donor, tail: _ } => ModeledGrammar {
+        root: GrammarRoot {
+          start: root.start,
+          productions: list_snoc_item(
+            xs: root.productions,
+            item: GrammarProduction {
+              name: ^self_host_witness_dangling,
+              expression: Nonterminal { production: ^self_host_witness_undefined },
+              emitted: donor.emitted
+            }
+          ),
+          sync_tokens: root.sync_tokens
+        }
+      }
+    }
+  }
+}
+
+fn psc_mutant_is_modeled() -> Bool {
+  match psc_grammar_with_undefined_nonterminal() {
+    VoidGrammar => false
+    ModeledGrammar { root: _ } => true
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: the grammar with the undefined nonterminal
+// preparing.
+fn parse_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let invalid_accepted = psc_prepares(grammar: psc_grammar_with_undefined_nonterminal())
+  if inject_fault {
+    invalid_accepted
+  } else {
+    psc_mutant_is_modeled() && psc_prepares(grammar: dag_grammar()) && !invalid_accepted
+  }
+}
+
+test fn parse_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  parse_emitted_contract_holds(inject_fault: false)
+    && !parse_emitted_contract_holds(inject_fault: true)
+}

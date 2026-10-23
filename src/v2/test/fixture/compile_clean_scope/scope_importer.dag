@@ -1,0 +1,8 @@
+module v2.test.fixture.compile_clean_scope.scope_importer
+
+import v2.test.fixture.compile_clean_scope.scope_shared { scope_shared_marker }
+
+// Roster member carrying a GENUINE import edge. Two disposition rows read it: touching
+// this file selects it (self-selection), and touching scope_shared selects it through
+// the edge below (cross-file selection).
+data scope_importer_marker: String = scope_shared_marker

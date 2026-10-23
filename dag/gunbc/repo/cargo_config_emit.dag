@@ -1,0 +1,93 @@
+module gunbc.cargo_config_emit
+
+import std.types { Bool, String, List, Int }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial }
+import extdeps.languages.toml.types { TomlDocument }
+import extdeps.languages.toml.emit { serialize_toml }
+import extdeps.cargo_config {
+  CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
+  cargo_config_document
+}
+
+// THE COMMITTED PROJECTION OF THIS REPOSITORY'S OWN CARGO CONFIGURATION, and the only channel
+// through which the warning denial reaches an ORDINARY `cargo build` or `cargo test` run from a
+// clone. `gunbc.repo_self_build` `repo_self_clippy_command` spells the lint arguments for clippy
+// alone; the workflows' toolchain step sets RUSTFLAGS for a runner job. Neither is in the path of
+// a contributor typing `cargo test` locally.
+//
+// WHAT THIS MODULE CONTAINS AND WHAT IT CANNOT. It supplies POLICY -- which lint arguments, how
+// many jobs, which environment variables -- and the authored rationale a reader of the file needs.
+// It spells no TOML, no cargo key, and no key-to-value pairing: the punctuation lives in
+// `extdeps.languages.toml.emit`, and the schema -- which key takes which value, which table a row
+// belongs to -- lives in `extdeps.cargo_config`, which hands back whole sections. Two earlier
+// revisions of this module got that boundary wrong in two different ways, and both are worth
+// naming because each looked finished. The first concatenated TOML text, which is the
+// medium-as-string defect `gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall`
+// already files for the seed-unavailable transport's manifest. The second imported cargo's KEY
+// NAMES and paired them with values here, which left `jobs` under the rustflags array writable and
+// well-typed -- cargo owning the names while this module owned the schema.
+//
+// THE DENIAL ITSELF IS NOT SPELLED HERE EITHER. It is `gunbc.repo_self_warning_policy`
+// `repo_self_warning_denial`, the row the clippy command and both workflow toolchain steps read,
+// so the four channels cannot drift: editing that row regenerates this file with the rest.
+
+data cargo_config_memory_safety_note: List<String> = [
+  "Memory safety: v1_compiler tests use 5-11 GB each.",
+  "On 16 GB machines, parallel cargo runs cause OOM \u{2192} system watchdog restart."
+]
+
+data cargo_config_jobs_note: String = "max parallel rustc/linker invocations per cargo run"
+
+data cargo_config_build_jobs: Int = 2
+
+data cargo_config_rustflags_note: List<String> = [
+  "A warning is an error in this repository. The policy row is",
+  "`gunbc.repo_self_warning_policy` `repo_self_warning_denial`; this is the channel that",
+  "reaches an ORDINARY `cargo build`/`cargo test` run from a clone, which the clippy command",
+  "and the workflow's toolchain step do not. An ambient RUSTFLAGS overrides this file rather",
+  "than composing with it, and CI sets the same value, so the two channels agree by value."
+]
+
+data cargo_config_env_note: List<String> = [
+  "v1/v2 tests build large `Dag` fixtures; the default thread stack overflows (WSL / ctrl-build).",
+  "Committed here so local + CI runners stay aligned (CI inherits this config; ci.yml does not re-set it)."
+]
+
+// CARRIED, NOT INVENTED. These rows, the job count and their notes predate this module and are
+// transcribed from the hand-authored file this projection replaces, because emitting a file means
+// emitting ALL of it -- a projection that dropped them would delete live policy on its first
+// regeneration. None has a modeled authority to derive from today, which is an honest gap and not
+// a reason to leave the denial forked: the value this module exists to derive is the one that had
+// two homes.
+data cargo_config_env_vars: List<CargoAnnotatedEnvVar> = [
+  CargoAnnotatedEnvVar {
+    var: CargoConfigEnvVar { name: "RUST_MIN_STACK", value: "16777216", force: false },
+    leading_comments: cargo_config_env_note,
+    trailing_comment: none
+  },
+  CargoAnnotatedEnvVar {
+    var: CargoConfigEnvVar { name: "RUST_TEST_THREADS", value: "1", force: false },
+    leading_comments: [],
+    trailing_comment: Present { value: "max parallel test threads per binary" }
+  }
+]
+
+fn cargo_config_build() -> CargoBuildConfig {
+  CargoBuildConfig { jobs: Present { value: cargo_config_build_jobs }, rustflags: repo_self_warning_denial }
+}
+
+fn cargo_config_build_annotations() -> CargoBuildAnnotations {
+  CargoBuildAnnotations {
+    jobs_comment: Present { value: cargo_config_jobs_note },
+    rustflags_comments: cargo_config_rustflags_note
+  }
+}
+
+fn expected_cargo_config_toml() -> String {
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: cargo_config_memory_safety_note,
+    build: cargo_config_build(),
+    build_annotations: cargo_config_build_annotations(),
+    env: cargo_config_env_vars
+  ))
+}

@@ -1,0 +1,58 @@
+module test.claim.opaque_exact_row_alias_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN OPAQUE DECLARATION WITH AN EXACT REALIZATION ROW EMITS AN ALIAS TO THAT ROW; ONE WITH NO ROW
+// KEEPS ITS PHANTOM STRUCT (v1.compiler.emit_rust rust_opaque_declaration_has_exact_row, ruled by
+// deep-bee-18 for gunbc#12760).
+//
+// THE DISCRIMINATING POSITIVE CONTROL is std.types Unit: a bare opaque declaration with an exact
+// row (RustUnit) that is NOT on the name-keyed kernel list, so only the declaration-keyed rule
+// reaches it. Before this rule the emitter wrote no Rust item for it; the stage0 regeneration of
+// std_types.rs gained `pub type Unit = ();`. The other subject is v2.std.node String (gunbc#12760),
+// whose evidence is that PR's emit-build: `pub type String = std::string::String`, and the E0308 at
+// symbol_lexeme is gone. The two further controls: a row-less opaque declaration is untouched (the
+// rule does not widen), and Symbol, which has a row and is on the name list, keeps its alias.
+//
+// Each arm is read from the emitted text, not from a pass/fail of the build.
+
+fn w_rowless_opaque_keeps_its_phantom_struct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module oera_rowless\n\ntype OeraOpaque\n\nfn oera_keep(x: OeraOpaque) -> OeraOpaque {\n  x\n}\n",
+    "src/oera_rowless.rs",
+    ["pub struct OeraOpaque(pub std::marker::PhantomData<()>);"],
+    ["pub type OeraOpaque ="]
+  )
+}
+
+test fn an_opaque_declaration_with_no_row_keeps_its_phantom_struct() -> Bool {
+  w_rowless_opaque_keeps_its_phantom_struct()
+}
+
+fn w_symbol_keeps_its_row_alias() -> Bool {
+  compile_dag_rust_emit_check(
+    "module oera_symbol\n\nimport v2.std.node { Symbol, symbol_lexeme }\nimport std.types { String }\n\nfn oera_name(s: Symbol) -> String {\n  symbol_lexeme(sym: s)\n}\n",
+    "src/v2_std_node.rs",
+    ["pub type Symbol = std::string::String;"],
+    ["pub struct Symbol("]
+  )
+}
+
+test fn an_opaque_declaration_with_an_exact_row_emits_its_alias() -> Bool {
+  w_symbol_keeps_its_row_alias()
+}
+
+fn w_unit_emits_its_row_alias() -> Bool {
+  compile_dag_rust_emit_check(
+    "module oera_unit\n\nimport std.types { Unit }\n\nfn oera_unit(u: Unit) -> Unit {\n  u\n}\n",
+    "src/std_types.rs",
+    ["pub type Unit = ();"],
+    ["pub struct Unit("]
+  )
+}
+
+test fn an_opaque_declaration_reached_only_by_its_row_emits_the_row_alias() -> Bool {
+  w_unit_emits_its_row_alias()
+}

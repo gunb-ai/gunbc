@@ -1,0 +1,70 @@
+module test.claim.opaque_host_call_reach_control_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE POSITIVE CONTROL FOR THE PREEMPTION-REACHABILITY COLUMN, AND IT IS THE ONLY REASON THIS
+// WITNESS EXISTS.
+//
+// gunbc#10319 added a `preemption_reachability` column to the floor's per-claim cost receipt,
+// recorded at `eval_builtin_inner` and armed from `gunbc.v1_interpreter_opaque_host_call`'s
+// grounded surface. On its own first run every one of 3601 routed claims reported
+// `cooperatively_pollable` and NOT ONE reported `opaque_host_call_unbounded` -- and a column that
+// returns a single value for 100% of its population is indistinguishable from a constant. The
+// enrolled test asserting that an UNARMED surface reports UNKNOWN guards a different property
+// (that the reader refuses when ungrounded); it does not show the recorder can emit the opaque
+// arm on a real claim.
+//
+// WHY THE UNIFORMITY IS EXPLAINED BUT NOT DISCHARGED BY THAT EXPLANATION. The one claim the §4b
+// rung drop measured entering an opaque arm --
+// `test.claim.long.root_d_checkpoint_scalar_declared_arity_witness_holds`, recorded at 60317ms
+// inside `compile_dag_rust_emit_check` -- is `declined_outside_gate_closure`, `not_executed` in
+// the required floor's own disposition artifact. So the opaque population is absent from this
+// LANE, which explains the uniform column and demonstrates nothing about the recorder. DESIGN
+// §4b: a state unrepresentable in the accepted corpus may still be representable as source handed
+// to the compiler by a fixture, and where the RED is authorable, declining the evidence is
+// specification-without-execution.
+//
+// WHAT THIS WITNESS DOES. `compile_dag_rust_emit_check` is a `free_call.*` arm on that grounded
+// surface. Calling it puts this claim's cost inside a synchronous native builtin that never
+// re-enters `eval_expr`, so no stride point can fall inside it -- which is the definition of the
+// `OpaqueHostCallUnbounded` arm. The claim is authored at `test.claim.*` deliberately: that
+// prefix is ROUTED by the required floor (796 of 3601 routed claims in the gunbc#10319 run),
+// whereas `test.claim.long.*` is declined -- so a control authored there would emit no row at all,
+// which is a different failure that looks identical.
+//
+// WHAT IT DOES NOT DO, STATED SO NOBODY READS MORE INTO IT. A `test fn` cannot assert its own
+// reachability classification: the recorder is read by the floor after the claim returns, not by
+// the claim. So the control is TWO PARTS -- this witness establishes that a listed arm is
+// REACHED, and the evidence is the row for this identity in `required_floor_claim_cost.tsv`
+// reading `opaque_host_call_unbounded`. Reading that row is the executing half; a green here is
+// only the reaching half. Automating the join is a separate and larger piece of work.
+//
+// NEXT TRIGGER, NAMED AS THE CAPABILITY AND WITH WHAT IT MUST BE SUFFICIENT FOR: the floor
+// ASSERTS A DECLARED REACHABILITY FOR A NAMED IDENTITY AND REFUSES ON MISMATCH -- sufficient for
+// a regression from `opaque_host_call_unbounded` to `cooperatively_pollable` on this identity
+// being a RED rather than a silent return to a constant column. "Add an artifact join" is the
+// artifact-grained version and is satisfied by a join that reads the wrong column.
+//
+// Until that exists, the evidence here is a READ AT A MOMENT and is labelled as one. That is
+// sufficient to establish that the recorder CAN emit the opaque arm -- the proposition the
+// uniform column cannot support -- and it is NOT sufficient to keep a merge-gate relaxation
+// honest, because the moment a gate stops blocking a population on this column's word, the
+// column's ability to say otherwise becomes load-bearing forever. §4b(4) keeps a positive
+// control ENROLLED as executing evidence; a TSV read once is not enrolled. The executed join
+// therefore belongs in the PR that changes blocking behaviour, not in front of it.
+//
+// The assertion below is a real one rather than a pretext: the probe module must emit its own
+// function signature and must not emit the algebra head its Nat alias resolves to. A control
+// whose body asserted nothing would be a cost with no verdict, and the first cleanup would delete
+// it as an artifact with no consumer.
+test fn w_opaque_arm_is_reached_and_its_probe_emits() -> Bool {
+  compile_dag_rust_emit_check(
+    "module probe_opaque_reach_control\n\nimport std.nat { Nat }\n\nfn probe_identity(n: Nat) -> Nat {\n  n\n}\n",
+    "src/probe_opaque_reach_control.rs",
+    ["-> Nat"],
+    ["CommutativeSemiring"]
+  )
+}

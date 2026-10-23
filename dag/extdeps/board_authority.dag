@@ -1,0 +1,146 @@
+module extdeps.board_authority
+
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.content_hash { Sha256Digest }
+import v2.std.algebra { filter }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/specification-updates/ipmi-platform-mgt-fru-info-storage-def-v1-0-rev-1-3-spec-update.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.board_authority",
+      decl_name: "BoardFruIdentity",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE AGNOSTIC SHAPES OF "WHICH BOARD IS THIS HOST", and nothing else. This module enumerates no
+// product (DESIGN section 3, External upstream decomposition): the board a host reports is the
+// Board Area of its own FRU (Platform Management FRU Information Storage Definition, Board Area:
+// manufacturer, product name, part number), and the board a consumer reasons about is an
+// authority REFERENCE to the per-board subject module that owns that board's facts. Adding a board
+// is a per-board module plus one binding row in the consumer layer, never an edit here. The rows
+// and the table live in gunbc.board_authority_binding; this module owns only the shapes and the one
+// fold that reads a table.
+type BoardFruIdentity {
+  manufacturer: NonEmptyStr
+  product: NonEmptyStr
+  part_number: NonEmptyStr?
+}
+
+// WHY NO FRU BOARD AREA WAS READ. Never defaulted: a host whose board was not read is a different
+// fact from a host whose board is read and unbound.
+type BoardFruUnreadCause
+  = BoardAreaAbsent
+  | BoardAreaFieldsUnreadable
+
+type BoardFruObservation
+  = BoardFruRead { fru: BoardFruIdentity }
+  | BoardFruNotRead { cause: BoardFruUnreadCause }
+
+// A BOARD'S AUTHORITY IS THE DECLARATION OF ITS OWN SUBJECT. Equality is declaration_ref_eq, so two
+// references agree exactly when they name the same declaration. Each per-board module exports its
+// own reference; no consumer spells one.
+type BoardAuthorityRef {
+  subject: DeclarationRef
+}
+
+fn board_authority_ref_eq(a: BoardAuthorityRef, b: BoardAuthorityRef) -> Bool {
+  declaration_ref_eq(a: a.subject, b: b.subject)
+}
+
+// WHAT JUSTIFIES THE EDGE, in the type so a consumer cannot read the strong standing off prose.
+// BoundByNameOnly: the FRU's names agree with the subject's name and nothing else does; that is an
+// inference from a name, typed as a bet with the discriminator that would settle it.
+// BoundByObservedEvidence: an observation beyond the name (cited receipts) agrees with the
+// subject's own cited facts.
+type BoardBindingStanding
+  = BoundByNameOnly { discriminator_obligation: NonEmptyStr }
+  | BoundByObservedEvidence { first: DeclarationRef, further: List<DeclarationRef> }
+
+// THE COMMITTED FRU READ the row was authored from: path and sha256 of the bytes.
+type BoardFruReceipt {
+  artifact_path: NonEmptyStr
+  sha256: Sha256Digest
+}
+
+type BoardAuthorityBinding {
+  manufacturer: NonEmptyStr
+  product: NonEmptyStr
+  authority: BoardAuthorityRef
+  standing: BoardBindingStanding
+  fru_receipt: BoardFruReceipt
+}
+
+// IDENTITY-GRADE USES (keying a reading, pairing a reading with a board) accept either bound arm;
+// USES THAT IMPORT BOARD FACTS (figures, profile routes) accept BoardEvidenceBound only.
+type BoardAuthorityLookup
+  = BoardIdentityBound { authority: BoardAuthorityRef, discriminator_obligation: NonEmptyStr }
+  | BoardEvidenceBound { authority: BoardAuthorityRef, first: DeclarationRef, further: List<DeclarationRef> }
+  | BoardUnbound { fru: BoardFruIdentity }
+  | BoardAmbiguous { fru: BoardFruIdentity, count: Int }
+  | BoardNotRead { cause: BoardFruUnreadCause }
+
+fn binding_names_fru(binding: BoardAuthorityBinding, fru: BoardFruIdentity) -> Bool {
+  binding.manufacturer == fru.manufacturer && binding.product == fru.product
+}
+
+fn bound_lookup_of(binding: BoardAuthorityBinding) -> BoardAuthorityLookup {
+  match binding.standing {
+    BoundByNameOnly { discriminator_obligation: o } => BoardIdentityBound { authority: binding.authority, discriminator_obligation: o }
+    BoundByObservedEvidence { first: f, further: r } => BoardEvidenceBound { authority: binding.authority, first: f, further: r }
+  }
+}
+
+// THE ONE TOTAL FOLD. Exact manufacturer and product; the part number is carried, not matched.
+// Refuses on both sides of uniqueness; an unread board is never read as unbound.
+fn board_authority_for(observation: BoardFruObservation, bindings: List<BoardAuthorityBinding>) -> BoardAuthorityLookup {
+  match observation {
+    BoardFruNotRead { cause: c } => BoardNotRead { cause: c }
+    BoardFruRead { fru: f } => {
+      let hits = bindings |> filter(b => binding_names_fru(binding: b, fru: f))
+      let n = count(hits)
+      if n == 0 {
+        BoardUnbound { fru: f }
+      } else if n == 1 {
+        fold(hits, init: BoardUnbound { fru: f }, f: (_acc, b) => bound_lookup_of(binding: b))
+      } else {
+        BoardAmbiguous { fru: f, count: n }
+      }
+    }
+  }
+}
+
+// The authority a lookup reached for an IDENTITY-GRADE use, absent when the board is not bound.
+fn board_identity_authority(lookup: BoardAuthorityLookup) -> BoardAuthorityRef? {
+  match lookup {
+    BoardIdentityBound { authority: a, discriminator_obligation: _ } => Present { value: a }
+    BoardEvidenceBound { authority: a, first: _, further: _ } => Present { value: a }
+    BoardUnbound { fru: _ } => none
+    BoardAmbiguous { fru: _, count: _ } => none
+    BoardNotRead { cause: _ } => none
+  }
+}
+
+// The authority a lookup reached for a FACTS use: only the evidence-bound arm.
+fn board_facts_authority(lookup: BoardAuthorityLookup) -> BoardAuthorityRef? {
+  match lookup {
+    BoardEvidenceBound { authority: a, first: _, further: _ } => Present { value: a }
+    BoardIdentityBound { authority: _, discriminator_obligation: _ } => none
+    BoardUnbound { fru: _ } => none
+    BoardAmbiguous { fru: _, count: _ } => none
+    BoardNotRead { cause: _ } => none
+  }
+}

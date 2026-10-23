@@ -1,0 +1,1350 @@
+module gunbc.cloudflare.r2_token_mint_run
+
+import std.types { Bool, FilePath, List, NonEmptyStr, Secret, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.human_intervention {
+  HumanIntervention, ProvisioningHumanBurden,
+  HumanInterventionIdentity, FleetOnce,
+  InterventionCompletionEvidence, DischargedAt,
+}
+import std.decl_ref { decl_ref }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.transports.rest {
+  RestResult, RestAnswered, RestRefused,
+  RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  mutation_status_is_commit_ambiguous,
+}
+import extdeps.cloudflare.account_api_tokens
+import extdeps.cloudflare.account_api_tokens {
+  CreateAccountTokenRequest,
+  CreatedAccountTokenCreateResponse,
+  created_account_token_from_create_response,
+  CreatedAccountToken,
+  AccountTokenApiMintStanding,
+  AccountTokenApiMintAdmitted,
+  AccountTokenApiMintRefusedHumanDashboardOnly,
+  AccountTokenApiMintRefusedGrantPolicyMismatch,
+  AccountTokenApiMintRefusedLifetimeMismatch,
+  AccountTokenListRow,
+}
+import extdeps.cloudflare.r2 {
+  R2S3AccessPair,
+  r2_s3_access_pair_from_created_token,
+}
+import gunbc.cloudflare.r2_token_mint {
+  admit_r2_object_read_api_mint,
+  admit_r2_object_write_api_mint,
+  admit_r2_bucket_admin_api_mint,
+  cloudflare_r2_token_human_burden,
+}
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  R2OriginBucket,
+  R2OriginStanding,
+  R2OriginAllocated,
+  R2OriginUnallocated,
+  BucketPurpose,
+  bucket_purpose_key,
+  fabric_durable_origin_standing,
+  bucket_purpose_origin_standing,
+  FabricDurableOrigin,
+  FabricBootOrigin,
+  FabricCacheBlobs,
+  FabricWorkspace,
+  origin_credential_secret_id,
+  FleetCloudflareAccountStanding,
+  CloudflareAccountAllocated,
+  CloudflareAccountUnallocated,
+  BootstrapCustodyStanding,
+  BootstrapCustodyPinned,
+  BootstrapCustodyUnrecorded,
+  fleet_cloudflare_account_standing,
+  fleet_cloudflare_bootstrap_custody,
+  cloudflare_r2_bucket_admin_secret_id,
+  fleet_r2_bucket_admin_credential,
+  OriginCredentialStanding,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
+}
+import gunbc.auth.access_token_source {
+  resolve_access_token,
+  AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  access_token_upsert_required_reason,
+}
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential_with_token,
+  SecretCredentialReady,
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused,
+  SecretCredentialFetchRefused,
+  SecretCredentialResolvedVersionMismatch,
+}
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.secret_provision { SecretProvisionAttemptIdentity, fleet_secret_ref }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.secret_provision_actuator {
+  snapshot_minted_secret,
+  CredentialSnapshotTaken, CredentialSnapshotRefused, CredentialSnapshotRefusedResidueRemains,
+  OwnedCredentialSnapshot,
+  observe_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
+  create_secret_container, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
+  ObservedSecretContainer, version_add_capability_for_observed_container,
+  add_initial_version, VersionAddedAndVerified, VersionAdditionRefused, VersionAdditionOutcomeUnknown,
+  VersionAddedButUnverified,
+  verified_exact_ref,
+}
+import std.algebra { trim }
+
+// THE EXECUTING CONSUMER OF THE R2 MINT, AND THE ORDER OF ITS CHECKS IS THE WHOLE DESIGN.
+// extdeps.cloudflare.account_api_tokens owns the token SHAPE, extdeps.cloudflare.r2 owns the bucket
+// resource and the S3 pair derivation, gunbc.cloudflare.r2_token_mint owns the mint POLICY, and
+// gunbc.cloudflare.r2_origin owns which account and which bucket. None of them could execute,
+// because account_id and bucket_name were parameters supplied by nobody. This entry supplies them
+// from the declarations and performs the one operation that turns the cluster into a capability.
+//
+// EVERY PRECONDITION IS DECIDED BEFORE THE CREATE, AND THAT IS NOT AN OPTIMIZATION. AccountTokens.Create
+// is non-idempotent and its value is returned once and never again: a Create issued before the
+// custody container is known to be reachable mints a credential this run can then fail to store, and
+// the token exists on the account with nobody holding it. So the sequence is decide, fetch, create,
+// store -- and the two facts this fleet does not yet have (an allocated account id, a pinned
+// bootstrap custody version) refuse HERE, typed and located, with nothing spent.
+//
+// THE ABSENT-CREDENTIAL REFUSAL IS THE DISCRIMINATING RED, AND IT IS ON THE REAL PATH TODAY.
+// gunbc#10739 named the defect in advance: a fabrication placed downstream of the check that catches
+// the credential's absence -- fetch nothing, then write an empty pair. Here the absence is an ARM of
+// gunbc.cloudflare.r2_origin's BootstrapCustodyStanding rather than an empty value flowing on, so
+// there is no downstream position in which a fabricated pair could be constructed. classify_r2_mint
+// is pure and total, so both the refusal and its accepted positive control are executable evidence.
+//
+// THE MUTATION HAS NOW RUN. gunbc#10929 made Map-valued effect inputs recordable. This entry
+// invoked cloudflare.AccountTokens.Create, stored the token VALUE (not the derived S3 secret)
+// through gunbc.secret_provision, and pinned the origin read credential to the verified version.
+// Nested Create projections use JSON-pointer slashes (result/id), matching AccessVersion's
+// payload/data, because a dotted path is a single JSON-pointer key and was why the first live
+// Create looked like an answered success with a null status.
+//
+// THE ATTEMPT GRAIN WAS THE THIRD CREATE. THREE Creates ran. The first two reached
+// Cloudflare under the dotted-path decoder, minted live tokens whose values this process did not
+// keep, and were revoked by id after List: 3cbb99f150c4daec03ab6a8458a2440f and
+// cb444492f55dbc1b40ee7ce17778d7ff (account listing was the only readback of those two). The stored
+// mint is 3f43e1c7f8fbcfc97139cb5d9dc4e984. Those identities are named here because the PR body must
+// not be the only record of what the account saw; they are not re-derived by comparing them to
+// themselves in a witness. The instrument is gunbc.cloudflare.r2_token_mint_run run / List /
+// revoke_unheld_object_read_token. Those were not commit-ambiguous HTTP arms; they were answered successes with
+// unread fields. A retry into a 5xx/timeout was not done. The class is
+// gunbc.recurring_failure_mode.json_pointer_dot_spelling_reads_nested_fields_as_absent.
+//
+// THE ACCESS KEY ID IS THE TOKEN ID AND IS NOT A SECRET. The token value is not in this file.
+
+// THE ADMITTED REQUEST IS CARRIED WITH THE ACCOUNT AND THE LOCUS IT WAS ADMITTED FOR, never beside
+// them. A request admitted for account A paired at the call site with account B's id would address
+// the wrong account's token endpoint while carrying A's bucket resource in its policy, and every
+// field would individually be true -- the argument-position confusion OwnedCredentialSnapshot exists
+// to prevent one layer down, arriving on the mint path.
+type R2MintPreconditions
+  = R2MintReady {
+      account_id: CloudflareAccountId
+      bootstrap_locus: SecretRef
+      request: CreateAccountTokenRequest
+    }
+  | R2MintBootstrapCustodyUnrecorded { intervention: HumanIntervention }
+  | R2MintCustodyContainerAbsent { intervention: HumanIntervention }
+  | R2MintAccountUnallocated { intervention: HumanIntervention }
+  | R2MintOriginUnallocated { purpose: BucketPurpose }
+  | R2MintAdmissionRefused { standing: AccountTokenApiMintStanding }
+
+// CUSTODY IS CHECKED FIRST, BEFORE THE ACCOUNT, because the credential is the precondition without
+// which nothing downstream can happen and because it needs no other fact to decide. Checking the
+// account first would report the account gap to an operator whose next obstacle is the credential
+// anyway, and would leave the credential-absent arm unreachable on the real path -- an arm that
+// cannot be reached is an arm nobody can trust.
+// WHICH TOKEN THIS RUN MINTS, AS A PARAMETER OF ONE FOLD RATHER THAN A SECOND FOLD. The read and
+// write mints differ in three facts -- the grant, the token name, and the custody container the
+// value is stored into -- and in nothing else: the same account, the same bootstrap, the same
+// bucket, the same Create, the same store bracket. Copying classify_r2_mint for the write profile
+// would have put the five-arm precondition ladder in two places, drifting on the first arm either
+// copy learned about. The profile is decided at the entry (run / run_object_write), which is the
+// dispatch-is-realization seam DESIGN section 3 names.
+//
+// THE BUCKET-ADMIN PROFILE IS THE SAME FOLD WITH AN ACCOUNT-SCOPED GRANT. It differs from the object
+// profiles in exactly the three facts a profile carries -- grant, name, custody container -- and in
+// one more the match below makes explicit: its grant names the ACCOUNT, so the bucket fields of the
+// admitted origin do not enter its policy and its name does not carry a bucket.
+type R2OriginTokenProfile
+  = R2OriginObjectRead
+  | R2OriginObjectWrite
+  | R2AccountBucketAdmin
+
+// THE PROFILE'S NAME SUFFIX IS ITS OWN FACT, because two things need it and only one of them has a
+// bucket: the token NAME is bucket + suffix, and the receipt GLOB is prefix + wildcard + suffix,
+// built where no bucket is in scope. Spelling "-object-write" in both places is the §3 fork that
+// makes a rename silent in exactly one of them.
+fn r2_origin_token_name_suffix(profile: R2OriginTokenProfile) -> String {
+  match profile {
+    R2OriginObjectRead => "-object-read"
+    R2OriginObjectWrite => "-object-write"
+    R2AccountBucketAdmin => "-bucket-admin"
+  }
+}
+
+// THE ACCOUNT-SCOPED TOKEN'S NAME STEM. The object tokens are named for their bucket; the bucket-admin
+// token manages every bucket and is named for the fleet, with the same suffix the receipt glob reads.
+data r2_account_token_name_stem: String = "gunbc-fleet-r2"
+
+fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: R2OriginBucket) -> String {
+  match profile {
+    R2AccountBucketAdmin => join([r2_account_token_name_stem, r2_origin_token_name_suffix(profile: profile)], "")
+    R2OriginObjectRead => join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
+    R2OriginObjectWrite => join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
+  }
+}
+
+// WHERE A PROFILE'S TOKEN IS STORED, DERIVED FROM THE PURPOSE'S STANDING rather than from a second
+// roster of secret ids. The object profiles read the custody secret the origin declaration already
+// names for that bucket's credential (gunbc.cloudflare.r2_origin origin_credential_secret_id), so a
+// purpose gains a mintable token by declaring its standing and nothing here changes. An unallocated
+// origin has no credential and therefore no custody locus: Absent, and the entry refuses typed.
+fn r2_origin_token_secret_id(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> NonEmptyStr? {
+  match profile {
+    R2AccountBucketAdmin => Present { value: cloudflare_r2_bucket_admin_secret_id }
+    R2OriginObjectRead => origin_token_secret_id_of(profile: profile, origin: origin)
+    R2OriginObjectWrite => origin_token_secret_id_of(profile: profile, origin: origin)
+  }
+}
+
+fn origin_token_secret_id_of(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> NonEmptyStr? {
+  match origin {
+    R2OriginUnallocated { purpose: _ } => none
+    R2OriginAllocated { bucket: bucket } =>
+      Present { value: origin_credential_secret_id(credential: r2_origin_token_credential(profile: profile, bucket: bucket)) }
+  }
+}
+
+fn r2_origin_token_credential(profile: R2OriginTokenProfile, bucket: R2OriginBucket) -> OriginCredentialStanding {
+  match profile {
+    R2OriginObjectRead => bucket.read_credential
+    R2OriginObjectWrite => bucket.write_credential
+    R2AccountBucketAdmin => fleet_r2_bucket_admin_credential()
+  }
+}
+
+fn admit_r2_origin_token_mint(
+  profile: R2OriginTokenProfile,
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String,
+) -> AccountTokenApiMintStanding {
+  match profile {
+    R2OriginObjectRead =>
+      admit_r2_object_read_api_mint(
+        name: name, account_id: account_id, jurisdiction: jurisdiction, bucket_name: bucket_name)
+    R2OriginObjectWrite =>
+      admit_r2_object_write_api_mint(
+        name: name, account_id: account_id, jurisdiction: jurisdiction, bucket_name: bucket_name)
+    R2AccountBucketAdmin =>
+      admit_r2_bucket_admin_api_mint(name: name, account_id: account_id)
+  }
+}
+
+// THE CONTAINER STANDING CARRIES THE OBSERVATION SEAL RATHER THAN A Bool. A boolean "the container
+// exists" would be re-derived into a write authorization somewhere downstream, which is exactly the
+// seam gunbc.secret_provision_actuator's sole_constructor seals exist to close: the authorization to
+// add a version is derived only from a GET whose returned resource actually named the requested
+// project and secret.
+type R2MintCustodyContainerStanding
+  = R2MintCustodyContainerPresent { container: ObservedSecretContainer }
+  | R2MintCustodyContainerNotObserved { reason: NonEmptyStr }
+  | R2MintCustodyContainerNotEnsured { intervention: HumanIntervention }
+
+// THE PURE FOLD TAKES THE VERDICT, NOT THE SEAL, AND THAT IS WHAT KEEPS IT WITNESSABLE.
+// ObservedSecretContainer is sole_constructor, so no module but gunbc.secret_provision_actuator can
+// build one -- correct, and it means any fold downstream of it that takes the seal directly cannot be
+// exercised by a witness at all. classify_r2_mint is the pure admission ladder and its job is to
+// DECIDE, so it needs only "was the container admitted, and if not what does the operator do". The
+// seal never enters it; r2_mint_bootstrap already holds it and carries it straight to the store.
+// THE THIRD ARM IS NOT A FAIL-OPEN, IT IS WHICH OPERATION IS ASKING. The custody container is a
+// precondition OF THE WRITE, and r2_mint_bootstrap is shared by four entries of which only two
+// write: List and revoke read the account's tokens through the Cloudflare bootstrap credential and
+// touch no Secret Manager container at all. An earlier revision observed the container inside the
+// shared bracket, which gated RECOVERY on the very resource whose absence recovery exists to clean
+// up after -- the orphan receipt tells an operator to run list_account_tokens_for_reconcile to find
+// and revoke the live token, and that command would have inherited a GetSecret requirement on a
+// secret the mint's own grant cells do not even cover for the read profile. A remedy that depends
+// on the thing that failed is not a remedy.
+//
+// So the admission is supplied BY THE ENTRY rather than observed by the bracket. ContainerNotRequired
+// carries its reason so the arm cannot be reached for an operation that does write: it is a claim
+// about the caller's effects, and a writing caller that passed it would be making a false one.
+type R2MintContainerAdmission
+  = ContainerAdmitted
+  | ContainerNotRequired { reason: NonEmptyStr }
+  | ContainerAbsent { intervention: HumanIntervention }
+
+// WHAT THE ENTRY ASKS THE BRACKET TO DO ABOUT THE CONTAINER. This is the caller's statement of its
+// own effects, not a switch: an entry that will add a Secret Manager version asks for the
+// container to be ensured (observed, and created when absent), and an entry that only reads the account's tokens says so and carries the reason.
+type R2MintContainerRequirement
+  = EnsureCustodyContainer
+  | CustodyContainerNotNeeded { reason: NonEmptyStr }
+
+data r2_mint_container_not_required_reason: NonEmptyStr = "this entry reads the account's tokens through the Cloudflare bootstrap credential and writes no Secret Manager version, so the custody container is not its precondition" as NonEmptyStr
+
+fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2MintContainerAdmission {
+  match standing {
+    R2MintCustodyContainerPresent { container: _ } => ContainerAdmitted
+    R2MintCustodyContainerNotObserved { reason: reason } => ContainerNotRequired { reason: reason }
+    R2MintCustodyContainerNotEnsured { intervention: intervention } =>
+      ContainerAbsent { intervention: intervention }
+  }
+}
+
+// THE CONTAINER IS ENSURED BY THE MINT FLOW: OBSERVED, AND CREATED WHEN ABSENT (operator direction,
+// 2026-09-19). The create runs BEFORE the Cloudflare Create, so a refused or ambiguous create spends
+// nothing at Cloudflare. Every custody container is created bare by the bootstrap
+// (gunbc.auth.gcp_iam_bootstrap, over gunbc.auth.gcp_iam_converge gcp_iam_converge_grant_sets), so a
+// federated run observes it present; the create arm is the refusal for an identity without the
+// project-level permission, which no recurring identity holds (operator decision 2026-10-04, B'). An ambiguous create is not
+// retried (gunbc.secret_provision_actuator SecretCreationOutcome: a later GET cannot establish
+// absence).
+data r2_mint_container_create_permission: NonEmptyStr = "secretmanager.secrets.create"
+
+data r2_mint_custody_container_intervention_identity: String = "cloudflare-r2-origin-write-custody-container"
+
+// THIS BURDEN HAS A REAL DISCHARGE SITE, WHICH IS WHY IT IS NOT NoDischargeSiteModeled. The two
+// interventions beside it in gunbc.cloudflare.r2_origin are dashboard ceremonies nothing in this
+// tree can observe. This one is discharged by the very fold that raises it: the container GET is the
+// discharge check, so "has the operator done it" is answered by execution rather than by a human
+// remembering.
+fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmptyStr) -> HumanIntervention {
+  HumanIntervention {
+    identity: r2_mint_custody_container_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: join(["the Secret Manager custody container ", secret_id as String], "") as NonEmptyStr,
+    instruction: join([
+      "THE CUSTODY CONTAINER COULD NOT BE ENSURED: ", cause as String,
+      " -- the mint flow creates ", secret_id as String,
+      " in ", fleet_secrets_gcp_project as String,
+      " itself when its identity holds ", r2_mint_container_create_permission as String,
+      "; run it as an identity that does, or resolve the stated cause, then dispatch again. NOTHING WAS CREATED AT CLOUDFLARE.",
+    ], "") as NonEmptyStr,
+    completion_evidence: DischargedAt {
+      evidence: decl_ref(
+        module_path: "gunbc.cloudflare.r2_token_mint_run",
+        decl_name: "ensure_r2_mint_custody_container",
+      ),
+    },
+  }
+}
+
+fn ensure_r2_mint_custody_container(
+  secret_id: NonEmptyStr,
+  gcp_token: Secret,
+) -> R2MintCustodyContainerStanding {
+  match observe_secret_container(
+    project: fleet_secret_ref(secret_id: secret_id).project,
+    secret_id: secret_id,
+    token: gcp_token,
+  ) {
+    SecretObservationRefused { cause: cause } =>
+      R2MintCustodyContainerNotEnsured {
+        intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: cause),
+      }
+    SecretContainerAbsent { project: project, secret_id: _ } =>
+      match create_secret_container(project: project, secret_id: secret_id, token: gcp_token) {
+        SecretContainerCreated { container: container } =>
+          R2MintCustodyContainerPresent { container: container }
+        SecretContainerCreationRefused { cause: cause } =>
+          R2MintCustodyContainerNotEnsured {
+            intervention: r2_mint_custody_container_intervention(
+              secret_id: secret_id,
+              cause: join([
+                "the container is absent and this run's identity could not create it (",
+                cause as String,
+                "); creating a secret needs the PROJECT-level permission ",
+                r2_mint_container_create_permission as String,
+                ", which no recurring identity holds; the bootstrap creates custody containers (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply), so declare this secret in a gcp_iam_converge grant set and re-run it",
+              ], "") as NonEmptyStr,
+            ),
+          }
+        SecretContainerCreationOutcomeUnknown { cause: cause } =>
+          R2MintCustodyContainerNotEnsured {
+            intervention: r2_mint_custody_container_intervention(
+              secret_id: secret_id,
+              cause: concat("the container create's outcome is unknown and is not retried, because a later GET cannot establish absence: ", cause as String) as NonEmptyStr,
+            ),
+          }
+      }
+    SecretContainerObserved { container: container } =>
+      R2MintCustodyContainerPresent { container: container }
+  }
+}
+
+// THE DESTINATION CONTAINER IS A PRECONDITION, DECIDED BEFORE THE CREATE, AND THAT ORDERING IS THE
+// WHOLE OF THIS ARM. This module's own annotation has always claimed "every precondition is decided
+// before the Create", and for the custody CONTAINER it was not true: store_minted_token called
+// CreateSecret AFTER cloudflare.AccountTokens.Create had already minted a token whose value is
+// returned exactly once. #10947 succeeded only because the operator's identity happened to hold
+// project-wide secretmanager.secrets.create; a federated least-privilege identity does not, and the
+// failure that would have followed is not a failed run but a live credential on the account that
+// nobody holds.
+//
+// THE REMEDY IS NOT TO GRANT create, IT IS TO STOP NEEDING IT. secretmanager.secrets.create is a
+// PROJECT-level permission and cannot be a gunbc.auth.gcp_secret_access cell (one secret, one role),
+// and no per-secret cell can be written for a secret that does not exist. So the container is
+// established by the operator ceremony that grants the cells, this fold refuses when it is absent,
+// and the write path is AddSecretVersion only. Mapping a 409 AFTER the Create to "container present"
+// would have left the irreversible effect ahead of the check, which is the defect rather than a fix
+// for it (operator ruling, 2026-09-12).
+// ADMITTED AND NOT-REQUIRED PROCEED IDENTICALLY, SO THE LADDER IS WRITTEN ONCE. Listing both arms
+// against a copy of the whole ladder would be the same fold twice, and the two would drift.
+// THE SEAL TRAVELS AS AN OPTIONAL BECAUSE ONLY SOME ENTRIES HAVE ONE, and the writer is where its
+// absence refuses. List and revoke legitimately carry none: they were never going to add a version.
+// The mint path asks for the ensure and therefore refuses on none at the point it would write.
+fn observed_container_or_none(standing: R2MintCustodyContainerStanding) -> ObservedSecretContainer? {
+  match standing {
+    R2MintCustodyContainerPresent { container: container } => Present { value: container }
+    R2MintCustodyContainerNotObserved { reason: _ } => none
+    R2MintCustodyContainerNotEnsured { intervention: _ } => none
+  }
+}
+
+fn container_admission_refusal(container: R2MintContainerAdmission) -> HumanIntervention? {
+  match container {
+    ContainerAbsent { intervention: intervention } => Present { value: intervention }
+    ContainerAdmitted => none
+    ContainerNotRequired { reason: _ } => none
+  }
+}
+
+fn classify_r2_mint(
+  profile: R2OriginTokenProfile,
+  account: FleetCloudflareAccountStanding,
+  custody: BootstrapCustodyStanding,
+  origin: R2OriginStanding,
+  container: R2MintContainerAdmission,
+) -> R2MintPreconditions {
+  match container_admission_refusal(container: container) {
+    Present { value: container_intervention } =>
+      R2MintCustodyContainerAbsent { intervention: container_intervention }
+    Absent =>
+  match custody {
+    BootstrapCustodyUnrecorded { intervention: intervention } =>
+      R2MintBootstrapCustodyUnrecorded { intervention: intervention }
+    BootstrapCustodyPinned { locus: locus } =>
+      match origin {
+        R2OriginUnallocated { purpose: purpose } =>
+          R2MintOriginUnallocated { purpose: purpose }
+        R2OriginAllocated { bucket: bucket } =>
+      match account {
+        CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+          R2MintAccountUnallocated { intervention: intervention }
+        CloudflareAccountAllocated { company: _, account_id: account_id } =>
+          match admit_r2_origin_token_mint(
+            profile: profile,
+            name: r2_origin_token_name(profile: profile, bucket: bucket),
+            account_id: account_id as String,
+            jurisdiction: bucket.jurisdiction,
+            bucket_name: bucket.bucket_name as String,
+          ) {
+            AccountTokenApiMintAdmitted { shape: _, request: request } =>
+              R2MintReady {
+                account_id: account_id,
+                bootstrap_locus: locus,
+                request: request,
+              }
+            AccountTokenApiMintRefusedHumanDashboardOnly { shape: s } =>
+              R2MintAdmissionRefused { standing: AccountTokenApiMintRefusedHumanDashboardOnly { shape: s } }
+            AccountTokenApiMintRefusedGrantPolicyMismatch { shape: s, request: r } =>
+              R2MintAdmissionRefused { standing: AccountTokenApiMintRefusedGrantPolicyMismatch { shape: s, request: r } }
+            AccountTokenApiMintRefusedLifetimeMismatch { shape: s, request: r } =>
+              R2MintAdmissionRefused { standing: AccountTokenApiMintRefusedLifetimeMismatch { shape: s, request: r } }
+          }
+      }
+      }
+  }
+  }
+}
+
+// THE BURDEN IS RENDERED FROM THE PRICED INTERVENTIONS RATHER THAN RESTATED, which is what makes
+// cloudflare_r2_token_human_burden consumed by execution rather than merely declared. A refusal that
+// spelled the dashboard ceremony in its own words would be a second copy of an instruction the
+// burden already owns, and the two would drift.
+fn burden_instructions(burden: ProvisioningHumanBurden) -> String {
+  join(map(burden.interventions, i => i.instruction as String), " | ")
+}
+
+fn bootstrap_burden_text() -> String {
+  burden_instructions(burden: cloudflare_r2_token_human_burden())
+}
+
+// ONE EFFECTFUL BRACKET FOR THE FOUR ENTRIES. classify_r2_mint is the pure admission fold; this
+// is the custody fetch that every Create/List/Delete/AccessVersion consumer has to pass through.
+// Re-authoring the five classify arms and the five fetch arms at each entry was four copies of one
+// refusal text, which is how a decode-arm drift becomes a second mint.
+// THE IDENTITY THIS RUN HAS, RESOLVED ONCE AND USED FOR EVERY EFFECT IT PERFORMS. The mint reads
+// the bootstrap credential AND then writes the custody container and its version, so one token has
+// to survive from the read to the writes. Before this it was an operator token by construction --
+// read_supplied_access_token() then OperatorSuppliedToken, spelled here -- which is why the only
+// executed precedent (#10947) was an operator pasting a one-hour ya29 token into a session, and why
+// no federated workflow run could perform this mint at all.
+//
+// gunbc.auth.access_token_source resolve_access_token names the arm the RUN's environment supports
+// (workload federation in a dispatched job, an operator token file in a session) and realizes it.
+// This module chooses nothing about identity, spells no arm, and does not compose the selection
+// itself: adding a fourth realizer there reaches this mint without an edit here.
+
+type R2MintBootstrapStanding
+  = R2MintBootstrapReady {
+      account_id: CloudflareAccountId
+      request: CreateAccountTokenRequest
+      bootstrap: Secret
+      gcp_token: Secret
+      resolved_version: SmResolvedVersionIdentity
+      container: ObservedSecretContainer?
+    }
+  | R2MintBootstrapRefused { cause: NonEmptyStr }
+
+// THE ACCESS TOKEN IS RESOLVED BEFORE THE LADDER RUNS, AND THAT REORDERING IS DELIBERATE. The
+// container precondition is an OBSERVATION, so it needs the run's identity before it can be decided,
+// and a precondition that cannot be evaluated is not a precondition. The cost is that a run with no
+// credential at all now reports that first rather than reporting the account or custody gap; the
+// benefit is that the one check whose absence could burn a non-idempotent Cloudflare Create is
+// inside the ladder rather than downstream of it. Nothing here reaches the network except the
+// container GET, which is readonly.
+fn r2_mint_bootstrap(
+  profile: R2OriginTokenProfile,
+  purpose: BucketPurpose,
+  requirement: R2MintContainerRequirement,
+) -> R2MintBootstrapStanding {
+  let origin = bucket_purpose_origin_standing(purpose: purpose)
+  match r2_origin_token_secret_id(profile: profile, origin: origin) {
+    Absent =>
+      R2MintBootstrapRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
+    Present { value: secret_id } =>
+  match resolve_access_token() {
+    AccessTokenUpsertRequired { plan: plan } =>
+      R2MintBootstrapRefused {
+        cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr,
+      }
+    AccessTokenEnsureRefused { reason: reason } =>
+      R2MintBootstrapRefused { cause: concat("NO GCP ACCESS TOKEN: ", reason as String) as NonEmptyStr }
+    AccessTokenReady { token: gcp_token } => {
+      let container_standing = match requirement {
+        CustodyContainerNotNeeded { reason: reason } => R2MintCustodyContainerNotObserved { reason: reason }
+        EnsureCustodyContainer => ensure_r2_mint_custody_container(secret_id: secret_id, gcp_token: gcp_token)
+      }
+      match classify_r2_mint(
+    profile: profile,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: origin,
+    container: r2_mint_container_admission(standing: container_standing),
+  ) {
+    R2MintCustodyContainerAbsent { intervention: intervention } =>
+      R2MintBootstrapRefused { cause: intervention.instruction }
+    R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
+      R2MintBootstrapRefused { cause: concat("NO BOOTSTRAP TOKEN IN CUSTODY: ", intervention.instruction as String) as NonEmptyStr }
+    R2MintAccountUnallocated { intervention: intervention } =>
+      R2MintBootstrapRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    R2MintOriginUnallocated { purpose: purpose } =>
+      R2MintBootstrapRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
+    R2MintAdmissionRefused { standing: standing } =>
+      R2MintBootstrapRefused { cause: concat("THE MINT WAS NOT ADMITTED: ", mint_refusal_text(standing: standing)) as NonEmptyStr }
+    R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
+      {
+        let container = observed_container_or_none(standing: container_standing)
+          match fetch_secret_ref_credential_with_token(
+            secret_ref: locus,
+            access_token: gcp_token,
+          ) {
+            SecretCredentialAccessUpsertRequired { plan: _ } =>
+              R2MintBootstrapRefused {
+                cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication that this run cannot perform" as NonEmptyStr,
+              }
+            SecretCredentialFetchRefused { reason: reason } =>
+              R2MintBootstrapRefused { cause: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
+            SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+              R2MintBootstrapRefused {
+                cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr,
+              }
+            SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+              R2MintBootstrapRefused {
+                cause: concat(concat(
+                  "THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
+                  concat(", answered about ", resolved)) as NonEmptyStr,
+              }
+            SecretCredentialReady { credential: bootstrap, resolved_version: identity } =>
+              R2MintBootstrapReady {
+                account_id: account_id,
+                request: request,
+                bootstrap: bootstrap,
+                gcp_token: gcp_token,
+                resolved_version: identity,
+                container: container,
+              }
+          }
+      }
+  }
+      }
+  }
+  }
+}
+
+type R2AccountTokenListing
+  = R2AccountTokensListed { tokens: List<AccountTokenListRow> }
+  | R2AccountTokenListRefused { cause: NonEmptyStr }
+
+fn list_account_tokens(
+  bootstrap: Secret,
+  account_id: CloudflareAccountId,
+) -> R2AccountTokenListing {
+  match cloudflare.AccountTokens.List(
+    auth_token: bootstrap,
+    account_id: account_id as String,
+  ) {
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: _, body: body } =>
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST REFUSED: ", body) as NonEmptyStr }
+      RestTransportRefused { cause: cause } =>
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
+      RestBodyUndecodable { status: _, cause: cause } =>
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
+    }
+    RestAnswered { answer: listed } =>
+      R2AccountTokensListed { tokens: listed.tokens }
+  }
+}
+
+// THE PIN, NOT A TRANSCRIBED TOKEN ID, IS WHETHER ORIGIN-READ CUSTODY EXISTS. The stored secret
+// is the token VALUE; listing does not return it, so there is no live join from Secret Manager
+// bytes to a Cloudflare token id. An exact version on the origin read_credential is the live
+// declaration that a held mint exists. Comparing a listed id to a receipt literal goes stale on
+// the next rotation and deletes the credential the fabric is reading with.
+fn origin_credential_pin_is_exact(credential: OriginCredentialStanding) -> Bool {
+  match credential {
+    OriginCredentialUnminted { mint_entry: _, secret_id: _ } => false
+    OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
+    OriginCredentialPinned { access_key_id: _, token_value: locus } =>
+      (locus.version as String) != "latest"
+        && (locus.version as String) != "pending"
+  }
+}
+
+fn origin_read_pin_is_exact(origin: R2OriginStanding) -> Bool {
+  match origin {
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
+      origin_credential_pin_is_exact(credential: bucket.read_credential)
+  }
+}
+
+// THE MINT ITSELF, REACHED ONLY WITH THE BOOTSTRAP CREDENTIAL IN HAND.
+//
+// THE TRANSPORT OUTCOME IS READ RATHER THAN INFERRED. A non-idempotent create whose answer was lost
+// may already have minted a token, so "the service refused" and "the outcome is unknown" have
+// opposite remedies and neither may be reported as the other. The operation's RestRefused arm carries
+// that distinction: a refused status, a missing response and an undecodable body are separate refusals.
+//
+// THE 5xx SPLIT IS CONSUMED, NOT RESTATED. gunbc.secret_provision_actuator already owns
+// mutation_status_is_commit_ambiguous and states why the boundary sits at 500: a 4xx is a decision
+// the remote made BEFORE committing anything, while a 5xx spans states the remote itself may not be
+// able to describe, including a write that landed under a handler that then failed. Spelling a
+// second threshold here would be one fact with two authorities, and the two would drift on the first
+// status either side learned about. An earlier revision of this function DID map every refused
+// status to the refused arm -- so a 500 that may have minted a token was classified as safely
+// retryable, which is the duplicate-write class arriving through an HTTP response instead of a
+// transport loss.
+//
+// AND IT IS WORSE HERE THAN AT A SECRET VERSION, which is why the reuse is not merely tidy. A
+// duplicate AddVersion writes bytes we hold; a duplicate Create mints a CREDENTIAL whose value is
+// shown once, so a retry after an ambiguous create can leave a live token on the account that
+// nothing in this fleet holds or can revoke by id.
+type R2TokenMintOutcome
+  = R2TokenMinted { token: CreatedAccountToken, pair: R2S3AccessPair }
+  | R2TokenMintRefused { cause: NonEmptyStr }
+  | R2TokenMintOutcomeUnknown { cause: NonEmptyStr }
+
+fn mint_r2_origin_token(
+  account_id: CloudflareAccountId,
+  request: CreateAccountTokenRequest,
+  bootstrap: Secret,
+) -> R2TokenMintOutcome {
+  match cloudflare.AccountTokens.Create(
+    auth_token: bootstrap,
+    account_id: account_id as String,
+    name: request.name,
+    policies: request.policies,
+    not_before: request.not_before,
+    expires_on: request.expires_on,
+  ) {
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: status, body: body } =>
+        if mutation_status_is_commit_ambiguous(status: status) {
+          R2TokenMintOutcomeUnknown {
+            cause: concat(
+              "AccountTokens.Create answered with a server-error status, which does not establish that the mutation did not commit; a token may exist on the account whose value -- returned once -- was never read: ",
+              body) as NonEmptyStr,
+          }
+        } else {
+          R2TokenMintRefused {
+            cause: concat("Cloudflare refused the token create: ", body) as NonEmptyStr,
+          }
+        }
+      RestTransportRefused { cause: cause } =>
+        R2TokenMintOutcomeUnknown {
+          cause: concat(
+            "no response arrived for AccountTokens.Create, so a token may exist on the account with nobody holding its value; reconcile by listing the account's tokens rather than creating again: ",
+            cause as String) as NonEmptyStr,
+        }
+      RestBodyUndecodable { status: _, cause: cause } =>
+        R2TokenMintOutcomeUnknown {
+          cause: concat(
+            "AccountTokens.Create answered with a body this client could not decode, so the outcome is unread rather than known and the value -- returned once -- may be lost: ",
+            cause as String) as NonEmptyStr,
+        }
+    }
+    RestAnswered { answer: created } =>
+      match created_account_token_from_create_response(
+        response: CreatedAccountTokenCreateResponse {
+          id: created.id,
+          name: created.name,
+          status: created.status,
+          value: created.value,
+          expires_on: created.expires_on,
+          not_before: created.not_before,
+        }
+      ) {
+        Absent =>
+          R2TokenMintOutcomeUnknown {
+            cause: concat(
+              "AccountTokens.Create reported success with a status this model does not recognize, so a token exists whose state is unknown and whose value this run cannot safely store: ",
+              created.status) as NonEmptyStr,
+          }
+        Present { value: token } =>
+          R2TokenMinted {
+            token: token,
+            pair: r2_s3_access_pair_from_created_token(token: token),
+          }
+      }
+  }
+}
+
+// THE WRITE-BACK GOES THROUGH THE SAME BRACKET THE PRINTER CREDENTIAL USES, and the value it stores
+// is the TOKEN VALUE rather than the derived S3 pair. extdeps.cloudflare.r2 states the derivation as
+// a cited fact -- the access key id IS the created token's id, and the S3 secret IS the SHA-256 of
+// the create value -- so storing the value keeps ONE authority for the credential and lets both
+// halves of the pair be derived from it. Storing the derived secret beside it would be a second
+// representation of the same fact, and a wrong one the moment the derivation is restated.
+//
+// THE ACCESS KEY ID IS NOT A SECRET AND IS REPORTED, NOT STORED IN CUSTODY. It is the token's id,
+// which the account's own token listing shows. The two revoked unread Creates are named only in the
+// annotation at the top of this module and in the PR body; the stored mint's id is consumed, so it
+// is a pin -- gunbc.cloudflare.r2_origin fabric_durable_origin_read_access_key_id -- beside the
+// version pin it rotates with, because the S3 signer needs it as the access key
+// (extdeps.cloudflare.r2 R2S3AccessPair). A transcribed Secret Manager resource string would rot
+// the moment the pin rotated.
+
+// WHAT HAPPENED TO THE VALUE IS NOT THE SAME QUESTION AS WHETHER THE RUN SUCCEEDED, and collapsing
+// them is how a receipt tells an operator something false. Every arm below fails the run; they do
+// NOT agree about the bytes. NothingWasWritten is a definite negative -- the snapshot never became a
+// version, so the token's value is gone and only a revoke can clean up. WriteOutcomeUnknown is not a
+// negative at all: AddVersion may have committed with the answer lost, so a second attempt could
+// double-write and "the value is lost" would be a fabricated certainty (DESIGN section 5). A version
+// really did land for VersionLandedUnverified, at a known identity, and the correct remedy is to
+// DISABLE that version rather than to revoke and forget it.
+//
+// The first revision of the orphan receipt printed stored=no for all three. That is the same defect
+// this PR filed a failure-mode row about, one layer up: a receipt asserting a state the execution
+// does not establish.
+type R2MintedCustodyStanding
+  = NothingWasWritten
+  | WriteOutcomeUnknown
+  | VersionLandedUnverified { version: NonEmptyStr }
+
+fn minted_custody_line(custody: R2MintedCustodyStanding) -> String {
+  match custody {
+    NothingWasWritten => "stored=no"
+    WriteOutcomeUnknown => "stored=unknown"
+    VersionLandedUnverified { version: version } =>
+      join(["stored=unverified\nversion=", version as String], "")
+  }
+}
+
+fn minted_custody_action(custody: R2MintedCustodyStanding) -> String {
+  match custody {
+    NothingWasWritten =>
+      "action=REVOKE THIS TOKEN: it is live on the account, its value was returned once and is lost, and nothing was written."
+    WriteOutcomeUnknown =>
+      "action=DO NOT RE-RUN THE MINT. The version add may have committed with its answer lost, so a second mint would double-write. List the secret's versions first, then revoke this token only if no version carries it."
+    VersionLandedUnverified { version: _ } =>
+      "action=DISABLE THE VERSION NAMED ABOVE rather than rewriting it, then decide on the token: a version did land, so this is not the lost-value case."
+  }
+}
+
+type R2CredentialStored
+  = R2CredentialStoredAt { version_resource: String }
+  | R2CredentialStoreRefused { cause: NonEmptyStr, custody: R2MintedCustodyStanding }
+
+// THE CONTAINER IS AN ARGUMENT, NOT SOMETHING THIS FUNCTION CREATES. It arrives as the seal
+// r2_mint_bootstrap observed BEFORE the Cloudflare Create, so by the time this runs the destination
+// is a confirmed fact rather than a write about to be attempted. The CreateSecret that used to sit
+// here is gone: it was the one effect in this flow placed after the irreversible one, and the only
+// reason #10947 survived it was that the operator's identity held project-wide secrets.create.
+fn store_minted_token(
+  token: CreatedAccountToken,
+  locus: SecretRef,
+  gcp_token: Secret,
+  container: ObservedSecretContainer,
+) -> R2CredentialStored {
+  match snapshot_minted_secret(payload: token.value) {
+    CredentialSnapshotRefused { cause: cause } =>
+      R2CredentialStoreRefused {
+        cause: concat(
+          "THE TOKEN WAS MINTED AND COULD NOT BE CAPTURED FOR STORAGE, so its value -- returned once -- is lost and the token must be revoked from the account: ",
+          cause as String) as NonEmptyStr,
+                custody: NothingWasWritten,
+              }
+    CredentialSnapshotRefusedResidueRemains { workspace: workspace, cause: cause } =>
+      R2CredentialStoreRefused {
+        cause: concat(concat(
+          "THE TOKEN WAS MINTED, NOT STORED, AND PLAINTEXT MAY REMAIN AT ", workspace as String),
+          concat(": ", cause as String)) as NonEmptyStr,
+                custody: NothingWasWritten,
+              }
+    CredentialSnapshotTaken { snapshot: snapshot } => {
+      let attempt = concat("cloudflare-r2-origin-token-mint:", locus.secret as String) as SecretProvisionAttemptIdentity
+      let capability = version_add_capability_for_observed_container(
+        container: container,
+        attempt: attempt,
+        snapshot: snapshot,
+      )
+      match add_initial_version(capability: capability, token: gcp_token) {
+            VersionAdditionRefused { cause: cause } =>
+              R2CredentialStoreRefused {
+                cause: concat("THE TOKEN WAS MINTED BUT ITS VERSION WAS REFUSED: ", cause as String) as NonEmptyStr,
+                custody: NothingWasWritten,
+              }
+            VersionAdditionOutcomeUnknown { cause: cause } =>
+              R2CredentialStoreRefused {
+                cause: concat("THE TOKEN WAS MINTED AND THE VERSION OUTCOME IS UNKNOWN: ", cause as String) as NonEmptyStr,
+                custody: WriteOutcomeUnknown,
+              }
+            VersionAddedButUnverified { version: version, cause: cause } =>
+              R2CredentialStoreRefused {
+                cause: concat(concat(concat("A VERSION LANDED AT ", version as String), " BUT DID NOT VERIFY: "),
+                  concat(cause as String, " -- disable that version rather than rewriting it")) as NonEmptyStr,
+                custody: VersionLandedUnverified { version: version as NonEmptyStr },
+              }
+            VersionAddedAndVerified { verified: verified } =>
+              R2CredentialStoredAt { version_resource: verified_exact_ref(verified) as String }
+      }
+    }
+  }
+}
+
+// List and revoke are the standing reconcile entries for a non-idempotent Create whose HTTP
+// outcome is unknown or whose nested fields were unread. They are gunbc-run functions, the same
+// consumer class as run(); they are not a second mint path. /tmp is the non-secret readback
+// channel run() also uses. They dissolve when a modeled artifact store replaces that write.
+
+fn list_account_tokens_for_reconcile() -> ProcessExit {
+  match r2_mint_bootstrap(
+    profile: R2OriginObjectRead,
+    purpose: FabricDurableOrigin {},
+    requirement: CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason },
+  ) {
+    R2MintBootstrapRefused { cause: cause } =>
+      exit_failure(reason: cause as String)
+    R2MintBootstrapReady {
+      account_id: account_id,
+      request: _,
+      bootstrap: bootstrap,
+      gcp_token: _,
+      resolved_version: _,
+      container: _,
+    } =>
+      match list_account_tokens(bootstrap: bootstrap, account_id: account_id) {
+        R2AccountTokenListRefused { cause: cause } =>
+          exit_failure(reason: cause as String)
+        R2AccountTokensListed { tokens: tokens } => {
+          let lines = map(tokens, row => join([row.id as String, row.name, row.status], "\t"))
+          let written = Filesystem.Write(
+            path: "/tmp/r2-account-token-list.txt",
+            content: join(lines, "\n"),
+          )
+          if written.success {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("LIST SUCCEEDED AND THE FILE COULD NOT BE WRITTEN: ", written.error))
+          }
+        }
+      }
+  }
+}
+
+fn revoke_unheld_object_read_token() -> ProcessExit {
+  match r2_mint_bootstrap(
+    profile: R2OriginObjectRead,
+    purpose: FabricDurableOrigin {},
+    requirement: CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason },
+  ) {
+    R2MintBootstrapRefused { cause: cause } =>
+      exit_failure(reason: cause as String)
+    R2MintBootstrapReady {
+      account_id: account_id,
+      request: request,
+      bootstrap: bootstrap,
+      gcp_token: _,
+      resolved_version: _,
+      container: _,
+    } =>
+      match list_account_tokens(bootstrap: bootstrap, account_id: account_id) {
+        R2AccountTokenListRefused { cause: cause } =>
+          exit_failure(reason: cause as String)
+        R2AccountTokensListed { tokens: tokens } => {
+          let hit_count = fold(
+            tokens,
+            init: 0,
+            f: (n, row) => if row.name == request.name { n + 1 } else { n },
+          )
+          if hit_count == 0 {
+            ExitSuccess
+          } else {
+            if hit_count != 1 {
+              exit_failure(reason: concat(
+                "MORE THAN ONE TOKEN SHARES THE OBJECT-READ NAME, NOTHING REVOKED: ",
+                request.name))
+            } else {
+              let token_id = fold(
+                tokens,
+                init: "",
+                f: (acc, row) => if row.name == request.name { row.id as String } else { acc },
+              )
+              if origin_read_pin_is_exact(origin: fabric_durable_origin_standing()) {
+                exit_failure(reason: concat(
+                  "ORIGIN READ CREDENTIAL IS PINNED TO AN EXACT VERSION, NOTHING REVOKED: the named object-read token is the held mint ",
+                  token_id))
+              } else {
+                match cloudflare.AccountTokens.Delete(
+                  auth_token: bootstrap,
+                  account_id: account_id as String,
+                  token_id: token_id,
+                ) {
+                  RestRefused { refusal: RestStatusRefused { status: status, body: body } } =>
+                    if mutation_status_is_commit_ambiguous(status: status) {
+                      exit_failure(reason: concat(
+                        "REVOKE OUTCOME UNKNOWN, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                        body))
+                    } else {
+                      exit_failure(reason: concat("REVOKE REFUSED: ", body))
+                    }
+                  RestRefused { refusal: RestTransportRefused { cause: cause } } =>
+                    exit_failure(reason: concat(
+                      "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                      cause as String))
+                  RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>
+                    exit_failure(reason: concat(
+                      "REVOKE BODY DID NOT DECODE, AND THIS RUN WILL NOT DELETE AGAIN: ",
+                      cause as String))
+                  RestAnswered { answer: deleted } =>
+                    if deleted.success == false {
+                      exit_failure(reason: concat(
+                        "REVOKE REPORTED HTTP SUCCESS WITH success=false, SO THE TOKEN MAY STILL EXIST: ",
+                        token_id))
+                    } else {
+                      let written = Filesystem.Write(
+                        path: "/tmp/r2-object-read-revoke-receipt.txt",
+                        content: join(["revoked_token_id=", token_id, "name=", request.name], "\n"),
+                      )
+                      if written.success {
+                        ExitSuccess
+                      } else {
+                        exit_failure(reason: concat(
+                          "REVOKE SUCCEEDED AND THE RECEIPT FILE COULD NOT BE WRITTEN: ",
+                          written.error))
+                      }
+                    }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE ENTRY POINTS. Each reads its subject entirely from declarations -- which account, which
+// bucket, which custody locus, which grant -- and takes from the environment only the GCP access
+// token path the existing bracket already defines. Nothing about which account or which bucket is
+// an environment fact, because a run that could be pointed at a different account by a variable
+// would make the origin declaration advisory. The profile is likewise not an argument: `run` is
+// the object-read mint that gunbc#10947 executed and `run_object_write` is the object-write mint,
+// two entries over one fold, so an operator invoking either knows from the name which credential
+// the Create will spend.
+//
+// A MINT WHOSE CREDENTIAL IS ALREADY PINNED REFUSES BEFORE THE CREATE. Both mints have executed
+// and gunbc.cloudflare.r2_origin pins both credentials; running either entry again would mint a
+// second token the origin declaration does not name and whose value would land as a second version
+// nothing reads. This is the origin_read_pin
+// check revoke_unheld_object_read_token already performs, applied at the mint rather than only at
+// the revoke.
+fn run() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricDurableOrigin {})
+}
+
+fn run_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricDurableOrigin {})
+}
+
+// THE BUCKET-ADMIN GRANT NAMES THE ACCOUNT, NOT A BUCKET, so the purpose it passes is only the origin
+// the shared ladder checks is allocated; it is the durable origin, as it was before the mint was
+// parameterized, so this entry's behavior is unchanged.
+fn run_bucket_admin() -> ProcessExit uses net: Network {
+  mint_origin_token_and_store(profile: R2AccountBucketAdmin, purpose: FabricDurableOrigin {})
+}
+
+// ONE ENTRY PER (PURPOSE, PROFILE), FOR THE SAME REASON run AND run_object_write ARE TWO: an operator
+// invoking an entry knows from its name which credential the Create will spend. The entries carry no
+// name, secret id or policy of their own -- the token name is the purpose's bucket plus the profile
+// suffix, the custody secret is the one the purpose's standing declares, and the policy is the
+// profile's bucket-scoped grant over that bucket. Each writes a NEW Secret Manager version; the
+// standing in gunbc.cloudflare.r2_origin stays Unminted until a human-reviewed row change pins that
+// version as OriginCredentialPinned, after which the entry refuses before any Create.
+fn run_boot_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricBootOrigin {})
+}
+
+fn run_boot_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricBootOrigin {})
+}
+
+fn run_cache_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricCacheBlobs {})
+}
+
+fn run_cache_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricCacheBlobs {})
+}
+
+// THE WORKSPACE PLACEMENT'S TWO ENTRIES, dispatched through fleet-converge modes
+// r2_workspace_object_read_mint and r2_workspace_object_write_mint so the Create spends the bootstrap
+// token only on the federated route; their stored versions are pinned in gunbc.cloudflare.r2_origin
+// fabric_workspace_standing by a reviewed row change after the run.
+fn run_workspace_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricWorkspace {})
+}
+
+fn run_workspace_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricWorkspace {})
+}
+
+fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> Bool {
+  match origin {
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
+      origin_credential_pin_is_exact(credential: r2_origin_token_credential(profile: profile, bucket: bucket))
+  }
+}
+
+// ── THE ORPHAN RECEIPT, WHICH IS THE ONE THAT MATTERS MOST AND WAS THE ONE NOT WRITTEN ────────
+// A MINT THAT CREATED A TOKEN AND THEN FAILED TO STORE IT IS THE RUN WHOSE RECEIPT DECIDES WHETHER
+// THE DAMAGE IS RECOVERABLE. cloudflare.AccountTokens.Create returns a token value exactly once, so
+// a store refusal after it leaves a live credential on the account -- and the remedy the refusal
+// text itself demands, "the token must be revoked", is only actionable against a token ID. Until
+// this, the id was in scope at that moment and thrown away: the success path wrote token_id and the
+// refusal path wrote nothing, so the receipt existed for every run that did not need it.
+//
+// THE ID GOES IN THE EXIT REASON AS WELL AS THE FILE, AND THAT IS NOT BELT-AND-BRACES. The receipt
+// is a file write, which is itself a thing that can fail -- and the arm where it would fail is the
+// arm where the filesystem is already misbehaving. A remediation that is only recoverable from an
+// artifact that may not exist is not located (§5), so the id is put where nothing can swallow it:
+// the process's own typed failure. The file is the convenience; the diagnostic is the guarantee.
+//
+// BOTH ARMS WRITE TO THE SAME PATH BECAUSE THE UPLOADER GLOBS ONE PATH. gunbc.fleet_converge_workflow
+// uploads /tmp/r2-*-object-write-mint-receipt.txt with always(), and an orphan receipt written
+// somewhere else would be invisible to exactly the run it was written for.
+// THE FILENAME CONVENTION IS ONE FACT AND THE UPLOADER READS IT RATHER THAN RE-SPELLING IT.
+// review 66010 caught the half of this I had missed: the emitted glob avoided re-spelling the
+// BUCKET name, which my annotation defended, while hand-spelling the "/tmp/r2-" prefix and the
+// "-mint-receipt.txt" suffix -- exactly the parts this module owns. That drift would be SILENT by
+// construction: the upload step is if-no-files-found: warn, so renaming the path here would lose
+// the orphan receipt in precisely the run where a live unheld Cloudflare credential exists and its
+// id is the only thing that makes the damage recoverable.
+// ── THE RECEIPT IS SCOPED TO ONE ATTEMPT, BECAUSE /tmp OUTLIVES THE ATTEMPT ───────────────────
+// A SELF-HOSTED RUNNER'S /tmp SURVIVES ACROSS RUNS AND ACROSS ATTEMPTS OF THE SAME RUN, so a shared
+// path plus an always() uploader is a route by which a PREVIOUS attempt's receipt is collected as
+// THIS attempt's evidence. That is the fabricated-evidence failure aimed at the one artifact whose
+// whole purpose is to be trusted after a disaster: an operator reading an orphan receipt is deciding
+// which live Cloudflare token to revoke, and a stale receipt names the wrong one.
+//
+// It is also the shape this PR filed a failure-mode row about, arriving from the other side. There
+// the check was correctly written and positioned after the irreversible effect; here the artifact is
+// correctly written and can be read as belonging to a run that did not produce it. Both are a
+// receipt asserting something the execution does not establish.
+//
+// SO THE DIRECTORY CARRIES THE ATTEMPT IDENTITY AND THE UPLOADER NAMES ONLY THAT DIRECTORY. A stale
+// receipt from attempt N lives under a path attempt N+1's glob cannot match -- structurally, not by
+// a cleanup step that must remember to run. The scope SHAPE is declared once here; the two callers
+// differ only in where the identity comes from, which is a real difference: the mint reads the
+// runner's environment at execution time, the emitter writes a workflow expression evaluated at
+// dispatch time. Neither spells the directory.
+data r2_mint_receipt_dir_root: String = "/tmp/r2-mint-receipts/"
+
+data r2_mint_receipt_path_prefix: String = "r2-"
+
+data r2_mint_receipt_path_suffix: String = "-mint-receipt.txt"
+
+data r2_mint_receipt_run_id_env: NonEmptyStr = "GITHUB_RUN_ID" as NonEmptyStr
+
+data r2_mint_receipt_run_attempt_env: NonEmptyStr = "GITHUB_RUN_ATTEMPT" as NonEmptyStr
+
+// PURE, so the separation property is witnessable without a runner. The join is trivial and that is
+// the point: both callers must produce the SAME scope for the same attempt, and a different scope
+// for a different attempt, and neither may re-spell the separator.
+fn r2_mint_receipt_scope(run_id: String, run_attempt: String) -> String {
+  join([run_id, "-", run_attempt], "")
+}
+
+fn r2_mint_receipt_dir_for(scope: String) -> String {
+  join([r2_mint_receipt_dir_root, scope, "/"], "")
+}
+
+// AN UNSCOPED RUN IS A SESSION RUN, AND IT IS NOT THE HAZARD. Off a runner there is no run id, no
+// second attempt, and no uploader; the receipt is read by the operator who just ran the entry. The
+// arm is named rather than defaulted so that a WORKFLOW run missing the identity cannot quietly
+// reuse it -- the uploader names an attempt directory, so an unscoped receipt is collected by
+// nothing rather than collected as the wrong attempt's.
+type R2MintReceiptScope
+  = R2MintReceiptAttemptScoped { scope: String }
+  | R2MintReceiptUnscoped
+
+fn r2_mint_receipt_dir(scope: R2MintReceiptScope) -> String {
+  match scope {
+    R2MintReceiptAttemptScoped { scope: s } => r2_mint_receipt_dir_for(scope: s)
+    R2MintReceiptUnscoped => r2_mint_receipt_dir_root
+  }
+}
+
+fn r2_mint_receipt_path_in(scope: R2MintReceiptScope, request: CreateAccountTokenRequest) -> String {
+  join([
+    r2_mint_receipt_dir(scope: scope),
+    r2_mint_receipt_path_prefix,
+    request.name,
+    r2_mint_receipt_path_suffix,
+  ], "")
+}
+
+// THE GLOB THE EMITTED UPLOADER USES, DERIVED FROM THE SAME PARTS AND NOW SCOPED. The wildcard still
+// stands for the bucket name, which is not knowable at emit time; the directory is not a wildcard,
+// which is what makes a previous attempt's receipt unmatchable rather than merely unlikely.
+fn r2_mint_receipt_glob_in(scope: R2MintReceiptScope, profile: R2OriginTokenProfile) -> String {
+  join([
+    r2_mint_receipt_dir(scope: scope),
+    r2_mint_receipt_path_prefix,
+    "*",
+    r2_origin_token_name_suffix(profile: profile),
+    r2_mint_receipt_path_suffix,
+  ], "")
+}
+
+// THE SCOPE THIS RUN IS IN, READ FROM THE RUNNER'S OWN ENVIRONMENT. Both variables are set by GitHub
+// on every runner; requiring BOTH means a half-populated environment scopes nothing rather than
+// scoping to a partial identity that a later attempt could collide with.
+// THE RECEIPT DIRECTORY IS A PRECONDITION OF THE MINT, NOT A STEP BESIDE THE WRITE, and the reason
+// is this PR's own thesis applied to the repair it just made. Filesystem.Write is realized as bare
+// std::fs::write, which does NOT create parents, so scoping the receipt under
+// /tmp/r2-mint-receipts/<run>-<attempt>/ made the write fail with ENOENT on every workflow run --
+// both GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT are always set there, so every mint took the nested
+// path (review 66170).
+//
+// THE CONSEQUENCE WAS THE WORST ONE AVAILABLE, which is why this is established BEFORE the Create
+// rather than checked beside the write. After a SUCCESSFUL store the failed receipt turned
+// ExitSuccess into a failure; the origin pin is a declaration edit, so origin_credential_already_pinned
+// stays false, and a re-dispatch would spend ANOTHER non-idempotent AccountTokens.Create. A safety
+// repair that manufactures a double-mint path is worse than the hazard it closed.
+//
+// Ensuring it ahead of the Create means a filesystem that cannot hold the receipt refuses with
+// NOTHING SPENT -- the same ordering the custody container now has, for the same reason.
+type R2MintReceiptDirStanding
+  = R2MintReceiptDirReady
+  | R2MintReceiptDirRefused { cause: NonEmptyStr }
+
+fn ensure_r2_mint_receipt_dir(scope: R2MintReceiptScope) -> R2MintReceiptDirStanding {
+  let dir = r2_mint_receipt_dir(scope: scope)
+  let made = shell.Mkdir.Parents(path: dir as FilePath)
+  if made.success {
+    R2MintReceiptDirReady
+  } else {
+    R2MintReceiptDirRefused {
+      cause: join([
+        "THE RECEIPT DIRECTORY COULD NOT BE CREATED AT ", dir,
+        ", so a mint would have nowhere to record the token id it may need revoked (mkdir -p refused; extdeps.shell Mkdir.Parents reports only exit status, so there is no errno to carry here)",
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn r2_mint_receipt_scope_for_this_run() -> R2MintReceiptScope {
+  match shell.Env.Get(name: r2_mint_receipt_run_id_env).value {
+    Absent => R2MintReceiptUnscoped
+    Present { value: run_id } =>
+      match shell.Env.Get(name: r2_mint_receipt_run_attempt_env).value {
+        Absent => R2MintReceiptUnscoped
+        Present { value: run_attempt } =>
+          if trim(s: run_id) == "" || trim(s: run_attempt) == "" {
+            R2MintReceiptUnscoped
+          } else {
+            R2MintReceiptAttemptScoped {
+              scope: r2_mint_receipt_scope(run_id: trim(s: run_id), run_attempt: trim(s: run_attempt)),
+            }
+          }
+      }
+  }
+}
+
+fn r2_orphan_receipt_content(
+  token: CreatedAccountToken,
+  cause: NonEmptyStr,
+  custody: R2MintedCustodyStanding,
+) -> String {
+  join(
+    [
+      concat("token_id=", token.id as String),
+      minted_custody_line(custody: custody),
+      concat("store_refusal=", cause as String),
+      minted_custody_action(custody: custody),
+      "reconcile=gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function list_account_tokens_for_reconcile",
+    ],
+    "\n",
+  )
+}
+
+// THE FAILURE IS RETURNED WHETHER OR NOT THE RECEIPT LANDED, and the two cases are distinguishable
+// in the text. A receipt that could not be written must not upgrade the outcome, and it must not be
+// silently identical to one that was written either -- an operator reading the diagnostic has to
+// know whether there is a file to go and look at.
+fn refuse_with_orphan_receipt(
+  token: CreatedAccountToken,
+  request: CreateAccountTokenRequest,
+  cause: NonEmptyStr,
+  custody: R2MintedCustodyStanding,
+) -> ProcessExit {
+  let path = r2_mint_receipt_path_in(scope: r2_mint_receipt_scope_for_this_run(), request: request)
+  let written = Filesystem.Write(
+    path: path,
+    content: r2_orphan_receipt_content(token: token, cause: cause, custody: custody),
+  )
+  if written.success {
+    exit_failure(reason: join([
+      "STORE REFUSED AFTER THE TOKEN WAS MINTED, SO A LIVE CREDENTIAL EXISTS -- token_id=",
+      token.id as String, " ", minted_custody_line(custody: custody), ": ", cause as String,
+      " || ", minted_custody_action(custody: custody), " || receipt written to ", path,
+    ], ""))
+  } else {
+    exit_failure(reason: join([
+      "STORE REFUSED AFTER THE TOKEN WAS MINTED, SO A LIVE CREDENTIAL EXISTS -- token_id=",
+      token.id as String, " ", minted_custody_line(custody: custody), ": ", cause as String,
+      " || ", minted_custody_action(custody: custody),
+      " || THE RECEIPT FILE COULD NOT BE WRITTEN EITHER, so this diagnostic is the only record of that id: ",
+      written.error,
+    ], ""))
+  }
+}
+
+fn mint_origin_token_and_store(profile: R2OriginTokenProfile, purpose: BucketPurpose) -> ProcessExit {
+  let origin = bucket_purpose_origin_standing(purpose: purpose)
+  match r2_origin_token_secret_id(profile: profile, origin: origin) {
+    Absent =>
+      exit_failure(reason: concat(concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)), ", NOTHING CREATED"))
+    Present { value: secret_id } =>
+  if origin_credential_already_pinned(profile: profile, origin: origin) {
+    exit_failure(reason: concat(
+      "THE ORIGIN ALREADY PINS THIS CREDENTIAL TO AN EXACT VERSION, NOTHING CREATED: a second mint would leave a token on the account that no declaration names; rotate by editing the pin in gunbc.cloudflare.r2_origin first -- ",
+      secret_id as String))
+  } else {
+  match r2_mint_bootstrap(profile: profile, purpose: purpose, requirement: EnsureCustodyContainer) {
+    R2MintBootstrapRefused { cause: cause } =>
+      exit_failure(reason: concat(concat(
+        cause as String, ", NOTHING CREATED || the dashboard ceremony this is waiting on: "),
+        bootstrap_burden_text()))
+    R2MintBootstrapReady {
+      account_id: account_id,
+      request: request,
+      bootstrap: bootstrap,
+      gcp_token: gcp_token,
+      resolved_version: _,
+      container: container,
+    } =>
+      match container {
+        Absent =>
+          exit_failure(reason: "THE CUSTODY CONTAINER WAS NOT ENSURED FOR A RUN THAT WOULD WRITE ONE, NOTHING CREATED: the mint asked for the ensure and the bracket returned none, so this run cannot show the destination exists and will not spend a Create to find out")
+        Present { value: container } =>
+      match ensure_r2_mint_receipt_dir(scope: r2_mint_receipt_scope_for_this_run()) {
+        R2MintReceiptDirRefused { cause: dir_cause } =>
+          exit_failure(reason: concat(dir_cause as String, " -- NOTHING CREATED"))
+        R2MintReceiptDirReady =>
+      match mint_r2_origin_token(
+        account_id: account_id,
+        request: request,
+        bootstrap: bootstrap,
+      ) {
+        R2TokenMintRefused { cause: cause } =>
+          exit_failure(reason: concat("MINT REFUSED: ", cause as String))
+        R2TokenMintOutcomeUnknown { cause: cause } =>
+          exit_failure(reason: concat("MINT OUTCOME UNKNOWN, AND THIS RUN WILL NOT CREATE AGAIN: ", cause as String))
+        R2TokenMinted { token: token, pair: _ } =>
+          match store_minted_token(
+            token: token,
+            locus: fleet_secret_ref(secret_id: secret_id),
+            gcp_token: gcp_token,
+            container: container,
+          ) {
+            R2CredentialStoreRefused { cause: cause, custody: custody } =>
+              refuse_with_orphan_receipt(token: token, request: request, cause: cause, custody: custody)
+            R2CredentialStoredAt { version_resource: version_resource } => {
+              let written = Filesystem.Write(
+                path: r2_mint_receipt_path_in(scope: r2_mint_receipt_scope_for_this_run(), request: request),
+                content: join(
+                  [
+                    concat("token_id=", token.id as String),
+                    concat("version_resource=", version_resource),
+                  ],
+                  "\n",
+                ),
+              )
+              if written.success {
+                ExitSuccess
+              } else {
+                exit_failure(reason: concat(
+                  "TOKEN WAS MINTED AND STORED BUT THE NON-SECRET RECEIPT FILE COULD NOT BE WRITTEN: ",
+                  written.error))
+              }
+            }
+          }
+      }
+      }
+      }
+  }
+  }
+  }
+}
+
+// THE REFUSED ADMISSION IS RENDERED BY ARM, because the three arms name three different authoring
+// defects -- a shape whose acquisition says the dashboard is the only route, a policy whose
+// permission groups disagree with the shape's grants, and a lifetime the request contradicts -- and
+// one message covering all three would send the reader to the wrong declaration.
+fn mint_refusal_text(standing: AccountTokenApiMintStanding) -> String {
+  match standing {
+    AccountTokenApiMintAdmitted { shape: _, request: _ } =>
+      "the mint was admitted, which is not a refusal; reaching this arm means the classifier routed an admitted standing into the refused position"
+    AccountTokenApiMintRefusedHumanDashboardOnly { shape: _ } =>
+      "the token shape says HumanDashboardAcquired, so AccountTokens.Create is not its route; only a shape acquired CreatedViaAccountTokensApi may be minted"
+    AccountTokenApiMintRefusedGrantPolicyMismatch { shape: _, request: _ } =>
+      "the request's policy permission groups do not agree with the shape's grants, so the token created would not carry the access the shape claims"
+    AccountTokenApiMintRefusedLifetimeMismatch { shape: _, request: _ } =>
+      "the request's expiry does not agree with the shape's declared lifetime"
+  }
+}

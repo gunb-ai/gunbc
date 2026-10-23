@@ -1,0 +1,84 @@
+module test.claim.printed_chassis_server_power_interface_witness
+import std.types {Bool,Int,NonEmptyStr}
+import product.printed_chassis.server_power_interface {PowerCassetteBudget,NodePowerAssignment,PairingCapacityOnly,PairingRefused,pairing_screen,pairing_example}
+import extdeps.cooling.noctua_ampere {nh_u14s_amp_4926}
+import product.printed_chassis.cooler_configuration {DynatronW1,NoctuaU14sAmp4926,noctua_envelope}
+import product.printed_chassis.stack_geometry {stack_pitch,stack_pitch_for_cooler,part_top,part_bottom}
+import product.printed_chassis.component_mass {node_components,node_components_for_cooler,VendorNominal}
+import gunbc.fleet_intent {srv3_memory_population}
+import std.measure {watt,watt_count,volt,percent,gram_count,micrometer_count,micrometer}
+import std.optional {Present,Absent}
+import extdeps.power.fsp_crps {fsp800_50fs_reference,fsp1200_50fs_reference}
+import product.printed_chassis.server_power_interface {reference_main_power,required_station_power,available_main_power,AllModulesPresent,LargestModuleUnavailable,integration_standing,ReferenceArchitectureOnly}
+
+test fn main_rail_excludes_other_rails() -> Bool {
+ match reference_main_power(reference:fsp800_50fs_reference,input:volt(count:115)) {Present {value:w}=>watt_count(w:w)==780 Absent=>false}
+}
+test fn low_line_derating_is_preserved() -> Bool {
+ let low=match reference_main_power(reference:fsp1200_50fs_reference,input:volt(count:115)) {Present {value:w}=>watt_count(w:w)==966 Absent=>false}
+ let high=match reference_main_power(reference:fsp1200_50fs_reference,input:volt(count:230)) {Present {value:w}=>watt_count(w:w)==1164 Absent=>false}
+ low && high
+}
+test fn undocumented_input_range_refuses() -> Bool {
+ match reference_main_power(reference:fsp1200_50fs_reference,input:volt(count:150)) {Present {value:_}=>false Absent=>true}
+}
+test fn two_nodes_require_combined_load_and_declared_reserve() -> Bool {
+ watt_count(w:required_station_power(node_loads:[watt(count:300),watt(count:300)],overhead:watt(count:20),reserve:percent(count:20)))==744
+ && watt_count(w:required_station_power(node_loads:[watt(count:400),watt(count:400)],overhead:watt(count:20),reserve:percent(count:20)))==984
+ && watt_count(w:required_station_power(node_loads:[watt(count:300),watt(count:300)],overhead:watt(count:0),reserve:percent(count:0)))>550
+}
+test fn redundancy_is_not_double_capacity() -> Bool {
+ watt_count(w:available_main_power(modules:[watt(count:550),watt(count:550)],path_limit:watt(count:1100),state:LargestModuleUnavailable))==550
+ && watt_count(w:available_main_power(modules:[watt(count:550)],path_limit:watt(count:1100),state:LargestModuleUnavailable))==0
+}
+test fn largest_loss_and_distribution_limit_both_bind() -> Bool {
+ watt_count(w:available_main_power(modules:[watt(count:500),watt(count:800)],path_limit:watt(count:1000),state:LargestModuleUnavailable))==500
+ && watt_count(w:available_main_power(modules:[watt(count:500),watt(count:800)],path_limit:watt(count:400),state:AllModulesPresent))==400
+ && watt_count(w:available_main_power(modules:[],path_limit:watt(count:400),state:LargestModuleUnavailable))==0
+}
+test fn capacity_does_not_discharge_integration_obligations() -> Bool {
+ match integration_standing() {ReferenceArchitectureOnly {open:o}=>count(o)==11}
+}
+
+test fn residential_envelope_uses_both_fans_and_contact_plane() -> Bool {
+ let p=noctua_envelope(contact_plane_um:micrometer(count: 30000))
+ part_top(p:p)==195000 && part_bottom(p:p)==30000
+ && micrometer_count(m:nh_u14s_amp_4926.width)==150000
+ && micrometer_count(m:nh_u14s_amp_4926.depth)==111000
+}
+test fn cooler_variant_changes_pitch_without_rewriting_w1() -> Bool {
+ stack_pitch_for_cooler(cooler:DynatronW1,contact_plane_um:micrometer(count: 30000))==stack_pitch()
+ && stack_pitch_for_cooler(cooler:NoctuaU14sAmp4926,contact_plane_um:micrometer(count: 30000))>stack_pitch()
+ && stack_pitch_for_cooler(cooler:NoctuaU14sAmp4926,contact_plane_um:micrometer(count: 40000))-stack_pitch_for_cooler(cooler:NoctuaU14sAmp4926,contact_plane_um:micrometer(count: 30000))==10000
+}
+test fn cooler_replacement_does_not_double_count_its_fans() -> Bool {
+ let old=node_components(population:srv3_memory_population)
+ let rows=node_components_for_cooler(population:srv3_memory_population,cooler:NoctuaU14sAmp4926,contact_plane_um:micrometer(count: 30000))
+ count(rows)==count(old) && count(filter(rows,r=>r.id=="COOLER"))==1
+ && all(filter(rows,r=>r.id=="COOLER"),r=>match r.mass {VendorNominal {mass:g}=>gram_count(g:g)==1136 _=>false})
+ && count(filter(rows,r=>r.id=="F1" || r.id=="F2" || r.id=="F3"))==3
+}
+
+fn test_supply() -> PowerCassetteBudget {PowerCassetteBudget {id:"power",interface_id:"12v-a",usable_main:watt(count:780),branch_limits:[watt(count:400),watt(count:400)],overhead:watt(count:20),reserve:percent(count:20)}}
+fn assigned(node:NonEmptyStr,source:NonEmptyStr,interface_id:NonEmptyStr,branch:Int,watts:Int) -> NodePowerAssignment {NodePowerAssignment {node:node,power_cassette:source,interface_id:interface_id,branch:branch,load:watt(count:watts)}}
+test fn mixed_node_wattages_share_one_power_cassette() -> Bool {match pairing_example() {PairingCapacityOnly=>true PairingRefused=>false}}
+test fn pairing_rejects_missing_source_and_interface_mismatch() -> Bool {
+ let a=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"n",source:"missing",interface_id:"12v-a",branch:0,watts:100)]) {PairingRefused=>true _=>false}
+ let b=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"n",source:"power",interface_id:"wrong",branch:0,watts:100)]) {PairingRefused=>true _=>false}
+ a && b
+}
+test fn pairing_rejects_branch_and_aggregate_overload() -> Bool {
+ let a=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"n",source:"power",interface_id:"12v-a",branch:0,watts:401)]) {PairingRefused=>true _=>false}
+ let b=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"a",source:"power",interface_id:"12v-a",branch:0,watts:400),assigned(node:"b",source:"power",interface_id:"12v-a",branch:1,watts:400)]) {PairingRefused=>true _=>false}
+ a && b
+}
+test fn pairing_rejects_reused_ports_and_multiple_feeds_to_one_node() -> Bool {
+ let a=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"a",source:"power",interface_id:"12v-a",branch:0,watts:100),assigned(node:"b",source:"power",interface_id:"12v-a",branch:0,watts:100)]) {PairingRefused=>true _=>false}
+ let b=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"a",source:"power",interface_id:"12v-a",branch:0,watts:100),assigned(node:"a",source:"power",interface_id:"12v-a",branch:1,watts:100)]) {PairingRefused=>true _=>false}
+ a && b
+}
+test fn pairing_rejects_duplicate_supplies_and_missing_ports() -> Bool {
+ let a=match pairing_screen(supplies:[test_supply(),test_supply()],assignments:[]) {PairingRefused=>true _=>false}
+ let b=match pairing_screen(supplies:[test_supply()],assignments:[assigned(node:"a",source:"power",interface_id:"12v-a",branch:2,watts:100)]) {PairingRefused=>true _=>false}
+ a && b
+}

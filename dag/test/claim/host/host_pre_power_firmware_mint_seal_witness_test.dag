@@ -1,0 +1,41 @@
+module test.claim.host_pre_power_firmware_mint_seal_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SEAL ON THE PRE-POWER FIRMWARE MINT. gunbc.host_boot_attempt_admission pre_power_firmware_minted
+// returns a reading bound to whatever host and attempt it is handed, so it is admit_callers-sealed to
+// the production binding (pre_power_firmware_observed, which takes them from a BootAttemptClearance)
+// and to the one claim that exercises the join. The RED hands the compiler a module outside that
+// roster minting a reading for an attempt of its choosing, and asserts the refusal keyed by the
+// callee's name (gunbc.compile_diagnostic_census: a class-only count is a property of the closure).
+fn keyed_refusals(source: String, callee: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "ConstructorCallAdmissionRefused", subject_name: callee, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_reading_source: String = "module probe_forged_pre_power_reading\nimport extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }\nimport gunbc.fleet_intent_network { operator_host_mtcollins1 }\nimport gunbc.host_boot_attempt_admission { PrePowerFirmware, pre_power_firmware_minted }\nfn forged() -> PrePowerFirmware {\n  pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: \"any-attempt\", table: hpm_check_table_of(stdout: \"\"), source: \"forged\")\n}\n"
+
+// THE GREEN CONTROL: a module using the public classifier and join compiles with no admission refusal
+// on the mint, so the admitted internal call (pre_power_firmware_observed -> pre_power_firmware_minted)
+// is accepted in the closure and the RED above is the seal, not a broken closure.
+data public_join_source: String = "module probe_public_pre_power_join\nimport extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }\nimport gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt }\nimport gunbc.host_boot_attempt_admission { HpmFirmwareProjection, PrePowerFirmwareUnread, hpm_firmware_projection, attempt_configuration_with_pre_power }\nfn classify() -> HpmFirmwareProjection {\n  hpm_firmware_projection(table: hpm_check_table_of(stdout: \"\"))\n}\nfn join_unread(c: AttemptConfigurationReceipt) -> AttemptConfigurationReceipt {\n  attempt_configuration_with_pre_power(c: c, firmware: PrePowerFirmwareUnread { reason: \"not read\" })\n}\n"
+
+test fn a_reading_minted_outside_its_roster_is_refused_at_compile_time() -> Bool {
+  keyed_refusals(source: forged_reading_source, callee: "pre_power_firmware_minted") >= 1
+}
+
+test fn the_public_join_and_the_admitted_binding_resolve_under_the_seal() -> Bool {
+  keyed_refusals(source: public_join_source, callee: "pre_power_firmware_minted") == 0
+}

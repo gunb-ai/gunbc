@@ -1,0 +1,440 @@
+module v2.test.provenance.parse_memo_frame_replay
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY NODE A PARSE RETURNS RESOLVES TO ITS OWN SURVIVING-PATH PROVENANCE. Backtracking restores
+// the whole ParseProvenanceState on a failed attempt, so occurrence ids are a counter along
+// whichever path survives: an id minted on an abandoned attempt is minted again by the next one
+// and recorded once. The packrat memo that served captures across paths -- and with them ids
+// minted on an abandoned path -- was deleted (operator ruling R2, 2026-10-08;
+// gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path), and
+// this module keeps the grammars that exposed it as regression controls on the memo-free door.
+//
+// The expected results are stated without reference to any memo: every minted occurrence in the
+// accepted tree is distinct, every one has a span-index entry, the index holds nothing the
+// surviving path did not mint, and the tree's terminals, in token order, each carry their own class
+// and resolve through their own id to their own bytes. Every run goes through
+// the PRODUCTION DOOR -- prepare_grammar, then parse_production_prepared over the prepared
+// analysis, the route parse_module_prepared_seeded takes -- so a door that served a capture across
+// paths again reds here.
+//
+// The module name is kept because the failure-mode row above cites its colliding-grammar claim.
+
+type ParsePathRun {
+  tree: Node
+  index: SpanIndex
+}
+
+fn parse_path_run_through_door(root: GrammarRoot, tokens: List<Token>) -> Optional<ParsePathRun> {
+  match prepare_grammar(grammar: ModeledGrammar { root: root }) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => optional_absent()
+        PreparedModeled { modeled: modeled } =>
+          match parse_production_prepared(
+            tokens: tokens,
+            validated: modeled.validated,
+            analysis: modeled.analysis,
+            production_name: modeled.validated.root.start
+          ) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: artifact, diagnostics: _ } =>
+              optional_present(value: ParsePathRun { tree: artifact.tree, index: artifact.span_index })
+          }
+      }
+  }
+}
+
+// Absent when any minted node has no span-index entry -- the fact a dropped record breaks.
+// Otherwise each minted node's textual-locus resolution in pre-order. Resolution itself is not
+// total (a DerivedBy over children with no minted id exhausts its chain), so an unresolved node is
+// recorded as Absent, never treated as failure.
+fn parse_path_run_loci(run: ParsePathRun) -> Optional<List<Optional<Locus>>> {
+  fold_list(
+    xs: node_subtree_nodes(root: run.tree),
+    empty: optional_present(value: std.algebra.Empty),
+    cons: fn(acc, n) {
+      match acc {
+        Absent => acc
+        Present { value: loci } =>
+          match n.occurrence_id {
+            OccurrenceMinted { id: id } =>
+              match span_index_lookup(index: run.index, id: id) {
+                Violates { diagnostic: _ } => optional_absent()
+                Holds { value: _ } =>
+                  match span_index_resolve_textual_locus(index: run.index, id: id) {
+                    Holds { value: locus } =>
+                      optional_present(value: list_snoc_item(xs: loci, item: optional_present(value: locus)))
+                    Violates { diagnostic: _ } =>
+                      optional_present(value: list_snoc_item(xs: loci, item: optional_absent()))
+                  }
+              }
+            OccurrenceSynthetic => acc
+            OccurrenceProjected { id: _, caused_by: _ } => acc
+            OccurrencePending { caused_by: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+fn parse_path_minted_ids(tree: Node) -> List<std.occurrence_identity.OccurrenceId> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree),
+    empty: std.algebra.Empty,
+    cons: fn(acc, n) {
+      match n.occurrence_id {
+        OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
+        OccurrenceSynthetic => acc
+        OccurrenceProjected { id: _, caused_by: _ } => acc
+        OccurrencePending { caused_by: _ } => acc
+      }
+    }
+  )
+}
+
+fn occurrence_id_set_empty() -> Map<std.occurrence_identity.OccurrenceId, Bool> {
+  empty_map()
+}
+
+fn parse_path_minted_ids_distinct(run: ParsePathRun) -> Bool {
+  let ids = parse_path_minted_ids(tree: run.tree)
+  let distinct = fold_list(
+    xs: ids,
+    empty: occurrence_id_set_empty(),
+    cons: fn(acc, id) { map_insert(m: acc, key: id, value: true) }
+  )
+  length(xs: map_keys(distinct)) == length(xs: ids)
+}
+
+// The index holds exactly the surviving path's mints: one entry per minted node in the tree, none
+// left over from an abandoned attempt.
+fn parse_path_index_is_the_tree(run: ParsePathRun) -> Bool {
+  length(xs: map_keys(run.index.entries)) == length(xs: parse_path_minted_ids(tree: run.tree))
+}
+
+// A terminal is a childless minted Atom, stamped by its token class. Each one is paired with the
+// locus ITS OWN id resolves to, in pre-order -- token order -- so the comparison below asks which
+// bytes each terminal owns, not merely whether some node owns a given range. Absent when a
+// terminal's id does not resolve to a textual locus.
+type TerminalAt {
+  class: Symbol
+  locus: Locus
+}
+
+fn parse_path_terminals(run: ParsePathRun) -> Optional<List<TerminalAt>> {
+  fold_list(
+    xs: node_subtree_nodes(root: run.tree),
+    empty: optional_present(value: std.algebra.Empty),
+    cons: fn(acc, n) {
+      match acc {
+        Absent => acc
+        Present { value: terminals } =>
+          if length(xs: n.children) != 0 {
+            acc
+          } else {
+            match n.kind {
+              TypeNode { connective: Atom { identity: class } } =>
+                match n.occurrence_id {
+                  OccurrenceMinted { id: id } =>
+                    match span_index_resolve_textual_locus(index: run.index, id: id) {
+                      Holds { value: locus } =>
+                        optional_present(value: list_snoc_item(xs: terminals, item: TerminalAt { class: class, locus: locus }))
+                      Violates { diagnostic: _ } => optional_absent()
+                    }
+                  OccurrenceSynthetic => acc
+                  OccurrenceProjected { id: _, caused_by: _ } => acc
+                  OccurrencePending { caused_by: _ } => acc
+                }
+              _ => acc
+            }
+          }
+      }
+    }
+  )
+}
+
+type TerminalCursor {
+  agrees: Bool
+  rest: List<TerminalAt>
+}
+
+// The accepted tree's terminals, in order, are exactly `want`: same count, and each one carries the
+// expected class and resolves to the expected bytes. Swapping two terminals' span records reds here
+// even though both ranges are still present in the index.
+fn parse_path_terminals_are(run: ParsePathRun, want: List<TerminalAt>) -> Bool {
+  match parse_path_terminals(run: run) {
+    Absent => false
+    Present { value: got } =>
+      let walked = fold_list(
+        xs: want,
+        empty: TerminalCursor { agrees: true, rest: got },
+        cons: fn(cursor, w) {
+          match cursor.rest {
+            Empty => TerminalCursor { agrees: false, rest: cursor.rest }
+            Cons { head: g, tail: tail } =>
+              TerminalCursor {
+                agrees: cursor.agrees && g.class == w.class && g.locus == w.locus,
+                rest: tail
+              }
+          }
+        }
+      )
+      walked.agrees && length(xs: walked.rest) == 0
+  }
+}
+
+fn expected_terminal_at(token_class: Symbol, start: Int) -> TerminalAt {
+  TerminalAt { class: token_class, locus: abandoned_locus(start: start) }
+}
+
+fn abandoned_path_terminals() -> List<TerminalAt> {
+  [
+    expected_terminal_at(token_class: ^abandoned_tok_a, start: 0),
+    expected_terminal_at(token_class: ^abandoned_tok_a, start: 1),
+    expected_terminal_at(token_class: ^abandoned_tok_b, start: 2),
+    expected_terminal_at(token_class: ^abandoned_tok_y, start: 3)
+  ]
+}
+
+fn abandoned_locus(start: Int) -> Locus {
+  Textual { file: ^abandoned_path_file, extent: ByteRange { start: start, end: start + 1 } }
+}
+
+fn abandoned_token(token_class: Symbol, offset: Int) -> Token {
+  Token { class: token_class, lexeme: std.algebra.Empty, file: ^abandoned_path_file, start: offset, end: offset + 1 }
+}
+
+fn abandoned_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn abandoned_path_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_b, offset: 2),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_y, offset: 3),
+  tail: std.algebra.Empty } } } }
+}
+
+// THE ABANDONED-PATH DIRECTION.
+//
+//   S = R X z | a a X y      R = a a      X = b      tokens: a a b y
+//
+// Alternative one mints four ids before X (a, a, their conjunction, R's wrap), parses X at position
+// 2, and fails at z. Alternative two mints three ids before X and parses X again. Nothing the first
+// alternative minted may survive into the accepted artifact: the index holds exactly the tree's
+// minted ids, they are distinct, and every terminal resolves to its own byte.
+fn abandoned_path_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^abandoned_path_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^abandoned_path_s,
+        expression: Choice {
+          left: Sequence {
+            left: Nonterminal { production: ^abandoned_path_r },
+            right: Sequence {
+              left: Nonterminal { production: ^abandoned_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_z)
+            }
+          },
+          right: Sequence {
+            left: Sequence {
+              left: abandoned_terminal(token_class: ^abandoned_tok_a),
+              right: abandoned_terminal(token_class: ^abandoned_tok_a)
+            },
+            right: Sequence {
+              left: Nonterminal { production: ^abandoned_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_y)
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^abandoned_path_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^abandoned_path_r,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^abandoned_tok_a),
+          right: abandoned_terminal(token_class: ^abandoned_tok_a)
+        },
+        emitted: grammar_atom(identity: ^abandoned_path_r)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^abandoned_path_x,
+        expression: abandoned_terminal(token_class: ^abandoned_tok_b),
+        emitted: grammar_atom(identity: ^abandoned_path_x)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn abandoned_run_holds(run: ParsePathRun) -> Bool {
+  match parse_path_run_loci(run: run) {
+    Absent => false
+    Present { value: _ } =>
+      parse_path_minted_ids_distinct(run: run)
+        && parse_path_index_is_the_tree(run: run)
+        && parse_path_terminals_are(run: run, want: abandoned_path_terminals())
+  }
+}
+
+test fn abandoned_path_parse_carries_only_surviving_path_provenance() -> Bool {
+  match parse_path_run_through_door(root: abandoned_path_root(), tokens: abandoned_path_tokens()) {
+    Absent => false
+    Present { value: run } => abandoned_run_holds(run: run)
+  }
+}
+
+// THE COLLIDING DIRECTION, and the specimen behind gunbc.recurring_failure_mode
+// parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path. The mirror of abandoned_path_root:
+//
+//   S = a a X z | R X y      R = a a      X = b      tokens: a a b y
+//
+// Alternative one mints three ids before X, then X's own, and fails at z. Alternative two mints FOUR
+// ids before X (a, a, their conjunction, R's wrap) -- one more than the first -- so an X served from
+// the first attempt would carry a b whose id the surviving path has already given to R's wrap. This
+// claim was red under the memo and is the permanent regression control for its deletion (DESIGN
+// section 4b(4)): every minted occurrence in the accepted tree is distinct, the index is exactly
+// the tree's mints, and each terminal -- b among them, at 2..3 -- resolves to its own bytes.
+fn collision_path_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^collision_path_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^collision_path_s,
+        expression: Choice {
+          left: Sequence {
+            left: Sequence {
+              left: abandoned_terminal(token_class: ^abandoned_tok_a),
+              right: abandoned_terminal(token_class: ^abandoned_tok_a)
+            },
+            right: Sequence {
+              left: Nonterminal { production: ^collision_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_z)
+            }
+          },
+          right: Sequence {
+            left: Nonterminal { production: ^collision_path_r },
+            right: Sequence {
+              left: Nonterminal { production: ^collision_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_y)
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^collision_path_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^collision_path_r,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^abandoned_tok_a),
+          right: abandoned_terminal(token_class: ^abandoned_tok_a)
+        },
+        emitted: grammar_atom(identity: ^collision_path_r)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^collision_path_x,
+        expression: abandoned_terminal(token_class: ^abandoned_tok_b),
+        emitted: grammar_atom(identity: ^collision_path_x)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn collision_run_holds(run: ParsePathRun) -> Bool {
+  match parse_path_run_loci(run: run) {
+    Absent => false
+    Present { value: _ } =>
+      parse_path_minted_ids_distinct(run: run)
+        && parse_path_index_is_the_tree(run: run)
+        && parse_path_terminals_are(run: run, want: abandoned_path_terminals())
+  }
+}
+
+test fn parse_memo_production_door_keeps_occurrences_distinct_on_a_colliding_grammar() -> Bool {
+  match parse_path_run_through_door(root: collision_path_root(), tokens: abandoned_path_tokens()) {
+    Absent => false
+    Present { value: run } => collision_run_holds(run: run)
+  }
+}
+
+// A NESTED NONTERMINAL PARSED TWICE AT ONE POSITION.
+//
+//   S = X z | (X y) z*      X = W b      W = a      tokens: a b y
+//
+// The first alternative parses X -- and W inside it -- then fails at z; the second parses both again
+// at the same position. The second alternative is nested so it does not share a sequence-left atom
+// with the first (SharedPrefix would parse X once). The accepted artifact must carry exactly the
+// surviving path's ids, distinct, each terminal at its own byte.
+fn nested_frame_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^nested_frame_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^nested_frame_s,
+        expression: Choice {
+          left: Sequence {
+            left: Nonterminal { production: ^nested_frame_x },
+            right: abandoned_terminal(token_class: ^nested_tok_z)
+          },
+          right: Sequence {
+            left: Sequence {
+              left: Nonterminal { production: ^nested_frame_x },
+              right: abandoned_terminal(token_class: ^nested_tok_y)
+            },
+            right: Repeat { element: abandoned_terminal(token_class: ^nested_tok_z) }
+          }
+        },
+        emitted: grammar_atom(identity: ^nested_frame_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^nested_frame_x,
+        expression: Sequence {
+          left: Nonterminal { production: ^nested_frame_w },
+          right: abandoned_terminal(token_class: ^nested_tok_b)
+        },
+        emitted: grammar_atom(identity: ^nested_frame_x)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^nested_frame_w,
+        expression: abandoned_terminal(token_class: ^nested_tok_a),
+        emitted: grammar_atom(identity: ^nested_frame_w)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn nested_frame_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^nested_tok_a, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^nested_tok_b, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^nested_tok_y, offset: 2),
+  tail: std.algebra.Empty } } }
+}
+
+fn nested_run_holds(run: ParsePathRun) -> Bool {
+  match parse_path_run_loci(run: run) {
+    Absent => false
+    Present { value: _ } =>
+      parse_path_minted_ids_distinct(run: run)
+        && parse_path_index_is_the_tree(run: run)
+        && parse_path_terminals_are(run: run, want: [
+          expected_terminal_at(token_class: ^nested_tok_a, start: 0),
+          expected_terminal_at(token_class: ^nested_tok_b, start: 1),
+          expected_terminal_at(token_class: ^nested_tok_y, start: 2)
+        ])
+  }
+}
+
+test fn nested_reparse_carries_only_surviving_path_provenance() -> Bool {
+  match parse_path_run_through_door(root: nested_frame_root(), tokens: nested_frame_tokens()) {
+    Absent => false
+    Present { value: run } => nested_run_holds(run: run)
+  }
+}

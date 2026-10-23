@@ -1,0 +1,35 @@
+module product.printed_chassis.cassette_profile
+import std.optional {Present}
+import std.types {NonEmptyStr,List,Int}
+import std.measure {Micrometer,micrometer}
+import product.printed_chassis.bed_partition {AxisPrintAllowance,allocate_axis,AxisAllocated,AxisAllocationInvalid,AxisAllocationNoFit}
+import extdeps.external_authority {CitedFigureStanding}
+import product.printed_chassis.board_mechanical_reference {BoardMountingReference}
+type BoardOutline = BoardOutlineKnown {width:Micrometer,depth:Micrometer,standing:CitedFigureStanding} | BoardOutlinePending
+type PowerArchitecture = RetainPlatformPowerAssembly | IndependentPowerCassette
+// Product requirements; these are not claims that the incoming hardware includes them.
+type RetainedSubsystem = ComputeAssembly | VendorPowerDistribution | PsuCageAndEarth
+ | ManagementAndSequencing | CoolingAndDucting | IoAndRisers | HarnessAndFrontPanel
+ | SocketBackplatesAndLoadPath
+type DesignObligation = ExactAssemblyRevision | MountingCoordinates | UndersideKeepouts
+ | PowerPinoutAndEnable | ManagementDependencies | ThermalAndAirflow | CableSweptVolumes
+ | ComponentMassAndPlacement | StructuralJointsAndCreep | EarthAndMainsEnclosure
+ | PrinterSegmentation | CoolerLoadAndTransport
+type CassetteProfile {id:NonEmptyStr,requested_hardware:NonEmptyStr,outline:BoardOutline,mounting:BoardMountingReference,power:PowerArchitecture,retain:List<RetainedSubsystem>,open:List<DesignObligation>}
+// Axis-aligned board-envelope tiling only, not a printable tray or minimum arbitrary packing.
+fn board_grid_tiles(project:CassetteProfile,usable_tile_um:Micrometer) -> Int? {
+ let a=AxisPrintAllowance {bed_um:usable_tile_um,brim_each_side_um:micrometer(count: 0),edge_clearance_each_side_um:micrometer(count: 0),outer_low_um:micrometer(count: 0),outer_high_um:micrometer(count: 0),internal_low_um:micrometer(count: 0),internal_high_um:micrometer(count: 0)}
+ match project.outline {
+ BoardOutlinePending=>none
+ BoardOutlineKnown {width:w,depth:d,standing:_}=>match allocate_axis(span_um:w,allowance:a) {
+ AxisAllocationInvalid=>none AxisAllocationNoFit=>none
+ AxisAllocated {cells:xs}=>match allocate_axis(span_um:d,allowance:a) {
+ AxisAllocationInvalid=>none AxisAllocationNoFit=>none
+ AxisAllocated {cells:zs}=>Present {value:count(xs)*count(zs)}
+ }
+ }
+ }
+}
+
+data transplant_obligations:List<DesignObligation> = [ExactAssemblyRevision,MountingCoordinates,UndersideKeepouts,PowerPinoutAndEnable,ManagementDependencies,ThermalAndAirflow,CableSweptVolumes,ComponentMassAndPlacement,StructuralJointsAndCreep,EarthAndMainsEnclosure,PrinterSegmentation,CoolerLoadAndTransport]
+data retained_platform_subsystems:List<RetainedSubsystem> = [ComputeAssembly,VendorPowerDistribution,PsuCageAndEarth,ManagementAndSequencing,CoolingAndDucting,IoAndRisers,HarnessAndFrontPanel,SocketBackplatesAndLoadPath]

@@ -1,0 +1,171 @@
+module product.printed_chassis.harness_census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure {Milliampere,milliampere_count,Micrometer,micrometer_count,Millimeter, millimeter, millimeter_count}
+import product.printed_chassis.rear_cooling {RearFanBank,RearCoolingReading,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,rear_plate_gap_um}
+import product.printed_chassis.node_power_feed {FanHeaderLoad,fan_bank_header_load,FanHeaderLoadAgainstUnreadLimit,FanBankNeedsOneHeaderPerFan}
+import extdeps.external_authority {CitedToAuthority,TranscribedUncited,ObservedByReceipt}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_bool}
+import std.nat { Nat, nat_sub, NatSubtraction, NatDifference, NatSubtrahendExceedsMinuend }
+import std.measure { Millimeter, millimeter, millimeter_count }
+import product.printed_chassis.stack_geometry { stack_pitch, footprint_half_depth }
+import product.printed_chassis.cassette { tray_d, tray_w, rear_plate_z }
+import product.printed_chassis.power_cassette { PowerCassette, PowerCassettePlacement, TopOfColumn, BottomOfColumn, BesideColumn, units_lifted_to_pop, nodes_above }
+import extdeps.fans.arctic { PwmSharingChain, PstPassThrough, NoPassThrough }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_connector_edge, BoardEdge, RearIoEdge, FrontEdge, SideEdgeNearDimmBankA, SideEdgeNearPcieSlots }
+
+// HOW MUCH CABLE A STACK ACTUALLY CARRIES, counted and measured from the geometry rather than
+// guessed. The operator's suspicion was that the naive picture undercounts; this is the
+// instrument that answers it, and the things it finds are not in the naive picture:
+//
+//   - the board's 12 V inputs and fan headers are on the FRONT edge (the manual's layout), so a
+//     feed arriving at the rear must cross the tray, and the rear fan bank's header cable must
+//     cross it the other way;
+//   - a fan bank on PST is one header cable plus short links, not three header cables;
+//   - a branch's length is a function of how many levels separate the node from the station,
+//     so placement decides the total.
+//
+// Lengths are lower-bound route estimates plus declared slack, NOT cut lengths. Connector
+// bodies, side escape around the rear fan bank, bends and strain relief still require routing.
+
+type CableRole
+  = DcBranch
+  | Atx12vPigtail
+  | FanHeaderCable
+  | FanPstLink
+  | EthernetPatch
+
+type CableRun {
+  node_index_from_bottom: Nat
+  role: CableRole
+  count: Nat
+  each: Millimeter
+}
+
+// WHERE THE NODE'S DC INLET SITS. The board wants power at the front; the pillar raceway is at
+// the rear corners. Inlet at the rear means a long internal pigtail; inlet at the front means
+// the branch drop runs down the front pillars. A selection, exposed as the two arms it has.
+type DcInletPlacement = InletAtRear | InletAtFront
+
+type HarnessPlan {
+  node_count: Nat
+  station: PowerCassette
+  inlet: DcInletPlacement
+  inputs_populated: Nat
+  fan: FanHarnessPlan
+  ethernet_per_node: Nat
+  switch_level_from_bottom: Nat
+  service_allowance: Millimeter
+}
+
+fn pitch_mm() -> Nat { stack_pitch() / 1000 }
+
+data no_levels: Nat = 0
+fn nat_minus(a: Nat, b: Nat) -> Nat { match nat_sub(a: a, b: b) { NatDifference { value: v } => v NatSubtrahendExceedsMinuend => no_levels } }
+fn level_distance(a: Nat, b: Nat) -> Nat { if a > b { nat_minus(a: a, b: b) } else { nat_minus(a: b, b: a) } }
+
+// The station's level for a vertical run: above the top node, below the bottom one, or beside
+// the column at the bottom node's level plus a lateral tray width.
+fn station_vertical_levels(plan: HarnessPlan, node: Nat) -> Nat {
+  match plan.station.placement {
+    TopOfColumn => nodes_above(node_count: plan.node_count, node_index_from_bottom: node) + 1
+    BottomOfColumn => node + 1
+    BesideColumn => node + 1
+  }
+}
+fn station_lateral_mm(plan: HarnessPlan) -> Nat {
+  match plan.station.placement { TopOfColumn => 0 BottomOfColumn => 0 BesideColumn => micrometer_count(m: tray_w) / 1000 }
+}
+
+// One node's branch: vertical levels times pitch, a lateral run if beside, the tray crossing if
+// the inlet is at the front and the raceway at the rear, plus the allowance.
+fn dc_branch_length(plan: HarnessPlan, node: Nat) -> Millimeter {
+  let vertical = station_vertical_levels(plan: plan, node: node) * pitch_mm()
+  let crossing = match plan.inlet { InletAtRear => 0 InletAtFront => micrometer_count(m: tray_d) / 1000 }
+  millimeter(count: vertical + station_lateral_mm(plan: plan) + crossing + millimeter_count(m: plan.service_allowance))
+}
+
+// Inside the cassette: from the inlet to the front-edge header. Rear inlet crosses the tray.
+fn pigtail_length(plan: HarnessPlan) -> Millimeter {
+  let crossing = match plan.inlet { InletAtRear => micrometer_count(m: tray_d) / 1000 InletAtFront => 0 }
+  millimeter(count: crossing + millimeter_count(m: plan.service_allowance))
+}
+
+// This component plan is shared by the stack census and the selected rear-bank review.
+// It does not require fabricating a PSU selection to assess fan wiring.
+type FanHarnessPlan {fans:Nat,cable_length:Millimeter,sharing:PwmSharingChain,rated_current:Milliampere,header_run:Millimeter,pst_link_run:Millimeter}
+type SelectedFanHarness = SelectedFanHarnessReady {plan:FanHarnessPlan,load:FanHeaderLoad} | SelectedFanHarnessOpen {reason:String}
+fn selected_fan_harness(bank:RearFanBank,service_allowance:Millimeter) -> SelectedFanHarness {
+ if bank.count<=0 {return SelectedFanHarnessOpen {reason:"Invalid selected bank population"}}
+ let lead=match bank.fan.cable_length {Present {value:l}=>l Absent=>return SelectedFanHarnessOpen {reason:"Selected fan lead length unread"}}
+ let current=match bank.fan.rated_current {Present {value:i}=>i Absent=>return SelectedFanHarnessOpen {reason:"Selected fan current unread"}}
+ let sharing=match bank.fan.sharing {Present {value:s}=>s Absent=>return SelectedFanHarnessOpen {reason:"Selected fan sharing facts unread"}}
+ let plan=FanHarnessPlan {fans:bank.count,cable_length:lead,sharing:sharing,rated_current:current,
+ header_run:millimeter(count:(micrometer_count(m: tray_d)/2-rear_plate_z)/1000+millimeter_count(m:service_allowance)),
+ pst_link_run:millimeter(count:(micrometer_count(m: bank.plate_edge_um)+micrometer_count(m: rear_plate_gap_um))/1000)}
+ SelectedFanHarnessReady {plan:plan,load:fan_bank_header_load(fans:plan.fans,rated_current:plan.rated_current,sharing:plan.sharing)}
+}
+fn fan_plan_needs_extension(plan:FanHarnessPlan) -> Bool {millimeter_count(m:plan.header_run)>millimeter_count(m:plan.cable_length)}
+fn fan_header_needs_extension(plan: HarnessPlan) -> Bool {fan_plan_needs_extension(plan:plan.fan)}
+fn fan_cables(plan:FanHarnessPlan,node:Nat) -> List<CableRun> {
+ if plan.fans==0 {return []}
+ match plan.sharing {
+ PstPassThrough {max_chained_standing:_}=>concat([CableRun {node_index_from_bottom:node,role:FanHeaderCable,count:1,each:plan.header_run}],if plan.fans>1 {[CableRun {node_index_from_bottom:node,role:FanPstLink,count:nat_minus(a:plan.fans,b:1),each:plan.pst_link_run}]} else {[]})
+ NoPassThrough=>[CableRun {node_index_from_bottom:node,role:FanHeaderCable,count:plan.fans,each:plan.header_run}]
+ }
+}
+fn selected_fan_harness_json(reading:RearCoolingReading,service_allowance:Millimeter) -> JsonValue {
+ let selected=match reading {RearFanGeometry {bank:b}=>selected_fan_harness(bank:b,service_allowance:service_allowance) RearCoolingInvalidInput=>SelectedFanHarnessOpen {reason:"Invalid rear cooling input"} RearCoolingNoFit=>SelectedFanHarnessOpen {reason:"No selected rear bank"}}
+ match selected {
+ SelectedFanHarnessOpen {reason:r}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"open")),json_kv(key:"reason",value:json_string(s:r))])
+ SelectedFanHarnessReady {plan:p,load:load}=>{
+ let runs=fan_cables(plan:p,node:0)
+ let header=match load {
+ FanHeaderLoadAgainstUnreadLimit {header_current:i,fans:_}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"open: board header current limit unread")),json_kv(key:"header_current_ma",value:json_int(n:milliampere_count(i:i)))])
+ FanBankNeedsOneHeaderPerFan {fans:n,headers_available:a}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"separate headers required; current rating unresolved")),json_kv(key:"headers_needed",value:json_int(n:n)),json_kv(key:"headers_available",value:json_int(n:a))])
+ }
+ let chain=match p.sharing {NoPassThrough=>"no pass-through" PstPassThrough {max_chained_standing:s}=>match s {CitedToAuthority {authority:_}=>"cited chain standing; header capacity still required" TranscribedUncited {read_obligation:o}=>o as String ObservedByReceipt {observed:_}=>"observed chain standing; header capacity still required"}}
+ json_object(members:[json_kv(key:"standing",value:json_string(s:"design lower-bound route estimate; bend, retention, cable exit and installed fit remain open")),json_kv(key:"lead_mm",value:json_int(n:millimeter_count(m:p.cable_length))),json_kv(key:"header_run_mm",value:json_int(n:millimeter_count(m:p.header_run))),json_kv(key:"service_allowance_mm",value:json_int(n:millimeter_count(m:service_allowance))),json_kv(key:"extension_needed",value:json_bool(b:fan_plan_needs_extension(plan:p))),json_kv(key:"native_fan_cable_count",value:json_int(n:fold(runs,init:0,f:(acc,r)=>acc+r.count))),json_kv(key:"header_load",value:header),json_kv(key:"chain_standing",value:json_string(s:chain)),json_kv(key:"stack_power_and_ethernet",value:json_string(s:"open: station, inlet and switch selections required for complete stack census"))])
+ }
+ }
+}
+
+fn ethernet_length(plan: HarnessPlan, node: Nat) -> Millimeter {
+  millimeter(count: level_distance(a: plan.switch_level_from_bottom, b: node) * pitch_mm() + millimeter_count(m: plan.service_allowance))
+}
+
+fn node_cables(plan: HarnessPlan, node: Nat) -> List<CableRun> {
+  concat([
+    CableRun { node_index_from_bottom: node, role: DcBranch, count: 1, each: dc_branch_length(plan: plan, node: node) },
+    CableRun { node_index_from_bottom: node, role: Atx12vPigtail, count: plan.inputs_populated, each: pigtail_length(plan: plan) },
+    CableRun { node_index_from_bottom: node, role: EthernetPatch, count: plan.ethernet_per_node, each: ethernet_length(plan: plan, node: node) },
+  ], fan_cables(plan: plan.fan, node: node))
+}
+
+fn node_indices(n: Nat) -> List<Nat> { nat_range_below(n: n) }
+fn nat_range_below(n: Nat) -> List<Nat> { range_acc(i: 0, n: n, acc: []) }
+fn range_acc(i: Nat, n: Nat, acc: List<Nat>) -> List<Nat> { if i >= n { reverse(acc) } else { range_acc(i: i + 1, n: n, acc: concat([i], acc)) } }
+
+type HarnessCensus {
+  runs: List<CableRun>
+  cable_count: Nat
+  total_length: Millimeter
+  fan_header_extension_needed: Bool
+}
+
+fn harness_census(plan: HarnessPlan) -> HarnessCensus {
+  let runs = flat_map(node_indices(n: plan.node_count), node => node_cables(plan: plan, node: node))
+  HarnessCensus {
+    runs: runs,
+    cable_count: fold(runs, init: 0, f: (acc, r) => acc + r.count),
+    total_length: millimeter(count: fold(runs, init: 0, f: (acc, r) => acc + r.count * millimeter_count(m: r.each))),
+    fan_header_extension_needed: fan_header_needs_extension(plan: plan),
+  }
+}
+
+// THE SERVICE COST OF A POP, in disconnects: every unit lifted has its cables unplugged first,
+// and the target itself. A stack of eight with the station on top pays nine unplug sets to
+// reach the bottom node; two columns of four pay five.
+fn disconnect_sets_to_pop(plan: HarnessPlan, node: Nat) -> Nat {
+  units_lifted_to_pop(station: plan.station, node_count: plan.node_count, node_index_from_bottom: node) + 1
+}

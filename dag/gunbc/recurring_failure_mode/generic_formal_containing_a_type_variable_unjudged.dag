@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.generic_formal_containing_a_type_variable_unjudged
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_formal_containing_a_type_variable_unjudged: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_formal_containing_a_type_variable_unjudged" as NonEmptyStr,
+
+  receipts: [
+    "**In v2 infer, a call argument at a formal that contains a type parameter inside a constructor was admitted whatever its type.** `fn g<T>(a: List<T>, b: List<T>) -> List<T>` called as `g(1, 2)`, or as `g(xs_of_int, xs_of_pair)`, was ACCEPTED, while the same callee declared `fn g(a: List<Int>, b: List<Int>)` refused `g(1, 2)`. Found by stern-swift-290 while building the collection concat roster route (XL-2 step 1): the concat REDs could not discriminate, because the row's signature is generic and every generic in v2 shared the hole. DESIGN section 4b puts `values inhabit declared types` on the ordinary compiler floor, so this was below the floor, not a rung.",
+
+    "DISTINGUISHING FACTS. (1) The formal is not itself a type variable: `x: T` was already instantiated by v2.compiler.infer infer_judge_application_argument_instantiating (DeclaredTypeVariable). (2) The formal MENTIONS a type variable inside an Instantiation (`List<T>`, `List<List<T>>`), so it took the DeclaredType arm, reached the declared-position judge as written, and v2.std.inhabitance inhabitance_node_undecidable_reason answered UndecidableGenericFormal, which infer admits as a counted advisory. (3) The argument's type IS derived, so nothing about the argument was undecidable; the undecidability was manufactured by never instantiating the formal.",
+
+    "REPAIR (climb): v2.compiler.infer infer_judge_generic_formal matches the formal first-order against the argument's derived type (infer_match_generic_formal: same constructor and arity, recursing pairwise; a bare variable binds its first instance through the existing TypeVariableInstance list), instantiates the formal (infer_type_instantiated), and hands it to the SAME declared-position judge every formal uses. A constructor or arity mismatch refuses there with application_argument_does_not_inhabit, located at the application. No second inhabitance relation is introduced. Controls: v2.test.claim.compiler.generic_formal_instantiation (three REDs that were accepted at the base, two accepted controls).",
+
+    "RUNG FOUND AT: below the floor (silently admitted). RUNG NOW: structurally guaranteed for a formal whose type variables sit inside Instantiations. RESIDUE, STATED: a type variable inside a shape this match does not open -- an Arrow (`f: fn(T) -> T`), an optional (`T?`), a type variable in constructor-head position -- still reaches the judge mentioning a variable and stays UndecidableGenericFormal, admitted with the counted advisory. CEILING: structurally guaranteed (decidable over modeled types). NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: first-order matching of a generic formal through every type connective v2 infer derives (Arrow domains and codomains, Cardinality), sufficient for every generic formal whose argument type is derived to be judged rather than admitted.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_judge_generic_formal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_match_generic_formal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.generic_formal_instantiation", decl_name: "gfi_one_variable_at_two_instances_refuses", field: WholeDeclaration },
+  ],
+}

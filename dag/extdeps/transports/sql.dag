@@ -1,0 +1,40 @@
+module extdeps.transports.sql
+
+import std.serialization { WireFormat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/76583.html"
+  }
+}
+
+type SqlStatementKind
+  = Select
+  | Insert
+  | Update
+  | Delete
+  | Ddl
+  | TransactionControl
+
+type SqlParameterStyle
+  = QuestionMark
+  | NumberedDollar
+  | NamedColon
+  | NamedAt
+  | NamedDollar
+
+type SqlTransactionMode
+  = Autocommit
+  | ExistingTransaction
+  | BeginCommit
+
+type SqlTransportConfig {
+  connection_name: String
+  statement_kind: SqlStatementKind
+  parameter_style: SqlParameterStyle
+  transaction_mode: SqlTransactionMode
+  result_format: WireFormat
+}

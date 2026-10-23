@@ -1,0 +1,42 @@
+[
+  {
+    "printer": "printer-01",
+    "version": "1",
+    "plates": [
+      {
+        "attempt": "fan-recovery-20261005-m140-flat-v1",
+        "placements": [
+          {
+            "id": "M140",
+            "rx": 0,
+            "ry": 0,
+            "rz": 0,
+            "x_um": 14000,
+            "y_um": 6000
+          }
+        ],
+        "support_free": []
+      }
+    ]
+  },
+  {
+    "printer": "printer-02",
+    "version": "1",
+    "plates": [
+      {
+        "attempt": "fan-recovery-20261005-g140-flat-v1",
+        "placements": [
+          {
+            "id": "G140",
+            "rx": 0,
+            "ry": 0,
+            "rz": 0,
+            "x_um": 14000,
+            "y_um": 14000
+          }
+        ],
+        "support_free": []
+      }
+    ]
+  }
+]

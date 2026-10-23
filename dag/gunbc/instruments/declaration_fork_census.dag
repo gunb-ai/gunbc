@@ -1,0 +1,89 @@
+module gunbc.instruments.declaration_fork_census
+
+import std.types { Int, String, List }
+import v2.std.decl_index { DeclFact, decl_facts }
+import gunbc.ci_layer_roots { witness_layer_roots }
+
+// THE INSTRUMENT BEHIND ONE DECISION, so the decision cites a producer and not a number (DESIGN 6).
+//
+// The decision: gunbc.floor.incremental_floor_authority's `declaration_identity_uniqueness` row was
+// repointed from a DECLARATION-grained lens (gunbc.bare_name_fork_lens, deleted with this change) to
+// the READ-grained detector (v1_compiler.cli_run claim_scope_for, ambiguous_bare_reads). The ground
+// was that the declaration-grained population over the witness roots is dominated by per-module
+// conventions -- every module declaring its own `live_tree_disposition`, every extdeps module its
+// own `extdeps_external_authority_anchor`, every instrument its own `main` -- none of which is an
+// ambiguous read, because resolution is per module. A gate over that population could not land and
+// a declared drop rostering it would not be bounded; an allow-list of "which duplicates are
+// conventions" would be a second representation of what the resolver already decides by scoping.
+//
+// Re-derive the population that decided it:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/declaration_fork_census.dag --function census
+//
+// WHAT IT COUNTS. `decl_facts` carries TOP-LEVEL declarations (fn, type, data, service, other),
+// the same vocabulary the deleted lens read. A name is FORKED when more than one fact carries it;
+// `forked_rows` is the number of facts under forked names. Variant constructors are not facts here
+// and are not counted; the read-side detector sees them through the resolver instead.
+type DeclarationForkCensus {
+  facts: Int
+  names: Int
+  forked_names: Int
+  forked_rows: Int
+}
+
+type NameCount {
+  name: String
+  count: Int
+}
+
+type ForkCensusBuild {
+  counts: Map<String, Int>
+  names_reversed: List<String>
+}
+
+fn fork_census_step(build: ForkCensusBuild, fact: DeclFact) -> ForkCensusBuild {
+  match map_get(build.counts, fact.name) {
+    Present { value: prior } => ForkCensusBuild {
+      counts: map_insert(build.counts, fact.name, prior + 1),
+      names_reversed: build.names_reversed,
+    }
+    Absent => ForkCensusBuild {
+      counts: map_insert(build.counts, fact.name, 1),
+      names_reversed: concat([fact.name], build.names_reversed),
+    }
+  }
+}
+
+fn name_counts_of(facts: List<DeclFact>) -> List<NameCount> {
+  let build = fold(
+    facts,
+    init: ForkCensusBuild { counts: empty_map(), names_reversed: [] },
+    f: (acc, fact) => fork_census_step(build: acc, fact: fact)
+  )
+  map(build.names_reversed, n =>
+    match map_get(build.counts, n) {
+      Present { value: c } => NameCount { name: n, count: c }
+      Absent => NameCount { name: n, count: 0 }
+    })
+}
+
+fn declaration_fork_census_over(facts: List<DeclFact>) -> DeclarationForkCensus {
+  let counts = name_counts_of(facts: facts)
+  let forked = fold(counts, init: [], f: (acc, nc) => if nc.count > 1 { concat(acc, [nc]) } else { acc })
+  DeclarationForkCensus {
+    facts: count(facts),
+    names: count(counts),
+    forked_names: count(forked),
+    forked_rows: fold(forked, init: 0, f: (acc, nc) => acc + nc.count),
+  }
+}
+
+// THE ENTRY POINT over the witness roots the floor prepares. It returns the MEASUREMENT, not a
+// ProcessExit: `gunbc run` prints the record and then refuses to map it to an exit code, which is
+// the host's honest answer for a run whose outcome is a number rather than a verdict. A census
+// that returned ExitSuccess would print nothing; one that returned ExitFailure would call a
+// measurement a failure.
+fn census() -> DeclarationForkCensus {
+  declaration_fork_census_over(facts: decl_facts(pool_roots: witness_layer_roots))
+}

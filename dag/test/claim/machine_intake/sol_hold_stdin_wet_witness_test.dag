@@ -1,0 +1,790 @@
+module test.claim.machine_intake.sol_hold_stdin_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { Second, second }
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_supervisor_script }
+import gunbc.machine_intake_mtcollins1_boot_run {
+  mtcollins1_boot_await_capture_terminal, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, TerminalWatch,
+  mtcollins1_sol_teardown_record, mtcollins1_sol_workflow_events_path, mtcollins1_sol_pre_teardown_suffix,
+  mtcollins1_sol_await_establishment, SolEstablishment, SolEstablished, SolNotEstablished,
+  SolActivationUnconfirmed, SolActivateRefused, SolAdoptedActivationUnproven, mtcollins1_sol_adopted_activation,
+  mtcollins1_sol_release_owned, SolReleaseOutcome, SolReleased, SolReleaseForeignRecord, SolReleaseNoRecord,
+  mtcollins1_sol_collector_observe, SolCollectorHeld, SolCollectorExited, mtcollins1_sol_notice_watcher_path,
+}
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
+import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.machine_intake_megarac_kvm_still { KvmObserverNotStarted }
+import gunbc.machine_intake_mtcollins1_boot_run { SolCollectorUnrecorded }
+import gunbc.machine_intake_mtcollins1_sol_notice {
+  SolNoticePaths, SolNoticeDelivery, SolNoticeDelivered, SolNoticeDeliveryFailed, SolNoticeLiveLog,
+  sol_notice_pass, sol_notice_channel_key, sol_notice_marker_path, mtcollins1_sol_notice_watch, mtcollins1_sol_notice_stop_suffix, sol_notice_finish,
+}
+
+// THE COLLECTOR, EXECUTED RATHER THAN SPELLED. Each test runs the real gunbc.machine_intake.sol_hold
+// ActivateHeld launch -- its fifo, fd plumbing, supervisor, pid+starttime publication and
+// client-diagnostic file -- with the `ipmitool` input pointed at a probe written into a throwaway
+// /tmp/gunbc_solstdin.* directory. The watch controls then run the REAL
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_await_capture_terminal over that live
+// collector. No BMC, network or credential is touched: the password path is empty, which the watch's
+// SMpro pass and its post-loss mc info / chassis reads both answer as NotTaken rather than reading.
+// Every probe ends on its own; the directory is removed.
+//
+// A string check over the argv cannot establish the stdin property: a launch that writes one NUL to
+// fd 3 before handing it over keeps every spelling and still types at the host. The stdin probe
+// reads that byte. At the parent revision the launch redirected `< /dev/zero` (millions of bytes);
+// `< /dev/null` reports EOF at once.
+data stdin_probe_script: String = "#!/bin/sh\nt=$(mktemp) || exit 1\ntimeout 3 cat > \"$t\"\nrc=$?\nn=$(wc -c < \"$t\" | tr -d ' ')\nrm -f \"$t\"\nif [ \"$rc\" = 124 ]; then eof=no; else eof=yes; fi\necho \"stdin-probe bytes=$n eof=$eof\"\n"
+
+data begin_line: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-27T00:00:00Z====="
+
+data end_line: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-27T00:01:00Z====="
+
+// The host prints the begin marker AND the exact text ipmitool prints on its way out -- on STDOUT,
+// the console -- then keeps the session for twenty seconds (more than one poll cadence), prints the
+// end marker and exits 0. A watch that let host bytes decide loss, or read the capture before
+// liveness, reports ObservationChannelLost here; the real verdict is the closed envelope's.
+fn end_then_exit_probe() -> String {
+  concat("#!/bin/sh\necho '", concat(begin_line, concat("'\necho 'SOL session closed by BMC'\nsleep 20\necho '", concat(end_line, "'\nexit 0\n"))))
+}
+
+// The envelope opens and the collector leaves before any end: genuinely incomplete at exit.
+fn incomplete_exit_probe() -> String {
+  concat("#!/bin/sh\necho '", concat(begin_line, "'\nsleep 1\nexit 0\n"))
+}
+
+// The CLIENT ends it: its own diagnostic on stderr and a nonzero exit, as ipmitool does.
+fn client_exit_probe() -> String {
+  concat("#!/bin/sh\necho '", concat(begin_line, "'\nsleep 1\necho 'Error sending SOL data: FAIL' >&2\necho 'SOL session closed by BMC' >&2\nexit 1\n"))
+}
+
+data probe_owner_only_executable: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+type ProbeLaunch {
+  launched: Bool
+  capture_path: String
+  pid_path: String
+}
+
+fn scratch_dir() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_solstdin.XXXXXX").path as String
+}
+
+fn probe_launch(dir: String, script: String, pid_path: String) -> ProbeLaunch {
+  let probe = concat(dir, "/ipmitool-probe")
+  let capture_path = concat(dir, "/capture")
+  let written = Filesystem.WriteCreateNewWithMode(path: probe, content: script, mode: file_mode_bits(mode: probe_owner_only_executable))
+  let bound = Filesystem.Write(path: capture_path, content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path), content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_incident_path(capture_path: capture_path), content: "").success
+  if !written.success || !bound {
+    ProbeLaunch { launched: false, capture_path: capture_path, pid_path: pid_path }
+  } else {
+    let spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
+      bmc_host: "probe.invalid",
+      username: "probe",
+      password_file: concat(dir, "/password") as NonEmptyStr,
+      capture_path: capture_path as NonEmptyStr,
+      pid_path: pid_path as NonEmptyStr,
+      ipmitool: probe as NonEmptyStr,
+      client_diagnostic_path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path) as NonEmptyStr,
+    )
+    ProbeLaunch { launched: spawned.success, capture_path: capture_path, pid_path: pid_path }
+  }
+}
+
+fn read_or_empty(path: String) -> String {
+  let r = Filesystem.Read(path: path)
+  if r.success { r.content } else { "" }
+}
+
+
+// The capture watch requires its notice watcher alive (mtcollins1_sol_observer_refusal). These
+// controls are about the collector, so the observer record names a process that outlives the watch:
+// a separate silent probe launched through the same hold, recorded as "<pid> <starttime>".
+fn observer_alive(run: ProbeLaunch) -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_solstdin.XXXXXX").path as String
+  let observer = probe_launch(dir: dir, script: "#!/bin/sh\nsleep 40\n", pid_path: concat(dir, "/observer.pid"))
+  let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  observer.launched && Filesystem.Write(path: mtcollins1_sol_notice_watcher_path(capture_path: run.capture_path), content: read_or_empty(path: concat(dir, "/observer.pid"))).success
+}
+
+// A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row with
+// the medium it boots; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// sole_constructor).
+fn admitted_witness_subject() -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+    BootSubjectAdmitted { subject: s } => Present { value: s }
+    BootSubjectRefused { host: _, cause: _ } => none
+  }
+}
+
+fn watch(run: ProbeLaunch, subject: AdmittedBootSubject) -> TerminalWatch {
+  let _observed = observer_alive(run: run)
+  mtcollins1_boot_await_capture_terminal(
+    remaining: 4,
+    capture_path: run.capture_path,
+    pid_path: run.pid_path,
+    subject: subject,
+    password_file: "",
+    smpro_census: SmproNotTaken { reason: "wet control" },
+    last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" },
+    screen_reported: [],
+  )
+}
+
+fn outcome_reason(w: TerminalWatch) -> String {
+  match w.outcome {
+    ExitSuccess => "success"
+    ExitFailure { code: _, reason: r } => r
+  }
+}
+
+// THE STDIN CLAIMS WAIT FOR THE EVENT THEY READ, BOUNDED, NOT FOR A FIXED WINDOW
+// (gunbc.recurring_failure_mode wet_witness_keyed_to_the_runner_not_its_subject). A fixed five
+// seconds had to cover the launch plus the probe's own three-second read; on a loaded runner the
+// report could land after the window and the claim went red for the runner's load, not the launch.
+// The file is re-read every poll_interval until it carries the awaited line or the attempts run out,
+// so a fast runner returns at once and a slow one is given the time. The bound is DERIVED:
+// poll_attempts reads, poll_interval apart, so neither literal restates the total.
+data poll_attempts: Int = 30
+data poll_interval: Second = second(count: 1)
+
+fn read_until_contains(path: String, pattern: String, remaining: Int) -> String {
+  let content = read_or_empty(path: path)
+  if string_contains(s: content, pattern: pattern) || remaining <= 0 {
+    content
+  } else {
+    let _waited = sleep_delay_seconds_second_carrier_projection(duration: poll_interval)
+    read_until_contains(path: path, pattern: pattern, remaining: remaining - 1)
+  }
+}
+
+// Zero bytes, and the read was still open when the probe's own three-second bound ended it.
+test fn the_collector_stdin_supplies_zero_bytes_and_no_eof_when_executed() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: stdin_probe_script, pid_path: concat(dir, "/collector.pid"))
+  let capture = read_until_contains(path: run.capture_path, pattern: "stdin-probe", remaining: poll_attempts)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && string_contains(s: capture, pattern: "stdin-probe bytes=0 eof=no")
+}
+
+// A pid destination that cannot be written (here: a directory) is not published, and the child the
+// launch created is stopped before it reports; the supervisor records both facts in the client file.
+test fn a_launch_that_cannot_publish_its_pid_stops_the_child_it_created() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: stdin_probe_script, pid_path: dir)
+  let client = read_until_contains(path: mtcollins1_sol_client_diagnostic_path(capture_path: run.capture_path), pattern: sol_hold_exit_record_prefix, remaining: poll_attempts)
+  let capture = read_or_empty(path: run.capture_path)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  !string_contains(s: capture, pattern: "stdin-probe")
+    && string_contains(s: client, pattern: sol_hold_pid_not_published_line)
+    && string_contains(s: client, pattern: sol_hold_exit_record_prefix)
+}
+
+// END BEFORE EXIT, THROUGH THE REAL WATCH, WITH THE HOST PRINTING THE DIAGNOSTIC TEXT: the watch sees
+// a live collector and a pending capture for more than one tick, the collector then writes END and
+// exits, and the verdict is the closed envelope's (it refuses: no sections were written) -- never
+// ObservationChannelLost, and nothing is frozen as an incident.
+test fn an_end_written_before_exit_is_judged_on_the_final_bytes() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: end_then_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 2))
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "host qualification REFUSED")
+    && !string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost")
+    && incident == ""
+  }
+  }
+}
+
+// INCOMPLETE AT EXIT, THROUGH THE REAL WATCH: the collector leaves with the envelope open, the watch
+// reports ObservationChannelLost at once, and the incident is on disk -- frozen before any enrichment
+// read, so deleting the freeze from the watch's loss arm turns this red.
+test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
+    && string_contains(s: incident, pattern: "ObservationChannelLost")
+    && string_contains(s: incident, pattern: "the collector exited with status 0")
+  }
+  }
+}
+
+// THE LOSS ASKS THE SCREEN, AND THE ASK NEVER DECIDES (operator ruling 2026-09-27). Through the same
+// real watch and gone collector: the loss arm asks the held observer for a still right after the
+// freeze, and with no observer established the ask is recorded as not answerable -- carried, never
+// raised: the outcome is still the loss verdict and the incident is still frozen. Deleting the ask
+// from the loss arm turns this red.
+test fn a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
+    && string_contains(s: outcome_reason(w: w), pattern: "screen: the KVM observer is not established, so no still could be asked")
+    && string_contains(s: incident, pattern: "ObservationChannelLost")
+  }
+  }
+}
+
+// AN AUTHENTIC CLIENT EXIT: the client's own stderr diagnostic and exit status reach the incident,
+// in neutral words -- the line is reported as what the client printed, not as the BMC's decision.
+test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: client_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
+  let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
+  let capture = read_or_empty(path: run.capture_path)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched
+    && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost")
+    && string_contains(s: incident, pattern: "the collector exited with status 1 at 20")
+    && string_contains(s: incident, pattern: "does not say which side ended the session")
+    && !string_contains(s: incident, pattern: "the BMC closed")
+    && !string_contains(s: capture, pattern: "SOL session closed")
+  }
+  }
+}
+
+// OUR OWN DEACTIVATE IS AN ATTRIBUTED EVENT, AND THE EVIDENCE BEFORE IT IS KEPT. The teardown record
+// runs before the deactivate: it snapshots the capture and client diagnostics as they stand and
+// writes a timestamped workflow event. Lines the session writes afterwards -- here the close line our
+// own deactivate would provoke -- are absent from the snapshot and follow the recorded act.
+test fn our_own_deactivate_is_recorded_before_it_is_issued_and_the_evidence_is_kept() -> Bool {
+  let dir = scratch_dir()
+  let capture_path = concat(dir, "/capture")
+  let client_path = mtcollins1_sol_client_diagnostic_path(capture_path: capture_path)
+  let seeded = Filesystem.Write(path: capture_path, content: concat(begin_line, "\nhost line\n")).success
+    && Filesystem.Write(path: client_path, content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path), content: "").success
+  let recorded = mtcollins1_sol_teardown_record(capture_path: capture_path, act: "SOL deactivate issued by this run's teardown")
+  let after = Filesystem.Write(path: client_path, content: "SOL session closed by BMC\n").success
+  let snapshot = read_or_empty(path: concat(capture_path, mtcollins1_sol_pre_teardown_suffix))
+  let client_snapshot = read_or_empty(path: concat(client_path, mtcollins1_sol_pre_teardown_suffix))
+  let events = read_or_empty(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  seeded && recorded && after
+    && string_contains(s: snapshot, pattern: "host line")
+    && !string_contains(s: client_snapshot, pattern: "SOL session closed")
+    && string_contains(s: events, pattern: "gunbc-workflow: SOL deactivate issued by this run's teardown at=")
+}
+
+// The wait allows ten seconds (production allows fifteen): a loaded host can take several seconds just
+// to start the probe and publish its identity, which made a three-second allowance flaky.
+// ESTABLISHMENT, THROUGH THE REAL ACQUISITION WAIT (mtcollins1_sol_await_establishment) OVER THE REAL
+// LAUNCH. A collector that prints ipmitool's operational banner and then stays quiet -- the expected
+// census console -- is established; one that stays alive and silent is NOT (activation unconfirmed
+// within the allowance), and one that prints an activation refusal and exits carries that cause.
+fn banner_then_quiet_probe() -> String {
+  "#!/bin/sh\necho '[SOL Session operational.  Use ~? for help]'\nsleep 30\n"
+}
+
+fn silent_probe() -> String {
+  "#!/bin/sh\nsleep 30\n"
+}
+
+fn refused_probe() -> String {
+  "#!/bin/sh\necho 'Info: SOL payload already active on another session' >&2\nexit 1\n"
+}
+
+fn establishment(script: String) -> SolEstablishment {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: script, pid_path: concat(dir, "/collector.pid"))
+  let e = if run.launched { mtcollins1_sol_await_establishment(pid_path: run.pid_path, capture_path: run.capture_path, allowance: second(count: 10)) } else { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorUnrecorded, allowance: second(count: 0) } } }
+  let _stopped = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: run.pid_path as NonEmptyStr).success
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  e
+}
+
+test fn a_session_is_established_by_its_banner() -> Bool {
+  match establishment(script: banner_then_quiet_probe()) { SolEstablished { at: _ } => true  _ => false }
+}
+
+test fn a_live_silent_collector_is_not_established() -> Bool {
+  match establishment(script: silent_probe()) { SolNotEstablished { failure: SolActivationUnconfirmed { collector: SolCollectorHeld, allowance: _ } } => true  _ => false }
+}
+
+test fn a_refused_activation_carries_its_cause() -> Bool {
+  match establishment(script: refused_probe()) { SolNotEstablished { failure: SolActivateRefused { refusal: _ } } => true  _ => false }
+}
+
+// THE NOTICE WATCHER'S DELIVERY, EXECUTED THROUGH THE REAL FOLD (gunbc.machine_intake_mtcollins1_sol_notice).
+// Each control writes the sources the watcher reads -- the hold's exit record and the frozen incident --
+// into a scratch capture's siblings and runs sol_notice_pass / mtcollins1_sol_notice_watch against
+// channels it controls: /dev/full is a live log whose every write fails (ENOSPC), a path under a
+// missing directory is a step summary that cannot be written.
+fn notice_paths(dir: String, live_log: String, summary: String) -> SolNoticePaths {
+  SolNoticePaths { capture: concat(dir, "/capture"), pid_path: "", summary: summary, live_log: live_log }
+}
+
+fn notice_sources(dir: String, exit_record: String, incident: String) -> Bool {
+  let capture = concat(dir, "/capture")
+  Filesystem.Write(path: capture, content: "").success
+    && Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: capture), content: exit_record).success
+    && Filesystem.Write(path: mtcollins1_sol_incident_path(capture_path: capture), content: incident).success
+    && Filesystem.Write(path: mtcollins1_sol_workflow_events_path(capture_path: capture), content: "").success
+}
+
+data exit_record_line: String = "gunbc-sol-hold: collector exited status=1 at=2026-09-28T00:00:00Z\n"
+
+fn delivered_on(ds: List<SolNoticeDelivery>, channel_key: String) -> Int {
+  filter(ds, d => match d { SolNoticeDelivered { kind: _, identity: _, channel: c } => sol_notice_channel_key(channel: c) == channel_key  _ => false }).length()
+}
+
+fn failed_on(ds: List<SolNoticeDelivery>, channel_key: String) -> Int {
+  filter(ds, d => match d { SolNoticeDeliveryFailed { kind: _, identity: _, channel: c, error: _ } => sol_notice_channel_key(channel: c) == channel_key  _ => false }).length()
+}
+
+// A FAILED LIVE-LOG WRITE IS NOT DELIVERED AND IS RETRIED. The first pass writes the annotation to
+// /dev/full: it fails, no marker is written, the summary (a separate channel) still lands. The next
+// pass, with a writable live log, delivers the annotation it had not delivered and leaves the summary
+// alone; the ledger records FAILED before delivered.
+test fn a_failed_annotation_write_is_retried_not_marked_delivered() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
+  let summary = concat(dir, "/summary")
+  let first = sol_notice_pass(paths: notice_paths(dir: dir, live_log: "/dev/full", summary: summary)).deliveries
+  let second = sol_notice_pass(paths: notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: summary)).deliveries
+  let log = read_or_empty(path: concat(dir, "/log"))
+  let ledger = read_or_empty(path: concat(dir, "/capture.delivery"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok
+    && failed_on(ds: first, channel_key: "annotation") == 1 && delivered_on(ds: first, channel_key: "summary") == 1
+    && delivered_on(ds: second, channel_key: "annotation") == 1 && delivered_on(ds: second, channel_key: "summary") == 0
+    && starts_with(s: log, prefix: "::warning::mtcollins1 SOL collector exited: ")
+    && string_contains(s: ledger, pattern: "collector-exited-1 annotation FAILED")
+    && string_contains(s: ledger, pattern: "collector-exited-1 annotation delivered")
+}
+
+// The same for the step summary, with the live log healthy throughout.
+test fn a_failed_summary_write_is_retried_not_marked_delivered() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: "", incident: "mtcollins1 boot: ObservationChannelLost control\n")
+  let log = concat(dir, "/log")
+  let first = sol_notice_pass(paths: notice_paths(dir: dir, live_log: log, summary: concat(dir, "/missing/summary"))).deliveries
+  let second = sol_notice_pass(paths: notice_paths(dir: dir, live_log: log, summary: concat(dir, "/summary"))).deliveries
+  let summary = read_or_empty(path: concat(dir, "/summary"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok
+    && delivered_on(ds: first, channel_key: "annotation") == 1 && failed_on(ds: first, channel_key: "summary") == 1
+    && delivered_on(ds: second, channel_key: "summary") == 1 && delivered_on(ds: second, channel_key: "annotation") == 0
+    && string_contains(s: summary, pattern: "### mtcollins1 SOL observation lost")
+}
+
+// AN INTERRUPTION BETWEEN A WRITE AND ITS MARKER YIELDS A DUPLICATE, NEVER A DROP. The marker of a
+// delivered annotation is removed, as a kill before the marker write would leave it; the next pass
+// delivers the annotation again (the ledger records both deliveries), and the pass after that does not.
+test fn an_interrupted_delivery_is_redelivered_not_dropped() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
+  let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
+  let _first = sol_notice_pass(paths: paths).deliveries
+  let _interrupted = shell.Remove.FileForce(path: sol_notice_marker_path(paths: paths, identity: "collector-exited-1", channel: SolNoticeLiveLog))
+  let second = sol_notice_pass(paths: paths).deliveries
+  let third = sol_notice_pass(paths: paths).deliveries
+  let ledger = read_or_empty(path: concat(dir, "/capture.delivery"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok
+    && delivered_on(ds: second, channel_key: "annotation") == 1
+    && delivered_on(ds: third, channel_key: "annotation") == 0
+    && split(s: ledger, delimiter: "collector-exited-1 annotation delivered").length() == 3
+}
+
+// A RECORD IS PUBLISHED ONLY ONCE IT IS COMPLETE. The supervisor's exit line without its newline is
+// not yet a record; with it, it is.
+test fn a_partial_exit_record_is_not_published() -> Bool {
+  let dir = scratch_dir()
+  let partial = notice_sources(dir: dir, exit_record: "gunbc-sol-hold: collector exited status=1 at=2026-09-28T00:0", incident: "")
+  let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
+  let before = sol_notice_pass(paths: paths).deliveries
+  let whole = Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: paths.capture), content: exit_record_line).success
+  let after = sol_notice_pass(paths: paths).deliveries
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  partial && whole && before.length() == 0 && delivered_on(ds: after, channel_key: "annotation") == 1
+}
+
+// THE WATCHER DETECTS AN EXIT WITH NO BOOT WATCH RUNNING AT ALL -- the stand-in for the boot being
+// blocked in an SMpro pass, the attach or the handoff. A real ActivateHeld collector (a probe that
+// exits after a second) is launched and nothing polls it but the watcher. Once the hold has published
+// the collector's pid (so an exit is owed, as it is when the step's trap asks the watcher to stop), the
+// stop request is written; the watcher drains until that exit is observed and delivered, and returns.
+test fn the_watcher_publishes_a_collector_exit_without_the_boot_watch() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
+  let paths = SolNoticePaths { capture: run.capture_path, pid_path: run.pid_path, summary: concat(dir, "/summary"), live_log: concat(dir, "/log") }
+  let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  let owed = read_or_empty(path: run.pid_path) != ""
+  let stop = Filesystem.Write(path: concat(run.capture_path, mtcollins1_sol_notice_stop_suffix), content: "").success
+  let finished = run.launched && owed && stop && mtcollins1_sol_notice_watch(paths: paths, remaining: 10)
+  let log = read_or_empty(path: concat(dir, "/log"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  finished
+    && string_contains(s: log, pattern: "gunbc-sol-hold: collector exited status=0 at=")
+    && string_contains(s: log, pattern: "no teardown or release had been requested by this run")
+}
+
+// A SUMMARY THAT EXISTS BUT CANNOT BE READ IS NOT OVERWRITTEN. The summary path is a directory: the
+// read fails for a reason other than absence, so the summary channel refuses and writes nothing.
+test fn an_unreadable_summary_is_refused_not_overwritten() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
+  let pass = sol_notice_pass(paths: notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: dir)).deliveries
+  let ledger = read_or_empty(path: concat(dir, "/capture.delivery"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok && failed_on(ds: pass, channel_key: "summary") == 1 && string_contains(s: ledger, pattern: "the step summary could not be read")
+}
+
+// A SECOND EXIT IN THE SAME STEP IS A NEW NOTICE. After one exit is delivered, a later record (a
+// restarted or adopted collector) is delivered too; the first one's markers do not suppress it.
+test fn a_later_collector_exit_is_not_suppressed_by_an_earlier_one() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
+  let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
+  let first = sol_notice_pass(paths: paths).deliveries
+  let again = Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: paths.capture), content: concat(exit_record_line, "gunbc-sol-hold: collector exited status=143 at=2026-09-28T00:05:00Z\n")).success
+  let second = sol_notice_pass(paths: paths).deliveries
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok && again && delivered_on(ds: first, channel_key: "annotation") == 1 && delivered_on(ds: second, channel_key: "annotation") == 1
+}
+
+// AN ADOPTED COLLECTOR IS ESTABLISHED ONLY BY A RECEIPT NAMING THIS INSTANCE. A live probe collector
+// whose receipt names its own "<pid> <starttime>" is established; the same collector with a receipt
+// naming another instance, or none, is not.
+test fn an_adopted_collector_needs_a_receipt_naming_its_instance() -> Bool {
+  let dir = scratch_dir()
+  let pid_path = concat(dir, "/collector.pid")
+  let run = probe_launch(dir: dir, script: silent_probe(), pid_path: pid_path)
+  let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  let identity = read_or_empty(path: pid_path)
+  let receipt = concat(pid_path, ".activated")
+  let unreceipted = mtcollins1_sol_adopted_activation(pid_path: pid_path)
+  let _foreign = Filesystem.Write(path: receipt, content: "1 1 at=2026-09-28T00:00:00Z\n").success
+  let foreign = mtcollins1_sol_adopted_activation(pid_path: pid_path)
+  let _own = Filesystem.Write(path: receipt, content: concat(trim(s: identity), " at=2026-09-28T00:00:00Z\n")).success
+  let own = mtcollins1_sol_adopted_activation(pid_path: pid_path)
+  let _stopped = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr).success
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && identity != ""
+    && (match unreceipted { SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: _, receipt: _ } } => true  _ => false })
+    && (match foreign { SolNotEstablished { failure: SolAdoptedActivationUnproven { collector: _, receipt: _ } } => true  _ => false })
+    && (match own { SolEstablished { at: _ } => true  _ => false })
+}
+
+// PUBLICATION PENDING IS NOT A FAILURE. A probe that waits two seconds before printing the banner is
+// established although the wait starts before the hold has published its pid; one that leaves before
+// the banner is not, and carries its exit.
+fn slow_banner_probe() -> String {
+  "#!/bin/sh\nsleep 2\necho '[SOL Session operational.  Use ~? for help]'\nsleep 8\n"
+}
+
+fn early_exit_probe() -> String {
+  "#!/bin/sh\nsleep 1\nexit 3\n"
+}
+
+test fn establishment_waits_for_publication_and_refuses_an_exit_before_the_banner() -> Bool {
+  (match establishment(script: slow_banner_probe()) { SolEstablished { at: _ } => true  _ => false })
+    && (match establishment(script: early_exit_probe()) { SolNotEstablished { failure: SolActivationUnconfirmed { collector: _, allowance: _ } } => false  SolNotEstablished { failure: _ } => true  _ => false })
+}
+
+// AN UNREADABLE SOURCE IS REPORTED AND IS NEVER A SUCCESS -- one control per source, each paired with
+// its genuine-absence positive. A directory at the source's path makes its read fail with a cause other
+// than absence. The error notice names that cause on the live log, and the final drain returns false;
+// with the same file genuinely absent, the drain returns true.
+fn unreadable_source_control(suffix: String, role: String) -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
+  let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
+  let target = concat(paths.capture, suffix)
+  let _gone = shell.Remove.FileForce(path: target)
+  let absent_ok = sol_notice_finish(paths: paths, remaining: 0)
+  let made = shell.Mkdir.Parents(path: target).success
+  let unreadable_ok = sol_notice_finish(paths: paths, remaining: 0)
+  let log = read_or_empty(path: concat(dir, "/log"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok && made && absent_ok && !unreadable_ok
+    && string_contains(s: log, pattern: concat("the ", concat(role, " source ")))
+    && string_contains(s: log, pattern: "could not be read (")
+}
+
+test fn an_unreadable_incident_is_reported_and_is_not_success() -> Bool {
+  unreadable_source_control(suffix: ".loss", role: "incident")
+}
+
+test fn an_unreadable_request_history_is_reported_and_is_not_success() -> Bool {
+  unreadable_source_control(suffix: ".workflow", role: "request-history")
+}
+
+// The client file is the exit records' source, so its absent positive has no exit to deliver.
+test fn an_unreadable_client_file_is_reported_and_is_not_success() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: "", incident: "")
+  let paths = notice_paths(dir: dir, live_log: concat(dir, "/log"), summary: concat(dir, "/summary"))
+  let client = concat(paths.capture, ".client")
+  let _gone = shell.Remove.FileForce(path: client)
+  let absent_ok = sol_notice_finish(paths: paths, remaining: 0)
+  let made = shell.Mkdir.Parents(path: client).success
+  let unreadable_ok = sol_notice_finish(paths: paths, remaining: 0)
+  let log = read_or_empty(path: concat(dir, "/log"))
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok && made && absent_ok && !unreadable_ok && string_contains(s: log, pattern: "the client-diagnostics source ")
+}
+
+// AN OWED EXIT THAT NEVER APPEARS IS A FAILURE. The pid file records a collector but no exit record
+// exists: the drain does not report success; once the record appears it does.
+test fn an_owed_exit_never_observed_is_not_success() -> Bool {
+  let dir = scratch_dir()
+  let ok = notice_sources(dir: dir, exit_record: "", incident: "")
+  let pid_path = concat(dir, "/collector.pid")
+  let recorded = Filesystem.Write(path: pid_path, content: "4242 5555\n").success
+  let paths = SolNoticePaths { capture: concat(dir, "/capture"), pid_path: pid_path, summary: concat(dir, "/summary"), live_log: concat(dir, "/log") }
+  let owed = sol_notice_finish(paths: paths, remaining: 0)
+  let arrived = Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: paths.capture), content: exit_record_line).success
+  let seen = sol_notice_finish(paths: paths, remaining: 0)
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  ok && recorded && arrived && !owed && seen
+}
+
+// TWO EXITS PRESENT BEFORE ONE PASS ARE BOTH DELIVERED; AN EARLIER EXIT WHOSE SUMMARY FAILED IS STILL
+// DEMANDED AFTER A LATER ONE APPEARS. Both records share one second.
+test fn earlier_exits_stay_demanded_when_later_ones_appear() -> Bool {
+  let dir = scratch_dir()
+  let two = concat(exit_record_line, "gunbc-sol-hold: collector exited status=143 at=2026-09-28T00:00:00Z\n")
+  let ok = notice_sources(dir: dir, exit_record: exit_record_line, incident: "")
+  let log = concat(dir, "/log")
+  let failed = sol_notice_pass(paths: notice_paths(dir: dir, live_log: log, summary: concat(dir, "/missing/summary"))).deliveries
+  let later = Filesystem.Write(path: mtcollins1_sol_client_diagnostic_path(capture_path: concat(dir, "/capture")), content: two).success
+  let retry = sol_notice_pass(paths: notice_paths(dir: dir, live_log: log, summary: concat(dir, "/summary")))
+  let fresh_dir = scratch_dir()
+  let fresh_ok = notice_sources(dir: fresh_dir, exit_record: two, incident: "")
+  let both = sol_notice_pass(paths: notice_paths(dir: fresh_dir, live_log: concat(fresh_dir, "/log"), summary: concat(fresh_dir, "/summary"))).deliveries
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  let _removed_fresh = shell.Remove.RecursiveForce(path: fresh_dir)
+  ok && later && fresh_ok
+    && failed_on(ds: failed, channel_key: "summary") == 1
+    && map(retry.notices, n => n.identity) == ["collector-exited-1", "collector-exited-2"]
+    && delivered_on(ds: retry.deliveries, channel_key: "summary") == 2
+    && delivered_on(ds: both, channel_key: "annotation") == 2
+}
+
+// THE RELEASE ENDS OBSERVED AND RETIRED FOR OUR INSTANCE, THROUGH THE REAL LAUNCH. A live probe
+// collector whose activation receipt names its own identity is stopped, observed gone and its record
+// retired (the pid file and the receipt are absent afterwards, so the next read is Absent); a collector
+// that ignores TERM for a moment and exits within the observation bound is still released; a record
+// the receipt does not name is ForeignRecord, left in place, and its process is not signalled; with no
+// record at all the release is NoRecord.
+fn slow_exit_probe() -> String {
+  "#!/bin/sh\ntrap 'sleep 1; exit 0' TERM\nwhile :; do sleep 1; done\n"
+}
+
+fn owned_release(script: String, receipt_of_own: Bool) -> Bool {
+  let dir = scratch_dir()
+  let pid_path = concat(dir, "/collector.pid")
+  let run = probe_launch(dir: dir, script: script, pid_path: pid_path)
+  let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  let identity = trim(s: read_or_empty(path: pid_path))
+  let receipt = concat(pid_path, ".activated")
+  let _r = Filesystem.Write(path: receipt, content: if receipt_of_own { concat(identity, " at=2026-09-28T00:00:00Z\n") } else { "1 1 at=2026-09-28T00:00:00Z\n" }).success
+  let outcome = mtcollins1_sol_release_owned(pid_path: pid_path)
+  let pid_left = Filesystem.Read(path: pid_path).success
+  let receipt_left = Filesystem.Read(path: receipt).success
+  let alive_after = match mtcollins1_sol_collector_observe(pid_path: pid_path) { SolCollectorHeld => true  _ => false }
+  let ok = if receipt_of_own {
+    (match outcome { SolReleased { evidence: _ } => true  _ => false }) && !pid_left && !receipt_left
+  } else {
+    (match outcome { SolReleaseForeignRecord { record: _, receipt: _ } => true  _ => false }) && pid_left && alive_after
+  }
+  let _stop = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr).success
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && identity != "" && ok
+}
+
+test fn our_collector_is_released_observed_gone_and_its_record_retired() -> Bool {
+  owned_release(script: silent_probe(), receipt_of_own: true)
+    && owned_release(script: slow_exit_probe(), receipt_of_own: true)
+}
+
+test fn a_record_this_attempt_did_not_establish_is_not_released() -> Bool {
+  let dir = scratch_dir()
+  let none_ok = match mtcollins1_sol_release_owned(pid_path: concat(dir, "/absent.pid")) { SolReleaseNoRecord => true  _ => false }
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  none_ok && owned_release(script: silent_probe(), receipt_of_own: false)
+}
+
+// THE WATCH NOTICES ITS OBSERVER'S DEATH. With the collector alive and quiet (pending), a watcher record
+// naming a process that has exited stops the watch at its next tick with the observer as the cause;
+// the same quiet collector with a live observer stays pending until the watch's own budget ends.
+test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: "#!/bin/sh\nsleep 30\n", pid_path: concat(dir, "/collector.pid"))
+  let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  let dead = Filesystem.Write(path: mtcollins1_sol_notice_watcher_path(capture_path: run.capture_path), content: "999999 1\n").success
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let stopped = mtcollins1_boot_await_capture_terminal(
+    remaining: 3, capture_path: run.capture_path, pid_path: run.pid_path,
+    subject: subject,
+    password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
+  )
+  let live_ok = observer_alive(run: run)
+  let pending = mtcollins1_boot_await_capture_terminal(
+    remaining: 0, capture_path: run.capture_path, pid_path: run.pid_path,
+    subject: subject,
+    password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
+    screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
+  )
+  let _stop = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: run.pid_path as NonEmptyStr).success
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && dead && live_ok
+    && string_contains(s: outcome_reason(w: stopped), pattern: "the SOL notice watcher is required before a further BMC effect")
+    && string_contains(s: outcome_reason(w: stopped), pattern: "observed during the capture watch")
+    && string_contains(s: outcome_reason(w: pending), pattern: "deadline reached without a host-capture terminal")
+  }
+  }
+}
+
+// THE RELEASE SIGNALS ONLY THE RECORDED INSTANCE, EXECUTED. A live probe collector is left running when
+// the record carries its pid with a different start time (a reused-pid record), and is stopped when the
+// record is its own; the owned check agrees in both directions.
+test fn the_release_signals_only_the_recorded_instance() -> Bool {
+  let dir = scratch_dir()
+  let pid_path = concat(dir, "/collector.pid")
+  let run = probe_launch(dir: dir, script: silent_probe(), pid_path: pid_path)
+  let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  let own = trim(s: read_or_empty(path: pid_path))
+  let pid = match split(s: own, delimiter: " ").first() { Present { value: v } => v  _ => "" }
+  let forged = concat(dir, "/forged.pid")
+  let _f = Filesystem.Write(path: forged, content: concat(pid, " 1\n")).success
+  let forged_owned = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", forged]).exit_code == 0
+  let forged_release = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", forged]).exit_code
+  let alive_after_forged = match mtcollins1_sol_collector_observe(pid_path: pid_path) { SolCollectorHeld => true  _ => false }
+  let own_owned = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", pid_path]).exit_code == 0
+  let own_release = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", pid_path]).exit_code
+  let gone_after_own = match mtcollins1_sol_collector_observe(pid_path: pid_path) { SolCollectorExited { evidence: _ } => true  _ => false }
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  run.launched && pid != ""
+    && !forged_owned && forged_release == 0 && alive_after_forged
+    && own_owned && own_release == 0 && gone_after_own
+}
+
+// A PUBLICATION FAILURE ENDS IN AN OBSERVED STOP, THROUGH THE REAL LAUNCH, EVEN AGAINST A CHILD THAT
+// IGNORES TERM. The pid path is a directory, so publication fails; the probe ignores TERM, so only the
+// supervisor's KILL escalation stops it. The client file records "collector stopped" (not the unstopped
+// line) and then the child's exit record, and no process with the probe's marker is left.
+fn term_ignoring_probe() -> String {
+  "#!/bin/sh\ntrap '' TERM\necho gunbc-term-ignoring-probe >&2\nwhile :; do sleep 1; done\n"
+}
+
+test fn a_publication_failure_stops_even_a_term_ignoring_child() -> Bool {
+  let dir = scratch_dir()
+  let run = probe_launch(dir: dir, script: term_ignoring_probe(), pid_path: dir)
+  let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 7))
+  let client = read_or_empty(path: mtcollins1_sol_client_diagnostic_path(capture_path: run.capture_path))
+  let survivors = shell.Exec.RunArgv(program: "pgrep", arguments: ["-f", concat(dir, "/ipmitool-probe")]).exit_code
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  string_contains(s: client, pattern: sol_hold_pid_not_published_line)
+    && !string_contains(s: client, pattern: sol_hold_pid_not_published_unstopped_line)
+    && string_contains(s: client, pattern: sol_hold_exit_record_prefix)
+    && survivors == 1
+}
+
+// THE THIRD OUTCOME: a record that exists but cannot be read is UNOBSERVABLE (2), not ended (1), for the
+// owned check and for the release alike, so an unreadable record never reads as a clean release.
+//
+// ITS PREMISE IS CHECKED, NOT ASSUMED: mode 000 makes the record unreadable only to a user without
+// CAP_DAC_OVERRIDE. Run as root, the "1 1" record READS, and the release script then judges -- and may
+// signal -- pid 1, the runner's init (the BuildBuddy VM died on every attempt). So the scripts run
+// only once `test -r` confirms the record is unreadable; where it is not, the claim is RED without
+// touching any process -- an environment that cannot host this claim, never a pass.
+// The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
+test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
+  let dir = scratch_dir()
+  let record = concat(dir, "/rec.pid")
+  let _w = Filesystem.Write(path: record, content: "1 1\n").success
+  let locked = shell.Exec.RunArgv(program: "chmod", arguments: ["000", record]).exit_code == 0
+    && shell.Exec.RunArgv(program: "test", arguments: ["-r", record]).exit_code != 0
+  let held = if locked {
+    let unreadable = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", record]).exit_code
+    let absent = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", concat(dir, "/none.pid")]).exit_code
+    let release_unreadable = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", record]).exit_code
+    unreadable == 2 && absent == 1 && release_unreadable == 2
+  } else { false }
+  let _unlock = shell.Exec.RunArgv(program: "chmod", arguments: ["600", record]).exit_code
+  let _removed = shell.Remove.RecursiveForce(path: dir)
+  locked && held
+}
+
+// A CHILD STILL PRESENT AFTER THE CLEANUP BOUNDS IS RESIDUE, AND THE SUPERVISOR RETURNS. The supervisor
+// body the launch runs (mtcollins1_sol_hold_supervisor_script, spliced unchanged into ActivateHeld) is
+// executed with p=1: a live process this user can neither signal nor reap, standing in for a child whose
+// termination stays unconfirmed (a launched child cannot be made to survive SIGKILL without privilege).
+// pf is a directory, so publication fails. The body must finish within its bounds, record the residue
+// line with the pid, and record NO "collector exited" line, because no exit was observed.
+//
+// THE STAND-IN IS ONLY UNSIGNALABLE WHERE THIS USER CANNOT SIGNAL PID 1, so that is checked first and
+// never assumed. As root, or as the user that owns a container's pid 1, the supervisor's `kill` and
+// `kill -9` land on init: a BuildBuddy VM died on every attempt and a session container restarted. So
+// the body runs only once `kill -0 1` is refused; where it is not, the claim is RED without signalling
+// anything -- an environment that cannot host this claim, never a pass.
+// The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
+fn pid_one_unsignalable() -> Bool {
+  shell.Exec.RunArgv(program: "bash", arguments: ["-c", "kill -0 1 2>/dev/null"]).exit_code != 0
+}
+
+test fn an_unconfirmed_termination_is_residue_and_the_supervisor_returns() -> Bool {
+  if !pid_one_unsignalable() {
+    false
+  } else {
+    let dir = scratch_dir()
+    let diag = concat(dir, "/client")
+    let _d = Filesystem.Write(path: diag, content: "").success
+    let script = concat("p=1; pf=\"$1\"; diag=\"$2\"\n", mtcollins1_sol_hold_supervisor_script)
+    let run = shell.Exec.RunArgv(program: "timeout", arguments: ["30", "bash", "-c", script, "sol-supervisor", dir, diag])
+    let client = read_or_empty(path: diag)
+    let _removed = shell.Remove.RecursiveForce(path: dir)
+    run.exit_code == 0
+      && string_contains(s: client, pattern: concat(sol_hold_pid_not_published_unstopped_line, " pid=1"))
+      && !string_contains(s: client, pattern: sol_hold_exit_record_prefix)
+  }
+}

@@ -1,0 +1,1160 @@
+module v2.lens.complexity_accumulator_copy.analyze
+
+import std.types { List }
+import std.optional { Absent, Optional, Present }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol }
+import v2.extdeps.languages.dag { ParseSubtreeAbsent }
+
+fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
+  match v2.std.node_query.find_named_child(root: cap, name: name) {
+    Accepted { value: c, diagnostics: _ } => Present { value: c }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn sequence_left_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_left_node_projection)
+}
+
+fn sequence_right_node(cap: Node) -> Optional<Node> {
+  named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
+}
+
+fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
+  match sequence_left_node(cap: cap) {
+    Absent => Absent
+    Present { value: left } => v2.std.grammar.node_atom_identity_optional(node: left)
+  }
+}
+
+fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
+  match v2.extdeps.languages.dag.parse_subtree_find_production_captured(root: root, emitted: emitted) {
+    v2.extdeps.languages.dag.ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
+  Cons { head: item, tail: xs }
+}
+
+fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == emitted {
+        match v2.extdeps.languages.dag.parse_production_captured_child_optional(node: n) {
+          Present { value: c } => capture_list_prepend(item: c, xs: acc)
+          Absent => acc
+        }
+      } else {
+        fold(n.children, init: acc, f: fn(a, e) {
+          collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+        })
+      }
+    Absent =>
+      fold(n.children, init: acc, f: fn(a, e) {
+        collect_direct_captures(n: e.target, emitted: emitted, acc: a)
+      })
+  }
+}
+
+fn primary_expr_capture(node: Node) -> Optional<Node> {
+  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_primary_expr {
+        v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn postfix_expr_capture(node: Node) -> Optional<Node> {
+  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_postfix_expr {
+        v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn edge_skips_identifier_count(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: nm } => nm == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
+  Cons { head: item, tail: xs }
+}
+
+fn symbol_list_length(xs: List<Symbol>) -> Int {
+  fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
+}
+
+fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
+  let here = match v2.std.grammar.node_atom_identity_optional(node: n) {
+    Present { value: id } =>
+      if v2.extdeps.languages.dag.dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    if edge_skips_identifier_count(e: e) {
+      a
+    } else {
+      collect_value_identifiers_into(n: e.target, acc: a)
+    }
+  })
+}
+
+fn collect_value_identifiers(n: Node) -> List<Symbol> {
+  collect_value_identifiers_into(n: n, acc: std.algebra.Empty)
+}
+
+// AN ARGUMENT CAPTURE IS NOT THE ARGUMENT'S VALUE. A named argument `left: acc` captures the
+// LABEL as well as the value, and the label is a parameter name at the CALLEE - it is not an
+// identifier this body mentions. Counting it made every named-argument port read two identifiers,
+// so the bare-name arm below was unreachable for every call in a corpus where named arguments are
+// the ordinary spelling, and a copied accumulator classified as ^copied_port_computed_argument: a
+// refusal standing exactly where a proof was available, which is why the lens minted no suspect on
+// the textbook fold/list_append specimen.
+//
+// THE LABEL IS STRIPPED BY NAVIGATION, NOT BY SEARCH, AND THAT DISTINCTION IS THE WHOLE CORRECTNESS
+// ARGUMENT. The first repair here searched for the argument's first ^dag_surface_primary_expr.
+// v2.extdeps.languages.dag parse_subtree_find_production_captured is a FIRST-MATCH DFS that
+// short-circuits on ParseSubtreeFound, and dag_surface_binary_expr / dag_surface_unary_expr sit
+// ABOVE primary_expr in the grammar - so a compound argument returned only its leftmost primary
+// expression and the census became an UNDER-approximation of the identifiers the argument names.
+// `left: seed + acc` read as mentions [seed]: one identifier, so the bare-name arm fired, a
+// BindsFresh `seed` resolved it to PortPureLiteral, and a copied accumulator classified CLEAN with
+// the carrier invisible to any_port_carries_carrier as well. That is the failure arm widening into
+// silence that DESIGN section 5 forbids, and the same class this lens's own roster files as
+// fold_shape_visible_to_no_lens - introduced by the repair, caught in review, and recorded here so
+// the shape is not re-derived by search a third time.
+//
+// So the value is reached by walking the `name : value` spine, and EVERY deviation from that exact
+// shape falls back to the whole capture. A positional argument has no label to strip; a sequence
+// whose second element is an operator rather than ^dag_token_colon is not a labelled argument at
+// all. Both keep the whole-capture census, which over-approximates the mention set, so the reading
+// degrades toward the refusal arms and never toward clean.
+fn arg_value_capture_optional(arg_capture: Node) -> Optional<Node> {
+  find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr)
+}
+
+fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
+  match arg_value_capture_optional(arg_capture: arg_capture) {
+    Absent => Absent
+    Present { value: value_expr } => sequence_left_symbol(cap: value_expr)
+  }
+}
+
+// NOT A DIVERGENCE FROM THE COMPILER'S ARGUMENT READER, BECAUSE IT ANSWERS A DIFFERENT QUESTION.
+// v2.compiler.body_lowering_fold reads a call argument through body_lower_value_lowered and answers
+// what the argument LOWERS TO; this function answers the argument's VALUE SUBTREE, which
+// arg_value_mentions censuses for the identifiers the argument names. An earlier note here promised
+// that this function would dissolve into the compiler's accessor once that accessor carried a located
+// refusal. The refusal is now carried (v2.compiler.body_lowering_fold OperandRefRead), and the
+// dissolution is refuted rather than pending: a lowered node is not the subtree a census reads.
+// The class that motivated the note is filed at
+// gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand.
+// DELEGATES TO THE SPINE AUTHORITY rather than re-decoding it. This function used to carry its
+// own match chain over Seq(binding_name, Seq(colon, expr)) -- the third spelling of one fact in
+// the corpus -- and the decoder now lives beside the production it decodes, in
+// v2.extdeps.languages.dag dag_named_arg_value_optional. The CONTRACT HERE IS UNCHANGED: a named
+// argument yields its value node, and anything that is not a named spine (a positional argument)
+// yields the capture itself, which is what every caller of this reader already depends on.
+fn arg_value_node(arg_capture: Node) -> Node {
+  match v2.extdeps.languages.dag.dag_named_arg_value_optional(arg_capture: arg_capture) {
+    Present { value: value_node } => value_node
+    Absent => arg_capture
+  }
+}
+
+fn arg_value_mentions(arg_capture: Node) -> List<Symbol> {
+  collect_value_identifiers(n: arg_value_node(arg_capture: arg_capture))
+}
+
+fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
+  let mentions = arg_value_mentions(arg_capture: arg_capture)
+  let idents = symbol_list_length(xs: mentions)
+  if idents == 0 {
+    v2.lens.complexity_accumulator_copy.PortPureLiteral
+  } else {
+    if idents == 1 {
+      match v2.lens.complexity_accumulator_copy.analyze.arg_value_symbol(arg_capture: arg_capture) {
+        Present { value: sym } => v2.lens.complexity_accumulator_copy.PortBareName { name: sym }
+        Absent => v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: mentions }
+      }
+    } else {
+      v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: mentions }
+    }
+  }
+}
+
+fn call_port_readings(call_capture: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_map(
+    xs: v2.std.algebra.list_reverse(
+      xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: std.algebra.Empty)
+    ),
+    f: fn(arg) { port_reading(arg_capture: arg) }
+  )
+}
+
+// The carrier read is a named-edge lookup on the LOWERED seam Loop (FLAG F): the located fold call is read by v2.compiler.fold_lowering.fold_call_step_carrier -- the step's first binder, read off the CALL and never off the encoding's ^loop_carrier_edge, which since the fold-carrier mint names a GENERATED slot (v2.std.anonymous_binder fresh_fold_carrier) and is deliberately never equal to any authored formal -- the two were the same symbol until that mint landed, and this lens wanted the formal, which is what it reads; so a piped fold, whose collection is not in the call, keeps its carrier - the lens never re-navigates the surface fn_literal capture (that read has exactly one authority, the lowering). A call the seam refuses (named step fn, no fn literal) yields Absent and the ^fold_accumulator_unread refusal stands: the binder is a callee-resolution fact (Stage B), not a within-body fact, and the lens never fabricates a carrier.
+fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
+  v2.compiler.fold_lowering.fold_call_step_carrier(fold_call: call_capture)
+}
+
+fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc: List<v2.lens.complexity_accumulator_copy.Finding>) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  std.algebra.list_append(left: acc, right: fresh)
+}
+
+fn let_expr_capture(node: Node) -> Optional<Node> {
+  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_let_expr {
+        v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
+      } else {
+        match v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node) {
+          Present { value: inner } => let_expr_capture(node: inner)
+          Absent => Absent
+        }
+      }
+    Absent => Absent
+  }
+}
+
+type LetSpine {
+  let_wrapper: Node
+  let_capture: Node
+  rest: Node
+}
+
+fn let_spine_of(node: Node) -> Optional<LetSpine> {
+  match sequence_left_node(cap: node) {
+    Absent => Absent
+    Present { value: left } =>
+      match let_expr_capture(node: left) {
+        Absent => Absent
+        Present { value: cap } =>
+          match sequence_right_node(cap: node) {
+            Absent => Absent
+            Present { value: rest } =>
+              Present { value: LetSpine { let_wrapper: left, let_capture: cap, rest: rest } }
+          }
+      }
+  }
+}
+
+fn let_binder_symbol(let_capture: Node) -> Optional<Symbol> {
+  match sequence_right_node(cap: let_capture) {
+    Absent => Absent
+    Present { value: after_kw } =>
+      match sequence_left_node(cap: after_kw) {
+        Absent => Absent
+        Present { value: binder } => v2.std.grammar.node_atom_identity_optional(node: binder)
+      }
+  }
+}
+
+fn let_rhs_node(let_capture: Node) -> Optional<Node> {
+  match sequence_right_node(cap: let_capture) {
+    Absent => Absent
+    Present { value: after_kw } =>
+      match sequence_right_node(cap: after_kw) {
+        Absent => Absent
+        Present { value: after_binder } => sequence_right_node(cap: after_binder)
+      }
+  }
+}
+
+type LetResolution
+  = LetJoinsCarriers { name: Symbol }
+  | LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding }
+  | LetUndecided
+
+fn let_resolution(
+  let_capture: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>
+) -> LetResolution {
+  match let_binder_symbol(let_capture: let_capture) {
+    Absent => LetUndecided
+    Present { value: binder } =>
+      match let_rhs_node(let_capture: let_capture) {
+        Absent => LetUndecided
+        Present { value: rhs } =>
+          let mentions = collect_value_identifiers(n: rhs)
+          let idents = symbol_list_length(xs: mentions)
+          if idents == 0 {
+            LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: v2.lens.complexity_accumulator_copy.BindsFresh } }
+          } else {
+            if idents == 1 {
+              match v2.lens.complexity_accumulator_copy.analyze.arg_value_symbol(arg_capture: rhs) {
+                Absent =>
+                  LetBindsFact {
+                    binding: v2.lens.complexity_accumulator_copy.LetBinding {
+                      name: binder,
+                      fact: v2.lens.complexity_accumulator_copy.BindsComputed { mentions: mentions }
+                    }
+                  }
+                Present { value: s } =>
+                  if v2.lens.complexity_accumulator_copy.symbol_in(needle: s, xs: carriers) {
+                    LetJoinsCarriers { name: binder }
+                  } else {
+                    match v2.lens.complexity_accumulator_copy.let_binding_fact_for(name: s, bindings: bindings) {
+                      Present { value: fact } =>
+                        LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: fact } }
+                      Absent => LetUndecided
+                    }
+                  }
+              }
+            } else {
+              LetBindsFact {
+                binding: v2.lens.complexity_accumulator_copy.LetBinding {
+                  name: binder,
+                  fact: v2.lens.complexity_accumulator_copy.BindsComputed { mentions: mentions }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// v2.lens.complexity_accumulator_copy.BindsComputed stores the RHS's RAW mentions (depth-1
+// closure): a computed let whose RHS names a carrier directly is caught at its unregistered use,
+// but a chain through a SECOND computed let (b mentions a, a mentions the carrier) is not -
+// bind-time substitution was priced and rejected here because every fold-literal splice it needs is
+// itself an unregistered-carrier call site, trading one silent hole for four counted refusals. The
+// chain case is a declared residue; it dissolves in Stage B, where callee/definition facts prove
+// the substitution without accumulator threading.
+
+fn analyze_children(
+  n: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool,
+  here: List<v2.lens.complexity_accumulator_copy.Finding>
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  fold(n.children, init: here, f: fn(acc, e) {
+    append_findings(
+      fresh: analyze(node: e.target, carriers: carriers, bindings: bindings, iterating: iterating),
+      acc: acc
+    )
+  })
+}
+
+fn analyze_let_spine(
+  spine: LetSpine,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  let left_findings = analyze(
+    node: spine.let_wrapper, carriers: carriers, bindings: bindings, iterating: iterating
+  )
+  match let_resolution(let_capture: spine.let_capture, carriers: carriers, bindings: bindings) {
+    LetJoinsCarriers { name: nm } =>
+      append_findings(
+        fresh: analyze(
+          node: spine.rest,
+          carriers: Cons { head: nm, tail: carriers },
+          bindings: bindings,
+          iterating: iterating
+        ),
+        acc: left_findings
+      )
+    LetBindsFact { binding: b } =>
+      append_findings(
+        fresh: analyze(
+          node: spine.rest,
+          carriers: carriers,
+          bindings: Cons { head: b, tail: bindings },
+          iterating: iterating
+        ),
+        acc: left_findings
+      )
+    LetUndecided =>
+      append_findings(
+        fresh: analyze(
+          node: spine.rest, carriers: carriers, bindings: bindings, iterating: iterating
+        ),
+        acc: left_findings
+      )
+  }
+}
+
+fn resolved_port_readings(call_capture: Node, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_map(
+    xs: call_port_readings(call_capture: call_capture),
+    f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
+  )
+}
+
+fn projection_sequence_cap_optional(cap: Node) -> Optional<Node> {
+  let stripped = v2.compiler.body_lowering_fold.body_lower_unwrap_surface_shell(node: cap)
+  match v2.std.compilers.sugar.sugar_sequence_pair_optional(node: stripped) {
+    Present { value: _ } => Present { value: stripped }
+    Absent => Absent
+  }
+}
+
+fn projection_method_call_optional(cap: Node) -> Optional<Symbol> {
+  match projection_sequence_cap_optional(cap: cap) {
+    Absent => Absent
+    Present { value: seq_cap } =>
+      match sequence_right_node(cap: seq_cap) {
+        Absent => Absent
+        Present { value: repeat_capture } =>
+          match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
+            Absent => Absent
+            Present { value: repeat_elem } =>
+              if v2.compiler.body_lowering_fold.body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
+                v2.compiler.body_lowering_fold.body_lower_postfix_projection_step_name(repeat_elem: repeat_elem)
+              } else {
+                Absent
+              }
+          }
+      }
+  }
+}
+
+fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_map(
+    xs: v2.std.algebra.list_reverse(
+      xs: collect_direct_captures(
+        n: v2.compiler.body_lowering_fold.body_lower_postfix_projection_call_suffix_capture(repeat_elem: repeat_elem),
+        emitted: ^dag_surface_arg,
+        acc: std.algebra.Empty
+      )
+    ),
+    f: fn(arg) { port_reading(arg_capture: arg) }
+  )
+}
+
+// A lens reading a port, not lowering: an operand the reader cannot read whole (absent, or refused
+// at an operator tail) is read as its raw capture, as before; the refusal is named here rather than
+// collapsed invisibly by a projection.
+fn projection_receiver_port_reading(left: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
+  match v2.compiler.body_lowering_fold.body_lower_operand_ref_read(node: left) {
+    v2.compiler.body_lowering_fold.OperandRefLowered { lowered: receiver } => lowered_arg_port_reading(arg: receiver)
+    v2.compiler.body_lowering_fold.OperandRefAbsent => lowered_arg_port_reading(arg: left)
+    v2.compiler.body_lowering_fold.OperandRefRefused { diagnostics: _ } => lowered_arg_port_reading(arg: left)
+  }
+}
+
+fn projection_call_port_readings(cap: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  match projection_sequence_cap_optional(cap: cap) {
+    Absent => std.algebra.Empty
+    Present { value: seq_cap } =>
+      match sequence_left_node(cap: seq_cap) {
+        Absent => std.algebra.Empty
+        Present { value: left } =>
+          match sequence_right_node(cap: seq_cap) {
+            Absent => std.algebra.Empty
+            Present { value: repeat_capture } =>
+              match v2.compiler.body_lowering_fold.body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
+                Absent => std.algebra.Empty
+                Present { value: repeat_elem } =>
+                  std.algebra.list_append(
+                    left: [projection_receiver_port_reading(left: left)],
+                    right: projection_arg_port_readings(repeat_elem: repeat_elem)
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn resolved_projection_call_port_readings(cap: Node, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_map(
+    xs: projection_call_port_readings(cap: cap),
+    f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
+  )
+}
+
+fn analyze_postfix_projection_call(
+  node: Node,
+  cap: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  if iterating {
+    match projection_method_call_optional(cap: cap) {
+      Present { value: method } =>
+        match v2.lens.complexity_accumulator_copy.classify_call(
+          at: node,
+          combiner: method,
+          ports: resolved_projection_call_port_readings(cap: cap, bindings: bindings),
+          carriers: carriers
+        ) {
+          Present { value: f } =>
+            analyze_children(
+              n: node,
+              carriers: carriers,
+              bindings: bindings,
+              iterating: iterating,
+              here: Cons { head: f, tail: std.algebra.Empty }
+            )
+          Absent =>
+            analyze_children(
+              n: node,
+              carriers: carriers,
+              bindings: bindings,
+              iterating: iterating,
+              here: std.algebra.Empty
+            )
+        }
+      Absent =>
+        analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
+    }
+  } else {
+    analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
+  }
+}
+
+// Stage B cross-decl: normalize lowers fn bodies to ComputationNode substrate (Loop for
+// fold-family, Transform for calls/projections). The surface primary_expr walk is blind to lowered
+// trees — these arms re-establish fold iteration and call classification on the producer output
+// (projection-call residue dissolved; repairs post-#6840 accumulator-copy regressions on ingested
+// fold bodies).
+
+// THE OPERATOR OF A LOWERED CALL: its first positional child. A bare callee is an atom and names the
+// combiner. A dotted callee keeps its DECLARATION IDENTITY: it is the cited combiner only when its
+// whole path is that citation's declaration (v2.lens.cost.copied_port_citations
+// copied_port_citation_combiner_for_declaration), and otherwise it is its whole dotted path, which no
+// citation's bare combiner can equal -- so `foreign.list_append` is classified as an unregistered
+// combiner and refuses when the carrier reaches it, instead of borrowing std.algebra list_append's
+// copied-port contract by sharing its leaf. Any other operator is Absent, and the caller refuses
+// ^call_head_unreadable when a carrier reaches one of its actuals.
+fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: node), index: 0) {
+        Absent => Absent
+        Present { value: head } =>
+          match v2.std.grammar.node_atom_identity_optional(node: head) {
+            Present { value: id } => optional_present(value: id)
+            Absent =>
+              match lowered_callee_path_optional(head: head) {
+                Absent => Absent
+                Present { value: path } =>
+                  let dotted = v2.std.qualified_name.qualified_name_to_dotted_string(qn: path)
+                  match v2.lens.cost.copied_port_citations.copied_port_citation_combiner_for_declaration(dotted: dotted) {
+                    Present { value: cited } => optional_present(value: cited)
+                    Absent => optional_present(value: v2.std.node.symbol_intern_lexeme(lexeme: dotted))
+                  }
+              }
+          }
+      }
+    ComputationNode { behavior: _ } => Absent
+    TypeNode { connective: _ } => Absent
+  }
+}
+
+// A dotted callee as normalize emits it is a qualified-name spine; after resolution it is a declaration
+// reference over the same spine. Both are read by v2.std.qualified_name, never by walking the spine here.
+fn lowered_callee_path_optional(head: Node) -> Optional<v2.std.qualified_name.QualifiedName> {
+  match v2.std.qualified_name.declaration_reference_path_optional(node: head) {
+    Present { value: path } => optional_present(value: path)
+    Absent =>
+      if v2.std.qualified_name.qualified_name_spine_shape_present(root: head) {
+        match v2.std.qualified_name.qualified_name_from_node(root: head) {
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+          Rejected { diagnostics: _ } => Absent
+        }
+      } else {
+        Absent
+      }
+  }
+}
+
+fn lowered_arg_port_reading(arg: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
+  let mentions = collect_value_identifiers(n: arg)
+  let idents = symbol_list_length(xs: mentions)
+  if idents == 0 {
+    v2.lens.complexity_accumulator_copy.PortPureLiteral
+  } else {
+    if idents == 1 {
+      match v2.std.grammar.node_atom_identity_optional(node: arg) {
+        Present { value: sym } =>
+          if v2.extdeps.languages.dag.dag_lex_token_symbol(sym: sym) {
+            v2.lens.complexity_accumulator_copy.PortPureLiteral
+          } else {
+            v2.lens.complexity_accumulator_copy.PortBareName { name: sym }
+          }
+        Absent => v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: mentions }
+      }
+    } else {
+      v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: mentions }
+    }
+  }
+}
+
+// A LOWERED CALL'S ACTUALS, IN AUTHORED ORDER: every edge after the operator. Since gunbc#12382 a named
+// argument is an Authored edge labelled by its parameter and a positional one a Positional edge, so the
+// actuals are the call's edges and not only its positional children -- reading positional children alone
+// saw no port on `list_append(left: x, right: acc)` and the copied port went missing on every planted copy.
+fn lowered_transform_actuals(node: Node) -> List<Edge> {
+  v2.std.algebra.list_reverse(xs: fold(node.children, init: LoweredActualsWalk { saw_operator: false, reversed: std.algebra.Empty }, f: fn(acc, e) {
+    if acc.saw_operator {
+      LoweredActualsWalk { saw_operator: true, reversed: Cons { head: e, tail: acc.reversed } }
+    } else {
+      match e.label {
+        Positional => LoweredActualsWalk { saw_operator: true, reversed: acc.reversed }
+        Authored { name: _ } => LoweredActualsWalk { saw_operator: false, reversed: Cons { head: e, tail: acc.reversed } }
+        StructuralLabel { label: _ } => LoweredActualsWalk { saw_operator: false, reversed: Cons { head: e, tail: acc.reversed } }
+      }
+    }
+  }).reversed)
+}
+
+// The operator is the first Positional edge; every other edge, in authored order, is an actual. The
+// walk prepends and reverses once, so no step copies what it has already collected.
+type LoweredActualsWalk {
+  saw_operator: Bool
+  reversed: List<Edge>
+}
+
+// Every actual's port reading, in authored order, by the same prepend-then-reverse walk.
+fn lowered_actual_port_readings(actuals: List<Edge>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_reverse(xs: fold(actuals, init: std.algebra.Empty, f: fn(acc, e) {
+    Cons { head: lowered_arg_port_reading(arg: e.target), tail: acc }
+  }))
+}
+
+// THE PORTS A CALL FILLS. For a combiner with a copied-port citation the ports are its declared parameters
+// IN DECLARED ORDER, each read from the actual v2.std.arrow_signature application_binding_plan binds to it
+// -- the one binding authority infer and eval also bind through, so the lens cannot read a call as binding
+// differently from how it runs. A plan that refuses (an unknown label, a surplus, a deficit) yields no
+// ports, and classify_call refuses ^copied_port_argument_missing rather than guessing a port. A combiner
+// with no citation has no declared order here, so every actual is a port, in authored order: whichever
+// carries the carrier reaches it.
+fn lowered_transform_port_readings(node: Node, combiner: Symbol) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      let actuals = lowered_transform_actuals(node: node)
+      match v2.lens.cost.copied_port_citations.copied_port_citation_arrow_of(combiner: combiner) {
+        Absent => lowered_actual_port_readings(actuals: actuals)
+        Present { value: arrow } =>
+          match v2.std.arrow_signature.application_binding_plan(arrow: arrow, actuals: actuals) {
+            v2.std.arrow_signature.ApplicationBindingRefused { reason: _, at: _ } => std.algebra.Empty
+            v2.std.arrow_signature.ApplicationBound { slots: slots } =>
+              v2.std.algebra.list_map(xs: slots, f: fn(slot) {
+                match v2.std.collection.list_at_optional(xs: actuals, index: slot.actual_index) {
+                  Present { value: e } => lowered_arg_port_reading(arg: e.target)
+                  Absent => v2.lens.complexity_accumulator_copy.PortMissing
+                }
+              })
+          }
+      }
+    ComputationNode { behavior: _ } => std.algebra.Empty
+    TypeNode { connective: _ } => std.algebra.Empty
+  }
+}
+
+fn resolved_lowered_transform_port_readings(node: Node, combiner: Symbol, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
+  v2.std.algebra.list_map(
+    xs: lowered_transform_port_readings(node: node, combiner: combiner),
+    f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
+  )
+}
+
+// THE ACCUMULATOR FORMAL OF A LOWERED FOLD, BY ROLE: the step callable's declared position-0 formal,
+// read through v2.compiler.fold_lowering (fold_loop_step, fold_step_carrier_formal) -- the module that
+// assigns the roles, and the same route v2.compiler.infer types the carrier by. Never the Loop's
+// ^loop_carrier_edge: since the fold-carrier mint that edge names a GENERATED slot
+// (v2.std.anonymous_binder fresh_fold_carrier) that no authored body mentions, so binding it found the
+// Loop, bound a name nothing reads, and went clean on every planted copy. Absent where the Loop has no
+// single step callable or the step declares no position-0 formal.
+fn lowered_loop_carrier_optional(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    ComputationNode { behavior: Loop } =>
+      match v2.compiler.fold_lowering.fold_loop_step(loop_node: node) {
+        Absent => Absent
+        Present { value: step } =>
+          match v2.compiler.fold_lowering.fold_step_carrier_formal(step: step) {
+            Absent => Absent
+            Present { value: carrier } => optional_present(value: carrier.formal.name)
+          }
+      }
+    ComputationNode { behavior: _ } => Absent
+    TypeNode { connective: _ } => Absent
+  }
+}
+
+// Only a Loop's iterated body repeats (v2.std.node loop_edge_role). Its other edges --
+// the domain, evaluated once, and the bound, carrier and realized-declaration atoms -- are analyzed
+// under the ENCLOSING iteration state, so a copy written in a fold's collection expression is not
+// reported as per-iteration work.
+fn analyze_loop_children(
+  n: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  enclosing: Bool,
+  here: List<v2.lens.complexity_accumulator_copy.Finding>
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  fold(n.children, init: here, f: fn(acc, e) {
+    let iterating = match loop_edge_role(e: e) {
+      LoopIteratedBody => true
+      LoopDomainValue => enclosing
+      LoopBoundMeasure => enclosing
+      LoopCarrierBinder => enclosing
+      LoopRealizedDeclaration => enclosing
+      LoopEdgeUnrecognized => enclosing
+    }
+    append_findings(
+      fresh: analyze(node: loop_edge_analyzed_target(e: e), carriers: carriers, bindings: bindings, iterating: iterating),
+      acc: acc
+    )
+  })
+}
+
+// WHAT ONE ITERATION RUNS IS THE STEP'S BODY, NEVER THE STEP CALLABLE (v2.compiler.fold_lowering
+// fold_step_body_node). The iterated edge of a fold-realized Loop targets the step Arrow, whose domain,
+// declared return and ^arrow_signature_order_edge name the formals -- the order edge as a Transform over
+// `acc` and `x` -- and are signature, not computation: read as a call they are an unregistered combiner
+// reached by the carrier on every fold. Any other edge, or a step with no single body, is analyzed as is.
+fn loop_edge_analyzed_target(e: Edge) -> Node {
+  match loop_edge_role(e: e) {
+    LoopIteratedBody =>
+      match v2.compiler.fold_lowering.fold_step_body_node(step: e.target) {
+        Present { value: body } => body
+        Absent => e.target
+      }
+    LoopDomainValue => e.target
+    LoopBoundMeasure => e.target
+    LoopCarrierBinder => e.target
+    LoopRealizedDeclaration => e.target
+    LoopEdgeUnrecognized => e.target
+  }
+}
+
+fn analyze_lowered_loop(
+  node: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  match lowered_loop_carrier_optional(node: node) {
+    Present { value: carrier } =>
+      analyze_loop_children(
+        n: node,
+        carriers: Cons { head: carrier, tail: carriers },
+        bindings: bindings,
+        enclosing: iterating,
+        here: std.algebra.Empty
+      )
+    Absent =>
+      analyze_loop_children(
+        n: node,
+        carriers: carriers,
+        bindings: bindings,
+        enclosing: iterating,
+        here: Cons {
+          head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
+          tail: std.algebra.Empty
+        }
+      )
+  }
+}
+
+fn analyze_lowered_transform_call(
+  node: Node,
+  combiner: Symbol,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  let here = if iterating {
+    match v2.lens.complexity_accumulator_copy.classify_call(
+      at: node,
+      combiner: combiner,
+      ports: resolved_lowered_transform_port_readings(node: node, combiner: combiner, bindings: bindings),
+      carriers: carriers
+    ) {
+      Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+      Absent => std.algebra.Empty
+    }
+  } else {
+    std.algebra.Empty
+  }
+  analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
+}
+
+fn analyze_absent_primary_expr(
+  node: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  match node.kind {
+    ComputationNode { behavior: Loop } =>
+      analyze_lowered_loop(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Transform } =>
+      match lowered_transform_combiner_optional(node: node) {
+        Present { value: combiner } =>
+          analyze_lowered_transform_call(
+            node: node,
+            combiner: combiner,
+            carriers: carriers,
+            bindings: bindings,
+            iterating: iterating
+          )
+        Absent =>
+          let here = if iterating {
+            if v2.lens.complexity_accumulator_copy.any_port_carries_carrier(
+              ports: v2.std.algebra.list_map(
+                xs: lowered_actual_port_readings(actuals: lowered_transform_actuals(node: node)),
+                f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
+              ),
+              carriers: carriers
+            ) {
+              Cons {
+                head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^call_head_unreadable },
+                tail: std.algebra.Empty
+              }
+            } else {
+              std.algebra.Empty
+            }
+          } else {
+            std.algebra.Empty
+          }
+          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
+      }
+    TypeNode { connective: _ } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Value } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Branch } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Bind } =>
+      match v2.std.compilers.body_lowering.bind_view(site: node) {
+        Accepted { value: view, diagnostics: _ } =>
+          analyze_lowered_bind(view: view, carriers: carriers, bindings: bindings, iterating: iterating)
+        Rejected { diagnostics: _ } =>
+          analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+      }
+    ComputationNode { behavior: Match } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+  }
+}
+
+// A LET LOWERED TO A Bind (v2.std.compilers.body_lowering bind_view: key, value, body). A step body's
+// `let` reaches the lens in this form, not as the surface let spine let_resolution reads, so without this
+// arm the binder recorded nothing and every use of it read as an unresolved name. The value is read
+// by the same port reading a lowered call's actual gets, and decided by the same closure the surface
+// let uses: a pure literal binds fresh, a bare name that is a carrier joins the carriers, a bare name
+// with a recorded fact inherits it, a computed value binds its raw mentions, and a bare name that
+// closes to nothing records nothing -- its uses still refuse ^copied_port_name_may_alias.
+fn analyze_lowered_bind(
+  view: v2.std.compilers.body_lowering.BindView,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  let value_findings = analyze(node: view.value, carriers: carriers, bindings: bindings, iterating: iterating)
+  let body_findings = match lowered_let_resolution(binder: view.key_identity, value: view.value, carriers: carriers, bindings: bindings) {
+    LetJoinsCarriers { name: nm } =>
+      analyze(node: view.body, carriers: Cons { head: nm, tail: carriers }, bindings: bindings, iterating: iterating)
+    LetBindsFact { binding: b } =>
+      analyze(node: view.body, carriers: carriers, bindings: Cons { head: b, tail: bindings }, iterating: iterating)
+    LetUndecided =>
+      analyze(node: view.body, carriers: carriers, bindings: bindings, iterating: iterating)
+  }
+  append_findings(fresh: body_findings, acc: value_findings)
+}
+
+fn lowered_let_resolution(
+  binder: Symbol,
+  value: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>
+) -> LetResolution {
+  match lowered_arg_port_reading(arg: value) {
+    v2.lens.complexity_accumulator_copy.PortPureLiteral =>
+      LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: v2.lens.complexity_accumulator_copy.BindsFresh } }
+    v2.lens.complexity_accumulator_copy.PortComputedExpression { mentions: ms } =>
+      LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: v2.lens.complexity_accumulator_copy.BindsComputed { mentions: ms } } }
+    v2.lens.complexity_accumulator_copy.PortBareName { name: s } =>
+      if v2.lens.complexity_accumulator_copy.symbol_in(needle: s, xs: carriers) {
+        LetJoinsCarriers { name: binder }
+      } else {
+        match v2.lens.complexity_accumulator_copy.let_binding_fact_for(name: s, bindings: bindings) {
+          Present { value: fact } =>
+            LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding { name: binder, fact: fact } }
+          Absent => LetUndecided
+        }
+      }
+    v2.lens.complexity_accumulator_copy.PortMissing => LetUndecided
+  }
+}
+
+fn analyze_absent_primary_expr_let_spine(
+  node: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  match let_spine_of(node: node) {
+    Present { value: spine } =>
+      analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
+    Absent =>
+      analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
+  }
+}
+
+fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>, iterating: Bool) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  match primary_expr_capture(node: node) {
+    Absent =>
+      match postfix_expr_capture(node: node) {
+        Present { value: cap } =>
+          analyze_postfix_projection_call(
+            node: node,
+            cap: cap,
+            carriers: carriers,
+            bindings: bindings,
+            iterating: iterating
+          )
+        Absent =>
+          analyze_absent_primary_expr(
+            node: node,
+            carriers: carriers,
+            bindings: bindings,
+            iterating: iterating
+          )
+      }
+    Present { value: cap } =>
+      match sequence_left_symbol(cap: cap) {
+        Present { value: head } =>
+          match v2.compiler.fold_lowering.fold_family_authored_step_realization(head: head) {
+            Present { value: _ } =>
+            match fold_family_carrier(call_capture: cap) {
+              Present { value: carrier } =>
+                analyze_children(
+                  n: node,
+                  carriers: Cons { head: carrier, tail: carriers },
+                  bindings: bindings,
+                  iterating: true,
+                  here: std.algebra.Empty
+                )
+              Absent =>
+                analyze_children(
+                  n: node,
+                  carriers: carriers,
+                  bindings: bindings,
+                  iterating: true,
+                  here: Cons {
+                    head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
+                    tail: std.algebra.Empty
+                  }
+                )
+            }
+            Absent =>
+            let here = if iterating {
+              match projection_method_call_optional(cap: cap) {
+                Present { value: method } =>
+                  match v2.lens.complexity_accumulator_copy.classify_call(
+                    at: node,
+                    combiner: method,
+                    ports: resolved_projection_call_port_readings(cap: cap, bindings: bindings),
+                    carriers: carriers
+                  ) {
+                    Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                    Absent => std.algebra.Empty
+                  }
+                Absent =>
+                  match v2.lens.complexity_accumulator_copy.classify_call(
+                    at: node,
+                    combiner: head,
+                    ports: resolved_port_readings(call_capture: cap, bindings: bindings),
+                    carriers: carriers
+                  ) {
+                    Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                    Absent => std.algebra.Empty
+                  }
+              }
+            } else {
+              std.algebra.Empty
+            }
+            analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
+          }
+        Absent =>
+          let here = if iterating {
+            if v2.lens.complexity_accumulator_copy.any_port_carries_carrier(
+              ports: resolved_port_readings(call_capture: cap, bindings: bindings),
+              carriers: carriers
+            ) {
+              Cons {
+                head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^call_head_unreadable },
+                tail: std.algebra.Empty
+              }
+            } else {
+              std.algebra.Empty
+            }
+          } else {
+            std.algebra.Empty
+          }
+          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: here)
+      }
+  }
+}
+
+type AccumulatorCopyReport {
+  folds_seen: Int,
+  carriers_bound: Int,
+  findings: List<v2.lens.complexity_accumulator_copy.Finding>
+}
+
+fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
+  let lowered_here = match n.kind {
+    ComputationNode { behavior: Loop } =>
+      if bound_only {
+        match lowered_loop_carrier_optional(node: n) {
+          Present { value: _ } => 1
+          Absent => 0
+        }
+      } else {
+        1
+      }
+    ComputationNode { behavior: _ } => 0
+    TypeNode { connective: _ } => 0
+  }
+  let surface_here = match primary_expr_capture(node: n) {
+    Absent => 0
+    Present { value: cap } =>
+      match sequence_left_symbol(cap: cap) {
+        Absent => 0
+        Present { value: head } =>
+          match v2.compiler.fold_lowering.fold_family_authored_step_realization(head: head) {
+            Present { value: _ } =>
+            if bound_only {
+              match fold_family_carrier(call_capture: cap) {
+                Present { value: _ } => 1
+                Absent => 0
+              }
+            } else {
+              1
+            }
+            Absent =>
+            0
+          }
+      }
+  }
+  let here = lowered_here + surface_here
+  fold(n.children, init: here, f: fn(acc, e) {
+    acc + count_fold_sites(n: e.target, bound_only: bound_only)
+  })
+}
+
+fn accumulator_copy_findings(root: Node) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  analyze(node: root, carriers: std.algebra.Empty, bindings: std.algebra.Empty, iterating: false)
+}
+
+fn tree_contains_lowered_loop(root: Node) -> Bool {
+  match root.kind {
+    ComputationNode { behavior: Loop } => true
+    TypeNode { connective: _ } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Value } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Transform } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Branch } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Bind } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Match } => tree_contains_lowered_loop_children(root: root)
+  }
+}
+
+fn tree_contains_lowered_loop_children(root: Node) -> Bool {
+  fold(root.children, init: false, f: fn(found, e) {
+    if found {
+      true
+    } else {
+      tree_contains_lowered_loop(root: e.target)
+    }
+  })
+}
+
+fn primary_expr_fold_head_optional(node: Node) -> Optional<Symbol> {
+  match primary_expr_capture(node: node) {
+    Absent => Absent
+    Present { value: cap } =>
+      match sequence_left_symbol(cap: cap) {
+        Present { value: head } =>
+          match v2.compiler.fold_lowering.fold_family_authored_step_realization(head: head) {
+            Present { value: _ } =>
+            optional_present(value: head)
+            Absent =>
+            Absent
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn tree_contains_surface_fold_call(root: Node) -> Bool {
+  match primary_expr_fold_head_optional(node: root) {
+    Present { value: _ } => true
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        if found {
+          true
+        } else {
+          tree_contains_surface_fold_call(root: e.target)
+        }
+      })
+  }
+}
+
+fn accumulator_copy_report(root: Node) -> AccumulatorCopyReport {
+  AccumulatorCopyReport {
+    folds_seen: count_fold_sites(n: root, bound_only: false),
+    carriers_bound: count_fold_sites(n: root, bound_only: true),
+    findings: accumulator_copy_findings(root: root)
+  }
+}
+
+fn finding_is_suspect(f: v2.lens.complexity_accumulator_copy.Finding) -> Bool {
+  match f {
+    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: _, cost: _ } => true
+    v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: _ } => false
+  }
+}
+
+fn finding_is_refusal(f: v2.lens.complexity_accumulator_copy.Finding) -> Bool {
+  match f {
+    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: _, cost: _ } => false
+    v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: _ } => true
+  }
+}
+
+fn finding_refusal_cause(f: v2.lens.complexity_accumulator_copy.Finding) -> Optional<Symbol> {
+  match f {
+    v2.lens.complexity_accumulator_copy.Poly2Suspect { at: _, cost: _ } => Absent
+    v2.lens.complexity_accumulator_copy.Unclassifiable { at: _, cause: c } => Present { value: c }
+  }
+}
+
+fn findings_any(fs: List<v2.lens.complexity_accumulator_copy.Finding>, pred: fn(v2.lens.complexity_accumulator_copy.Finding) -> Bool) -> Bool {
+  fold(fs, init: false, f: fn(acc, x) { if acc { true } else { pred(x) } })
+}
+
+fn findings_have_suspect(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+  findings_any(fs: fs, pred: finding_is_suspect)
+}
+
+fn findings_have_refusal(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+  findings_any(fs: fs, pred: finding_is_refusal)
+}
+
+fn findings_have_refusal_cause(fs: List<v2.lens.complexity_accumulator_copy.Finding>, cause: Symbol) -> Bool {
+  findings_any(fs: fs, pred: fn(f) {
+    match v2.lens.complexity_accumulator_copy.analyze.finding_refusal_cause(f: f) {
+      Present { value: c } => c == cause
+      Absent => false
+    }
+  })
+}

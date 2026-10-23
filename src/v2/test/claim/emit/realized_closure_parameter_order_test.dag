@@ -1,0 +1,137 @@
+module v2.test.claim.emit.realized_closure_parameter_order
+
+import std.types { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
+import v2.std.compilers.target_model { arrow_domain_binder_names, realized_closure_ordered_params }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  canonicalize_node_for_content_hash,
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A RETURNED CLOSURE IS EMITTED WITH ITS PARAMETERS IN DECLARED ORDER, ASKED AT ITS ONE INTERFACE
+// (DESIGN section 3's witness rule) with supplied closure Arrows. The emitted closure is applied
+// positionally, so v2.std.compilers.target_model realized_closure_ordered_params -- the list
+// target_project_realized_closure hands to the closure wire -- must follow the Arrow's declared
+// order, not its domain Conj's stored sequence. The specimen declares (z, a), both Int, body z: its
+// domain is built by the declared-signature constructor lowering uses
+// (v2.std.arrow_signature declared_signature), and a second copy has only its domain
+// canonicalized, exactly as v2.test.claim.declared_parameter_order dpo_canonical_domain does. Both
+// denote the same function, so both must answer [z, a]; a reader that folds the canonical domain in
+// stored order answers [a, z] (asserted below as the mutation this claim discriminates), and would
+// emit |a, z| { z }, returning the second argument. The route's execution through the emitter is
+// v2.test.claim.body_lowering.function_value_body_route's; this module owns the ordering.
+fn rcp_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn rcp_closure() -> Node {
+  let sig = declared_signature(
+    params: [
+      binder_edge(name: ^rcp_z, type_node: rcp_atom(id: ^rcp_int)),
+      binder_edge(name: ^rcp_a, type_node: rcp_atom(id: ^rcp_int))
+    ],
+    source: rcp_atom(id: ^rcp_source)
+  )
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      sig.domain,
+      Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
+      Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
+      sig.order,
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: rcp_atom(id: ^rcp_z) }
+    ]
+  )
+}
+
+type RcpDomainWalk {
+  done: Bool
+  edges: List<Edge>
+}
+
+fn rcp_canonical_domain(arrow: Node) -> Node {
+  let seen = fold(arrow.children, init: RcpDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
+    match e.label {
+      StructuralLabel { label: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Positional =>
+        if acc.done {
+          RcpDomainWalk { done: true, edges: concat(acc.edges, [e]) }
+        } else {
+          RcpDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
+        }
+      Authored { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+    }
+  })
+  Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
+}
+
+fn rcp_without_order(arrow: Node) -> Node {
+  Node {
+    kind: arrow.kind,
+    children: fold(arrow.children, init: [], f: fn(acc, e) {
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
+    }),
+    occurrence_id: arrow.occurrence_id
+  }
+}
+
+fn rcp_is_z_then_a(xs: List<Symbol>) -> Bool {
+  xs == [^rcp_z, ^rcp_a]
+}
+
+fn rcp_ordered(arrow: Node) -> Bool {
+  match realized_closure_ordered_params(closure: arrow) {
+    Accepted { value: params, diagnostics: _ } => rcp_is_z_then_a(xs: params)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_returned_closure_emits_its_parameters_in_declared_order() -> Bool {
+  rcp_ordered(arrow: rcp_closure())
+}
+
+test fn a_domain_canonicalized_closure_emits_the_same_parameter_order() -> Bool {
+  rcp_ordered(arrow: rcp_canonical_domain(arrow: rcp_closure()))
+}
+
+// THE MUTATION THIS DISCRIMINATES: the stored-order fold over the canonical domain is NOT the declared
+// order, so a reader restoring it would fail the claim above.
+test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
+  !rcp_is_z_then_a(xs: arrow_domain_binder_names(arrow: rcp_canonical_domain(arrow: rcp_closure())))
+}
+
+// A CLOSURE WHOSE DOMAIN BINDS NAMES BUT CARRIES NO ORDER EDGE IS ILL FORMED (A4, gunbc#12770): the
+// declared-order read answers Malformed at the admission wall (v2.std.node
+// arrow_signature_edges_conform), and the closure realization refuses with the malformed reason --
+// earlier than the order-ABSENT refusal it reached before A4. The claim pins the wall's answer and
+// the typed refusal, and still reds if the order-less closure is ever realized.
+test fn a_closure_with_named_parameters_and_no_order_refuses_typed() -> Bool {
+  let stripped = rcp_without_order(arrow: rcp_closure())
+  match arrow_declared_parameter_order(arrow: stripped) {
+    ArrowParameterOrderMalformed =>
+      match realized_closure_ordered_params(closure: stripped) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^target_value_expr_reason_closure_parameter_order_malformed
+      }
+    _ => false
+  }
+}

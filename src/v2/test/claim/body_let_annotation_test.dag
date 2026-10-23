@@ -1,0 +1,1115 @@
+module v2.test.claim.body_let_annotation
+
+import std.types { List }
+import v2.compiler.resolve { ResolvedTree }
+import std.algebra { Cons, Empty }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_magnitude_node_optional, dag_canonical_literal_from_node, DagCanonicalStringLiteral, dag_symbol_literal_name_optional, dag_type_atom_node }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.std.integer { integer_decimal_digit_type_node }
+import std.types { Int }
+import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
+import v2.std.compilers.body_lowering { lower_bind, lower_bind_annotated }
+import v2.std.collection { list_at_optional }
+import v2.std.diagnostic {
+  None,
+  Some,
+  Diagnostic,
+  Accepted,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  diagnostics_fatal,
+  diagnostics_fatal_reason,
+  diagnostics_list_has_reason,
+  Suggested
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import std.optional { Absent, Optional, Present, optional_present }
+import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.normalized_tree { admit_normalized_tree }
+import v2.compiler.resolve { resolve }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a statement let's type annotation is CARRIED as the v2.std.type_binder
+// <type-annotation> edge on its Bind -- through lowering, resolve (type-role frame) and infer (the
+// bound value is checked against it) -- and translate refuses an annotated Bind until a target
+// models it. BOUNDARY: source text in, assembled program out through
+// v2.test.claim.type_param_binder_frame tpb_assemble -- the production route -- for lowering,
+// resolve and infer; translate is driven over a supplied Bind whose shape rows (1)-(2) establish
+// the real producer emits.
+//
+// RED BEFORE: on the parent of this change every annotated let refused
+// body_lowering_reason_type_annotation_not_carried at its annotation (gunbc.rung_drop
+// typed_statement_let_refuses_until_the_bind_annotation_carrier), so (1)-(5) were red.
+
+fn bla_concrete() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n")
+}
+
+fn bla_generic() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = x\n  y\n}\n")
+}
+
+fn bla_type_param_as_value() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  let y: T = T\n  y\n}\n")
+}
+
+fn bla_value_param_as_type() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  let y: Q = Q\n  y\n}\n")
+}
+
+// The bound value is an Int sum, whose grounding infer DERIVES, so the check is judged rather than
+// left on the frontier. The infer outcomes below are enrolled share points, so a claim reads the
+// result and pays for none of the sum's derivation.
+fn bla_int_sum_as_int() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = x + x\n  y\n}\n")
+}
+
+fn bla_int_sum_as_bool() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = x + x\n  x\n}\n")
+}
+
+// A let-bound int LITERAL grounds too: lowering hands infer the canonical literal
+// (dag_token_int_literal with its magnitude payload) and infer derives it as Int, so the check is
+// judged at the literal as well. Until main 980761c this was believed to sit on the
+// GroundingNotDerived frontier (the #12322 handoff); rows (5b) pin that it does not.
+fn bla_int_literal_as_int() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  x\n}\n")
+}
+
+fn bla_int_literal_as_bool() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Bool = 1\n  x\n}\n")
+}
+
+fn bla_annotations(n: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: n), init: Empty, f: fn(acc, x) {
+    match type_annotation_optional(n: x) {
+      Present { value: t } => Cons { head: t, tail: acc }
+      Absent => acc
+    }
+  })
+}
+
+fn bla_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => Absent
+  }
+}
+
+// The one annotation a tree carries, as its atom identity; Absent when refused, when no Bind carries
+// one, or when more than one does.
+fn bla_annotation_identity(o: Outcome<ResolvedTree>) -> Optional<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match bla_annotations(n: root.root) {
+        Cons { head: t, tail: Empty } => bla_atom_identity(n: t)
+        _ => Absent
+      }
+  }
+}
+
+fn bla_atom_in(n: Node, id: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, x) {
+    acc || match bla_atom_identity(n: x) {
+      Present { value: s } => s == id
+      Absent => false
+    }
+  })
+}
+
+
+// The annotation is a type expression; the bound value `x + x` is a Transform and the binder is `y`,
+// so a locus holding no computation and no `y` is the annotation's.
+fn bla_has_computation(n: Node) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, x) {
+    acc || match x.kind {
+      ComputationNode { behavior: _ } => true
+      _ => false
+    }
+  })
+}
+
+fn bla_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
+}
+
+// (1) A let annotation naming a declared type lowers and resolves, carrying exactly one annotation
+// whose target is a resolved atom. A lowering that drops the edge reds this row: the count is 0.
+test fn bla_concrete_annotation_is_carried() -> Bool {
+  match bla_annotation_identity(o: bla_concrete()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// (2) The annotation resolves in the TYPE-ROLE frame: the enclosing fn's <T> binds a body
+// annotation's `T`.
+test fn bla_generic_annotation_binds_the_type_parameter() -> Bool {
+  bla_annotation_identity(o: bla_generic()) == optional_present(value: ^T)
+}
+
+// (3) A type parameter in VALUE position still refuses, with its own reason, located at the value
+// use: the frame that binds the annotation's `T` does not answer for the bound value's.
+test fn bla_type_parameter_in_value_position_refuses_located() -> Bool {
+  match bla_type_param_as_value() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^resolve_reason_type_parameter_in_value_position)
+        && match diagnostics_fatal(d: d).at {
+          NodeLocus { anchor: a } =>
+            bla_atom_in(n: a.at, id: ^T)
+              && !bla_atom_in(n: a.at, id: ^dag_token_kw_let)
+              && !bla_atom_in(n: a.at, id: ^dag_token_eq)
+          _ => false
+        }
+  }
+}
+
+// (4) ... and a VALUE binder never answers for the annotation: a parameter named `Q` leaves the
+// annotation `Q` unbound.
+test fn bla_value_binder_does_not_answer_the_annotation() -> Bool {
+  match bla_value_param_as_type() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+fn bla_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+// THE ROUTE: a let's refusal is v2.std.inhabitance's, judged at PositionLetAnnotation -- its
+// correction names that position -- not v2.std.coercion's cast mismatch (NoTargetCandidate), which
+// is what the let answered while it was judged by the cast relation
+// (gunbc.recurring_failure_mode annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation).
+fn bla_judged_at_the_let_position(d: NonEmptyDiagnostics) -> Bool {
+  match diagnostics_fatal(d: d).correction {
+    Suggested { node: n } =>
+      fold(n.children, init: false, f: fn(acc, e) {
+        acc || match e.label {
+          Authored { name: nm } => nm == ^position_let_annotation
+          _ => false
+        }
+      })
+    _ => false
+  }
+}
+
+// (5) INFER JUDGES THE BOUND VALUE AT THE ANNOTATION through v2.std.inhabitance, the relation an
+// argument meets at its formal: an Int sum ascribed Int is admitted; the same sum ascribed Bool
+// resolves and then refuses at the let position, located at the annotation `Bool`, not at the
+// sum. RED BEFORE the infer rule: the Bool ascription was admitted.
+fn bla_int_sum_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_sum_as_int())
+}
+
+fn bla_int_sum_as_bool_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_sum_as_bool())
+}
+
+test fn bla_infer_admits_int_sum_ascribed_int() -> Bool {
+  match bla_int_sum_as_int_inferred() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bla_infer_refuses_int_sum_ascribed_bool() -> Bool {
+  tpb_accepts(o: bla_int_sum_as_bool())
+    && match bla_int_sum_as_bool_inferred() {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bla_judged_at_the_let_position(d: d)
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
+          && match diagnostics_fatal(d: d).at {
+            NodeLocus { anchor: a } =>
+              !bla_has_computation(n: a.at) && !bla_atom_in(n: a.at, id: ^y)
+            _ => false
+          }
+    }
+}
+
+// (5b) THE SAME CHECK IS JUDGED AT A LET-BOUND LITERAL: `1` ascribed Int is admitted; `1` ascribed
+// Bool refuses at the let position with the annotation's own fatal. RED if the
+// literal falls back to the GroundingNotDerived frontier: the Bool ascription is then admitted.
+fn bla_int_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_literal_as_int())
+}
+
+fn bla_int_literal_as_bool_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_int_literal_as_bool())
+}
+
+test fn bla_infer_admits_int_literal_ascribed_int() -> Bool {
+  match bla_int_literal_as_int_inferred() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
+  tpb_accepts(o: bla_int_literal_as_bool())
+    && match bla_int_literal_as_bool_inferred() {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bla_judged_at_the_let_position(d: d)
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
+    }
+}
+
+// (5e) ONE RELATION FOR EVERY DECLARED POSITION (gunbc.recurring_failure_mode
+// annotated_let_judged_by_the_cast_relation_not_the_inhabitance_relation). Each row states the
+// same value at a let, at a declared return and at a record field -- the declared positions a source
+// program reaches the relation at today -- and the verdicts must agree. (A call to a NAMED fn does not
+// reach it from source: infer reads no formals off a callee reference, FormalsUnresolved,
+// gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances; the argument
+// position's widening is claimed on the relation with a supplied obligation,
+// v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test.)
+// - An optional at a required Int refuses at EACH with the one relation's own reason
+//   (v2.std.inhabitance inhabitance_optional_produced_at_required_declared). RED while the let was
+//   judged by the cast relation: its refusal carried coercion's mismatch, never this reason.
+// - A refinement value (`x: Pos`, `type Pos = Int where positive`) inhabits its declared carrier Int
+//   at each, admitted AND decided. RED BEFORE: the return and the field refused (no widening in the
+//   relation).
+// - One step only: `x: Pos2` (`type Pos2 = Pos where ..`) inhabits Pos and not Int, at each.
+// - A sibling refinement (`x: Neg` at Pos, both refinements of Int) refuses at each.
+fn bla_let_optional() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  let y: Int = x\n  0\n}\n"))
+}
+
+fn bla_ret_optional() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Int?) -> Int {\n  x\n}\n"))
+}
+
+fn bla_fld_optional() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Int?) -> R {\n  R { v: x }\n}\n"))
+}
+
+fn bla_let_pos_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Int {\n  let y: Int = x\n  0\n}\n"))
+}
+
+fn bla_ret_pos_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Int {\n  x\n}\n"))
+}
+
+fn bla_fld_pos_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Pos) -> R {\n  R { v: x }\n}\n"))
+}
+
+fn bla_let_pos2_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  let y: Pos = x\n  0\n}\n"))
+}
+
+fn bla_ret_pos2_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Pos {\n  x\n}\n"))
+}
+
+fn bla_fld_pos2_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Pos\n}\n\nfn f(x: Pos2) -> R {\n  R { v: x }\n}\n"))
+}
+
+fn bla_let_pos2_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  let y: Int = x\n  0\n}\n"))
+}
+
+fn bla_ret_pos2_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  x\n}\n"))
+}
+
+fn bla_fld_pos2_int() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Int\n}\n\nfn f(x: Pos2) -> R {\n  R { v: x }\n}\n"))
+}
+
+fn bla_let_neg_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Neg) -> Int {\n  let y: Pos = x\n  0\n}\n"))
+}
+
+fn bla_ret_neg_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Neg) -> Pos {\n  x\n}\n"))
+}
+
+fn bla_fld_neg_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\ntype R {\n  v: Pos\n}\n\nfn f(x: Neg) -> R {\n  R { v: x }\n}\n"))
+}
+
+fn bla_admits(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bla_plain_let_pos() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos) -> Int {\n  let y = x\n  0\n}\n"))
+}
+
+fn bla_plain_let_pos2() -> Outcome<Bool> {
+  bla_infers(o: tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\ntype Neg = Int where positive\n\nfn f(x: Pos2) -> Int {\n  let y = x\n  0\n}\n"))
+}
+
+// THE LET ITSELF WAS DECIDED: the annotated let is admitted and adds no inhabitance-undecidable
+// advisory over the same fn with the annotation removed. The enclosing fn's declared return sees a
+// let block whose type is not derived and counts it on both sides, so an absolute "no advisory"
+// would read that return, not the let.
+fn bla_undecided_count(o: Outcome<Bool>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: _, diagnostics: None } => 0
+    Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+      fold_list(xs: Cons { head: d.head, tail: d.tail }, empty: 0, cons: fn(acc, x) {
+        if (x.reason == ^inhabitance_undecidable_argument_type_not_derived)
+          || (x.reason == ^inhabitance_undecidable_formal_unresolved)
+          || (x.reason == ^inhabitance_undecidable_optional_carrier)
+          || (x.reason == ^inhabitance_undecidable_generic_formal) { acc + 1 } else { acc }
+      })
+  }
+}
+
+fn bla_let_admits_decided(annotated: Outcome<Bool>, plain: Outcome<Bool>) -> Bool {
+  match annotated {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } =>
+      bla_undecided_count(o: annotated) == bla_undecided_count(o: plain)
+  }
+}
+
+// ADMITTED AND DECIDED: an admission that carries an inhabitance-undecidable advisory was never
+// judged, so it is no evidence the relation admitted the pair.
+fn bla_admits_decided(o: Outcome<Bool>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: None } => true
+    Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+      !bla_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
+        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_optional_carrier)
+        && !bla_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
+}
+
+fn bla_refuses_for(o: Outcome<Bool>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+test fn bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do() -> Bool {
+  bla_refuses_for(o: bla_let_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
+    && bla_refuses_for(o: bla_ret_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
+    && bla_refuses_for(o: bla_fld_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
+}
+
+test fn bla_refinement_inhabits_its_declared_carrier_at_a_let_a_return_and_a_field() -> Bool {
+  bla_let_admits_decided(annotated: bla_let_pos_int(), plain: bla_plain_let_pos())
+    && bla_admits_decided(o: bla_ret_pos_int())
+    && bla_admits_decided(o: bla_fld_pos_int())
+}
+
+test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_field() -> Bool {
+  bla_let_admits_decided(annotated: bla_let_pos2_pos(), plain: bla_plain_let_pos2())
+    && bla_admits_decided(o: bla_ret_pos2_pos())
+    && bla_admits_decided(o: bla_fld_pos2_pos())
+    && bla_refuses_for(o: bla_let_pos2_int(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
+    && bla_refuses_for(o: bla_ret_pos2_int(), reason: ^arrow_body_does_not_inhabit_declared_return)
+    && bla_refuses_for(o: bla_fld_pos2_int(), reason: ^record_field_value_does_not_inhabit)
+}
+
+test fn bla_sibling_refinement_refuses_at_a_let_a_return_and_a_field() -> Bool {
+  bla_refuses_for(o: bla_let_neg_pos(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
+    && bla_refuses_for(o: bla_ret_neg_pos(), reason: ^arrow_body_does_not_inhabit_declared_return)
+    && bla_refuses_for(o: bla_fld_neg_pos(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// (5c) A KERNEL SPELLING IS READ BY THE DECLARATION IT RESOLVES TO (gunbc.recurring_failure_mode
+// kernel_type_spelling_captured_a_module_declaration). RED BEFORE: body lowering rewrote the
+// spellings Int and Bool to the kernel binding before any scope existed, so every row below had the
+// kernel type as its annotation, and the let was judged MATCHED.
+// - A module's own `type Int` / `type Bool` shadows the kernel name, so `let y: Int = 1` refuses at
+//   the annotation (`1` does not inhabit `Mine`).
+// - Imported `Int` from two user modules refuses as ambiguous. From the two kernel declarations it
+//   binds the kernel type (control).
+// - An IMPORTED user `Int` refuses in resolve with a typed, located reason. It cannot bind the
+//   kernel, and until bindings are keyed by declaration it does not silently bind the user's type
+//   either.
+// Each row asserts the ROUTE (the annotation is not the kernel binding, or resolve refused for this
+// reason) as well as the verdict. The controls are (5b), and the route row below: an undeclared
+// `Int` still binds the kernel type.
+fn bla_declared_int_literal() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n")
+}
+
+fn bla_declared_bool_literal() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = true\n  x\n}\n")
+}
+
+fn bla_declared_int_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_declared_int_literal())
+}
+
+fn bla_declared_bool_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_declared_bool_literal())
+}
+
+data bla_q_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_q_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_q.dag"
+}
+
+data bla_r_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_r_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_r.dag"
+}
+
+fn bla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+// Subject module p over peer modules, admitted with no admission-level imports: p's own `import`
+// lines are what bind the peers' names.
+fn bla_assemble_with_peers(p_src: String, peers: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: bla_source(src: p_src, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu),
+      tail: peers
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// p imports q's own `type Int = | Mine`.
+fn bla_imported_int_literal() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    peers: [bla_source(src: "module q\n\ntype Int = | Mine\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
+  )
+}
+
+// p imports `Int` from two user modules: the name is ambiguous and neither is the kernel's.
+fn bla_ambiguous_imported_int_literal() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { Int }\nimport r { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    peers: [
+      bla_source(src: "module q\n\ntype Int = | Mine\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+      bla_source(src: "module r\n\ntype Int = | Yours\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    ]
+  )
+}
+
+// p imports `Int` from the two kernel declarations (v2.std.integer and std.integer, as
+// v2.extdeps.languages.dag dag_kernel_type_declaration_binding_optional lists them): ambiguous by
+// name, one kernel type by declaration.
+fn bla_ambiguous_kernel_int_literal() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport v2.std.integer { Int }\nimport std.integer { Int }\n\nfn f(x: Bool) -> Bool {\n  let y: Int = 1\n  x\n}\n",
+    peers: [
+      bla_source(src: "module v2.std.integer\n\ntype Int = | Z\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+      bla_source(src: "module std.integer\n\ntype Int = | Z\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    ]
+  )
+}
+
+fn bla_refuses_at_the_annotation(o: Outcome<ResolvedTree>, inferred: Outcome<Bool>) -> Bool {
+  tpb_accepts(o: o)
+    && match inferred {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation
+    }
+}
+
+fn bla_annotation_is(o: Outcome<ResolvedTree>, id: Symbol) -> Bool {
+  match bla_annotation_identity(o: o) {
+    Present { value: s } => s == id
+    Absent => false
+  }
+}
+
+test fn bla_module_declared_int_shadows_the_kernel_int() -> Bool {
+  !bla_annotation_is(o: bla_declared_int_literal(), id: ^dag_binding_type_int)
+    && bla_refuses_at_the_annotation(o: bla_declared_int_literal(), inferred: bla_declared_int_literal_inferred())
+}
+
+test fn bla_module_declared_bool_shadows_the_kernel_bool() -> Bool {
+  !bla_annotation_is(o: bla_declared_bool_literal(), id: ^bool_node_symbol)
+    && bla_refuses_at_the_annotation(o: bla_declared_bool_literal(), inferred: bla_declared_bool_literal_inferred())
+}
+
+test fn bla_imported_user_int_refuses_rather_than_binding_the_kernel_int() -> Bool {
+  tpb_refuses_with(o: bla_imported_int_literal(), reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
+}
+
+test fn bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel() -> Bool {
+  tpb_refuses_with(o: bla_ambiguous_imported_int_literal(), reason: ^resolve_reason_ambiguous_symbol)
+}
+
+test fn bla_ambiguous_kernel_declarations_bind_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_ambiguous_kernel_int_literal(), id: ^dag_binding_type_int)
+}
+
+// THE SAME SHADOWING ON THE PLAIN SINGLE-TREE ROUTE: normalize, then v2.compiler.resolve resolve over
+// one tree. That namespace (build_program_namespace) leaves module_qn Empty and records its owner in
+// declared_in, so a same-module test keyed on module_qn refused the module's own `type Int` as a
+// foreign declaration there while the admitted route above bound it (review 5342739525). Each row
+// asserts the resolve verdict and the annotation's route: the local Int/Bool bind the module's
+// declaration, and an undeclared Int still binds the kernel.
+fn bla_single_tree_resolved(text: String) -> Outcome<ResolvedTree> {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: t, diagnostics: _ } =>
+      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: t.type_declaration_modifiers, diagnostics: None) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
+      }
+  }
+}
+
+fn bla_single_tree_admitted(text: String) -> Node {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+    Accepted { value: t, diagnostics: _ } => t.root
+  }
+}
+
+fn bla_single_tree_declared_int() -> Outcome<ResolvedTree> {
+  bla_single_tree_resolved(text: "module m.t\n\ntype Int = | Mine\n\nfn f(x: Bool) -> Bool {\n  let y: Int = x\n  x\n}\n")
+}
+
+fn bla_single_tree_declared_bool() -> Outcome<ResolvedTree> {
+  bla_single_tree_resolved(text: "module m.t\n\ntype Bool = | Mine\n\nfn f(x: Int) -> Int {\n  let y: Bool = x\n  x\n}\n")
+}
+
+fn bla_single_tree_undeclared_int() -> Outcome<ResolvedTree> {
+  bla_single_tree_resolved(text: "module m.t\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  x\n}\n")
+}
+
+test fn bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration() -> Bool {
+  tpb_accepts(o: bla_single_tree_declared_int())
+    && tpb_accepts(o: bla_single_tree_declared_bool())
+    && !bla_annotation_is(o: bla_single_tree_declared_int(), id: ^dag_binding_type_int)
+    && !bla_annotation_is(o: bla_single_tree_declared_bool(), id: ^bool_node_symbol)
+}
+
+test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_single_tree_undeclared_int(), id: ^dag_binding_type_int)
+}
+
+test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
+  bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
+    && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
+}
+
+// (5d) A SYMBOL LITERAL IS TYPED AS v2.std.node Symbol. MQ-1 PR-2 lowers `^s` to a symbol literal
+// (v2.extdeps.languages.dag dag_symbol_literal_node), and the one canonical-literal decision
+// (dag_canonical_literal_from_node) now reads it as DagCanonicalSymbolLiteral, whose type binding
+// denotes v2.std.node symbol_type_node. RED BEFORE: infer left the literal on the counted
+// GroundingNotDerived frontier (gunbc.symbol_identity_census symbol_nominality_next_rung_trigger
+// (a)). `let y: Int = ^s` was then admitted with the frontier advisory at the caret, and
+// `let y: Symbol = ^s` was admitted without being judged.
+// - `let y: Int = ^s` refuses at the let position (v2.std.inhabitance), located at the annotation.
+// - `let y: Symbol = ^s` is admitted, its annotation is the Symbol binding, and no
+//   grounding-not-derived advisory is located at the literal or its name payload: the literal's
+//   frontier count is 0.
+fn bla_symbol_literal_as_int() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = ^bla_sym\n  x\n}\n")
+}
+
+fn bla_symbol_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_symbol_literal_as_int())
+}
+
+fn bla_symbol_literal_as_symbol() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Symbol = ^bla_sym\n  x\n}\n")
+}
+
+fn bla_symbol_literal_as_symbol_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_symbol_literal_as_symbol())
+}
+
+// A grounding-not-derived advisory located at the symbol literal: its caret atom or its name
+// payload (`bla_sym`). The fixture's other nodes carry their own frontier advisories, which the Int
+// literal control (5b) carries equally, so the count that must be 0 is the literal's own.
+fn bla_frontier_at_symbol_literal(xs: List<Diagnostic>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(held, d) {
+    held || ((d.reason == ^infer_grounding_not_derived) && match d.at {
+      NodeLocus { anchor: a } =>
+        match bla_atom_identity(n: a.at) {
+          Present { value: id } => (id == ^dag_token_caret) || (id == ^bla_sym)
+          Absent => false
+        }
+      _ => false
+    })
+  })
+}
+
+// (5e) THE SYMBOL LITERAL'S PAYLOAD IS TYPED AS ITS FAMILY'S PAYLOAD. The name terminal under `^s`
+// is the symbol itself, so infer records its resolved type as v2.std.node Symbol. RED BEFORE: the
+// payload fold assumed the integer shape and typed every payload atom as DecimalDigit (review
+// 5348050288 on #12549). These rows read the payload node's actual recorded resolved_type. The Int
+// row is the control that the integer family's payload is still a DecimalDigit.
+fn bla_inferred_tree(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: t, diagnostics: _ } => optional_present(value: t)
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
+  match t.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
+      }
+  }
+}
+
+// Every symbol-literal name payload in the tree, and whether each one's recorded type is `ty`;
+// false when the tree carries none, so an absent literal cannot pass vacuously.
+fn bla_every_symbol_payload_typed(t: InferredTree, ty: Node) -> Bool {
+  let r = fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+    match dag_symbol_literal_name_optional(node: n) {
+      Absent => acc
+      Present { value: name } => BlaPayloadCheck { seen: true, all: acc.all && bla_resolved_type_is(t: t, n: name, ty: ty) }
+    }
+  })
+  r.seen && r.all
+}
+
+fn bla_every_int_digit_typed(t: InferredTree, ty: Node) -> Bool {
+  let r = fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+    match dag_int_literal_magnitude_node_optional(node: n) {
+      Absent => acc
+      Present { value: magnitude } =>
+        fold(node_subtree_nodes(root: magnitude), init: acc, f: fn(a, m) {
+          match m.kind {
+            TypeNode { connective: Atom { identity: _ } } => BlaPayloadCheck { seen: true, all: a.all && bla_resolved_type_is(t: t, n: m, ty: ty) }
+            _ => a
+          }
+        })
+    }
+  })
+  r.seen && r.all
+}
+
+type BlaPayloadCheck {
+  seen: Bool
+  all: Bool
+}
+
+// The verdicts are the share points, not the trees: an InferredTree carries its facts as a closure,
+// which the cross-claim store refuses, so each claim reads Bools computed once from the tree.
+type BlaSymbolPayloadVerdict {
+  typed_symbol: Bool
+  typed_digit: Bool
+}
+
+fn bla_symbol_literal_payload_verdict() -> BlaSymbolPayloadVerdict {
+  match bla_inferred_tree(o: bla_symbol_literal_as_symbol()) {
+    Absent => BlaSymbolPayloadVerdict { typed_symbol: false, typed_digit: false }
+    Present { value: t } =>
+      BlaSymbolPayloadVerdict {
+        typed_symbol: bla_every_symbol_payload_typed(t: t, ty: symbol_type_node()),
+        typed_digit: bla_every_symbol_payload_typed(t: t, ty: integer_decimal_digit_type_node())
+      }
+  }
+}
+
+fn bla_int_literal_payload_digit_verdict() -> Bool {
+  match bla_inferred_tree(o: bla_int_literal_as_int()) {
+    Absent => false
+    Present { value: t } => bla_every_int_digit_typed(t: t, ty: integer_decimal_digit_type_node())
+  }
+}
+
+test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool {
+  let v = bla_symbol_literal_payload_verdict()
+  v.typed_symbol && !v.typed_digit
+}
+
+test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool {
+  bla_int_literal_payload_digit_verdict()
+}
+
+test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
+  tpb_accepts(o: bla_symbol_literal_as_int())
+    && match bla_symbol_literal_as_int_inferred() {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        bla_judged_at_the_let_position(d: d)
+          && (diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation)
+    }
+}
+
+test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
+  bla_annotation_is(o: bla_symbol_literal_as_symbol(), id: ^symbol_node_symbol)
+    && match bla_symbol_literal_as_symbol_inferred() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: _, diagnostics: None } => true
+      Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+        !bla_frontier_at_symbol_literal(xs: Cons { head: d.head, tail: d.tail })
+    }
+}
+
+// (5f) THE KERNEL HOST-TEXT STRING, AND THE STRUCTURAL STRING IT IS NOT. The spelling `String` binds
+// the kernel host text (v2.std.node String, typed by host_text_type_node) ONLY where no declaration
+// of the spelling is visible. A String declaration the author reached by import binds THAT
+// declaration: v2.std.text String and std.string_type String are the structural FreeMonoid<Char>
+// and are never refused and never kernel (neat-boar-16's ruling, decision A). A string literal is
+// typed as host text. Where FreeMonoid<Char> is declared, a host-text value refuses, literal or not.
+// The declared unfold for literals (gunbc.structural_realization_bindings literal_homomorphism_rows,
+// UnicodeScalarSequenceUnfold) is not reachable in v2 yet. The literal now carries its value (#12759),
+// but v2 infer does not peel an alias to its body, so it cannot recognize the destination as the
+// row's FreeMonoid over Char (gunbc.recurring_failure_mode
+// string_literal_lowers_to_one_class_stamped_atom). It refuses and is never admitted. RED BEFORE: the unimported String refused as unbound (the std.types
+// failure), and a string literal was underived, so `let y: Int = "abc"` was admitted unjudged.
+data bla_s_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_s_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_s.dag"
+}
+
+fn bla_string_literal_unimported() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: String = \"abc\"\n  x\n}\n")
+}
+
+fn bla_string_literal_as_int() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Int = \"abc\"\n  x\n}\n")
+}
+
+fn bla_unknown_unimported_type() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y: Strang = \"abc\"\n  x\n}\n")
+}
+
+// q declares the structural String exactly as v2.std.text does. The two peers supply the
+// declarations it names, so the fixture resolves without the real std modules.
+fn bla_structural_string_peers() -> List<DagSourceReadWitness> {
+  [
+    bla_source(src: "module q\n\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\n\ntype String = FreeMonoid<Char>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu),
+    bla_source(src: "module std.types\n\ntype Char\n", artifact: bla_s_artifact, cu: ^body_let_annotation_s_cu)
+  ]
+}
+
+fn bla_structural_string_literal() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\n\nfn f(x: Int) -> Int {\n  let y: String = \"abc\"\n  x\n}\n",
+    peers: bla_structural_string_peers()
+  )
+}
+
+// The non-literal host-text value is a call result: `host` lives in a module with no String
+// declaration in scope, so its declared return is the kernel host text, and infer types an
+// application's result by that declared return. (A let-bound reference is not used: v2 infer does
+// not type it from its initializer, so it would sit on the frontier and discriminate nothing.)
+fn bla_structural_string_host_value() -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\nimport h { host }\n\nfn f(x: Int) -> Int {\n  let y: String = host()\n  x\n}\n",
+    peers: Cons {
+      head: bla_source(src: "module h\n\nfn host() -> String {\n  \"abc\"\n}\n", artifact: bla_h_artifact, cu: ^body_let_annotation_h_cu),
+      tail: bla_structural_string_peers()
+    }
+  )
+}
+
+data bla_h_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^body_let_annotation_h_artifact,
+  file_path: "src/v2/pilot/body_let_annotation_h.dag"
+}
+
+fn bla_string_literal_unimported_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_string_literal_unimported())
+}
+
+fn bla_string_literal_as_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_string_literal_as_int())
+}
+
+fn bla_structural_string_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_structural_string_literal())
+}
+
+fn bla_structural_string_host_value_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_structural_string_host_value())
+}
+
+// The literal's own recorded type, computed once (the tree carries a closure the share store refuses).
+// The literal's decoded-value payload (#12759) is typed host text by its own family, never a digit:
+// the same payload-family fix #12549 made for the Symbol name (review 5348050288).
+fn bla_string_payload_typed_host_text(t: InferredTree, literal: Node) -> Bool {
+  fold(literal.children, init: false, f: fn(acc, e) {
+    acc || (bla_resolved_type_is(t: t, n: e.target, ty: host_text_type_node())
+      && !bla_resolved_type_is(t: t, n: e.target, ty: integer_decimal_digit_type_node()))
+  })
+}
+
+fn bla_string_literal_typed_host_text_verdict() -> Bool {
+  match bla_inferred_tree(o: bla_string_literal_unimported()) {
+    Absent => false
+    Present { value: t } =>
+      fold(node_subtree_nodes(root: t.root), init: BlaPayloadCheck { seen: false, all: true }, f: fn(acc, n) {
+        match dag_canonical_literal_from_node(node: n) {
+          Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+            BlaPayloadCheck {
+              seen: true,
+              all: acc.all
+                && bla_resolved_type_is(t: t, n: n, ty: host_text_type_node())
+                && bla_string_payload_typed_host_text(t: t, literal: n)
+            }
+          _ => acc
+        }
+      }).all
+  }
+}
+
+fn bla_refuses_with_annotation_reason(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^infer_reason_bound_value_does_not_inhabit_annotation
+  }
+}
+
+test fn bla_unimported_string_binds_kernel_host_text() -> Bool {
+  bla_annotation_is(o: bla_string_literal_unimported(), id: ^string_node_symbol)
+    && match bla_string_literal_unimported_inferred() {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+}
+
+test fn bla_string_literal_is_typed_host_text() -> Bool {
+  bla_string_literal_typed_host_text_verdict()
+}
+
+test fn bla_string_literal_ascribed_int_refuses() -> Bool {
+  tpb_accepts(o: bla_string_literal_as_int())
+    && bla_refuses_with_annotation_reason(o: bla_string_literal_as_int_inferred())
+}
+
+test fn bla_imported_structural_string_binds_its_declaration() -> Bool {
+  tpb_accepts(o: bla_structural_string_literal())
+    && !bla_annotation_is(o: bla_structural_string_literal(), id: ^string_node_symbol)
+}
+
+test fn bla_host_text_literal_at_structural_string_refuses() -> Bool {
+  tpb_accepts(o: bla_structural_string_literal())
+    && bla_refuses_with_annotation_reason(o: bla_structural_string_literal_inferred())
+}
+
+// A NON-LITERAL host-text value at the structural String is never passed as matched. It cannot yet
+// be made to REFUSE in v2: no non-literal expression derives host text today (neither a let-bound
+// reference nor a call result is typed from its source), so the value stays on the counted
+// GroundingNotDerived frontier. This row pins that it is refused or carries that frontier, never a
+// clean admit. It flips to a refusal control when non-literal values derive their types.
+test fn bla_host_text_value_at_structural_string_is_never_matched() -> Bool {
+  tpb_accepts(o: bla_structural_string_host_value())
+    && match bla_structural_string_host_value_inferred() {
+      Rejected { diagnostics: _ } => true
+      Accepted { value: _, diagnostics: None } => false
+      Accepted { value: _, diagnostics: Some { diagnostics: d } } =>
+        bla_has_reason(d: d, reason: ^infer_grounding_not_derived)
+    }
+}
+
+test fn bla_unknown_unimported_type_name_still_refuses() -> Bool {
+  tpb_refuses_with(o: bla_unknown_unimported_type(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// TRANSLATE is driven over the Bind rows (1)-(2) establish lowering produces: three positionals and
+// the <type-annotation> edge.
+fn bla_bind(annotated: Bool) -> Node {
+  let key = dag_type_atom_node(identity: ^bla_y)
+  let value = dag_type_atom_node(identity: ^dag_binding_param_x)
+  let body = dag_type_atom_node(identity: ^bla_y)
+  if annotated {
+    lower_bind_annotated(key_binding: key, value: value, body_binding: body, annotation: dag_type_atom_node(identity: ^dag_binding_type_int))
+  } else {
+    lower_bind(key_binding: key, value: value, body_binding: body)
+  }
+}
+
+fn bla_no_facts(key: Node) -> Optional<InferredFacts> {
+  Absent
+}
+
+fn bla_emit_rust(body: Node) -> Outcome<String> {
+  match emit(
+    tree: InferredTree {
+      root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: body),
+      facts: PartialFunction { lookup: bla_no_facts }
+    },
+    target: rust_binop_target_model_staging()
+  ) {
+    Accepted { value: m, diagnostics: d } => Accepted { value: m.carried, diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn bla_refused_for_annotation(o: Outcome<String>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => bla_has_reason(d: d, reason: ^target_value_expr_reason_bind_annotation_not_modeled)
+  }
+}
+
+// (6) TRANSLATE REFUSES AN ANNOTATED BIND until a target models the annotation, rather than
+// projecting it as a plain let and dropping the type ...
+fn bla_annotated_bind_emitted() -> Outcome<String> {
+  bla_emit_rust(body: bla_bind(annotated: true))
+}
+
+test fn bla_translate_refuses_an_annotated_bind() -> Bool {
+  bla_refused_for_annotation(o: bla_annotated_bind_emitted())
+}
+
+// ... and the refusal is the annotation's: the accessor translate branches on answers the annotation
+// for the annotated Bind and Absent for the same Bind without the edge. Read at the accessor, not
+// through a second full emit.
+test fn bla_translate_gate_is_the_annotations() -> Bool {
+  (type_annotation_optional(n: bla_bind(annotated: true)) == optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)))
+    && (type_annotation_optional(n: bla_bind(annotated: false)) == Absent)
+}
+
+// (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
+// canonicalize_positional_then_named): the annotation first or last is one node.
+test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
+  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
+  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let annotation = type_annotation_edge(annotation: dag_type_atom_node(identity: ^dag_binding_type_int))
+  content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, annotation]))
+    == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [annotation, key, value, body]))
+}
+
+// (8) THE LABEL HALF: a Bind admits its own <type-annotation> and nothing else. v2.std.node admits one
+// Named edge on a Bind by shape, so a Bind carrying a cast's <cast-target> passes the shape and must
+// be refused here, by v2.std.type_binder type_binder_labels_conform, which resolve runs on the whole
+// tree. Dropping the Bind arm of that rule greens the mislabelled Bind and reds this row.
+test fn bla_bind_admits_only_its_annotation_label() -> Bool {
+  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
+  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let t = dag_type_atom_node(identity: ^dag_binding_type_int)
+  type_binder_labels_conform(root: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, type_annotation_edge(annotation: t)]))
+    && !type_binder_labels_conform(root: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, cast_target_edge(target_type: t)]))
+}
+
+// (9) A BIND'S SLOTS ARE POSITIONAL, ON THE REAL RESOLVER. [binder, value, body, annotation] and
+// [binder, annotation, value, body] are one node to content_hash, and resolve walks the tree as a
+// producer wrote it -- so a reader that counted edge ordinals put the VALUE in the binder's inner
+// scope once the annotation stood second, and `let y: Int = y` resolved its initializer against
+// itself. The specimens are the production normalize route's output (v2.compiler
+// .reference_conservation_admission conservation_subject_of_text), with every Bind's annotation
+// moved to position 1, handed to v2.compiler.resolve resolve. The self-reference still refuses
+// unbound; its twin binding the outer parameter `x` resolves, so the refusal is the initializer's
+// and not the reordering's. Enrolled as share points: the real resolver runs once per specimen.
+type BlaReorderedResolve {
+  reordered: Bool
+  fatal: Optional<Symbol>
+}
+
+
+// Every Bind's children rewritten as [binder, annotation, value, body]; any other node keeps its
+// order. Children are rewritten first, so a nested Bind is moved too.
+fn bla_annotation_second(n: Node) -> Node {
+  let rebuilt = fold(n.children, init: [], f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: bla_annotation_second(n: e.target) })
+  })
+  let children = match n.kind {
+    ComputationNode { behavior: Bind } =>
+      let positionals = positional_edges(children: rebuilt)
+      let binder = fold(positionals, init: [], f: fn(acc, e) { if length(xs: acc) == 0 { [e] } else { acc } })
+      concat(concat(binder, named_edges(children: rebuilt)), skip(xs: positionals, n: 1))
+    _ => rebuilt
+  }
+  Node { kind: n.kind, children: children, occurrence_id: n.occurrence_id }
+}
+
+fn bla_annotation_stands_second(root: Node) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
+    acc || match n.kind {
+      ComputationNode { behavior: Bind } =>
+        match list_at_optional(xs: n.children, index: 1) {
+          Present { value: e } => edge_is_type_annotation(e: e)
+          Absent => false
+        }
+      _ => false
+    }
+  })
+}
+
+fn bla_reordered_resolve(text: String) -> BlaReorderedResolve {
+  match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
+    Rejected { diagnostics: d } => BlaReorderedResolve { reordered: false, fatal: optional_present(value: diagnostics_fatal_reason(d: d)) }
+    Accepted { value: t, diagnostics: _ } =>
+      let root = bla_annotation_second(n: t.root)
+      match admit_normalized_tree(root: root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: t.type_declaration_modifiers, diagnostics: None) {
+        Rejected { diagnostics: d } => BlaReorderedResolve { reordered: false, fatal: optional_present(value: diagnostics_fatal_reason(d: d)) }
+        Accepted { value: tree, diagnostics: _ } =>
+          BlaReorderedResolve {
+            reordered: bla_annotation_stands_second(root: root),
+            fatal: match resolve(tree: tree, lm: dag_language_model()) {
+              Accepted { value: _, diagnostics: _ } => Absent
+              Rejected { diagnostics: d } => optional_present(value: diagnostics_fatal_reason(d: d))
+            }
+          }
+      }
+  }
+}
+
+fn bla_reordered_self_reference() -> BlaReorderedResolve {
+  bla_reordered_resolve(text: "module m.t\nfn f(x: Int) -> Int {\n  let y: Int = y\n  y\n}\n")
+}
+
+fn bla_reordered_outer_reference() -> BlaReorderedResolve {
+  bla_reordered_resolve(text: "module m.t\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n")
+}
+
+test fn bla_reordered_annotation_keeps_the_initializer_outside_its_binder() -> Bool {
+  let bad = bla_reordered_self_reference()
+  let good = bla_reordered_outer_reference()
+  bad.reordered
+    && good.reordered
+    && (bad.fatal == optional_present(value: ^resolve_reason_unbound_symbol))
+    && (good.fatal == Absent)
+}

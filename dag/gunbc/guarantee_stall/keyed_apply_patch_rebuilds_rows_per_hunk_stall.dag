@@ -1,0 +1,25 @@
+module gunbc.guarantee_stall.keyed_apply_patch_rebuilds_rows_per_hunk_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// A KNOWN COPIED ACCUMULATOR, RECORDED AS AN EXISTING DEFICIT (DESIGN section 6, bare minimum cost: a
+// proven cost-shape defect is always fixed; this row bounds and names it until it is). std.change
+// keyed_apply_patch folds the patch's hunks over the row list and, per hunk, rebuilds the whole
+// accumulator with filter(acc, ..) and appends with concat -- O(rows) per hunk. Exposed by the
+// restored accumulator-copy lens in gunbc#13337, where the two clean copies in the same module were
+// fixed. Not fixed there because its result order is a contract: an Added or Modified hunk moves its
+// row to the END, and a later hunk for the same key supersedes an earlier one, so a one-pass rewrite
+// is a semantic redesign with its own witnesses rather than a mechanical rewrite.
+data keyed_apply_patch_rebuilds_rows_per_hunk_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.change keyed_apply_patch: a fold over patch hunks that copies its row accumulator (filter + concat) on every hunk",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+      "std.change keyed_apply_patch filter (KeyedDiffAddedHunk arm)",
+      "std.change keyed_apply_patch filter (KeyedDiffRemovedHunk arm)",
+      "std.change keyed_apply_patch filter (KeyedDiffModifiedHunk arm)"
+    ] },
+  next_rung_trigger: climbs_when(capability: "std.change keyed_apply_patch applies a patch with work linear in rows plus hunks -- no fold step rebuilds or re-appends the accumulated row list -- while preserving its contract that an applied Added or Modified row lands after the untouched rows in hunk order and a later hunk for a key supersedes an earlier one, established by a witness over a multi-hunk patch with a repeated key and by dag/test/claim/keyed_delta_fold_witness_test passing unchanged")
+}

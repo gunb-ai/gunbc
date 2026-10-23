@@ -1,0 +1,491 @@
+module gunbc.scm.repository_save
+
+// WRITING A REPOSITORY TO A PATH, WITH THE ADJUDICATION AHEAD OF THE WRITE.
+//
+// The mirror of `gunbc.scm.repository_load`, split from it for the reason `extdeps.languages.json`
+// splits `parse` from `emit`: reading and writing are two directions of one grammar, not one
+// operation with a mode flag. They fail differently and are consumed separately -- a caller that
+// only loads must not link a writer.
+//
+// THIS MODULE EXISTS BECAUSE `encode_repository` CANNOT REFUSE. It returns a JsonValue, so its only
+// honest treatment of an unrepresentable repository is an empty reference that `decode_repository`
+// rejects later. `repository_envelope`'s header states the consequence, the whole reason this
+// module calls the CHECKED encoder: by the time an unrepresentable repository is caught on load,
+// the bytes are on disk, the write has reported success, and the corruption surfaces to WHOEVER
+// LOADS IT rather than whoever caused it. Lifting the adjudication ahead of the write keeps the
+// fault with its author.
+//
+// SO THE ORDER IS LOAD-BEARING, NOT INCIDENTAL: encode-checked, THEN write. No arm in this type
+// reports a write for a repository that failed adjudication, because no such call is made -- the
+// refusal returns before `Filesystem.Write` is reached. That is the construction form of the rule
+// (DESIGN section 5), not a check that the write was skipped.
+//
+// THE THREE ARMS HAVE TWO DIFFERENT OWNERS, the same discipline the load side carries:
+//
+//   save refused by codec  the CALLER's fact about the VALUE. This repository cannot be written by
+//                          any writer to any path: a commit root absent from the store, a checkout
+//                          selecting a commit that is not there. Changing the path does not help.
+//   file unwritable        the HOST's fact about the PATH. The repository is well-formed; the
+//                          directory is missing, or read-only, or the disk is full. Changing the
+//                          path may well help.
+//
+// Collapsing them would tell a caller to fix their repository when their directory is read-only,
+// or to check permissions when their repository is inconsistent. Opposite remedies, as on the load
+// side.
+//
+// EVERY ARM CARRIES THE PATH, as the load arms do: a refusal that does not say what it was writing
+// is not located.
+//
+// NOT `WriteOwnerOnly`. A repository document is not a secret, and narrowing its mode here would be
+// a deployment policy fact smuggled into the persistence operation -- the layer inversion DESIGN
+// section 3 names. A caller with a confidentiality requirement states it; this module does not
+// decide it on their behalf.
+
+import std.types { String, Int }
+import std.content_hash {
+  content_hash_eq_structural,
+  Fnv1a64Structural,
+}
+import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEstablishedAbsence, filesystem_established_absence_path, filesystem_listing_names_entry }
+import extdeps.languages.json.emit { serialize_json, JsonValue }
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { nat_magnitude }
+import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for, shard_partition, shard_members_of, shard_identity_of, shard_roster_of, envelope_parent_dir, envelope_file_name }
+import gunbc.scm.object_store { ScmObject, scm_object_identity, store_unrostered_objects, WholeResidence, PartialResidence }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryEncodeOutcome,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  RepositoryEncodeRefusal,
+  encode_repository_checked,
+  encode_repository_sharded_checked,
+  encode_repository_appended_checked,
+  appended_shards_and_rows,
+  repository_generation_of_content,
+}
+
+// THE BYTE COUNT IS A MAGNITUDE, NOT A NUMBER, and it is carried as one. `ByteSize` is
+// `std.measure`'s `Measure<Memory, One, Nat>`, the single authority for a quantity of bytes, so
+// this row reuses the magnitude the repository already models rather than a bare `Int` whose unit
+// lives only in a field name. The raw scalar is legitimate at the `extdeps.filesystem` boundary
+// under cited-spec fidelity -- the host really does report an `Int` -- and what the rule forbids
+// is propagating it inward, the step this type used to take (review 56828).
+//
+// AND THE CROSSING REFUSES RATHER THAN CLAMPS, which is why there is a fourth arm. `ByteSize`
+// counts a `Nat`, the host reports an `Int`, and the only available crossing
+// (`std.checked_arithmetic` `nat_magnitude`) takes an ABSOLUTE VALUE -- applied to a negative it
+// would turn a nonsense report into a plausible byte count, the fabricated-plausible-output
+// failure in one line. So the negative is refused as its own arm carrying what the host said, and
+// `nat_magnitude` is applied only on the non-negative domain where it is the identity. A boundary
+// obligation (DESIGN section 4b): external reality observed, typed, and admitted or refused -- not
+// a class on the ladder, so no next-rung trigger.
+//
+// `RepositorySaved.generation` is the hash of the index bytes that write just committed -- the
+// same `repository_generation_of_content` a later load or CAS observe will compute from that
+// file -- so a writer that must persist again (a seed, then a capture) forwards this rather than
+// re-encoding.
+//
+// NO WITNESS COVERS THAT FOURTH ARM AND THAT IS A LIMIT, NOT AN OVERSIGHT. Reaching it requires a
+// host write that SUCCEEDS and then reports a negative count, which no substrate-only fixture can
+// author -- this module's witness is `SubstrateInputsOnly`, and a real write refuses at the
+// hermetic boundary before any count is produced. So the arm is reachable by the mechanism and
+// unreachable by any input this repository can currently express. It is kept because the
+// alternative is not "no arm" but `nat_magnitude` silently turning the negative into a byte
+// count; deleting the arm would delete the refusal, not the case.
+//
+// THE GUARDED ENTRY GROWS THE OUTCOME RATHER THAN THIS TYPE, for the reason init.dag's fold and
+// render.dag's renderer state: RepositorySave's existing consumers answer questions an
+// unguarded write can ask (init's create, the renderer's lines), and arming them to match
+// guard-only refusals they can never produce would be the callee-arm-carried-past-its-exclusion
+// shape this stack keeps removing. The compare-and-set refusals live on
+// RepositoryGuardedSave beside an arm embedding RepositorySave whole, so one save vocabulary
+// serves both entries and no consumer matches an arm its route cannot construct.
+type RepositorySave
+  = RepositorySaved { path: String, written: ByteSize, generation: Fnv1a64Structural }
+  | RepositorySaveRefusedByCodec { path: String, cause: RepositoryEncodeRefusal }
+  | RepositoryFileUnwritable { path: String, error: String }
+  | RepositoryWriteByteCountUnrepresentable { path: String, reported: Int }
+
+// THE GENERATION A GUARDED SAVE EXPECTS ON DISK, as one sealed question. GenerationExpected
+// carries the hash the writer's load observed; GenerationExpectedAbsent records that the load
+// observed NO envelope -- the first-save case. The distinction is carried as data rather than a
+// bare optional because the two expectations refuse differently when the disk disagrees: an
+// observed generation that no longer matches is STALE, while an observed absence that is no longer
+// absent means an envelope APPEARED, and "someone else saved after you loaded" and "someone
+// created what you saw as empty" are different facts about different remedies, not one boolean's
+// two values.
+type RepositoryGenerationExpectation
+  = GenerationExpected(Fnv1a64Structural)
+  | GenerationExpectedAbsent
+
+// THE PURE HALF OF THE COMPARE-AND-SET GUARD, separated from the effects so a witness reaches
+// every arm at the hermetic boundary. The judgment is total over (expectation, observed
+// generation): an absent on-disk envelope ADMITS, because a save over absence destroys nothing --
+// the first-save path stays admissible, and an envelope that vanished between load and save
+// leaves nothing a stale writer could clobber. A present on-disk generation that differs from
+// what the writer observed -- in either direction, older or newer -- is STALE, and the refusal
+// carries BOTH identities, because a stale refusal that names only one side sends its operator to
+// compare against a generation they cannot see.
+type RepositoryGenerationAdmission
+  = RepositoryGenerationAdmitted
+  | RepositoryGenerationStale { expected: RepositoryGenerationExpectation, found: Fnv1a64Structural }
+
+fn admit_repository_generation(
+  expected: RepositoryGenerationExpectation,
+  found: Fnv1a64Structural?,
+) -> RepositoryGenerationAdmission {
+  match found {
+    Absent => RepositoryGenerationAdmitted
+    Present { value: on_disk } =>
+      match expected {
+        GenerationExpectedAbsent =>
+          RepositoryGenerationStale { expected: expected, found: on_disk }
+        GenerationExpected(observed) =>
+          if content_hash_eq_structural(left: observed, right: on_disk) {
+            RepositoryGenerationAdmitted
+          } else {
+            RepositoryGenerationStale { expected: expected, found: on_disk }
+          }
+      }
+  }
+}
+
+// WHAT THE GUARD OBSERVED AT THE ENVELOPE'S ADDRESS, one instant before the write. Absence is
+// established by a successful listing never naming the file -- the same rule the belt's envelope
+// observation carries -- and a listed-then-unreadable envelope is UNOBSERVABLE, not absent: a
+// compare-and-set decided on a guess would be worse than none, so the guard fails closed and the
+// save refuses.
+type EnvelopeGenerationObservation
+  = EnvelopeGenerationObserved { found: Fnv1a64Structural? }
+  | EnvelopeGenerationUnobservable { error: String }
+
+fn observe_envelope_generation(path: String) -> EnvelopeGenerationObservation {
+  let listing = Filesystem.List(path: envelope_parent_dir(path: path))
+  if !listing.success {
+    EnvelopeGenerationUnobservable {
+      error: join(["the envelope's directory could not be listed, so the on-disk generation is unknown: ", listing.error], ""),
+    }
+  } else if !filesystem_listing_names_entry(listing: listing.entries, name: envelope_file_name(path: path)) {
+    EnvelopeGenerationObserved { found: none }
+  } else {
+    let read = Filesystem.Read(path: path)
+    if read.success {
+      EnvelopeGenerationObserved { found: Present { value: repository_generation_of_content(content: read.content) } }
+    } else {
+      EnvelopeGenerationUnobservable {
+        error: join(["the envelope is listed but could not be read, so the on-disk generation is unknown: ", read.error], ""),
+      }
+    }
+  }
+}
+
+// THE OUTCOME OF A COMPARE-AND-SET GUARDED SAVE. The embedded arm carries the unguarded save
+// outcome whole -- codec refusal, unwritable path, nonsense byte count, and success are the same
+// facts under a guard as without one -- and the two guard-only arms name the ways a compare-and-set
+// can refuse: the on-disk generation moved since the writer loaded (STALE, carrying both
+// identities), or the on-disk generation could not be observed at all (so the set half of the
+// compare-and-set cannot run, and the save fails closed rather than writing unguarded).
+type RepositoryGuardedSave
+  = RepositoryGuardedSaveOutcome(RepositorySave)
+  | RepositoryStaleGenerationRefused { path: String, expected: RepositoryGenerationExpectation, found: Fnv1a64Structural }
+  | RepositoryGuardedSaveUnobservable { path: String, error: String }
+
+// CREATING A REPOSITORY IS NOT SAVING ONE, AND THE DIFFERENCE IS THE WRITE ITSELF.
+//
+// save_repository writes unconditionally, which is correct for its subject: persisting a repository
+// that already exists must replace the bytes that are there. Initialization is the opposite subject
+// -- it must happen ONLY where nothing exists -- and for a long time it was expressed as "observe an
+// absence, then call save_repository". That is two operations with a gap, and an actor creating the
+// file in the gap makes the save truncate exactly the bytes the observation was taken to protect.
+// The observation was honest; the write was not conditioned on it.
+//
+// No re-observation closes that. The fix is that the existence test and the creation become ONE act,
+// which is what Filesystem.WriteCreateNew provides -- so this function refuses a path that exists
+// rather than checking whether it exists. Construction over validation (DESIGN section 5) at a
+// boundary where validation structurally cannot win.
+//
+// The refusal reuses RepositoryFileUnwritable rather than minting a create-specific arm: the caller's
+// remedy is the same -- the bytes are not yours to write and the host says why -- and the error text
+// is the host's own. A second arm would be a second spelling of one outcome (section 3), and one that
+// classified the cause from the error TEXT would be a heuristic standing in for an observation.
+// THE CREATE THAT AN ESTABLISHED ABSENCE AUTHORIZES, AND THE ONLY ONE IT CAN.
+//
+// create_repository below takes a bare String, which is right for its own subject -- a caller that
+// has some other reason to create at a path may use it. It is the WRONG entry for a caller whose
+// permission came from an absence, because taking the token and a separate path lets the two name
+// different subjects and nothing detects it. Review on gunbc#10026 found exactly that: init matched
+// ScmInitMayCreate(_), threw the token away, and wrote to an independently computed path.
+//
+// So the absence-authorized create derives its target from the token itself. There is no second
+// target to disagree with, which is the difference between a capability that is CONSUMED and one
+// that is merely carried past the actuation.
+fn repository_saved_from_write(path: String, content: String, bytes_written: Int) -> RepositorySave {
+  if bytes_written < 0 {
+    RepositoryWriteByteCountUnrepresentable { path: path, reported: bytes_written }
+  } else {
+    RepositorySaved {
+      path: path,
+      written: byte_size(count: nat_magnitude(a: bytes_written)),
+      generation: repository_generation_of_content(content: content),
+    }
+  }
+}
+
+fn repository_generation_expected_after_save(generation: Fnv1a64Structural) -> RepositoryGenerationExpectation {
+  GenerationExpected(generation)
+}
+
+fn create_repository_at_absence(
+  absence: FilesystemEstablishedAbsence,
+  repo: RepositoryEnvelope,
+) -> RepositorySave {
+  create_repository(path: filesystem_established_absence_path(absence: absence), repo: repo)
+}
+
+fn create_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      let content = serialize_json(v: v)
+      let write = Filesystem.WriteCreateNew(path: path, content: content)
+      if !write.success {
+        RepositoryFileUnwritable { path: path, error: write.error }
+      } else {
+        repository_saved_from_write(path: path, content: content, bytes_written: write.bytes_written)
+      }
+    }
+  }
+}
+
+fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      let content = serialize_json(v: v)
+      let write = Filesystem.Write(path: path, content: content)
+      if !write.success {
+        RepositoryFileUnwritable { path: path, error: write.error }
+      } else {
+        repository_saved_from_write(path: path, content: content, bytes_written: write.bytes_written)
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SHARDED WRITE (v7). The index document is the commit point: shards go down first (write-once
+// -- a shard's name is its content identity, so an existing shard with that name already holds
+// these bytes, and it is skipped rather than rewritten), and the index is written LAST, so an
+// interrupted save leaves the previous index naming only shards that exist. A save after one
+// candidate's change rewrites that candidate's few new shards and the small index, never another
+// object's bytes -- the delta write the monolith could not express.
+//
+// THE SHARDS ARE FLAT SIBLINGS OF THE INDEX, because the Filesystem interface has no mkdir and the
+// directories a repository lives in already exist: an envelope at <dir>/<name>.gunbc-repository.json
+// shards into <dir>/<name>.object.<digest>.json.
+// ------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+type ShardWriteAcc {
+  written: Int
+  refused: String?
+}
+
+// ONE ORDERING AUTHORITY FEEDS BOTH THE FILES AND THE ROSTER: the shard writer partitions the
+// store's OWN order -- the exact list the index encoder rosters -- so the files written and the
+// names named can never disagree (the first grain rostered a dependency re-sort while writing a
+// raw partition, and named fourteen files with only twelve in common; the fix is not to re-sort
+// harder but to stop re-sorting). The stored order loads back exactly as written and store
+// mutations append, so a save after one candidate's change rewrites the open tail shard and the
+// index, never a sealed shard's bytes.
+fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardWriteAcc {
+  let parent_dir = envelope_parent_dir(path: envelope_path)
+  let listing = Filesystem.List(path: parent_dir)
+  if !listing.success {
+    ShardWriteAcc {
+      written: 0,
+      refused: Present {
+        value: join(["the envelope's directory could not be listed, so which shards exist is unknown: ", parent_dir, " (", listing.error, ")"], ""),
+      },
+    }
+  } else {
+    let present = fold(
+      split(s: listing.entries, delimiter: "\n") |> filter(e => trim(e) != ""),
+      init: empty_map(),
+      f: fn(acc, name) { map_insert(acc, trim(name), true) },
+    )
+    fold(
+      shard_partition(objects: objects),
+      init: ShardWriteAcc { written: 0, refused: none },
+      f: fn(acc, shard) {
+        match acc.refused {
+          Present { value: _ } => acc
+          Absent => {
+            let digest = shard_identity_of(member_digests: shard_members_of(objects: shard))
+            let shard_name = object_shard_name_for(envelope_path: envelope_path, identity_digest: digest)
+            match map_lookup(m: present, key: shard_name) {
+              Present { value: _ } => acc
+              Absent => {
+                let shard_path = object_shard_path_for(envelope_path: envelope_path, identity_digest: digest)
+                let write = Filesystem.Write(
+                  path: shard_path,
+                  content: object_shard_json_text(objects: shard),
+                )
+                if write.success {
+                  ShardWriteAcc { written: acc.written + 1, refused: none }
+                } else {
+                  ShardWriteAcc {
+                    written: acc.written,
+                    refused: Present { value: join(["the object shard could not be written: ", shard_path, " (", write.error, ")"], "") },
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+    )
+  }
+}
+
+// THE SHARDED WRITE'S SHARED TAIL: shards first (write-once, content-named, skipped when present),
+// the index last, so an interrupted save leaves the previous index naming only shards that exist.
+// Both the unguarded entry and the guarded entry reach this only through the checked encoder --
+// the adjudication stays ahead of every write either way.
+// THE OBJECTS THIS SAVE MUST WRITE, AND THE SHARDS THE INDEX IT WRITES WILL ROSTER. A whole store
+// writes every object (sealed shards are skipped by name); a partial store -- one loaded through
+// load_repository_indexed -- writes only its unrostered objects and extends the persisted roster,
+// so a capture's save is denominated in the change. The two are one verb because which applies is a
+// fact about the store, not a choice the caller makes.
+type ShardedSavePlan {
+  encoded: RepositoryEncodeOutcome
+  objects: List<ScmObject>
+  shards: List<String>
+}
+
+// ONE MATCH ON THE STORE'S DECLARED RESIDENCE decides the encoder, the objects written and the shard
+// roster the index will carry, so the three cannot be chosen from different answers.
+fn sharded_save_plan(repo: RepositoryEnvelope) -> ShardedSavePlan {
+  match repo.store.residence {
+    WholeResidence =>
+      ShardedSavePlan {
+        encoded: encode_repository_sharded_checked(repo: repo),
+        objects: repo.store.objects,
+        shards: shard_roster_of(objects: repo.store.objects),
+      }
+    PartialResidence { rostered: _, shards: _, materialized: _ } =>
+      ShardedSavePlan {
+        encoded: encode_repository_appended_checked(repo: repo),
+        objects: store_unrostered_objects(store: repo.store),
+        shards: appended_shards_and_rows(store: repo.store).shards,
+      }
+  }
+}
+
+// THE INDEX IS WRITTEN LAST AND ONLY OVER SHARDS THAT ARE THERE. After the shard writes the
+// directory is listed again and every shard the new index will roster must be present; a missing
+// one refuses before the index moves, so an interrupted or partially failed save leaves the previous
+// index -- and everything it rosters -- intact and loadable.
+fn missing_rostered_shard(envelope_path: String, shards: List<String>) -> String? {
+  let listing = Filesystem.List(path: envelope_parent_dir(path: envelope_path))
+  if !listing.success {
+    Present { value: join(["the envelope's directory could not be re-listed to confirm the shards: ", listing.error], "") }
+  } else {
+    let present = fold(
+      split(s: listing.entries, delimiter: "\n") |> filter(e => trim(e) != ""),
+      init: empty_map(),
+      f: fn(acc, name) { map_insert(acc, trim(name), true) },
+    )
+    fold(shards, init: none, f: fn(found, digest) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match map_lookup(m: present, key: object_shard_name_for(envelope_path: envelope_path, identity_digest: digest)) {
+            Present { value: _ } => none
+            Absent => Present { value: join(["the index would roster shard ", digest, " but it is not present after the shard writes"], "") }
+          }
+      }
+    })
+  }
+}
+
+fn persist_sharded_repository(path: String, plan: ShardedSavePlan, v: JsonValue) -> RepositorySave {
+  match save_object_shards(envelope_path: path, objects: plan.objects) {
+    ShardWriteAcc { written: _, refused } =>
+      match refused {
+        Present { value: detail } =>
+          RepositoryFileUnwritable { path: path, error: detail }
+        Absent =>
+      match missing_rostered_shard(envelope_path: path, shards: plan.shards) {
+        Present { value: detail } =>
+          RepositoryFileUnwritable { path: path, error: detail }
+        Absent => {
+          let content = serialize_json(v: v)
+          let write = Filesystem.Write(path: path, content: content)
+          if !write.success {
+            RepositoryFileUnwritable { path: path, error: write.error }
+          } else {
+            repository_saved_from_write(path: path, content: content, bytes_written: write.bytes_written)
+          }
+        }
+      }
+      }
+  }
+}
+
+fn save_repository_sharded(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  let plan = sharded_save_plan(repo: repo)
+  match plan.encoded {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } =>
+      persist_sharded_repository(path: path, plan: plan, v: v)
+  }
+}
+
+// THE COMPARE-AND-SET GUARDED SAVE. The adjudication order is the module's own law, one level
+// deeper: encode-checked FIRST (a repository that no writer can write refuses before the
+// filesystem is consulted), THEN the generation observation, THEN the write -- so no arm in this
+// type reports a write for a repository that failed adjudication, and no stale arm performs one.
+// The caller's expectation is the generation its load observed (RepositoryLoaded carries it beside
+// the envelope for exactly this), or GenerationExpectedAbsent when the load observed no envelope;
+// the guard refuses when the disk no longer matches that observation, which is the whole content
+// of the protection. The 2026-09-22 incident was a stale writer -- a save derived from a
+// commit-0-only load, executed four minutes after a capture had persisted ordinal 1 -- silently
+// rewinding the envelope, and no arm existed to say the world had moved.
+//
+// THE REFUSAL IS THE GUARD'S ONLY EFFECT ON A STALE WORLD: the stale arm returns before
+// persist_sharded_repository is reachable, so a refused guarded save leaves every byte on disk --
+// shards and index -- exactly as it found them, and the next tick's fresh load re-derives the
+// write against the generation that is actually there.
+fn save_repository_sharded_guarded(
+  path: String,
+  repo: RepositoryEnvelope,
+  expected: RepositoryGenerationExpectation,
+) -> RepositoryGuardedSave {
+  let plan = sharded_save_plan(repo: repo)
+  match plan.encoded {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: path, cause: cause })
+    RepositoryEncoded { value: v } =>
+      match observe_envelope_generation(path: path) {
+        EnvelopeGenerationUnobservable { error } =>
+          RepositoryGuardedSaveUnobservable { path: path, error: error }
+        EnvelopeGenerationObserved { found } =>
+          match admit_repository_generation(expected: expected, found: found) {
+            RepositoryGenerationAdmitted =>
+              RepositoryGuardedSaveOutcome(persist_sharded_repository(path: path, plan: plan, v: v))
+            RepositoryGenerationStale { expected: stale_expected, found: stale_found } =>
+              RepositoryStaleGenerationRefused { path: path, expected: stale_expected, found: stale_found }
+          }
+      }
+  }
+}

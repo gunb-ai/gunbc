@@ -1,0 +1,243 @@
+module v2.test.claim.normalize.service_spine
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.symbol_index { LexicalAmbiguous, LexicalHit, LexicalUnbound, SymbolIndex, empty_symbol_index, symbol_index_lexical_lookup, symbol_index_lookup }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, symbol_intern_lexeme }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SERVICE SPINE (v2.compiler.body_lowering_fold body_lower_service_node; v2.compiler.namespace_graft
+// namespace_graft_merge_namespace_bodies; ruling 2026-10-01). A dotted service name lowers one segment per
+// part, every prefix a marked namespace body, and the graft merges same-named marked bodies, so an
+// operation's declaration path is <module>.<service segments...>.<Op>. The controls the ruling names:
+// two services under one prefix reach distinct paths; only marked bodies merge (a marked body and an
+// unmarked declaration of one name refuse, and so does a service declared twice); and a merged body
+// grants no scope (a member of s.F does not see s.E's names unqualified).
+
+data two_under_one_prefix_source: String = "module m\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+data body_against_declaration_source: String = "module m\n\nservice s.F {\n  operation Run {}\n}\n\ndata s: Int = 1\n"
+data repeated_service_source: String = "module m\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.F {\n  operation Get {}\n}\n"
+
+fn ss_index_holds(text: String, path: FreeMonoid<String>) -> Bool {
+  match conservation_subject_of_text(path: "probe_service_spine.dag", text: text).normalized {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match symbol_index_lookup(
+        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: normalized_tree_roots_to_binding_sources(roots: Cons { head: tree, tail: Empty })),
+        qualified_path: Cons { head: ^m, tail: path |> map(s => symbol_intern_lexeme(lexeme: s)) }
+      ) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+fn ss_refused_as_repeated(text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_service_spine.dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^namespace_graft_declaration_name_repeated
+  }
+}
+
+// Each fact is computed ONCE as a nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share,
+// and each claim reads it: normalizing a module inside every claim put the claims over the new-witness
+// eval-step budget.
+fn ss_two_under_one_prefix_paths() -> Bool {
+  ss_index_holds(text: two_under_one_prefix_source, path: ["s", "F", "Run"])
+    && ss_index_holds(text: two_under_one_prefix_source, path: ["s", "E", "Get"])
+    && !ss_index_holds(text: two_under_one_prefix_source, path: ["s", "F", "Get"])
+}
+
+fn ss_body_against_declaration_refused() -> Bool {
+  ss_refused_as_repeated(text: body_against_declaration_source)
+}
+
+fn ss_repeated_service_refused() -> Bool {
+  ss_refused_as_repeated(text: repeated_service_source)
+}
+
+test fn two_services_under_one_prefix_reach_distinct_operation_paths_holds() -> Bool {
+  ss_two_under_one_prefix_paths()
+}
+
+test fn a_namespace_body_and_a_declaration_of_one_name_refuse_holds() -> Bool {
+  ss_body_against_declaration_refused()
+}
+
+test fn a_service_declared_twice_refuses_holds() -> Bool {
+  ss_repeated_service_refused()
+}
+
+// NO SCOPE: s.F's input names `Get`, an operation of the sibling service s.E. The merged body is a path
+// segment, never a lexical frame, so the unqualified name does not resolve and the program refuses;
+// the same program with a resolvable type is admitted, so the refusal is the name and not the shape.
+data sibling_name_leak_source: String = "module p\n\nservice s.F {\n  operation Run {\n    input { x: Get }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+data sibling_name_control_source: String = "module p\n\nservice s.F {\n  operation Run {\n    input { x: Int }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"
+
+fn ss_scope_control_admitted() -> Bool {
+  tpb_accepts(o: tpb_assemble(src: sibling_name_control_source))
+}
+
+fn ss_scope_leak_refused() -> Bool {
+  !tpb_accepts(o: tpb_assemble(src: sibling_name_leak_source))
+}
+
+test fn a_merged_namespace_body_grants_no_scope_holds() -> Bool {
+  ss_scope_control_admitted() && ss_scope_leak_refused()
+}
+
+// A SERVICE NAMESPACE IS A LOOKUP BOUNDARY (v2.std.symbol_index NamespaceBodyDeclared; the operator's
+// nesting ban). The index is filled from a really normalized module, once (WARM), and the claims ask
+// the unqualified walk (symbol_index_lexical_lookup) from inside `s.F.Run`: a bare sibling segment `E`
+// and a bare enclosing segment `s` are unbound, while their qualified paths stay indexed; the module's
+// own `k` still binds bare from the same position, so the walk ascends past the boundary rather than
+// stopping. The recursive case: from inside `s.a.x.Run`, neither `y` (a sibling under s.a) nor `a`
+// binds bare, and `s.a.y` stays indexed.
+data boundary_source: String = "module p\n\ndata k: Int = 1\n\nservice s.F {\n  operation Run {}\n}\n\nservice s.E {\n  operation Get {}\n}\n\nservice s.a.x {\n  operation Run {}\n}\n\nservice s.a.y {\n  operation Get {}\n}\n"
+
+fn ss_boundary_index() -> Optional<SymbolIndex> {
+  match conservation_subject_of_text(path: "probe_service_spine.dag", text: boundary_source).normalized {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      Present { value: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: normalized_tree_roots_to_binding_sources(roots: Cons { head: tree, tail: Empty })) }
+  }
+}
+
+fn ss_path(segments: FreeMonoid<String>) -> FreeMonoid<Symbol> {
+  Cons { head: ^p, tail: segments |> map(s => symbol_intern_lexeme(lexeme: s)) }
+}
+
+fn ss_binds_bare(index: SymbolIndex, from: FreeMonoid<String>, name: String) -> Bool {
+  match symbol_index_lexical_lookup(index: index, position: ss_path(segments: from), name: symbol_intern_lexeme(lexeme: name)) {
+    LexicalHit { node: _, path: _ } => true
+    LexicalAmbiguous { candidates: _ } => false
+    LexicalUnbound => false
+  }
+}
+
+fn ss_indexed(index: SymbolIndex, segments: FreeMonoid<String>) -> Bool {
+  match symbol_index_lookup(index: index, qualified_path: ss_path(segments: segments)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ss_boundary_holds(index: SymbolIndex) -> Bool {
+  !ss_binds_bare(index: index, from: ["s", "F", "Run"], name: "E")
+    && !ss_binds_bare(index: index, from: ["s", "F", "Run"], name: "s")
+    && ss_indexed(index: index, segments: ["s", "E"])
+    && ss_indexed(index: index, segments: ["s"])
+    && ss_binds_bare(index: index, from: ["s", "F", "Run"], name: "k")
+    && !ss_binds_bare(index: index, from: ["s", "a", "x", "Run"], name: "y")
+    && !ss_binds_bare(index: index, from: ["s", "a", "x", "Run"], name: "a")
+    && ss_indexed(index: index, segments: ["s", "a", "y"])
+}
+
+test fn a_service_namespace_is_a_lookup_boundary_holds() -> Bool {
+  match ss_boundary_index() {
+    Present { value: index } => ss_boundary_holds(index: index)
+    Absent => false
+  }
+}
+
+// THE SAME BOUNDARY ON THE FULL RESOLVE ROUTE. Resolve consults the module root's bindings
+// (v2.compiler.resolve build_program_namespace / v2.compiler.name_resolve admit_named_exports) before
+// the symbol index, so the index-walk control above cannot see a leak there. Each program below is
+// assembled for real (tpb_assemble, the ingest-to-resolved-tree route), once, WARM. From inside
+// `s.F.Run`, a bare `s` (the enclosing prefix) and a bare `E` (the sibling service) refuse as unbound;
+// the module's own `K` binds bare from the same position; and the module-qualified `p.s.E.Get` resolves
+// while `p.s.E.Nope` refuses as unbound, so the qualified path is resolved and not merely tolerated. A
+// path that starts at the prefix (`s.E.Get`) resolves its head bare, which is exactly the lookup the
+// ban removes, so it refuses too.
+fn ss_route_source(param_type: String) -> String {
+  concat("module p\n\ntype K = Int\n\nservice s.F {\n  operation Run {\n    input { x: ", concat(param_type, " }\n  }\n}\n\nservice s.E {\n  operation Get {}\n}\n"))
+}
+
+fn ss_route_bare_prefix() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: ss_route_source(param_type: "s"))
+}
+
+fn ss_route_bare_sibling() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: ss_route_source(param_type: "E"))
+}
+
+fn ss_route_module_name() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: ss_route_source(param_type: "K"))
+}
+
+fn ss_route_qualified() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: ss_route_source(param_type: "p.s.E.Get"))
+}
+
+fn ss_route_qualified_missing() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: ss_route_source(param_type: "p.s.E.Nope"))
+}
+
+test fn a_service_namespace_does_not_bind_bare_on_the_resolve_route_holds() -> Bool {
+  tpb_refuses_with(o: ss_route_bare_prefix(), reason: ^resolve_reason_unbound_symbol)
+    && tpb_refuses_with(o: ss_route_bare_sibling(), reason: ^resolve_reason_unbound_symbol)
+    && tpb_accepts(o: ss_route_module_name())
+    && tpb_accepts(o: ss_route_qualified())
+    && tpb_refuses_with(o: ss_route_qualified_missing(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// AN EXPLICIT IMPORT IS THE SANCTIONED ROUTE (XL-2 manager ruling, 2026-10-02). The ban governs a
+// module's OWN service namespaces; name_resolve admits an imported module's exports under
+// ImportedModuleExports, which withholds nothing. Module `a`, which imports `t`, reaches t's service
+// operation as `t.s.F.Run`, and the same module's `t.s.F.Nope` refuses as unbound, so the path is
+// resolved and not merely tolerated. (A module that does NOT import `t` also resolves the absolute
+// `t.s.F.Run` on this route -- absolute qualified paths resolve through the corpus index whether or not
+// the module is imported, measured 2026-10-02 -- so a non-importer is not a discriminating contrast.)
+// Each program is assembled for real over both sources, once, WARM. (A bare-headed `s.F.Run` through an
+// import does not resolve on main for ANY service, a one-segment one included, by brace or whole-module
+// import; that is an import-admission gap independent of the spine, measured 2026-10-02.)
+data ss_import_target_source: String = "module t\n\nservice s.F {\n  operation Run {}\n}\n"
+data ss_importer_source: String = "module a\n\nimport t\n\nfn f(x: t.s.F.Run) -> Int { 1 }\n"
+data ss_importer_missing_source: String = "module a\n\nimport t\n\nfn f(x: t.s.F.Nope) -> Int { 1 }\n"
+
+data ss_import_target_artifact: Artifact = Artifact { kind: SourceFile, id: ^ss_import_target_artifact, file_path: "src/v2/pilot/ss_import_target.dag" }
+data ss_import_subject_artifact: Artifact = Artifact { kind: SourceFile, id: ^ss_import_subject_artifact, file_path: "src/v2/pilot/ss_import_subject.dag" }
+
+fn ss_import_witness(src: String, artifact: Artifact, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: unit, source_root: V2Tree }
+}
+
+fn ss_import_assemble(subject_src: String, subject: Symbol, imports: FreeMonoid<Import>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: ss_import_witness(src: ss_import_target_source, artifact: ss_import_target_artifact, unit: ^ss_import_target_cu),
+      tail: Cons { head: ss_import_witness(src: subject_src, artifact: ss_import_subject_artifact, unit: ^ss_import_subject_cu), tail: Empty }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: subject, tail: Empty } }, imports: imports },
+    lm: dag_language_model()
+  )
+}
+
+fn ss_importer_assembled() -> Outcome<ResolvedTree> {
+  ss_import_assemble(subject_src: ss_importer_source, subject: ^a, imports: Cons { head: Import { target: Cons { head: ^t, tail: Empty }, visibility: ImportVisible }, tail: Empty })
+}
+
+fn ss_importer_missing_assembled() -> Outcome<ResolvedTree> {
+  ss_import_assemble(subject_src: ss_importer_missing_source, subject: ^a, imports: Cons { head: Import { target: Cons { head: ^t, tail: Empty }, visibility: ImportVisible }, tail: Empty })
+}
+
+test fn an_imported_service_resolves_through_the_import_holds() -> Bool {
+  tpb_accepts(o: ss_importer_assembled())
+    && tpb_refuses_with(o: ss_importer_missing_assembled(), reason: ^resolve_reason_unbound_symbol)
+}

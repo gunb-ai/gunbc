@@ -1,0 +1,175 @@
+module product.compute_board.analog
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
+  TerminalIdentity,
+  net_contains_terminal,
+  terminal_ref,
+  terminal_ref_equal,
+}
+import std.measure { Measure, Resistance, Capacitance, Volt, Kilo, Nano }
+
+// THE ANALOG CIRCUIT INTENT, LANGUAGE-NEUTRAL. This replaces a BoardSlice that the board article
+// used to hold directly — a type imported from the SPICE projection, carrying SPICE NodeRefs,
+// substrate Symbols and value_lexeme strings. The dependency ran article to projection, which is
+// backwards: the supposed authority was shaped by one of its targets, so 'the article feeds every
+// interface' was true only in the sense that one interface had already decided what the article
+// looked like. WHAT CHANGED, CONCRETELY: component values are typed magnitudes on std.measure's
+// existing Resistance, Capacitance and ElectricPotentialDifference quantities — which were already
+// in the corpus, so this needed no new authority and was never blocked on one. '10k' and '100n' are
+// gone from the model; the SPICE projection now derives those spellings, including the scale
+// suffix, because a suffix is target syntax and belongs where the target lives. TERMINALS AND NETS
+// ARE IDENTITIES, not strings: a net references terminals by component and terminal identity, so
+// 'is this terminal on that net' is a decidable join rather than a spelling coincidence between two
+// prose fields.
+
+// A COMPONENT'S KIND AND ITS VALUE ARE ONE FACT, NOT TWO. An earlier revision carried an
+// AnalogComponentRole beside an AnalogComponentValue, which made a resistor rated in nanofarads
+// perfectly constructible — two independently writable fields whose agreement nothing enforced.
+// A projection then had to decide what a capacitive resistor means, and every such decision is
+// wrong. Here the kind IS the constructor and the value rides inside it, so the invalid state has
+// no representation rather than being refused after the fact (DESIGN §5: construction over
+// validation).
+//
+// The magnitudes are NONNEGATIVE deliberately. Measure permits an Int carrier, but a resistance
+// or capacitance RATING has no negative value; signed quantities belong to potential relative to
+// a reference and current relative to a chosen direction, which are different concepts and are
+// not modelled here.
+type ElectricalComponentInstance
+  = ResistorInstance {
+      identity: ComponentInstanceIdentity,
+      part: NonEmptyStr,
+      positive_terminal: TerminalIdentity,
+      negative_terminal: TerminalIdentity,
+      resistance: Measure<Resistance, Kilo, Nat>,
+    }
+  | CapacitorInstance {
+      identity: ComponentInstanceIdentity,
+      part: NonEmptyStr,
+      positive_terminal: TerminalIdentity,
+      negative_terminal: TerminalIdentity,
+      capacitance: Measure<Capacitance, Nano, Nat>,
+    }
+  | IndependentVoltageSourceInstance {
+      identity: ComponentInstanceIdentity,
+      part: NonEmptyStr,
+      positive_terminal: TerminalIdentity,
+      negative_terminal: TerminalIdentity,
+      potential_difference: Volt,
+    }
+
+fn component_identity(c: ElectricalComponentInstance) -> ComponentInstanceIdentity {
+  match c {
+    ResistorInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, resistance: _ } => i
+    CapacitorInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, capacitance: _ } => i
+    IndependentVoltageSourceInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, potential_difference: _ } => i
+  }
+}
+
+fn component_part(c: ElectricalComponentInstance) -> NonEmptyStr {
+  match c {
+    ResistorInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, resistance: _ } => p
+    CapacitorInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, capacitance: _ } => p
+    IndependentVoltageSourceInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, potential_difference: _ } => p
+  }
+}
+
+fn component_positive_terminal(c: ElectricalComponentInstance) -> TerminalIdentity {
+  match c {
+    ResistorInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, resistance: _ } => t
+    CapacitorInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, capacitance: _ } => t
+    IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, potential_difference: _ } => t
+  }
+}
+
+fn component_negative_terminal(c: ElectricalComponentInstance) -> TerminalIdentity {
+  match c {
+    ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, resistance: _ } => t
+    CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, capacitance: _ } => t
+    IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, potential_difference: _ } => t
+  }
+}
+
+type AnalogCircuitIntent {
+  title: NonEmptyStr
+  components: List<ElectricalComponentInstance>
+  nets: List<ElectricalNet>
+}
+
+// WHICH MODEL CHARACTERIZES A PART, AND AT WHAT FIDELITY, IS NOT SPICE SYNTAX. These three
+// carriers lived in the SPICE projection, which made the board article import a type from one of
+// its own emission targets to declare a field — the same inversion this module was extracted to
+// remove, surviving in the half nobody looked at. Nothing here names a deck, an element letter
+// or a card format: a fidelity is a claim about how faithfully a model represents the part, and
+// an IBIS or Verilog-AMS projection needs exactly the same fact. What stays in the projection is
+// the profile question — which fidelities THAT target can render — which is a different fact.
+type ModelFidelity
+  = IdealLumped
+  | VendorSubcircuit
+
+type ElectricalModelStanding
+  = ElectricalModelCited { model_card: NonEmptyStr, fidelity: ModelFidelity }
+  | ElectricalModelAbsent
+
+// The model standing is carried BESIDE the circuit rather than inside it, because whether this
+// repository holds a simulation model for a part is a fact about our evidence, not a fact about
+// the board. The board is the same board either way.
+type ComponentModelBinding {
+  component: ComponentInstanceIdentity
+  standing: ElectricalModelStanding
+}
+
+// Which net a terminal belongs to. Absent means the terminal is on no net, which is a real and
+// distinct state from 'on the reference net' — a floating terminal and a grounded one are not
+// the same circuit, and a projection that defaulted one to the other would emit a deck that
+// simulates cleanly and describes a different board.
+fn net_of_terminal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> NetIdentity? {
+  fold(intent.nets, init: none, f: fn(acc, net) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if net_contains_terminal(net: net, t: t) { Present { value: net.identity } } else { none }
+    }
+  })
+}
+
+// HOW MANY nets contain this terminal, not merely whether one does. Two nets containing one
+// terminal is a SHORT between them — a real and different circuit — and net_of_terminal answers
+// with the first match, so a caller asking only "is it netted" cannot tell a netted terminal
+// from a shorted one. The count is what makes that distinction available; the projection decides
+// what to do with it.
+fn net_membership_count(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Nat {
+  fold(intent.nets, init: 0, f: fn(acc, net) {
+    if net_contains_terminal(net: net, t: t) { acc + 1 } else { acc }
+  })
+}
+
+fn component_terminals(c: ElectricalComponentInstance) -> List<ElectricalTerminalRef> {
+  [
+    terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c)),
+    terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c)),
+  ]
+}
+
+fn first_unnetted_terminal(intent: AnalogCircuitIntent) -> ElectricalTerminalRef? {
+  fold(intent.components, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        fold(component_terminals(c: c), init: none, f: fn(inner, t) {
+          match inner {
+            Present { value: v } => Present { value: v }
+            Absent =>
+              match net_of_terminal(intent: intent, t: t) {
+                Present { value: _ } => none
+                Absent => Present { value: t }
+              }
+          }
+        })
+    }
+  })
+}

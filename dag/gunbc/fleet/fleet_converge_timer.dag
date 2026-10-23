@@ -1,0 +1,55 @@
+module gunbc.fleet_converge_timer
+
+import std.types { String }
+import std.measure { Second, second }
+
+// Arc item 4 (timer / anti-entropy, operator directive 2026-08-08): the steady-state
+// enforcement loop is a PER-HOST systemd timer executing the converge circuit against
+// the admitted desired revision (gunbc.fleet_main_revision) — never a central cron, an
+// SSH star, or a GHA event as steady state. Every firing emits a receipt; a host that
+// was offline across a desired-state change converges on return because the timer's
+// next firing reads the admitted ref (catch-up is a property of following the ref, plus
+// Persistent= for missed calendar firings). This module is the SINGLE authority for the
+// unit names, cadence, and unit CONTENT — the emitted files derive from these rows, so
+// a hand-edited unit is drift against this authority, not a second truth.
+//
+// Timer shape is the design doc's Option A (OnCalendar + Persistent=true + jitter):
+// Persistent only functions with OnCalendar (systemd ignores it on monotonic timers),
+// and calendar catch-up is exactly the offline-host property the arc requires.
+//
+// THE DEAD SELF-INSTALL RENDERER IS GONE (2026-08-18). What stood here was a SECOND systemd
+// renderer for these same two units -- `fleet_converge_service_content`,
+// `fleet_converge_timer_content`, `fleet_converge_service_content_self` -- feeding the
+// srv2-srv4 self-install route, beside `gunbc.live_deploy.emit`'s
+// `emit_fleet_converge_{service,timer}_unit_doc` feeding srv1. Two authorities for one unit,
+// which two registered `Scaffold` rows here described and neither removed.
+//
+// It was not merely duplicated, it had DIVERGED into a correctness fork: this body rendered
+// `User=root` and omitted `WorkingDirectory=`, the exact b1 defect the emit side shed when it
+// moved to the service user -- a root `ls-remote` in a service-user-owned tree with no workdir
+// to run git in.
+//
+// WHY IT COULD BE DELETED RATHER THAN RECONCILED, which is the whole reason this is a deletion
+// and not a migration: its only consumer chain was
+// `fleet_converge_timer_install.fleet_timer_self_install_wet` <- `ci_spec`'s
+// `gunbc_ci_fleet_timer_install_invoke` <- `ci.yml`, and #8283 deleted `ci.yml`. Measured at
+// deletion: `fleet_timer_self_install` appears in neither surviving workflow, and
+// `gunbc_ci_fleet_timer_install_invoke` had no consumer but its own `DeclarationRef`. The
+// remaining callers were its own two witness files.
+//
+// The retention reason recorded in `fleet_converge_timer_cadence_retired_note` -- kept "for
+// teardown of legacy hosts" -- was NOT realized by any code. `live_deploy` teardown derives
+// its unit names from `live_deploy.spec` and never called these functions; the note was prose
+// asserting a consumer that did not exist. Deleted with them rather than left standing.
+//
+// Both `Scaffold` rows declared `dissolves_to: SingleAuthority` bound to `gunbc.live_deploy.emit`.
+// `live_deploy.emit` is now that single authority, so this deletion FIRES those dissolutions
+// rather than adding any -- the obligations are discharged, not inherited.
+//
+// WHAT SURVIVES HERE, and why each row is still load-bearing: the two unit NAMES are read by
+// `gunbc.fleet_converge_plan`, and the cadence and jitter are read by `gunbc.live_deploy.emit`.
+// This module remains the naming and cadence authority; it is no longer a renderer.
+data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
+data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
+data fleet_converge_timer_on_calendar: String = "*:0/15"
+data fleet_converge_timer_randomized_delay: Second = second(count: 90)

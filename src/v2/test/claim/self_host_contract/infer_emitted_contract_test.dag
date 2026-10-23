@@ -1,0 +1,55 @@
+module v2.test.claim.self_host_contract.infer_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.infer { inferred_facts_witness_for_node, InferredTree }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, TypeNode, ComputationNode, Conj, Value, node_synthetic }
+import v2.std.witness { Holds, Violates }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+
+// THE 04_infer ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.infer records facts for the nodes of the tree it is given, and
+// inferred_facts_witness_for_node answers Holds for such a node and refuses
+// (infer_facts_lookup_miss) a node the tree does not contain.
+//
+// THE RESOLVED TREE IS SUPPLIED AT INFER'S INTERFACE (DESIGN section 3), through
+// claim_resolved_tree_without_declarations: this contract is about infer, not about resolve. The
+// real producer emitting that shape is other claims' fact -- the ones that run resolve and hand its
+// output to infer, e.g. v2.test.claim.compiler.kernel_value_type_roster_witness.
+fn ifc_value_node() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+// Structurally distinct from every node of the inferred tree: facts are keyed by node value.
+fn ifc_foreign_node() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+fn ifc_facts_held(tree: InferredTree, node: Node) -> Bool {
+  match inferred_facts_witness_for_node(tree: tree, node: node) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: the injected reading holds exactly when
+// infer answers for a node the tree does not contain, so a correct infer does not hold it.
+fn infer_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: ifc_value_node())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } => {
+      let foreign_held = ifc_facts_held(tree: tree, node: ifc_foreign_node())
+      if inject_fault {
+        foreign_held
+      } else {
+        ifc_facts_held(tree: tree, node: ifc_value_node()) && !foreign_held
+      }
+    }
+  }
+}
+
+test fn infer_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  infer_emitted_contract_holds(inject_fault: false)
+    && !infer_emitted_contract_holds(inject_fault: true)
+}

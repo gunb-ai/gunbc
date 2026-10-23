@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_test_deployment_acts_on_the_prod_deployments_state
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_test_deployment_acts_on_the_prod_deployments_state: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_test_deployment_acts_on_the_prod_deployments_state" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a deployment that is not the prod-role holder reads, writes, tears down or impersonates state, a singleton or an external attachment that belongs to the deployment that is. Before gunbc.deployment_risk no carrier distinguished the two: which deployment was prod was spelled only in constructor names (srv1_live_dashboard_instance), in literals (gunbc.live_deploy.spec gunbc_approval_broker_owning_instance = \"srv1-live\"), and in host paths every srv1 deployment shared.",
+
+    "HARM: the wrong-instance action lands on the one deployment whose mistakes cost the operator's working day and the shared approval channel, while the deployment that performed it is disposable. The asymmetry is the whole point -- a lab exists so its mistakes cost nothing, and this class is the lab's mistake being charged to prod.",
+
+    "RECEIPTS, four in four different mechanisms, which is what makes it a class and not an incident. (1) A lab twin's retract removed the prod artifact store, because produced artifacts were rostered Owned and Owned means torn down by retract (gunbc.live_deploy.spec, the owned-roster note). (2) serve_function was dropped from the spec and the emitter fell back to a literal, so a lab twin served as prod (gunbc.live_deploy.spec, the serve_function note). (3) A lab apply would have overwritten prod's approval-broker unit -- the reasoning that kept the broker out of a twin's retract covered only half the hazard (review 68094, gunbc.live_deploy.spec). (4) belt_actuate_workdir projected srv1_gunbc_repo_root, so a belt tick ran `git worktree add` into srv1's prod tree (gunbc.roadmap_belt_tick_cli).",
+
+    "DISTINGUISHING FACTS: the shared resource is reached by NAME or PATH (a literal, a host-layout row, a constructor) rather than through a derived role; the acting deployment has no class of its own to refuse on; and each repair so far was local to the link where the harm appeared, so the next mechanism reached the same state again (DESIGN 6b).",
+
+    "RUNG FOUND AT: 1, mitigatable -- each specimen was caught or contained after it was written, by review, a red claim, or an emit-time refusal for that one path.",
+
+    "CEILING: 3, structurally guaranteed. Once every external attachment and role-following singleton is reached only through gunbc.deployment_risk resolve_deployment_bindings over prod_role_selection, a TestRisk deployment has no route to a ProdRisk binding that the resolver does not refuse. It cannot be 4: a host path is still a string any author can spell, so the state stays describable in source.",
+
+    "CLIMB STARTED BY THE MODEL PR: the class is derived, the bindings resolve per exact class, and test.claim.deployment_risk_witness_test carries the discriminating RED (a TestRisk deployment refuses rather than resolving the prod topic and app) beside its positive control. That covers the two attachments the binding set carries today and none of the four receipts above, so the row's rung is unchanged by it.",
+
+    "NEXT-RUNG TRIGGER: every pin that names the prod deployment directly (the approval broker owner, fabric storage placement, the approval client/store/trust, the serve and dispatch entry points that call srv1_live_dashboard_instance, the apply's prod peer, fleet_reach_endpoint) resolves through prod_role_selection, AND every attachment the srv1 lab shares with prod today (ntfy, Codex account and home, admitted ref, publication identity, R2/GCP/workload identity, OIDC) resolves through DeploymentExternalBindingSet or refuses. One pin or one binding is not sufficient: the class is the route, and any remaining named route is the next receipt.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.deployment_risk", decl_name: "resolve_deployment_bindings", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.deployment_risk_witness_test", decl_name: "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings", field: WholeDeclaration },
+  ],
+}

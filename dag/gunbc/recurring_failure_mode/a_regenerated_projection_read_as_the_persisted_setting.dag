@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_regenerated_projection_read_as_the_persisted_setting
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_regenerated_projection_read_as_the_persisted_setting: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_regenerated_projection_read_as_the_persisted_setting" as NonEmptyStr,
+
+  receipts: [
+    "**a regenerated projection read as the persisted setting** (on Ubuntu the NetworkManager profile nmcli reads is a keyfile under /run that netplan regenerates from the MERGE of every netplan layer under /lib, /etc and /run/netplan, of which /etc/netplan/90-NM-<uuid>.yaml is one input, so a converge that reads back only through nmcli -- or only that one file -- confirms something other than what the next `netplan generate` renders).",
+
+    "INVALID STATE: gunbc.fleet_wireless_link wireless_link_decide counted power save and both retry budgets persisted on nmcli's reading of the active profile alone, never asking which file that profile is loaded from or what that file is generated from.",
+
+    "HARM: none observed as this mechanism; the population is exposed because the fabric rail plan (gunbc.spark.fabric_rail_apply) runs `netplan generate; netplan apply` on the same hosts. The power-save regression on spark-2196 that prompted the reading was a different class (gunbc.recurring_failure_mode a_host_absent_from_a_converge_roster_silently_keeps_the_upstream_default). Read on spark-2196 (srv12) 2026-10-05 ~16:55Z by valiant-crab-775: the only Wi-Fi profile's FILENAME is /run/NetworkManager/system-connections/netplan-NM-a653b65d-...-Verizon_39TTYV.nmconnection, /etc/NetworkManager/system-connections is empty, and the YAML carries wifi.powersave '2' with auth-retries and autoconnect-retries '0' -- today's state agrees at both layers.",
+
+    "SIBLING, found in review of gunbc#13440: reading the 90-NM file alone as the authority. A later layer (a 99-*.yaml) overrides it, and a key that file omits may be supplied by another layer, so the profile's own file is provenance, not the verdict. Likewise an in-memory keyfile profile agreeing with intent does not establish its file on disk.",
+
+    "DISTINGUISHING FACTS: the profile's FILENAME (nmcli -t -f UUID,FILENAME connection show) under /run/NetworkManager/system-connections/netplan-; a /run profile that netplan did not generate is persisted nowhere.",
+
+    "RUNG: found at 1. Now 2: gunbc.fleet_wireless_link observe_persisted_authority reads the FILENAME and asks netplan for the profile definition's MERGED passthrough (extdeps.netplan.netplan nm_profile_persistence, netplan_get_wifi_access_point_passthrough_argv), the decision plans a persisted set whenever the merge disagrees with the intent, refuses an unmodeled keyfile, a runtime-only or an unread persistence, and the readback requires the merge to agree; test.claim.fleet.fleet_wireless_link_witness witness_a_later_layer_overriding_the_profile_file_is_drift and witness_converge_over_a_merged_override_does_not_report_converged red otherwise. CEILING 3 is not available: which layer persists a profile is external host state, observed and refused at the boundary. NEXT-RUNG TRIGGER: none beyond keeping the reading enrolled; a new persisted setting on the profile must name its passthrough key in the same decision.",
+  ],
+
+  evidence: [],
+}

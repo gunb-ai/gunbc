@@ -1,0 +1,50 @@
+module gunbc.fleet.printer_job_monitor
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
+import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
+
+import std.types {String,Int}
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_object_unique_member,JsonMemberFound}
+import extdeps.languages.json.emit {JsonString,JsonNumber}
+import extdeps.printing.bambu_lab_lan_protocol {bambu_start_error_nonblocking}
+
+// Completion is a printer observation, never accepted inventory or bed clearance.
+// Each observation requires the digest-derived filename, state and error together.
+type JobObservation = JobRunning | JobCompletedAwaitingInspection | JobPaused | JobFailed | JobUnresolved
+fn observe_job(text:String,remote:String) -> JobObservation {
+ match parse_json_document(s:text) {
+  JsonDocumentParsed {value:root}=>match json_object_unique_member(v:root,key:"print") {
+   JsonMemberFound {value:p}=>match json_object_unique_member(v:p,key:"gcode_file") {
+    JsonMemberFound {value:JsonString {value:file}}=>if remote=="" || file!=remote {JobUnresolved} else {
+     match json_object_unique_member(v:p,key:"gcode_state") {
+      JsonMemberFound {value:JsonString {value:state}}=>match json_object_unique_member(v:p,key:"print_error") {
+       JsonMemberFound {value:JsonNumber {lexeme:code}}=>
+        if state=="FAILED" || !bambu_start_error_nonblocking(code:code as String) {JobFailed}
+        else if state=="PAUSE" {JobPaused}
+        else if state=="RUNNING" {JobRunning}
+        else if state=="FINISH" {JobCompletedAwaitingInspection}
+        else {JobUnresolved}
+       JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonString {value:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
+      }
+      JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonNumber {lexeme:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
+     }
+    }
+    JsonMemberFound {value:JsonNull}=>JobUnresolved JsonMemberFound {value:JsonBool {value:_}}=>JobUnresolved JsonMemberFound {value:JsonNumber {lexeme:_}}=>JobUnresolved JsonMemberFound {value:JsonArray {elements:_}}=>JobUnresolved JsonMemberFound {value:JsonObject {members:_}}=>JobUnresolved JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
+   }
+   JsonMemberAbsent=>JobUnresolved JsonMemberNotAnObject=>JobUnresolved JsonMemberDuplicated {count:_}=>JobUnresolved
+  }
+  JsonDocumentUnreadable {gap:_}=>JobUnresolved
+ }
+}
+fn observation_name(observation:JobObservation) -> String {
+ match observation {JobRunning=>"running" JobCompletedAwaitingInspection=>"completed-awaiting-inspection" JobPaused=>"paused" JobFailed=>"failed" JobUnresolved=>"unresolved"}
+}
+type MonitorStep = MonitorAgain {remaining:Int,unresolved:Int} | MonitorCompleted | MonitorAttention | MonitorExhausted
+fn monitor_step(observation:JobObservation,remaining:Int,unresolved:Int) -> MonitorStep {
+ match observation {
+  JobCompletedAwaitingInspection=>MonitorCompleted
+  JobPaused=>MonitorAttention
+  JobFailed=>MonitorAttention
+  JobRunning=>if remaining<=1 {MonitorExhausted} else {MonitorAgain {remaining:remaining-1,unresolved:0}}
+  JobUnresolved=>if remaining<=1 || unresolved>=7 {MonitorExhausted} else {MonitorAgain {remaining:remaining-1,unresolved:unresolved+1}}
+ }
+}

@@ -1,0 +1,161 @@
+module std.termination
+import std.optional { Absent, Present }
+
+import std.algebra { BoundedLattice, Ordering }
+import std.types { List, Map }
+
+type DescentEvidence
+  = Strict
+  | NonIncreasing
+  | DescentUnknown
+
+fn evidence_rank(e: DescentEvidence) -> Int {
+  match e {
+    Strict => 2
+    NonIncreasing => 1
+    DescentUnknown => 0
+  }
+}
+
+fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    Strict => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      DescentUnknown => DescentUnknown
+    }
+    NonIncreasing => match b {
+      Strict => NonIncreasing
+      NonIncreasing => NonIncreasing
+      DescentUnknown => DescentUnknown
+    }
+    DescentUnknown => DescentUnknown
+  }
+}
+
+fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    DescentUnknown => b
+    NonIncreasing => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      DescentUnknown => NonIncreasing
+    }
+    Strict => Strict
+  }
+}
+
+data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = {
+  meet: descent_evidence_lattice_meet
+  join: descent_evidence_lattice_join
+  top: Strict
+  bottom: DescentUnknown
+}
+
+fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
+  match evidence {
+    NonIncreasing => NonIncreasing
+    Strict => Strict
+    DescentUnknown => DescentUnknown
+  }
+}
+
+fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
+  match a {
+    Absent => b
+    Present { value: va } =>
+      match b {
+        Absent => a
+        Present { value: vb } => Present { value: descent_evidence_lattice_meet(a: va, b: vb) }
+      }
+  }
+}
+
+fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
+  match map_get(base, key) {
+    Present { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
+    Absent => map_insert(base, key, new_val)
+  }
+}
+
+type RankingDimension
+  = TreeSize { param: String }
+  | ListLength { param: String }
+  | ArithmeticValue { param: String }
+  | TokenPosition { param: String }
+  | SetCardinality { param: String }
+
+type PositiveDescentAmount
+  = OneStep
+  | AdditionalStep { previous: PositiveDescentAmount }
+
+fn positive_descent_count(steps: PositiveDescentAmount) -> Int {
+  match steps {
+    OneStep => 1
+    AdditionalStep { previous: p } => 1 + positive_descent_count(p)
+  }
+}
+
+type ProportionalDivisor
+  = DivideByTwo
+  | StrictlyLarger { inner: ProportionalDivisor }
+
+fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
+  match d {
+    DivideByTwo => 2
+    StrictlyLarger { inner: p } => 1 + proportional_divisor_to_int(d: p)
+  }
+}
+
+fn peano_literal_materialization_cap() -> Int { 256 }
+
+fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
+  if k <= 0 { none }
+  else {
+    if k > peano_literal_materialization_cap() { none }
+    else {
+      if k == 1 { Present { value: OneStep } }
+      else {
+        match positive_descent_amount_from_positive_int(k: k - 1) {
+          Present { value: prev } => Present { value: AdditionalStep { previous: prev } }
+          Absent => none
+        }
+      }
+    }
+  }
+}
+
+fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
+  if k < 2 { none }
+  else {
+    if k > peano_literal_materialization_cap() { none }
+    else {
+      if k == 2 { Present { value: DivideByTwo } }
+      else {
+        match proportional_divisor_from_int_at_least_two(k: k - 1) {
+          Present { value: prev } => Present { value: StrictlyLarger { inner: prev } }
+          Absent => none
+        }
+      }
+    }
+  }
+}
+
+type DescentSource
+  = ChildAccessor { accessor: String }
+  | ListShrink { amount: PositiveDescentAmount }
+  | ArithmeticSubtractDescent { steps: PositiveDescentAmount }
+  | ArithmeticDivideDescent { divisor: ProportionalDivisor }
+  | ParserAdvance { witness: String }
+  | SetRemoval { element: String }
+  | FoldIteration
+
+type TerminationProof {
+  dimensions: List<RankingDimension>
+}
+
+type ProofEdge {
+  caller: String
+  callee: String
+  evidence: List<DescentEvidence>
+}

@@ -1,0 +1,8 @@
+{
+  "format": "gunbc-scm-repository-v99",
+  "identity_rule": "fnv1a64-structural-canonical-v1",
+  "objects": [],
+  "next_commit_ordinal": 0,
+  "commits": [],
+  "checked_out": null
+}

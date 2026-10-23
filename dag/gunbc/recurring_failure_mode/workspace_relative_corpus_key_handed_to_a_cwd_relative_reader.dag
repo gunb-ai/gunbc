@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.workspace_relative_corpus_key_handed_to_a_cwd_relative_reader
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data workspace_relative_corpus_key_handed_to_a_cwd_relative_reader: RecurringFailureMode = RecurringFailureMode {
+  identity: "workspace_relative_corpus_key_handed_to_a_cwd_relative_reader" as NonEmptyStr,
+
+  receipts: [
+    "**workspace-relative corpus key handed to a cwd-relative reader** (a path whose CONTRACT is relative to the workspace root the module index was keyed against -- an index key, a rostered authority entry -- is passed to a reader that opens its argument against the PROCESS CWD, so the read names the intended file only while the cwd happens to be the workspace root.",
+
+    "INVALID STATE: one string carrying two path contracts, with the reader choosing the one the caller did not mean. The spelling is identical under both, which is why no site looks wrong.",
+
+    "DISTINCT FROM ambient_process_state_read_by_a_concurrent_reader, and linked rather than merged: that row's harm needs a concurrent WRITER of the cwd; this one needs none. A single-threaded production process launched from any directory other than the root refuses (or, where a same-named file exists under the cwd, reads the wrong one), and the test-suite symptom -- a process-wide set_current_dir entering the root around the call -- is this class's WORKAROUND, which then becomes that row's specimen. The concurrent class is downstream of this one.",
+
+    "SPECIMEN 1 (gunbc#12516, v1_compiler.cli_run assemble_prepared_subject_from_corpus): the floor closure arm handed the index's sf.path keys to collect_both_closure_module_names_for_entry, whose loader entry_source_from_index_or_disk opens the path against the cwd; the unit tests entered the root with enter_workspace_cwd. Repaired by anchoring each key at process_workspace_root().",
+
+    "SPECIMEN 2 (this row's filing change, v1_compiler.cli_run.generated_artifact_boundary_host generated_artifact_ctx): the literal AUTHORITY_ENTRY dag/gunbc/generated_artifact_emit.dag reached the same loader through resolve_entry_graph_shared, on the production route TargetProducer::BehavioralReceiptPlan -> behavioral_receipt_host run_plan. CONFIRMED BY EXECUTION before the repair: generated_artifact_boundary_host tests the_authority_entry_resolves_from_a_non_root_cwd, run with the crate directory as cwd, refused with `entry file does not exist or is not a file: dag/gunbc/generated_artifact_emit.dag`; it is green after anchoring and stays enrolled as the regression control. The same change deleted behavioral_receipt_host's verbatim second copy of generated_artifact_ctx and generated_artifact_body_for_path, so the anchor lives at one site rather than two.",
+
+    "RUNG: found BELOW the ladder for the wrong-file arm (a same-named file under a foreign cwd is read silently) and at mitigatable for the refusal arm. CEILING 4, structurally impossible and decidable: a loader that takes an explicit root, and keys typed as root-relative, leave no constructor for a cwd-relative reading of a corpus key. Each specimen's anchor is a per-call-site mitigation and does not climb the class: the next caller handing a bare key to the loader regrows it.",
+
+    "NEXT-RUNG TRIGGER, at capability grain: the entry loader (v1_compiler.cli_run entry_source_from_index_or_disk and every resolve_entry_* route to it) takes an EXPLICIT ROOT, or a path value that carries which contract it has, and no longer resolves a relative argument against the process cwd -- sufficient for both specimens' call sites to pass the key unanchored and still read the right file from any cwd. The loader today also serves CLI --entry arguments, which ARE cwd-relative, so the repair is to carry the contract with the path, not to guess by trying both.",
+
+    "REVIEW TELL: a string literal or index key beginning `dag/` or `src/` passed to a function whose name says entry, path or read, with no workspace root joined on the way. And its echo in tests: a set_current_dir to the workspace root, which exists only because some reader below it has this defect.",
+  ],
+
+  evidence: [],
+}

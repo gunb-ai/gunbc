@@ -1,0 +1,123 @@
+module test.probe.unit_hold_proof_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function is one way to reach a Mt. Collins BMC write without
+// holding the unit, and each must refuse at compile time
+// (test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test enrolls the refusals):
+//   - a UnitHoldProof authored outside the hold module: SoleConstructorViolation at the literal;
+//   - a call to each admit_callers-sealed write from outside its admitted callers:
+//     ConstructorCallAdmissionRefused, keyed by the callee's name;
+//   - THE SKIP-THE-HOLD MUTATION: the hold-owning boot path refuses any caller but
+//     mtcollins1_boot_wet_on_srv1, and the actuation and the acquire refuse any caller outside their roots.
+import std.types { NonEmptyStr, String }
+import std.durable_compare_and_set { cas_generation_first }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.managed_host_unit_hold { AdmittedUnitHoldSubject, UnitHoldProof }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_under_live_unit_hold, mtcollins1_boot_actuate, mtcollins1_boot_handoff_when_media_ready, mtcollins1_boot_param5_under_hold, mtcollins1_boot_power_after_poll }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_param5, mtcollins1_boot_chassis_power }
+import gunbc.managed_host_unit_hold { unit_hold_acquire }
+import gunbc.managed_host_boot_handoff { boot_drive_handoff }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
+import gunbc.machine_intake_megarac_boot_media_attach { megarac_attach_boot_image, MegaRacIpmiReadBound }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
+import gunbc.managed_host_boot { AdmittedBootSubject }
+import gunbc.runner_browser_toolchain { RunnerBrowserToolchainResolution, BrowserToolchainUnresolved }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachNotAttempted }
+import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff, oob_power_action_after_confirmed_selection, oob_power_actuate_and_read_back, OobPowerUp }
+import gunbc.machine_intake_megarac_media_attach { MegaRacObserve, megarac_attach_remote_image }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_media_share }
+import gunbc.machine_intake_megarac_boot_media_attach { megarac_observe_boot_presentation }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
+
+// The subject a forged proof names is a parameter: an AdmittedUnitHoldSubject cannot be authored here
+// either (test.claim.managed_host_unit_hold_forged_probe_witness pins that), and none of these
+// functions is ever called -- each is refused where it is written.
+fn forged_proof(s: AdmittedUnitHoldSubject) -> UnitHoldProof {
+  UnitHoldProof {
+    subject: s,
+    owner: "forger" as DurableHoldOwnerRef,
+    generation: cas_generation_first(),
+  }
+}
+
+fn power_cycle_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
+  let _x = boot_drive_handoff(proof: forged_proof(s: s), subject: b, label: "forged", password_file_raw: "/tmp/pw")
+  ""
+}
+
+fn attach_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
+  let _x = megarac_attach_boot_image(proof: forged_proof(s: s), subject: b, share: mtcollins1_media_share, replaceable_seeded_stem: "x", bound: MegaRacIpmiReadBound { deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after }, password_file: "/tmp/pw", attempt: "forged")
+  ""
+}
+
+fn power_cycle_through_the_generic_handoff_from_outside() -> String {
+  let _x = oob_boot_handoff(observation: mtcollins1_access_observation, capability_row: mtcollins1_capability_row, username: "admin", password_file: "/tmp/pw", selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom))
+  ""
+}
+
+fn power_action_past_the_verified_selection_from_outside() -> String {
+  let _x = oob_power_action_after_confirmed_selection(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", device: "cdrom")
+  ""
+}
+
+fn power_command_past_the_state_read_from_outside() -> String {
+  let _x = oob_power_actuate_and_read_back(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", device: "cdrom", action: OobPowerUp)
+  ""
+}
+
+fn boot_param5_read_from_outside_the_actuation() -> String {
+  let _x = mtcollins1_boot_param5_under_hold(password_file: "/tmp/pw")
+  ""
+}
+
+fn final_power_read_from_outside_the_actuation() -> String {
+  let _x = mtcollins1_boot_power_after_poll(password_file: "/tmp/pw", census_ended: true, remaining: 1)
+  ""
+}
+
+fn bundle_param5_read_from_outside_the_hold() -> String {
+  let _x = mtcollins1_boot_param5(username: "admin", password_file: "/tmp/pw")
+  ""
+}
+
+fn bundle_chassis_read_from_outside_the_hold() -> String {
+  let _x = mtcollins1_boot_chassis_power(username: "admin", password_file: "/tmp/pw")
+  ""
+}
+
+// THE GATED HANDOFF IS SEALED TO THE ACTUATION: an outside caller cannot reach the boot-device and
+// power handoff even with a media record in hand.
+fn observe_presentation_from_outside(s: AdmittedUnitHoldSubject) -> String {
+  let _x = megarac_observe_boot_presentation(proof: forged_proof(s: s), image_name: "x.iso", share: mtcollins1_media_share, password_file: "/tmp/pw", attempt: "forged", look: "outside")
+  ""
+}
+
+fn gated_handoff_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
+  let _x = mtcollins1_boot_handoff_when_media_ready(proof: forged_proof(s: s), media: MediaAttachNotAttempted { reason: "forged" }, subject: b, password_file: "/tmp/pw", attempt: "forged")
+  ""
+}
+
+fn attach_through_the_generic_megarac_route_from_outside() -> String {
+  let _x = megarac_attach_remote_image(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", cookie_jar: "/tmp/jar", image_name: "x.iso", firmware: mtcollins1_firmware, task: MegaRacObserve { share: mtcollins1_media_share })
+  ""
+}
+
+// A toolchain resolution for the forged calls below: they are refused at admission, before any of it
+// is consulted, so its value only has to be well-formed.
+fn forged_toolchain() -> RunnerBrowserToolchainResolution {
+  BrowserToolchainUnresolved { cause: "forged" }
+}
+
+fn boot_the_hold_owning_path_from_outside(b: AdmittedBootSubject) -> String {
+  let _x = mtcollins1_boot_under_live_unit_hold(run_id: "forged", subject: b, password_file: "/tmp/pw", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap", resolve_toolchain: fn() { forged_toolchain() })
+  ""
+}
+
+fn actuate_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
+  let _x = mtcollins1_boot_actuate(proof: forged_proof(s: s), subject: b, password_file: "/tmp/pw", attempt: "forged", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap", resolve_toolchain: fn() { forged_toolchain() })
+  ""
+}
+
+fn acquire_the_unit_hold_from_outside_its_roots(s: AdmittedUnitHoldSubject) -> String {
+  let _x = unit_hold_acquire(subject: s, owner: "forger" as DurableHoldOwnerRef)
+  ""
+}

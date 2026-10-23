@@ -1,0 +1,971 @@
+module gunbc.site.specimen
+
+import std.types { Int, List, String, NonEmptyStr }
+import v2.std.algebra { filter }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.site.document { SiteStyles, site_document, site_styles, site_extend_styles }
+import extdeps.google.issue_tracker {
+  IssueTrackerVisualCapture, issue_tracker_visual_capture, issue_tracker_interface_version,
+  IssueActionButtonIdiom, IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
+  IssueActionAvailability, IssueActionEnabled, IssueActionDisabled,
+}
+import gunbc.roadmap_issue_status {
+  issue_display_statuses, DisplayReady, DisplayActive, DisplayReview, DisplayBlocked, DisplayDone, DisplaySuperseded,
+}
+import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
+import gunbc.roadmap_issue_location { issue_page_path }
+import gunbc.roadmap.roadmap_lineage { LineageNoParent }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
+  NodeChain, NodeChainRooted, NodeChainRefused,
+  NodeRelation, RelationRow, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
+  RowChildrenNotCarried, RowChildrenExpandable,
+}
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_value_wire, space_0, space_2, space_8 }
+import gunbc.site.element.tokens { ElementHeightRow, element_height_rows, card_outer_margin, card_border, radius_code, relation_section_gap, field_rail_width }
+import gunbc.site.element.palette { palette_var, SlotGround, SlotSubtle, SlotBorder }
+import gunbc.site.element.text {
+  ElementText, element_text_roles, element_text_name, element_text_decls,
+  ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl, ElementTitle,
+  ElementProseHeading, ElementIdentifier, ElementCode,
+}
+import gunbc.site.element.styles {
+  element_rules, element_themes, SiteElement, site_elements,
+  SiteCard, SiteSectionHeading, SiteStatusChip, SiteButton, SiteChip, SitePriorityMark,
+  SiteNodeRow, SiteRelationTable, SiteNodeChain, SiteBuildMeter, SiteFieldList,
+}
+import gunbc.site.element.card { Card, CardLabelRow, CardEdgePlain, CardEdgeBar, card }
+import gunbc.site.element.section_heading {
+  SectionHeading, SectionUncounted, SectionCounted, SectionCountedOfTotal, section_heading,
+}
+import gunbc.site.element.status_chip { status_chip }
+import gunbc.site.element.button { Button, ButtonSize, ButtonSmall, ButtonRegular, button }
+import gunbc.site.element.chip { Chip, chip }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
+import gunbc.site.element.node_row { NodeRow, NodeRowFlat, NodeRowDensityGrid, node_row, node_row_header }
+import gunbc.site.element.relation_table { RelationTable, relation_table }
+import gunbc.site.element.node_chain { node_chain }
+import gunbc.site.element.field_list {
+  FieldList, FieldRow, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
+  FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
+}
+import gunbc.site.element.build_meter {
+  BuildMeterView, build_meter,
+}
+import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view, BuildMeterToolCount, BuildMeterRoundOperations }
+import gunbc.harness.harness_tool { RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
+import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused, ProviderFailed }
+import gunbc.site.build_meter_client { build_meter_dwell_ms }
+import gunbc.site.specimen_meter_client { specimen_hand_attribute, specimen_flap_attribute, specimen_target_attribute, specimen_flap_ms }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
+  VerificationWorkflowSegment, PublicationWorkflowSegment,
+}
+import gunbc.roadmap.roadmap_submission { CandidateHandoffState, HandoffAwaitingWorker, HandoffVerificationFailed, HandoffPublished }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, BorderCollapse, BorderRadius, BoxShadow, Display, FlexDirection, FlexWrap, Gap, GridTemplateColumns,
+  Height, Margin, MaxWidth, MinHeight, MinWidth, Padding, Width, RawProperty,
+}
+
+// The specimen: every element of the internal tools frontend in every variant, built only from
+// the production element functions, on one page. It is where an element is looked at before a
+// page adopts it, and it is the first consumer of the foundations (the measured upstream facts,
+// the palette, the tokens, the text roles). The classes declared here place and caption the
+// specimens; none of them reaches inside an element.
+data specimen_route_path: String = "/specimen"
+
+data specimen_page_class: String = "specimen-page"
+data specimen_row_class: String = "specimen-row"
+data specimen_note_class: String = "specimen-note"
+data specimen_role_class: String = "specimen-role"
+data specimen_text_class: String = "specimen-text"
+data specimen_text_role_attribute: String = "data-text-role"
+data specimen_height_class: String = "specimen-height"
+data specimen_height_attribute: String = "data-height"
+
+fn specimen_row(children: List<Fragment>) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: specimen_row_class)], children)
+}
+
+fn specimen_note(text: String) -> Fragment {
+  el_attrs("p", [attr(name: "class", value: specimen_note_class)], [txt(text)])
+}
+
+fn specimen_section(label: String, body: List<Fragment>) -> Fragment {
+  card(input: Card {
+    edge: CardEdgePlain,
+    label_row: Present { value: CardLabelRow { label: label, trailing: [] } },
+    body: body,
+  })
+}
+
+fn specimen_source_text(c: IssueTrackerVisualCapture) -> String {
+  join([
+    "Measured on ", c.origin.uri.locator as String, ", ", c.session as String, ", at ",
+    to_string(c.viewport_width_px), " by ", to_string(c.viewport_height_px),
+    " CSS px, captured ", c.captured_on as String, ". Captures: ", c.local_copy.uri.locator as String,
+    "; shared copy: https://", c.shared_copy.uri.locator as String, ". Upstream model version ",
+    issue_tracker_interface_version as String, ".",
+  ], "")
+}
+
+fn specimen_source_section() -> Fragment {
+  specimen_section(label: "Source", body: [
+    el_attrs("p", [], [txt(specimen_source_text(c: issue_tracker_visual_capture))]),
+  ])
+}
+
+fn specimen_text_row(role: ElementText) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: specimen_role_class)], [
+    specimen_note(text: element_text_name(role: role)),
+    el_attrs("span", [
+      attr(name: "class", value: specimen_text_class),
+      attr(name: specimen_text_role_attribute, value: element_text_name(role: role)),
+    ], [txt("Issue tracker specimen text 0123456789")]),
+  ])
+}
+
+fn specimen_text_section() -> Fragment {
+  specimen_section(label: "Text roles", body: map(element_text_roles, r => specimen_text_row(role: r)))
+}
+
+fn specimen_status_section() -> Fragment {
+  specimen_section(label: "Status chip", body: [
+    specimen_row(children: map(issue_display_statuses, s => status_chip(status: s))),
+  ])
+}
+
+data specimen_button_idioms: List<IssueActionButtonIdiom> = [IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText]
+
+fn specimen_button_label(idiom: IssueActionButtonIdiom) -> String {
+  match idiom {
+    IssueButtonContainedPrimary => "Filled"
+    IssueButtonOutlined => "Outlined"
+    IssueButtonText => "Text"
+  }
+}
+
+fn specimen_button_row(size: ButtonSize, availability: IssueActionAvailability) -> Fragment {
+  specimen_row(children: map(specimen_button_idioms, i => button(input: Button {
+    label: specimen_button_label(idiom: i),
+    idiom: i,
+    size: size,
+    availability: availability,
+  })))
+}
+
+fn specimen_button_section() -> Fragment {
+  specimen_section(label: "Button", body: [
+    specimen_note(text: "Regular"),
+    specimen_button_row(size: ButtonRegular, availability: IssueActionEnabled),
+    specimen_note(text: "Regular, unavailable"),
+    specimen_button_row(size: ButtonRegular, availability: IssueActionDisabled),
+    specimen_note(text: "Small"),
+    specimen_button_row(size: ButtonSmall, availability: IssueActionEnabled),
+    specimen_note(text: "Small, unavailable"),
+    specimen_button_row(size: ButtonSmall, availability: IssueActionDisabled),
+  ])
+}
+
+fn specimen_heading_section() -> Fragment {
+  specimen_section(label: "Section heading", body: [
+    section_heading(input: SectionHeading { text: "Acceptance criteria", count: SectionUncounted }),
+    section_heading(input: SectionHeading { text: "Parent", count: SectionCounted { n: 1 } }),
+    section_heading(input: SectionHeading { text: "Sub-issues", count: SectionCountedOfTotal { n: 1, total: 3 } }),
+  ])
+}
+
+fn specimen_card_body(text: String) -> List<Fragment> {
+  [el_attrs("p", [], [txt(text)])]
+}
+
+fn specimen_card_section() -> Fragment {
+  specimen_section(label: "Card", body: [
+    specimen_row(children: [
+      card(input: Card { edge: CardEdgePlain, label_row: Absent, body: specimen_card_body(text: "A plain card.") }),
+      card(input: Card { edge: CardEdgeBar, label_row: Absent, body: specimen_card_body(text: "A card with a leading bar.") }),
+      card(input: Card {
+        edge: CardEdgePlain,
+        label_row: Present { value: CardLabelRow { label: "Description", trailing: [] } },
+        body: specimen_card_body(text: "A card with a label row."),
+      }),
+      card(input: Card {
+        edge: CardEdgeBar,
+        label_row: Present { value: CardLabelRow { label: "Status update", trailing: [
+          button(input: Button { label: "More details", idiom: IssueButtonText, size: ButtonSmall, availability: IssueActionEnabled }),
+        ] } },
+        body: specimen_card_body(text: "A card with a leading bar, a label row and a trailing control."),
+      }),
+    ]),
+  ])
+}
+
+fn specimen_measured_text(measured_px: Int?) -> String {
+  match measured_px {
+    Present { value: px } => join([to_string(px), "px measured"], "")
+    Absent => "no upstream measurement"
+  }
+}
+
+fn specimen_height_text(row: ElementHeightRow) -> String {
+  join([row.label, ": ", scale_value_wire(v: row.token.value), " adopted, ", specimen_measured_text(measured_px: row.measured_px)], "")
+}
+
+fn specimen_height_row(row: ElementHeightRow) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: specimen_height_class),
+    attr(name: specimen_height_attribute, value: row.token.name),
+  ], [txt(specimen_height_text(row: row))])
+}
+
+fn specimen_height_section() -> Fragment {
+  specimen_section(label: "Heights", body: map(element_height_rows(), r => specimen_height_row(row: r)))
+}
+
+// The composite: one card with a leading bar and a label row carrying a trailing control, holding
+// a section heading, a chip for every status and a row of buttons.
+fn specimen_composite() -> Fragment {
+  card(input: Card {
+    edge: CardEdgeBar,
+    label_row: Present { value: CardLabelRow { label: "Composite", trailing: [
+      button(input: Button { label: "More details", idiom: IssueButtonText, size: ButtonSmall, availability: IssueActionEnabled }),
+    ] } },
+    body: [
+      section_heading(input: SectionHeading { text: "Sub-issues", count: SectionCountedOfTotal { n: 1, total: 3 } }),
+      specimen_row(children: map(issue_display_statuses, s => status_chip(status: s))),
+      specimen_row(children: [
+        button(input: Button { label: "Add", idiom: IssueButtonContainedPrimary, size: ButtonSmall, availability: IssueActionEnabled }),
+        button(input: Button { label: "Add parent", idiom: IssueButtonOutlined, size: ButtonSmall, availability: IssueActionEnabled }),
+        button(input: Button { label: "Display 3 more", idiom: IssueButtonText, size: ButtonSmall, availability: IssueActionEnabled }),
+      ]),
+    ],
+  })
+}
+
+// THE HIERARCHY FIXTURE. Every node below is planted here; the specimen reads no declared roadmap
+// row. Routes come from the one route construction, so a fixture link has the shape a real one has.
+data specimen_issue_header_class: String = "specimen-issue-header"
+data specimen_issue_title_class: String = "specimen-issue-title"
+data specimen_relations_class: String = "specimen-relations"
+data specimen_rows_class: String = "specimen-rows"
+
+fn specimen_node(slug: String, title: String, status: NodeStatus, priority: RoadmapPriority) -> NodePresentation {
+  NodePresentation {
+    slug: slug,
+    title: title,
+    status: status,
+    priority: DerivedPriority { priority: priority, source: "", reason: "specimen fixture" },
+    route: issue_page_path(node_id: slug),
+  }
+}
+
+fn specimen_root() -> NodePresentation {
+  specimen_node(slug: "gunbc-project-root", title: "gunbc: one substrate, every scale", status: node_status_derived(status: DisplayActive), priority: PriorityP1)
+}
+
+fn specimen_project() -> NodePresentation {
+  specimen_node(slug: "dp-m2-shell-residue-retired", title: "Retire the shell residue behind typed invocations", status: node_status_derived(status: DisplayActive), priority: PriorityP1)
+}
+
+fn specimen_parent() -> NodePresentation {
+  specimen_node(slug: "shell-typed-invocation", title: "Every shell call is a typed invocation", status: node_status_derived(status: DisplayActive), priority: PriorityP1)
+}
+
+fn specimen_self() -> NodePresentation {
+  specimen_node(slug: "invocation-argv-model", title: "Model the argv of an invocation as typed parts", status: node_status_derived(status: DisplayBlocked), priority: PriorityP2)
+}
+
+// One node that is both a sub-issue of the fixture issue and one of its blockers: it is the same
+// presentation under both relations.
+fn specimen_shared() -> NodePresentation {
+  specimen_node(slug: "argv-quoting-rules", title: "State the quoting rules an argv part obeys", status: node_status_derived(status: DisplayBlocked), priority: PriorityP2)
+}
+
+fn specimen_chain_short() -> NodeChain {
+  NodeChainRooted { ancestors: [specimen_root(), specimen_project(), specimen_parent()], self_node: specimen_self() }
+}
+
+fn specimen_chain_long() -> NodeChain {
+  NodeChainRooted {
+    ancestors: [
+      specimen_root(),
+      specimen_node(slug: "debt-payoff", title: "Pay off the standing debt", status: node_status_derived(status: DisplayActive), priority: PriorityP1),
+      specimen_project(),
+      specimen_node(slug: "namespace-unique-on-chain", title: "A name is unique along its chain", status: node_status_derived(status: DisplayReview), priority: PriorityP2),
+      specimen_node(slug: "typed-effects", title: "Effects are declared, not discovered", status: node_status_derived(status: DisplayReady), priority: PriorityP2),
+      specimen_parent(),
+    ],
+    self_node: specimen_self(),
+  }
+}
+
+fn specimen_chain_refused() -> NodeChain {
+  NodeChainRefused { refusal: LineageNoParent { walked: ["invocation-argv-model", "orphaned-arc"], at: "orphaned-arc" } }
+}
+
+fn specimen_relation_parent() -> NodeRelation {
+  NodeRelation { kind: RelationParent, rows: [RelationRow { node: specimen_parent(), children: RowChildrenNotCarried }], undeclared: [] }
+}
+
+fn specimen_relation_blocked_by() -> NodeRelation {
+  NodeRelation {
+    kind: RelationBlockedBy,
+    rows: [
+      RelationRow { node: specimen_shared(), children: RowChildrenNotCarried },
+      RelationRow { node: specimen_node(slug: "process-spawn-effect", title: "Spawning a process is a declared effect", status: node_status_derived(status: DisplayDone), priority: PriorityP3), children: RowChildrenNotCarried },
+    ],
+    undeclared: ["retired-shell-probe"],
+  }
+}
+
+fn specimen_relation_sub_issues() -> NodeRelation {
+  NodeRelation {
+    kind: RelationSubIssues,
+    rows: [
+      RelationRow { node: specimen_node(slug: "argv-part-vocabulary", title: "Name the closed vocabulary of argv parts", status: node_status_derived(status: DisplayReady), priority: PriorityP0), children: RowChildrenExpandable { count: 0 } },
+      RelationRow { node: specimen_shared(), children: RowChildrenExpandable { count: 3 } },
+      RelationRow { node: specimen_node(slug: "argv-emit-posix", title: "Emit a typed argv for a POSIX shell, with a title long enough to show how a row behaves when its title runs well past the width a short one needs", status: node_status_derived(status: DisplayReview), priority: PriorityP2), children: RowChildrenExpandable { count: 12 } },
+      RelationRow { node: specimen_node(slug: "argv-literal-census", title: "Count the argv literals still written by hand", status: node_status_derived(status: DisplayDone), priority: PriorityP3), children: RowChildrenExpandable { count: 0 } },
+      RelationRow { node: specimen_node(slug: "argv-string-splitting", title: "Split an argv from a string", status: node_status_derived(status: DisplaySuperseded), priority: PriorityP3), children: RowChildrenExpandable { count: 1 } },
+      RelationRow { node: specimen_node(slug: "argv-windows-quoting", title: "Quote an argv for a Windows command line", status: NodeStatusUnavailable { reason: "the plan carries no row for this node" }, priority: PriorityP2), children: RowChildrenExpandable { count: 0 } },
+    ],
+    undeclared: [],
+  }
+}
+
+// The same rows with every status derived, so the heading reads closed over total.
+fn specimen_relation_sub_issues_derived() -> NodeRelation {
+  let all = specimen_relation_sub_issues()
+  NodeRelation { kind: all.kind, rows: all.rows.take(n: 5), undeclared: all.undeclared }
+}
+
+fn specimen_relation_empty() -> NodeRelation {
+  NodeRelation { kind: RelationBlocking, rows: [], undeclared: [] }
+}
+
+fn specimen_chain_section() -> Fragment {
+  specimen_section(label: "Hierarchy: node chain", body: [
+    specimen_note(text: "Four levels: every level shown"),
+    specimen_row(children: [node_chain(chain: specimen_chain_short())]),
+    specimen_note(text: "Seven levels: the first, a counted control for the middle, and the last two"),
+    specimen_row(children: [node_chain(chain: specimen_chain_long())]),
+    specimen_note(text: "A lineage the view refused"),
+    specimen_row(children: [node_chain(chain: specimen_chain_refused())]),
+  ])
+}
+
+fn specimen_chip_section() -> Fragment {
+  specimen_section(label: "Chip", body: [
+    specimen_row(children: [
+      chip(input: Chip { text: "shell-typed-invocation" }),
+      chip(input: Chip { text: "dp-m2-shell-residue-retired" }),
+    ]),
+  ])
+}
+
+fn specimen_priority_section() -> Fragment {
+  specimen_section(label: "Priority mark", body: [
+    specimen_row(children: [
+      priority_mark(input: PriorityMark { priority: PriorityP0, explanation: none }),
+      priority_mark(input: PriorityMark { priority: PriorityP1, explanation: none }),
+      priority_mark(input: PriorityMark { priority: PriorityP2, explanation: none }),
+      priority_mark(input: PriorityMark { priority: PriorityP3, explanation: none }),
+    ]),
+  ])
+}
+
+// The row at the grid density, in a bare table of the specimen's own: no production table uses
+// this density until the results grid adopts the row.
+fn specimen_grid_row_section() -> Fragment {
+  specimen_section(label: "Node row, grid density", body: [
+    el_attrs("table", [attr(name: "class", value: specimen_rows_class)], [
+      el_attrs("thead", [], [node_row_header(density: NodeRowDensityGrid)]),
+      el_attrs("tbody", [], map([specimen_parent(), specimen_shared()], n => node_row(input: NodeRow { node: n, place: NodeRowFlat, density: NodeRowDensityGrid }))),
+    ]),
+  ])
+}
+
+fn specimen_relation_section() -> Fragment {
+  specimen_section(label: "Hierarchy: relation table", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_relations_class)], [
+      relation_table(input: RelationTable { relation: specimen_relation_empty(), depth: 0 }),
+      relation_table(input: RelationTable { relation: specimen_relation_sub_issues_derived(), depth: 1 }),
+    ]),
+    specimen_note(text: "Above: a relation with no rows, and sub-issues one level down with every status derived"),
+  ])
+}
+
+// The hierarchy composite: the head of an issue page (the chain chip over the title) and its
+// Dependencies card, the three relations of the fixture issue one relation-section gap apart.
+fn specimen_issue_composite() -> List<Fragment> {
+  [
+    el_attrs("div", [attr(name: "class", value: specimen_issue_header_class)], [
+      node_chain(chain: specimen_chain_long()),
+      el_attrs("h1", [attr(name: "class", value: specimen_issue_title_class)], [txt(specimen_self().title)]),
+    ]),
+    card(input: Card {
+      edge: CardEdgePlain,
+      label_row: Present { value: CardLabelRow { label: "Dependencies", trailing: [] } },
+      body: [
+        el_attrs("div", [attr(name: "class", value: specimen_relations_class)], [
+          relation_table(input: RelationTable { relation: specimen_relation_parent(), depth: 0 }),
+          relation_table(input: RelationTable { relation: specimen_relation_blocked_by(), depth: 0 }),
+          relation_table(input: RelationTable { relation: specimen_relation_sub_issues(), depth: 0 }),
+        ]),
+      ],
+    }),
+  ]
+}
+
+// The compact work summary, over planted attempts. Fixtures that only the round ledger can
+// describe go through the production derivation (gunbc.roadmap.roadmap_build_meter
+// build_meter_view_of), so what is shown is what an attempt with those records would show; the
+// two that carry typed operation kinds are supplied as views, because no producer emits those
+// kinds yet. One fixture is a real run: its rounds were captured from the attempt's event log by
+// issue-tracker-shots/meter/convert-real.cjs and are embedded here unchanged; its stages are
+// planted to match its recorded terminal (the harness's 40-step budget).
+data specimen_meter_class: String = "specimen-meter"
+data specimen_meters_class: String = "specimen-meters"
+data specimen_meter_subject: String = "frontend-elements"
+data specimen_meter_first_round_ms: Int = 1790694000000
+data specimen_meter_round_ms: Int = 47000
+
+data specimen_real_run_rounds: List<RoundObservation> = [
+  RoundObservation { step: 1, input_tokens: 2152, output_tokens: 186, epoch_ms: 1789887228000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 2, input_tokens: 2526, output_tokens: 201, epoch_ms: 1789887241000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 3, input_tokens: 4432, output_tokens: 299, epoch_ms: 1789887259000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 4, input_tokens: 6735, output_tokens: 315, epoch_ms: 1789887283000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 5, input_tokens: 8280, output_tokens: 280, epoch_ms: 1789887307000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 6, input_tokens: 10018, output_tokens: 3303, epoch_ms: 1789887474000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 7, input_tokens: 14503, output_tokens: 396, epoch_ms: 1789887503000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 8, input_tokens: 17385, output_tokens: 2436, epoch_ms: 1789887627000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 9, input_tokens: 22564, output_tokens: 1356, epoch_ms: 1789887703000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 10, input_tokens: 24940, output_tokens: 5653, epoch_ms: 1789887971000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 11, input_tokens: 35282, output_tokens: 6359, epoch_ms: 1789888278000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 12, input_tokens: 43510, output_tokens: 6519, epoch_ms: 1789888589000, files_changed: Present { value: 2 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 13, input_tokens: 50285, output_tokens: 2903, epoch_ms: 1789888734000, files_changed: Present { value: 3 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 14, input_tokens: 53231, output_tokens: 576, epoch_ms: 1789888768000, files_changed: Present { value: 3 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 15, input_tokens: 53935, output_tokens: 529, epoch_ms: 1789888794000, files_changed: Present { value: 4 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 16, input_tokens: 54619, output_tokens: 1070, epoch_ms: 1789888845000, files_changed: Present { value: 5 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 17, input_tokens: 55730, output_tokens: 1178, epoch_ms: 1789888903000, files_changed: Present { value: 5 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 18, input_tokens: 57198, output_tokens: 392, epoch_ms: 1789888924000, files_changed: Present { value: 5 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 19, input_tokens: 57747, output_tokens: 1478, epoch_ms: 1789889002000, files_changed: Present { value: 6 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 20, input_tokens: 59266, output_tokens: 775, epoch_ms: 1789889040000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 21, input_tokens: 60082, output_tokens: 244, epoch_ms: 1789889055000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 22, input_tokens: 60517, output_tokens: 428, epoch_ms: 1789889077000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 23, input_tokens: 61102, output_tokens: 354, epoch_ms: 1789889153000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 24, input_tokens: 61517, output_tokens: 447, epoch_ms: 1789889295000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 25, input_tokens: 62011, output_tokens: 84, epoch_ms: 1789889302000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 26, input_tokens: 62137, output_tokens: 140, epoch_ms: 1789889412000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 27, input_tokens: 62788, output_tokens: 154, epoch_ms: 1789889534000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 28, input_tokens: 63016, output_tokens: 143, epoch_ms: 1789889542000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 29, input_tokens: 63314, output_tokens: 300, epoch_ms: 1789889662000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 30, input_tokens: 63733, output_tokens: 106, epoch_ms: 1789889779000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 31, input_tokens: 63958, output_tokens: 446, epoch_ms: 1789889912000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 32, input_tokens: 68811, output_tokens: 278, epoch_ms: 1789889934000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 33, input_tokens: 69253, output_tokens: 71, epoch_ms: 1789890052000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 34, input_tokens: 70235, output_tokens: 201, epoch_ms: 1789890062000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 35, input_tokens: 70624, output_tokens: 2186, epoch_ms: 1789890164000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 36, input_tokens: 72855, output_tokens: 270, epoch_ms: 1789890182000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 37, input_tokens: 73167, output_tokens: 115, epoch_ms: 1789890189000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 38, input_tokens: 73326, output_tokens: 115, epoch_ms: 1789890312000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 39, input_tokens: 73518, output_tokens: 119, epoch_ms: 1789890435000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 40, input_tokens: 73714, output_tokens: 229, epoch_ms: 1789890564000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+]
+
+fn specimen_meter_round(step: Int, tool_calls: Int, files_changed: Int, output_tokens: Int) -> RoundObservation {
+  RoundObservation {
+    step: step,
+    input_tokens: 9000 + step * 650,
+    output_tokens: output_tokens,
+    epoch_ms: specimen_meter_first_round_ms + step * specimen_meter_round_ms,
+    files_changed: Present { value: files_changed },
+    tool_calls: Present { value: tool_calls },
+  }
+}
+
+// Six rounds of ordinary work: mostly tool calls, one round of reasoning alone, two changed-path
+// rises.
+fn specimen_meter_spell(base: Int, files: Int) -> List<RoundObservation> {
+  [
+    specimen_meter_round(step: base + 1, tool_calls: 3, files_changed: files, output_tokens: 420),
+    specimen_meter_round(step: base + 2, tool_calls: 1, files_changed: files, output_tokens: 180),
+    specimen_meter_round(step: base + 3, tool_calls: 2, files_changed: files + 1, output_tokens: 2600),
+    specimen_meter_round(step: base + 4, tool_calls: 0, files_changed: files + 1, output_tokens: 5200),
+    specimen_meter_round(step: base + 5, tool_calls: 4, files_changed: files + 1, output_tokens: 900),
+    specimen_meter_round(step: base + 6, tool_calls: 1, files_changed: files + 2, output_tokens: 1300),
+  ]
+}
+
+fn specimen_meter_spells(spells: Int) -> List<RoundObservation> {
+  flat_map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].take(n: spells), i => specimen_meter_spell(base: i * 6, files: i * 2))
+}
+
+fn specimen_meter_segment(kind: WorkflowSegmentKind, state: WorkflowSegmentState, detail: String) -> WorkflowSegment {
+  WorkflowSegment { kind: kind, state: state, detail: detail }
+}
+
+// The six attempt stages with the given states, in order, each with an optional detail.
+fn specimen_meter_stages(states: List<WorkflowSegmentState>, details: List<String>) -> List<WorkflowSegment> {
+  map(enumerate([EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment]), pair =>
+    specimen_meter_segment(
+      kind: pair.second,
+      state: match states.skip(n: pair.first).first() { Present { value: st } => st  Absent => WorkflowSegmentPending },
+      detail: match details.skip(n: pair.first).first() { Present { value: d } => d  Absent => "" }))
+}
+
+fn specimen_meter_running() -> ProviderExecutionState {
+  ProviderRunning { activity: "Agent working" }
+}
+
+// THE TYPED SPECIMENS go through the producer the rail uses (gunbc.roadmap.roadmap_build_meter
+// build_meter_view_of): a round ledger plus, per round, the operations the dispatcher recorded by
+// tool (gunbc.harness.harness_tool HarnessTool). Only the four tools the harness has appear: run,
+// read, write and edit. Neither specimen draws a mark itself.
+fn specimen_ops(step: Int, run: Int, read: Int, write: Int, edit: Int) -> BuildMeterRoundOperations {
+  BuildMeterRoundOperations { step: step, operations: [
+    BuildMeterToolCount { tool: RunCommandTool, count: run },
+    BuildMeterToolCount { tool: ReadFileTool, count: read },
+    BuildMeterToolCount { tool: WriteFileTool, count: write },
+    BuildMeterToolCount { tool: EditFileTool, count: edit },
+  ] }
+}
+
+data specimen_forty: List<Int> = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+]
+
+// Tool-heavy, mixed: reading dominates the first rounds, then running is the steady beat; a write
+// lands every seventh round and an edit every fourth, with a longer reasoning gap every tenth.
+fn specimen_tool_heavy_ops(i: Int) -> BuildMeterRoundOperations {
+  specimen_ops(step: i,
+    run: if i <= 6 { i % 2 } else if i % 3 == 0 { 3 } else { 1 + i % 2 },
+    read: if i <= 6 { 3 + i % 3 } else if i % 5 == 0 { 2 } else { i % 2 },
+    write: if i % 7 == 0 { 1 } else { 0 },
+    edit: if i % 4 == 0 { 1 + i % 3 % 2 } else { 0 })
+}
+
+fn specimen_tool_heavy_ledger() -> List<RoundObservation> {
+  map(specimen_forty, i => RoundObservation {
+    step: i,
+    input_tokens: 9000 + i * 700,
+    output_tokens: if i % 10 == 0 { 4200 } else { 300 + (i % 4) * 350 },
+    epoch_ms: specimen_meter_first_round_ms + i * specimen_meter_round_ms + (i / 10) * 60000,
+    files_changed: Present { value: i / 7 + i / 4 },
+    tool_calls: Present { value: 0 },
+  })
+}
+
+// Single tool, forty times: every round ran one command. The marks stay one colour; the rounds
+// differ only in what was recorded about them (output size, and a longer pause every eighth).
+fn specimen_single_tool_ledger() -> List<RoundObservation> {
+  map(specimen_forty, i => RoundObservation {
+    step: i,
+    input_tokens: 9000 + i * 400,
+    output_tokens: if i % 8 == 0 { 1800 } else { 220 },
+    epoch_ms: specimen_meter_first_round_ms + i * specimen_meter_round_ms + (i / 8) * 90000,
+    files_changed: Present { value: 0 },
+    tool_calls: Present { value: 1 },
+  })
+}
+
+fn specimen_typed_derived(attempt_key: String, ledger: List<RoundObservation>, typed: List<BuildMeterRoundOperations>) -> BuildMeterView {
+  build_meter_view_of(node_id: specimen_meter_subject, attempt_key: attempt_key,
+    segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: []),
+    rounds: RoundsObserved { rounds: ledger }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: false, typed: typed)
+}
+
+fn specimen_tool_heavy_view() -> BuildMeterView {
+  specimen_typed_derived(attempt_key: "4b7e2c9105d8a3f6", ledger: specimen_tool_heavy_ledger(), typed: map(specimen_forty, i => specimen_tool_heavy_ops(i: i)))
+}
+
+fn specimen_single_tool_view() -> BuildMeterView {
+  specimen_typed_derived(attempt_key: "2d5b8f04a1c7e936", ledger: specimen_single_tool_ledger(), typed: map(specimen_forty, i => specimen_ops(step: i, run: 1, read: 0, write: 0, edit: 0)))
+}
+
+type SpecimenMeter {
+  caption: String
+  view: BuildMeterView
+}
+
+fn specimen_meter_derived(attempt_key: String, segments: List<WorkflowSegment>, rounds: HarnessRoundLedger, provider: ProviderExecutionState, handoff: CandidateHandoffState, stale: Bool) -> BuildMeterView {
+  build_meter_view_of(node_id: specimen_meter_subject, attempt_key: attempt_key, segments: segments, rounds: rounds, provider: provider, handoff: handoff, stale: stale)
+}
+
+// THE METER FIXTURES, NAMED, so that each can be drawn on its own (a claim draws one fixture, not a
+// section of them). The pose strip shows five of them, in its order: working, stopped, paused on a
+// stale revision, and the two naps side by side. The BuildMeter section adds the other four: a real
+// run, a single-tool stress run, a legacy attempt and a refusal before the first round.
+type SpecimenMeterFixture
+  = SpecimenMeterToolHeavy
+  | SpecimenMeterVerificationFailed
+  | SpecimenMeterStale
+  | SpecimenMeterWaiting
+  | SpecimenMeterPublished
+  | SpecimenMeterRealRun
+  | SpecimenMeterSingleTool
+  | SpecimenMeterLegacy
+  | SpecimenMeterRefused
+
+data specimen_pose_fixtures: List<SpecimenMeterFixture> = [
+  SpecimenMeterToolHeavy, SpecimenMeterVerificationFailed, SpecimenMeterStale, SpecimenMeterWaiting, SpecimenMeterPublished,
+]
+
+data specimen_more_fixtures: List<SpecimenMeterFixture> = [
+  SpecimenMeterRealRun, SpecimenMeterSingleTool, SpecimenMeterLegacy, SpecimenMeterRefused,
+]
+
+fn specimen_agent_active() -> List<WorkflowSegment> {
+  specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
+}
+
+fn specimen_meter(fixture: SpecimenMeterFixture) -> SpecimenMeter {
+  match fixture {
+    SpecimenMeterToolHeavy => SpecimenMeter { caption: "Tool-heavy, mixed typed operations — supplied", view: specimen_tool_heavy_view() }
+    SpecimenMeterVerificationFailed => SpecimenMeter { caption: "Verification failed after 18 rounds", view: specimen_meter_derived(
+      attempt_key: "7742b0e19c3d5a68",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: ["", "", "", "", "3 of 41 claims red"]),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 3) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "9c41d07", verdict_key: "failed" }, stale: false) }
+    SpecimenMeterStale => SpecimenMeter { caption: "Stale: launched on an earlier revision", view: specimen_meter_derived(
+      attempt_key: "5f1c9a2e77d04b13", segments: specimen_agent_active(),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 2) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: true) }
+    SpecimenMeterWaiting => SpecimenMeter { caption: "Waiting for a seat, no round yet", view: specimen_meter_derived(
+      attempt_key: "0bd4418ce2a75f90", segments: specimen_agent_active(),
+      rounds: RoundsObserved { rounds: [] }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) }
+    SpecimenMeterPublished => SpecimenMeter { caption: "Published", view: specimen_meter_derived(
+      attempt_key: "e69a15d83f0c2b74",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete], details: []),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 4).take(n: 21) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }, stale: false) }
+    SpecimenMeterRealRun => SpecimenMeter { caption: "Real run: shell-typed-invocation-a5908ed38768df111 (rounds from its log; budget spent)", view: specimen_meter_derived(
+      attempt_key: "a5908ed38768df111",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: ["", "", "the harness ended the turn at its 40-step budget"]),
+      rounds: RoundsObserved { rounds: specimen_real_run_rounds }, provider: ProviderBudgetSpent { activity: "Agent stopped at its step budget", detail: "40 of 40 steps taken" }, handoff: HandoffAwaitingWorker, stale: false) }
+    SpecimenMeterSingleTool => SpecimenMeter { caption: "Single-tool stress — 40 runs", view: specimen_single_tool_view() }
+    SpecimenMeterLegacy => SpecimenMeter { caption: "Legacy: refused, rounds not recorded", view: specimen_meter_derived(
+      attempt_key: "0cfc18886a3d3b10",
+      segments: specimen_meter_stages(states: [WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentPending, WorkflowSegmentRefused], details: ["environment admission receipt unavailable", "worktree marker unavailable", "attempt predates modeled admission and event capture", "no submission capture", "", "legacy branch has no modeled workspace publication receipt"]),
+      rounds: RoundsUnobserved { reason: "the attempt predates round capture, so its rounds were not recorded" as NonEmptyStr }, provider: ProviderEventsRefused { activity: "legacy attempt — supersedable", detail: "attempt predates modeled admission and event capture" }, handoff: HandoffAwaitingWorker, stale: false) }
+    SpecimenMeterRefused => SpecimenMeter { caption: "Refused before the first round", view: specimen_meter_derived(
+      attempt_key: "c81e3f6a9d2047b5",
+      segments: specimen_meter_stages(states: [WorkflowSegmentRefused], details: ["admission receipt records a refusal: no seat class admits this work"]),
+      rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, stale: false) }
+  }
+}
+
+fn specimen_meter_node(row: SpecimenMeter) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: specimen_meter_class)], [
+    specimen_note(text: row.caption),
+    build_meter(summary: compact_work_summary_of_view(subject: join(["specimen-", row.view.attempt_key], ""), view: row.view), link_attributes: []),
+  ])
+}
+
+// THE FIELD LIST, at the rail's width, over a fixture that holds every arm and the cases that
+// used to break the rail: an identity and a link title far longer than the value column, an
+// absent value with its reason, the status control, the assignee control, and a meter whose hover
+// digest names a failure (the longest digest the rail has to keep inside the page).
+data specimen_field_rail_class: String = "specimen-field-rail"
+
+fn specimen_face(initial: String) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: "site-avatar")], [txt(initial)])
+}
+
+fn specimen_field_list_fixture() -> FieldList {
+  let long_identity = "continuous-integration-auto-heal-publisher@gunbc-fabric.iam.gserviceaccount.com"
+  FieldList { rows: [
+    FieldRow { label: "Status", value: FieldStatusControl { status: DisplayActive, detail: [specimen_note(text: "Planning: ready. Current obligation: none. Attempt: running.")] } },
+    FieldRow { label: "Assignee", value: FieldIdentityControl {
+      person: FieldPerson { face: specimen_face(initial: "C"), identity: long_identity, full: Present { value: join(["Auto-heal publisher — ", long_identity], "") } },
+      action: "Change assignee",
+      editor: [specimen_note(text: "The assign form opens here, in place of the identity.")],
+    } },
+    FieldRow { label: "Work", value: FieldWork { summary: compact_work_summary_of_view(subject: "specimen-field-list", view: specimen_meter(fixture: SpecimenMeterVerificationFailed).view), link_attributes: [] } },
+    FieldRow { label: "Reporter", value: FieldAbsent { reason: "Not recorded: an authored roadmap row has no creation event" } },
+    FieldRow { label: "Component", value: FieldText { text: "@shell", full: none } },
+    FieldRow { label: "Parent", value: FieldLinks { links: [FieldLink { text: "DP-M2: shell-to-dag batch 1 lands, then batch 2 retires the residue of the shell invocation layer", href: issue_page_path(node_id: "dp-m2-shell-residue-retired"), full: none }], unlinked: [] } },
+    FieldRow { label: "Unmet Prerequisites", value: FieldAction { text: "10 issues", attributes: [] } },
+    FieldRow { label: "Return To", value: FieldIdentity { person: FieldPerson { face: specimen_face(initial: "B"), identity: "brian.searls.operator.longname@example.com", full: none } } },
+    FieldRow { label: "Delivery", value: FieldText { text: "attempt 0cfc1888…", full: Present { value: "attempt 0cfc18886a3d3b10" } } },
+  ] }
+}
+
+fn specimen_field_list_section() -> Fragment {
+  specimen_section(label: "FieldList", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_field_rail_class)], [field_list(input: specimen_field_list_fixture())]),
+  ])
+}
+
+// THE WORKER AT ITS REAL SIZE. One meter per pose, drawn at the strip's own 22px with no
+// enlargement, so the robot's antenna, eyes, lids and mouth are judged where they are shown:
+// working (deadpan), verification failed (sad), paused on a stale revision (outlined), waiting for a
+// seat (asleep on the floor) and published (content, beside the finish rule). Each is the production meter over a supplied view; the
+// page's theme switch shows the same strip in the other scheme.
+data specimen_pose_strip_class: String = "specimen-pose-strip"
+
+fn specimen_pose_section() -> Fragment {
+  specimen_section(label: "Worker poses, actual size", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_pose_strip_class)], map(specimen_pose_fixtures, f => specimen_meter_node(row: specimen_meter(fixture: f)))),
+  ])
+}
+
+// THE METER'S CHANGES OF SCENE. One attempt in each scene, each drawn by the server: the production
+// meter over a view from the production derivation. A control hands one drawing to the live meter
+// the way the page's workflow observation hands it a newer rendering
+// (gunbc.site.specimen_meter_client), so what plays here is what a live attempt plays: the facts
+// change at once, a new scene is drawn once it has held for the meter's dwell, a stopped or
+// published one at once, and a flap faster than the dwell is never drawn.
+data specimen_scene_subject: String = "specimen-scenes"
+data specimen_scene_attempt: String = "3b9e0d6c41a7f528"
+
+type SpecimenScene {
+  key: String
+  label: String
+  view: BuildMeterView
+}
+
+fn specimen_scene_template_id(key: String) -> String {
+  join(["specimen-scene-", key], "")
+}
+
+fn specimen_scene_view(segments: List<WorkflowSegment>, provider: ProviderExecutionState, handoff: CandidateHandoffState, stale: Bool) -> BuildMeterView {
+  specimen_meter_derived(attempt_key: specimen_scene_attempt, segments: segments, rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 2) }, provider: provider, handoff: handoff, stale: stale)
+}
+
+fn specimen_scenes() -> List<SpecimenScene> {
+  let agent_active = specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
+  [
+    SpecimenScene { key: "working", label: "Working", view: specimen_scene_view(segments: agent_active, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "waiting", label: "Waiting for a seat", view: specimen_scene_view(segments: agent_active, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "idle", label: "Between turns", view: specimen_scene_view(segments: agent_active, provider: ProviderCompleted { activity: "Agent turn complete" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "stopped", label: "Stopped", view: specimen_scene_view(
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: ["", "", "the agent's turn ended in an error"]),
+      provider: ProviderFailed { activity: "Agent failed", detail: "the provider ended the turn with an error" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenScene { key: "published", label: "Published", view: specimen_scene_view(
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete], details: []),
+      provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }, stale: false) },
+    SpecimenScene { key: "paused", label: "Stale", view: specimen_scene_view(segments: agent_active, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: true) },
+  ]
+}
+
+fn specimen_scene_meter(view: BuildMeterView) -> Fragment {
+  build_meter(summary: compact_work_summary_of_view(subject: specimen_scene_subject, view: view), link_attributes: [])
+}
+
+fn specimen_scene_control(attribute: String, value: String, label: String) -> Fragment {
+  el_attrs("span", [attr(name: attribute, value: value), attr(name: specimen_target_attribute, value: specimen_scene_subject)], [
+    button(input: Button { label: label, idiom: IssueButtonOutlined, size: ButtonSmall, availability: IssueActionEnabled }),
+  ])
+}
+
+fn specimen_scene_section() -> Fragment {
+  let scenes = specimen_scenes()
+  specimen_section(label: "BuildMeter: changes of scene", body: concat([
+    specimen_note(text: join([
+      "Each control hands the meter the server's drawing of this attempt in that scene, as the page's observation would. The facts change at once; a new scene is drawn once it has held for ",
+      to_string(build_meter_dwell_ms / 1000), " s, and stopped or published at once. Flap alternates working and waiting every ",
+      to_string(specimen_flap_ms), " ms, faster than the dwell, so the drawing does not change.",
+    ], "")),
+    el_attrs("div", [attr(name: "class", value: specimen_meter_class)], match scenes.first() {
+      Present { value: first } => [specimen_scene_meter(view: first.view)]
+      Absent => []
+    }),
+    specimen_row(children: concat(
+      map(scenes, sc => specimen_scene_control(attribute: specimen_hand_attribute, value: specimen_scene_template_id(key: sc.key), label: sc.label)),
+      [specimen_scene_control(attribute: specimen_flap_attribute, value: join([specimen_scene_template_id(key: "working"), " ", specimen_scene_template_id(key: "waiting")], ""), label: "Flap working and waiting")])),
+  ], map(scenes, sc => el_attrs("template", [attr(name: "id", value: specimen_scene_template_id(key: sc.key))], [specimen_scene_meter(view: sc.view)]))))
+}
+
+fn specimen_meter_section() -> Fragment {
+  specimen_section(label: "BuildMeter", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_meters_class)], map(specimen_more_fixtures, f => specimen_meter_node(row: specimen_meter(fixture: f)))),
+  ])
+}
+
+// EACH REGISTERED ELEMENT'S SPECIMEN. Which sections an element has is a total function of the
+// element identity (gunbc.site.element.styles SiteElement), so registering an element without
+// naming its sections does not compile; the sections are a closed set of names, so which sections
+// an element has is a fact apart from drawing them, and each name is drawn by one total match. The
+// page shows them in the registry's order, after the composites and before the foundations (the
+// text roles and the adopted heights).
+type SpecimenSection
+  = SpecimenCardSection
+  | SpecimenHeadingSection
+  | SpecimenStatusSection
+  | SpecimenButtonSection
+  | SpecimenChipSection
+  | SpecimenPrioritySection
+  | SpecimenNodeRowSection
+  | SpecimenRelationSection
+  | SpecimenChainSection
+  | SpecimenPoseSection
+  | SpecimenSceneSection
+  | SpecimenMeterSection
+  | SpecimenFieldListSection
+
+fn specimen_element_sections(element: SiteElement) -> List<SpecimenSection> {
+  match element {
+    SiteCard => [SpecimenCardSection]
+    SiteSectionHeading => [SpecimenHeadingSection]
+    SiteStatusChip => [SpecimenStatusSection]
+    SiteButton => [SpecimenButtonSection]
+    SiteChip => [SpecimenChipSection]
+    SitePriorityMark => [SpecimenPrioritySection]
+    SiteNodeRow => [SpecimenNodeRowSection]
+    SiteRelationTable => [SpecimenRelationSection]
+    SiteNodeChain => [SpecimenChainSection]
+    SiteBuildMeter => [SpecimenPoseSection, SpecimenSceneSection, SpecimenMeterSection]
+    SiteFieldList => [SpecimenFieldListSection]
+  }
+}
+
+fn specimen_section_node(section: SpecimenSection) -> Fragment {
+  match section {
+    SpecimenCardSection => specimen_card_section()
+    SpecimenHeadingSection => specimen_heading_section()
+    SpecimenStatusSection => specimen_status_section()
+    SpecimenButtonSection => specimen_button_section()
+    SpecimenChipSection => specimen_chip_section()
+    SpecimenPrioritySection => specimen_priority_section()
+    SpecimenNodeRowSection => specimen_grid_row_section()
+    SpecimenRelationSection => specimen_relation_section()
+    SpecimenChainSection => specimen_chain_section()
+    SpecimenPoseSection => specimen_pose_section()
+    SpecimenSceneSection => specimen_scene_section()
+    SpecimenMeterSection => specimen_meter_section()
+    SpecimenFieldListSection => specimen_field_list_section()
+  }
+}
+
+fn specimen_content() -> List<Fragment> {
+  [
+    el_attrs("main", [attr(name: "class", value: specimen_page_class)], concat(
+      concat([specimen_source_section(), specimen_composite()], specimen_issue_composite()),
+      concat(
+        flat_map(site_elements, e => map(specimen_element_sections(element: e), section => specimen_section_node(section: section))),
+        [specimen_text_section(), specimen_height_section()]))),
+  ]
+}
+
+// What the specimen adds around a role's sample. Code is shown as the product shows inline code:
+// on the subtle ground, with the code radius and a hair of side padding.
+fn specimen_text_setting_decls(role: ElementText) -> List<CssDecl> {
+  match role {
+    ElementCode => [
+      decl(prop: Background, value: palette_var(slot: SlotSubtle)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_code)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_2)),
+    ]
+    ElementBody => []
+    ElementLabel => []
+    ElementCardLabel => []
+    ElementSectionHeading => []
+    ElementControl => []
+    ElementTitle => []
+    ElementProseHeading => []
+    ElementIdentifier => []
+  }
+}
+
+fn specimen_text_rule(role: ElementText) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([".", specimen_text_class, "[", specimen_text_role_attribute, "=\"", element_text_name(role: role), "\"]"], "") }, decls: concat(element_text_decls(role: role), specimen_text_setting_decls(role: role)) }
+}
+
+fn specimen_height_rule(row: ElementHeightRow) -> BuildRule {
+  StaticRule { selector: RawSelector { text: join([".", specimen_height_class, "[", specimen_height_attribute, "=\"", row.token.name, "\"]"], "") }, decls: [
+    decl(prop: Height, value: scale_var(t: row.token)),
+  ] }
+}
+
+fn specimen_layout_rules() -> List<BuildRule> {
+  concat([
+    StaticRule { selector: ClassSelector { name: specimen_page_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: card_outer_margin)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+      decl(prop: MinHeight, value: "100vh"),
+      decl(prop: Background, value: palette_var(slot: SlotGround)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_row_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_note_class }, decls: element_text_decls(role: ElementLabel) },
+    StaticRule { selector: ClassSelector { name: specimen_pose_strip_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: scale_var(t: card_outer_margin)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_field_rail_class }, decls: [
+      decl(prop: MaxWidth, value: scale_var(t: field_rail_width)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_meters_class }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "repeat(auto-fill, minmax(min(100%, 30ch), 1fr))"),
+      decl(prop: AlignItems, value: "start"),
+      decl(prop: Gap, value: scale_var(t: card_outer_margin)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_meter_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_issue_header_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: AlignItems, value: "flex-start"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Padding, value: scale_var(t: card_outer_margin)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_issue_title_class }, decls: concat([
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ], element_text_decls(role: ElementTitle)) },
+    StaticRule { selector: ClassSelector { name: specimen_rows_class }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: BorderCollapse, value: "collapse"),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_relations_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: relation_section_gap)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_role_class }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "16ch minmax(0, 1fr)"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: RawProperty { name: "justify-items" }, value: "start"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: specimen_height_class }, decls: concat([
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+      decl(prop: Background, value: palette_var(slot: SlotSubtle)),
+      decl(prop: BoxShadow, value: join(["inset 0 0 0 ", scale_var(t: card_border), " ", palette_var(slot: SlotBorder)], "")),
+    ], element_text_decls(role: ElementBody)) },
+  ], concat(
+    map(element_text_roles, r => specimen_text_rule(role: r)),
+    map(element_height_rows(), r => specimen_height_rule(row: r))))
+}
+
+fn specimen_styles() -> SiteStyles {
+  site_extend_styles(base: site_styles(rules: element_rules()), rules: specimen_layout_rules(), themes: element_themes())
+}
+
+fn specimen_page() -> Fragment {
+  site_document(title: "gunbc — specimen", heading: "specimen", styles: specimen_styles(), content: specimen_content())
+}

@@ -1,0 +1,809 @@
+module gunbc.runner_guest_image
+
+import gunbc.microvm_guest_artifacts {
+  GuestArtifactDigestProvenance, PublishedByUpstream, FirstObservedOnFetch,
+  GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
+  GuestBaseArtifact, runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
+  runner_guest_base_dir, runner_guest_base_artifact_path,
+  GuestArtifactVerdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactBuildReceipt,
+  ArtifactContradictsPin, ArtifactNotMeasured, guest_artifact_verdict,
+  guest_artifact_verdict_text, guest_artifact_verdict_admits_build,
+}
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.algebra { trim }
+import std.measure { Mebibyte, mebibyte }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command, ln_symbolic_force_command }
+import extdeps.linux.procfs { ProcNetPnp, procfs_path_literal }
+import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
+import extdeps.tools.e2fsprogs { Ext2FilesystemType, Ext4, mke2fs_populate_command }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
+}
+import extdeps.github.actions_runner {
+  ActionsRunnerRelease, ActionsRunnerBinaryArtifact,
+  actions_runner_base_dir, actions_runner_binary_artifact_for_arch,
+  actions_runner_download_url, actions_runner_tarball_filename,
+  actions_runner_listener_relative_path, actions_runner_listener_run_verb,
+  actions_runner_listening_line_suffix,
+}
+import extdeps.virtualization.firecracker {
+  firecracker_ci_smoke_kernel_url, firecracker_ci_smoke_rootfs_url,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
+  SystemdDropIn, SystemdDropInSection, DropInUnitSection,
+  Description, After, Wants, SuccessAction, FailureAction, SystemdUnitStateAction, UnitActionPoweroffForce,
+  systemd_environment_reference, systemd_exit_code_variable, systemd_exit_status_variable,
+  ServiceType, ExecMode, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
+  Restart, Environment, EnvironmentFileIfPresent,
+  ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
+  WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in, ServiceTasksMax,
+}
+import gunbc.runner_microvm {
+  RunnerGuestImage, gunbc_runner_guest_image, gunbc_runner_microvm_task_ceiling,
+  JitDriveDeviceResolution, JitDriveDevice, JitDriveNotAttached, jit_drive_guest_device,
+}
+import gunbc.command_runner {
+  run_shell_commands, LocalExec,
+}
+
+data runner_guest_image_disposition: ConstructionMechanism = SingleAuthority
+
+// THE GUEST IMAGE AS A BUILT ARTIFACT, WHICH IS A DIFFERENT FACT FROM THE GUEST IMAGE AS AN
+// IDENTITY. gunbc.runner_microvm RunnerGuestImage already says WHAT makes two images the same image
+// -- the distribution, its release series, the architecture and the cited runner release. It says
+// nothing about how bytes answering to that identity come to exist, and it must not: a build is a
+// procedure over a host, and an identity that carried one would be two facts in one row.
+//
+// This module is the procedure, and it consumes that identity rather than restating any field of
+// it. The image NAME below is derived from all four fields, so an image built from a different
+// runner release cannot land on the same path as one built from this release -- the drift the
+// identity type exists to prevent is prevented in the filesystem too, by derivation rather than by
+// a convention someone follows.
+
+// THE IMAGE THIS MODULE PRODUCES, AS ONE ROW, BECAUSE ASKING IT TWICE ANSWERED DIFFERENTLY.
+// A built artifact has NO pin to verify against -- its digest is a RECEIPT of the build that just
+// ran, not a claim to check -- so its integrity is Unpinned and stays that way. Pinning it would
+// demand byte-reproducible mke2fs output and would red on every legitimate change to the tree,
+// which is the opposite of what a receipt is for.
+//
+// It exists as a row because it previously existed TWICE: the standing renderer built this
+// descriptor inline, while BOTH verdict sites passed runner_guest_base_rootfs_artifact -- the BASE
+// ROOTFS -- as the artifact whose pin the BUILT IMAGE's bytes were compared against. That
+// comparison can only ever contradict, because the two are different files by construction.
+//
+// It stayed invisible until the pins landed. At fleet-converge run 33985760921 the rootfs was still
+// Unpinned (that run is what recorded its digest), so the mismatched comparison rendered as a
+// REPORT and nothing refused. Committing the pin ARMED a check that had been wrong the whole time,
+// and run 33995287883 failed with expected=<the rootfs pin> observed=<the built image>. A wrong
+// comparison that is dormant until an unrelated row is filled in is the reason the descriptor is a
+// single authority rather than a value each site constructs for itself.
+data runner_guest_built_image_artifact: GuestBaseArtifact = GuestBaseArtifact {
+  url: "about:built-here" as NonEmptyStr,
+  filename: "guest-image" as NonEmptyStr,
+  integrity: ArtifactDigestNotPinnable {
+    cause: "the image is built here, so its digest is a receipt of this build rather than a pin to verify against",
+  },
+}
+
+// THE IMAGE SIZE IS A PRODUCT DECISION AND IS DECLARED AS ONE. It is not derived from the cell
+// envelope -- a disk is not memory -- and it is not derived from the extracted tree's measured size
+// either, because a filesystem sized exactly to its contents has no room for the job that runs in
+// it. The number is this fleet's, stated here, and moving it is an edit to one row.
+data runner_guest_image_size: Mebibyte = mebibyte(count: 8192)
+
+data runner_guest_image_filesystem: Ext2FilesystemType = Ext4
+
+// THE IMAGE NAME IS DERIVED FROM THE WHOLE IDENTITY, so two images that differ in any field the
+// identity carries cannot collide on one path. The runner release is part of the name for the
+// reason RunnerGuestImage carries the release row rather than a version string: a rebuild after a
+// runner bump is a DIFFERENT image, and a name that hid that would let a stale image serve.
+fn runner_guest_image_name(image: RunnerGuestImage) -> String {
+  join([
+    image.distribution as String, "-", image.release_series as String, "-", image.arch as String,
+    "-runner-", image.runner.version as String,
+  ], "")
+}
+
+// THE INSTALL ROOT IS EXECUTOR-OWNED AND THE BUILD NEEDS NO PRIVILEGE, which is a property of the
+// mechanism rather than a permission this fleet decided to do without.
+//
+// The conventional way to build a root filesystem is to create a loop device, mount it, copy a tree
+// in as root and unmount -- three privileged mechanisms, each of which would have to be granted in
+// sudoers on every runner host. mke2fs's `-d` populates a filesystem image from a directory in
+// userspace, so none of the three is reached and there is nothing to grant. Not asking for root is
+// strictly better than asking for it narrowly.
+//
+// WHAT THAT COSTS IS STATED RATHER THAN HIDDEN, because it is a real difference in the bytes: an
+// unprivileged extraction cannot restore file OWNERSHIP, SETUID BITS or DEVICE NODES, so the guest's
+// tree is owned by the building account and carries none. Every one of the three is survivable in
+// THIS guest and would not be in a general one -- the guest's init is uid 0 regardless of who owns
+// the files, the runner and the job run as root so no setuid transition is needed, and the kernel
+// mounts devtmpfs over /dev before init. It is survivable, not proven: the boot is the measurement,
+// it fails LOUDLY if any of the three mattered, and a failure there is the evidence that would
+// justify the privileged build rather than a reason to have bought it up front.
+fn runner_guest_image_root(executor_home: String) -> String {
+  join([executor_home, "/.local/share/gunbc-microvm"], "")
+}
+
+
+fn runner_guest_tree_dir(root: String, image: RunnerGuestImage) -> String {
+  join([root, "/tree/", runner_guest_image_name(image: image)], "")
+}
+
+fn runner_guest_image_path(root: String, image: RunnerGuestImage) -> String {
+  join([root, "/images/", runner_guest_image_name(image: image), ".ext4"], "")
+}
+
+fn runner_guest_image_dir(root: String) -> String {
+  join([root, "/images"], "")
+}
+
+// THE GUEST AGENT IS A UNIT FILE, NOT A SCRIPT, and that is the difference between a modeled guest
+// and a hand-authored one. Everything the agent has to do -- read one credential, run one process,
+// report four events on a surface the host reads, and power the machine off afterwards -- is a
+// systemd directive, so it is rows through extdeps.systemd.unit_file rather than shell this
+// repository would then own forever.
+//
+// StandardOutput IS journal+console FOR A REASON THAT IS STRUCTURAL RATHER THAN VERBOSE: a guest
+// that powers off takes its journal with it, so anything written only to the journal was never
+// observed by anybody. The serial console is the only surface that survives the VM.
+data runner_guest_agent_unit_name: String = "gunbc-runner-agent.service"
+
+// THE TARGET IS ONE ROW BECAUSE TWO ARTIFACTS NAME IT. The unit's [Install] section says which
+// target this agent belongs to, and the drop-in below is what actually pulls it in inside an image
+// where nobody ever runs `systemctl enable`. Those are two spellings of one fact, so they are
+// derived from this datum rather than authored twice -- change the target here and both move.
+data runner_guest_agent_target: NonEmptyStr = "multi-user.target" as NonEmptyStr
+
+// systemd READS ONLY `*.conf` INSIDE A `.d/` DIRECTORY, and omitting this suffix is how the FIRST
+// repair of this defect stayed broken. The original bug was a regular file in `.wants/`, which
+// systemd skips because it is not a symlink; the fix moved to a drop-in and then named it
+// `10-gunbc-runner-agent.service`, which systemd skips because it does not end in `.conf`. Two
+// different mechanisms, the same outcome: an activation file that is written, looks right, and is
+// never read.
+data runner_guest_agent_drop_in_suffix: String = ".conf"
+
+// --- the host channel ---
+
+// THE CHANNEL IS THE SERIAL CONSOLE, NOT vsock, AND THE CHOICE IS WHAT THE HOST ALREADY READS.
+// extdeps.virtualization.firecracker delivers ttyS0 on the VMM's stdout, and
+// gunbc.runner_microvm_boot_probe already judges a boot from exactly that stream. vsock would need
+// a second device in the VM configuration, a listener on the host side and a writer in the guest --
+// three new mechanisms to carry four lines -- and it would still not replace the console, which is
+// where the kernel and systemd report a failure that happens before any agent runs.
+//
+// WHAT THE CHANNEL CANNOT CARRY IS STATED BECAUSE IT DECIDES WHO OWNS THE IDENTITY. A console line is
+// written by the guest, so it is a claim by the workload about itself. The guest therefore asserts
+// only what it can know -- which event, and which image it is. Joining a line to the attempt tuple
+// (host, slot, generation, attempt, InvocationID, VMM identity, registration) is the host-side
+// lifecycle controller's job, by the fact that the line arrived on THAT VMM's stdout; that
+// controller is not built yet, and today's only reader is the boot probe, which has no attempt. A guest that printed a slot or attempt id would be
+// forging a key the host must hold independently. And per the program rule, any of these events may
+// TRIGGER the host's teardown; none of them may ESTABLISH that the cell is clean.
+//
+// THE GUEST EMITS THREE OF THE FOUR, AND THE TYPE SAYS WHICH. RunnerListening is known only to the
+// listener, which prints its own readiness line; a guest-emitted marker for it would be a second line
+// claiming the same fact. So the emitter takes a GuestEmittedEvent, which has no RunnerListening
+// constructor, and only the reader's GuestObservationKind can name it.
+type GuestEmittedEvent
+  = GuestBooted
+  | RunnerStarted
+  | RunnerExited
+
+type GuestObservationKind
+  = GuestEmitted { event: GuestEmittedEvent }
+  | RunnerListening
+
+// THE MARKER IS A FIXED TOKEN RATHER THAN A PHRASE, because the console interleaves kernel and systemd
+// output into any line and a reader matching prose has already been fooled once on this lane (the
+// Mt. Collins boot-marker grep, gunbc.runner.runner_first_job_receipt defects_found).
+data guest_observation_marker: String = "gunbc-guest-observation"
+
+fn guest_emitted_event_wire(event: GuestEmittedEvent) -> String {
+  match event {
+    GuestBooted => "guest-booted"
+    RunnerStarted => "runner-started"
+    RunnerExited => "runner-exited"
+  }
+}
+
+// A LABEL FOR RECEIPTS AND WITNESSES, NOT A WIRE: RunnerListening's label is never printed by the
+// guest, it names what the reader recognised in upstream's line.
+fn guest_observation_kind_label(kind: GuestObservationKind) -> String {
+  match kind {
+    GuestEmitted { event: e } => guest_emitted_event_wire(event: e)
+    RunnerListening => "runner-listening"
+  }
+}
+
+fn guest_observation_line(event: GuestEmittedEvent, image: RunnerGuestImage) -> String {
+  join([guest_observation_marker, " ", guest_emitted_event_wire(event: event), " image=", runner_guest_image_name(image: image)], "")
+}
+
+// PID 1 GIVES A SERVICE NO PATH WORTH TRUSTING, SO EVERY PROGRAM IS NAMED ABSOLUTELY. The Mt. Collins
+// run accepted and executed a job that then died on "sh: command not found", because the process
+// that launched it inherited no PATH (runner_first_job_receipt defects_found). systemd does hand
+// services a default PATH, but the job's steps inherit the LISTENER's environment, so the PATH the job
+// sees is declared here rather than left to whichever init started the guest.
+data runner_guest_echo_program: String = "/usr/bin/echo"
+data runner_guest_job_path: NonEmptyStr = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as NonEmptyStr
+data runner_guest_job_home: NonEmptyStr = "HOME=/root" as NonEmptyStr
+
+fn guest_observation_emit_command(event: GuestEmittedEvent, image: RunnerGuestImage) -> NonEmptyStr {
+  join([runner_guest_echo_program, " ", guest_observation_line(event: event, image: image)], "") as NonEmptyStr
+}
+
+// RunnerExited CARRIES THE EXIT THE MANAGER RECORDED, via systemd's own ExecStopPost environment
+// ($EXIT_CODE, $EXIT_STATUS: systemd.exec(5), "Environment Variables in Spawned Processes"). It is
+// placed as ExecStopPostIgnoringFailure -- systemd's `-` prefix, modeled in extdeps as its own
+// variant like EnvironmentFileIfPresent -- so a failed echo can never be what fails the unit.
+fn guest_runner_exited_emit_command(image: RunnerGuestImage) -> NonEmptyStr {
+  join([
+    runner_guest_echo_program, " ", guest_observation_line(event: RunnerExited, image: image),
+    " exit_code=", systemd_environment_reference(name: systemd_exit_code_variable),
+    " exit_status=", systemd_environment_reference(name: systemd_exit_status_variable),
+  ], "") as NonEmptyStr
+}
+
+// RunnerListening IS THE ONE EVENT THE GUEST AGENT DOES NOT PRINT, because only the listener knows
+// it. Its own readiness line (extdeps.github.actions_runner actions_runner_listening_line_suffix)
+// reaches the same console through the same StandardOutput, so the host reads upstream's line rather
+// than a second line of ours claiming the same thing.
+type GuestObservationRead
+  = GuestObservationSeen { kind: GuestObservationKind, line: String }
+  | NotAGuestObservation
+
+fn guest_emitted_event_in_line(line: String, event: GuestEmittedEvent) -> Bool {
+  string_contains(s: line, pattern: join([guest_observation_marker, " ", guest_emitted_event_wire(event: event), " "], ""))
+}
+
+fn guest_observation_of_console_line(line: String) -> GuestObservationRead {
+  if guest_emitted_event_in_line(line: line, event: GuestBooted) {
+    GuestObservationSeen { kind: GuestEmitted { event: GuestBooted }, line: line }
+  } else if guest_emitted_event_in_line(line: line, event: RunnerStarted) {
+    GuestObservationSeen { kind: GuestEmitted { event: RunnerStarted }, line: line }
+  } else if guest_emitted_event_in_line(line: line, event: RunnerExited) {
+    GuestObservationSeen { kind: GuestEmitted { event: RunnerExited }, line: line }
+  } else if string_contains(s: line, pattern: actions_runner_listening_line_suffix) {
+    GuestObservationSeen { kind: RunnerListening, line: line }
+  } else {
+    NotAGuestObservation
+  }
+}
+
+// THE WHOLE CONSOLE, READ LINE BY LINE, AS THE HOST'S ONE READER. gunbc.runner_microvm_boot_probe
+// consumes it today to require GuestBooted; the lifecycle controller consumes the same fold for the
+// rest.
+fn guest_console_observations(console: String) -> List<GuestObservationKind> {
+  fold(split(s: console, delimiter: "\n"), init: [] as List<GuestObservationKind>, f: fn(acc, line) {
+    match guest_observation_of_console_line(line: line) {
+      GuestObservationSeen { kind: k, line: _ } => append(acc, items: [k])
+      NotAGuestObservation => acc
+    }
+  })
+}
+
+// THE LABELS A READER OUTSIDE THIS MODULE JOINS ON, DERIVED HERE FROM THE CONSTRUCTORS. The host's
+// bring-up progression (gunbc.runner_microvm_lifecycle) names its own phases GuestBooted and
+// RunnerListening, and a closure cannot hold two types with the same variant names, so that module
+// cannot import GuestObservationKind. It reads these instead: the ordered labels of the console's
+// observations, and the label of each kind it maps -- all three computed by this module's own
+// guest_observation_kind_label, so the join has one spelling and no second author.
+fn guest_console_observation_labels(console: String) -> List<String> {
+  map(guest_console_observations(console: console), k => guest_observation_kind_label(kind: k))
+}
+
+fn guest_booted_observation_label() -> String {
+  guest_observation_kind_label(kind: GuestEmitted { event: GuestBooted })
+}
+
+fn runner_listening_observation_label() -> String {
+  guest_observation_kind_label(kind: RunnerListening)
+}
+
+fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
+  any(xs: guest_console_observations(console: console), predicate: fn(k) {
+    guest_observation_kind_label(kind: k) == guest_observation_kind_label(kind: kind)
+  })
+}
+
+// DECLARED FRONTIER: THE AGENT HAS NOT YET RUN A JOB. Everything above is exercised by witnesses over
+// the rendered unit and the console reader, and the boot probe exercises the no-credential arm on a
+// real VM. The credential arm -- a minted JIT config on the drive, the listener registering, a job
+// dispatched under a test label (never the floor label), RunnerExited and the VM gone -- needs the
+// host to mint and stage that credential, and no modeled host path does yet. A hand-staged
+// credential would be the out-of-band actuation DESIGN section 6 names, so the run waits for the
+// real path.
+data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: the modeled host path -- gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device, which writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive -- is executed by the lifecycle controller (gunbc.github_effect_perform jit_mint_lifecycle_controller_consumer_frontier). SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
+)
+
+// --- the agent ---
+
+// THE PRINCIPAL WORKLOAD IS THE LISTENER ITSELF, NOT run.sh, AND THAT IS HOW THE RELAUNCH LOOP IS
+// ACCOUNTED FOR. run.sh re-executes the listener whenever it returns 2 (RetryableError); inside a
+// one-job guest that loop would keep a VM alive past its job, holding a spent registration.
+// Invoking `Runner.Listener run` directly means there is no loop to reach: the listener's exit IS the
+// service's exit, whatever the code. `Restart=no` is written rather than defaulted so a later author
+// adding a restart policy has to delete a declaration to do it.
+//
+// THE CREDENTIAL IS READ BY systemd FROM THE READ-ONLY DEVICE (gunbc.runner_microvm
+// jit_drive_guest_device, passed in as credential_device) as an environment file whose single assignment is the listener's own
+// argument variable. No `--jitconfig <blob>` appears on any command line.
+fn runner_guest_version_readback_command() -> NonEmptyStr {
+  join([actions_runner_base_dir, actions_runner_listener_relative_path, " --version"], "") as NonEmptyStr
+}
+
+fn runner_guest_listener_command() -> NonEmptyStr {
+  join([actions_runner_base_dir, actions_runner_listener_relative_path, " ", actions_runner_listener_run_verb], "") as NonEmptyStr
+}
+
+// THE POWER-OFF IS THE MANAGER'S, NOT A COMMAND'S. SuccessAction= and FailureAction= are both
+// `poweroff-force`, so every way the unit can end powers the VM off -- the listener exiting 0, it
+// exiting nonzero, it being killed, AND the start failing before any command ran. The earlier
+// `ExecStopPost=/usr/sbin/poweroff -f` covered only the arms on which systemd could still spawn a
+// command.
+//
+// THE CREDENTIAL FILE IS `EnvironmentFile=-` (IF PRESENT), AND THAT DOES NOT MAKE A MISSING ONE
+// SILENT. systemd loads an environment file for EVERY command it spawns, so a hard `EnvironmentFile=`
+// on an absent device would fail GuestBooted, the version readback and RunnerExited alike -- the host
+// would see a VM that printed nothing. With the prefix, the listener starts without a credential,
+// upstream refuses it ("Runner is not configured.", TerminatedError = 1), and the console carries
+// GuestBooted, the version, no RunnerListening and RunnerExited exit_status=1: a located refusal
+// instead of an empty console.
+//
+// THE VERSION READBACK STAYS, AND IT IS THE runner_first_job_receipt LESSON. The Mt. Collins canary
+// ran 2.337.0 while the model said 2.336.0 and nothing here caught it. `Runner.Listener --version`
+// prints the release actually baked into the image on the console the host reads, where
+// gunbc.runner_microvm_boot_probe boot_probe_verdict compares it with the modeled release.
+// `poweroff-force` skips the orderly stop of other units but still kills every process and unmounts
+// before powering off -- a one-job VM has nothing else whose orderly stop matters.
+data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffForce
+
+// THE AGENT UNIT CARRIES THE TASK CEILING THE CELL DECLARES, APPLIED WHERE THE FLOOR'S PROCESSES
+// ACTUALLY LIVE. In the lifecycle-controller topology the host cell's TasksMax bounds only the
+// VMM's threads; the runner and everything it spawns are behind the guest kernel, so the ceiling is
+// re-applied on this unit as its own TasksMax= -- which systemd realizes as pids.max on the unit's
+// cgroup -- reading gunbc.runner_microvm gunbc_runner_microvm_task_ceiling, the one row. It is NOT
+// kernel.pid_max: that is the PID-number wrap ceiling, a different fact. READBACK IS A FRONTIER:
+// the value applied inside the guest is observable only from inside it, and no guest event
+// establishes anything on the host, so the receipt that pids.max holds what this directive says
+// is owed by the first guest floor attempt's console read, not by this row.
+fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyStr) -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc ephemeral Actions runner guest agent" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      SuccessAction { action: runner_guest_agent_end_action },
+      FailureAction { action: runner_guest_agent_end_action },
+    ],
+    service: [
+      ServiceType { mode: ExecMode },
+      Restart { policy: "no" as NonEmptyStr },
+      ServiceTasksMax { count: gunbc_runner_microvm_task_ceiling() },
+      WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },
+      Environment { assignment: runner_guest_job_path },
+      Environment { assignment: runner_guest_job_home },
+      EnvironmentFileIfPresent { path: credential_device },
+      ServiceStandardOutput { stream: OutputJournalAndConsole },
+      ServiceStandardError { stream: OutputJournalAndConsole },
+      ExecStartPre { command: guest_observation_emit_command(event: GuestBooted, image: image) },
+      ExecStartPre { command: runner_guest_version_readback_command() },
+      ExecStart { command: runner_guest_listener_command() },
+      ExecStartPost { command: guest_observation_emit_command(event: RunnerStarted, image: image) },
+      ExecStopPostIgnoringFailure { command: guest_runner_exited_emit_command(image: image) },
+    ],
+    install: Installable {
+      directives: [WantedBy { target: runner_guest_agent_target }],
+    },
+  }
+}
+
+fn runner_guest_agent_unit_path(root: String, image: RunnerGuestImage) -> String {
+  join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system/", runner_guest_agent_unit_name], "")
+}
+
+// A REGULAR FILE IN A .wants/ DIRECTORY IS IGNORED BY systemd, AND THIS BLOCK IS THE REPAIR.
+//
+// The previous revision wrote the unit's bytes a SECOND time into multi-user.target.wants/ and
+// carried an annotation asserting that systemd resolves such an entry by name exactly as it would an
+// enable symlink. THAT CLAIM IS FALSE. systemd's dependency loader (src/core/load-dropin.c,
+// process_deps) checks each entry in a .wants/ or .requires/ directory and SKIPS anything that is not
+// a symlink, logging "dependency dropin ... is not a symlink, ignoring." So the agent was never
+// pulled into the boot at all, and the image would have booted to multi-user with nothing running.
+//
+// IT IS WORTH RECORDING HOW THAT SURVIVED REVIEW, because the mechanism is the point: the false claim
+// lived in an ANNOTATION, and DESIGN section 4c says no Accepted program can read one. Nothing could
+// go red on it. It was checked by a witness that asserted `WantedBy=multi-user.target` appeared in
+// the unit TEXT -- which was true, and which says nothing about whether the placement systemd
+// actually reads was correct. A correct assertion over the wrong subject.
+//
+// THE REPAIR IS A DROP-IN ON THE TARGET, NOT A SYMLINK, and that choice is deliberate rather than
+// convenient. A symlink would be the closer analogue of `systemctl enable`, but systemd documents a
+// fragment that expresses the dependency directly and IS a regular file honestly used as one:
+// `<target>.d/*.conf` carrying `[Unit] Wants=` is merged into the target's own configuration by the
+// ordinary drop-in path, which has no symlink requirement. The build CAN now place a symlink (the
+// resolver link below goes through extdeps.tools.gnu_coreutils ln_symbolic_force_command), and that
+// does not move this decision: where upstream documents a regular-file form, a link is a second
+// spelling of the same activation, and the regular file is the one Filesystem.Write can render from
+// the modeled unit rather than a path a caller pairs with it.
+//
+// The unit keeps its [Install] section, and that is not a second authority for the same fact: the
+// section states which target this agent BELONGS to, so `systemctl enable` inside a running guest
+// still does the right thing, while the drop-in is what activates it in an image nobody enables.
+// Both read runner_guest_agent_target, so they cannot disagree.
+fn runner_guest_agent_target_drop_in() -> SystemdDropIn {
+  SystemdDropIn {
+    sections: [
+      DropInUnitSection {
+        directives: [Wants { target: runner_guest_agent_unit_name as NonEmptyStr }],
+      },
+    ],
+  }
+}
+
+fn runner_guest_agent_drop_in_path(root: String, image: RunnerGuestImage) -> String {
+  join([
+    runner_guest_tree_dir(root: root, image: image),
+    "/etc/systemd/system/", runner_guest_agent_target as String, ".d/10-",
+    runner_guest_agent_unit_name, runner_guest_agent_drop_in_suffix,
+  ], "")
+}
+
+fn runner_guest_agent_drop_in_dir(root: String, image: RunnerGuestImage) -> String {
+  join([
+    runner_guest_tree_dir(root: root, image: image),
+    "/etc/systemd/system/", runner_guest_agent_target as String, ".d",
+  ], "")
+}
+
+// THE RUNNER TARBALL IS THE SAME ROW THE HOST PATH INSTALLS. extdeps.github.actions_runner owns the
+// release, its published per-architecture digest and the URL it is fetched from; this module names
+// none of the three. The architecture is the IMAGE's, read off the identity, so an aarch64 image
+// cannot be handed an x64 tarball by a caller that got one argument wrong.
+type RunnerTarballResolution
+  = RunnerTarballResolved { artifact: ActionsRunnerBinaryArtifact }
+  | RunnerTarballUnpublished { cause: String }
+
+fn runner_guest_tarball(image: RunnerGuestImage) -> RunnerTarballResolution {
+  match actions_runner_binary_artifact_for_arch(binary_release: image.runner, arch: Aarch64) {
+    Absent =>
+      RunnerTarballUnpublished {
+        cause: "the cited Actions runner release publishes no linux binary for this image's architecture, so no image can be built for it",
+      }
+    Present { value: a } => RunnerTarballResolved { artifact: a }
+  }
+}
+
+// --- the build, as typed argv ---
+
+fn runner_guest_fetch_commands(root: String, artifact: ActionsRunnerBinaryArtifact) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: runner_guest_base_dir(root: root)),
+    mkdir_parents_command(path: runner_guest_image_dir(root: root)),
+    curl_download_command(
+      url: firecracker_ci_smoke_kernel_url,
+      destination: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact),
+    ),
+    curl_download_command(
+      url: firecracker_ci_smoke_rootfs_url,
+      destination: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact),
+    ),
+    curl_download_command(
+      url: actions_runner_download_url(artifact: artifact),
+      destination: runner_guest_runner_tarball_path(root: root, artifact: artifact),
+    ),
+  ]
+}
+
+fn runner_guest_runner_tarball_path(root: String, artifact: ActionsRunnerBinaryArtifact) -> String {
+  join([runner_guest_base_dir(root: root), "/", actions_runner_tarball_filename(artifact: artifact)], "")
+}
+
+// unsquashfs CREATES ITS DESTINATION LEAF AND NOT THE PATH ABOVE IT, which is why the mkdir below
+// is part of the sequence rather than redundant with the fetch step's directory creation. Measured
+// on srv2 (fleet-converge run 33983516809): with `base/` and `images/` present but `tree/` absent,
+// `unsquashfs -f -d <root>/tree/<image>` exits 1 with "dir_scan: failed to make directory ...,
+// because No such file or directory". The tool makes the directory it was pointed at, one level, and
+// the earlier revision assumed it would make the chain.
+//
+// THE TREE IS REMOVED BEFORE IT IS BUILT, and that is what makes a rebuild mean what it says. A
+// second unsquashfs over a surviving tree from an earlier release would leave that release's files
+// standing wherever the new one does not overwrite them, and the resulting image would carry bytes
+// no row in this repository names. The removal is `rm -rf` on a path DERIVED from the image
+// identity, never a path a caller hands in.
+//
+// THIS PARAGRAPH DESCRIBED A `rm -rf` THE CODE DID NOT ISSUE, for as long as it existed. The call
+// was rm_force_command -- `rm -f`, whose own row in extdeps.tools.gnu_coreutils says in terms that
+// it never recurses and REFUSES a directory precisely so a mistaken call cannot destroy a tree. So
+// the substrate was correct and this caller was wrong, while the annotation asserted the property
+// that was missing. No Accepted program reads an annotation, so nothing could ever contradict it.
+//
+// It could not fail on a host that had never built before, because there was no directory to
+// remove; the first build on srv2 passed and the SECOND failed (fleet-converge run 33993440148).
+// An idempotence defect that is invisible on exactly one run per host is the shape to expect from
+// staging that is only ever exercised on fresh state.
+fn runner_guest_tree_commands(root: String, image: RunnerGuestImage, artifact: ActionsRunnerBinaryArtifact) -> List<ArgvCommand> {
+  [
+    rm_recursive_force_command(path: runner_guest_tree_dir(root: root, image: image)),
+    mkdir_parents_command(path: runner_guest_tree_dir(root: root, image: image)),
+    unsquashfs_extract_command(
+      archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact),
+      into_directory: runner_guest_tree_dir(root: root, image: image),
+    ),
+    runner_guest_resolver_link_command(root: root, image: image),
+    mkdir_parents_command(path: runner_guest_tree_runner_dir(root: root, image: image)),
+    tar_extract_command(
+      archive: runner_guest_runner_tarball_path(root: root, artifact: artifact),
+      into_directory: runner_guest_tree_runner_dir(root: root, image: image),
+      strip_components: 0,
+    ),
+    mkdir_parents_command(path: runner_guest_tree_unit_dir(root: root, image: image)),
+    mkdir_parents_command(path: runner_guest_agent_drop_in_dir(root: root, image: image)),
+  ]
+}
+
+// THE GUEST'S RESOLVER IS THE KERNEL'S dns0, READ THROUGH ONE LINK, AND THE LINK IS WHAT UPSTREAM
+// DOCUMENTS. The host boots the guest with `ip=...:<dns0>` (gunbc.runner_microvm_network
+// runner_slot_guest_ip_boot_arg, whose dns0 is runner_microvm_guest_resolver -- the one address the
+// egress grant admits on port 53). The kernel does not write /etc/resolv.conf; it exports dns0 to
+// /proc/net/pnp under the prefix "nameserver " and says in its own words that /etc/resolv.conf is
+// linked to it (Documentation/admin-guide/nfs/nfsroot.rst, cited on extdeps.linux.procfs ProcNetPnp).
+// So the image's /etc/resolv.conf IS that link, and the guest's resolver configuration is derived from
+// the same row the grant is derived from, at boot, with no copy of the address baked into the image.
+//
+// A LINK AND NOT A FILE, BECAUSE NO FILE COULD BE RIGHT AT BUILD TIME. /proc/net/pnp exists only once
+// the guest kernel has run its IP configuration, so there is nothing to copy while the tree is being
+// staged; and a regular file carrying the address would be a second authority for
+// runner_microvm_guest_resolver that would silently diverge from the ip= line the next time the row
+// moved. A systemd unit copying the file at boot was the other modeled option and was not taken: it
+// is a moving part ordered against network-online.target for a fact the kernel has already produced
+// before init starts, and it would carry shell semantics (`cp` at boot) where the link carries none.
+//
+// Whatever the base rootfs ships at /etc/resolv.conf is unobserved here -- an Ubuntu image commonly
+// carries a link to systemd-resolved's stub file, but this fleet has not read this one's -- so the
+// builder is the exact-destination form (-sfnT): an existing file or link is replaced, and a real
+// DIRECTORY there makes the build REFUSE rather than create the link inside it and report success
+// over an image with no resolver link. The refusal is the located diagnostic; the extracted kind
+// is then a fact to observe, not a guess to widen the builder around.
+fn runner_guest_resolver_link_target() -> String {
+  procfs_path_literal(p: ProcNetPnp) as String
+}
+
+fn runner_guest_tree_resolv_conf_path(root: String, image: RunnerGuestImage) -> String {
+  join([runner_guest_tree_dir(root: root, image: image), "/etc/resolv.conf"], "")
+}
+
+fn runner_guest_resolver_link_command(root: String, image: RunnerGuestImage) -> ArgvCommand {
+  ln_symbolic_force_command(
+    target: runner_guest_resolver_link_target(),
+    link_name: runner_guest_tree_resolv_conf_path(root: root, image: image),
+  )
+}
+
+fn runner_guest_tree_runner_dir(root: String, image: RunnerGuestImage) -> String {
+  join([runner_guest_tree_dir(root: root, image: image), actions_runner_base_dir], "")
+}
+
+fn runner_guest_tree_unit_dir(root: String, image: RunnerGuestImage) -> String {
+  join([runner_guest_tree_dir(root: root, image: image), "/etc/systemd/system"], "")
+}
+
+fn runner_guest_image_commands(root: String, image: RunnerGuestImage) -> List<ArgvCommand> {
+  [
+    rm_force_command(path: runner_guest_image_path(root: root, image: image)),
+    mke2fs_populate_command(
+      fs: runner_guest_image_filesystem,
+      image_path: runner_guest_image_path(root: root, image: image),
+      from_directory: runner_guest_tree_dir(root: root, image: image),
+      size: runner_guest_image_size,
+    ),
+  ]
+}
+
+// --- the observed standing ---
+
+type RunnerGuestImageStanding {
+  kernel: GuestArtifactVerdict
+  rootfs: GuestArtifactVerdict
+  image_path: String
+  image_digest: GuestArtifactVerdict
+}
+
+fn runner_guest_image_standing_text(s: RunnerGuestImageStanding) -> String {
+  join([
+    guest_artifact_verdict_text(artifact: runner_guest_kernel_artifact, verdict: s.kernel), "\n",
+    guest_artifact_verdict_text(artifact: runner_guest_base_rootfs_artifact, verdict: s.rootfs), "\n",
+    "image=", s.image_path, "\n",
+    guest_artifact_verdict_text(artifact: runner_guest_built_image_artifact, verdict: s.image_digest),
+  ], "")
+}
+
+data runner_guest_image_receipt_dir: String = "target"
+
+data runner_guest_image_receipt_path: String = "target/runner-guest-image-standing.txt"
+
+fn executor_home_wet() -> String? {
+  match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => none
+    Present { value: h } => if trim(s: h) == "" { none } else { Present { value: h } }
+  }
+}
+
+fn measure_artifact_wet(root: String, artifact: GuestBaseArtifact) -> GuestArtifactVerdict {
+  guest_artifact_verdict(
+    artifact: artifact,
+    observed: sha256sum_file_digest_via_shell(
+      path: runner_guest_base_artifact_path(root: root, artifact: artifact) as NonEmptyStr,
+    ),
+  )
+}
+
+fn write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> ProcessExit {
+  match jit_drive_guest_device() {
+    JitDriveNotAttached { cause: c } =>
+      exit_failure(reason: join(["runner_guest_image: no guest device names the credential drive, so no agent was rendered: ", c], ""))
+    JitDriveDevice { device: d } => write_guest_agent_unit_for_device_wet(root: root, image: image, credential_device: d)
+  }
+}
+
+fn write_guest_agent_unit_for_device_wet(root: String, image: RunnerGuestImage, credential_device: NonEmptyStr) -> ProcessExit {
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: image, credential_device: credential_device))
+  let a = Filesystem.Write(path: runner_guest_agent_unit_path(root: root, image: image), content: text)
+  if !a.success {
+    exit_failure(reason: join(["runner_guest_image: guest agent unit write refused: ", a.error], ""))
+  } else {
+    let b = Filesystem.Write(
+      path: runner_guest_agent_drop_in_path(root: root, image: image),
+      content: serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in()),
+    )
+    if !b.success {
+      exit_failure(reason: join(["runner_guest_image: guest agent target drop-in write refused: ", b.error], ""))
+    } else {
+      ExitSuccess
+    }
+  }
+}
+
+fn runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding) -> ProcessExit {
+  let text = runner_guest_image_standing_text(s: standing)
+  let _ = run_shell_commands(commands: [mkdir_parents_command(path: runner_guest_image_receipt_dir)], transport: LocalExec)
+  let w = Filesystem.Write(path: runner_guest_image_receipt_path, content: concat(text, "\n"))
+  if !w.success {
+    exit_failure(reason: join(["runner_guest_image: receipt write refused: ", w.error], ""))
+  } else if guest_artifact_verdict_admits_build(verdict: standing.image_digest) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["runner_guest_image: no image was produced --\n", text], ""))
+  }
+}
+
+// THE RECEIPT IS WRITTEN ON EVERY ARM, INCLUDING THE ONES THAT FAILED, and that is a repair rather
+// than thoroughness. The earlier revision propagated a build failure straight out and wrote nothing,
+// so fleet-converge run 33983516809 measured BOTH base artifacts' first-contact digests -- the exact
+// measurement this fleet has no other route to -- and then discarded them because a LATER step
+// failed. Evidence a run produces must survive the failure that makes it interesting, which is the
+// same property the boot probe's console receipt needs and for the same reason.
+//
+// THE BUILD'S OWN OUTCOME IS NOT LAUNDERED BY THIS. image_digest reads the image path, so a build
+// that produced no image reports ArtifactNotMeasured, which guest_artifact_verdict_admits_build
+// refuses and the receipt exits non-zero on; and the build's exit is returned in preference to the
+// receipt's. Writing the receipt records what was learned. It does not decide the verdict.
+//
+// IT IS ITS OWN DECLARATION BECAUSE THE EXPLANATION HAS TO LIVE SOMEWHERE A READER FINDS IT. The
+// first attempt put this reasoning in a comment inside the converge body, which DESIGN 4c refuses at
+// module-item grain -- annotations attach to declarations, so a step worth explaining is a step worth
+// naming.
+fn runner_guest_image_build_and_receipt_wet(
+  root: String,
+  image: RunnerGuestImage,
+  artifact: ActionsRunnerBinaryArtifact,
+  kernel: GuestArtifactVerdict,
+  rootfs: GuestArtifactVerdict,
+) -> ProcessExit {
+  let built = match run_shell_commands(commands: runner_guest_tree_commands(root: root, image: image, artifact: artifact), transport: LocalExec) {
+    ExitSuccess =>
+      match write_guest_agent_unit_wet(root: root, image: image) {
+        ExitSuccess =>
+          run_shell_commands(commands: runner_guest_image_commands(root: root, image: image), transport: LocalExec)
+        other => other
+      }
+    other => other
+  }
+  let receipt = runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding {
+    kernel: kernel,
+    rootfs: rootfs,
+    image_path: runner_guest_image_path(root: root, image: image),
+    image_digest: guest_artifact_verdict(
+      artifact: runner_guest_built_image_artifact,
+      observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
+    ),
+  })
+  match built {
+    ExitSuccess => receipt
+    other => other
+  }
+}
+
+// OBSERVE MEASURES AND REPAIRS NOTHING, which is this repository's ordering law rather than this
+// module's preference: it fetches the base artifacts if they are absent, reports what their bytes
+// hash to, and reports whether an image already stands. It never builds one.
+fn runner_guest_image_observe_wet() -> ProcessExit
+{
+  match executor_home_wet() {
+    Absent => exit_failure(reason: "runner_guest_image_observe: HOME is unset, so the executor-owned image root cannot be named")
+    Present { value: home } => {
+      let root = runner_guest_image_root(executor_home: home)
+      let image = gunbc_runner_guest_image
+      match runner_guest_tarball(image: image) {
+        RunnerTarballUnpublished { cause: c } =>
+          exit_failure(reason: join(["runner_guest_image_observe: ", c], ""))
+        RunnerTarballResolved { artifact: a } => {
+          let _ = run_shell_commands(commands: runner_guest_fetch_commands(root: root, artifact: a), transport: LocalExec)
+          runner_guest_image_receipt_wet(standing: RunnerGuestImageStanding {
+            kernel: measure_artifact_wet(root: root, artifact: runner_guest_kernel_artifact),
+            rootfs: measure_artifact_wet(root: root, artifact: runner_guest_base_rootfs_artifact),
+            image_path: runner_guest_image_path(root: root, image: image),
+            image_digest: guest_artifact_verdict(
+              artifact: runner_guest_built_image_artifact,
+              observed: sha256sum_file_digest_via_shell(path: runner_guest_image_path(root: root, image: image) as NonEmptyStr),
+            ),
+          })
+        }
+      }
+    }
+  }
+}
+
+// CONVERGE FETCHES, REFUSES ON A CONTRADICTED PIN, BUILDS, AND MEASURES WHAT IT BUILT. The refusal
+// sits BEFORE the extraction rather than after the image exists: an artifact whose bytes contradict
+// a recorded expectation must not reach a filesystem this fleet then boots, and a check that ran
+// afterwards would be reporting on a VM image that already exists on disk.
+fn runner_guest_image_converge_wet() -> ProcessExit
+{
+  match executor_home_wet() {
+    Absent => exit_failure(reason: "runner_guest_image_converge: HOME is unset, so the executor-owned image root cannot be named")
+    Present { value: home } => {
+      let root = runner_guest_image_root(executor_home: home)
+      let image = gunbc_runner_guest_image
+      match runner_guest_tarball(image: image) {
+        RunnerTarballUnpublished { cause: c } =>
+          exit_failure(reason: join(["runner_guest_image_converge: ", c], ""))
+        RunnerTarballResolved { artifact: a } =>
+          match run_shell_commands(commands: runner_guest_fetch_commands(root: root, artifact: a), transport: LocalExec) {
+            ExitSuccess => {
+              let kernel = measure_artifact_wet(root: root, artifact: runner_guest_kernel_artifact)
+              let rootfs = measure_artifact_wet(root: root, artifact: runner_guest_base_rootfs_artifact)
+              if !guest_artifact_verdict_admits_build(verdict: kernel) || !guest_artifact_verdict_admits_build(verdict: rootfs) {
+                exit_failure(reason: join([
+                  "runner_guest_image_converge: a base artifact is not admissible, so NOTHING was built --\n",
+                  guest_artifact_verdict_text(artifact: runner_guest_kernel_artifact, verdict: kernel), "\n",
+                  guest_artifact_verdict_text(artifact: runner_guest_base_rootfs_artifact, verdict: rootfs),
+                ], ""))
+              } else {
+                runner_guest_image_build_and_receipt_wet(
+                  root: root, image: image, artifact: a, kernel: kernel, rootfs: rootfs,
+                )
+              }
+            }
+            other => other
+          }
+      }
+    }
+  }
+}

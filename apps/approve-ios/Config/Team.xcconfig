@@ -1,0 +1,9 @@
+// Operator-filled. Copy to Team.local.xcconfig if you prefer not to commit values; XcodeGen reads
+// this file by name, so either edit in place (do not commit the team id) or point project.yml at
+// the local copy.
+DEVELOPMENT_TEAM =
+// extdeps.apple.apns ApnsEnvironment: development for an Xcode-signed build, production for
+// TestFlight and App Store (testflight_is_production_note).
+APNS_ENVIRONMENT = development
+// extdeps.apple.app_attest AppAttestEnvironment: development | production.
+APP_ATTEST_ENVIRONMENT = development

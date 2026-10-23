@@ -1,0 +1,46 @@
+module test.claim.workspace_allocation_dispatch_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.workspace_allocation_dispatch_transport { workspace_allocation_dispatch_result, workspace_allocation_dispatch_command }
+import gunbc.workspace_allocation_dispatch { workspace_allocation_prepare_cli, workspace_allocation_readback_cli }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
+import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_text, WorkspaceLaunchDirectiveReady }
+import gunbc.test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation_in_slot, launch_fixture_directive }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content }
+
+fn dispatch_result_admits(host: NonEmptyStr, installed: NonEmptyStr) -> Bool {
+  match launch_fixture_allocation_in_slot(index: 13) {
+    Absent => false
+    Present { value: allocation } => match launch_fixture_directive(allocation: allocation) {
+      WorkspaceLaunchDirectiveReady { directive } => match workspace_allocation_dispatch_result(
+        text: workspace_launch_directive_text(directive: directive), host: host, release_dir: installed) {
+        WorkspaceConvergenceObserved { basis } => basis.owner_generation == 4 && basis.allocation == allocation
+        WorkspaceConvergenceUnobserved { reason: _ } => false
+      }
+      other => false
+    }
+  }
+}
+
+test fn installed_observation_binds_host_release_and_owner_generation() -> Bool {
+  dispatch_result_admits(host: "srv1", installed: "/opt/gunbc/controller/fixture-revision")
+    && !dispatch_result_admits(host: "srv2", installed: "/opt/gunbc/controller/fixture-revision")
+    && !dispatch_result_admits(host: "srv1", installed: "/opt/gunbc/controller/other-revision")
+}
+
+test fn installed_observation_refuses_empty_and_malformed_responses() -> Bool {
+  all(["", "not-json", "\{}"], text => match workspace_allocation_dispatch_result(
+    text: text, host: "srv1", release_dir: "/opt/gunbc/controller/fixture-revision") {
+    WorkspaceConvergenceUnobserved { reason: _ } => true
+    WorkspaceConvergenceObserved { basis: _ } => false
+  })
+}
+
+test fn runner_grants_reconcile_existing_intent_without_operator_write_authority() -> Bool {
+  let grants = workspace_dispatch_grant_content(release_dir: "/opt/gunbc/controller/fixture-revision")
+  string_contains(s: grants, pattern: "workspace_dispatch_allocation_plan_cli")
+    && string_contains(s: grants, pattern: "workspace_dispatch_allocation_readback_cli")
+    && !string_contains(s: grants, pattern: "workspace_operator_request")
+    && !string_contains(s: grants, pattern: "workspace_operator_release")
+    && !string_contains(s: grants, pattern: "state-writer-mac-key")
+}

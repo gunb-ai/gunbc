@@ -1,0 +1,44 @@
+module extdeps.os.ubuntu_ports_archive
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// ONE BINARY PACKAGE AS THE UBUNTU PORTS ARCHIVE PUBLISHES IT: the Packages index row's Package,
+// Version, Architecture, Filename and SHA256, kept under the index's own field names. The Filename
+// is relative to the archive root, so the download location is derived, never a second spelling.
+// The SHA256 is the index's digest of the .deb; it verifies a download, and says nothing about the
+// files inside (a consumer that maps a file pins that file's own digest).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "wiki.debian.org/DebianRepository/Format#A.22Packages.22_Indices",
+  }
+}
+
+data ubuntu_ports_archive_root: String = "https://ports.ubuntu.com/ubuntu-ports/"
+
+type UbuntuArchiveBinaryPackage {
+  package: NonEmptyStr
+  version: NonEmptyStr
+  architecture: NonEmptyStr
+  filename: NonEmptyStr
+  sha256: NonEmptyStr
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.os.ubuntu_ports_archive",
+      decl_name: "UbuntuArchiveBinaryPackage",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+fn ubuntu_ports_package_url(p: UbuntuArchiveBinaryPackage) -> String {
+  concat(ubuntu_ports_archive_root, p.filename as String)
+}

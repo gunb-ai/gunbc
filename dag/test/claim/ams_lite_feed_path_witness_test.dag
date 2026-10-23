@@ -1,0 +1,72 @@
+module test.claim.ams_lite_feed_path_witness_test
+
+import std.types { Bool, List }
+import extdeps.printing.fdm {
+  FilamentMaterial, Tpu, Tpe, Pva, Pla, Abs, FiberReinforcedPolymer,
+  FeedPathExcluded, FeedPathUnstated, FeedPathAdmitted, FeedPathExclusionCause,
+  FeedPathResolved, FeedPathRowsConflict,
+  FeedPathSuitabilityRow,
+  ExcludedAsFlexible, ExcludedAsMoistureAbsorbent, ExcludedAsHighModulusOrBrittle,
+  feed_path_suitability_row, feed_path_suitability,
+}
+import extdeps.printing.bambu_lab_ams_lite { ams_lite_feeds }
+
+fn excluded_because(material: FilamentMaterial, cause: FeedPathExclusionCause) -> Bool {
+  match ams_lite_feeds(material: material) {
+    FeedPathResolved { suitability: s } =>
+      match s {
+        FeedPathExcluded { cause: c } => c == cause
+        FeedPathUnstated => false
+        FeedPathAdmitted => false
+      }
+    FeedPathRowsConflict { material: _, count: _ } => false
+  }
+}
+
+// THE DISCRIMINATING ROW. The A1 mini's own vendor table grades Tpu SuitabilityIdeal and this feed
+// path excludes it. A model that collapsed the machine grade and the feed-path grade into one type
+// cannot make this witness green, which is the whole reason FeedPathSuitability is a second type.
+test fn w_tpu_is_machine_ideal_and_feed_path_excluded() -> Bool {
+  excluded_because(material: Tpu, cause: ExcludedAsFlexible)
+}
+
+test fn w_each_excluded_material_carries_its_own_stated_cause() -> Bool {
+  excluded_because(material: Tpe, cause: ExcludedAsFlexible)
+    && excluded_because(material: Pva, cause: ExcludedAsMoistureAbsorbent)
+    && excluded_because(material: FiberReinforcedPolymer, cause: ExcludedAsHighModulusOrBrittle)
+}
+
+// SILENCE IS NOT PERMISSION. Pla is absent from the rows because no quoted sentence admits it, and
+// Abs because the manual does not mention it. Both must read Unstated -- if either ever reads
+// admitted, a row was authored with no citation behind it.
+fn is_unstated(material: FilamentMaterial) -> Bool {
+  match ams_lite_feeds(material: material) {
+    FeedPathResolved { suitability: s } =>
+      match s {
+        FeedPathUnstated => true
+        FeedPathExcluded { cause: _ } => false
+        FeedPathAdmitted => false
+      }
+    FeedPathRowsConflict { material: _, count: _ } => false
+  }
+}
+
+test fn w_an_unmentioned_material_is_unstated_not_admitted() -> Bool {
+  is_unstated(material: Pla) && is_unstated(material: Abs)
+}
+
+// THE DUPLICATE-ROW REFUSAL, WHICH IS THE FINDING OF review 59754 MADE EXECUTABLE. The first
+// revision of feed_path_suitability folded to the LAST matching row, so this fixture would have
+// answered FeedPathAdmitted and reported a table naming one material twice as a clean admission.
+// It now refuses and counts. This row is the enrolled control that the class stays closed at BOTH
+// sites, not only at the sibling lookup where it was first repaired.
+test fn w_a_material_named_twice_refuses_rather_than_taking_the_last_row() -> Bool {
+  let forked: List<FeedPathSuitabilityRow> = [
+    feed_path_suitability_row(material: Tpu, suitability: FeedPathExcluded { cause: ExcludedAsFlexible }),
+    feed_path_suitability_row(material: Tpu, suitability: FeedPathAdmitted),
+  ]
+  match feed_path_suitability(rows: forked, material: Tpu) {
+    FeedPathRowsConflict { material: _, count: n } => n == 2
+    FeedPathResolved { suitability: _ } => false
+  }
+}

@@ -1,0 +1,313 @@
+module test.claim.scm_log_witness
+
+import std.types { Bool, Int, String, List, NonEmptyStr }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore,
+  ObjectId,
+  empty_store,
+  store_node,
+  Stored,
+  LocatorCollision,
+  SemanticNodeTarget,
+  CorpusManifestTarget,
+  CorpusManifestEntry,
+  CorpusManifestStored,
+  CorpusManifestDuplicatePath,
+  CorpusManifestLocatorCollision,
+  store_corpus_manifest,
+  SourceStored,
+  SourceLocatorCollision,
+  store_authored_source,
+  authored_source_target_of,
+  authored_source_target_locator,
+}
+import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  encode_repository_checked,
+  RepositoryEncoded,
+  RepositoryEncodeRefused,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsSemanticNode,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+}
+import gunbc.scm.log {
+  repository_log,
+  commit_log_manifest_roots_are_held,
+  CommitLog,
+  NoCommitsYet,
+  CommitLogRows,
+  CommitLogRow,
+  LoggedCommitManifestHeld,
+  LoggedCommitRootIsAuthoredSource,
+  LoggedCommitRootIsSemanticNode,
+  LoggedCommitRootMissingFromStore,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Names qualified: top-level definitions are corpus-wide and the resolver silently selects among
+// duplicates (#8707), a hazard this layer's other witness files already document hitting.
+fn log_witness_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+type LogWitnessStored {
+  store: ObjectStore
+  identity: SemanticNodeTarget
+}
+
+// A COMMIT ROOT IS NOW AN AUTHORED SNAPSHOT, so the fixture stores one instead of branding a node.
+// It stores REAL authored bytes and a REAL manifest naming them, rather than a manifest over a
+// dangling locator, because the log's standing arms discriminate on what the store actually holds
+// and a fixture built over an absent source would make the held arm unreachable.
+type LogWitnessSnapshot {
+  store: ObjectStore
+  identity: CorpusManifestTarget
+}
+
+fn log_witness_store_snapshot(store: ObjectStore, path: NonEmptyStr, text: String) -> LogWitnessSnapshot {
+  match store_authored_source(store: store, text: text) {
+    SourceLocatorCollision { identity: id, existing: _, incoming: _ } =>
+      LogWitnessSnapshot { store: store, identity: CorpusManifestTarget { locator: id } }
+    SourceStored { store: with_source, source: source } =>
+      match store_corpus_manifest(
+        store: with_source,
+        entries: [CorpusManifestEntry { path: path, source: authored_source_target_of(reference: source) }]
+      ) {
+        CorpusManifestDuplicatePath { path: _ } =>
+          LogWitnessSnapshot {
+            store: with_source,
+            identity: CorpusManifestTarget { locator: authored_source_target_locator(target: authored_source_target_of(reference: source)) },
+          }
+        CorpusManifestLocatorCollision { identity: id, existing: _, incoming: _ } =>
+          LogWitnessSnapshot { store: with_source, identity: CorpusManifestTarget { locator: id } }
+        CorpusManifestStored { store: next, manifest: manifest } =>
+          LogWitnessSnapshot { store: next, identity: CorpusManifestTarget { locator: manifest.locator } }
+      }
+  }
+}
+
+fn log_witness_store_one(store: ObjectStore, name: Symbol) -> LogWitnessStored {
+  match store_node(store: store, n: log_witness_atom(name: name)) {
+    Stored { store: next, node: node } =>
+      LogWitnessStored { store: next, identity: node_target_of(reference: node) }
+    LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+      LogWitnessStored { store: store, identity: SemanticNodeTarget { locator: identity } }
+  }
+}
+
+fn log_witness_ref(ordinal: Int) -> RepositoryCommitRef {
+  RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
+}
+
+fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+    staged: none,
+  }
+}
+
+fn log_witness_mint(repo: RepositoryEnvelope, root: CorpusManifestTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
+    RepositoryCommitMinted { repository: minted, reference: _ } => minted
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
+    RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => repo
+    RepositoryCommitMintParentMissing { parent: _ } => repo
+  }
+}
+
+fn log_witness_two_commit_repository() -> RepositoryEnvelope {
+  let a = log_witness_store_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let b = log_witness_store_snapshot(store: a.store, path: "b.dag" as NonEmptyStr, text: "module b")
+  let first = log_witness_mint(repo: log_witness_empty(store: b.store), root: a.identity, message: "first", parent: none)
+  log_witness_mint(
+    repo: first,
+    root: b.identity,
+    message: "second",
+    parent: Present { value: log_witness_ref(ordinal: 0) },
+  )
+}
+
+// A commit whose root was never stored. The envelope's encoder refuses on
+// RepositoryCommitRootNotInStore, so this is a state the model already recognises.
+fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
+  let a = log_witness_store_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let orphan = log_witness_store_snapshot(store: empty_store(), path: "gone.dag" as NonEmptyStr, text: "module never_stored")
+  let both = log_witness_store_snapshot(store: a.store, path: "gone.dag" as NonEmptyStr, text: "module never_stored")
+  let held = log_witness_mint(repo: log_witness_empty(store: both.store), root: a.identity, message: "held", parent: none)
+  let minted = log_witness_mint(repo: held, root: orphan.identity, message: "not held", parent: none)
+  RepositoryEnvelope {
+    store: a.store,
+    commits: minted.commits,
+    commit_allocator: minted.commit_allocator,
+    checked_out: none,
+    staged: none,
+  }
+}
+
+// TWO VALID COMMITS PRESENTED IN AN ORDER THAT DISAGREES WITH THEIR MINTED ORDINALS. This is the
+// specimen that separates "the reference is carried on the commit" from "the reference is computed
+// from where the row landed". Both readings agree on an in-order list, which is why the in-order
+// claim below could never have discriminated them. Here the commits carry ordinals 0 and 1 but are
+// presented 1-then-0, so a fold that synthesised a reference from its own position would answer
+// [ref 0, ref 1] and disagree with the commits it was handed.
+//
+// BOTH COMMITS ARE DELIBERATELY PARENTLESS, and that is the whole reason this fixture is shaped the
+// way it is rather than reusing the two-commit repository above. `admit_commit_order_step` refuses
+// `CommitParentNotPreviouslyAdmitted` when a commit precedes its own parent, so REVERSING a list
+// whose second commit descends from its first produces an envelope the encoder REFUSES -- a value no
+// repository could ever persist or decode. Proving an identity property on such a value would be
+// proving it outside the admitted domain, where the production question does not arise. Two ROOT
+// commits carry no parent edge, so the reversed presentation stays admissible while still
+// disagreeing with the ordinals. The companion claim encodes this envelope to keep that admissibility
+// EXECUTED rather than merely argued here. Found by external review.
+fn log_witness_rows_presented_out_of_ordinal_order() -> RepositoryEnvelope {
+  let a = log_witness_store_snapshot(store: empty_store(), path: "a.dag" as NonEmptyStr, text: "module a")
+  let b = log_witness_store_snapshot(store: a.store, path: "b.dag" as NonEmptyStr, text: "module b")
+  let first = log_witness_mint(repo: log_witness_empty(store: b.store), root: a.identity, message: "first", parent: none)
+  let both = log_witness_mint(repo: first, root: b.identity, message: "second", parent: none)
+  RepositoryEnvelope {
+    store: both.store,
+    commits: reverse(both.commits),
+    commit_allocator: both.commit_allocator,
+    checked_out: none,
+    staged: none,
+  }
+}
+
+fn log_witness_row_messages(log: CommitLog) -> List<String> {
+  match log {
+    NoCommitsYet => []
+    CommitLogRows { rows: rows } => map(rows, r => r.message)
+  }
+}
+
+fn log_witness_row_references(log: CommitLog) -> List<RepositoryCommitRef> {
+  match log {
+    NoCommitsYet => []
+    CommitLogRows { rows: rows } => map(rows, r => r.reference)
+  }
+}
+
+// AN EMPTY HISTORY IS ITS OWN STATE, asserted as NoCommitsYet rather than as "no rows". Written as a
+// row-count claim this would also be satisfied by CommitLogRows { rows: [] } -- the exact collapse
+// the type exists to make unrepresentable, and the empty-observation narrow DESIGN rules strictly
+// worse than a widen because a narrow is silently uncovered rather than merely expensive.
+test fn a_fresh_repository_logs_no_commits_yet_rather_than_no_rows() -> Bool {
+  match repository_log(envelope: RepositoryEnvelope {
+    store: empty_store(),
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+    staged: none,
+  }) {
+    NoCommitsYet => true
+    CommitLogRows { rows: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ABOVE, and without it answering NoCommitsYet for everything would
+// pass: a repository that HAS commits must produce rows carrying their messages.
+test fn a_repository_with_commits_logs_a_row_per_commit() -> Bool {
+  log_witness_row_messages(log: repository_log(envelope: log_witness_two_commit_repository()))
+    == ["first", "second"]
+}
+
+// ROWS COME BACK IN THE PRESENTED ORDER, CARRYING THE REFERENCE EACH COMMIT ADVERTISES. This makes a
+// row actionable: the reference is the identifier a reader hands back to an operation that takes one.
+// ON ITS OWN THIS CLAIM DOES NOT SAY WHERE THE REFERENCE CAME FROM -- the list is in ordinal order, so
+// a fold synthesising references from position answers identically. The out-of-order claim below is
+// what discriminates that; this one is its in-order positive control.
+test fn row_references_are_the_commits_intrinsic_keys() -> Bool {
+  log_witness_row_references(log: repository_log(envelope: log_witness_two_commit_repository()))
+    == [log_witness_ref(ordinal: 0), log_witness_ref(ordinal: 1)]
+}
+
+// THE DUPLICATE-ROOT CASE: EQUAL ROOTS DO NOT COLLAPSE DISTINCT MINTED OCCURRENCES. Two commits may
+// share a root and differ only in message -- they name the same snapshot, which is the point of
+// content addressing and not a collision. An identity LOOKUP would answer the first match, so both
+// rows would advertise the first row's reference and the second commit would be unreachable through
+// its own row's identifier. (This annotation used to say the reference is "DERIVED FROM POSITION",
+// which is the inverse of the model: the reference is CARRIED on the commit. This claim refutes
+// root-keying and nothing else -- position-derived references are also distinct, so it never
+// discriminated position-keying. That is what the out-of-order claim below is for. Found by
+// external review.)
+test fn two_commits_sharing_a_root_still_get_distinct_references() -> Bool {
+  let a = log_witness_store_snapshot(store: empty_store(), path: "shared.dag" as NonEmptyStr, text: "module shared")
+  let first = log_witness_mint(repo: log_witness_empty(store: a.store), root: a.identity, message: "relabelled once", parent: none)
+  let repo = log_witness_mint(repo: first, root: a.identity, message: "relabelled twice", parent: none)
+  log_witness_row_references(log: repository_log(envelope: repo))
+    == [log_witness_ref(ordinal: 0), log_witness_ref(ordinal: 1)]
+    && log_witness_row_messages(log: repository_log(envelope: repo))
+      == ["relabelled once", "relabelled twice"]
+}
+
+// WHERE A ROW'S IDENTITY COMES FROM: THE COMMIT IT WAS BUILT FROM, NOT THE SLOT IT LANDED IN.
+// Presented 1-then-0, the rows must answer 1-then-0. Replacing `commit.reference` with the fold's
+// own position reds this and nothing else in this file.
+test fn row_references_come_from_the_commit_not_from_the_row_position() -> Bool {
+  log_witness_row_references(log: repository_log(envelope: log_witness_rows_presented_out_of_ordinal_order()))
+    == [log_witness_ref(ordinal: 1), log_witness_ref(ordinal: 0)]
+    && log_witness_row_messages(log: repository_log(envelope: log_witness_rows_presented_out_of_ordinal_order()))
+      == ["second", "first"]
+}
+
+// THE SPECIMEN ABOVE IS INSIDE THE ADMITTED PERSISTED DOMAIN, asserted by executing the encoder's own
+// admission rather than by reasoning about it here. Without this, the identity claim could be proved
+// on an envelope no repository could persist -- true of a value production can never hold, which is
+// evidence about nothing. This is also the discriminator for the fixture's SHAPE: rebuilding it from
+// a parent-carrying pair reds this claim with the encoder's own refusal.
+test fn the_out_of_order_specimen_is_one_a_repository_could_actually_persist() -> Bool {
+  match encode_repository_checked(repo: log_witness_rows_presented_out_of_ordinal_order()) {
+    RepositoryEncoded { value: _ } => true
+    RepositoryEncodeRefused { cause: _ } => false
+  }
+}
+
+// A COMMIT NAMING A ROOT THE STORE DOES NOT HOLD IS MARKED, not listed as ordinary. Listing it
+// silently would present a row that cannot be checked out as though it were fine -- the same
+// reasoning that gives status its CheckedOutCommitMissing arm.
+test fn a_commit_whose_root_is_not_held_is_marked_rather_than_listed_as_ordinary() -> Bool {
+  match repository_log(envelope: log_witness_repository_with_unheld_root()) {
+    NoCommitsYet => false
+    CommitLogRows { rows: rows } =>
+      map(rows, r => match r.standing {
+        LoggedCommitManifestHeld => "held"
+        LoggedCommitRootMissingFromStore => "missing"
+        LoggedCommitRootIsAuthoredSource => "source"
+        LoggedCommitRootIsSemanticNode => "semantic_node"
+      }) == ["held", "missing"]
+  }
+}
+
+// THE ROLL-UP, WITH ITS DISCRIMINATOR. A repository whose manifest roots are all held and a fresh one
+// both answer true, and a repository with one unheld root answers false -- so the predicate
+// distinguishes the state it names rather than tracking whether any rows exist. It deliberately does
+// NOT claim the named sources are recoverable; that is a separate observation with its own authority.
+test fn manifest_roots_held_distinguishes_an_unheld_root_from_a_healthy_or_empty_log() -> Bool {
+  commit_log_manifest_roots_are_held(log: repository_log(envelope: log_witness_two_commit_repository()))
+    && commit_log_manifest_roots_are_held(log: repository_log(envelope: RepositoryEnvelope {
+      store: empty_store(),
+      commits: [],
+      commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+      checked_out: none,
+      staged: none,
+    }))
+    && !commit_log_manifest_roots_are_held(
+      log: repository_log(envelope: log_witness_repository_with_unheld_root())
+    )
+}

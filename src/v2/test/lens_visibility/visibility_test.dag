@@ -1,0 +1,45 @@
+module v2.test.lens_visibility.visibility_test
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data mod_public_api: QualifiedName = Cons { head: ^public_api, tail: Empty }
+data mod_private_impl: QualifiedName = Cons { head: ^private_impl, tail: Empty }
+data mod_public_util: QualifiedName = Cons { head: ^public_util, tail: Empty }
+data mod_unknown_dep: QualifiedName = Cons { head: ^unknown_dep, tail: Empty }
+
+data no_imports: List<QualifiedName> = []
+
+data red_facts: List<ModuleVisibilityFact> = [
+  ModuleVisibilityFact { module: mod_public_api,   public: true,  imports: [mod_private_impl] },
+  ModuleVisibilityFact { module: mod_private_impl, public: false, imports: no_imports }
+]
+
+data green_facts: List<ModuleVisibilityFact> = [
+  ModuleVisibilityFact { module: mod_public_api,  public: true, imports: [mod_public_util] },
+  ModuleVisibilityFact { module: mod_public_util, public: true, imports: no_imports }
+]
+
+data failclosed_facts: List<ModuleVisibilityFact> = [
+  ModuleVisibilityFact { module: mod_public_api, public: true, imports: [mod_unknown_dep] }
+]
+
+data private_importer_facts: List<ModuleVisibilityFact> = [
+  ModuleVisibilityFact { module: mod_private_impl, public: false, imports: [mod_unknown_dep] }
+]
+
+test fn leak_caught_public_imports_private() -> Bool {
+  visibility_leak_count(facts: red_facts) == 1
+}
+
+test fn clean_public_imports_public() -> Bool {
+  visibility_clean(facts: green_facts)
+}
+
+test fn failclosed_unknown_import_is_leak() -> Bool {
+  visibility_leak_count(facts: failclosed_facts) == 1
+}
+
+test fn private_importer_may_depend_on_anything() -> Bool {
+  visibility_clean(facts: private_importer_facts)
+}

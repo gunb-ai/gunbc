@@ -1,0 +1,167 @@
+module v2.workflow.runtime_run
+
+import std.types { List }
+import v2.compiler.eval {
+  EvalContext,
+  eval_with_context,
+  inputs_root_only
+}
+import v2.compiler.infer { InferredTree }
+import v2.std.algebra {
+  is_empty,
+  non_empty
+}
+import std.algebra { list_snoc_item }
+import v2.std.dependency { DependencyView }
+import v2.std.diagnostic { Outcome }
+import v2.std.node { Node }
+import v2.std.runtime { RuntimeValue }
+import v2.workflow.scheduler {
+  RunnableFrontier,
+  SchedulerBlockedEvidence,
+  runnable_frontier_from_dependencies,
+  scheduler_append_node_once,
+  scheduler_blocked_evidence,
+  scheduler_remaining_nodes
+}
+
+type RuntimeRunReceipt {
+  node: Node
+  result: Outcome<RuntimeValue>
+}
+
+type RuntimeRunLog {
+  entries: List<RuntimeRunReceipt>
+}
+
+type RuntimeRunState {
+  log: RuntimeRunLog
+  scheduled: List<Node>
+}
+
+type RuntimeRunResult
+  = RuntimeRunComplete {
+      log: RuntimeRunLog
+      scheduled: List<Node>
+    }
+  | RuntimeRunBlocked {
+      evidence: SchedulerBlockedEvidence
+      log: RuntimeRunLog
+      scheduled: List<Node>
+      remaining: List<Node>
+    }
+
+fn runtime_run_log_empty() -> RuntimeRunLog {
+  RuntimeRunLog { entries: [] }
+}
+
+fn runtime_run_append_receipt(
+  log: RuntimeRunLog,
+  node: Node,
+  result: Outcome<RuntimeValue>
+) -> RuntimeRunLog {
+  RuntimeRunLog {
+    entries: list_snoc_item(
+      xs: log.entries,
+      item: RuntimeRunReceipt { node: node, result: result }
+    )
+  }
+}
+
+fn runtime_run_eval_node(
+  state: RuntimeRunState,
+  node: Node,
+  tree: InferredTree,
+  context: EvalContext
+) -> RuntimeRunState {
+  let result = eval_with_context(
+    tree: tree,
+    context: context,
+    inputs: inputs_root_only(root: node)
+  )
+  RuntimeRunState {
+    log: runtime_run_append_receipt(log: state.log, node: node, result: result),
+    scheduled: scheduler_append_node_once(nodes: state.scheduled, node: node)
+  }
+}
+
+fn runtime_run_step_from_frontier(
+  frontier: RunnableFrontier<Node>,
+  state: RuntimeRunState,
+  tree: InferredTree,
+  context: EvalContext
+) -> RuntimeRunState {
+  fold(frontier.ready, init: state, f: fn(acc, node) {
+    runtime_run_eval_node(state: acc, node: node, tree: tree, context: context)
+  })
+}
+
+fn runtime_run_step_state(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  tree: InferredTree,
+  context: EvalContext,
+  state: RuntimeRunState
+) -> RuntimeRunState {
+  let frontier = runnable_frontier_from_dependencies(
+    nodes: nodes,
+    dependencies: dependencies,
+    scheduled: state.scheduled
+  )
+  if non_empty(xs: frontier.ready) {
+    runtime_run_step_from_frontier(
+      frontier: frontier,
+      state: state,
+      tree: tree,
+      context: context
+    )
+  } else {
+    state
+  }
+}
+
+fn runtime_run_result_from_state(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  state: RuntimeRunState
+) -> RuntimeRunResult {
+  let remaining = scheduler_remaining_nodes(nodes: nodes, scheduled: state.scheduled)
+  if is_empty(xs: remaining) {
+    RuntimeRunComplete {
+      log: state.log,
+      scheduled: state.scheduled
+    }
+  } else {
+    RuntimeRunBlocked {
+      evidence: scheduler_blocked_evidence(),
+      log: state.log,
+      scheduled: state.scheduled,
+      remaining: remaining
+    }
+  }
+}
+
+fn runtime_run(
+  nodes: List<Node>,
+  dependencies: List<DependencyView>,
+  tree: InferredTree,
+  context: EvalContext
+) -> RuntimeRunResult {
+  let state = fold(
+    nodes,
+    init: RuntimeRunState {
+      log: runtime_run_log_empty(),
+      scheduled: []
+    },
+    f: fn(acc, _) {
+      runtime_run_step_state(
+        nodes: nodes,
+        dependencies: dependencies,
+        tree: tree,
+        context: context,
+        state: acc
+      )
+    }
+  )
+  runtime_run_result_from_state(nodes: nodes, dependencies: dependencies, state: state)
+}

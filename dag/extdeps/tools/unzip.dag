@@ -1,0 +1,49 @@
+module extdeps.tools.unzip
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_bin_dir, package_unzip }
+
+// Info-ZIP UnZip, the program Debian and Ubuntu ship as the `unzip` package. A Playwright browser
+// build is a .zip (extdeps.automation.playwright PlaywrightBrowserDownload), and GNU tar does not
+// read that format, so extracting one needs this tool; an Ubuntu 24.04 server install does not
+// carry it by default.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.ubuntu.com/manpages/noble/man1/unzip.1.html"
+  }
+}
+
+fn unzip_program() -> ProgramIdentity = cataloged_program(invocation: "unzip")
+
+data unzip_cli_tool: CliTool = CliTool {
+  program: unzip_program(),
+  min_version: none,
+  installable_via: [SourceApt { package: package_unzip, bin_dir: apt_bin_dir }],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.unzip",
+      decl_name: "unzip_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// -q quiet, -o overwrite without prompting (a rerun into a partially extracted directory must not
+// stop on a tty prompt a CI step cannot answer), -d names the destination so archive paths resolve
+// against it rather than against the process's working directory.
+fn unzip_extract_command(archive: String, into_directory: String) -> ArgvCommand {
+  argv_command(program: unzip_program(), arguments: ["-q", "-o", archive, "-d", into_directory])
+}

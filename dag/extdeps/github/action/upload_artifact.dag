@@ -1,0 +1,53 @@
+module extdeps.github.action.upload_artifact
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+}
+
+// actions/upload-artifact releases this repository has read. v4.6.2 is kept because it is the
+// release every workflow here used until GitHub began executing its declared node20 under node24;
+// it is the real producer the forced-substitution refusal is exercised against.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions/upload-artifact"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.upload_artifact",
+      decl_name: "upload_artifact_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data upload_artifact_v4_6_2: ActionRelease = ActionRelease {
+  owner: "actions", repo: "upload-artifact", tag: "v4.6.2", commit: "ea165f8d65b6e75b540449e92b4886f43607fa02"
+}
+
+data upload_artifact_v6_0_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "upload-artifact", tag: "v6.0.0", commit: "b7c566a772e6b6bfb58ed0dc250532a479d7789f"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit
+// (extdeps.github.action_release action_manifest_of), 2026-09-18.
+data upload_artifact_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: upload_artifact_v4_6_2,
+    declared: JavaScriptAction { node_major: 20 },
+  },
+  ActionManifestReading {
+    action_release: upload_artifact_v6_0_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+]

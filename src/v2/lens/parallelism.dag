@@ -1,0 +1,216 @@
+module v2.lens.parallelism
+import std.types { List }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.algebraic_composition {
+  BarrierCoupled,
+  DataDependent,
+  EffectCoupled,
+  KnownParallelismRelation,
+  ParallelismKindPolicy,
+  ParallelismRelation,
+  ReadsParallelismFacts,
+  UnresolvedCoupling,
+  parallelism_classifier
+}
+import std.disposition { SingleAuthority }
+
+import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
+import v2.std.algebra { bag_eq }
+import std.algebra { list_snoc_item }
+import v2.std.collection {
+  optional_present_witness
+}
+import std.optional {
+  Optional,
+  optional_absent,
+  optional_prefer_first_present,
+  optional_present
+}
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  classify_dependency_kind,
+  classified_dependency_view_eq
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile,
+  node_locus
+}
+import v2.std.node { Symbol }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
+
+type ParallelismFact {
+  dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
+}
+
+fn parallelism_relation_for_view(
+  tree: InferredTree,
+  view: DependencyView
+) -> ParallelismRelation {
+  parallelism_relation_for_policy(
+    tree: tree,
+    view: view,
+    policy: classify_dependency_kind(
+      classifier: parallelism_classifier,
+      kind: view.kind
+    )
+  )
+}
+
+fn parallelism_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^parallelism_reason_unresolved_projection,
+    at: Textual { file: ^parallelism_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn parallelism_facts_for_source(tree: InferredTree, view: DependencyView) -> Witness<InferredFacts> {
+  witness_from_optional(opt: tree.facts.lookup(view.source), absent: infer_facts_lookup_miss_diagnostic(key: view.source))
+}
+
+fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {
+  Diagnostic {
+    reason: ^parallelism_reason_coupling_carrier_absent,
+    at: node_locus(node: inferred_facts_subject_node(facts: facts)),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn parallelism_relation_from_admitted_facts(facts: InferredFacts) -> ParallelismRelation {
+  match inferred_facts_descent(facts: facts) {
+    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
+    Holds { value: _ } => UnresolvedCoupling { diagnostic: parallelism_coupling_absent_diagnostic(facts: facts) }
+  }
+}
+
+fn parallelism_relation_from_source_facts_witness(
+  source_facts: Witness<InferredFacts>
+) -> ParallelismRelation {
+  match source_facts {
+    Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
+    Holds { value: facts } => parallelism_relation_from_admitted_facts(facts: facts)
+  }
+}
+
+fn parallelism_relation_for_reads_parallelism_facts(
+  tree: InferredTree,
+  view: DependencyView
+) -> ParallelismRelation {
+  parallelism_relation_from_source_facts_witness(
+    source_facts: parallelism_facts_for_source(tree: tree, view: view)
+  )
+}
+
+fn parallelism_relation_for_policy(
+  tree: InferredTree,
+  view: DependencyView,
+  policy: ParallelismKindPolicy
+) -> ParallelismRelation {
+  match policy {
+    KnownParallelismRelation { relation: r } => r
+    ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
+  }
+}
+
+fn parallelism_classify(
+  tree: InferredTree,
+  view: DependencyView
+) -> ClassifiedDependencyView<ParallelismRelation> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: parallelism_relation_for_view(tree: tree, view: view)
+  }
+}
+
+fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
+  ParallelismFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_snoc_item(xs: acc, item: parallelism_classify(tree: tree, view: view))
+    })
+  }
+}
+
+fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
+  match relation {
+    UnresolvedCoupling { diagnostic: _ } => true
+    DataDependent => false
+    EffectCoupled => false
+    BarrierCoupled => false
+  }
+}
+
+fn parallelism_fact_unresolved(fact: ParallelismFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || parallelism_relation_unresolved(relation: dep.classification)
+  })
+}
+
+fn parallelism_first_unresolved_coupling_diagnostic(fact: ParallelismFact) -> Optional<Diagnostic> {
+  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
+    optional_prefer_first_present(
+      left: acc,
+      right: match dep.classification {
+        UnresolvedCoupling { diagnostic: d } => optional_present(value: d)
+        DataDependent => optional_absent()
+        EffectCoupled => optional_absent()
+        BarrierCoupled => optional_absent()
+      }
+    )
+  })
+}
+
+fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
+  let fact = parallelism_fact(tree: tree, dependencies: dependencies)
+  let unresolved_diagnostic = parallelism_first_unresolved_coupling_diagnostic(fact: fact)
+  match optional_present_witness(opt: unresolved_diagnostic) {
+    Holds { value: d } =>
+      Violates { diagnostic: d }
+    Violates { diagnostic: _ } =>
+      if parallelism_fact_unresolved(fact: fact) {
+        Violates { diagnostic: parallelism_witness_diagnostic() }
+      } else {
+        Holds { value: fact }
+      }
+  }
+}
+
+fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
+  match a {
+    DataDependent => match b {
+      DataDependent => true
+      _ => false
+    }
+    EffectCoupled => match b {
+      EffectCoupled => true
+      _ => false
+    }
+    BarrierCoupled => match b {
+      BarrierCoupled => true
+      _ => false
+    }
+    UnresolvedCoupling { diagnostic: ad } => match b {
+      UnresolvedCoupling { diagnostic: bd } => ad == bd
+      _ => false
+    }
+  }
+}
+
+fn parallelism_classified_eq(
+  a: ClassifiedDependencyView<ParallelismRelation>,
+  b: ClassifiedDependencyView<ParallelismRelation>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
+}
+
+fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: parallelism_classified_eq)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

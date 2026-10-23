@@ -1,0 +1,117 @@
+module test.claim.workspace_executor_controller_retry_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, ExecutorSubmissionRecorded, ExecutorInvocationRecorded, ExecutorControllerRetryFenced,
+  ExecutorReadbackAccepted, workspace_executor_record_follows, workspace_executor_record_text,
+  workspace_executor_record_decode, workspace_executor_recorded_directive,
+}
+import gunbc.workspace_commissioning_executor_recovery {
+  workspace_executor_recovery_phase, WorkspaceExecutorRecoveryRefused,
+}
+import gunbc.workspace_commissioning_executor_submission {
+  workspace_executor_controller_retry_decision, WorkspaceExecutorControllerRetryDecision,
+  ControllerRetryAwaitRecorded, ControllerRetryFence, ControllerRetryRefused,
+}
+import gunbc.runner_microvm_slot_start {
+  MicrovmSlotStartRun, SlotStartCompleted, SlotStartRefused, UnitPropertyRead, ControllerReceiptRead, ControllerReceiptUnreadable,
+  InvocationStillRunning, InvocationTerminated, InvocationWaitRefused,
+}
+import test.claim.workspace_executor_journal_witness { journal_fixture, journal_invocation }
+
+// A: the recorded controller invocation. B: the one replacement. E: the replacement executor.
+data retry_replacement_invocation: String = "44444444444444444444444444444444"
+data retry_replacement_executor: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn retry_recorded() -> WorkspaceExecutorRecord { journal_fixture(phase: ExecutorInvocationRecorded, invocation: journal_invocation) }
+fn retry_fenced() -> WorkspaceExecutorRecord { journal_fixture(phase: ExecutorControllerRetryFenced, invocation: journal_invocation) }
+
+fn retry_rearmed(submitter: String, previous: String) -> WorkspaceExecutorRecord {
+  let p = retry_fenced()
+  WorkspaceExecutorRecord { subject: p.subject, submitter: submitter as NonEmptyStr, previous_invocation: previous,
+    invocation: "", phase: ExecutorSubmissionRecorded }
+}
+
+fn retry_terminal(status: String, receipt_read: Bool) -> MicrovmSlotStartRun {
+  SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service", invocation_id: journal_invocation as NonEmptyStr,
+    exec_main_status: UnitPropertyRead { value: status },
+    controller_receipt: if receipt_read { ControllerReceiptRead { path: "/fixture/receipt", text: "commissioned" } }
+      else { ControllerReceiptUnreadable { path: "/fixture/receipt", detail: "receipt write was lost" } } }
+}
+
+fn is_await(d: WorkspaceExecutorControllerRetryDecision) -> Bool { match d { ControllerRetryAwaitRecorded => true _ => false } }
+fn is_fence(d: WorkspaceExecutorControllerRetryDecision) -> Bool { match d { ControllerRetryFence => true _ => false } }
+fn is_refused(d: WorkspaceExecutorControllerRetryDecision) -> Bool { match d { ControllerRetryRefused { reason: _ } => true _ => false } }
+
+// An active recorded controller is retained: no fence, no replacement.
+test fn active_recorded_controller_is_retained() -> Bool {
+  is_await(d: workspace_executor_controller_retry_decision(observed: InvocationStillRunning,
+    terminal: SlotStartRefused { unit: "u", detail: "running" }, succeeded: false, mutation_matches: true, replacement_actor: true))
+}
+
+// A successful terminal resumes through the recorded directive (finish/readback), never a start.
+test fn successful_terminal_resumes_without_restart() -> Bool {
+  is_await(d: workspace_executor_controller_retry_decision(observed: InvocationTerminated,
+    terminal: retry_terminal(status: "0", receipt_read: true), succeeded: true, mutation_matches: true, replacement_actor: true))
+    && (match workspace_executor_recorded_directive(record: retry_recorded()) {
+      Present { value } => value == "wait:22222222222222222222222222222222"
+      Absent => false
+    })
+}
+
+// Discriminating red for the wedge: a stably failed terminal -- a nonzero exit, or a committed
+// transaction whose success receipt was lost -- admits the fence that permits one replacement.
+// Before the retry transition this was a permanent wait on A.
+test fn failed_or_receipt_lost_terminal_admits_a_retry_fence() -> Bool {
+  is_fence(d: workspace_executor_controller_retry_decision(observed: InvocationTerminated,
+    terminal: retry_terminal(status: "1", receipt_read: true), succeeded: false, mutation_matches: true, replacement_actor: true))
+    && is_fence(d: workspace_executor_controller_retry_decision(observed: InvocationTerminated,
+      terminal: retry_terminal(status: "0", receipt_read: false), succeeded: false, mutation_matches: true, replacement_actor: true))
+}
+
+// Changed mutation, an unreadable/changing invocation, or the submitter itself refuses.
+test fn changed_mutation_unreadable_invocation_or_same_actor_refuses() -> Bool {
+  is_refused(d: workspace_executor_controller_retry_decision(observed: InvocationTerminated,
+    terminal: retry_terminal(status: "1", receipt_read: true), succeeded: false, mutation_matches: false, replacement_actor: true))
+    && is_refused(d: workspace_executor_controller_retry_decision(observed: InvocationWaitRefused { detail: "invocation changed" },
+      terminal: SlotStartRefused { unit: "u", detail: "changed" }, succeeded: false, mutation_matches: true, replacement_actor: true))
+    && is_refused(d: workspace_executor_controller_retry_decision(observed: InvocationTerminated,
+      terminal: retry_terminal(status: "1", receipt_read: true), succeeded: false, mutation_matches: true, replacement_actor: false))
+    && is_refused(d: workspace_executor_controller_retry_decision(observed: InvocationTerminated,
+      terminal: SlotStartRefused { unit: "u", detail: "controller is active after receipt readback" }, succeeded: false, mutation_matches: true, replacement_actor: true))
+}
+
+// The journal admits exactly the path A -> fenced(A) -> fresh submission naming A as drained
+// predecessor; a replacement cannot bind B directly, cannot forget A, and the fence round-trips.
+test fn retry_fence_admits_exactly_one_rearm_path() -> Bool {
+  workspace_executor_record_follows(previous: retry_recorded(), next: retry_fenced())
+    && workspace_executor_record_follows(previous: retry_fenced(),
+      next: retry_rearmed(submitter: retry_replacement_executor, previous: journal_invocation))
+    && !workspace_executor_record_follows(previous: retry_fenced(),
+      next: retry_rearmed(submitter: retry_replacement_executor, previous: "11111111111111111111111111111111"))
+    && !workspace_executor_record_follows(previous: retry_fenced(),
+      next: retry_rearmed(submitter: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previous: journal_invocation))
+    && !workspace_executor_record_follows(previous: retry_fenced(),
+      next: journal_fixture(phase: ExecutorInvocationRecorded, invocation: retry_replacement_invocation))
+    && !workspace_executor_record_follows(previous: retry_fenced(),
+      next: journal_fixture(phase: ExecutorReadbackAccepted, invocation: journal_invocation))
+    && (match workspace_executor_record_decode(text: workspace_executor_record_text(record: retry_fenced()) as String) {
+      Present { value: decoded } => decoded == retry_fenced()
+      Absent => false
+    })
+}
+
+// Two competing replacements: once one rearmed submission is the head, the other's submission
+// does not follow from it, so the journal CAS admits a single winner.
+test fn competing_replacements_have_one_winner() -> Bool {
+  let winner = retry_rearmed(submitter: retry_replacement_executor, previous: journal_invocation)
+  !workspace_executor_record_follows(previous: winner,
+    next: retry_rearmed(submitter: "cccccccccccccccccccccccccccccccc", previous: journal_invocation))
+}
+
+// Never two live controllers: a retry-fenced record grants no wait/start directive and recovery
+// refuses it, so neither A nor any other invocation proceeds until the rearmed B binds.
+test fn retry_fence_grants_no_controller() -> Bool {
+  (match workspace_executor_recorded_directive(record: retry_fenced()) { Present { value: _ } => false Absent => true })
+    && (match workspace_executor_recovery_phase(record: retry_fenced()) { WorkspaceExecutorRecoveryRefused { reason: _ } => true _ => false })
+}

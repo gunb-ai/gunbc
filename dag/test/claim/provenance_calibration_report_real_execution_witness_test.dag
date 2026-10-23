@@ -1,0 +1,151 @@
+module test.claim.provenance_calibration_report_real_execution
+
+import std.logic { Bool }
+import std.types { String, FilePath, List, list_length }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.tools.reference_binding_provenance_calibration {
+  ProvenanceCell,
+  calibration_body_of,
+  CalibrationObservationKind,
+  CalibrationResolutionArm,
+  CalibrationDemonstrated,
+  ProvenanceDistinguished,
+  calibration_cells,
+  calibration_observation_kinds,
+  calibration_resolution_arms,
+  declared_cell_population,
+  cell_key,
+  provenance_calibration_report_over,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WET EXECUTION WITNESS FOR provenance_calibration_report_over, and it exists because a control
+// asserting the VERDICT does not establish that the REPORT consumes it. The one-sentence form of
+// the gap it closes: replacing the report's post-write refusal with ExitSuccess left every hermetic
+// control green. It now reds this file.
+//
+// The subject performs a real Filesystem.Write, which has no mock_response, so this file is EXCLUDED
+// FROM HERMETIC DISCOVERY (gunbc.ci_layer_roots witness_exclusion_frontier) and ENROLLED IN
+// bin_witness_wet_entries instead -- the same route as
+// test.claim.commit_writer_heal_admission_real_execution. Under hermetic discovery it would be
+// COUNTED EXECUTED while its assertion never ran, which is worse than absent because it would be
+// cited as coverage.
+//
+// The arm is TWO-SIDED THROUGH THE REAL PATH, which is why the report takes its cell population as a
+// parameter: with the population computed inside, the only outcome a wet witness could ever observe
+// was refusal, and a report that refused unconditionally would satisfy that. The measured matrix
+// must REFUSE and a constructed fully-sound matrix must SUCCEED, both after a real write to a real
+// temp path.
+
+fn with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn report_path(dir: FilePath) -> String {
+  concat(dir as String, "/provenance-calibration-matrix.txt")
+}
+
+fn sound_cell(kind: CalibrationObservationKind, arm: CalibrationResolutionArm) -> ProvenanceCell {
+  let skeleton = ProvenanceCell {
+    kind: kind,
+    arm: arm,
+    consumer_standing: CalibrationDemonstrated { conditions: "" },
+    distinguishability: ProvenanceDistinguished { admission: "" },
+    production_standing: CalibrationDemonstrated { conditions: "" },
+  }
+  ProvenanceCell {
+    kind: kind,
+    arm: arm,
+    consumer_standing: CalibrationDemonstrated { conditions: "wet witness synthetic sound cell" },
+    distinguishability: ProvenanceDistinguished { admission: cell_key(c: skeleton) },
+    production_standing: CalibrationDemonstrated { conditions: "wet witness synthetic sound cell" },
+  }
+}
+
+fn fully_sound_matrix() -> List<ProvenanceCell> {
+  fold(calibration_observation_kinds, init: [], f: fn(acc, kind) {
+    fold(calibration_resolution_arms, init: acc, f: fn(inner, arm) {
+      concat(inner, [sound_cell(kind: kind, arm: arm)])
+    })
+  })
+}
+
+// THE DISCRIMINATOR. The real report, over the real measured matrix, written to a real path, must
+// return a refusal. This is the control that reds if the post-write refusal is ever replaced by
+// ExitSuccess -- the exact substitution nothing detected before this file existed.
+test fn the_real_report_refuses_on_the_measured_matrix_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    match provenance_calibration_report_over(cells: calibration_cells(), out: report_path(dir: dir)) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+  })
+}
+
+// THE NON-WIDEN CONTROL, without which the discriminator is satisfied by a report that refuses
+// unconditionally -- a wall that cannot report health, which is the same defect inverted.
+test fn the_real_report_succeeds_on_a_sound_matrix_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    list_length(items: fully_sound_matrix()) == declared_cell_population()
+      && match provenance_calibration_report_over(cells: fully_sound_matrix(), out: report_path(dir: dir)) {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+  })
+}
+
+// THE MATRIX REALLY REACHED THE FILE, WHICH IS NOT THE SAME AS THE FILE EXISTING. Without this arm,
+// both arms above are satisfied by a report that never wrote anything -- and the stopped-line
+// audit's whole claim is that the operator GETS THE MATRIX and then the line stops. A refusal with
+// no evidence is a different and worse outcome than a refusal with it, and the two are
+// indistinguishable from the ProcessExit alone.
+//
+// IT ASSERTED ONLY .success AND THAT WAS THE SAME DEFECT ONE LAYER DOWN: a read of a ZERO-BYTE file
+// succeeds, so a report that created the file and wrote nothing satisfied the arm -- which is
+// precisely the outcome the arm exists to forbid. Existence is not content. The comparison is
+// against calibration_body_of, the very function the report writes, so this asserts the actual
+// matrix rather than a file handle.
+test fn the_refusing_report_still_wrote_the_matrix_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let path = report_path(dir: dir)
+    let cells = calibration_cells()
+    let refused = match provenance_calibration_report_over(cells: cells, out: path) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+    let read_back = Filesystem.Read(path: path as FilePath)
+    refused
+      && read_back.success
+      && read_back.content == calibration_body_of(cells: cells)
+      && read_back.content != ""
+  })
+}
+
+// THE PAYLOAD MUST SURVIVE A WRONG-CONTENT SUBSTITUTION, not merely be non-empty. Asserting only
+// non-emptiness accepts a truncated or wrong body; asserting only equality would be satisfied by a
+// renderer that returned "" for both sides. Both are asserted above. This arm adds the third
+// substitution class the previous two do not reach: a payload that is the right SHAPE but the wrong
+// POPULATION -- the sound matrix rendered where the measured one belongs -- which is what a stub
+// that "writes a matrix" would produce.
+test fn the_written_payload_is_the_measured_matrix_and_not_another_one() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let path = report_path(dir: dir)
+    let measured = calibration_cells()
+    let refused = match provenance_calibration_report_over(cells: measured, out: path) {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+    let read_back = Filesystem.Read(path: path as FilePath)
+    refused
+      && read_back.content == calibration_body_of(cells: measured)
+      && read_back.content != calibration_body_of(cells: fully_sound_matrix())
+      && calibration_body_of(cells: measured) != calibration_body_of(cells: fully_sound_matrix())
+  })
+}

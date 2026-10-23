@@ -1,0 +1,93 @@
+module test.claim.fleet_work_energy_cost_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.measure { second, watt, watt_count, money_per_kilowatt_hour_micros }
+import extdeps.energy.con_edison {
+  el1_marginal_volumetric_rate, el1_delivery_rate, el1_system_benefit_rate, el1_supply_rate,
+  el1_components, tariff_component_is_marginal,
+}
+import gunbc.fleet.fleet_host_power {
+  fleet_host_power_roster, host_power_profile, power_is_measured,
+  measured_host_count, inferred_host_count, srv1_power,
+}
+import gunbc.fleet.fleet_work_energy_cost {
+  WorkEnergyCostOutcome, EnergyCostDerived, EnergyCostRefused,
+  work_energy_cost, cost_micros, cost_rests_on_measured_power,
+}
+
+// THE RATE IS THE SUM OF THE VOLUMETRIC LINE ITEMS AND NOTHING ELSE. Asserting the three
+// components separately and their sum means a transcription error in any one row reds here rather
+// than silently shifting every price. 20.277 + 0.801 + 16.549 cents = 37.627 cents = 376270 micros.
+test fn witness_marginal_rate_sums_only_the_volumetric_components() -> Bool {
+  money_per_kilowatt_hour_micros(q: el1_delivery_rate) == 202770
+    && money_per_kilowatt_hour_micros(q: el1_system_benefit_rate) == 8010
+    && money_per_kilowatt_hour_micros(q: el1_supply_rate) == 165490
+    && money_per_kilowatt_hour_micros(q: el1_marginal_volumetric_rate()) == 376270
+}
+
+// THE DISCRIMINATING RED FOR THE SUNK-COST RULE. The basic service charge is 22.10 USD per month
+// and is paid whether or not any job runs. If it ever leaked into the marginal rate the sum above
+// would move, but more importantly the component roster must keep classifying it as non-marginal:
+// exactly three components may answer true, and the fixed and proportional ones may not.
+test fn witness_fixed_and_proportional_components_are_not_marginal() -> Bool {
+  count(filter(el1_components, c => tariff_component_is_marginal(c: c))) == 3
+    && count(el1_components) == 7
+}
+
+// THE ARITHMETIC, HAND-CHECKED. 94 W for 600 s is 56400 watt-seconds; 56400 x 376270 / 3600000
+// truncates to 5894 micro-USD, i.e. about 0.59 US cents for a ten-minute job with a whole srv1 to
+// itself. A literal is legitimate here because it is derived from the modeled rows by an arithmetic
+// this test restates independently, not copied from a run of the code under test.
+test fn witness_ten_minute_job_on_srv1_costs_5894_micros() -> Bool {
+  match work_energy_cost(host: "srv1", duration: second(count: 600)) {
+    EnergyCostDerived { cost } =>
+      cost_micros(c: cost) == 5894 && watt_count(w: cost.draw) == 94
+    EnergyCostRefused { reason: _ } => false
+  }
+}
+
+// Zero duration costs nothing, and the truncation direction is visible: a one-second job on 94 W is
+// 94 x 376270 / 3600000 = 9.82 micros, which truncates to 9 -- an UNDERSTATEMENT, as the carrier
+// says. Asserting the truncated value pins the direction rather than leaving it to prose.
+test fn witness_short_work_truncates_downward() -> Bool {
+  match work_energy_cost(host: "srv1", duration: second(count: 1)) {
+    EnergyCostDerived { cost } => cost_micros(c: cost) == 9
+    EnergyCostRefused { reason: _ } => false
+  }
+}
+
+// AN UNMODELED HOST REFUSES rather than falling back to a fleet average. A default would answer
+// every question including the ones about hosts nobody declared, which is the absorbing fallback
+// DESIGN section 5 forbids: it destroys the signal that the roster is missing a host.
+test fn witness_unknown_host_refuses_rather_than_averaging() -> Bool {
+  match work_energy_cost(host: "srv99", duration: second(count: 600)) {
+    EnergyCostRefused { reason: _ } => true
+    EnergyCostDerived { cost: _ } => false
+  }
+}
+
+// PROVENANCE SURVIVES INTO THE COST. srv1 was measured; srv2 carries srv1's figure by build
+// similarity. A consumer that may not price work on an unmeasured host can refuse on this without
+// re-deriving where the wattage came from -- and the two must not report the same way, or the
+// distinction the roster carries is lost at the first join.
+test fn witness_cost_carries_whether_its_power_was_measured() -> Bool {
+  let on_srv1 = match work_energy_cost(host: "srv1", duration: second(count: 600)) {
+    EnergyCostDerived { cost } => cost_rests_on_measured_power(c: cost)
+    EnergyCostRefused { reason: _ } => false
+  }
+  let on_srv2 = match work_energy_cost(host: "srv2", duration: second(count: 600)) {
+    EnergyCostDerived { cost } => cost_rests_on_measured_power(c: cost)
+    EnergyCostRefused { reason: _ } => true
+  }
+  on_srv1 && !on_srv2
+}
+
+// The roster's own honesty: exactly one host is measured today and three are inferred. This reds
+// when access to srv2/srv3/srv4 lands and their rows become measurements -- which is the correct
+// time to revisit it, and is what per_host_measurement_trigger names.
+test fn witness_roster_reports_one_measured_and_three_inferred() -> Bool {
+  measured_host_count() == 1
+    && inferred_host_count() == 3
+    && count(fleet_host_power_roster) == 4
+    && power_is_measured(p: srv1_power)
+}

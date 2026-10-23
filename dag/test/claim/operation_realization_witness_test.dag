@@ -1,0 +1,588 @@
+module test.claim.operation_realization_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Read, Write, ServiceOpTree, NamespacePosition,
+  ModeledRealization, LifecycleByConstruction, Grant, Envelope,
+}
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
+  OperationObserved, OperationWorkerKilled, ShellObserved,
+  DispatchObserved, DispatchUnbound, DispatchWorkerKilled, DispatchCallbackFailed,
+  HandlerFailed, AdvanceFailed,
+  virtual_clock_origin, modeled_realization_admitted_in,
+}
+import std.execution_mode { Hermetic, Wet, Record }
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason, witness_evaluation_frame_active,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.shell { ShellProcessExited }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.measure { Second, second, second_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bmc.ipmi_chassis_control {
+  ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable,
+  chassis_observation, ipmitool_chassis_status_power_line,
+}
+import gunbc.machine_intake_oob_boot_handoff { read_chassis_power }
+import gunbc.bmc_model {
+  BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
+  bmc_world, bmc_with_pending, bmc_with_power,
+}
+import gunbc.bmc_dry_realization {
+  bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENTRY-BOUND MODELED OPERATION REALIZATION, EXERCISED THROUGH THE REAL DISPATCHER. Every subject
+// below issues real extdeps.bmc operations -- directly, or through the production helper
+// gunbc.machine_intake_oob_boot_handoff read_chassis_power, which issues ChassisStatus and runs the
+// production decoder chassis_observation on what comes back. Nothing here constructs a decoded
+// judgment: the model renders stdout and the production decoder reads it. Each claim asserts the
+// ROUTE the dispatcher logged, not only the answer.
+data realization_identity: NonEmptyStr = "bmc-dry-witness" as NonEmptyStr
+
+fn modeled_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb
+    root: NamespacePosition { tree: ServiceOpTree { service: service }, path: [] }
+    binding: ModeledRealization { realization: realization_identity as String }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+fn modeled_frame(realization: OperationRealization<BmcWorld>) -> WitnessEvaluationFrame<BmcWorld> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "operation-realization-witness", kind: SharedStateFrame }
+      grants: [
+        modeled_grant(service: "diagnostic.ipmi.Tool", verb: Read),
+        modeled_grant(service: "diagnostic.ipmi.Tool", verb: Write),
+        modeled_grant(service: "sleep.Delay", verb: Write),
+      ]
+    }
+    rest_fixtures: []
+    realization: Present { value: realization }
+  }
+}
+
+fn world(power_on: Bool) -> BmcWorld {
+  bmc_world(power: if power_on { BmcPowerOn } else { BmcPowerOff })
+}
+
+fn read_power() -> ChassisPowerObservation {
+  read_chassis_power(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr)
+}
+
+fn power_control(action: NonEmptyStr) -> Bool {
+  diagnostic.ipmi.Tool.ChassisPowerControl(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    action: action,
+  ).success
+}
+
+fn route_operations(route: List<DispatchRecord>) -> List<String> {
+  map(route, r => r.invocation.at.operation)
+}
+
+fn observed_on(o: ChassisPowerObservation) -> Bool {
+  match o {
+    ChassisPowerRead { power_on: on } => on
+    _ => false
+  }
+}
+
+fn observed_off(o: ChassisPowerObservation) -> Bool {
+  match o {
+    ChassisPowerRead { power_on: on } => !on
+    _ => false
+  }
+}
+
+fn every_record_observed(route: List<DispatchRecord>) -> Bool {
+  all(route, r => match r.outcome { DispatchObserved { observation: _ } => true _ => false })
+}
+
+fn refused_with(reason_part: String, result_reason: String) -> Bool {
+  string_contains(s: result_reason, pattern: reason_part)
+}
+
+// THE ENCODER ROUND-TRIPS THROUGH THE PRODUCTION DECODER. The line the dry adapter renders for each
+// power state, fed to chassis_observation, reads back as that state -- so the dry route decodes by the
+// same decoder a physical read reaches, and a rendering the decoder cannot read would red here first.
+test fn the_status_rendering_round_trips_through_the_production_decoder() -> Bool {
+  observed_on(o: chassis_observation(success: true, stdout: ipmitool_chassis_status_power_line(power_on: true)))
+    && observed_off(o: chassis_observation(success: true, stdout: ipmitool_chassis_status_power_line(power_on: false)))
+}
+
+// A READ IS ANSWERED FROM THE WORLD AND DECODED BY THE PRODUCTION HELPER. Both power states are run so
+// a realization that ignored its state could not pass, and the route shows exactly one ChassisStatus
+// dispatched to this realization.
+test fn a_dry_status_read_is_decoded_by_the_production_helper() -> Bool {
+  let off = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: false), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { read_power() }
+  )
+  let on = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { read_power() }
+  )
+  (match off {
+    WitnessReturned { value, route } =>
+      observed_off(o: value) && route_operations(route: route) == ["ChassisStatus"] && every_record_observed(route: route)
+        && all(route, r => r.realization == (realization_identity as String))
+    _ => false
+  }) && (match on {
+    WitnessReturned { value, route } => observed_on(o: value) && route_operations(route: route) == ["ChassisStatus"]
+    _ => false
+  })
+}
+
+// THE DECODER IS UNDER TEST, NOT BYPASSED. A realization whose status handler prints a value the
+// decoder does not recognise yields the decoder's own Undecodable arm through read_chassis_power: the
+// verdict comes from production code reading scripted stdout, so no handler can hand back a decision.
+fn unknown_status_handler(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "System Power         : unknown\n", stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
+}
+
+test fn an_unrecognised_rendering_reaches_the_decoders_own_refusal() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: true),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: unknown_status_handler }],
+    advance: fn(s, now) { s },
+  }
+  match evaluate_in_witness_frame(frame: modeled_frame(realization: realization), subject: fn(_scope) { read_power() }) {
+    WitnessReturned { value } => match value {
+      ChassisStatusUndecodable { cause: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// A WRITE CHANGES THE WORLD AND A LATER READ OBSERVES IT, in the order the subject issued them, and the
+// frame returns the world the model ended in.
+test fn a_write_transitions_the_world_and_a_later_read_observes_it() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: false), epoch: virtual_clock_origin())),
+    subject: fn(_scope) {
+      let before = read_power()
+      let accepted = power_control(action: "on" as NonEmptyStr)
+      let after = read_power()
+      observed_off(o: before) && accepted && observed_on(o: after)
+    }
+  )
+  match result {
+    WitnessReturned { value, route, state } =>
+      value
+        && route_operations(route: route) == ["ChassisStatus", "ChassisPowerControl", "ChassisStatus"]
+        && map(route, r => r.ordinal) == [0, 1, 2]
+        && match state { Present { value: w } => bmc_power_is_on(world: w) Absent => false }
+    _ => false
+  }
+}
+
+fn loss_fired_and_none_pending(w: BmcWorld) -> Bool {
+  count(w.fired) == 1 && count(w.pending) == 0
+}
+
+// AN EVENT HAPPENS DURING A QUIET WAIT. The world is on with AC loss scheduled at t=3; the subject reads
+// (t 0 -> 1), sleeps five seconds through the production sleep helper (t 1 -> 6), and reads again. The
+// loss fired during the sleep with no operation issued at t=3, and the second read observes it.
+test fn a_scheduled_event_fires_during_a_quiet_wait() -> Bool {
+  let initial = bmc_with_pending(world: bmc_world(power: BmcPowerOn), pending: [BmcScheduledEvent { at: second(count: 3), event: BmcAcPowerLost {} }], fired: [])
+  let result = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: initial, epoch: virtual_clock_origin())),
+    subject: fn(_scope) {
+      let first = read_power()
+      let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 5))
+      let second_read = read_power()
+      observed_on(o: first) && waited && observed_off(o: second_read)
+    }
+  )
+  match result {
+    WitnessReturned { value, route, state } =>
+      value
+        && route_operations(route: route) == ["ChassisStatus", "Seconds", "ChassisStatus"]
+        && map(route, r => second_count(s: r.completed_at)) == [1, 6, 7]
+        && match state { Present { value: w } => loss_fired_and_none_pending(w: w) Absent => false }
+    _ => false
+  }
+}
+
+// AN OPERATION THE REALIZATION DOES NOT BIND REFUSES, AND NOTHING ELSE ANSWERS IT. SensorList is
+// covered by the grant and PUBLISHES a hermetic mock case (extdeps.bmc.mock_corpus), so a fallback to
+// the mock layer would answer it; the frame refuses instead, and the route records the unbound
+// dispatch after the read that preceded it.
+test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) {
+      let first = read_power()
+      let sensors = diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr)
+      sensors.success
+    }
+  )
+  match result {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "OperationNotBound", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["ChassisStatus", "SensorList"]
+        && match route.skip(n: 1).first() { Present { value: r } => match r.outcome { DispatchUnbound { cause: _ } => true _ => false } Absent => false }
+    _ => false
+  }
+}
+
+// THE CHECKOUT-INPUT CARVE-OUT DOES NOT ESCAPE THE FRAME. Under plain hermetic execution a readonly
+// Filesystem.Read of a committed checkout path is a REAL read; under a modeled realization no grant
+// covers Filesystem, so the same read refuses as uncovered.
+test fn a_checkout_read_is_not_an_escape_from_the_frame() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { count(filesystem_read_checkout_probe()) > 0 }
+  ) {
+    WitnessRefused { diagnostic } =>
+      refused_with(reason_part: "OperationUncovered", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+    _ => false
+  }
+}
+
+fn filesystem_read_checkout_probe() -> String {
+  Filesystem.Read(path: "DESIGN.md").content
+}
+
+// A MALFORMED REALIZATION REFUSES BEFORE THE SUBJECT RUNS: one identity bound twice, and one binding
+// whose identity names a file that does not declare the operation. The subject would return true, so a
+// green here can only come from admission refusing it, and the route is empty.
+test fn a_duplicate_binding_refuses_before_the_subject_runs() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: true),
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_chassis_power_control_handler },
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_chassis_power_control_handler },
+    ],
+    advance: fn(s, now) { s },
+  }
+  match evaluate_in_witness_frame(frame: modeled_frame(realization: realization), subject: fn(_scope) { true }) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "binds one operation identity twice", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && count(route) == 0
+    _ => false
+  }
+}
+
+test fn a_binding_to_an_undeclared_identity_refuses_before_the_subject_runs() -> Bool {
+  let misplaced = OperationRef { path: "dag/extdeps/bmc/ipmi_chassis_control.dag", service: "diagnostic.ipmi.Tool", operation: "ChassisStatus" }
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: true),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding { at: misplaced, handler: unknown_status_handler }],
+    advance: fn(s, now) { s },
+  }
+  match evaluate_in_witness_frame(frame: modeled_frame(realization: realization), subject: fn(_scope) { true }) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "resolves to no declared operation", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && count(route) == 0
+    _ => false
+  }
+}
+
+// THE WORKER IS KILLED AFTER THE EFFECT AND BEFORE THE REPLY. The power-on commits (the world is on)
+// and no reply ever reaches the subject, so the frame answers WitnessInterrupted -- never a manufactured
+// return -- carrying the committed world and a route that ends at the killed dispatch. The enclosing
+// witness is the supervisor: it resumes a SECOND attempt from that world in a new frame, and the
+// resumed attempt reads before it writes and finds the host already on.
+fn killed_after_power_on(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  OperationWorkerKilled { committed: true, state: bmc_with_power(world: state, power: BmcPowerOn) }
+}
+
+test fn a_killed_worker_is_interrupted_and_a_resumed_attempt_reconciles() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: false),
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: fn(s, c) { OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: s)), stderr: "" } }, state: s, elapsed: second(count: 1) } } },
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: killed_after_power_on },
+    ],
+    advance: fn(s, now) { s },
+  }
+  let first = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: realization),
+    subject: fn(_scope) {
+      let before = read_power()
+      let accepted = power_control(action: "on" as NonEmptyStr)
+      accepted
+    }
+  )
+  match first {
+    WitnessInterrupted { at, route, state, now } => {
+      let resumed = evaluate_in_witness_frame(
+        frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: state, epoch: now)),
+        subject: fn(_scope) { read_power() }
+      )
+      at.invocation.at.operation == "ChassisPowerControl"
+        && match at.outcome { DispatchWorkerKilled { committed: c } => c _ => false }
+        && route_operations(route: route) == ["ChassisStatus", "ChassisPowerControl"]
+        && bmc_power_is_on(world: state)
+        && match resumed {
+          WitnessReturned { value, route } => observed_on(o: value) && route_operations(route: route) == ["ChassisStatus"]
+          _ => false
+        }
+    }
+    _ => false
+  }
+}
+
+// A HANDLER RECEIVES NO EFFECT CONTEXT. A handler that issues an operation -- here the sleep, which the
+// realization does bind -- refuses rather than dispatching it, so a handler cannot reach live I/O even
+// through an operation the frame would otherwise answer.
+fn effectful_status_handler(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: ipmitool_chassis_status_power_line(power_on: waited), stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
+}
+
+test fn a_handler_that_issues_an_operation_refuses() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: true),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: effectful_status_handler }],
+    advance: fn(s, now) { s },
+  }
+  match evaluate_in_witness_frame(frame: modeled_frame(realization: realization), subject: fn(_scope) { read_power() }) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "handlers receive no effect context", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && only_record_failed_at(route: route, operation: "ChassisStatus", stage_is_handler: true)
+    _ => false
+  }
+}
+
+// THE REALIZATION DOES NOT OUTLIVE ITS FRAME.
+test fn the_realization_does_not_escape_its_frame() -> Bool {
+  let inside = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { witness_evaluation_frame_active() }
+  )
+  (match inside { WitnessReturned { value } => value _ => false }) && !witness_evaluation_frame_active()
+}
+
+// THE RECORD OF A DISPATCH WHOSE CALLBACK FAILED: exactly one record, for this operation, at ordinal 0,
+// whose outcome is the callback failure at the named stage -- never an observation.
+fn only_record_failed_at(route: List<DispatchRecord>, operation: String, stage_is_handler: Bool) -> Bool {
+  count(route) == 1 && all(route, r =>
+    r.ordinal == 0 && r.invocation.at.operation == operation && match r.outcome {
+      DispatchCallbackFailed { stage, cause } => (match stage { HandlerFailed => stage_is_handler AdvanceFailed => !stage_is_handler }) && cause != ""
+      _ => false
+    })
+}
+
+// A HANDLER THAT THROWS still leaves its dispatch recorded, with the original cause propagated.
+fn throwing_status_handler(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  let zero = count(call.invocation.bindings) - count(call.invocation.bindings)
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 100 / zero, stdout: "", stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
+}
+
+test fn a_throwing_handler_keeps_its_dispatch_record() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: true),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: throwing_status_handler }],
+    advance: fn(s, now) { s },
+  }
+  match evaluate_in_witness_frame(frame: modeled_frame(realization: realization), subject: fn(_scope) { read_power() }) {
+    WitnessRefused { diagnostic, route } =>
+      only_record_failed_at(route: route, operation: "ChassisStatus", stage_is_handler: true)
+        && !refused_with(reason_part: "modeled operation realization refused", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+    _ => false
+  }
+}
+
+// AN advance THAT FAILS after an observed step leaves the record too, at the advance stage. It holds at
+// the epoch (admission applies it at t=0) and throws once time has moved.
+fn advance_failing_after_origin(state: BmcWorld, now: Second) -> BmcWorld {
+  let moved = second_count(s: now) as Int
+  if moved == 0 { state } else if 100 / (moved - moved) > 0 { state } else { state }
+}
+
+test fn a_failing_advance_keeps_its_dispatch_record() -> Bool {
+  let realization = OperationRealization {
+    identity: realization_identity,
+    initial: world(power_on: true),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: fn(s, c) { OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: ipmitool_chassis_status_power_line(power_on: true), stderr: "" } }, state: s, elapsed: second(count: 1) } } }],
+    advance: advance_failing_after_origin,
+  }
+  match evaluate_in_witness_frame(frame: modeled_frame(realization: realization), subject: fn(_scope) { read_power() }) {
+    WitnessRefused { route } => only_record_failed_at(route: route, operation: "ChassisStatus", stage_is_handler: false)
+    _ => false
+  }
+}
+
+// FRAME COMPOSITION: no frame opens inside an active modeled realization, whatever it carries. Each
+// nested attempt below would, if admitted, let an operation escape the outer realization (the
+// published SensorList mock, the checkout read carve-out, a second model). Each is refused before its
+// subject runs, the escaping operation never dispatches, and the outer route holds only the outer
+// operations. The spellings differ on purpose: no realization, another realization, the same one.
+test fn a_nested_frame_cannot_open_inside_a_modeled_realization() -> Bool {
+  let other = OperationRealization {
+    identity: "another-realization" as NonEmptyStr,
+    initial: world(power_on: false),
+    epoch: virtual_clock_origin(),
+    bindings: [OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: unknown_status_handler }],
+    advance: fn(s, now) { s },
+  }
+  let result = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) {
+      let before = read_power()
+      let bare = evaluate_in_witness_frame(
+        frame: WitnessEvaluationFrame { envelope: modeled_frame(realization: other).envelope, rest_fixtures: [], realization: none },
+        subject: fn(_s) { diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr).success }
+      )
+      let foreign = evaluate_in_witness_frame(
+        frame: modeled_frame(realization: other),
+        subject: fn(_s) { count(filesystem_read_checkout_probe()) > 0 }
+      )
+      let same = evaluate_in_witness_frame(
+        frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: false), epoch: virtual_clock_origin())),
+        subject: fn(_s) { observed_off(o: read_power()) }
+      )
+      let after = read_power()
+      nested_frame_refused_before_its_subject(r: bare)
+        && nested_frame_refused_before_its_subject(r: foreign)
+        && nested_frame_refused_before_its_subject(r: same)
+        && observed_on(o: before) && observed_on(o: after)
+    }
+  )
+  match result {
+    WitnessReturned { value, route } => value && route_operations(route: route) == ["ChassisStatus", "ChassisStatus"]
+    _ => false
+  }
+}
+
+fn nested_frame_refused_before_its_subject<A, S>(r: v2.std.witness_evaluation.WitnessEvaluation<A, S>) -> Bool {
+  match r {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "cannot open while a modeled operation realization is active", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && count(route) == 0
+    _ => false
+  }
+}
+
+// AFTER THE OUTER SCOPE ENDS, frames compose again: a frame without a realization evaluates, and a fresh
+// modeled frame starts at the origin rather than at any earlier scenario's clock.
+test fn frames_are_independent_after_the_outer_scope_ends() -> Bool {
+  let outer = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { observed_on(o: read_power()) && observed_on(o: read_power()) }
+  )
+  let plain = evaluate_in_witness_frame(
+    frame: WitnessEvaluationFrame { envelope: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())).envelope, rest_fixtures: [], realization: none },
+    subject: fn(_scope) { true }
+  )
+  let fresh = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: false), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { observed_off(o: read_power()) }
+  )
+  (match outer { WitnessReturned { value } => value _ => false })
+    && (match plain { WitnessReturned { value } => value _ => false })
+    && (match fresh {
+      WitnessReturned { value, route } => value && map(route, r => second_count(s: r.completed_at)) == [1]
+      _ => false
+    })
+}
+
+// RESUME KEEPS THE CLOCK. Power is lost at t=5. Uninterrupted: read (t 0->1), sleep 4 (->5, the loss
+// fires), read -> off. Interrupted at t=3: read (->1), sleep 2 (->3), the power control is killed at 3
+// with nothing committed; the frame reports now = 3. The resumed attempt starts at that epoch -- modeled
+// time did not advance while the worker was absent -- reads at 3->4 (still on), sleeps 1 (->5, the loss
+// fires) and reads off, exactly as the uninterrupted history does. Had the resume restarted at the
+// origin its reads would complete at 1 and the loss would not yet have fired.
+fn loss_at_five() -> BmcWorld {
+  bmc_with_pending(world: bmc_world(power: BmcPowerOn), pending: [BmcScheduledEvent { at: second(count: 5), event: BmcAcPowerLost {} }], fired: [])
+}
+
+fn killed_without_commit(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
+  OperationWorkerKilled { committed: false, state: state }
+}
+
+test fn a_resumed_attempt_keeps_the_interrupted_clock() -> Bool {
+  let uninterrupted = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: loss_at_five(), epoch: virtual_clock_origin())),
+    subject: fn(_scope) {
+      let first = read_power()
+      let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 4))
+      observed_on(o: first) && waited && observed_off(o: read_power())
+    }
+  )
+  let dry = bmc_dry_realization(identity: realization_identity, initial: loss_at_five(), epoch: virtual_clock_origin())
+  let interrupted = evaluate_in_witness_frame(
+    frame: modeled_frame(realization: OperationRealization { identity: dry.identity, initial: dry.initial, epoch: dry.epoch, bindings: without_power_control(bindings: dry.bindings, extra: killed_without_commit), advance: dry.advance }),
+    subject: fn(_scope) {
+      let first = read_power()
+      let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 2))
+      power_control(action: "on" as NonEmptyStr)
+    }
+  )
+  (match uninterrupted { WitnessReturned { value } => value _ => false })
+    && match interrupted {
+      WitnessInterrupted { at, state, now } => {
+        let resumed = evaluate_in_witness_frame(
+          frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: state, epoch: now)),
+          subject: fn(_scope) {
+            let first = read_power()
+            let waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+            observed_on(o: first) && waited && observed_off(o: read_power())
+          }
+        )
+        second_count(s: now) == 3 && second_count(s: at.dispatched_at) == 3
+          && match resumed {
+            WitnessReturned { value, route } => value && map(route, r => second_count(s: r.completed_at)) == [4, 5, 6]
+            _ => false
+          }
+      }
+      _ => false
+    }
+}
+
+fn without_power_control(bindings: List<OperationBinding<BmcWorld>>, extra: fn(BmcWorld, OperationCall) -> OperationStep<BmcWorld>) -> List<OperationBinding<BmcWorld>> {
+  list_append(
+    filter(bindings, b => b.at.operation != "ChassisPowerControl"),
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: extra },
+  )
+}
+
+// THE ADMISSION DECISION THE DISPATCHER ASKS, executed on all three modes: only Hermetic admits a
+// modeled realization; Wet and Record, which dispatch real effects, refuse. The dispatcher reaches this
+// function (admit_modeled_realization); the refusal it produces under a real Wet run was executed
+// locally with claim_batch --wet and is recorded on gunbc#12486.
+test fn only_a_hermetic_run_admits_a_modeled_realization() -> Bool {
+  modeled_realization_admitted_in(mode: Hermetic)
+    && !modeled_realization_admitted_in(mode: Wet)
+    && !modeled_realization_admitted_in(mode: Record)
+}

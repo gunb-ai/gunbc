@@ -1,0 +1,87 @@
+module test.claim.kernel_container_carrier_identity_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: operator ruling 2026-09-29 -- std.types `List<element> = FreeMonoid<element>` is ONE
+// type, so FreeMonoid's constructors are values of List<T>, decided by DECLARATION IDENTITY
+// (v1.compiler.infer kernel_container_carrier_verdict) at both inhabitance seams, never by
+// spelling. The fixture carries a minimal `std.algebra` declaring FreeMonoid, so the carrier's
+// DeclarationRef is the real one (module path + name); `List` itself is the seed's kernel container.
+// The REDs are invalid programs, authorable only as fixture source (DESIGN 4b).
+data carrier_algebra_source: String = "module std.algebra\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
+
+fn carrier_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("std/algebra.dag", carrier_algebra_source), fixture_source("kc/entry.dag", entry_source)],
+    entry: "kc/entry.dag"
+  })
+}
+
+fn carrier_accepted(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_blocking_rows(rows)) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn carrier_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+data kc_prelude: String = "module kc.entry\nimport std.algebra { FreeMonoid, Empty, Cons }\nfn kc_take(xs: List<Int>) -> Int { 0 }\n"
+
+test fn kc_empty_record_literal_is_a_list_value() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Empty {}) }\n")))
+}
+
+test fn kc_cons_record_literal_is_a_list_value() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Cons { head: 1, tail: Empty {} }) }\n")))
+}
+
+// THE MISFIRE CONTROL (63a4308): a bare `Empty` produces the unapplied List<element> container,
+// a container-vs-container question the carrier verdict must not answer.
+test fn kc_bare_empty_is_a_list_value() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Empty) }\n")))
+}
+
+test fn kc_local_alias_of_the_carrier_admits_its_constructor() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Empty {}) }\n")))
+}
+
+test fn kc_list_field_admits_the_carrier_constructor() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcHolder { xs: List<Int> }\nfn kc_use() -> KcHolder { KcHolder { xs: Empty {} } }\n")))
+}
+
+// RED: a module's own declaration spelled FreeMonoid is a different declaration.
+test fn kc_own_freemonoid_record_is_not_a_list_value() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype FreeMonoid<T> { items: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take(xs: FreeMonoid { items: 1 }) }\n"))
+}
+
+test fn kc_own_freemonoid_through_a_local_is_not_a_list_value() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype FreeMonoid<T> { items: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int {\n  let v = FreeMonoid { items: 1 }\n  kc_take(xs: v)\n}\n"))
+}
+
+// RED: an unrelated record at List<Int>.
+test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype KcPoint { x: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take(xs: KcPoint { x: 1 }) }\n"))
+}

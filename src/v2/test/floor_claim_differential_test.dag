@@ -1,0 +1,151 @@
+module v2.test.floor_claim_differential
+
+import v2.std.logic { Bool }
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.std.algebra { Cons, Empty, filter }
+import v2.std.collection { List }
+import gunbc.explicit_witness_admission { ExplicitWitnessAdmission, explicit_witness_admissions, explicit_witness_admission_is_known_red }
+import v2.workflow.required_floor {
+  ClaimStanding,
+  StandingPassed,
+  StandingFailed,
+  StandingNotDeclared,
+  claim_differential,
+  claim_differential_blocks,
+  ReachClaimVerdict,
+  ReachVerdict,
+  ReachVerdictRefused,
+  reach_claim_verdict,
+  reach_baseline_ran_at_merge_base_line,
+  reach_baseline_not_measured_line,
+  reach_head_cannot_block,
+}
+
+// ONLY A VERDICT THE CHANGE MOVED BLOCKS. Passed -> failed is the one regression (gunbc#12361's
+// ten claims); failed -> failed is main's red and must not block a PR that did not cause it;
+// failed -> passed is a repair. The discriminating cell is the pair that differs only in base:
+// the same failing head blocks after a pass and does not after a fail.
+test fn only_a_pass_to_not_pass_blocks_among_declared_claims() -> Bool {
+  claim_differential_blocks(d: claim_differential(base: StandingPassed, head: StandingFailed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingFailed, head: StandingFailed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingFailed, head: StandingPassed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingPassed, head: StandingPassed))
+}
+
+// A NEW CLAIM HAS NO PRIOR VERDICT, so it is judged as today's changed witness: it must pass.
+// A removed claim blocks nothing here; its removal is the diff's own, reviewed as such.
+test fn a_new_claim_must_pass_and_a_removed_claim_blocks_nothing() -> Bool {
+  !claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: StandingPassed))
+    && claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: StandingFailed))
+    && !claim_differential_blocks(d: claim_differential(base: StandingPassed, head: StandingNotDeclared))
+}
+
+// THE HOST WIRE DECIDES THROUGH THE MODEL: a new reached claim that fails at head BLOCKS, a claim
+// red on both sides does not, and an unknown standing name refuses rather than defaulting.
+test fn a_new_failing_reach_claim_blocks_through_the_host_wire() -> Bool {
+  let blocks = fn(v) {
+    match v {
+      ReachVerdict { differential: _, blocks: b } => b
+      ReachVerdictRefused { reason: _ } => false
+    }
+  }
+  let refused = fn(v) {
+    match v {
+      ReachVerdict { differential: _, blocks: _ } => false
+      ReachVerdictRefused { reason: _ } => true
+    }
+  }
+  blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "not_declared", head: "failed"))
+    && blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "passed", head: "failed"))
+    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "failed", head: "failed"))
+    && !blocks(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "not_declared", head: "passed"))
+    && refused(reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "interrupted", head: "failed"))
+}
+
+test fn the_baseline_line_names_the_merge_base_arm() -> Bool {
+  reach_baseline_ran_at_merge_base_line(main_sha: "abc", cause: "no baseline store")
+    == "baseline=missing-ran-at-merge-base main_sha=abc cause=no baseline store"
+}
+
+// A BASE THAT WAS NOT RUN IS NEVER RENDERED AS ONE THAT WAS (review 73484).
+test fn an_unmeasured_base_says_not_measured() -> Bool {
+  reach_baseline_not_measured_line(cause: "report-only")
+    == "baseline=not-measured cause=report-only"
+}
+
+// ONLY A PASSING HEAD SKIPS THE BASE ARM, and that is the verdict function's own consequence: a
+// passing head never blocks. A failing head blocks under some base, and so does a head where the
+// claim is not declared (it blocks when the base does not declare it either, review 76405), so both
+// need a base; an unknown name is never exempt.
+test fn only_a_passing_head_skips_the_base_arm() -> Bool {
+  reach_head_cannot_block(head: "passed")
+    && !reach_head_cannot_block(head: "not_declared")
+    && !reach_head_cannot_block(head: "failed")
+    && !reach_head_cannot_block(head: "interrupted")
+}
+
+// AN UNMEASURED BASE IS DECIDED BY THE DECLARED MAIN-RED ROSTER, by identity: a rostered claim is
+// a counted finding that does not block, an unrostered one blocks, and neither is read as failed.
+fn verdict_named(v: ReachClaimVerdict) -> String {
+  match v {
+    ReachVerdict { differential: d, blocks: b } => if b { concat(d, ":blocks") } else { concat(d, ":reports") }
+    ReachVerdictRefused { reason: r } => concat("refused:", r)
+  }
+}
+
+test fn an_unmeasured_base_blocks_only_when_no_roster_declares_the_claim_red() -> Bool {
+  verdict_named(v: reach_claim_verdict(identity: first_expected_red(), entry: "", function: "", base: "not_measured", head: "failed"))
+    == "base_not_measured_rostered:reports"
+    && verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "not_measured", head: "failed"))
+      == "base_not_measured_unrostered:blocks"
+    && verdict_named(v: reach_claim_verdict(identity: first_expected_red(), entry: "", function: "", base: "passed", head: "failed"))
+      == "regressed:blocks"
+    && verdict_named(v: reach_claim_verdict(identity: "unqualified.by.this.roster", entry: first_known_red_probe_entry(), function: first_known_red_probe_function(), base: "not_measured", head: "failed"))
+      == "base_not_measured_rostered:reports"
+}
+
+// The explicit-witness-admission roster's own first known-red row, so the control follows the
+// roster and never hard-codes a member that may dissolve.
+fn first_known_red_probe() -> List<ExplicitWitnessAdmission> {
+  filter(xs: explicit_witness_admissions, predicate: fn(r) { explicit_witness_admission_is_known_red(row: r) })
+}
+
+fn first_known_red_probe_entry() -> String {
+  match first_known_red_probe() {
+    Cons { head: r, tail: _ } => r.witness.entry as String
+    Empty => ""
+  }
+}
+
+fn first_known_red_probe_function() -> String {
+  match first_known_red_probe() {
+    Cons { head: r, tail: _ } => r.witness.function
+    Empty => ""
+  }
+}
+
+fn first_expected_red() -> String {
+  match floor_expected_red_roster() {
+    Cons { head: h, tail: _ } => h
+    Empty => ""
+  }
+}
+
+// A HEAD THAT WAS NOT MEASURED IS REFUSED, NEVER REPORTED AS AN ANSWER (review 76405): a wall
+// interruption at head beside a passing base has no verdict to compare, so the differential refuses
+// it typed and located; and it needs no base.
+test fn an_unmeasured_head_is_refused_not_reported() -> Bool {
+  verdict_named(v: reach_claim_verdict(identity: "t.unrostered.claim", entry: "t/unrostered.dag", function: "claim", base: "passed", head: "not_measured"))
+    == "refused:head not measured: a reached claim has no verdict at head t.unrostered.claim"
+    && reach_head_cannot_block(head: "not_measured")
+}
+
+// A CLAIM DECLARED AT NEITHER SIDE IS NOT A REMOVAL (review 76405): a lookup that answered
+// NotDeclared at both base and head is not evidence that anything was deleted, so it blocks; a real
+// removal (declared at base, gone at head) still reports.
+test fn a_claim_declared_at_neither_side_blocks_and_a_removal_reports() -> Bool {
+  verdict_named(v: reach_claim_verdict(identity: "t.c", entry: "t/c.dag", function: "c", base: "not_declared", head: "not_declared"))
+    == "undeclared_at_base_and_head:blocks"
+    && verdict_named(v: reach_claim_verdict(identity: "t.c", entry: "t/c.dag", function: "c", base: "passed", head: "not_declared"))
+    == "removed:reports"
+}

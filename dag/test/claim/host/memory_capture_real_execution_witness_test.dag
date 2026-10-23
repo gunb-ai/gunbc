@@ -1,0 +1,25 @@
+module test.claim.memory_capture_real_execution_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import gunbc.memory_observation { verify_memory_capture_content }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FIPS SHA-256 known-answer input "abc". Changing the consumed bytes while
+// retaining the expected digest must refuse, regardless of any path contents.
+test fn w_capture_digest_binds_consumed_content() -> Bool {
+  let expected: NonEmptyStr = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  match verify_memory_capture_content(content: "abc", expected_sha256: expected) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed } => observed == "abc"
+      && match verify_memory_capture_content(content: "abd", expected_sha256: expected) {
+        ObservationRefused { cause: _ } => match verify_memory_capture_content(content: "abc\n", expected_sha256: expected) {
+          ObservationRefused { cause: _ } => true
+          ObservationEstablished { observed: _ } => false
+        }
+        ObservationEstablished { observed: _ } => false
+      }
+  }
+}

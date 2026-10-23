@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.dollar_dollar_in_a_subshell_writes_the_invoking_shell
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data dollar_dollar_in_a_subshell_writes_the_invoking_shell: RecurringFailureMode = RecurringFailureMode {
+  identity: "dollar_dollar_in_a_subshell_writes_the_invoking_shell" as NonEmptyStr,
+
+  receipts: [
+    "**`$$` inside a POSIX subshell expands to the INVOKING shell's pid, so a write that looks like it identifies the child identifies init** (INVALID STATE: `( echo $$ > cgroup.procs; exec ... )` is authored as 'move THIS process into the leaf', and POSIX sh expands `$$` to the parent even inside the subshell, so the file receives pid 1. HARM: the attempt cgroup is created and bounded correctly, then INIT is moved into it while the VMM stays in the root -- unbounded, which is the state the placement receipt existed to close -- and retirement cannot empty or remove a leaf that holds pid 1. DISTINGUISHING FACTS: a forward-only `/proc/<pid>/cgroup` read reports only that placement is absent; the reverse read of `cgroup.procs` listed pid 1, which is not a plausible attempt member and named the bug on first use. THE FIX THAT WORKED is a fresh shell: `sh -c` gives the new process its own `$$`, and exec preserves that identity through timeout, jailer and firecracker. RECOGNITION RULE: whenever a script writes `$$` into a membership or identity file from inside `()` or a pipeline, ask which pid POSIX actually expands; if the write is in a subshell, it is the invoker. RUNG FOUND AT: mitigatable -- the reverse membership read contained the harm and localised it. CEILING: structurally impossible once membership is joined from a pid the kernel reports for the process that execs, not from a shell special parameter whose referent changes across subshells. NEXT-RUNG TRIGGER: a placement write whose subject pid is read from `/proc/self` after the identity that will exec has started, sufficient that a subshell cannot name a different process than the one that joins. A comment saying 'use sh -c' does not discharge this -- the dangerous form is still the shortest thing to type.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_cgroup_placement_receipt", decl_name: "placement_defect_found", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_cgroup_placement_receipt", decl_name: "placement_defect_retirement", field: WholeDeclaration },
+
+  ],
+}

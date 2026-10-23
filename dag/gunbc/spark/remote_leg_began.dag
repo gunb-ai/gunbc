@@ -1,0 +1,63 @@
+module gunbc.spark.remote_leg_began
+
+import std.types { String, Bool, List }
+import std.algebra { trim }
+import v2.std.algebra { filter, length }
+
+// THE IN-BAND BEGAN-LINE, ONE PROTOCOL FOR EVERY PRIVILEGED SPARK LEG. extdeps.ssh.session
+// ssh_client_error_exit_status says why ssh's 255 alone does not establish that nothing ran, and
+// gunbc.command_runner ssh_exit_255_conflation_dissolution rejects stderr-sniffing and names the richer
+// source: the remote side reporting on stdout. So a privileged leg's payload prints this line before
+// its command (remote_leg_began_payload_line), and a reader asks whether it ARRIVED.
+//
+// WHAT ITS ABSENCE DOES NOT ESTABLISH. The line and the command travel in one unacknowledged stream: a
+// path can go dark after the remote shell wrote the line, or after the command started, before the line
+// reaches the client. So "no began-line and ssh exited 255" means the start was UNOBSERVED, not that
+// nothing ran. The consumers state what they do with that residue: gunbc.spark.pair_serving_apply
+// retries only idempotent legs; gunbc.spark.model_snapshot_materialize reads it as LegBeginUnobserved,
+// projected to ArgvLegMayHaveRun. A two-phase protocol (acknowledge before the command is sent) is the
+// next rung, after which a never-began reading is supportable.
+//
+// It was two protocols with two marker strings (gunbc.spark.pair_serving_apply and
+// gunbc.spark.model_snapshot_materialize); this is the one home both consume.
+data remote_leg_began_word: String = "gunbc-privileged-leg-began"
+
+fn remote_leg_began_payload_line() -> String {
+  join(["echo ", remote_leg_began_word, "\n"], "")
+}
+
+fn remote_leg_lines(stdout: String) -> List<String> {
+  map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
+}
+
+fn remote_leg_reported_began(stdout: String) -> Bool {
+  length(filter(remote_leg_lines(stdout: stdout), l => l == remote_leg_began_word)) > 0
+}
+
+// THE COMMAND'S OWN STDOUT, BYTE FOR BYTE, without the began-line (side-chat ruling on gunbc#13427).
+// Only the FIRST line that is exactly the marker is removed; every other byte -- leading and trailing
+// whitespace, blank lines, the terminal newline -- is what the command printed. An earlier revision
+// trimmed every line and the whole result, so a consumer that bounds or counts the output (a whole-file
+// read that asks for limit + 1 bytes) saw a trailing newline vanish and accepted a prefix as the whole.
+// A consumer that reads the output as ONE WORD says so through remote_stdout_as_one_word below; nothing
+// is normalized on its behalf.
+fn remote_leg_stdout_without_began(stdout: String) -> String {
+  let first_line = join([remote_leg_began_word, "\n"], "")
+  let inner_line = join(["\n", remote_leg_began_word, "\n"], "")
+  let last_line = join(["\n", remote_leg_began_word], "")
+  if starts_with(s: stdout, prefix: first_line) { substring(s: stdout, start: length(first_line), end: length(stdout)) }
+  else if stdout == remote_leg_began_word { "" }
+  else if string_contains(s: stdout, pattern: inner_line) {
+    let parts = split(s: stdout, delimiter: inner_line)
+    join([join(parts.take(n: 1), ""), join(skip(xs: parts, n: 1), inner_line)], "\n")
+  }
+  else if ends_with(s: stdout, suffix: last_line) { substring(s: stdout, start: 0, end: length(stdout) - length(last_line)) }
+  else { stdout }
+}
+
+// STDOUT READ AS ONE WORD: a state word, a path, a count, a single line. Surrounding whitespace,
+// including the newline the command ended with, is not part of the word. The one place that reading is
+// named, so a consumer chooses it rather than inheriting it from the transport.
+fn remote_stdout_as_one_word(stdout: String) -> String {
+  trim(s: stdout)
+}

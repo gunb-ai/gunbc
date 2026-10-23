@@ -1,0 +1,161 @@
+module v2.std.provenance
+
+import std.types { List }
+import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
+import v2.std.algebra { fold_list }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.diagnostic {
+  ByteRange,
+  Diagnostic,
+  ExternalContractUnknown,
+  Locus,
+  Textual,
+  Unavailable,
+  invariant_port_locus
+}
+import v2.std.node { Node, Symbol }
+import std.optional { Absent, Optional, Present }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
+
+type OriginEvent
+  = FromSource { locus: Locus }
+  | DerivedBy { producer: Symbol, from: List<OccurrenceId> }
+  | GeneratedBy { generator: GeneratorId, from: List<OccurrenceId> }
+
+fn origin_event_from_source(locus: Locus) -> OriginEvent {
+  FromSource { locus: locus }
+}
+
+type SpanIndex {
+  entries: Map<OccurrenceId, OriginEvent>
+}
+
+fn span_index_empty() -> SpanIndex {
+  SpanIndex { entries: empty_map() }
+}
+
+fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
+  SpanIndex {
+    entries: map_insert(m: index.entries, key: id, value: event)
+  }
+}
+
+fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^span_index_occurrence_absent,
+    at: invariant_port_locus(port: ^span_index_lookup_port, invariant: ^span_index_occurrence_absent),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent> {
+  witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
+}
+
+fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
+  SpanIndex {
+    entries: fold_list(
+      xs: map_keys(incoming.entries),
+      empty: base.entries,
+      cons: fn(acc, id) {
+        match acc.lookup(id) {
+          Present { value: _ } => acc
+          Absent =>
+            match incoming.entries.lookup(id) {
+              Present { value: event } => map_insert(m: acc, key: id, value: event)
+              Absent => acc
+            }
+        }
+      }
+    )
+  }
+}
+
+fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^span_index_origin_chain_exhausted,
+    at: invariant_port_locus(port: ^span_index_lookup_port, invariant: ^span_index_origin_chain_exhausted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn span_index_resolve_textual_locus_from_ids(
+  index: SpanIndex,
+  ids: List<OccurrenceId>
+) -> Witness<Locus> {
+  fold_list(
+    xs: ids,
+    empty: witness_violates(diagnostic: span_index_origin_chain_exhausted_diagnostic()),
+    cons: fn(acc, id) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          span_index_resolve_textual_locus(index: index, id: id)
+      }
+    }
+  )
+}
+
+fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witness<Locus> {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: event } =>
+      match event {
+        FromSource { locus } =>
+          match locus {
+            Textual { file: _, extent: _ } => Holds { value: locus }
+            NodeLocus { anchor: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            SourcePortLocus { anchor: _, file: _, extent: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            InvariantPortLocus { anchor: _, invariant: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            DeclarationLocus { declaration: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+          }
+        DerivedBy { producer: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+        GeneratedBy { generator: _, from: from } =>
+          span_index_resolve_textual_locus_from_ids(index: index, ids: from)
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// A NODE'S OCCURRENCE ID, IF IT HAS ONE. Both arms that carry an id answer with it and a synthetic
+// node answers Absent -- which is the question every consumer of the span index asks first, because
+// the index is keyed by OccurrenceId and a Node is what a diagnostic actually holds.
+//
+// IT LIVES HERE RATHER THAN AT EACH CONSUMER (review 70027). This diff first minted the same
+// three-arm projection twice, arm for arm -- once in `v2.std.lens_verdict` for the renderer and
+// once in the attribution claim -- which is DESIGN section 3's nickname: a second name for one
+// concept, duplicating work at the meaning layer. That is the same reasoning the sibling below
+// already states for the resolution rule ("a consumer re-deciding it would be a second authority"),
+// and it applies to this projection for the same reason. The home is this module because the join
+// it feeds is this module's: `NodeOccurrenceIdentity` is `v2.std.node`'s, `OccurrenceId` is
+// `std.occurrence_identity`'s, and the place those two meet a SpanIndex is here.
+fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceSynthetic => Absent
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrencePending { caused_by: _ } => Absent
+  }
+}
+
+// THE OPTIONAL-SHAPED DOOR, FOR A CONSUMER THAT RENDERS RATHER THAN REFUSES. The Witness-returning
+// resolver above is the authority and this is its projection: a renderer asking "does this
+// occurrence have a source position" wants presence or absence, not a second diagnostic to fold
+// into the one it is already rendering. Collapsing the refusal here loses nothing, because the only
+// information in it is the absence this arm already reports.
+//
+// It exists as a projection rather than as a re-match on the index because the resolution RULE --
+// follow a DerivedBy or GeneratedBy origin to its causes, accept only a Textual locus -- is one
+// fact, and a consumer re-deciding it would be a second authority for where an occurrence comes
+// from (DESIGN section 3).
+fn span_index_textual_locus_optional(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
+  match span_index_resolve_textual_locus(index: index, id: id) {
+    Holds { value: locus } => Present { value: locus }
+    Violates { diagnostic: _ } => Absent
+  }
+}
+
+fn node_artifact_provenance(node: Node, artifact: Artifact) -> NodeArtifactProvenance {
+  NodeArtifactProvenance { node: node, artifact: artifact }
+}

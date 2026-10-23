@@ -1,0 +1,56 @@
+module gunbc.claim_scope_fixture_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by giving the fixture instrument a claim scope.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, and this change adds four hand items across
+// three modules of the seed. Requested by review 64893 on gunbc#11143, which read the change's
+// section 3c frontier as answered and the SEED-SIDE receipt as missing -- correctly: the two are
+// different questions, and answering "who consumes this .dag type" says nothing about "why is
+// this Rust".
+//
+// WHAT THE CHANGE IS. `claim_scope_for` is where the corpus's bare-name ambiguity census is
+// computed, and it is a seed function. The instrument that already exists for multi-module
+// fixtures, `compile_dag_multi_module_fixture`, stops at `compile_to_resolved` and never builds a
+// scope -- so a wall living in `claim_scope_for` had a positive control that could run and a
+// discriminating RED that could not be authored anywhere. This change adds the scope-building
+// counterpart of that instrument.
+//
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly. The
+// SUBJECT is a seed function. `claim_scope_for` and the `PreparedRepository` it reads are host
+// structures with no substrate representation, and a .dag-side re-derivation of the ambiguity
+// population would be a SECOND detector beside the census -- free to drift from the one the floor
+// prints and the wall refuses on, which is the fork DESIGN section 3 exists to refuse. The
+// instrument therefore calls the same `claim_scope_for_with_memos` the floor's own entry point
+// calls; it is one detector observed from a fixture, not a copy of one. This is the same boundary
+// gunbc.census_memo_seed_growth records one seam over: an instrument about a host builtin is
+// co-located with the builtin.
+//
+// WHAT IS NOT NETTED, and it is named rather than counted against the additions because
+// seed_growth_deletions_offset_nothing executes that rule. `claim_scope_for_with_memos` gains a
+// `reference_index` parameter and `reference_closure_index` loses its build body to the lifted
+// function -- both ExistingSeedItemModified under gunbc.seed_growth_admission
+// SeedGrowthChangeDisposition, keeping their names and their behaviour for every production
+// caller, which pass `None`. The three generated rows (the dispatch arm, its macro arm and the
+// lookup entry in v1_interpreter_dispatch_generated.rs) are projections of
+// gunbc.v1.v1_interpreter_primitive_surface and are exempt by generation authority, not by this
+// author's say-so.
+//
+// HAND-ITEM DELTA is derived from the diff by gunbc.rust_item_host_observation and is deliberately
+// not restated here: an authored copy of a fact the diff owns is the second representation
+// seed_growth_forward_freeze_policy_note measured going wrong on gunbc#9095.
+data claim_scope_fixture_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ClaimScopeFixtureOutcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "build_reference_closure_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "claim_scope_dag_multi_module_fixture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "claim_scope_fixture_value", field: WholeDeclaration }
+  ],
+  reason: "A wall in claim_scope_for could not have a discriminating RED without a way to hand the seed a multi-module subject and ask it to build a scope. DESIGN section 4b names exactly this shape: a state unrepresentable in the ACCEPTED corpus may still be representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and where that is so, declining the evidence is specification-without-execution. It is measured rather than argued here -- authoring the fixture found a real defect in the resolution tier it controls, one that needs a coproduct-returning function and a contested arm name in one scope and so could not surface from the corpus at all.\n\nWHAT EACH ITEM IS FOR. claim_scope_dag_multi_module_fixture is the instrument: it compiles a caller-authored manifest with no corpus roots and calls the SAME claim_scope_for_with_memos the floor calls. ClaimScopeFixtureOutcome is its typed outcome, and its four arms exist to keep three failures apart that a Bool conflates -- the harness could not measure, the manifest did not compile, the scope refused -- because a control satisfied by ANY refusal goes green on a cause it never observed. claim_scope_fixture_value projects that outcome into the interpreter's value space. build_reference_closure_index is the cache's own body, lifted so a caller can build an index WITHOUT registering it.\n\nTHE LIFT IS A CONTRACT CHANGE, NOT A CAP RAISE, and that was the reviewed alternative. reference_closure_index memoizes per subject in a thread_local bounded by FLOOR_PREPARED_SUBJECTS_PER_PROCESS, and the floor already holds both slots -- so a fixture going through the cache is the third subject and is refused for a reason that says nothing about its manifest. Measured on this branch before the split: the POSITIVE control returned false while the NEGATIVE one passed, thread- and order-dependent, because the memo is thread-local and the floor evaluates claims across workers. Raising the bound so a test instrument fits is the instrument dictating production limits; the fixture builds its own index and occupies no slot.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all four when claim scope construction is a MODELED operation rather than a seed function -- at which point a fixture subject is an ordinary value in the substrate, the instrument is a .dag fold over it, and a host builtin standing beside it is the duplicated authority this receipt's own single-authority argument refuses. That is the same trigger the sibling fixture instrument carries, and the two migrate together or not at all: leaving one hand-rolled beside a modeled sibling is the fork, not the fix.",
+  current_boundary: "Confined to one builtin reachable only from .dag, and it decides nothing about the corpus. The instrument reads no corpus root and consults no module index, so its subject is entirely the calling test's manifest; it registers nothing in the per-subject memo, so no floor subject is evicted and no slot is spent; and it returns a projection of what claim_scope_for said rather than a judgment of its own. The only production code it shares is the detector itself, which is the point: a second detector here would be free to drift from the census the floor prints. It changes no verdict for any existing caller -- both production callers of claim_scope_for_with_memos pass None for the new parameter, so the cache path they observe is the body it always ran."
+}

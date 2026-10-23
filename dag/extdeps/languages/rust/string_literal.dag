@@ -1,0 +1,52 @@
+module extdeps.languages.rust.string_literal
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+import std.types { String }
+
+// THE UPSTREAM THAT DECIDES THIS, CITED AS A CARRIER AND NOT AS PROSE. Which characters a cooked
+// string literal may not carry literally, and which escapes stand for them, is fixed by the Rust
+// Reference's string-literal grammar -- the same page that separates the cooked form from the raw
+// form this function deliberately does not serve.
+data rust_string_literal_grammar_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/tokens.html#string-literals"
+  }
+}
+
+// THE RUST COOKED STRING-LITERAL ESCAPE RULE, ONCE.
+//
+// WHY IT LIVES IN extdeps: what must be escaped inside a Rust string literal is decided by the Rust
+// reference, not by us. This body was authored identically in gunbc.v1_interpreter_dispatch_emit and
+// gunbc.stage0_crate_layout_emit -- two copies of one upstream fact, in modules whose subjects are
+// interpreter dispatch and crate layout. A third copy was about to be authored for the
+// evaluation-budget consequence projection; DESIGN section 2's test for a real decomposition is that
+// net concepts must not grow by re-invention, so the concept moved here and both emitters read it.
+//
+// COOKED IS IN THE NAME BECAUSE RUST HAS TWO STRING-LITERAL FORMS AND THIS RULE COVERS ONE. A raw
+// literal (r"...", r#"..."#) escapes nothing and is delimited by hash count instead; a function
+// named for "rust string literal" would claim both and quietly mis-serve the raw form. The narrower
+// name is the honest one.
+//
+// CARRIAGE RETURN IS ESCAPED, AND ITS ABSENCE WAS A REAL HOLE IN BOTH PREDECESSORS. They substituted
+// backslash, double quote and line feed only -- so an isolated CR in an authored value passed
+// through into the emitted literal unescaped. That was invisible in the landed corpus because no
+// current input carries one, which is exactly why extraction had to widen the algorithm rather than
+// canonize it: a shared helper is called by inputs its first two callers never had, and "no current
+// input hits it" is not a property of the function.
+//
+// THE ORDER IS LOAD-BEARING. Backslash is escaped FIRST: escaping the quote first would introduce a
+// backslash that the backslash pass would then escape again, doubling it.
+fn escape_rust_cooked_string_literal_body(s: String) -> String {
+  replace(
+    replace(
+      replace(
+        replace(s, "\\", "\\\\"),
+        "\"", "\\\""
+      ),
+      "\n", "\\n"
+    ),
+    "\r", "\\r"
+  )
+}

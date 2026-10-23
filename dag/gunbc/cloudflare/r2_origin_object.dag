@@ -1,0 +1,311 @@
+module gunbc.cloudflare.r2_origin_object
+
+import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent }
+import extdeps.tools.curl { ReportStatus }
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import std.decl_ref { DeclarationRef }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.cloudflare.r2_staged_transfer {
+  S3TransferAnswer,
+  R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
+  classify_r2_put,
+  R2FetchVerdict, R2FetchStagedAt, R2FetchAbsent, R2FetchRefused, R2FetchUnanswered,
+  classify_r2_fetch,
+  R2TransferTarget,
+  WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
+  r2_put_staged_file,
+  R2StagingCustody, R2StagingNotCreated, r2_release_staging,
+  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  r2_fetch_into_staging,
+}
+import extdeps.cloudflare.r2 {
+  R2S3Endpoint,
+  R2ObjectLocator,
+}
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  CloudflareAccountAllocated,
+  CloudflareAccountUnallocated,
+  fleet_cloudflare_account_standing,
+  R2OriginBucket,
+  R2OriginAllocated,
+  R2OriginUnallocated,
+  R2OriginStanding,
+  fabric_durable_origin_standing,
+  bucket_purpose_key,
+  OriginCredentialStanding,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+  OriginCredentialMintEntryUnbuilt,
+  bucket_purpose_admission,
+  origin_admission_put_precondition,
+}
+import gunbc.fabric_m0_origin_readback {
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  read_origin_staged_file,
+}
+
+// THE ONE ZERO-EGRESS DURABLE ORIGIN, READ AND WRITTEN. This module is the executing consumer that
+// turns the declarations around it into a capability: gunbc.cloudflare.r2_origin says which account,
+// which bucket and under which credentials; extdeps.cloudflare.r2 says what an R2 object address and
+// its SigV4 region ARE; gunbc.cloudflare.r2_staged_transfer performs the transfer (the SigV4 curl
+// handler, the credential's custody across it, the status and verdict), shared with every other R2
+// population. What this module adds is the ORIGIN's: which bucket and credential a direction
+// resolves to, and the confirming OriginReading a fetch earns. Nothing here names a bucket, an
+// account, a region or a group id: every such value is received from its authority.
+//
+// ZERO-EGRESS MEANS THERE IS ONE ORIGIN. A PUT lands in the allocated bucket and a GET reads from
+// it; there is no peer, no replica and no cache standing in for it on either path. A local cache is
+// a different subject with a different authority, and a read served from one cannot produce the
+// value fetch_origin_object returns, because that value carries an OriginReading digested over
+// bytes THIS function received from the origin at a path THIS function minted (and has since
+// released).
+//
+// THE GET STAGES ITS OWN OUTPUT. The caller names a KEY. The transfer mints a private directory,
+// points the transport at a file inside it, and -- only
+// on a 200 -- hands that path to gunbc.fabric_m0_origin_readback read_origin_staged_file, the sole
+// mint of a confirming reading. There is no parameter through which a caller could substitute a
+// path of its own, so the digest a confirming readback carries is the digest of what the origin
+// returned. That is the capability gunbc.fabric_m0_origin_readback's trigger named; what it does
+// and does not close for the enclosing class is stated there, once.
+//
+// THE STAGED FILE IS DIGESTED AND THEN RELEASED, INSIDE THE FETCH. Its directory is minted per
+// fetch, so two concurrent fetches of one key cannot collide. No consumer reads the staged bytes
+// after the digest is taken -- key and digest are what identify the read -- so the directory is
+// removed before the fetch returns, on every arm including a staged file sha256sum could not read,
+// and the removal's answer is carried out as OriginFetch.staging: a refused removal is Residue
+// naming the directory, never dropped. The CREDENTIAL beside it is shredded on every arm out of the
+// bracket, including the ones that never reached the transport.
+//
+// THE PUT IS CREATE-IF-ABSENT, DERIVED FROM THE ADMISSION RATHER THAN CHOSEN. The origin admits
+// commit manifests and content-addressed outputs (gunbc.cloudflare.r2_origin
+// OriginAdmission): a content-addressed object at its own digest is byte-identical to any
+// earlier write, and a manifest slot is written once per attempt, so no admitted object is ever
+// legitimately OVERWRITTEN. If-None-Match: * makes that a store-side refusal (412) instead of a
+// convention. A 412 is reported as its own arm -- the object is already there, which for both
+// admitted populations is the lost-acknowledgement retry gunbc.fabric_m0_commit describes, not a
+// failure -- and is never folded into the stored arm, because "I wrote it" and "someone wrote it"
+// are different facts about durability.
+//
+// The four put arms are the transfer's (gunbc.cloudflare.r2_staged_transfer R2PutVerdict) restated
+// under the KEY the origin was asked for; the status reading lives in the transfer module.
+type OriginPutOutcome
+  = OriginObjectStored { key: NonEmptyStr }
+  | OriginObjectAlreadyPresent { key: NonEmptyStr }
+  | OriginPutRefused { key: NonEmptyStr, cause: NonEmptyStr }
+  | OriginPutOutcomeUnknown { key: NonEmptyStr, cause: NonEmptyStr }
+
+fn origin_put_of(key: NonEmptyStr, verdict: R2PutVerdict) -> OriginPutOutcome {
+  match verdict {
+    R2ObjectStored { tag: _ } => OriginObjectStored { key: key }
+    R2ObjectAlreadyPresent => OriginObjectAlreadyPresent { key: key }
+    R2ObjectTagMoved => OriginPutRefused { key: key, cause: "the store answered that an If-Match precondition failed; the origin never sends one, so this is not its protocol" }
+    R2PutRefused { cause: cause } => OriginPutRefused { key: key, cause: cause }
+    R2PutOutcomeUnknown { cause: cause } => OriginPutOutcomeUnknown { key: key, cause: cause }
+  }
+}
+
+// THE PUT VERDICT IS PURE so both its unknown arms and its refused arm are reachable from a fixture.
+fn classify_origin_put(key: NonEmptyStr, answer: S3TransferAnswer, stderr: String) -> OriginPutOutcome {
+  origin_put_of(key: key, verdict: classify_r2_put(precondition: PutIfAbsent, answer: answer, stderr: stderr))
+}
+
+// WHICH ORIGIN, RESOLVED FROM THE DECLARATIONS AND REFUSING ON EVERY UNALLOCATED ARM. The account
+// id and the bucket are gunbc.cloudflare.r2_origin's; the credential for the requested direction is
+// read off the bucket, and an unminted one refuses HERE, naming the entry that mints it, before any
+// custody fetch or transport runs.
+type OriginDirection
+  = OriginRead
+  | OriginWrite
+
+type OriginTarget
+  = OriginTargetReady {
+      locator: R2ObjectLocator
+      access_key_id: NonEmptyStr
+      token_value: SecretRef
+      precondition: ObjectPutPrecondition
+    }
+  | OriginTargetRefused { cause: NonEmptyStr }
+
+fn origin_credential_for(direction: OriginDirection, bucket: R2OriginBucket) -> OriginCredentialStanding {
+  match direction {
+    OriginRead => bucket.read_credential
+    OriginWrite => bucket.write_credential
+  }
+}
+
+fn origin_direction_word(direction: OriginDirection) -> String {
+  match direction {
+    OriginRead => "read"
+    OriginWrite => "write"
+  }
+}
+
+// THE TARGET RESOLUTION IS PURE; the host observation above is consulted by the two effectful
+// entries before it. The origin standing is a PARAMETER of resolve_origin_target_under so every
+// credential arm stays reachable by a supplied value once the declarations no longer inhabit it --
+// the unminted-write refusal became unreachable from the declarations when the write credential
+// was pinned, and an arm only production can reach is one nobody can test.
+fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> OriginTarget {
+  resolve_origin_target_under(direction: direction, key: key, origin: fabric_durable_origin_standing())
+}
+
+fn resolve_origin_target_under(
+  direction: OriginDirection,
+  key: NonEmptyStr,
+  origin: R2OriginStanding,
+) -> OriginTarget {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+      OriginTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match origin {
+        R2OriginUnallocated { purpose: purpose } =>
+          OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
+        R2OriginAllocated { bucket: bucket } =>
+          match origin_credential_for(direction: direction, bucket: bucket) {
+            OriginCredentialUnminted { mint_entry: entry, secret_id: _ } =>
+              OriginTargetRefused {
+                cause: join([
+                  "THE ORIGIN'S ", origin_direction_word(direction: direction),
+                  " CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String,
+                  " and pin the stored version in gunbc.cloudflare.r2_origin before this operation can sign a request",
+                ], "") as NonEmptyStr,
+              }
+            OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+              OriginTargetRefused {
+                cause: join([
+                  "THE ORIGIN'S ", origin_direction_word(direction: direction),
+                  " CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String,
+                  " yet, so this operation cannot sign a request",
+                ], "") as NonEmptyStr,
+              }
+            OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>
+              OriginTargetReady {
+                locator: R2ObjectLocator {
+                  endpoint: R2S3Endpoint { account_id: account_id as String, jurisdiction: bucket.jurisdiction },
+                  bucket_name: bucket.bucket_name,
+                  key: key,
+                },
+                access_key_id: access_key_id,
+                token_value: token_value,
+                precondition: origin_admission_put_precondition(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+              }
+          }
+      }
+  }
+}
+
+// THE WRITE'S WHOLE ANSWER: what the store said about this key, and whether the credential it was
+// said with is gone. A consumer that wants durability reads verdict; one that decides whether the
+// process may exit clean reads both.
+type OriginPut {
+  verdict: OriginPutOutcome
+  credential: WriteCredentialCustody
+}
+
+fn origin_target_transfer(target: OriginTarget) -> R2TransferTarget? {
+  match target {
+    OriginTargetRefused { cause: _ } => none
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } =>
+      Present { value: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus } }
+  }
+}
+
+// THE WRITE. local_path is the bytes to store and key is where; the credential is the origin's
+// WRITE token, which the reader never holds.
+fn put_origin_object(
+  local_path: FilePath,
+  key: NonEmptyStr,
+  token_source: AccessTokenSource,
+) -> OriginPut {
+  match resolve_origin_target(direction: OriginWrite, key: key) {
+    OriginTargetRefused { cause: cause } =>
+      OriginPut { verdict: OriginPutRefused { key: key, cause: cause }, credential: WriteCredentialShredded }
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } => {
+      let put = r2_put_staged_file(
+        target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus },
+        local_path: local_path,
+        token_source: token_source,
+      )
+      OriginPut { verdict: origin_put_of(key: key, verdict: put.verdict), credential: put.credential }
+    }
+  }
+}
+
+// A CREDENTIAL LEFT ON DISK IS REPORTED ON EVERY ARM, INCLUDING SUCCESS -- as its own field, not as
+// a demotion of the store's verdict.
+fn put_is_clean(put: OriginPut) -> Bool {
+  match put.credential {
+    WriteCredentialShredded => true
+    WriteCredentialResidueRemains { cause: _ } => false
+  }
+}
+
+// THE READ VERDICT, under the origin's names: which arm a status selects is the transfer's
+// classification; this restates it for the fixtures that witness the origin's partition.
+type OriginFetchVerdict
+  = OriginFetchStagedAt { staged_path: NonEmptyStr }
+  | OriginFetchAbsent
+  | OriginFetchRefused { cause: NonEmptyStr }
+
+fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr: String) -> OriginFetchVerdict {
+  match classify_r2_fetch(answer: answer, staged_path: staged_path, stderr: stderr) {
+    R2FetchStagedAt { staged_path: p, tag: _ } => OriginFetchStagedAt { staged_path: p }
+    R2FetchAbsent => OriginFetchAbsent
+    R2FetchRefused { cause: c } => OriginFetchRefused { cause: c }
+    R2FetchUnanswered { cause: c } => OriginFetchRefused { cause: c }
+  }
+}
+
+// THE READ'S WHOLE ANSWER: what the origin said about this key, and whether the directory its
+// bytes were staged in is gone. outcome is gunbc.fabric_m0_origin_readback's, unchanged, so the
+// pure folds over it do not move; staging is the custody they do not judge and the caller must
+// not lose -- the same split as OriginPut's verdict and credential.
+type OriginFetch {
+  outcome: OriginFetchOutcome
+  staging: R2StagingCustody
+}
+
+// The staged arm, pure over the reading and the release so a residue beside a confirmed reading
+// (and beside an unreadable staged file) is reachable from a fixture.
+fn origin_fetch_of_staged(key: NonEmptyStr, read: OriginReadingOutcome, released: R2StagingCustody) -> OriginFetch {
+  match read {
+    OriginReadingTaken { reading: reading } => OriginFetch { outcome: OriginObjectStaged { key: key, reading: reading }, staging: released }
+    OriginReadingUnavailable { staged_path: _, cause: cause } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: released }
+  }
+}
+
+// THE READ. The caller names a key and receives an OriginFetch; it never names, sees in
+// advance, or can influence the path the bytes land at -- the transfer stages them -- and only a
+// staged file reaches read_origin_staged_file, the sole mint of a confirming reading. The digest is
+// taken first and the directory released second, so the release cannot race the read.
+fn fetch_origin_object(
+  key: NonEmptyStr,
+  token_source: AccessTokenSource,
+) -> OriginFetch {
+  match resolve_origin_target(direction: OriginRead, key: key) {
+    OriginTargetRefused { cause: cause } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: R2StagingNotCreated }
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } =>
+      match r2_fetch_into_staging(
+        target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus },
+        token_source: token_source,
+      ) {
+        R2FetchObjectAbsent { staging: c } => OriginFetch { outcome: OriginObjectAbsent { key: key }, staging: c }
+        R2FetchStoreRefused { cause: cause, staging: c } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: c }
+        R2FetchTransportUnanswered { cause: cause, staging: c } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: c }
+        R2FetchLocalFailure { cause: cause, staging: c } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: c }
+        R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } => {
+          let read = read_origin_staged_file(staged_path: p)
+          origin_fetch_of_staged(key: key, read: read, released: r2_release_staging(dir: d))
+        }
+      }
+  }
+}

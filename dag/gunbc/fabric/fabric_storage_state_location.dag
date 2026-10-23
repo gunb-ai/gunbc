@@ -1,0 +1,6 @@
+module gunbc.fabric_storage_state_location
+
+import std.types { NonEmptyStr }
+
+// Host location shared by credential custody and the protected-state transport reader.
+data fabric_state_key_host_path: NonEmptyStr = "/etc/gunbc-fabric-storage/state-writer-mac-key"

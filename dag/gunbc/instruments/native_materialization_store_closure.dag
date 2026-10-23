@@ -1,0 +1,193 @@
+module gunbc.instruments.native_materialization_store_closure
+
+import std.types { List, String, Bool }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import std.authorization_profile { UniversalAudience, EnumeratedAudience, audience_subset, audience_join }
+import std.effect_grant { namespace_tree_of_label, namespace_tree_label }
+import std.materialization_object { store_object_line, store_object_line_malformed_text }
+import extdeps.realization.materialization_store_local { store_path }
+import v2.compiler.self_host.generation {
+  SourceClosureMember, SourceClosureRoster, source_closure_axis_digest,
+  SourceClosureAxisDigest, SourceClosureAxisRefused,
+  RosterCanonicallyOrdered, RosterNotAscending, RosterDuplicateMember, RosterMemberIdentityEmpty,
+}
+import v2.std.node { symbol_identity_digest }
+
+// THE MATERIALIZATION STORE CLOSURE, EMITTED, BUILT AND RUN. `gunbc test
+// //gunbc/instruments:native-materialization-store-closure` emits the closure this entry reaches --
+// which contains extdeps.realization.materialization_store_local and everything it imports -- builds
+// the emitted crate under cargo, and runs it. The build is the first half of the evidence and the
+// reason this is a program rather than a string witness. Its DISCRIMINATING claim is narrow: it
+// discriminates the two EMITTER defect classes this change repaired -- impl and fn headers that
+// omitted their item's bounds (class A) and an optional-returning lambda unwrapped inside a closure
+// body (class C) -- each ACCEPTED source that emitted Rust rustc refused, and both had sat under a
+// compile_dag_rust_emit_check row that was green the whole time, one asserting the ill-formed text
+// verbatim. A substring oracle cannot refuse Rust that does not compile; cargo can. The five text
+// sites (class B) are NOT discriminated by the build: after gunbc#12512 an identified crossing of
+// that shape unfolds or refuses at source acceptance, so their cases below are BEHAVIORAL controls of
+// the simplified functions, not reds the build would catch.
+//
+// The cases are the second half: one natively executed case per changed site, each on the exact
+// function changed, each with a RED beside it.
+//   audience_*          std.authorization_profile audience_subset / audience_join -- generic fns
+//                       over a Set element, which emitted `P: Clone` and no `P: Ord`, beside
+//                       hand-written Debug/PartialEq impls whose headers omitted the item header's
+//                       own Clone bound.
+//   tree_label_*        std.effect_grant namespace_tree_of_label -- the four kernel-String values
+//                       that were passed to v2.std.algebra length (gunbc.rung_drop
+//                       text_boundary_identity_wall, specimens of 2026-10-03). The prefix-only
+//                       label is the RED for that exact comparison.
+//   roster_*            v2.compiler.self_host.generation roster_scan_step -- the fifth specimen,
+//                       where emptiness is now tested on the kernel value the member holds.
+//   malformed_text_*    std.materialization_object store_object_line_malformed_text -- an
+//                       optional-returning lambda passed to a `fn(..) -> T` parameter, which the
+//                       emitter unwrapped inside the closure body.
+//   store_path_*        extdeps.realization.materialization_store_local itself, so the store module
+//                       is in the closure by a reference this program executes rather than by an
+//                       import nothing calls.
+//
+// WHAT THIS DOES NOT ESTABLISH. It runs no filesystem operation: a NativeClaimDriver main reads no
+// file (std.compiler_entry), so the store's effectful half -- open, lookup, commit -- is built here
+// and executed elsewhere. And it is run by name; it is not a merge gate.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type StoreClosureCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn bool_text(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn held_as(identity: String, observed: String, expected: String) -> StoreClosureCase {
+  StoreClosureCase { identity: identity, held: observed == expected, observed: observed }
+}
+
+fn string_set(a: String, b: String) -> Set<String> {
+  set_insert(set_insert(empty_set(), a), b)
+}
+
+fn audience_cases() -> List<StoreClosureCase> {
+  let narrow = EnumeratedAudience { members: set_insert(empty_set(), "alice") }
+  let wide = EnumeratedAudience { members: string_set(a: "alice", b: "bob") }
+  let other = EnumeratedAudience { members: string_set(a: "bob", b: "carol") }
+  let joined = match audience_join(left: wide, right: other) {
+    EnumeratedAudience { members: members } => members == set_insert(string_set(a: "alice", b: "bob"), "carol")
+    UniversalAudience => false
+  }
+  [
+    held_as(identity: "audience_subset_admits_a_contained_set", observed: bool_text(b: audience_subset(left: narrow, right: wide)), expected: "true"),
+    held_as(identity: "audience_subset_red_a_wider_set_is_not_contained", observed: bool_text(b: audience_subset(left: wide, right: narrow)), expected: "false"),
+    held_as(identity: "audience_subset_red_overlapping_sets_are_incomparable", observed: bool_text(b: audience_subset(left: wide, right: other)), expected: "false"),
+    held_as(identity: "audience_join_is_the_union", observed: bool_text(b: joined), expected: "true")
+  ]
+}
+
+fn tree_label_round_trip(label: String) -> String {
+  match namespace_tree_of_label(label: label) {
+    Present { value: tree } => namespace_tree_label(tree: tree)
+    Absent => "refused"
+  }
+}
+
+fn tree_label_cases() -> List<StoreClosureCase> {
+  [
+    held_as(identity: "tree_label_service_round_trips", observed: tree_label_round_trip(label: "service:fs"), expected: "service:fs"),
+    held_as(identity: "tree_label_red_service_prefix_naming_no_service_refuses", observed: tree_label_round_trip(label: "service:"), expected: "refused"),
+    held_as(identity: "tree_label_parameterless_tree_round_trips", observed: tree_label_round_trip(label: "filesystem"), expected: "filesystem")
+  ]
+}
+
+fn roster_member(identity: String) -> SourceClosureMember {
+  SourceClosureMember { identity: identity, content: symbol_identity_digest(sym: "content") }
+}
+
+fn roster_verdict_text(roster: SourceClosureRoster) -> String {
+  match source_closure_axis_digest(roster: roster) {
+    SourceClosureAxisDigest { digest: _ } => "digest"
+    SourceClosureAxisRefused { verdict: v } =>
+      match v {
+        RosterMemberIdentityEmpty => "identity_empty"
+        RosterCanonicallyOrdered => "ordered"
+        RosterNotAscending { at_member: _ } => "not_ascending"
+        RosterDuplicateMember { at_member: _ } => "duplicate"
+      }
+  }
+}
+
+fn roster_cases() -> List<StoreClosureCase> {
+  [
+    held_as(identity: "roster_ascending_members_fold_to_a_digest", observed: roster_verdict_text(roster: SourceClosureRoster { members: [roster_member(identity: "a_module"), roster_member(identity: "b_module")] }), expected: "digest"),
+    held_as(identity: "roster_red_an_empty_member_identity_refuses", observed: roster_verdict_text(roster: SourceClosureRoster { members: [roster_member(identity: "")] }), expected: "identity_empty")
+  ]
+}
+
+fn malformed_text(line: String) -> String {
+  match store_object_line_malformed_text(l: store_object_line(line: line)) {
+    Present { value: text } => concat("malformed:", text)
+    Absent => "well_formed"
+  }
+}
+
+fn malformed_text_cases() -> List<StoreClosureCase> {
+  [
+    held_as(identity: "malformed_text_carries_the_malformed_line", observed: malformed_text(line: "neither a part nor a payload"), expected: "malformed:neither a part nor a payload"),
+    held_as(identity: "malformed_text_red_a_well_formed_line_carries_none", observed: malformed_text(line: "end"), expected: "well_formed")
+  ]
+}
+
+fn store_path_cases() -> List<StoreClosureCase> {
+  [
+    held_as(identity: "store_path_joins_root_and_name", observed: store_path(root_path: "/store", name: "object"), expected: "/store/object"),
+    held_as(identity: "store_path_does_not_double_a_trailing_separator", observed: store_path(root_path: "/store/", name: "object"), expected: "/store/object")
+  ]
+}
+
+fn store_closure_cases() -> List<StoreClosureCase> {
+  concat(
+    concat(audience_cases(), tree_label_cases()),
+    concat(concat(roster_cases(), malformed_text_cases()), store_path_cases())
+  )
+}
+
+fn case_row(c: StoreClosureCase) -> String {
+  concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
+}
+
+// THE EXPECTED IDENTITIES, DECLARED RATHER THAN DERIVED FROM THE CASES, on the rule
+// gunbc.instruments.native_crypto_vectors states: the reader joins the printed rows against this
+// roster, so a case function deleted or filtered away leaves its identity here with no row and the
+// run is NO OBSERVATION rather than a smaller green.
+data store_closure_expected_identities: List<String> = [
+  "audience_subset_admits_a_contained_set",
+  "audience_subset_red_a_wider_set_is_not_contained",
+  "audience_subset_red_overlapping_sets_are_incomparable",
+  "audience_join_is_the_union",
+  "tree_label_service_round_trips",
+  "tree_label_red_service_prefix_naming_no_service_refuses",
+  "tree_label_parameterless_tree_round_trips",
+  "roster_ascending_members_fold_to_a_digest",
+  "roster_red_an_empty_member_identity_refuses",
+  "malformed_text_carries_the_malformed_line",
+  "malformed_text_red_a_well_formed_line_carries_none",
+  "store_path_joins_root_and_name",
+  "store_path_does_not_double_a_trailing_separator"
+]
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = store_closure_cases()
+  let roster = concat("roster ", concat(store_closure_expected_identities |> join(separator: ","), "\n"))
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
+}
+
+fn held_terminal() -> NativeClaimTerminal {
+  NativeClaimHeld
+}
+
+fn not_held_terminal(reason: String) -> NativeClaimTerminal {
+  NativeClaimNotHeld { reason: reason }
+}

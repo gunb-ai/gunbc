@@ -1,0 +1,274 @@
+module product.pcb.physical
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure { Micrometer, Micro, micrometer, micrometer_count }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
+import std.affine_space { Point2, point2, signed_frame_component_count }
+import std.spatial_frame {
+  FrameRegistered,
+  FrameRegistrationRefused,
+  FrameRegistrationRefusal,
+  SpatialFrameRegistry,
+  empty_frame_registry,
+  frame_length_scale,
+  register_frame,
+  registry_with,
+  scales_agree,
+}
+import std.orthogonal_geometry {
+  AxisAlignedRectangle2,
+  OrthogonalConstruction,
+  OrthogonalReady,
+  OrthogonalRefused,
+  axis_aligned_rectangle2,
+  rectangle2_contains_rectangle,
+  rectangle2_overlaps,
+}
+import extdeps.programmable_logic.ice40.subject { Ice40Package }
+
+// THE BOARD AS A BODY-LEVEL SHAPE, WHICH IS WHAT THE ARTICLE'S PHYSICAL STANDING WAS STANDING IN
+// FOR. That standing admitted an outline as a NonEmptyStr — a shape no consumer can intersect,
+// measure or test for containment, so nothing could ask the two questions a board layout actually
+// has to answer: is every part on the board, and does any part's BODY sit on top of another. This
+// module answers both from geometry, and answers NOTHING about pads: a package body envelope is
+// not a land pattern, the TQ144's leads span 22 mm against a 20 mm body, and a body-only collision
+// check therefore under-approximates real clearance. The admission arm is named
+// BodyEnvelopesAdmitted so that under-approximation cannot be read as a clearance claim. It reuses
+// std.orthogonal_geometry's rectangle rather than minting a board-local one, and it draws in a
+// micrometre-registered frame, which is why the two slices before it had to land first: at
+// millimetre grain a 0.5 mm package pitch is not expressible and two adjacent pins collapse onto
+// one coordinate. THIS IS THE SHARED PHYSICAL AUTHORITY for every board product — compute-board
+// witnesses and the Altra placement plan both consume it. A second body-envelope model beside it
+// would be the nicknaming DESIGN section 3 forbids.
+// THIS IS A PACKAGE BODY ENVELOPE. IT IS NOT A FOOTPRINT, and an earlier revision of this module
+// called it one — a category error worth recording rather than quietly renaming, because it was
+// approved by review and would have become load-bearing the moment copper appeared.
+//
+// A PCB footprint is a LAND PATTERN: numbered pads with positions, shapes and sizes, a mapping
+// from each package contact to exactly one pad, solder-mask and paste apertures, a pin-one
+// orientation, and a courtyard. None of that is here. What is here is the outline of the plastic
+// body, which answers exactly one question — does this part's body fit in this space — and cannot
+// answer where anything solders.
+//
+// THE UNDER-APPROXIMATION IS THE DANGEROUS PART, so it is stated at the carrier rather than left
+// to a reader: a TQ144's leads extend beyond its body. The body is 20 mm; the lead and land span
+// is 22 mm. So two bodies that clear each other by a millimetre have already collided at their
+// leads, and a collision check over bodies alone ADMITS boards that cannot be assembled. That is
+// why the admission arm below is named for what it checked and not for a clearance it did not
+// establish.
+type PackageBodyEnvelope {
+  package_designator: NonEmptyStr
+  body_width: Micrometer
+  body_height: Micrometer
+}
+
+fn body_envelope_of_ice40_package(p: Ice40Package) -> PackageBodyEnvelope {
+  PackageBodyEnvelope {
+    package_designator: p.designator,
+    body_width: p.body_width,
+    body_height: p.body_height,
+  }
+}
+
+// The placement's origin is its MINIMUM corner, and the occupied extent is derived from the
+// footprint rather than authored beside it — an authored extent is a second answer to how big the
+// part is, and the one that disagrees with the package is the one nobody notices.
+type ComponentPlacement {
+  identity: NonEmptyStr
+  body_envelope: PackageBodyEnvelope
+  origin: Point2
+}
+
+type BoardPhysicalArticle {
+  frame: CoordinateFrameIdentity
+  outline: AxisAlignedRectangle2
+  placements: List<ComponentPlacement>
+}
+
+type PhysicalRefusal
+  = BoardFrameUnregistered { frame: CoordinateFrameIdentity }
+  | BoardFrameRegistrationRefused { cause: FrameRegistrationRefusal }
+  | BoardFrameIsNotSubMillimetre { frame: CoordinateFrameIdentity }
+  | PlacementFrameDiffersFromBoard { placement: NonEmptyStr }
+  | PlacementExtentNotPositive { placement: NonEmptyStr }
+  | PlacementNotWithinOutline { placement: NonEmptyStr }
+  | PlacementsOverlap { first: NonEmptyStr, second: NonEmptyStr }
+  | PlacementIdentityRepeated { placement: NonEmptyStr }
+
+type PhysicalRefusalSet {
+  first: PhysicalRefusal
+  rest: List<PhysicalRefusal>
+}
+
+// THE ARM IS NAMED FOR WHAT WAS CHECKED. Calling this PhysicallyAdmitted would claim a board is
+// physically realizable when nothing here has looked at a pad, a clearance, a trace or a layer —
+// the rung inflation DESIGN 4b names, and the more dangerous for being one word.
+//
+// What this establishes: every part's BODY is inside the outline, no two BODIES share interior
+// area, identities are distinct, and the frame's quantum is fine enough to express the geometry.
+// What it does not establish, each its own separate standing and none of them started: land
+// pattern, courtyard clearance, mask and paste apertures, contact-to-pad mapping, routing,
+// stackup, or a fabricator's design rules.
+type PhysicalAdmission
+  = BodyEnvelopesAdmitted { article: BoardPhysicalArticle }
+  | PhysicallyRefused { causes: PhysicalRefusalSet }
+
+fn push_physical_refusal(acc: PhysicalRefusalSet?, r: PhysicalRefusal) -> PhysicalRefusalSet? {
+  match acc {
+    Absent => Present { value: PhysicalRefusalSet { first: r, rest: [] } }
+    Present { value: s } => Present { value: PhysicalRefusalSet { first: s.first, rest: concat(s.rest, [r]) } }
+  }
+}
+
+fn physical_refusal_count(s: PhysicalRefusalSet) -> Nat {
+  1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+// The rectangle a placement occupies. It is a construction rather than a record because a footprint
+// with a zero extent has no rectangle at all, and the geometry layer already refuses that — this
+// module does not get to decide the degenerate case differently from every other consumer.
+fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAlignedRectangle2> {
+  axis_aligned_rectangle2(
+    min: p.origin,
+    max: point2(
+      frame: p.origin.frame,
+      x: signed_frame_component_count(c: p.origin.x) + micrometer_count(m: p.body_envelope.body_width),
+      y: signed_frame_component_count(c: p.origin.y) + micrometer_count(m: p.body_envelope.body_height)
+    )
+  )
+}
+
+// SUB-MILLIMETRE IS A REQUIREMENT OF THE SUBJECT, not a preference. A board carrying a half-
+// millimetre package pitch cannot be drawn in whole millimetres at all, so a millimetre-registered
+// frame is refused rather than accepted and quietly rounded. This is the article's
+// RequiresExactSubMillimeterCoordinateQuantum cause discharged by a check rather than by a claim.
+fn frame_is_sub_millimetre(registry: SpatialFrameRegistry, frame: CoordinateFrameIdentity) -> Bool {
+  match frame_length_scale(r: registry, identity: frame) {
+    Absent => false
+    Present { value: s } => scales_agree(a: s, b: Micro)
+  }
+}
+
+fn identity_occurrences(ps: List<ComponentPlacement>, id: NonEmptyStr) -> Nat {
+  fold(ps, init: 0, f: fn(acc, p) { if (p.identity as String) == (id as String) { acc + 1 } else { acc } })
+}
+
+fn seen_identity(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+  fold(seen, init: false, f: fn(acc, k) { acc || (k as String) == (id as String) })
+}
+
+type PlacementScan {
+  seen: List<NonEmptyStr>
+  causes: List<PhysicalRefusal>
+}
+
+// EVERY PLACEMENT IS CHECKED, AND A REPEATED IDENTITY IS REPORTED ONCE. Two placements sharing an
+// identity is one defect at one identity, not one per row — the same reading the pin chain
+// arrived at, and for the same reason: the cause count is a number a consumer reads as a
+// population.
+fn placement_refusals(
+  registry: SpatialFrameRegistry,
+  article: BoardPhysicalArticle
+) -> List<PhysicalRefusal> {
+  let scanned = fold(article.placements, init: PlacementScan { seen: [], causes: [] }, f: fn(acc, p) {
+    let repeated = if identity_occurrences(ps: article.placements, id: p.identity) > 1 && !seen_identity(seen: acc.seen, id: p.identity) {
+      [PlacementIdentityRepeated { placement: p.identity }]
+    } else {
+      []
+    }
+    let same_frame = coordinate_frame_identity_eq(a: p.origin.frame, b: article.frame)
+    let frame_cause = if same_frame { [] } else { [PlacementFrameDiffersFromBoard { placement: p.identity }] }
+    let geometry_causes = if !same_frame {
+      []
+    } else {
+      match placement_extent(p: p) {
+        OrthogonalRefused { cause: _ } => [PlacementExtentNotPositive { placement: p.identity }]
+        OrthogonalReady { value: rect } =>
+          match rectangle2_contains_rectangle(outer: article.outline, inner: rect) {
+            OrthogonalRefused { cause: _ } => [PlacementNotWithinOutline { placement: p.identity }]
+            OrthogonalReady { value: inside } =>
+              if inside { [] } else { [PlacementNotWithinOutline { placement: p.identity }] }
+          }
+      }
+    }
+    PlacementScan {
+      seen: concat(acc.seen, [p.identity]),
+      causes: concat(acc.causes, concat(repeated, concat(frame_cause, geometry_causes))),
+    }
+  })
+  scanned.causes
+}
+
+// A COLLISION IS A FACT ABOUT A PAIR, so each unordered pair is considered exactly once. The pair
+// is selected BY POSITION, not by comparing identities, and that distinction is load-bearing: an
+// earlier revision filtered with a.identity < b.identity, which silently skipped every pair whose
+// two members share an identity — so two parts stacked at the same coordinates under one repeated
+// identity were reported as a naming defect and never as the collision they also are. Ordering by
+// a value that is not guaranteed distinct is accidental correctness; position always is.
+type OverlapScan {
+  index: Nat
+  out: List<PhysicalRefusal>
+}
+
+// THE REFUSED-EXTENT ARMS BELOW ARE EMPTY BECAUSE THE CAUSE IS ALREADY RAISED, not because an
+// unbuildable placement is acceptable. A placement whose extent refuses is reported by the scan
+// above as PlacementExtentNotPositive, and one sitting in another frame as
+// PlacementFrameDiffersFromBoard, so no article reaches admission with such a placement — asking
+// whether it OVERLAPS something is then a question about a placement that has already been
+// refused. Restating the cause here would be a second authority for one defect, and it would also
+// double-count: one bad placement pairs with every other. The distinction worth preserving is
+// against the opposite case — an arm that is empty while nothing else refuses, which is the fold
+// reading as enforcement while enforcing nothing.
+fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
+  let outer = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(acc, a) {
+    let inner = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(bacc, b) {
+      let hits = if bacc.index > acc.index {
+        match placement_extent(p: a) {
+          OrthogonalRefused { cause: _ } => []
+          OrthogonalReady { value: ra } =>
+            match placement_extent(p: b) {
+              OrthogonalRefused { cause: _ } => []
+              OrthogonalReady { value: rb } =>
+                match rectangle2_overlaps(a: ra, b: rb) {
+                  OrthogonalRefused { cause: _ } => []
+                  OrthogonalReady { value: hit } =>
+                    if hit { [PlacementsOverlap { first: a.identity, second: b.identity }] } else { [] }
+                }
+            }
+        }
+      } else {
+        []
+      }
+      OverlapScan { index: bacc.index + 1, out: concat(bacc.out, hits) }
+    })
+    OverlapScan { index: acc.index + 1, out: concat(acc.out, inner.out) }
+  })
+  outer.out
+}
+
+fn physical_causes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
+  let frame_causes = match frame_length_scale(r: registry, identity: article.frame) {
+    Absent => [BoardFrameUnregistered { frame: article.frame }]
+    Present { value: _ } =>
+      if frame_is_sub_millimetre(registry: registry, frame: article.frame) {
+        []
+      } else {
+        [BoardFrameIsNotSubMillimetre { frame: article.frame }]
+      }
+  }
+  concat(
+    frame_causes,
+    concat(placement_refusals(registry: registry, article: article), overlap_refusals(article: article))
+  )
+}
+
+fn admit_body_envelopes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle) -> PhysicalAdmission {
+  match fold(physical_causes(registry: registry, article: article), init: none, f: fn(acc, c) {
+    push_physical_refusal(acc: acc, r: c)
+  }) {
+    Absent => BodyEnvelopesAdmitted { article: article }
+    Present { value: s } => PhysicallyRefused { causes: s }
+  }
+}

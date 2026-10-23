@@ -1,0 +1,62 @@
+module v2.test.tokenize.byte_range_octet_unit
+
+import v2.std.text { String }
+import std.optional { Absent, Present }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { ModeledLexRules, Token, TokenStream }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex_rules }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Every v2 token and diagnostic extent is a ByteRange, so it counts UTF-8 octets. Each source here
+// puts a 2-byte ('°' U+00B0), a 3-byte ('€' U+20AC) and a 4-byte (U+1F600) scalar BEFORE the
+// asserted offset, so a scalar-counting lexer lands 6 lower than an octet-counting one and every
+// assertion below is red under the old unit. (The lens slicer that once consumed these extents,
+// and the octet-to-scalar index it rested on, are deleted: the caret name it recovered from source
+// text is now read from the lexeme-stamped terminal itself, MQ-1 PR-2.)
+
+fn lex(src: String) -> Outcome<TokenStream> {
+  tokenize(text: src, file: ^probe, rules: ModeledLexRules { root: dag_lex_rules() })
+}
+
+// `data d: String = "` is 18 octets, the three scalars are 2+3+4 = 9, then `" ` is 2, so the
+// unrecognized em dash (U+2014, 3 octets) starts at octet 29 and covers 29..32. Counted in scalars
+// it would be 23..24.
+test fn refusal_locus_is_the_octet_offset_after_multibyte_scalars_holds() -> Bool {
+  match lex(src: "data d: String = \"°€😀\" —") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      (ds.head.reason == ^tokenize_lex_e1_unrecognized_char) &&
+        match ds.head.at {
+          Textual { file: _, extent: e } =>
+            match e {
+              ByteRange { start: s, end: end_byte } => (s == 29) && (end_byte == 32)
+              WholeFile => false
+            }
+          NodeLocus { anchor: _ } => false
+          SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
+        }
+  }
+}
+
+fn last_token(stream: TokenStream) -> Optional<Token> {
+  fold_list(xs: stream.all, empty: Absent, cons: fn(acc, t) { Present { value: t } })
+}
+
+// The string-literal token after the three scalars spans octets 17..28 (11 octets: two quotes and
+// 9 octets of text), not 17..22.
+test fn token_extent_counts_octets_holds() -> Bool {
+  match lex(src: "data d: String = \"°€😀\"") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match last_token(stream: stream) {
+        Absent => false
+        Present { value: t } => (t.start == 17) && (t.end == 28)
+      }
+  }
+}

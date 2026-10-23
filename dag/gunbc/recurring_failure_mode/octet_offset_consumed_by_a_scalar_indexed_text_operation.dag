@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.octet_offset_consumed_by_a_scalar_indexed_text_operation
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data octet_offset_consumed_by_a_scalar_indexed_text_operation: RecurringFailureMode = RecurringFailureMode {
+  identity: "octet_offset_consumed_by_a_scalar_indexed_text_operation" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an offset measured in UTF-8 OCTETS is handed to a text operation that indexes Unicode SCALARS. The v2 tokenizer counts every walk offset in octets (v2.compiler.tokenize lexeme_utf8_octet_count), so every v2.std.diagnostic ByteRange the span index resolves to is an octet range. `substring` and `string_length` index scalars: the emitted runtime walks chars(). Both are plain Int, so nothing stops an octet offset from reaching substring. On ASCII text the two agree, which is why the defect passes every ASCII fixture and is silent on the first multibyte character.",
+    "SPECIMEN, CAUGHT IN REVIEW BEFORE LANDING (gunbc#13051, calm-boar-904): v2.cli.if_arm_reader_differential derived each site's line as the count of line feeds in substring(source, 0, ByteRange.start). Every multibyte scalar before a site moved its reported line. The census COUNT was unaffected; only the rendered locations were wrong. Repaired by reporting the byte range alone. The corpus's one line-from-octet reader was private to a lens (v2.lens.text_string_importer_census newline_offsets), not a shared authority, and swift-lynx-592 is moving it into v2.std.source_position. When that lands it is the sanctioned conversion this row's trigger names. The control is a nested if after 2-, 3- and 4-octet scalars, located at octet 237, which is scalar 223.",
+    "POPULATION, read at the same revision over dag/ and src/v2/ (about 486 substring calls, each offset traced to its producer): no other site passes an octet offset to substring. Two neighbours look like the class but are not. src/v2/lens/text_string_importer_census.dag newline_offsets counts octets over utf8_encode_bytes and compares them with ByteRange.start: octets against octets. dag/std/import.dag import_strip_step slices with import-statement spans from the v1 tokenizer, which indexes its source_chars code-point list: scalars against scalars. One site agrees only by its input: dag/gunbc/runner/runner_microvm.dag jit_drive_content subtracts an octet count from a substring end over a string of line feeds only, where octets and scalars coincide.",
+    "RUNG FOUND AT: below the floor (a plausible, wrong location rendered with no refusal). RUNG NOW: no wall. The population is zero by a one-off read, not by any gate, so a new site can be written today. CEILING: structurally impossible. An octet offset and a scalar index are different quantities and can be different types. NEXT-RUNG TRIGGER: v2.std.diagnostic ByteRange carries a distinct octet-offset type that substring does not accept, with a sanctioned conversion that walks the UTF-8 table (std.unicode.types unicode_scalar_utf8_octet_count). A source-locus renderer that wants lines then derives them from octets through that one conversion.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.cli.if_arm_reader_differential", decl_name: "multibyte_source_before_a_site_is_located_in_octets_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "lexeme_utf8_octet_count", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.cli.if_arm_reader_differential", decl_name: "iard_location", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,236 @@
+module gunbc.legacy_binding_tap_coverage
+
+import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
+import gunbc.rust_item_identity {
+  RustItemDeclarationRef, RustItemDeclField, RustItemWhole,
+  rust_item_declaration_ref_key,
+}
+
+// SLICE 0B.1a OF THE ROUTER-AUTHORITY MIGRATION: THE DECISION-SITE RETENTION CENSUS. IT MEASURES
+// WHERE A TAP COULD BE PLACED AND TAPS NOTHING.
+//
+// WHY THIS EXISTS BEFORE ANY BOUNDARY JOIN. The exact consumer relation -- consuming declaration x
+// consumed authority -- is what makes a replacement cut's population exact and what decides whether
+// a residue occurrence goes loud or silent when X is deleted. The ruled construction is to observe
+// the decisions the compiler ALREADY makes, keyed by the parser-minted occurrence identity, rather
+// than to build a second source scanner or to reconstruct resolution from outside. Reconstructing
+// it would be authority substitution: the answer would be what a reimplementation believes, not
+// what the compiler selected.
+//
+// BUT A TAP CANNOT BE PLACED WHERE THE INFORMATION IS ALREADY GONE, and which sites have already
+// lost it is not knowable by reading a type name. So the first output is not the relation. It is
+// this: for every decision surface that answers an authored reference, does exact OCCURRENCE
+// identity and exact TARGET identity coexist there? Where they do, tap. Where one has been erased,
+// the seam must be threaded before any tap is sound, and until then the family refuses.
+//
+// TWO INDEPENDENT AXES, AND THE CENSUS EXISTS BECAUSE THEY MEASURED DIFFERENTLY. Reading the seed
+// found sites that erase the target identity they computed AND sites that carry it through both
+// their success and failure arms -- so the axis discriminates rather than reporting one uniform
+// answer, which is the difference between a measurement and a decoration.
+//
+// WHAT THIS CENSUS IS NOT: it is not a tap, not a relation, and not a claim that any site is
+// currently observable. Its standing counts what is tappable now and what needs threading first,
+// and those counts are DERIVED from the two axes rather than stored -- a transcribed verdict beside
+// the facts that produce it is a second authority for one fact, and it is the shape that lets a
+// site read as tappable after an edit made it not.
+
+// DOES THE SITE RECEIVE THE PARSER-MINTED OCCURRENCE IDENTITY? The occurrence-identity law is that
+// identity comes from the shared graph-scoped allocator -- never a filename, span, authored
+// spelling, structural node equality, or content hash. So a site keyed by anything else has not
+// merely a weaker identity but NO usable one: recovering it later by matching a name or a span is
+// exactly what that law forbids, which is why the absent arm names what the site IS keyed by rather
+// than treating the key as a near-miss.
+type OccurrenceIdentityAtSite
+  = OccurrenceIdentityExact
+  | OccurrenceIdentityAbsent { keyed_by: NonEmptyStr }
+
+// DOES THE SITE'S OUTCOME CARRY THE EXACT TARGET IT SELECTED? Three states, and the middle one is
+// the finding: a site can COMPUTE the exact identity, use it to make its decision, and then project
+// a less informative carrier downstream. That is not a missing capability, it is a discarded one,
+// and it is repaired by widening an outcome rather than by threading a new input -- a different
+// remedy, which is why it is not folded into either neighbour.
+type TargetIdentityInOutcome
+  = TargetIdentityExactInOutcome { carrier: NonEmptyStr }
+  | TargetIdentityComputedThenErased { computed_as: NonEmptyStr, erased_into: NonEmptyStr }
+  | TargetIdentityNotComputed { reason: NonEmptyStr }
+
+// WHICH AUTHORED REFERENCES THE SITE ANSWERS. A site that answers none is not a gap -- it is out of
+// this producer's denominator entirely, and it is carried so that "surveyed and irrelevant" cannot
+// be confused with "unsurveyed". There is deliberately no arm for a family this producer ignores.
+type AnsweredReferenceFamily
+  = BareCallableReference
+  | QualifiedCallableReference
+  | ConstructorReference
+  | AnswersNoAuthoredReference { reason: NonEmptyStr }
+
+type DecisionSiteObservation {
+  site: RustItemDeclarationRef
+  observed_at_revision: NonEmptyStr
+  outcome_carrier: NonEmptyStr
+  families: List<AnsweredReferenceFamily>
+  occurrence_identity: OccurrenceIdentityAtSite
+  target_identity: TargetIdentityInOutcome
+}
+
+// A SURFACE THE CENSUS COULD NOT READ IS A COUNTED REFUSAL, NEVER AN ABSENT ROW. A decision surface
+// left out of the roster and a decision surface with nothing to report render identically once the
+// roster is the only output, and they have opposite meanings for anyone pricing the tap.
+type TapCoverageRefusal
+  = DecisionSurfaceUnsurveyed { surface: NonEmptyStr, cause: NonEmptyStr }
+  | DecisionSurfaceUncitable { surface: NonEmptyStr, cause: NonEmptyStr }
+
+type TapCoverageCensus {
+  census_revision: NonEmptyStr
+  sites: List<DecisionSiteObservation>
+  refusals: List<TapCoverageRefusal>
+  limitation: NonEmptyStr
+}
+
+type TapCoverageRefusalCause
+  = SiteRevisionMismatch { site_key: NonEmptyStr, row_revision: NonEmptyStr, census_revision: NonEmptyStr }
+  | SiteDuplicated { site_key: NonEmptyStr }
+  | SiteAnswersNothingAndIsCounted { site_key: NonEmptyStr }
+  | CensusSurveysNoSite
+
+// THE STANDING'S COUNTS ARE DERIVED, and the two triage classes the slice asked for are computed
+// from the axes rather than authored beside them.
+type TapCoverageStanding
+  = LegacyBindingTapCoverageObserved {
+      surveyed_sites: Int
+      tappable_now: Int
+      requiring_occurrence_identity_threading: Int
+      requiring_target_identity_retention: Int
+      answering_no_authored_reference: Int
+      refusal_count: Int
+    }
+  | LegacyBindingTapCoverageRefused { causes: List<TapCoverageRefusalCause> }
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn site_key(o: DecisionSiteObservation) -> NonEmptyStr {
+  rust_item_declaration_ref_key(ref: o.site) as NonEmptyStr
+}
+
+fn occurrence_identity_is_exact(a: OccurrenceIdentityAtSite) -> Bool {
+  match a {
+    OccurrenceIdentityExact => true
+    OccurrenceIdentityAbsent { keyed_by: _ } => false
+  }
+}
+
+fn target_identity_is_exact(t: TargetIdentityInOutcome) -> Bool {
+  match t {
+    TargetIdentityExactInOutcome { carrier: _ } => true
+    TargetIdentityComputedThenErased { computed_as: _, erased_into: _ } => false
+    TargetIdentityNotComputed { reason: _ } => false
+  }
+}
+
+fn family_answers_an_authored_reference(f: AnsweredReferenceFamily) -> Bool {
+  match f {
+    BareCallableReference => true
+    QualifiedCallableReference => true
+    ConstructorReference => true
+    AnswersNoAuthoredReference { reason: _ } => false
+  }
+}
+
+fn site_answers_an_authored_reference(o: DecisionSiteObservation) -> Bool {
+  fold(o.families, init: false, f: fn(acc, x) { acc || family_answers_an_authored_reference(f: x) })
+}
+
+// TAPPABLE MEANS BOTH HALVES ARE PRESENT AT THE SAME PLACE. Either half alone is worthless: an
+// exact target with no occurrence identity cannot be attributed to the reference that asked for it,
+// and an exact occurrence with an erased target records that something was selected without
+// recording what.
+fn site_is_tappable_now(o: DecisionSiteObservation) -> Bool {
+  site_answers_an_authored_reference(o: o)
+    && occurrence_identity_is_exact(a: o.occurrence_identity)
+    && target_identity_is_exact(t: o.target_identity)
+}
+
+// THE TWO REMEDY COUNTS ARE SEPARATE AND THEY OVERLAP, and this is a correction rather than an
+// elaboration. A single not-tappable count was authored here first, defined as answers-a-reference
+// AND NOT tappable -- which, because tappable is a conjunction over two axes, reported the same
+// number for a site missing its occurrence identity and a site whose target was erased. Those need
+// OPPOSITE repairs: one threads an INPUT into the decision site, the other widens an OUTCOME to
+// retain what the site already selected. This module's own note says exactly that, and then the
+// derived count collapsed it -- the census contradicting itself in the one place a reader takes the
+// number from rather than the prose.
+//
+// THE AXES ARE INDEPENDENT, SO THE COUNTS DO NOT PARTITION THE POPULATION. A site deficient on both
+// inhabits both counts, and that is correct rather than double-counting: it owes both repairs. A
+// partition would force it into one, which is the collapse again in a tidier shape.
+fn site_requires_occurrence_identity_threading(o: DecisionSiteObservation) -> Bool {
+  site_answers_an_authored_reference(o: o) && !occurrence_identity_is_exact(a: o.occurrence_identity)
+}
+
+fn site_requires_target_identity_retention(o: DecisionSiteObservation) -> Bool {
+  site_answers_an_authored_reference(o: o) && !target_identity_is_exact(t: o.target_identity)
+}
+
+fn count_sites(sites: List<DecisionSiteObservation>, p: fn(DecisionSiteObservation) -> Bool) -> Int {
+  fold(sites, init: 0, f: fn(acc, o) { if p(o) { acc + 1 } else { acc } })
+}
+
+fn site_key_seen(seen: List<NonEmptyStr>, k: NonEmptyStr) -> Bool {
+  fold(seen, init: false, f: fn(acc, s) { acc || (s as String) == (k as String) })
+}
+
+type SiteDupState {
+  seen: List<NonEmptyStr>
+  causes: List<TapCoverageRefusalCause>
+}
+
+// ONE CAUSE PER EXCESS ROW, not one per roster row: N rows under one key produce N-1 causes.
+fn site_duplicate_causes(sites: List<DecisionSiteObservation>) -> List<TapCoverageRefusalCause> {
+  let final = fold(
+    sites,
+    init: SiteDupState { seen: [], causes: [] },
+    f: fn(acc, o) {
+      let k = site_key(o: o)
+      match site_key_seen(seen: acc.seen, k: k) {
+        true => SiteDupState { seen: acc.seen, causes: Cons { head: SiteDuplicated { site_key: k }, tail: acc.causes } }
+        false => SiteDupState { seen: Cons { head: k, tail: acc.seen }, causes: acc.causes }
+      }
+    },
+  )
+  final.causes
+}
+
+fn site_row_causes(census_revision: NonEmptyStr, o: DecisionSiteObservation) -> List<TapCoverageRefusalCause> {
+  let k = site_key(o: o)
+  let revision_causes = match (o.observed_at_revision as String) == (census_revision as String) {
+    true => []
+    false => [SiteRevisionMismatch { site_key: k, row_revision: o.observed_at_revision, census_revision: census_revision }]
+  }
+  let empty_family_causes = match list_length(items: o.families) == 0 {
+    true => [SiteAnswersNothingAndIsCounted { site_key: k }]
+    false => []
+  }
+  concat(revision_causes, empty_family_causes)
+}
+
+fn admit_tap_coverage_census(c: TapCoverageCensus) -> TapCoverageStanding {
+  let empty_causes = match list_length(items: c.sites) == 0 {
+    true => [CensusSurveysNoSite]
+    false => []
+  }
+  let row_causes = fold(
+    c.sites,
+    init: [],
+    f: fn(acc, o) { concat(acc, site_row_causes(census_revision: c.census_revision, o: o)) },
+  )
+  let causes = concat(empty_causes, concat(row_causes, site_duplicate_causes(sites: c.sites)))
+  match list_length(items: causes) == 0 {
+    true => LegacyBindingTapCoverageObserved {
+      surveyed_sites: list_length(items: c.sites),
+      tappable_now: count_sites(sites: c.sites, p: site_is_tappable_now),
+      requiring_occurrence_identity_threading: count_sites(sites: c.sites, p: site_requires_occurrence_identity_threading),
+      requiring_target_identity_retention: count_sites(sites: c.sites, p: site_requires_target_identity_retention),
+      answering_no_authored_reference: count_sites(sites: c.sites, p: fn(o) { !site_answers_an_authored_reference(o: o) }),
+      refusal_count: list_length(items: c.refusals),
+    }
+    false => LegacyBindingTapCoverageRefused { causes: causes }
+  }
+}

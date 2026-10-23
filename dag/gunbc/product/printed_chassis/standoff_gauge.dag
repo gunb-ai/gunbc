@@ -1,0 +1,186 @@
+module product.printed_chassis.standoff_gauge
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import extdeps.printing.fdm {
+  BuildEnvelope, EnvelopeFit, PartFits, PartExceedsEnvelope, envelope_fit, part_extent,
+}
+import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
+import extdeps.standards.micro_atx {
+  MountingLocation, MountingLocationId, LocC, LocF,
+  micro_atx_mounting_locations, micro_atx_standard_hole_diameter,
+}
+import product.printed_chassis.coupon {
+  PlateDimensions, plate_dimensions, CouponOperation, OpThroughHole,
+  micrometer_to_millimeter_ceiling,
+}
+
+// A TWO-HOLE GAUGE THAT TESTS THE RELAYED COORDINATES AGAINST THE PHYSICAL BOARD.
+//
+// The microATX mounting coordinates in this corpus are OperatorRelayedDocument evidence: read off a
+// specification nobody here has cross-checked against a board in hand. That is honest but weak, and
+// no amount of further reading strengthens it -- only a physical measurement does. This part is the
+// instrument for that measurement: a flat bar carrying two holes at the standard's own coordinates,
+// which either drops onto two standoffs of a real ALTRAD8UD or does not.
+//
+// IT DERIVES THE COORDINATES; IT DOES NOT RESTATE THEM. A gauge that repeated 6350 and 163830 as its
+// own literals would test the printer rather than the standard: it would agree with the specification
+// by construction no matter what the specification said, and the one question it exists to answer
+// would be unaskable. Every coordinate here is looked up in micro_atx_mounting_locations, so a
+// correction to that authority moves the part, and a location the standard does not enumerate refuses.
+//
+// LocF and LocC are chosen because they are the widest-separated pair the A1 mini can print: 157.48 mm
+// apart along the rear edge with a 22.86 mm depth difference. Separation is the whole sensitivity of
+// the instrument -- two nearby holes would pass over a board whose hole spacing was wrong by a
+// millimetre, where a 157 mm span turns that same error into a visible refusal to seat.
+type StandoffGaugeGeometry sole_constructor {
+  plate: PlateDimensions
+  holes: List<CouponOperation>
+  span_along_rear_edge: Micrometer
+  span_in_depth: Micrometer
+}
+
+// EVERY ARM REFUSES; NONE SUBSTITUTES A DEFAULT.
+//
+// GaugeLocationNotEnumerated is the load-bearing one. Asking for a location the standard does not
+// define is a question with no answer, and the tempting arm is to fall back to the first row or to
+// (0,0). Either would emit a printable part carrying a fabricated coordinate -- a physical object
+// that asserts something no document says, which is the fabricated-plausible-output failure with a
+// 30-gram mass. It refuses and names what it was asked for.
+//
+// GaugeLocationDuplicated IS A SEPARATE ARM BECAUSE IT IS THE OPPOSITE FAULT. An earlier revision
+// folded a duplicated row into NotEnumerated: the refusal still fired, so the population was never
+// resolved by last-match-wins, but the diagnostic said the standard does not define the location
+// when in fact it defines it TWICE. That sends a reader to look for a missing row instead of a
+// conflicting pair -- the typed cause erased at the consumer, where two distinct faults arrive
+// wearing one name and the arm that refuses correctly still misinforms. The count is carried so the
+// reader knows how many rows are fighting.
+type StandoffGaugeAdmission
+  = GaugeAdmitted { geometry: StandoffGaugeGeometry }
+  | GaugeLocationNotEnumerated { requested: MountingLocationId }
+  | GaugeLocationDuplicated { requested: MountingLocationId, count: Nat }
+  | GaugeLocationsCoincide { requested: MountingLocationId }
+  | GaugeExceedsBuildEnvelope { fit: EnvelopeFit }
+
+// A location lookup that refuses on absence rather than defaulting. It also refuses on a DUPLICATED
+// id, because two rows for one location means the population disagrees with itself and picking either
+// one would be a last-match-wins resolution of a genuine conflict.
+type LocationLookup
+  = LocationFound { location: MountingLocation }
+  | LocationAbsent
+  | LocationDuplicated { count: Nat }
+
+fn location_scan(rows: List<MountingLocation>, id: MountingLocationId) -> LocationLookup {
+  fold(rows, init: LocationAbsent, f: fn(acc, r) {
+    if r.id == id {
+      match acc {
+        LocationAbsent => LocationFound { location: r }
+        LocationFound { location: l } => LocationDuplicated { count: 2 }
+        LocationDuplicated { count: n } => LocationDuplicated { count: n + 1 }
+      }
+    } else { acc }
+  })
+}
+
+fn abs_diff(a: Nat, b: Nat) -> Nat { if a > b { a - b } else { b - a } }
+
+// The bar is the bounding box of the two holes grown by one margin on every side. The margin is
+// authored because nothing in the standard determines it: it is a printing decision about how much
+// material must surround a 4 mm hole for the bar to survive handling.
+data gauge_edge_margin: Micrometer = micrometer(count: 8000)
+data gauge_thickness: Micrometer = micrometer(count: 3000)
+
+fn admit_standoff_gauge(
+  rows: List<MountingLocation>,
+  envelope: BuildEnvelope,
+  a: MountingLocationId,
+  b: MountingLocationId,
+  margin: Micrometer,
+  thickness: Micrometer,
+) -> StandoffGaugeAdmission {
+  match location_scan(rows: rows, id: a) {
+    LocationAbsent => GaugeLocationNotEnumerated { requested: a }
+    LocationDuplicated { count: n } => GaugeLocationDuplicated { requested: a, count: n }
+    LocationFound { location: la } => match location_scan(rows: rows, id: b) {
+      LocationAbsent => GaugeLocationNotEnumerated { requested: b }
+      LocationDuplicated { count: n } => GaugeLocationDuplicated { requested: b, count: n }
+      LocationFound { location: lb } => {
+        let span_x = abs_diff(a: micrometer_count(m: la.along_rear_edge),
+                              b: micrometer_count(m: lb.along_rear_edge))
+        let span_y = abs_diff(a: micrometer_count(m: la.depth_from_rear_edge),
+                              b: micrometer_count(m: lb.depth_from_rear_edge))
+        if span_x == 0 && span_y == 0 {
+          GaugeLocationsCoincide { requested: a }
+        } else {
+          let m = micrometer_count(m: margin)
+          let size_x = span_x + (2 * m)
+          let size_y = span_y + (2 * m)
+          let plate = plate_dimensions(
+            size_x: micrometer(count: size_x),
+            size_y: micrometer(count: size_y),
+            size_z: thickness,
+          )
+          let fit = envelope_fit(envelope: envelope, part: part_extent(
+            x: micrometer_to_millimeter_ceiling(m: micrometer(count: size_x)),
+            y: micrometer_to_millimeter_ceiling(m: micrometer(count: size_y)),
+            z: micrometer_to_millimeter_ceiling(m: thickness),
+          ))
+          match fit {
+            PartExceedsEnvelope { first: f, rest: r } => GaugeExceedsBuildEnvelope { fit: fit }
+            PartFits => GaugeAdmitted {
+              geometry: StandoffGaugeGeometry {
+                plate: plate,
+                holes: [
+                  OpThroughHole {
+                    diameter: micro_atx_standard_hole_diameter,
+                    center_x: micrometer(count: m),
+                    center_y: micrometer(count: m),
+                  },
+                  OpThroughHole {
+                    diameter: micro_atx_standard_hole_diameter,
+                    center_x: micrometer(count: m + span_x),
+                    center_y: micrometer(count: m + span_y),
+                  },
+                ],
+                span_along_rear_edge: micrometer(count: span_x),
+                span_in_depth: micrometer(count: span_y),
+              },
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE PART TO PRINT. LocF to LocC on the A1 mini's envelope.
+data altrad8ud_standoff_gauge: StandoffGaugeAdmission = admit_standoff_gauge(
+  rows: micro_atx_mounting_locations,
+  envelope: a1_mini_build_envelope,
+  a: LocF,
+  b: LocC,
+  margin: gauge_edge_margin,
+  thickness: gauge_thickness,
+)
+
+// ═══ ACCESSORS FOR REALIZATION ═══
+//
+// StandoffGaugeGeometry is sole_constructor, and it has exactly ONE mint site in the current
+// source: the GaugeAdmitted arm of admit_standoff_gauge. Those are TWO facts and the conclusion
+// needs both. The seal alone proves only that no FOREIGN module can mint the carrier; it says
+// nothing about the declaring module adding a second mint later, on an arm that refused. Holding
+// one is therefore proof that admit_standoff_gauge ran and that none of its refusals --
+// unenumerated, duplicated, coincident, envelope-exceeded -- fired ONLY while the second fact
+// holds, and the second fact is a property of today's source rather than of the type.
+// This correction is the same distinction that let a zero-width mark through its own sealed
+// ratio earlier: a seal proves PROVENANCE, never that the sanctioned mint is SOUND.
+// That same seal stops the realization layer reading the fields, so these exist to let an admitted
+// gauge become a program without any other module being able to assemble one.
+//
+// Readers only. The span fields are deliberately NOT exposed here: they are what the gauge exists to
+// CHECK, not something a cut needs, and handing them to an emitter would invite a second derivation
+// of a distance the admission already settled.
+fn standoff_gauge_plate(g: StandoffGaugeGeometry) -> PlateDimensions { g.plate }
+
+fn standoff_gauge_holes(g: StandoffGaugeGeometry) -> List<CouponOperation> { g.holes }

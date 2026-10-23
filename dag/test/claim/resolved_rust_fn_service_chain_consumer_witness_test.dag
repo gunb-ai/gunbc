@@ -1,0 +1,216 @@
+module test.claim.resolved_rust_fn_service_chain_consumer_witness
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  ResolvedRustFnSignature,
+  ResolvedRustFnLookup,
+  ResolvedRustFnFound,
+  ResolvedRustFnAbsent,
+  fixture_source,
+  compile_fixture,
+  resolved_rust_fn_lookup,
+  resolved_rust_fn_has_parameter
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// REAL CONSUMER OF THE PROJECTION (DESIGN section 3c third leg). The instrument's own
+// present/absent pair only self-tests the carrier. This file asserts a fact a product lane
+// actually needs at REGISTRY grain: after service-effect propagation, the TOP of a call chain's
+// ItemInfo carries the leaf service parameter name (service_var_name of setsw.Probe →
+// setsw_probe). It does NOT prove that emit_func_params wrote that name into the artifact — that
+// join is the instrument's declared next-rung trigger; #10688's deep-chain discriminator after
+// merge is the propagation-depth claim on top of this grain.
+//
+// WHY DEPTH 3, NOT DEEPER. On main, expand_transitive_services runs under a FIXED FIVE-pass
+// budget and walks one hop per pass. A chain deeper than that budget stops mid-propagation and
+// callers above the cut lack the service name in the registry (and therefore in this projection).
+// Depth 3 is comfortably inside five, so this witness stays green on main and RED only if the
+// projection lies about the registry. Do NOT deepen this fixture to "test more hops": that
+// couples this instrument PR to the propagation repair and hands a reviewer a red that belongs
+// to #10688. Quiet-moth-632 takes the deep chain after this merges.
+//
+// DISCRIMINATING PAIR. Both fixtures compile clean. The service chain puts setsw_probe on f0's
+// registry row; the no-service sibling does not. A projection that always answers present fails
+// the sibling; one that always answers absent fails the chain. That is the consumer's own RED,
+// independent of the instrument self-test.
+
+data shallow_service_chain_source: String = "module setsw.chain\nservice setsw.Probe \{\n  operation Ping \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\nfn f2(tag: String) -> String \{ setsw.Probe.Ping(tag: tag).line \}\n"
+
+data no_service_sibling_source: String = "module setsw.chain\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\nfn f2(tag: String) -> String \{ tag \}\n"
+
+fn run_shallow_service_chain() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("setsw/chain.dag", shallow_service_chain_source)],
+    entry: "setsw/chain.dag"
+  })
+}
+
+fn run_no_service_sibling() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("setsw/chain.dag", no_service_sibling_source)],
+    entry: "setsw/chain.dag"
+  })
+}
+
+fn completed_functions(o: MultiModuleCompileFixtureOutcome) -> List<ResolvedRustFnSignature> {
+  match o {
+    FixtureCompileCompleted {
+      module_count: _,
+      emitted_files: _,
+      resolved_rust_functions: fns,
+      diagnostics: _,
+      source_digest: _,
+      compiler_digest: _
+    } => fns,
+    FixtureCompileRefused {
+      module_count: _,
+      diagnostics: _,
+      source_digest: _,
+      compiler_digest: _
+    } => [],
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+fn compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted {
+      module_count: n,
+      emitted_files: files,
+      resolved_rust_functions: _,
+      diagnostics: rows,
+      source_digest: _,
+      compiler_digest: _
+    } => count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused {
+      module_count: _,
+      diagnostics: _,
+      source_digest: _,
+      compiler_digest: _
+    } => false,
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn f0_has_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.chain",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
+  }
+}
+
+// Absent must not green a "lacks parameter" RED — that is the fail-open the collision finding named.
+fn f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.chain",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
+  }
+}
+
+// GREEN: depth-3 service chain compiles and f0 carries the propagated service parameter.
+test fn shallow_service_chain_f0_carries_leaf_service_parameter() -> Bool {
+  let o = run_shallow_service_chain()
+  compiles_clean(o) && f0_has_setsw_probe(o)
+}
+
+// RED CONTROL: identical call shape with no service. f0 must NOT report setsw_probe. If this
+// greens while the chain arm is green, the projection has stopped discriminating service params.
+test fn no_service_sibling_f0_lacks_service_parameter() -> Bool {
+  let o = run_no_service_sibling()
+  compiles_clean(o) && f0_lacks_setsw_probe(o)
+}
+
+// THE CROSS-MODULE DISCRIMINATOR (gunbc#10688), and why the single-module pair above could not be
+// one. Both fixtures above live in ONE module, so f0's row is complete on that module's own
+// TypedModule.item_registry and a consumer reading only the local row answers correctly. What the
+// WHOLE-GRAPH registry adds is expansion ACROSS module boundaries, so a consumer that misses the
+// graph row is invisible to any single-module fixture -- which is exactly how the emit-host seam
+// read the identity-keyed graph registry by bare leaf and fell through to the unexpanded local row
+// with every existing witness still green.
+//
+// Three modules, one hop each: setsw.top f0 -> setsw.mid f1 -> setsw.leaf f2 -> setsw.Probe.Ping.
+// f0's service parameter can only arrive by transitive expansion across two module boundaries, so
+// a reader taking the local row answers ABSENT here and the claim goes red.
+
+data cross_module_top_source: String = "module setsw.top\nimport setsw.mid \{ f1 \}\nfn f0(tag: String) -> String \{ f1(tag: tag) \}\n"
+
+data cross_module_mid_source: String = "module setsw.mid\nimport setsw.leaf \{ f2 \}\nfn f1(tag: String) -> String \{ f2(tag: tag) \}\n"
+
+data cross_module_leaf_source: String = "module setsw.leaf\nservice setsw.Probe \{\n  operation Ping \{\n    input \{ tag: String \}\n    output \{ line: String from \"stdout\" \}\n    readonly\n    transport shell \{ argv: [\"echo\", \"\{tag\}\"] \}\n    exit \{\n      0 => Unit\n    \}\n  \}\n\}\nfn f2(tag: String) -> String \{ setsw.Probe.Ping(tag: tag).line \}\n"
+
+data cross_module_no_service_leaf_source: String = "module setsw.leaf\nfn f2(tag: String) -> String \{ tag \}\n"
+
+fn run_cross_module_service_chain() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("setsw/top.dag", cross_module_top_source),
+      fixture_source("setsw/mid.dag", cross_module_mid_source),
+      fixture_source("setsw/leaf.dag", cross_module_leaf_source)
+    ],
+    entry: "setsw/top.dag"
+  })
+}
+
+fn run_cross_module_no_service_sibling() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("setsw/top.dag", cross_module_top_source),
+      fixture_source("setsw/mid.dag", cross_module_mid_source),
+      fixture_source("setsw/leaf.dag", cross_module_no_service_leaf_source)
+    ],
+    entry: "setsw/top.dag"
+  })
+}
+
+fn top_f0_has_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.top",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
+  }
+}
+
+fn top_f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match resolved_rust_fn_lookup(
+    functions: completed_functions(o),
+    owner_module: "setsw.top",
+    declaration_name: "f0"
+  ) {
+    ResolvedRustFnFound { signature: sig } =>
+      !resolved_rust_fn_has_parameter(signature: sig, parameter_name: "setsw_probe"),
+    ResolvedRustFnAbsent => false
+  }
+}
+
+// GREEN: the service parameter crosses two module boundaries and reaches the top row.
+test fn cross_module_service_chain_top_carries_leaf_service_parameter() -> Bool {
+  let o = run_cross_module_service_chain()
+  compiles_clean(o) && top_f0_has_setsw_probe(o)
+}
+
+// RED CONTROL: identical module shape and identical call graph, service removed at the leaf.
+test fn cross_module_no_service_sibling_top_lacks_service_parameter() -> Bool {
+  let o = run_cross_module_no_service_sibling()
+  compiles_clean(o) && top_f0_lacks_setsw_probe(o)
+}

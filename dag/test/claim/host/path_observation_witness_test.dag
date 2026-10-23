@@ -1,0 +1,106 @@
+module test.claim.host.path_observation_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.measure { byte_size }
+import gunbc.host_operation_exec { StatFileType, HeadBytes, host_operation_materialize_argv }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.remote_leg_began { remote_leg_began_word }
+import gunbc.spark.model_snapshot_materialize { spark_remote_run_of_session, RemoteRan, RemoteUnreachable }
+import extdeps.tools.stat { StatFileKind, stat_file_kind_word }
+import gunbc.host.path_observation {
+  HostPathKind, HostPathPresent, HostPathAbsent, HostPathUnread, host_path_kind,
+  SmallFileRead, SmallFileText, SmallFileAbsent, SmallFileTooLarge, SmallFileUnread, small_file_read,
+}
+
+// THE TWO ROWS' REAL ROUTE: each operation materializes, from its extdeps declaration, the argv the
+// typed leg runs. The decisions below are claimed over session results supplied at the reader's
+// interface, which is sound only while these argv are the ones the real leg executes.
+test fn w_the_rows_materialize_their_declared_argv() -> Bool {
+  (match host_operation_materialize_argv(operation: StatFileType { path: "/etc/x" as NonEmptyStr }) {
+    ArgvMaterialized { argv: a } => join(a, " ") == "/usr/bin/stat -c %F -- /etc/x"
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }) && (match host_operation_materialize_argv(operation: HeadBytes { path: "/etc/x" as NonEmptyStr, count: byte_size(count: 300) }) {
+    ArgvMaterialized { argv: a } => join(a, " ") == "head -c 300 -- /etc/x"
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  })
+}
+
+data w_path: NonEmptyStr = "/var/lib/gunbc/arm-committed/u.service"
+
+// A HOST THAT ANSWERS stat WITH ONE RESULT AND head WITH ANOTHER, dispatched on the program the leg runs.
+fn w_host(stat: ArgvRun, head: ArgvRun) -> fn(List<String>) -> ArgvRun {
+  fn(argv) { if starts_with(s: join(argv, " "), prefix: "/usr/bin/stat ") { stat } else if starts_with(s: join(argv, " "), prefix: "head -c 301 -- ") { head } else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", join(argv, " ")], "") } } }
+}
+
+fn w_ran(code: Int, out: String, err: String) -> ArgvRun { ArgvRan { exit_code: code, stdout: out, stderr: err } }
+
+data w_unused: ArgvRun = ArgvLegDidNotRun { cause: "not reached" }
+
+// RED: an absent path reads absent ONLY on stat's ENOENT text; the same exit with any other diagnostic
+// (a refused privilege) is unread, never absent. A regular file in both GNU spellings is regular; a
+// directory is another kind; a leg that did not run is unread.
+test fn w_path_kind_separates_absent_from_unread() -> Bool {
+  let kind = fn(r) { host_path_kind(run: w_host(stat: r, head: w_unused), path: w_path) }
+  (match kind(w_ran(code: 0, out: "regular file\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_word(kind: k) == "regular file"  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 0, out: "regular empty file\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_word(kind: k) == "regular file"  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 0, out: "directory\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_word(kind: k) == "directory"  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/arm-committed/u.service': No such file or directory\n")) { HostPathAbsent => true  HostPathPresent { kind: _ } => false  HostPathUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/arm-committed/u.service': Permission denied\n")) { HostPathUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")  HostPathAbsent => false  HostPathPresent { kind: _ } => false })
+    && (match kind(w_ran(code: 0, out: "\n", err: "")) { HostPathUnread { cause: c } => string_contains(s: c, pattern: "printed no file type")  HostPathAbsent => false  HostPathPresent { kind: _ } => false })
+    && (match kind(ArgvLegDidNotRun { cause: "no route" }) { HostPathUnread { cause: c } => string_contains(s: c, pattern: "no route")  HostPathAbsent => false  HostPathPresent { kind: _ } => false })
+}
+
+// RED: the record is read only when it is a regular file, and only its first 300 bytes; absent is
+// absent; a directory at the path, or a head that fails, is unread rather than empty text.
+test fn w_a_small_file_is_read_only_when_it_is_a_regular_file() -> Bool {
+  let read = fn(stat, head) { small_file_read(run: w_host(stat: stat, head: head), path: w_path, limit: byte_size(count: 300)) }
+  (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 0, out: "fp8-16 4d2e607d", err: "")) { SmallFileText { text: t } => t == "fp8-16 4d2e607d"  SmallFileAbsent => false  SmallFileTooLarge { limit: _ } => false  SmallFileUnread { cause: _ } => false })
+    && (match read(w_ran(code: 1, out: "", err: "stat: cannot statx: No such file or directory"), w_unused) { SmallFileAbsent => true  SmallFileText { text: _ } => false  SmallFileTooLarge { limit: _ } => false  SmallFileUnread { cause: _ } => false })
+    && (match read(w_ran(code: 0, out: "directory\n", err: ""), w_unused) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "is a directory")  SmallFileAbsent => false  SmallFileTooLarge { limit: _ } => false  SmallFileText { text: _ } => false })
+    && (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 1, out: "", err: "head: error reading: Input/output error")) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "Input/output error")  SmallFileAbsent => false  SmallFileTooLarge { limit: _ } => false  SmallFileText { text: _ } => false })
+}
+
+// RED (side-chat ruling on #13427): a path that SPELLS the ENOENT phrase, refused for another reason, is
+// unread -- stat's terminal reason decides, not a substring anywhere in its diagnostic.
+test fn w_a_path_spelling_enoent_does_not_make_a_refusal_absent() -> Bool {
+  match host_path_kind(run: w_host(stat: w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/No such file or directory/record': Permission denied\n"), head: w_unused), path: "/var/lib/gunbc/No such file or directory/record" as NonEmptyStr) {
+    HostPathUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")
+    HostPathAbsent => false
+    HostPathPresent { kind: _ } => false
+  }
+}
+
+// RED (side-chat ruling on #13427): the first 300 bytes look like a whole committed record, but byte 301
+// exists -- the read asked for 301 and got 301, so it is TOO LARGE, never the record. Exactly 300 bytes
+// is the whole file.
+data w_ten: String = "xxxxxxxxxx"
+
+fn w_hundred() -> String { join([w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten], "") }
+
+test fn w_a_file_longer_than_the_bound_is_too_large_not_its_prefix() -> Bool {
+  let read = fn(text) { small_file_read(run: w_host(stat: w_ran(code: 0, out: "regular file\n", err: ""), head: w_ran(code: 0, out: text, err: "")), path: w_path, limit: byte_size(count: 300)) }
+  (match read(join(["fp8-16 abcd\n", w_hundred(), w_hundred(), w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, "xxxxxxxxx"], "")) { SmallFileTooLarge { limit: _ } => true  SmallFileText { text: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+    && (match read(join([w_hundred(), w_hundred(), w_hundred()], "")) { SmallFileText { text: t } => length(t) == 300  SmallFileTooLarge { limit: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+}
+
+// THE WHOLE-FILE BOUND SURVIVES THE REAL TRANSPORT (side-chat ruling on #13427 at 52ae7412). The host's
+// answers pass through the production projection -- gunbc.spark.model_snapshot_materialize
+// spark_remote_run_of_session, mapped to ArgvRan exactly as gunbc.spark.host_occupancy_admission
+// spark_ctx_argv_run does -- not a supplied ArgvRun. RED: 300 bytes a committed-record parser would
+// accept, then a newline at byte 301, read TOO LARGE. CONTROL: an exactly-300-byte file ending in a
+// space reads back as itself.
+fn w_via_transport(command_stdout: String) -> ArgvRun {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 0, stdout: join([remote_leg_began_word, "\n", command_stdout], ""), stderr: "") {
+    RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
+    RemoteUnreachable { cause: c, reach: _ } => ArgvLegDidNotRun { cause: c }
+  }
+}
+
+test fn w_a_newline_past_the_bound_through_the_real_transport_is_too_large() -> Bool {
+  let record = join(["fp8-16 abcd ", w_hundred(), w_hundred(), w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, "xxxxxxxx"], "")
+  let file_300_space = join([substring(s: join([w_hundred(), w_hundred(), w_hundred()], ""), start: 0, end: 299), " "], "")
+  let read = fn(head_out) { small_file_read(run: w_host(stat: w_via_transport(command_stdout: "regular file\n"), head: w_via_transport(command_stdout: head_out)), path: w_path, limit: byte_size(count: 300)) }
+  (match read(join([record, "\n"], "")) { SmallFileTooLarge { limit: _ } => true  SmallFileText { text: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+    && (match read(file_300_space) { SmallFileText { text: t } => t == file_300_space  SmallFileTooLarge { limit: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+}

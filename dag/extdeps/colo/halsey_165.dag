@@ -1,0 +1,85 @@
+module extdeps.colo.halsey_165
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { MoneyPerMonth, MoneyOnce, MoneyPerHour, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed,
+  RetailRateStanding, RatesQuoteOnly, CrossConnectFee, RemoteHandsWindowRate,
+  CabinetDensityClaim, DensityUnread, RetailGrainStanding, RetailGrainUnread,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.165halsey.com/colocation/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.halsey_165",
+      decl_name: "halsey_165_newark",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data halsey_165_newark: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "165 Halsey Street (building colocation)",
+  facility_label: "165 Halsey Street carrier hotel, Newark",
+  address: AddressListed {
+    street: "165 Halsey Street, Newark, NJ 07102",
+    citation: "165halsey.com, read 2026-08-18",
+  },
+  municipality: "Newark",
+  region_code: "NJ",
+  facility_note: "The building's own carrier-neutral colocation business: a roughly 1.2 million square foot carrier hotel marketing over 80 MW, about 360,000 square feet of colocation, and direct access to sixty-plus networks per 165halsey.com read 2026-08-18. Other operators (Hivelocity under its own module; historically zColo, later DataBank) sell from suites in the same building - the building operator and the in-building resellers are separate upstream authorities.",
+}
+
+data halsey_165_cross_connect: CrossConnectFee = CrossConnectFee {
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 0), currency: Usd },
+  install: MoneyOnce { amount: money_amount_micro(count: 500000000), currency: Usd },
+  fee_note: "No monthly recurring charge on cross-connects; 500 dollars non-recurring per install after capacity is in place. The zero-MRC cross-connect policy is the building's stated differentiator against metro incumbents.",
+  citation: "165halsey.com connectivity page, read 2026-08-18",
+}
+
+data halsey_165_remote_hands: List<RemoteHandsWindowRate> = [
+  RemoteHandsWindowRate {
+    window_label: "Monday-Friday 06:00-18:00",
+    hourly: MoneyPerHour { amount: money_amount_micro(count: 175000000), currency: Usd },
+    minimum_note: "billed at a one hour minimum",
+    citation: "165halsey.com remote-hands page, read 2026-08-18",
+  },
+  RemoteHandsWindowRate {
+    window_label: "Monday-Friday 18:00-23:00",
+    hourly: MoneyPerHour { amount: money_amount_micro(count: 250000000), currency: Usd },
+    minimum_note: "billed at a one hour minimum",
+    citation: "165halsey.com remote-hands page, read 2026-08-18",
+  },
+]
+
+data halsey_165_retail_rates: RetailRateStanding = RatesQuoteOnly {
+  contact_route: "leasing contact via 165halsey.com",
+  obligation: "Cross-connect and remote-hands rates are published (rows above) but cabinet and power pricing is not; a written quote for the reference load is required.",
+}
+
+// THE BUILDING PUBLISHES ITS CROSS-CONNECT AND REMOTE-HANDS RATES AND NEITHER OF THE TWO FACTS
+// THIS PASS WAS AFTER. Re-read 2026-09-08: the colocation page carries the 1.2M sqft carrier-hotel
+// framing and the 360k sqft of colocation space, and no cabinet density, no watts per square foot,
+// and no minimum footprint. Both figures it does carry are building facts.
+data halsey_165_cabinet_density: CabinetDensityClaim = DensityUnread {
+  obligation: "165halsey.com colocation page, read 2026-09-08: no per-cabinet or per-rack kW figure and no watts-per-square-foot figure. The building markets over 80 MW, which is a building fact and not a cabinet one. Note that three separate operators sell inside this building - DataBank EWR1 on floor 5, Equinix NY1 on floor 8, Hivelocity JFK1 on floor 9 - and DataBank's suite page is the only surface in the building that states a per-cabinet figure at all; a figure read there belongs to that operator's suite and not to the building.",
+}
+
+data halsey_165_retail_grain: RetailGrainStanding = RetailGrainUnread {
+  obligation: "The building's colocation page read 2026-09-08 states no minimum footprint. Whether the building operator sells a single cabinet directly, as opposed to leasing suites to the operators who then retail inside them, is the question a quote must settle - and it is the question that decides whether this row is a candidate at all.",
+}

@@ -1,0 +1,42 @@
+module ihc.a
+
+type Pair {
+  left: String
+  count: Int
+}
+
+fn label_of(p: Pair) -> String {
+  p.left
+}
+
+fn string_hole(name: String) -> String {
+  "hello {name}"
+}
+
+fn int_hole(n: Int) -> String {
+  "count {n}"
+}
+
+fn bool_hole(flag: Bool) -> String {
+  "flag {flag}"
+}
+
+fn dotted_hole(p: Pair) -> String {
+  "left {p.left} count {p.count}"
+}
+
+fn call_hole(p: Pair) -> String {
+  "label {label_of(p: p)}"
+}
+
+service IhcProbe {
+
+  operation Fetch {
+    requires none
+    input { path: String, mode: Int }
+    output {
+      success: Bool from "write_success"
+    }
+    transport file { path: "{path}/{missing}", verb: "read" }
+  }
+}

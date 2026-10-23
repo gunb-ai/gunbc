@@ -1,0 +1,59 @@
+module v2.test.tokenize.lex_prefer_longer_modal_zero_width
+
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.compilers.lexing { PopLexMode }
+import v2.compiler.tokenize {
+  LexCursor,
+  LexRuleModalToken,
+  LexRuleNoMatch,
+  LexRuleToken,
+  lex_try_rules_prefer_longer,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Witness for the repair of lex_try_rules_prefer_longer's LexRuleModalToken
+// arm. The pre-refactor code sent every successful accumulator through one
+// inner match whose first arm was `LexRuleNoMatch => acc`: a NoMatch
+// candidate never displaced a success, whatever its width. The first
+// wildcard-total rewrite of the modal arm compared lexeme lengths directly,
+// so a NoMatch candidate (length 0) displaced a zero-width modal token
+// under 0 >= 0. Zero-width modal accumulators are reachable: mode-transition
+// rules accept EmptyPattern / NotFollowedByPattern. These claims pin the
+// repaired route.
+fn zero_width_modal() -> LexRuleModalToken {
+  LexRuleModalToken {
+    class: ^lex_prefer_longer_witness_modal,
+    lexeme: [],
+    remaining: LexCursor { source: [], index: 0 },
+    transition: PopLexMode
+  }
+}
+
+// RED without the repair: the modal token must survive a NoMatch candidate.
+test fn modal_no_match_candidate_keeps_zero_width_modal() -> Bool {
+  lex_try_rules_prefer_longer(acc: zero_width_modal(), candidate: LexRuleNoMatch) == zero_width_modal()
+}
+
+// Control: the same arm is live and still compares lengths for a real
+// success candidate -- at an exact tie the later rule's candidate wins, the
+// same resolution the other three arms give.
+test fn modal_tie_against_equal_length_token_prefers_candidate() -> Bool {
+  let candidate = LexRuleToken {
+    class: ^lex_prefer_longer_witness_token,
+    lexeme: [],
+    remaining: LexCursor { source: [], index: 0 }
+  }
+  lex_try_rules_prefer_longer(acc: zero_width_modal(), candidate: candidate) == candidate
+}
+
+// Control: a NoMatch accumulator still delegates to any candidate.
+test fn no_match_accumulator_delegates_to_candidate() -> Bool {
+  let candidate = LexRuleToken {
+    class: ^lex_prefer_longer_witness_token,
+    lexeme: [],
+    remaining: LexCursor { source: [], index: 0 }
+  }
+  lex_try_rules_prefer_longer(acc: LexRuleNoMatch, candidate: candidate) == candidate
+}

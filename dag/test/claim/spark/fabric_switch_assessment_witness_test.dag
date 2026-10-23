@@ -1,0 +1,385 @@
+module test.claim.spark.fabric_switch_assessment_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.mikrotik.crs812 {
+  Lane50GCr2, Lane100GCr2, Lane100GCr4, Fec91, FecAuto,
+  crs812_lane_speed_for_link_mode, LaneSpeedForMode, NoLaneSpeedForMode,
+}
+import extdeps.ethernet.link_mode {
+  ieee_50gbase_cr2, ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_25gbase_cr,
+}
+import gunbc.spark.fabric_switch_desired {
+  Crs812SwitchIntent, SwitchIntent, SwitchIntentUndecided,
+  SwitchCannotRunRequiredMode,
+  LaneCarriesLeg, LaneOwnedByItsPair,
+}
+import gunbc.spark.fabric_switch_assessment {
+  Crs812SwitchSubject, crs812_switch_subject,
+  Crs812LaneReading, LaneNeverRead, LaneReadingTaken,
+  crs812_lane_speed_eq,
+  LaneSpeedDisagrees, LaneFecDisagrees,
+  LaneShouldCarryLegButIsDisabled, LaneShouldBeOwnedByItsPairButIsEnabled, LaneIsNotInTheIntent,
+  SwitchIntentUndecidedHere, SwitchIntentNamesNoLanes,
+  inspect_fabric_switch, fabric_switch_inspection, fabric_switch_subject,
+  fabric_switch_subject_under,
+}
+import std.goal_assessment {
+  GoalInspected, GoalObservationRefused,
+  GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+}
+import v2.std.algebra { non_empty_to_list }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// GREEN BY EXECUTION FOR THE SWITCH SUBJECT. `cable_plant_assessment_witness` holds the CABLES to
+// their required mode; this holds the SWITCH to the configuration those cables imply. The two are
+// separate subjects, so a repair to one can never green the other by accident -- which is the
+// property the split exists to buy.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data lane_a: NonEmptyStr = "qsfp56-dd-1-1" as NonEmptyStr
+data lane_a_pair: NonEmptyStr = "qsfp56-dd-1-2" as NonEmptyStr
+data lane_b: NonEmptyStr = "qsfp56-dd-1-3" as NonEmptyStr
+
+// The intent a converged 100GBASE-CR2 cable plant produces: the odd lane carries the leg at
+// Clause 91 FEC, the even lane is owned by it and is desired OFF rather than left at a default.
+data decided_intent: Crs812SwitchIntent = SwitchIntent {
+  identity: "gunbc-fabric-switch" as NonEmptyStr,
+  board_name: "CRS812-4XQ-4XC" as NonEmptyStr,
+  management_interface: "ether1" as NonEmptyStr,
+  bridge: "bridge" as NonEmptyStr,
+  lanes: [
+    LaneCarriesLeg { interface: lane_a, speed: Lane100GCr2, fec: Fec91 },
+    LaneOwnedByItsPair { interface: lane_a_pair },
+  ],
+}
+
+fn subject_with(readings: List<Crs812LaneReading>) -> Crs812SwitchSubject {
+  crs812_switch_subject(
+    switch: "gunbc-fabric-switch" as NonEmptyStr,
+    intent: decided_intent,
+    readings: readings)
+}
+
+data configured_switch: Crs812SwitchSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+  LaneReadingTaken { interface: lane_a_pair, speed: Lane100GCr2, fec: Fec91, enabled: false },
+])
+
+data switch_running_at_half_rate: Crs812SwitchSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane50GCr2, fec: Fec91, enabled: true },
+  LaneReadingTaken { interface: lane_a_pair, speed: Lane100GCr2, fec: Fec91, enabled: false },
+])
+
+data switch_with_one_unread_lane: Crs812SwitchSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+  LaneNeverRead { interface: lane_a_pair },
+])
+
+data switch_with_an_unmodelled_lane: Crs812SwitchSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+  LaneReadingTaken { interface: lane_a_pair, speed: Lane100GCr2, fec: Fec91, enabled: false },
+  LaneReadingTaken { interface: lane_b, speed: Lane50GCr2, fec: FecAuto, enabled: true },
+])
+
+data switch_with_no_lanes: Crs812SwitchSubject = subject_with(readings: [])
+
+// AN INTENT THAT NAMES NO LANES. This is the malformed question: no declared population, so nothing
+// to assess. It is a different fixture from `switch_with_no_lanes`, whose intent names two lanes
+// nobody read -- that one is fully UNKNOWN, not empty.
+data intent_naming_no_lanes: Crs812SwitchIntent = SwitchIntent {
+  identity: "gunbc-fabric-switch" as NonEmptyStr,
+  board_name: "CRS812-4XQ-4XC" as NonEmptyStr,
+  management_interface: "ether1" as NonEmptyStr,
+  bridge: "bridge" as NonEmptyStr,
+  lanes: [],
+}
+
+data switch_whose_intent_names_no_lanes: Crs812SwitchSubject = crs812_switch_subject(
+  switch: "gunbc-fabric-switch" as NonEmptyStr,
+  intent: intent_naming_no_lanes,
+  readings: [])
+
+// THE OMISSION FIXTURE. Lane A's pair is not mentioned by the readings AT ALL -- no `LaneNeverRead`
+// row to remember. An observation-supplied denominator loses it silently; an expectation-driven one
+// reports it, because the intent still names it.
+data switch_with_a_lane_omitted_entirely: Crs812SwitchSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane100GCr2, fec: Fec91, enabled: true },
+])
+
+// THE MIXED FIXTURE, and the one the first cut could not report. Lane A is read and is at the wrong
+// speed; lane A's pair was never read. The old shape refused the whole observation on the unread
+// lane and threw the proved divergence away.
+data switch_one_wrong_one_unread: Crs812SwitchSubject = subject_with(readings: [
+  LaneReadingTaken { interface: lane_a, speed: Lane50GCr2, fec: Fec91, enabled: true },
+  LaneNeverRead { interface: lane_a_pair },
+])
+
+// THE POSITIVE CONTROL, FIRST. Every refusal below is only informative because this one converges:
+// an assessor that never returns GoalSatisfied would satisfy all of them and check nothing.
+test fn a_correctly_configured_switch_converges() -> Bool {
+  match inspect_fabric_switch(subject: configured_switch) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalSatisfied { evidence: e } => e.lanes_read == 2
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE CENTRAL DIVERGENCE, AND IT NAMES BOTH SIDES. An operator reading this needs the desired mode
+// and the reported one, not the fact that they differ -- a divergence carrying only "lane 1 is
+// wrong" is a diagnostic without the information needed to act on it.
+test fn a_lane_at_the_wrong_speed_diverges_and_names_both_modes() -> Bool {
+  match inspect_fabric_switch(subject: switch_running_at_half_rate) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: dsn } =>
+          match dsn.head.cause {
+                LaneSpeedDisagrees { desired: want, reported: got } =>
+                  crs812_lane_speed_eq(a: want, b: Lane100GCr2)
+                    && crs812_lane_speed_eq(a: got, b: Lane50GCr2)
+                LaneFecDisagrees { desired: a, reported: b } => false
+                LaneShouldCarryLegButIsDisabled => false
+                LaneShouldBeOwnedByItsPairButIsEnabled => false
+                LaneIsNotInTheIntent => false
+              }
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE DISCRIMINATING INPUT FOR THE ABSORBING FALLBACK. Every lane that WAS read here agrees, so a
+// handler reporting over its read subset would converge and an uncaptured switch would be
+// indistinguishable from a correct one. It must NOT converge -- and it must not refuse the whole
+// observation either, which is what the first cut did.
+test fn one_unread_lane_is_an_unknown_and_not_a_failed_read() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_one_unread_lane) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+          list_length(items: kd) == 0 && u.head.interface == lane_a_pair
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE CONTROL THAT PROVES THE FOURTH ARM DOES REAL WORK. One proved divergence plus one unread
+// member must report BOTH: the unknown does not suppress the deviation, and the deviation does not
+// silence the unknown. Under the shape this replaces, the whole observation refused here and the
+// miscoded lane was never reported at all.
+test fn a_proved_divergence_and_an_unread_lane_are_reported_together() -> Bool {
+  match inspect_fabric_switch(subject: switch_one_wrong_one_unread) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+          list_length(items: kd) == 1
+            && u.head.interface == lane_a_pair
+            && match kd.first() {
+                 Absent => false
+                 Present { value: d } =>
+                   match d.cause {
+                     LaneSpeedDisagrees { desired: want, reported: got } =>
+                       crs812_lane_speed_eq(a: got, b: Lane50GCr2)
+                     LaneFecDisagrees { desired: a2, reported: b2 } => false
+                     LaneShouldCarryLegButIsDisabled => false
+                     LaneShouldBeOwnedByItsPairButIsEnabled => false
+                     LaneIsNotInTheIntent => false
+                   }
+               }
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// A LANE THE INTENT DOES NOT NAME IS A DIVERGENCE, NOT A LANE TO SKIP. This is the second
+// discriminating input for the same fallback, on the other axis: narrowing the comparison to the
+// lanes the intent happens to mention would make the switch converge MORE easily the more of it
+// went unmodelled.
+test fn a_lane_outside_the_intent_diverges() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_an_unmodelled_lane) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalDiverged { deviations: dsn } =>
+          dsn.head.interface == lane_b
+            && match dsn.head.cause {
+                 LaneIsNotInTheIntent => true
+                 LaneSpeedDisagrees { desired: a, reported: b } => false
+                 LaneFecDisagrees { desired: a, reported: b } => false
+                 LaneShouldCarryLegButIsDisabled => false
+                 LaneShouldBeOwnedByItsPairButIsEnabled => false
+               }
+        GoalSatisfied { evidence: e } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// A SUBJECT WITH NOTHING IN IT DOES NOT CONVERGE. Zero lanes agree trivially, and a green derived
+// from an empty population is the vacuous pass DESIGN section 5 refuses by name.
+// AN INTENT NAMING NO LANES IS AN ILL-FORMED QUESTION. Zero DECLARED lanes means no denominator, so
+// this refuses -- and it is the only empty-population refusal left.
+test fn an_intent_that_names_no_lanes_refuses_the_assessment() -> Bool {
+  match inspect_fabric_switch(subject: switch_whose_intent_names_no_lanes) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: c } =>
+          match c {
+            SwitchIntentNamesNoLanes => true
+            SwitchIntentUndecidedHere { cause: c2 } => false
+          }
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+      }
+  }
+}
+
+// THE DISCRIMINATING PAIR FOR THE EXPECTATION-DRIVEN JOIN. A switch whose intent names two lanes and
+// whose readings are EMPTY is fully unknown, not empty: it must report one unknown per expected
+// lane. The cut before this one refused here and called a declared roster an absent one.
+test fn an_intent_with_nothing_read_is_fully_unknown_and_not_empty() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_no_lanes) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+          list_length(items: kd) == 0 && list_length(items: non_empty_to_list(xs: u)) == 2
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE CONTROL THAT SEPARATES A DECLARED DENOMINATOR FROM AN OBSERVED ONE. The pair lane is not
+// mentioned by the readings at all. Nothing in the observation says it is missing -- only the intent
+// does -- so a denominator derived from the readings would report this switch as fully converged.
+test fn a_lane_the_readings_omit_entirely_is_still_an_unknown() -> Bool {
+  match inspect_fabric_switch(subject: switch_with_a_lane_omitted_entirely) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+          u.head.interface == lane_a_pair && list_length(items: non_empty_to_list(xs: u)) == 1
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalAssessmentRefused { cause: c } => false
+      }
+  }
+}
+
+// THE FLEET'S OWN SWITCH, TODAY. The plant cannot answer, so the switch's intent is undecided --
+// and an undecided intent is an ASSESSMENT refusal carrying the plant's cause, not an observation
+// refusal. The lanes read exactly as well without a decided intent; what is missing is the desired
+// side to compare them against. This is the whole point of deriving the intent: one fault, one
+// report, and no second matcher that could disagree with the first.
+//
+// THE PLANT'S REASON IS NOT A CODING DIVERGENCE, AND THIS WITNESS ASSERTS THE PROPAGATION RATHER
+// THAN THE CAUSE. #10869 corrected the story on main and the correction survives this recut: six of
+// the eight legs have never been dumped, so the plant's answer is dominated by legs nobody read, not
+// by the coding of the legs that WERE read. An earlier name for this witness -- and the one this
+// branch had written -- said the switch could not be assessed "because its cables are uncoded",
+// which is true of the coding story and false of the fleet's actual state. What this holds is that
+// ONE plant answer reaches the switch subject intact, whichever answer the plant is producing.
+//
+// UNDER THIS CUT THAT ANSWER IS INDETERMINATE RATHER THAN REFUSED, which is the recut working: the
+// unread legs are member-level unknowns now, so the plant reports them ALONGSIDE whatever coding
+// divergence it proved instead of refusing the whole observation on the first one. The switch still
+// cannot pick a speed from an indeterminate plant, so the propagation this witness asserts is
+// unchanged while the fidelity beneath it went up.
+//
+// This witness holds a RED state of the real fleet. It goes green when the plant can converge --
+// which needs both the remaining six legs read AND their coding fixed -- and then becomes the
+// regression control that the switch still refuses to ASSESS while its intent is undecided. It does
+// not retire.
+test fn the_fleet_switch_cannot_be_assessed_while_its_plant_cannot_answer() -> Bool {
+  match fabric_switch_inspection() {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: c } =>
+          match c {
+            SwitchIntentUndecidedHere { cause: c2 } => true
+            SwitchIntentNamesNoLanes => false
+          }
+        GoalSatisfied { evidence: e } => false
+        GoalDiverged { deviations: ds } => false
+        GoalIndeterminate { known_deviations: kd, unknowns: u } => false
+      }
+  }
+}
+
+
+// THE LANE SPEED IS SELECTED BY THE REQUIRED MODE, not written down. These three rows are the
+// discriminating input for that claim: a literal in the desired module agrees with exactly one of
+// them, so if the derivation is ever replaced by a constant again, two of the three go red.
+test fn the_wire_value_is_selected_by_the_required_link_mode() -> Bool {
+  match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr2) {
+    LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr2)
+    NoLaneSpeedForMode { mode: u } => false
+  }
+    && match crs812_lane_speed_for_link_mode(m: ieee_50gbase_cr2) {
+         LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane50GCr2)
+         NoLaneSpeedForMode { mode: u } => false
+       }
+    && match crs812_lane_speed_for_link_mode(m: ieee_100gbase_cr4) {
+         LaneSpeedForMode { speed: s } => crs812_lane_speed_eq(a: s, b: Lane100GCr4)
+         NoLaneSpeedForMode { mode: u } => false
+       }
+}
+
+// A MODE THIS SWITCH HAS NO WIRE VALUE FOR REFUSES rather than falling back to the nearest speed.
+// Picking a neighbouring value would be the absorbing fallback: the switch would configure itself
+// to something nobody asked for, and the fact that the hardware cannot do the job would disappear.
+test fn a_mode_the_switch_cannot_run_has_no_wire_value() -> Bool {
+  match crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr) {
+    NoLaneSpeedForMode { mode: u } => true
+    LaneSpeedForMode { speed: s } => false
+  }
+}
+
+// THE CONTROL FOR THE ROUTE THE TYPE DOES NOT CLOSE, at the binding that had it. The fleet
+// subject's observation request must not be derived from the intent: if it were, the intent would
+// decide what got read, which is the mechanism std.goal_assessment's parameter split removes,
+// surviving one level up.
+//
+// THE FIRST VERSION OF THIS CONTROL WAS PERMANENTLY GREEN AND IS RECORDED HERE RATHER THAN QUIETLY
+// REPLACED. It compared the fleet subject against an undecided-intent subject and asserted both
+// requests were empty. Both ARE empty under the defect too: the fleet's real intent is undecided
+// today, so the goal-derived roster returns the empty list anyway. Mutation proved it -- restoring
+// the goal-derived request left the check green. Deleting one decoration in this same change and
+// then writing another is the reason the mutation step is not optional.
+//
+// THIS ONE VARIES THE GOAL, which is the only way the property is observable: a DECIDED intent
+// naming two lanes must still produce an empty request. Under the defect it produces two, so the
+// RED is authorable and mutation-confirmed.
+data decided_intent_for_request_control: Crs812SwitchIntent = decided_intent
+
+test fn the_request_is_not_derived_from_the_goal() -> Bool {
+  match inspect_fabric_switch(subject: fabric_switch_subject_under(intent: decided_intent_for_request_control)) {
+    GoalObservationRefused { subject: s, goal: g, request: rq, cause: f } => false
+    GoalInspected { subject: s, goal: g, request: rq, observed: o, assessment: a } =>
+      list_length(items: rq) == 0
+        && list_length(items: o.lanes) == 0
+        && match a {
+             GoalIndeterminate { known_deviations: kd, unknowns: u } =>
+               list_length(items: non_empty_to_list(xs: u)) == 2
+             _ => false
+           }
+  }
+}

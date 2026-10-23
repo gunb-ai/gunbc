@@ -1,0 +1,110 @@
+module test.claim.type_reference_decl_file_occurrence_census_test
+
+import std.types { Bool, Int }
+import gunbc.type_reference_decl_file_occurrence_census {
+  type_reference_decl_file_classes,
+  class_carries_debt,
+  class_has_symbol_authority,
+  class_is_a_conversion,
+  class_is_irreducible,
+  class_occurrences_priced_against_availability,
+  census_class_count,
+  census_occurrence_total,
+  census_debt_occurrence_total,
+  census_conversion_classes,
+  census_irreducible_classes
+}
+
+// WHAT THIS WITNESS IS, AND FIRST WHAT IT IS NOT.
+//
+// It does NOT measure the seed. It cannot: the roster it guards is a hand classification of source
+// text, and no assertion here moves if a thirty-fourth occurrence of the helper is authored
+// tomorrow. Saying that first is the point, because a green witness beside a census is exactly the
+// artifact a reader mistakes for "the census is verified". The census's own next-rung trigger --
+// derive the classification by a lens over the seed's Node tree -- is what would change that, and
+// it is recorded on the carrier, not here.
+//
+// What this DOES guard is the two propositions the brief turns on, at the two places the carrier's
+// coproducts could not make a bad row unwritable. NO COUNT IS ASSERTED AGAINST A LITERAL: every
+// number below is a fold over the rows compared against another fold over the same rows, so the
+// file cannot go stale when a class is added and cannot be silenced by editing a number.
+
+// A CLASS YOU CANNOT EXHIBIT AN OCCURRENCE OF IS NOT A CLASS.
+//
+// This is the brief's own disposition rule -- real specimens only, do not write a general remedy for
+// a class you cannot show. The carrier's types cannot enforce it: `occurrences` is an Int and
+// `specimens` is a List, and both admit the empty case. RED: file a class with occurrences 0, or
+// with an empty specimen list.
+fn every_class_exhibits_a_real_specimen() -> Bool {
+  type_reference_decl_file_classes |> all(c => c.occurrences > 0 && (c.specimens |> count) > 0)
+}
+
+// A CLASS CANNOT CITE MORE DISTINCT ENCLOSING DECLARATIONS THAN IT HAS OCCURRENCES.
+//
+// Specimens are cited by enclosing SYMBOL, so several occurrences may share one specimen and the
+// list is normally SHORTER than the count. Longer is not a judgement call -- it means a specimen was
+// added that no occurrence backs, which is the fabricated-citation move DESIGN section 3 refuses.
+// RED: pad any class's specimen list past its occurrence count.
+fn no_class_cites_more_specimens_than_it_has_occurrences() -> Bool {
+  type_reference_decl_file_classes |> all(c => (c.specimens |> count) <= c.occurrences)
+}
+
+// A CONVERSION MUST NAME THE AUTHORITY IT CONVERTS TO; AN IRREDUCIBLE CLASS MUST NOT HAVE ONE.
+//
+// These are the two halves of the brief's central question and they are exact converses, so a row
+// satisfying both or neither is incoherent rather than merely unhelpful. A class dispositioned
+// ConvertAtRosterGrainFirst while reporting NoSymbolAuthorityExists is claiming a conversion with
+// no destination; a class dispositioned IrreducibleUntilAuthorityExists while naming a reachable
+// authority is filing a finding it has just refuted. RED for the first: give the kernel-minted class
+// a ConvertAtRosterGrainFirst disposition. RED for the second: give it an AuthorityExists arm.
+fn conversion_and_irreducibility_agree_with_the_authority_column() -> Bool {
+  (census_conversion_classes() |> all(c => class_has_symbol_authority(c: c)))
+    && (census_irreducible_classes() |> all(c => !class_has_symbol_authority(c: c)))
+}
+
+// THE AVAILABILITY PRICE IS BOUNDED BY THE CLASS IT PRICES.
+//
+// occurrences_with_env_in_scope and occurrences_needing_threading are the numbers the sizing
+// decision rests on, and each is a subset count of its own class. A figure exceeding the class's
+// occurrences would inflate or deflate the PR split while every other assertion here stayed green.
+// RED: raise either figure above its class's occurrence count.
+fn every_availability_price_is_within_its_class() -> Bool {
+  type_reference_decl_file_classes |> all(c =>
+    class_occurrences_priced_against_availability(c: c) <= c.occurrences
+  )
+}
+
+// THE DERIVED HISTOGRAM ADDS UP AGAINST THE ROSTER IT IS DERIVED FROM.
+//
+// The debt total is a filter over the same list as the occurrence total, so it is bounded by it, and
+// both are bounded below by the class count given the specimen assertion above. This is the weakest
+// assertion in the file and is kept for one reason: it is what reds if a future fold drops a
+// disposition arm, which is the one way a derived histogram can silently under-report.
+fn derived_totals_are_bounded_by_the_roster() -> Bool {
+  let n = census_class_count()
+  census_debt_occurrence_total() <= census_occurrence_total()
+    && census_occurrence_total() >= n
+    && (type_reference_decl_file_classes |> filter(c => class_carries_debt(c: c)) |> count) <= n
+    && (type_reference_decl_file_classes |> filter(c => class_is_a_conversion(c: c)) |> count) <= n
+    && (type_reference_decl_file_classes |> filter(c => class_is_irreducible(c: c)) |> count) <= n
+}
+
+test fn class_exhibits_a_real_specimen() -> Bool {
+  every_class_exhibits_a_real_specimen()
+}
+
+test fn no_more_specimens_than_occurrences() -> Bool {
+  no_class_cites_more_specimens_than_it_has_occurrences()
+}
+
+test fn conversion_and_irreducibility_agree_with_authority() -> Bool {
+  conversion_and_irreducibility_agree_with_the_authority_column()
+}
+
+test fn availability_price_within_its_class() -> Bool {
+  every_availability_price_is_within_its_class()
+}
+
+test fn derived_totals_bounded_by_roster() -> Bool {
+  derived_totals_are_bounded_by_the_roster()
+}

@@ -1,0 +1,23 @@
+module gunbc.fleet.printer_host_tools
+
+import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool }
+import extdeps.tools { apt_package_of }
+import gunbc.host_effect { LocalShell }
+import gunbc.host_effect_realize { srv3_ensure_apt_tool, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved }
+
+// Administrator host preparation, separate from the unprivileged print worker.
+// The package and version constraint come from the same tool row used at print admission.
+fn converge() -> ProcessExit {
+  match apt_package_of(tool: mosquitto_pub_cli_tool) {
+    Absent => exit_failure(reason: "Printer MQTT tool has no modeled package source")
+    Present { value: package } =>
+      match srv3_ensure_apt_tool(tool: mosquitto_pub_cli_tool, package: package,
+        require_version_probe: false, transport: LocalShell) {
+        Srv3PredicateHolds => if printer_mqtt_tool_ready() { ExitSuccess } else { exit_failure(reason: "Installed MQTT client did not establish version >= 2 through its help probe") }
+        Srv3PredicateFails => exit_failure(reason: "Printer MQTT tool did not read back after convergence")
+        Srv3PredicateUnobserved { reason: r } => exit_failure(reason: r)
+      }
+  }
+}

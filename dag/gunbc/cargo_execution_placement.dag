@@ -1,0 +1,135 @@
+module gunbc.cargo_execution_placement
+
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// WHAT THIS SEPARATES, and why the fusion was not cosmetic.
+//
+// A Cargo invocation carries two independent facts: the INTENT (build this manifest,
+// run these tests) and the PLACEMENT (which executable runs it, on which machine).
+// extdeps.rust.cargo_build owns the intent. Nothing owned the placement, so every
+// consumer that cared expressed it the only way left — by naming a path inside a
+// shell string.
+//
+// The measured consequence is in tools.interpreter_dispatch_bijection_real_roster_transport:
+// it hardcoded /opt/cargo/bin/cargo twice, and its own note records WHY — the modeled
+// cargo.Build.Test operation spells argv ["cargo", ...], which resolves through PATH,
+// and in this environment PATH's cargo is a shim that dispatches to a remote builder.
+// A witness whose subject is the LOCAL workspace cannot run on a remote builder, so the
+// transport routed around the model instead of the model carrying the distinction.
+//
+// Both halves of that are defects. The hardcoded path is a placement decision written
+// as a literal, invisible to every consumer and wrong on any host that stores cargo
+// elsewhere. The bare PATH lookup is a placement decision DEFERRED to whatever the
+// environment happens to resolve, which is how a local-workspace subject silently
+// acquires a remote realization.
+
+type CargoPlacement
+  = LocalRunner { cargo_path: NonEmptyStr }
+  | RemoteBuilder { service: NonEmptyStr }
+
+// A subject's placement requirement is a property OF THE SUBJECT, not a preference.
+// A witness that clones the live workspace, regenerates artifacts in the clone and
+// requires a real compile refusal is bound to the machine holding that workspace; a
+// subject whose inputs are fully content-addressed is not.
+type CargoSubjectPlacementRequirement
+  = RequiresLocalWorkspace { required_by: DeclarationRef }
+  | RelocatableSubject
+
+type CargoPlacementRefusalCause
+  = RemoteBuilderCannotServeLocalWorkspace { service: NonEmptyStr }
+  | RemoteBuilderRealizationUnbound { service: NonEmptyStr }
+  | CargoExecutableUnobserved { observation: String }
+
+type CargoPlacementDecision
+  = PlacementAdmitted { cargo_path: NonEmptyStr }
+  | PlacementRefused { cause: CargoPlacementRefusalCause }
+
+// The whole point of the carrier: this is a total function from (subject, placement) to
+// a decision, so the pairing that cannot work has no admitted arm. A remote builder
+// serving a local-workspace subject is refused BEFORE execution — not attempted and
+// diagnosed afterwards from a nonzero exit, which is what a shell string does.
+//
+// THE TWO REMOTE REFUSALS ARE DIFFERENT STATES AND CARRY DIFFERENT CAUSES. The first
+// revision of this function answered both with RemoteBuilderCannotServeLocalWorkspace,
+// including the arm where the subject is explicitly RELOCATABLE — a label that flatly
+// contradicts its own arm, and the §3 state-space conflation this file's header warns
+// about, reproduced inside the function meant to remove it (caught in review 51730).
+//
+// A relocatable subject is refused for an entirely different reason: nothing in this
+// repository BINDS a remote builder realization, so there is no executable to name. That
+// is a missing capability, whose remedy is to model one; the local-workspace refusal is
+// permanent, and its remedy is to stop asking. Collapsing them would have made the
+// capability gap unreportable, and RemoteBuilder dead on arrival with no way to say why.
+fn decide_cargo_placement(
+  requirement: CargoSubjectPlacementRequirement,
+  placement: CargoPlacement
+) -> CargoPlacementDecision {
+  match placement {
+    LocalRunner { cargo_path: p } => PlacementAdmitted { cargo_path: p }
+    RemoteBuilder { service: s } => match requirement {
+      RequiresLocalWorkspace { required_by: _ } =>
+        PlacementRefused { cause: RemoteBuilderCannotServeLocalWorkspace { service: s } }
+      RelocatableSubject =>
+        PlacementRefused { cause: RemoteBuilderRealizationUnbound { service: s } }
+    }
+  }
+}
+
+// A cargo executable enters the model by OBSERVATION or not at all. There is deliberately
+// no probe order here — no CARGO_HOME, then /opt/cargo/bin, then HOME/.cargo/bin, then
+// rustup which — because a fallback chain answers with whatever it finds first and cannot
+// report that it did not find the one that was meant. One observation, and its absence is
+// a typed refusal carrying what was observed.
+fn cargo_placement_from_observation(observed_path: String) -> CargoPlacement {
+  LocalRunner { cargo_path: observed_path }
+}
+
+fn cargo_placement_refused_for_absent_executable(observation: String) -> CargoPlacementDecision {
+  PlacementRefused { cause: CargoExecutableUnobserved { observation: observation } }
+}
+
+// The outcome of a placed Cargo invocation, typed rather than a Bool.
+//
+// The transport this replaces returned `run.success`, and the cost of that is exactly
+// measurable: the falsifier's component receipt for run 31685755058 reports this witness
+// as `returned Bool(false)` and NOTHING ELSE. The run failed for ten days and the receipt
+// could not say whether cargo was missing, the clone failed, the compile succeeded when it
+// should have refused, or the tests ran and disagreed. A Bool cannot be triaged, so the
+// failure could not be ranked, and an untriageable failure is one nobody can own.
+type CargoInvocationOutcome
+  = CargoInvocationPassed
+  | CargoInvocationFailed { exit_code: Int, cause: String }
+  | CargoInvocationNotAttempted { refusal: CargoPlacementRefusalCause }
+
+fn cargo_outcome_holds(o: CargoInvocationOutcome) -> Bool {
+  match o {
+    CargoInvocationPassed => true
+    CargoInvocationFailed { exit_code: _, cause: _ } => false
+    CargoInvocationNotAttempted { refusal: _ } => false
+  }
+}
+
+// A refusal and a failure are different states with different remedies — an absent cargo
+// is an environment obligation, a nonzero cargo is a subject finding — so they are separate
+// arms and this projection keeps them apart in the diagnostic even though both answer false.
+fn cargo_outcome_diagnostic(o: CargoInvocationOutcome) -> String {
+  match o {
+    CargoInvocationPassed => "cargo invocation passed"
+    CargoInvocationFailed { exit_code: c, cause: r } =>
+      concat("cargo invocation FAILED exit=", concat(to_string(c), concat(" cause=", r)))
+    CargoInvocationNotAttempted { refusal: f } =>
+      concat("cargo invocation NOT ATTEMPTED — ", cargo_placement_refusal_text(cause: f))
+  }
+}
+
+fn cargo_placement_refusal_text(cause: CargoPlacementRefusalCause) -> String {
+  match cause {
+    RemoteBuilderCannotServeLocalWorkspace { service: s } =>
+      concat("remote builder cannot serve a local-workspace subject: ", s)
+    RemoteBuilderRealizationUnbound { service: s } =>
+      concat("no remote builder realization is bound for this subject: ", s)
+    CargoExecutableUnobserved { observation: o } =>
+      concat("no cargo executable was observed: ", o)
+  }
+}

@@ -1,0 +1,310 @@
+module product.capacity.cohort_observation
+
+import std.types { Bool, Int, List, Map, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
+import std.interval { OrderedClosedInterval, IntervalReady, IntervalRefused, closed_interval, interval_low, interval_high }
+import std.list { first_duplicate_by_key }
+import std.observation { OccurrenceId }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+
+// A CONCURRENT COHORT IS N SEATS SHOWN TO HAVE BEEN ACTIVE AT ONCE, NOT N RUNS THAT HAPPENED NEARBY.
+//
+// A capacity claim at population N -- N build seats on one host, N serving clients on one replica --
+// is a claim about N units of work contending for the same machine at the same time. Running the
+// work N times is REPEATABILITY sampling, a different question with a different carrier (the runner
+// qualification's SamplingPolicy); a cohort answers the contention question, and only a cohort does.
+// So this module seals a cohort from its readings or refuses, typed, naming the seat and the law:
+//
+//   ROSTER      the population is a declared roster, every roster seat read exactly once, no seat
+//               read that the roster does not name.
+//   BARRIER     every seat was ready before the barrier released, and none started before it, so no
+//               seat's work began while the others were still being prepared.
+//   OVERLAP     all N seats were active at one instant. On a line, N closed windows share a point
+//               exactly when the latest start is at or before the earliest end, so the overlap is
+//               read as that window in one pass, never as a pairwise count.
+//   WINDOWS     every seat's window is ordered, and lies inside the host's observation window, so
+//               host-level readings taken over that window cover every seat's work.
+//   SETTLED     every seat reached a settlement. A seat that failed is SETTLED -- its failure is data
+//               for whoever assesses the cohort; a seat whose outcome was never read is not.
+//
+// INSTANTS ARE std.measure ObservationInstant, which carries its clock domain, and every comparison
+// goes through compare_instants: two instants from different clocks are INCOMPARABLE, a typed refusal
+// here, never an order read off two numbers that do not share an origin.
+//
+// A SEALED COHORT IS NOT A std.observation RecordedObservation, deliberately. A recorded observation is
+// ONE producer's occurrence -- a sequence number, an occurrence id, a parent. A cohort is a verdict
+// JOINED across many occurrences, so each seat reading and the host window cite the OccurrenceId they
+// were read from, and the cohort carries those citations rather than claiming to be an occurrence of
+// its own.
+//
+// The seat identity is the caller's (K, keyed by seat_key), so a build-seat cohort and a
+// serving-client cohort share this module and nothing domain-specific lives in it.
+
+// A READING MAY BE UNSETTLED; A SEALED WINDOW MAY NOT. The settled outcome is its own type, so a sealed
+// cohort cannot carry an unsettled seat and no consumer re-checks for one.
+type SeatSettled
+  = SeatSucceeded
+  | SeatFailed { cause: NonEmptyStr }
+
+type SeatSettlement
+  = SeatSettledAs { settled: SeatSettled }
+  | SeatUnsettled
+
+type CohortSeatReading<K> {
+  seat: K
+  source: OccurrenceId
+  ready_at: ObservationInstant
+  started_at: ObservationInstant
+  ended_at: ObservationInstant
+  settlement: SeatSettlement
+}
+
+type CohortReading<K> {
+  roster: List<K>
+  barrier_released_at: ObservationInstant
+  host_window_from: ObservationInstant
+  host_window_to: ObservationInstant
+  host_source: OccurrenceId
+  seats: List<CohortSeatReading<K>>
+}
+
+type CohortSeatWindow<K> {
+  seat: K
+  source: OccurrenceId
+  active: OrderedClosedInterval<ObservationInstant>
+  settled: SeatSettled
+}
+
+type SealedCohortObservation<K> sole_constructor {
+  population: Nat
+  roster: List<K>
+  barrier_released_at: ObservationInstant
+  host_window: OrderedClosedInterval<ObservationInstant>
+  host_source: OccurrenceId
+  seats: List<CohortSeatWindow<K>>
+  all_active: OrderedClosedInterval<ObservationInstant>
+}
+
+type CohortRefusal<K>
+  = CohortRosterEmpty
+  | CohortRosterSeatDuplicated { seat: K }
+  | CohortSeatReadingDuplicated { seat: K }
+  | CohortSeatOffRoster { seat: K }
+  | CohortSeatReadingMissing { seat: K }
+  | CohortHostInstantsIncomparable
+  | CohortHostWindowReversed
+  | CohortSeatInstantsIncomparable { seat: K }
+  | CohortSeatNotReadyAtBarrier { seat: K }
+  | CohortSeatStartedBeforeBarrier { seat: K }
+  | CohortSeatWindowReversed { seat: K }
+  | CohortSeatOutsideHostWindow { seat: K }
+  | CohortSeatNotSettled { seat: K }
+  | CohortNeverAllActive { last_to_start: K, first_to_end: K }
+
+type CohortSeal<K>
+  = CohortSealed { cohort: SealedCohortObservation<K> }
+  | CohortRefused { refusal: CohortRefusal<K> }
+
+// ── ordering ──────────────────────────────────────────────────────────────────────────────────
+
+fn instants_comparable(a: ObservationInstant, b: ObservationInstant) -> Bool {
+  match compare_instants(a: a, b: b) {
+    InstantIncomparable { left: _, right: _ } => false
+    _ => true
+  }
+}
+
+fn instant_le(a: ObservationInstant, b: ObservationInstant) -> Bool {
+  match compare_instants(a: a, b: b) {
+    InstantBefore => true
+    InstantSame => true
+    InstantAfter => false
+    InstantIncomparable { left: _, right: _ } => false
+  }
+}
+
+// ── the per-seat laws ─────────────────────────────────────────────────────────────────────────
+
+type SeatCheck<K>
+  = SeatHolds { window: CohortSeatWindow<K> }
+  | SeatRefused { refusal: CohortRefusal<K> }
+
+fn check_seat<K>(
+  reading: CohortSeatReading<K>,
+  barrier: ObservationInstant,
+  host: OrderedClosedInterval<ObservationInstant>,
+) -> SeatCheck<K> {
+  let s = reading.seat
+  if !(instants_comparable(a: reading.ready_at, b: barrier)
+      && instants_comparable(a: reading.started_at, b: barrier)
+      && instants_comparable(a: reading.ended_at, b: barrier)
+      && instants_comparable(a: reading.started_at, b: interval_low(interval: host))) {
+    SeatRefused { refusal: CohortSeatInstantsIncomparable { seat: s } }
+  } else if !instant_le(a: reading.ready_at, b: barrier) {
+    SeatRefused { refusal: CohortSeatNotReadyAtBarrier { seat: s } }
+  } else if !instant_le(a: barrier, b: reading.started_at) {
+    SeatRefused { refusal: CohortSeatStartedBeforeBarrier { seat: s } }
+  } else {
+    match closed_interval(low: reading.started_at, high: reading.ended_at, le: instant_le) {
+      IntervalRefused { reason: _ } => SeatRefused { refusal: CohortSeatWindowReversed { seat: s } }
+      IntervalReady { interval: w } =>
+        if !(instant_le(a: interval_low(interval: host), b: interval_low(interval: w)) && instant_le(a: interval_high(interval: w), b: interval_high(interval: host))) {
+          SeatRefused { refusal: CohortSeatOutsideHostWindow { seat: s } }
+        } else {
+          match reading.settlement {
+            SeatUnsettled => SeatRefused { refusal: CohortSeatNotSettled { seat: s } }
+            SeatSettledAs { settled: done } => SeatHolds { window: CohortSeatWindow { seat: s, source: reading.source, active: w, settled: done } }
+          }
+        }
+    }
+  }
+}
+
+// ── the roster join ───────────────────────────────────────────────────────────────────────────
+
+type RosterJoin<K>
+  = RosterJoined
+  | RosterJoinRefused { refusal: CohortRefusal<K> }
+
+fn key_set<T>(xs: List<T>, key: fn(T) -> String) -> Map<String, Bool> {
+  fold(xs, init: empty_map(), f: fn(m, x) { map_insert(m: m, key: key(x), value: true) })
+}
+
+fn keyed(keys: Map<String, Bool>, k: String) -> Bool {
+  match map_lookup(m: keys, key: k) { Present { value: _ } => true Absent => false }
+}
+
+// ONE PASS OVER THE READINGS catches a seat read twice and a seat the roster does not name; one pass
+// over the roster then catches a roster seat nobody read. Each carries the first refusal forward.
+type SeatScan<K>
+  = SeatScanning { seen: Map<String, Bool> }
+  | SeatScanRefused { refusal: CohortRefusal<K> }
+
+fn join_roster<K>(roster: List<K>, seats: List<CohortSeatReading<K>>, seat_key: fn(K) -> String) -> RosterJoin<K> {
+  match first_duplicate_by_key(xs: roster, key: seat_key) {
+    Present { value: d } => RosterJoinRefused { refusal: CohortRosterSeatDuplicated { seat: d } }
+    Absent => {
+      let on_roster = key_set(xs: roster, key: seat_key)
+      let scan = fold(seats, init: SeatScanning { seen: empty_map() }, f: (acc, r) =>
+        match acc {
+          SeatScanRefused { refusal: _ } => acc
+          SeatScanning { seen: seen } =>
+            if keyed(keys: seen, k: seat_key(r.seat)) { SeatScanRefused { refusal: CohortSeatReadingDuplicated { seat: r.seat } } }
+            else if !keyed(keys: on_roster, k: seat_key(r.seat)) { SeatScanRefused { refusal: CohortSeatOffRoster { seat: r.seat } } }
+            else { SeatScanning { seen: map_insert(m: seen, key: seat_key(r.seat), value: true) } }
+        })
+      match scan {
+        SeatScanRefused { refusal: x } => RosterJoinRefused { refusal: x }
+        SeatScanning { seen: read } =>
+          fold(roster, init: RosterJoined, f: (acc, k) =>
+            match acc {
+              RosterJoinRefused { refusal: _ } => acc
+              RosterJoined => if keyed(keys: read, k: seat_key(k)) { RosterJoined } else { RosterJoinRefused { refusal: CohortSeatReadingMissing { seat: k } } }
+            })
+      }
+    }
+  }
+}
+
+// ── sealing ───────────────────────────────────────────────────────────────────────────────────
+
+type WindowScan<K>
+  = WindowsHold { windows_reversed: List<CohortSeatWindow<K>> }
+  | WindowsRefused { refusal: CohortRefusal<K> }
+
+// The seat whose window starts last and the seat whose window ends first, found in the one pass. The
+// scan begins with no seat rather than with a first element picked out of the list.
+type OverlapScan<K>
+  = NoSeatScanned
+  | Overlapping { last_to_start: CohortSeatWindow<K>, first_to_end: CohortSeatWindow<K> }
+
+fn overlap_step<K>(acc: OverlapScan<K>, w: CohortSeatWindow<K>) -> OverlapScan<K> {
+  match acc {
+    NoSeatScanned => Overlapping { last_to_start: w, first_to_end: w }
+    Overlapping { last_to_start: ls, first_to_end: fe } =>
+      Overlapping {
+        last_to_start: if instant_le(a: interval_low(interval: w.active), b: interval_low(interval: ls.active)) { ls } else { w },
+        first_to_end: if instant_le(a: interval_high(interval: fe.active), b: interval_high(interval: w.active)) { fe } else { w },
+      }
+  }
+}
+
+fn seal_windows<K>(reading: CohortReading<K>, host: OrderedClosedInterval<ObservationInstant>, windows: List<CohortSeatWindow<K>>) -> CohortSeal<K> {
+  match fold(windows, init: NoSeatScanned, f: (acc, w) => overlap_step(acc: acc, w: w)) {
+    NoSeatScanned => CohortRefused { refusal: CohortRosterEmpty }
+    Overlapping { last_to_start: ls, first_to_end: fe } =>
+      match closed_interval(low: interval_low(interval: ls.active), high: interval_high(interval: fe.active), le: instant_le) {
+        IntervalRefused { reason: _ } =>
+          CohortRefused { refusal: CohortNeverAllActive { last_to_start: ls.seat, first_to_end: fe.seat } }
+        IntervalReady { interval: all } =>
+          CohortSealed {
+            cohort: SealedCohortObservation {
+              population: length(windows),
+              roster: reading.roster,
+              barrier_released_at: reading.barrier_released_at,
+              host_window: host,
+              host_source: reading.host_source,
+              seats: windows,
+              all_active: all,
+            },
+          }
+      }
+  }
+}
+
+fn seal_cohort<K>(reading: CohortReading<K>, seat_key: fn(K) -> String) -> CohortSeal<K> {
+  if length(reading.roster) == 0 {
+    CohortRefused { refusal: CohortRosterEmpty }
+  } else {
+    match join_roster(roster: reading.roster, seats: reading.seats, seat_key: seat_key) {
+      RosterJoinRefused { refusal: r } => CohortRefused { refusal: r }
+      RosterJoined =>
+        if !(instants_comparable(a: reading.host_window_from, b: reading.host_window_to)
+            && instants_comparable(a: reading.host_window_from, b: reading.barrier_released_at)) {
+          CohortRefused { refusal: CohortHostInstantsIncomparable }
+        } else {
+          match closed_interval(low: reading.host_window_from, high: reading.host_window_to, le: instant_le) {
+            IntervalRefused { reason: _ } => CohortRefused { refusal: CohortHostWindowReversed }
+            IntervalReady { interval: host } => {
+              let scan = fold(reading.seats, init: WindowsHold { windows_reversed: [] }, f: (acc, r) =>
+                match acc {
+                  WindowsRefused { refusal: _ } => acc
+                  WindowsHold { windows_reversed: ws } =>
+                    match check_seat(reading: r, barrier: reading.barrier_released_at, host: host) {
+                      SeatRefused { refusal: x } => WindowsRefused { refusal: x }
+                      SeatHolds { window: w } => WindowsHold { windows_reversed: concat([w], ws) }
+                    }
+                })
+              match scan {
+                WindowsRefused { refusal: x } => CohortRefused { refusal: x }
+                WindowsHold { windows_reversed: ws } => seal_windows(reading: reading, host: host, windows: reverse(ws))
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// ── wire ──────────────────────────────────────────────────────────────────────────────────────
+
+fn cohort_refusal_wire<K>(r: CohortRefusal<K>, seat_key: fn(K) -> String) -> String {
+  match r {
+    CohortRosterEmpty => "the cohort roster is empty"
+    CohortRosterSeatDuplicated { seat: k } => concat("the cohort roster names a seat twice: ", seat_key(k))
+    CohortSeatReadingDuplicated { seat: k } => concat("a cohort seat was read twice: ", seat_key(k))
+    CohortSeatOffRoster { seat: k } => concat("a seat was read that the cohort roster does not name: ", seat_key(k))
+    CohortSeatReadingMissing { seat: k } => concat("a cohort roster seat was never read: ", seat_key(k))
+    CohortHostInstantsIncomparable => "the host window and the barrier were read from different clocks"
+    CohortHostWindowReversed => "the host observation window ends before it starts"
+    CohortSeatInstantsIncomparable { seat: k } => concat("a seat's instants are on a different clock from the cohort's: ", seat_key(k))
+    CohortSeatNotReadyAtBarrier { seat: k } => concat("a seat was not ready when the barrier released: ", seat_key(k))
+    CohortSeatStartedBeforeBarrier { seat: k } => concat("a seat started before the barrier released: ", seat_key(k))
+    CohortSeatWindowReversed { seat: k } => concat("a seat's window ends before it starts: ", seat_key(k))
+    CohortSeatOutsideHostWindow { seat: k } => concat("a seat ran outside the host observation window: ", seat_key(k))
+    CohortSeatNotSettled { seat: k } => concat("a seat's outcome was never read: ", seat_key(k))
+    CohortNeverAllActive { last_to_start: a, first_to_end: b } =>
+      join(["the seats were never all active at once: ", seat_key(a), " started after ", seat_key(b), " had ended"], "")
+  }
+}

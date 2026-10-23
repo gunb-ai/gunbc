@@ -1,0 +1,78 @@
+module gunbc.evaluation_budget_falsifier_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the evaluation-budget consequence falsifier and the process-group
+// mechanics it shares with the Codex session driver. Homed here, beside the obligation it declares,
+// rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.
+//
+// WHAT THE SUBJECT IS. std.evaluation_budget owns the machine identity of a budget breach;
+// gunbc.evaluation_budget_consequence_emit projects it into the seed as a generated constant; the
+// serve path renders that constant. The question no static check can answer is whether the served
+// response carries that identity BECAUSE the projection carries it, or because the boundary
+// independently chose the same text. Unperturbed, every check in the chain is green under both
+// readings, since the value the boundary would choose on its own is the same value. Only MOVING
+// the authority separates them, and only an execution that reaches a real breach can observe the
+// separation.
+data evaluation_budget_falsifier_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "CommandObservation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "EvaluationBudgetConsequenceRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "EvaluationBudgetConsequenceReceipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "EvaluationBudgetConsequenceFalsifierOutcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "PrePerturbationDigests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "worktree_admin_area_present", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "file_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "observe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "completed_zero", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "git", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "completed_drained", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "git_stdout", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "ServeGuard", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "PipeDrain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "StreamOutcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "ServeReadiness", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "announced_port", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "await_serve_ready", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "BreachResponse", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "JsonObject", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "preview", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "decode_response_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "JsonMemberPosition", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "parse_flat_json_object", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "read_json_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "post_for_breach", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "run_evaluation_budget_consequence_falsifier", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "finalize", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "cargo_in", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "gunbc_run", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "run_bound_transaction", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "json_free_literal_after", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.evaluation_budget_consequence_falsifier_host", decl_name: "serve_and_judge", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcessGroupWait", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "spawn_in_new_process_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "signal_process_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "wait_for_exit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcEntry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "process_group_members", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "process_group_members_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "scan_process_group_members", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "parse_proc_stat", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "LeaderObservation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "PinnedProcessGroupIdentity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "pin_process_group_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "observe_leader_without_reaping", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcessGroupResidue", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcessGroupTermination", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "ProcessGroupTerminationState", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "SettledLeader", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.process_group", decl_name: "terminate_process_group", field: WholeDeclaration },
+  ],
+  reason: "WHY RUST, AND IT IS A MISSING VOCABULARY RATHER THAN A BYPASSED ONE. The modeled substrate cannot express this transaction's central object: a live child process. extdeps.shell.exec runs one command to completion and yields its exit code, stdout and stderr; std.process_termination describes a process that ENDED -- ProcessExited, ProcessSignaled, ProcessTerminationUnobserved -- and there is no value anywhere in the model standing for a process that is still running, no readiness observation, no later request against it, and no termination operation. A .dag implementation therefore has only two shapes, and both are worse than a typed host instrument: invent a general managed-process substrate whose only consumer is this receipt, which is substrate authored to make a receipt look modeled; or hide start, readiness, request and kill inside one compound command, which puts the adjudication -- exactly one named drift, moved=1, former=0, restored tree -- somewhere no fold can read it. DESIGN's out-of-band-actuation tell is about bypassing a modeled operation that EXISTS. Here the missing fact is that it does not.\n\nWHY THE PROCESS-GROUP HALF IS SHARED RATHER THAN COPIED. v1_compiler.codex_app_server_stdio_session already put a child in its own group and signalled that group. That is now one authority with two consumers instead of two copies. It is an extraction and not a new capability, and the Codex driver is deliberately NOT reused as a generic supervisor: its control flow joins the stream readers and waits for the child before signalling, which is correct only because its protocol makes Codex exit, and would deadlock against a server that stays alive. The generic half moved; each protocol stayed home.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE. gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE, and the purpose test reaches the instrument that measures the program. Against the five refused classes: NewLanguageBehavior -- no, the compile pipeline is byte-untouched. NewCompatibilityObligation -- no. NewEscapeHatchOrAdmissionRow -- no, and the direction is opposite: this adds evidence and adds no flag that skips anything. SeedFeatureCompletion -- no, the seed gains no capability it lacked; process_group is a re-home of code the seed already had. PublicSurfaceGrowth -- the falsifier host is cfg(test) and #[path]-wired inside cli_run.rs exactly as emitted_closure_compile_host is, so it contributes no pub mod line to the emitted lib.rs; process_group does carry one, because a crate module the Codex driver calls must be declared.\n\nWHAT IS NOT CLAIMED. This instrument establishes that the SERVED machine identity moves with its authority. It does not establish the escape helper's canonical bytes -- that is the seven exact-output witnesses' subject -- and it is not a claim about any other generated artifact.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the falsifier host and migrate it onto the model when a REAL modeled consumer introduces a process-session capability: a value standing for a spawned-and-still-running child, an observation of readiness distinct from not-having-exited, a request issued against that live child, and a termination that reports whether the group actually settled. The trigger is that CAPABILITY existing for a consumer other than this receipt -- not a plan to build it, and not this instrument being rewritten to look modeled around one opaque command, which would satisfy any weaker wording while changing nothing. process_group dissolves with it, since its whole content is the mechanics that capability would own. What does NOT dissolve either item is the falsifier merely moving to a different fixture or the generated test changing its name.",
+  current_boundary: "src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs (the transaction and its refusal algebra); src/v1/stage0/src/process_group.rs (the shared mechanics); src/v1/stage0/src/codex_app_server_stdio_session.rs (now a caller rather than an owner); src/v1/stage0/src/cli_run.rs (the cfg(test) #[path] mod line); src/v1/compiler_tests_rust.dag and its emitted form in src/v1/stage0/src/compiler_tests.rs (the one #[ignore] test that invokes it); dag/test/fixture/serve_seam_probe.dag serve_budget_breach_probe (the breach subject); src/v2/compiler/self_host/stage0_crate_layout.dag and src/v2/compiler/self_host/seed_retention_frontier.dag (the two registration rows each); dag/gunbc/evaluation_budget_falsifier_seed_growth.dag"
+}

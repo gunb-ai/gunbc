@@ -1,0 +1,35 @@
+module test.claim.whole_generated_artifact_adjudication_test
+
+import gunbc.required_ci_phase_roster {
+  GeneratedArtifactPopulationClean,
+  GeneratedArtifactPopulationRefused,
+  WholeGeneratedArtifactAdjudication,
+  whole_generated_artifact_adjudication_clean
+}
+
+// PERMANENT COMPOSITE REDS, one for each direction of the join. The first is the #10402 shape:
+// registry projections all matched while v1_compiler_infer.rs drifted. The second is the founding
+// receipt of green_reported_over_a_population_the_instrument_does_not_own: mirrors all matched
+// while docs/design-failure-modes.md was stale. Either component refusing makes the ONE outcome
+// refuse; neither can lend its green to the other.
+test fn registry_green_does_not_cover_a_drifted_stage0_mirror() -> Bool {
+  !whole_generated_artifact_adjudication_clean(a: WholeGeneratedArtifactAdjudication {
+    registry_projections: GeneratedArtifactPopulationClean,
+    stage0_mirrors: GeneratedArtifactPopulationRefused
+  })
+}
+
+test fn mirror_green_does_not_cover_a_stale_registry_projection() -> Bool {
+  !whole_generated_artifact_adjudication_clean(a: WholeGeneratedArtifactAdjudication {
+    registry_projections: GeneratedArtifactPopulationRefused,
+    stage0_mirrors: GeneratedArtifactPopulationClean
+  })
+}
+
+// ACCEPTED POSITIVE CONTROL. A compositor that refused every input would satisfy both reds.
+test fn both_declared_populations_clean_is_the_only_green() -> Bool {
+  whole_generated_artifact_adjudication_clean(a: WholeGeneratedArtifactAdjudication {
+    registry_projections: GeneratedArtifactPopulationClean,
+    stage0_mirrors: GeneratedArtifactPopulationClean
+  })
+}

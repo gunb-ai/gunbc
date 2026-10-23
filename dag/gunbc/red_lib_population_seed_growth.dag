@@ -1,0 +1,44 @@
+module gunbc.red_lib_population_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Hand src/v1 Rust added while greening the v1-compiler --lib population on main. Every item
+// below is a test-side repair or the one production seam a witness needed to supply its input;
+// none adds compiler behavior.
+
+data red_lib_population_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.required_floor_runner",
+      decl_name: "floor_diff_edits_from_line_ranges_reading",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.required_floor_runner",
+      decl_name: "read_working_tree_source",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.required_floor_runner",
+      decl_name: "floor_diff_edits_from_diff_text_with_base_names_and_sources",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.floor_skip_frontier_tests",
+      decl_name: "machine_shape_rename_dest_sources",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.process_cwd_mutation_reachability_gate",
+      decl_name: "a_multi_line_string_does_not_shift_brace_depth",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: every subject here is itself hand Rust with no .dag home yet. floor_diff_edits_from_line_ranges is the host realization of floor diff attribution (its governing SCAFFOLD row sits above FloorDiffEdits in cli_run); the rename witnesses read the rename destination's content from the live working tree, which has since gained test fns the fixed base census does not name, so the fixture stopped isolating a rename. DESIGN section 3's witness rule puts the input at the interface as a supplied value, so attribution now takes a source reader: production binds read_working_tree_source, the witnesses bind fixed content through floor_diff_edits_from_diff_text_with_base_names_and_sources (cfg(test)). The production path still runs the real reader, so no execution of the real path is removed. a_multi_line_string_does_not_shift_brace_depth is the discriminating control for the cwd-mutation gate's code_projection, which reset string state per line so a brace on a string continuation line skewed brace depth and the closure absorbed half the crate.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete with their subjects: the three required_floor_runner items when floor diff attribution is a .dag fold over a typed diff and a supplied content map (the reader parameter becomes that fold's input); machine_shape_rename_dest_sources with the rename witnesses when they move to .dag over the same fold; a_multi_line_string_does_not_shift_brace_depth when the cwd-mutation gate's lexical scan is replaced by a call graph read from the substrate rather than from Rust text.",
+  current_boundary: "src/v1/stage0/src/cli_run/required_floor_runner.rs floor_diff_edits_from_line_ranges; src/v1/stage0/src/cli_run.rs floor_skip_frontier_tests and process_cwd_mutation_reachability_gate; dag/gunbc/red_lib_population_seed_growth.dag"
+}

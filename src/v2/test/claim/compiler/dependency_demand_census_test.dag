@@ -1,0 +1,290 @@
+module v2.test.claim.compiler.dependency_demand_census
+
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.compile { native_demand_census_report }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.dependency_demand { FunctionValueCalled, OpaqueOperationCalled }
+import v2.compiler.dependency_demand_census {
+  CensusEqual,
+  CensusMismatch,
+  CensusUndecided,
+  CensusUnobserved,
+  DemandCensusReport,
+  DemandCensusRow,
+  DemandCensusVerdict,
+  UnobservedModuleResolveRefused,
+  demand_census_conserved,
+  demand_census_deletable_rows,
+  demand_census_out_of_vocabulary_agreeing,
+  demand_census_exit,
+  AuthoredRowStanding,
+  RowDeletable,
+  RowMismatch,
+  RowOutOfVocabulary,
+  RowUndecided,
+  RowUnobserved,
+  RowTypeUnresolved
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (DESIGN section 3). The boundary these claims
+// discriminate is v2.compiler.compile native_demand_census_report over an ingest, so its input --
+// source bytes -- is constructed, and everything above it is the production front end, the real
+// resolver and the D13 reducer. The fixture is a closed four-module closure whose six uses fns are
+// the controlled population the count-conservation claim is grounded in (DESIGN section 5: a literal
+// grounded in a controlled fixture), one fn per verdict the census can reach:
+//   restates      calls an operation declared `requires Network`                 -> equal
+//   transitive    calls `restates`                                               -> equal
+//   over_claims   authors Network and reaches nothing                             -> mismatch
+//   opaque_reach  reaches an operation declared `requires opaque`                -> undecided
+//   fs_only       authors Filesystem and calls a Filesystem capability           -> equal in vocabulary;
+//                 its row is out of vocabulary and counts toward the Filesystem audit
+//   alias_used    its body still names its alias, so with the clause elided the
+//                 module refuses at resolution: not a restatement               -> unobserved
+data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
+
+data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n}\n"
+
+data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
+
+// A CALL THROUGH A FUNCTION VALUE, beside a direct Network call that would otherwise make the fn Equal.
+// Its own module, so a refusal here cannot hide the other fns.
+data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn via_value(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  let g = t.app.restates\n  g(p: p)\n}\n\nfn via_param(p: Bool, g: fn(Bool) -> Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  g(p: p)\n}\n"
+
+// A USES FILE THE FRONT END REFUSES BEFORE AUTHORSHIP: a string that never terminates is refused at
+// tokenize, so its uses fn is read by nobody and the census population is incomplete.
+data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
+
+data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
+
+fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data ddc_ingest: SourceRootIngest = [
+  ddc_read(source: ddc_resources_source, id: ^ddc_resources_artifact, unit: ^ddc_resources_cu, path: "dag/std/resources.dag"),
+  ddc_read(source: ddc_http_source, id: ^ddc_http_artifact, unit: ^ddc_http_cu, path: "dag/t/http.dag"),
+  ddc_read(source: ddc_app_source, id: ^ddc_app_artifact, unit: ^ddc_app_cu, path: "dag/t/app.dag"),
+  ddc_read(source: ddc_alias_source, id: ^ddc_alias_artifact, unit: ^ddc_alias_cu, path: "dag/t/aliasing.dag"),
+  ddc_read(source: ddc_valued_source, id: ^ddc_valued_artifact, unit: ^ddc_valued_cu, path: "dag/t/valued.dag"),
+  ddc_read(source: ddc_broken_source, id: ^ddc_broken_artifact, unit: ^ddc_broken_cu, path: "dag/t/broken.dag")
+]
+
+// Computed ONCE, enrolled WARM in v2.workflow.floor_pure_producer_share: every claim below reads the
+// report rather than re-running the census (DESIGN section 3: their subject is the report).
+fn ddc_report() -> Outcome<DemandCensusReport> {
+  native_demand_census_report(ingest: ddc_ingest)
+}
+
+fn ddc_verdict(function: String) -> Optional<DemandCensusVerdict> {
+  match ddc_report() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: r, diagnostics: _ } =>
+      fold_list(xs: r.rows, empty: optional_absent(), cons: fn(acc, row) {
+        if qualified_name_to_dotted_string(qn: row.function) == function { optional_present(value: row.verdict) } else { acc }
+      })
+  }
+}
+
+fn ddc_is_equal(function: String) -> Bool {
+  match ddc_verdict(function: function) {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusEqual => true
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+// COUNT CONSERVATION: the strip found six uses fns and the route emitted six rows -- one per fn, from a
+// different fold than the one that counted them.
+test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
+  match ddc_report() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      (r.uses_functions == 9) && (length(xs: r.rows) == 9) && demand_census_conserved(r: r)
+  }
+}
+
+test fn a_row_restating_a_called_network_operation_is_equal_holds() -> Bool {
+  ddc_is_equal(function: "t.app.restates")
+}
+
+test fn demand_through_a_transparent_callee_is_equal_holds() -> Bool {
+  ddc_is_equal(function: "t.app.transitive")
+}
+
+test fn a_row_claiming_network_the_body_never_reaches_is_a_mismatch_RED() -> Bool {
+  match ddc_verdict(function: "t.app.over_claims") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusMismatch { authored: a, derived: d } => (length(xs: a) == 1) && (length(xs: d) == 0)
+        CensusEqual => false
+        CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
+  match ddc_verdict(function: "t.app.opaque_reach") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUndecided { cause: OpaqueOperationCalled { operation: o } } => qualified_name_to_dotted_string(qn: o) == "t.http.H.Exec"
+        CensusUndecided { cause: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.alias_used") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: UnobservedModuleResolveRefused } => true
+        CensusUnobserved { reason: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+      }
+  }
+}
+
+// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive and
+// mixed. The Filesystem rows of fs_only and mixed are out of vocabulary and count only toward that audit.
+test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_holds() -> Bool {
+  match ddc_report() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      (demand_census_deletable_rows(r: r) == 3) && (demand_census_out_of_vocabulary_agreeing(r: r, resource: qualified_name_from_dotted_string(dotted: "std.resources.Filesystem")) == 2)
+  }
+}
+
+// THE PRODUCTION CONTROL: the elision is the census route's alone. Production lowering of the SAME
+// t.app source still refuses at the clause (v2.compiler.body_lowering_fold
+// body_lower_fn_uses_refusal_optional), so nothing outside the census lowers a uses fn. The outcome is
+// computed once as a nullary Bool enrolled WARM in v2.workflow.floor_pure_producer_share, through the
+// same single-source front end v2.test.claim.parse.uses_clause reads; building the whole four-module
+// context for one refusal was over the new-witness budget.
+fn ddc_app_production_refuses_at_the_clause() -> Bool {
+  match conservation_subject_of_text(path: "dag/t/app.dag", text: ddc_app_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled
+  }
+}
+
+test fn production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds() -> Bool {
+  ddc_app_production_refuses_at_the_clause()
+}
+
+fn ddc_row_standings(function: String) -> List<AuthoredRowStanding> {
+  match ddc_report() {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: r, diagnostics: _ } =>
+      fold_list(xs: r.rows, empty: [], cons: fn(acc, row) {
+        if qualified_name_to_dotted_string(qn: row.function) == function { row.standings } else { acc }
+      })
+  }
+}
+
+fn ddc_is_deletable(st: AuthoredRowStanding, resource: String) -> Bool {
+  match st {
+    RowDeletable { resource: p } => qualified_name_to_dotted_string(qn: p) == resource
+    RowMismatch { resource: _ } => false
+    RowOutOfVocabulary { resource: _ } => false
+    RowUndecided { resource: _, cause: _ } => false
+    RowUnobserved { resource: _ } => false
+    RowTypeUnresolved => false
+  }
+}
+
+fn ddc_is_out_of_vocabulary(st: AuthoredRowStanding, resource: String) -> Bool {
+  match st {
+    RowOutOfVocabulary { resource: p } => qualified_name_to_dotted_string(qn: p) == resource
+    RowDeletable { resource: _ } => false
+    RowMismatch { resource: _ } => false
+    RowUndecided { resource: _, cause: _ } => false
+    RowUnobserved { resource: _ } => false
+    RowTypeUnresolved => false
+  }
+}
+
+// A FUNCTION-LEVEL EQUAL NEVER LICENSES BOTH ROWS. mixed restates Network and also authors Filesystem;
+// its Network row is deletable and its Filesystem row is out of vocabulary, row by row.
+test fn a_mixed_fn_licenses_only_its_in_vocabulary_row_RED() -> Bool {
+  let sts = ddc_row_standings(function: "t.app.mixed")
+  (length(xs: sts) == 2)
+    && fold_list(xs: sts, empty: false, cons: fn(any, st) { any || ddc_is_deletable(st: st, resource: "std.resources.Network") })
+    && fold_list(xs: sts, empty: false, cons: fn(any, st) { any || ddc_is_out_of_vocabulary(st: st, resource: "std.resources.Filesystem") })
+    && !fold_list(xs: sts, empty: false, cons: fn(any, st) { any || ddc_is_deletable(st: st, resource: "std.resources.Filesystem") })
+}
+
+// THE REAL ROUTE READS A CALL THROUGH A FUNCTION VALUE: via_value's direct Network call would make it
+// Equal, and the call through `g` makes it undecided by that cause instead.
+test fn a_call_through_a_function_value_is_undecided_on_the_real_route_RED() -> Bool {
+  match ddc_verdict(function: "t.valued.via_value") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUndecided { cause: FunctionValueCalled { function: f } } => qualified_name_to_dotted_string(qn: f) == "t.valued.via_value"
+        CensusUndecided { cause: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+// A USES FILE REFUSED BEFORE AUTHORSHIP MAKES THE POPULATION INCOMPLETE: the census counts it and exits 2
+// (no observation), so conservation holding over the files that WERE read cannot read as held.
+test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() -> Bool {
+  match ddc_report() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } => (r.unreadable_files == 1) && (demand_census_exit(r: r) == 2)
+  }
+}
+
+// A CALL THROUGH A NAMED FUNCTION PARAMETER: via_param's direct Network call would make it Equal, and the
+// call through its parameter `g` -- minted as a parameter reference, not a lexical one -- makes it
+// undecided by that cause instead (review of gunbc#12992).
+test fn a_call_through_a_function_parameter_is_undecided_on_the_real_route_RED() -> Bool {
+  match ddc_verdict(function: "t.valued.via_param") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUndecided { cause: FunctionValueCalled { function: f } } => qualified_name_to_dotted_string(qn: f) == "t.valued.via_param"
+        CensusUndecided { cause: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+

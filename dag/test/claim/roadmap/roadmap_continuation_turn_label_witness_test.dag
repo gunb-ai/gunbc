@@ -1,0 +1,12 @@
+module test.claim.roadmap.roadmap_continuation_turn_label_witness_test
+
+import std.types { Bool }
+import gunbc.roadmap.roadmap_attempt_continuation { continuation_turn_label }
+
+// THE ORACLE IS AUTHORED BEFORE THE WORKER IS DISPATCHED AND IS RED UNTIL THE WORKER LANDS THE
+// FUNCTION IT NAMES. The validation oracle pin observes an oracle by declaration at dispatch and
+// refuses one it cannot see, so the judge is written by the planner, never by the worker it judges.
+test fn the_turn_label_names_the_turn_and_the_cap() -> Bool {
+  continuation_turn_label(turn: 2) == "turn 2 of 3"
+    && continuation_turn_label(turn: 1) == "turn 1 of 3"
+}

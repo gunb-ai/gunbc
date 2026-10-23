@@ -1,0 +1,120 @@
+module v2.workflow.floor_cost_debt_verdict
+
+import v2.std.algebra { any, list_reverse }
+import std.types { List }
+import v2.workflow.floor_cost_debt { floor_cost_debt_roster }
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+}
+
+// A COST ROW MAY NEVER HIDE A SEMANTIC RED (swift-bat-688's triage, gunbc#13327).
+//
+// `v2.workflow.floor_cost_debt` withholds a rostered identity from execution because its cost is
+// over the line, and says nothing about its verdict. So a row is only honest while its claim
+// PASSES: a row over a failing claim is a semantic red the floor has stopped reading. That is not
+// hypothetical. `v2.test.claim.body_lowering.single_arm_match` regressed at gunbc#13056 and two of
+// its identities sat in `floor_cost_debt_censored_chunk_03`, so every required lane stayed green
+// over a v2 body-lowering regression.
+//
+// THE WALL STANDS AT THE TWO MOMENTS A ROW'S VERDICT IS IN QUESTION, and the floor runs the claim
+// at both for its verdict alone:
+//   - ADMISSION: an identity the head roster carries and the base roster does not
+//     (`cost_debt_admitted_identities_against_base`). Without this the row is declined at build on the
+//     very change that adds it, so nothing ever establishes that the claim it hides passes.
+//   - RESTORATION: a rostered identity whose witness the change touches -- the changed-witness
+//     override `v2.workflow.required_floor` `ChangedCostDebtVerdictOnly` already plans.
+// At both the claim must reach a passing verdict. Being over budget is the row's whole reason to
+// exist, so it is never what refuses here: an admitted claim is run WITHOUT the eval-step budget,
+// and a pass over budget is the positive control. Untouched rows are not re-run on every floor --
+// that is the cost the roster exists to avoid.
+//
+// WHAT REFUSES: a reached verdict that FAILED, including one the expected-red roster enrols. An
+// expected red is a declared red and has its own roster, `v2.workflow.floor_expected_red`; a cost row
+// standing on it suppresses that enrolment (the floor's `suppress_withheld`), so the red stops being
+// observed. That is the same hiding by another route, and this file's sibling header says it
+// already: a withheld row "is a different fact from a known red, and may not ride the same carrier".
+// And NO VERDICT: a claim that never reached one (the wall deadline, a panic, a route gap, a
+// runtime error, an unreadable observation) has not shown that the row hides no red, so admitting it
+// would be ⊤-as-ignorance read as ⊤-as-answer (DESIGN section 5).
+type CostDebtVerdictStanding =
+    CostDebtVerdictPassed
+  | CostDebtRowHidesSemanticRed
+  | CostDebtRowVerdictUnreached
+
+// Exhaustive over `ClaimDisposition`, so a new outcome arm must be placed here and cannot be absorbed.
+fn cost_debt_verdict_standing(outcome: ClaimDisposition) -> CostDebtVerdictStanding {
+  match outcome {
+    Passed => CostDebtVerdictPassed {}
+    PassedOverBudget => CostDebtVerdictPassed {}
+    KnownRedNowPassing => CostDebtVerdictPassed {}
+    Failed => CostDebtRowHidesSemanticRed {}
+    KnownRedHeld => CostDebtRowHidesSemanticRed {}
+    BudgetRefusedBeforeVerdict => CostDebtRowVerdictUnreached {}
+    BudgetTerminalWithoutSafetyCause => CostDebtRowVerdictUnreached {}
+    HostToolUnresolvedBeforeVerdict => CostDebtRowVerdictUnreached {}
+    RouteGapBeforeVerdict => CostDebtRowVerdictUnreached {}
+    RuntimeErroredBeforeVerdict => CostDebtRowVerdictUnreached {}
+    PanickedBeforeVerdict => CostDebtRowVerdictUnreached {}
+    NotAttemptedAfterAbort => CostDebtRowVerdictUnreached {}
+    ObservationUnreadableBeforeVerdict => CostDebtRowVerdictUnreached {}
+  }
+}
+
+// THE ONE ANSWER TO "DOES THIS STANDING REFUSE": its cause, and the empty string on the one arm that
+// stands. The floor reads only this (through `cost_debt_verdict_cause_for_reading`), so no second
+// predicate answers the same question (review 76273).
+fn cost_debt_verdict_refusal_cause(standing: CostDebtVerdictStanding) -> String {
+  match standing {
+    CostDebtVerdictPassed => ""
+    CostDebtRowHidesSemanticRed => "CostDebtRowHidesSemanticRed"
+    CostDebtRowVerdictUnreached => "CostDebtRowVerdictUnreached"
+  }
+}
+
+// WHAT THE FLOOR READS FOR ONE OWED IDENTITY: its terminal outcome, or the absence of one. An owed
+// row planning declined (a declared BinWitnessWet row takes DeclinedNoCiWetLane) has no terminal
+// row, and that is no verdict -- never a pass.
+type CostDebtVerdictReading =
+    CostDebtTerminalOutcome { outcome: ClaimDisposition }
+  | CostDebtNoTerminalOutcome
+
+// THE ENTRY THE FLOOR CALLS per owed identity: the refusal cause, or "" when the row stands.
+fn cost_debt_verdict_cause_for_reading(reading: CostDebtVerdictReading) -> String {
+  match reading {
+    CostDebtNoTerminalOutcome => cost_debt_verdict_refusal_cause(standing: CostDebtRowVerdictUnreached {})
+    CostDebtTerminalOutcome { outcome: o } => cost_debt_verdict_refusal_cause(standing: cost_debt_verdict_standing(outcome: o))
+  }
+}
+
+// ── ADMISSION: WHICH HEAD ROWS THE BASE DID NOT CARRY ──────────────────────────────────────────
+//
+// MEMBERSHIP AT BOTH ENDS IS THE ROSTER'S OWN RESULT, EVALUATED. The head side is
+// `floor_cost_debt_roster` here; the base side is the same function evaluated over the BASE TREE
+// -- the floor's source roots as they stood at its comparison commit (the merge base on a
+// merge-base comparison) -- by the host (`v1_compiler.cli_run.required_floor_runner`
+// `cost_debt_roster_in_tree`), so neither the roster nor any provider its result imports is read
+// from head. Review on gunbc#13332 showed every textual reading of the base (any literal, then any
+// `head:` literal) and an isolated evaluation against head's imports each mark rows as carried
+// that the base roster never carried. A base the host cannot evaluate refuses, and is never read
+// as already carrying.
+//
+// The head rows the base roster's result does not carry, in roster order.
+fn cost_debt_admitted_identities(base_roster: List<String>, head_roster: List<String>) -> List<String> {
+  list_reverse(xs: fold(head_roster, init: [], f: fn(acc, identity) {
+    if any(xs: base_roster, predicate: fn(row) { row == identity }) {
+      acc
+    } else {
+      concat([identity], acc)
+    }
+  }))
+}
+
+// THE ENTRY THE FLOOR CALLS when its diff modified the roster file, with the base roster's
+// evaluated result.
+fn cost_debt_admitted_identities_against_base(base_roster: List<String>) -> List<String> {
+  cost_debt_admitted_identities(base_roster: base_roster, head_roster: floor_cost_debt_roster())
+}

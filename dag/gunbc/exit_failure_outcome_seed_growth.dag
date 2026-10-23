@@ -1,0 +1,57 @@
+module gunbc.exit_failure_outcome_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the typed exit-failure outcome change (PR
+// #11342). Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note
+// makes unenumerated hand growth in src/v1 a stop-line, and this change adds hand items to
+// v1_compiler.cli_run -- test items only, but items, and the roster's completeness join reads the
+// change population rather than the reviewer's impression of it.
+//
+// WHAT THE CHANGE IS. ClaimOutcome had no arm for a child process that exited nonzero, so a
+// gate-class claim's refusal was flattened to `Fail` and its verdict line -- the one thing a
+// reader of the artifact needs -- existed nowhere in the claim path. It lived beside the claim
+// instead, in `tools.emit_host_gate`'s narration shell-out: the module shelled printf per smoke
+// verdict, which is the defect this change dissolves. The new `ExitFailure { code, reason }` arm
+// carries the observed exit status and the failing site's reason as data, and every consumer
+// surface projects it: terminal tag `exit-failure`, detail = reason, disposition unchanged from
+// `Fail` (a widening, not a reclassification), the expected-red roster join, the witness-eval
+// verdict, the cost receipt, the published law row, and the claim_batch FAIL line, which now
+// prints the reason instead of a bare FAIL.
+//
+// WHY IT IS RUST AND NOT .dag, the question this receipt exists to answer honestly. ClaimOutcome
+// is the seed's outcome vocabulary: its arms are a MIRROR of the coproduct
+// v2.workflow.floor_terminal_ledger models (ClaimAttemptTerminal, ClaimDisposition), under the
+// production per-row comparator floor_terminal_ledger.dag requires the two mappings to satisfy.
+// What cannot move is the OBSERVATION itself: a child process exiting nonzero is a property of the
+// host that ran it, and the substrate has no process to exit. The arm originates no capability --
+// it carries an observed code and a reason string the failing site authored into the modeled
+// vocabulary, whose readback (`v2.workflow.floor_terminal_ledger_wire`'s `exit-failure` arm) lands
+// in this same change on the modeled side.
+//
+// WHAT IS NOT NETTED AND NOT ENUMERATED AS ADDITIONS. Every production surface in this change is
+// an arm added to an EXISTING item -- claim_terminality, claim_disposition, claim_terminal_tag,
+// claim_terminal_detail, expected_red_arm, witness_eval_verdict_from_claim_outcome,
+// project_witness_cost_receipt, witness_execution_outcome_label, the cost-event receipt, the floor
+// discovery rows, run_required_floor's fold, local_repo_wet_observed_from, the
+// required_floor_runner arms, the terminal_ledger_publish law row, the witness-gate label, and the
+// claim_batch FAIL row. No production item is new; the only new citable items are the test module
+// and its two tests, enumerated below. What those modifications ARE -- addition, modification, or
+// otherwise -- is gunbc.rust_item_host_observation's to derive, and this receipt asserts no
+// disposition. For the same reason no hand-item delta and no hand-LOC delta appears here: both are
+// functions of the diff, the observation derives them, and an authored copy is a second
+// representation of a fact the diff already owns -- the measured cost of which
+// seed_growth_forward_freeze_policy_note records against gunbc#9095.
+data exit_failure_outcome_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "exit_failure_outcome_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.exit_failure_outcome_tests", decl_name: "an_exit_failure_reason_reaches_every_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.exit_failure_outcome_tests", decl_name: "an_exit_failure_is_never_reported_as_a_bool_false_in_the_roster_join", field: WholeDeclaration }
+  ],
+  reason: "The tests are the dissolve's own evidence, and they are Rust because the vocabulary they test is. an_exit_failure_reason_reaches_every_projection asserts, per consumer surface, that the typed reason survives projection -- tag, detail, disposition, roster join, cost receipt, FAIL line -- because losing it in any one surface re-creates the archaeology (a bare FAIL beside a printf'd verdict line) the arm exists to end. an_exit_failure_is_never_reported_as_a_bool_false_in_the_roster_join asserts the arm is its own return shape, not folded into Bool(false): the return shape (typed refusal vs false Bool) is a fact the seed holds and the ledger publishes, so a false-Bool collapse would erase the distinction the modeled wire tag keeps. Neither test decides anything: both exercise projections whose vocabulary is owned by v2.workflow.floor_terminal_ledger and its wire, and both live beside the mirror they hold to account.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the arm, its consumer arms, and these tests when a child process exiting nonzero is no longer a host observation the seed projects -- i.e. when the required floor's fold is a .dag fold over a .dag evaluator whose transport effects return typed results instead of process exits, at which point a nonzero exit is a typed refusal the transport RETURNS and there is no host exit status to carry. No partial migration is admissible: a .dag-side exit classifier reading a seed-side exit status would be two authorities for one decision, which is the fork the deleted ClaimTerminality wildcard already demonstrated the cost of.",
+  current_boundary: "Confined to classification and carriage. The arm is minted only where a process was observed to exit nonzero, carries only the observed code and the reason string the failing site authored, and every consumer arm projects it into vocabulary the modeled side already owns -- readback_disposition maps the exit-failure tag to the same dispositions as returned-false under the per-row comparator floor_terminal_ledger.dag requires to agree, so the seed's extra return-shape distinction never forks the disposition. The two tests reach only these projections and no production path."
+}

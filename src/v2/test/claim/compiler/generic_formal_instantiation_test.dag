@@ -1,0 +1,133 @@
+module v2.test.claim.compiler.generic_formal_instantiation
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a call argument at a formal that CONTAINS a type parameter inside a constructor (`a: List<T>`) is
+// matched against the argument's derived type and judged (v2.compiler.infer infer_judge_generic_formal),
+// never admitted as UndecidableGenericFormal. BOUNDARY: source text in, through the production assembly
+// route (v2.test.claim.compiler.infer_fold_member_instance fmi_assemble), then v2.compiler.infer infer.
+// RED ON THE BASE for the three refusal controls: each was ACCEPTED (gunbc.recurring_failure_mode
+// generic_formal_containing_a_type_variable_unjudged). The accepted controls hold that the match does
+// not over-refuse.
+
+data gfi_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> List<T> {\n  a\n}\n\nfn h<T>(a: List<List<T>>, b: T) -> T {\n  b\n}\n\n"
+
+data gfi_not_a_list: String = gfi_prelude + "fn f(a: Int, b: Int) -> Int {\n  0\n}\n\nfn k(a: Int, b: Int) -> List<Int> {\n  g(a, b)\n}\n"
+data gfi_two_instances: String = gfi_prelude + "fn k(a: List<Int>, b: List<Pair>) -> List<Int> {\n  g(a, b)\n}\n"
+data gfi_nested_mismatch: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Pair) -> Pair {\n  h(a, b)\n}\n"
+data gfi_alias_prelude: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn m<T>(a: FreeMonoid<T>, b: FreeMonoid<T>) -> FreeMonoid<T> {\n  a\n}\n\n"
+data gfi_alias_agrees: String = gfi_alias_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  m(a, b)\n}\n"
+data gfi_alias_disagrees: String = gfi_alias_prelude + "fn k(a: List<Pair>, b: List<Int>) -> List<Pair> {\n  m(a, b)\n}\n"
+data gfi_refined_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn nonempty(xs: List<Int>) -> Bool {\n  true\n}\n\ntype Ns = List<Int> where nonempty\n\ntype Wrap {\n  base: List<Int>\n}\n\nfn g<T>(a: List<T>) -> List<T> {\n  a\n}\n\nfn p(a: List<Int>) -> List<Int> {\n  a\n}\n\n"
+data gfi_refined_carrier: String = gfi_refined_prelude + "fn k(a: Ns) -> List<Int> {\n  g(a)\n}\n"
+data gfi_record_wrapper_generic: String = gfi_refined_prelude + "fn k(a: Wrap) -> List<Int> {\n  g(a)\n}\n"
+data gfi_record_wrapper_plain: String = gfi_refined_prelude + "fn k(a: Wrap) -> List<Int> {\n  p(a)\n}\n"
+data gfi_plain_alias_prelude: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn q(a: FreeMonoid<Pair>) -> Int {\n  0\n}\n\n"
+data gfi_plain_alias_agrees: String = gfi_plain_alias_prelude + "fn k(a: List<Pair>) -> Int {\n  q(a)\n}\n"
+data gfi_plain_alias_disagrees: String = gfi_plain_alias_prelude + "fn k(a: List<Int>) -> Int {\n  q(a)\n}\n"
+data gfi_refine_prelude: String = "module p\n\nimport v2.std.collection { List }\n\nfn positive(x: Int) -> Bool {\n  true\n}\n\ntype Pos = Int where positive\n\ntype AliasOfPos = Pos\n\nfn wants_pos(x: Pos) -> Int {\n  0\n}\n\nfn wants_alias_of_pos(x: AliasOfPos) -> Int {\n  0\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> Int {\n  0\n}\n\n"
+data gfi_refined_refuses_raw_plain: String = gfi_refine_prelude + "fn k(x: Int) -> Int {\n  wants_pos(x)\n}\n"
+data gfi_refined_refuses_raw_generic: String = gfi_refine_prelude + "fn k(a: List<Pos>, b: List<Int>) -> Int {\n  g(a, b)\n}\n"
+data gfi_alias_of_refined_refuses_raw: String = gfi_refine_prelude + "fn k(x: Int) -> Int {\n  wants_alias_of_pos(x)\n}\n"
+data gfi_alias_of_refined_admits_refined: String = gfi_refine_prelude + "fn k(x: Pos) -> Int {\n  wants_alias_of_pos(x)\n}\n"
+data gfi_one_instance: String = gfi_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  g(a, b)\n}\n"
+data gfi_nested_agrees: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Int) -> Int {\n  h(a, b)\n}\n"
+
+fn gfi_reason(src: String) -> Symbol {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => ^gfi_assembly_refused
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+fn gfi_not_a_list_reason() -> Symbol { gfi_reason(src: gfi_not_a_list) }
+fn gfi_two_instances_reason() -> Symbol { gfi_reason(src: gfi_two_instances) }
+fn gfi_nested_mismatch_reason() -> Symbol { gfi_reason(src: gfi_nested_mismatch) }
+fn gfi_one_instance_reason() -> Symbol { gfi_reason(src: gfi_one_instance) }
+fn gfi_nested_agrees_reason() -> Symbol { gfi_reason(src: gfi_nested_agrees) }
+fn gfi_refined_carrier_reason() -> Symbol { gfi_reason(src: gfi_refined_carrier) }
+fn gfi_record_wrapper_generic_reason() -> Symbol { gfi_reason(src: gfi_record_wrapper_generic) }
+fn gfi_record_wrapper_plain_reason() -> Symbol { gfi_reason(src: gfi_record_wrapper_plain) }
+fn gfi_plain_alias_agrees_reason() -> Symbol { gfi_reason(src: gfi_plain_alias_agrees) }
+fn gfi_plain_alias_disagrees_reason() -> Symbol { gfi_reason(src: gfi_plain_alias_disagrees) }
+fn gfi_refined_refuses_raw_plain_reason() -> Symbol { gfi_reason(src: gfi_refined_refuses_raw_plain) }
+fn gfi_refined_refuses_raw_generic_reason() -> Symbol { gfi_reason(src: gfi_refined_refuses_raw_generic) }
+fn gfi_alias_of_refined_refuses_raw_reason() -> Symbol { gfi_reason(src: gfi_alias_of_refined_refuses_raw) }
+fn gfi_alias_of_refined_admits_refined_reason() -> Symbol { gfi_reason(src: gfi_alias_of_refined_admits_refined) }
+fn gfi_alias_agrees_reason() -> Symbol { gfi_reason(src: gfi_alias_agrees) }
+fn gfi_alias_disagrees_reason() -> Symbol { gfi_reason(src: gfi_alias_disagrees) }
+
+// RED: an Int at a List<T> formal -- the constructor does not match.
+test fn gfi_non_list_argument_at_a_list_formal_refuses() -> Bool {
+  gfi_not_a_list_reason() == ^application_argument_does_not_inhabit
+}
+
+// RED: T bound to Int by the first List<T>, then List<Pair> at the second.
+test fn gfi_one_variable_at_two_instances_refuses() -> Bool {
+  gfi_two_instances_reason() == ^application_argument_does_not_inhabit
+}
+
+// RED, NESTED: List<List<T>> binds T to Int, and a Pair at the bare T refuses.
+test fn gfi_nested_instance_disagreement_refuses() -> Bool {
+  gfi_nested_mismatch_reason() == ^application_argument_does_not_inhabit
+}
+
+// ACCEPTED: one consistent instance.
+test fn gfi_one_consistent_instance_is_accepted() -> Bool {
+  gfi_one_instance_reason() == ^accepted
+}
+
+// ACCEPTED, NESTED: List<List<Int>> and Int agree on T.
+test fn gfi_nested_consistent_instance_is_accepted() -> Bool {
+  gfi_nested_agrees_reason() == ^accepted
+}
+
+// ALIAS: List<T> is std.algebra FreeMonoid<T> under another spelling. A FreeMonoid<T> formal takes a
+// List<Pair> argument (the alias unfolds, so the constructors are one), and still refuses a second instance.
+test fn gfi_alias_argument_at_its_aliased_formal_is_accepted() -> Bool {
+  gfi_alias_agrees_reason() == ^accepted
+}
+
+test fn gfi_alias_argument_at_two_instances_refuses() -> Bool {
+  gfi_alias_disagrees_reason() == ^application_argument_does_not_inhabit
+}
+
+// REFINEMENT (review 75350): a where-refinement of List<Int> at a List<T> formal binds T through its
+// declared carrier, as it inhabits a declared List<Int> -- the judge's subsumption fact, asked on mismatch.
+test fn gfi_refined_argument_matches_through_its_carrier() -> Bool {
+  gfi_refined_carrier_reason() == ^accepted
+}
+
+// A RECORD WRAPPING A LIST IS NOT A LIST (Refined<List<T>>, NonEmptyList's shape, is a record): refused at
+// a List<T> formal, and refused identically at a declared List<Int> -- the generic verdict equals the plain one.
+test fn gfi_record_wrapper_refuses_as_the_plain_formal_does() -> Bool {
+  gfi_record_wrapper_generic_reason() == ^application_argument_does_not_inhabit
+    && gfi_record_wrapper_plain_reason() == ^application_argument_does_not_inhabit
+}
+
+// ONE ALIAS RULE ON BOTH ROUTES (review 75435): a PLAIN FreeMonoid<Pair> formal takes a List<Pair> argument,
+// as the generic FreeMonoid<T> formal does, and refuses List<Int>.
+test fn gfi_plain_formal_takes_its_alias() -> Bool {
+  gfi_plain_alias_agrees_reason() == ^accepted
+    && gfi_plain_alias_disagrees_reason() == ^application_argument_does_not_inhabit
+}
+
+// A REFINEMENT IS NOT A TRANSPARENT ALIAS (calm-boar-904): a declared Pos refuses a raw Int on the plain route,
+// and List<Pos> / List<Int> at one T refuses on the generic route.
+test fn gfi_refined_type_still_refuses_its_raw_carrier() -> Bool {
+  gfi_refined_refuses_raw_plain_reason() == ^application_argument_does_not_inhabit
+    && gfi_refined_refuses_raw_generic_reason() == ^application_argument_does_not_inhabit
+}
+
+// AN ALIAS OF A REFINED TYPE KEEPS THE REFINEMENT: it unfolds to Pos, not past it, so a raw Int refuses and a
+// Pos is admitted.
+test fn gfi_alias_of_a_refined_type_keeps_the_refinement() -> Bool {
+  gfi_alias_of_refined_refuses_raw_reason() == ^application_argument_does_not_inhabit
+    && gfi_alias_of_refined_admits_refined_reason() == ^accepted
+}

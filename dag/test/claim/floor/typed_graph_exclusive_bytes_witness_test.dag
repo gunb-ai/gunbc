@@ -1,0 +1,88 @@
+module test.claim.typed_graph_exclusive_bytes_witness_test
+
+import std.types { Bool, Int, NonEmptyStr, String, list_length }
+import std.measure { byte_size_count, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import gunbc.typed_graph_exclusive_bytes {
+  TypedGraphClassReading, typed_graph_exclusive_report, ExclusiveBytesReported, ExclusiveReadingTorn, ExclusiveReadingEmpty,
+}
+
+fn reading(class: String, all: Int, after: Int, end: Int) -> TypedGraphClassReading {
+  set_reading(class: class, members: 1, all: all, after: after, end: end)
+}
+
+fn set_reading(class: String, members: Int, all: Int, after: Int, end: Int) -> TypedGraphClassReading {
+  TypedGraphClassReading {
+    class: class as NonEmptyStr, members: members, modules: 3, in_use_all: all, in_use_after_class: after, in_use_end: end,
+    ancestry_entries: 7, own_entries: 2,
+  }
+}
+
+// EXCLUSIVE IS all - after, THE TOTAL IS all - end, AND THE RESIDUAL IS total - Σ exclusives: two
+// classes from their own runs, 30 and 20 of a 100-byte graph, share the other 50. The total is the
+// FIRST run's, so the second run's slightly larger graph does not move it.
+test fn exclusive_bytes_and_the_shared_residual_are_derived_from_the_drops() -> Bool {
+  match typed_graph_exclusive_report(readings: [
+    reading(class: "type_env", all: 1000, after: 970, end: 900),
+    reading(class: "items", all: 1004, after: 984, end: 902),
+  ]) {
+    ExclusiveBytesReported { classes: cs, graph_total: t, sum_of_exclusives: s, shared_or_unlisted: r } =>
+      list_length(items: cs) == 2
+        && byte_size_count(b: t) == 100
+        && byte_size_count(b: s) == 50
+        && match r { MeasureDifference { value: v } => byte_size_count(b: v) == 50, _ => false }
+    _ => false
+  }
+}
+
+// A DROP THAT RAISED LIVE BYTES IS NOT A READING OF A DROP, and refuses naming its class rather
+// than flooring the exclusive at zero.
+test fn a_drop_that_raised_live_bytes_refuses_naming_the_class() -> Bool {
+  match typed_graph_exclusive_report(readings: [reading(class: "interface", all: 1000, after: 1010, end: 900)]) {
+    ExclusiveReadingTorn { class: c, cause: _ } => c == "interface" as NonEmptyStr
+    _ => false
+  }
+}
+
+// EXCLUSIVES SUMMING PAST THE TOTAL (run-to-run variation across fresh resolves) IS A TYPED ARM, not
+// a zero shared residual.
+test fn exclusives_past_the_total_report_the_typed_arm_not_a_zero_residual() -> Bool {
+  match typed_graph_exclusive_report(readings: [
+    reading(class: "type_env", all: 1000, after: 930, end: 900),
+    reading(class: "items", all: 1000, after: 950, end: 900),
+  ]) {
+    ExclusiveBytesReported { classes: _, graph_total: _, sum_of_exclusives: _, shared_or_unlisted: r } =>
+      match r { MeasureSubtrahendExceedsMinuend => true, _ => false }
+    _ => false
+  }
+}
+
+test fn no_readings_is_empty_not_a_zero_report() -> Bool {
+  match typed_graph_exclusive_report(readings: []) {
+    ExclusiveReadingEmpty => true
+    _ => false
+  }
+}
+
+// A JOINT SET IS REPORTED, NEVER SUMMED: its bytes include its members' exclusives (30 and 20 here,
+// 70 jointly because they share 20 with each other only), so adding it into the sum would count the
+// members twice and drive the residual below zero. The sum stays the singles' 50 and the residual 50.
+test fn a_joint_set_is_reported_beside_the_sum_and_not_added_into_it() -> Bool {
+  match typed_graph_exclusive_report(readings: [
+    reading(class: "type_env", all: 1000, after: 970, end: 900),
+    reading(class: "items", all: 1000, after: 980, end: 900),
+    set_reading(class: "type_env+items", members: 2, all: 1000, after: 930, end: 900),
+  ]) {
+    ExclusiveBytesReported { classes: cs, graph_total: _, sum_of_exclusives: s, shared_or_unlisted: r } =>
+      list_length(items: cs) == 3
+        && byte_size_count(b: s) == 50
+        && match r { MeasureDifference { value: v } => byte_size_count(b: v) == 50, _ => false }
+    _ => false
+  }
+}
+
+test fn a_reading_of_no_members_refuses() -> Bool {
+  match typed_graph_exclusive_report(readings: [set_reading(class: "nothing", members: 0, all: 1000, after: 1000, end: 900)]) {
+    ExclusiveReadingTorn { class: c, cause: _ } => c == "nothing" as NonEmptyStr
+    _ => false
+  }
+}

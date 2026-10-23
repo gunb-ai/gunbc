@@ -1,0 +1,81 @@
+module test.claim.long.ui_polish_contract_witness_test
+import gunbc.roadmap_page { issue_assign_action_nodes, EventPrincipalDisplay, issue_avatar_face }
+import extdeps.google.issue_tracker { AvatarResolved, AvatarAbsent }
+import gunbc.roadmap_presentation { dependency_cycle_touches }
+import gunbc.roadmap_authority { edge }
+import std.markup { Fragment, Element, FragmentText, RawNode }
+import gunbc.site.document { site_document, site_styles, site_styles_css }
+import gunbc.site.controls { site_client_path }
+import gunbc.principal_mention { principal_mention_uri, principal_mention_read }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq, fabric_workflow_principal }
+import gunbc.roadmap_presentation { issue_status_label, issue_status_details, WorkRowView, OpenLifecycle, DoneLifecycle, ReviewLifecycle, SchedulingReady, SchedulingNotReady, NoActiveWork, ActivityUnobservable, CompletedWork, ActiveWorkRefused, ActionView, NoDisclosure, ActivityEvidenceRow }
+import gunbc.roadmap.roadmap_event_log { NodeOpen }
+import gunbc.harness.harness_throughput { RoundsUnobserved }
+
+fn element_count(f: Fragment, tag_name: String, attribute: String, value: String) -> Int {
+  match f {
+    FragmentText { content: _ } => 0
+    RawNode { content: _ } => 0
+    Element { tag, attributes, children } =>
+      (if tag == tag_name && (attribute == "" || any(attributes, a => a.name == attribute && a.value == value)) { 1 } else { 0 })
+        + fold(children, init: 0, f: (n, c) => n + element_count(f: c, tag_name: tag_name, attribute: attribute, value: value))
+  }
+}
+test fn shell_installs_one_shared_initializer_and_viewport() -> Bool {
+  let page = site_document(title: "Fixture", heading: "Fixture", styles: site_styles(rules: []), content: [])
+  element_count(f: page, tag_name: "script", attribute: "src", value: site_client_path) == 1
+    && element_count(f: page, tag_name: "meta", attribute: "name", value: "viewport") == 1
+    && element_count(f: page, tag_name: "header", attribute: "", value: "") == 1
+}
+test fn mentions_persist_canonical_principals_and_reject_noncanonical_forms() -> Bool {
+  let uri = principal_mention_uri(principal: fabric_workflow_principal)
+  uri == "gunbc-principal:principal%3Agunbc%2Fworkflows%2Ffabric"
+    && principal_mention_read(uri: uri) == Present { value: fabric_workflow_principal }
+    && principal_mention_read(uri: "gunbc-principal:principal%3agunbc%2fworkflows%2ffabric") == none
+    && principal_mention_read(uri: "gunbc-principal:principal%253Agunbc%252Fworkflows%252Ffabric") == none
+    && principal_mention_read(uri: "gunbc-principal:principal%3Agunbc%2Fworkflows%2F%FF") == none
+    && principal_mention_read(uri: "gunbc-principal:principal%3Agunbc%2Fworkflows%2Ffabric+") == none
+}
+test fn mention_unicode_roundtrips_without_names_or_emails_as_identity() -> Bool {
+  let p = PrincipalRef { authority: "fixture" as NonEmptyStr, namespace: "people" as NonEmptyStr, subject: "Zoë" as NonEmptyStr }
+  principal_mention_read(uri: principal_mention_uri(principal: p)) == Present { value: p }
+}
+fn status_fixture(observed: Bool, done: Bool, refused: Bool) -> WorkRowView {
+  WorkRowView { node_id: "fixture", headline: "fixture", summary: none,
+    lifecycle: if done { DoneLifecycle } else { OpenLifecycle }, scheduling: SchedulingReady, superseded_by: "",
+    activity: if refused { ActiveWorkRefused { summary: "launch refused", located_reason: "no capacity", evidence: [ActivityEvidenceRow { label: "receipt", value: "fixture-evidence" }], obligations: [] } } else { NoActiveWork },
+    action: ActionView { primary_action: none, secondary_actions: [] }, supporting_facts: [], disclosure: NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture" as NonEmptyStr }, worker_alive: false, standing: if observed { Present { value: NodeOpen } } else { none }, assignment: none, attempt_stale: false, profiles: [] }
+}
+test fn unknown_is_not_ready_and_refusal_does_not_erase_facts() -> Bool {
+  let refused = status_fixture(observed: true, done: false, refused: true)
+  let facts = issue_status_details(view: refused)
+  issue_status_label(view: status_fixture(observed: false, done: false, refused: false)) == "Unknown"
+    && issue_status_label(view: status_fixture(observed: true, done: true, refused: false)) == "Done"
+    && issue_status_label(view: refused) == "Blocked"
+    && facts.outcome == "no capacity" && count(facts.evidence) == 1
+    && string_contains(s: facts.planning, pattern: "Ready to dispatch")
+}
+
+test fn dependency_cycles_of_more_than_two_edges_are_visible() -> Bool {
+  let edges = [edge(child: "a", parent: "b"), edge(child: "b", parent: "c"), edge(child: "c", parent: "a"), edge(child: "d", parent: "a")]
+  dependency_cycle_touches(node_id: "a", edges: edges)
+    && !dependency_cycle_touches(node_id: "d", edges: edges)
+    && !dependency_cycle_touches(node_id: "a", edges: edges.skip(n: 1))
+}
+
+test fn assignee_is_one_picker_and_workflow_has_a_separate_commit() -> Bool {
+  let nodes = issue_assign_action_nodes(view: status_fixture(observed: true, done: false, refused: false), viewer: "", recents: [], expected_revision: "")
+  let form = Element { tag: "div", attributes: [], children: nodes }
+  element_count(f: form, tag_name: "datalist", attribute: "", value: "") == 0
+    && element_count(f: form, tag_name: "input", attribute: "role", value: "combobox") == 1
+    && element_count(f: form, tag_name: "button", attribute: "data-workflow", value: "1") == 1
+    && element_count(f: form, tag_name: "button", attribute: "hidden", value: "") == 1
+}
+test fn real_photos_are_images_and_known_photo_less_people_keep_initials() -> Bool {
+  let photo = EventPrincipalDisplay { name: "Alex", detail: "fixture@example.invalid", initials: "A", avatar: AvatarResolved, picture: "https://example.invalid/avatar.png" }
+  let plain = EventPrincipalDisplay { name: "Alex", detail: "fixture@example.invalid", initials: "A", avatar: AvatarAbsent, picture: "" }
+  let image = Element { tag: "span", attributes: [], children: issue_avatar_face(display: photo, workflow: false) }
+  element_count(f: image, tag_name: "img", attribute: "src", value: photo.picture) == 1
+    && issue_avatar_face(display: plain, workflow: false) == [FragmentText { content: "A" }]
+}

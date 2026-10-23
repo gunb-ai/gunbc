@@ -1,0 +1,345 @@
+[
+  {
+    "plate": "flat-p1",
+    "objects": [
+      "P1"
+    ],
+    "sha256": "8b2d06ff1c62551e620625320e9ca7f0f9b2dec46f66cd73cc299f8ba9a19436",
+    "seconds": 13468,
+    "grams": 110.47,
+    "support_fraction": 0.19202319438111473,
+    "support_mm_by_object": {
+      "P1": 7107.817209999873
+    },
+    "extrusion_mm_by_feature": {
+      "Brim": 39.25636000000001,
+      "Support": 4384.926979999898,
+      "Outer wall": 1989.7836599999985,
+      "Inner wall": 6362.920300000025,
+      "Bottom surface": 120.63829000000104,
+      "Internal solid infill": 9105.659139999412,
+      "Sparse infill": 7664.336570002776,
+      "Support interface": 2722.8902299999686,
+      "Overhang wall": 156.43353000000027,
+      "Bridge": 1173.5397399999993,
+      "Internal Bridge": 1848.4630599999405,
+      "Top surface": 1446.5618300000563
+    },
+    "path_bounds": {
+      "project": "flat-p1.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        6.565,
+        3.688,
+        173.474,
+        176.312
+      ],
+      "arc_moves_checked": 113578,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "2",
+        "error_code": "10018003"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "3",
+        "error_code": "1000C003"
+      }
+    ]
+  },
+  {
+    "plate": "flat-p2",
+    "objects": [
+      "P2"
+    ],
+    "sha256": "f5c8e44f96494e80625f209ad4a17b22a8144289931260d13537fda22276f043",
+    "seconds": 12788,
+    "grams": 104.79,
+    "support_fraction": 0.18899801892542564,
+    "support_mm_by_object": {
+      "P2": 6635.636689999975
+    },
+    "extrusion_mm_by_feature": {
+      "Brim": 40.33870000000001,
+      "Support": 4195.138669999891,
+      "Outer wall": 1989.7582500000083,
+      "Inner wall": 6370.295520000039,
+      "Bottom surface": 120.69251000000102,
+      "Internal solid infill": 8520.413849999228,
+      "Sparse infill": 7096.911670002082,
+      "Support interface": 2440.4980199999513,
+      "Overhang wall": 162.90333000000032,
+      "Bridge": 1092.3245399999942,
+      "Internal Bridge": 1723.4529800000203,
+      "Top surface": 1356.8288100000264
+    },
+    "path_bounds": {
+      "project": "flat-p2.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        16.526,
+        3.688,
+        161.927,
+        176.312
+      ],
+      "arc_moves_checked": 105165,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "2",
+        "error_code": "10018003"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "3",
+        "error_code": "1000C003"
+      }
+    ]
+  },
+  {
+    "plate": "overnight-batch",
+    "objects": [
+      "P1",
+      "P2",
+      "S1",
+      "S2",
+      "K3",
+      "K4",
+      "K6",
+      "K7"
+    ],
+    "sha256": "ebd858a69bb1fdf8c4395d0e8fc5d6ffe0ad94d3da84ad236e56064226eb6f6d",
+    "seconds": 65334,
+    "grams": 256.63,
+    "support_fraction": 0.09327656553947446,
+    "support_mm_by_object": {
+      "P1": 3990.363999999155,
+      "P2": 4033.2482200002623,
+      "S1": 0.0,
+      "S2": 0.0,
+      "K3": 0.0,
+      "K4": 0.0,
+      "K6": 0.0,
+      "K7": 0.0
+    },
+    "extrusion_mm_by_feature": {
+      "Brim": 436.2654700000004,
+      "Support": 7615.634810000071,
+      "Outer wall": 14461.548310000138,
+      "Inner wall": 42476.19716999722,
+      "Gap infill": 444.90495999999405,
+      "Bottom surface": 266.87240000000037,
+      "Internal solid infill": 4036.333590001026,
+      "Sparse infill": 14838.138619997639,
+      "Internal Bridge": 502.29543,
+      "Top surface": 451.0465200000047,
+      "Support interface": 407.9774099999989,
+      "Overhang wall": 33.281879999999916,
+      "Bridge": 49.096600000000144
+    },
+    "path_bounds": {
+      "project": "overnight-batch.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        27.807,
+        6.569,
+        152.197,
+        175.306
+      ],
+      "arc_moves_checked": 160304,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "2",
+        "error_code": "10018003"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "3",
+        "error_code": "1000C003"
+      }
+    ]
+  },
+  {
+    "plate": "rear-edge-batch",
+    "objects": [
+      "P1",
+      "P2",
+      "S1",
+      "S2"
+    ],
+    "sha256": "e9f22e9a526bc51c4ff6ecf7753169c8b22117b0e31c7e1fc436522ba1cb4eeb",
+    "seconds": 64077,
+    "grams": 253.21,
+    "support_fraction": 0.09453809237306848,
+    "support_mm_by_object": {
+      "P1": 3990.363999999155,
+      "P2": 4033.250040000262
+    },
+    "extrusion_mm_by_feature": {
+      "Brim": 342.6094499999995,
+      "Outer wall": 14233.400170000155,
+      "Inner wall": 41977.64666999682,
+      "Bottom surface": 244.9387599999979,
+      "Support": 7615.636620000069,
+      "Gap infill": 444.90497999999405,
+      "Internal solid infill": 3854.6179600009586,
+      "Sparse infill": 14789.359429997676,
+      "Internal Bridge": 468.96364999999844,
+      "Top surface": 409.3238600000029,
+      "Support interface": 407.97741999999886,
+      "Overhang wall": 33.281879999999916,
+      "Bridge": 49.09654000000015
+    },
+    "path_bounds": {
+      "project": "rear-edge-batch.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        46.001,
+        6.569,
+        133.999,
+        175.307
+      ],
+      "arc_moves_checked": 157463,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "2",
+        "error_code": "10018003"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "3",
+        "error_code": "1000C003"
+      }
+    ]
+  },
+  {
+    "plate": "sockets",
+    "objects": [
+      "S1",
+      "S2"
+    ],
+    "sha256": "653ab3fd3904b9c42e4a0cfdc30e81ce31c087821ede4c0def7a1ff18badd1bf",
+    "seconds": 1710,
+    "grams": 11.53,
+    "support_fraction": 0.0,
+    "support_mm_by_object": {},
+    "extrusion_mm_by_feature": {
+      "Brim": 36.37027999999997,
+      "Outer wall": 575.5053600000034,
+      "Inner wall": 1304.2074999999932,
+      "Bottom surface": 138.73486000000022,
+      "Internal solid infill": 1009.3784700000017,
+      "Sparse infill": 150.20226000000105,
+      "Internal Bridge": 199.76742999999996,
+      "Gap infill": 251.9059999999992,
+      "Top surface": 176.11693999999747,
+      "Support": 0.0,
+      "Support interface": 0.0
+    },
+    "path_bounds": {
+      "project": "sockets.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        60.3,
+        67.3,
+        119.7,
+        112.7
+      ],
+      "arc_moves_checked": 2335,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      }
+    ]
+  },
+  {
+    "plate": "upright-batch",
+    "objects": [
+      "P1",
+      "P2",
+      "S1",
+      "S2"
+    ],
+    "sha256": "f9cb4e6b02b47fec3755fcaceed85bcfb6c0a45afbd5b108a718df37b64de9b4",
+    "seconds": 60950,
+    "grams": 271.17,
+    "support_fraction": 0.18648133614009466,
+    "support_mm_by_object": {
+      "P1": 8557.300879998935,
+      "P2": 8392.887619998504
+    },
+    "extrusion_mm_by_feature": {
+      "Brim": 233.8546600000002,
+      "Outer wall": 12509.640480000498,
+      "Inner wall": 38252.24960999682,
+      "Bottom surface": 138.76768000000007,
+      "Support": 14621.922180001462,
+      "Gap infill": 473.72311999999897,
+      "Internal solid infill": 4802.47321000023,
+      "Support interface": 2328.2663199999815,
+      "Sparse infill": 15013.75974000074,
+      "Overhang wall": 201.28986,
+      "Bridge": 442.95680999999814,
+      "Internal Bridge": 997.9948699999939,
+      "Top surface": 877.9269200000089
+    },
+    "path_bounds": {
+      "project": "upright-batch.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        14.444,
+        18.259,
+        161.653,
+        162.541
+      ],
+      "arc_moves_checked": 168099,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "2",
+        "error_code": "10018003"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "3",
+        "error_code": "1000C003"
+      }
+    ]
+  }
+]

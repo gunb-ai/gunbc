@@ -1,0 +1,237 @@
+module product.training.checkpoint
+
+import product.training.readback { TrainingRunSubject, TrainingCheckpointObservation }
+import product.training.attempt_graph { TrainingRunAttemptGraph, graph_admits_attempt }
+import product.training.resolution {
+  TrainingResolvedManifest, TrainingResolutionAxis,
+  TrainingManifestAgreement, TrainingManifestIdentical, TrainingManifestDiffers,
+  training_manifest_agreement,
+}
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
+import std.content_hash { Sha256Digest }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List, Bool }
+
+// RESUMING FROM A CHECKPOINT IS AN AUTHORIZATION, AND AN OBSERVATION IS NOT ONE. Seeing a
+// checkpoint-like artifact establishes that something was written. It does not establish that the
+// thing written is a state training can continue from, and the gap between those two is where the
+// expensive failure lives: a resume from a PARTIALLY published checkpoint takes model weights from
+// step 500 beside an optimizer state from step 400, and the run does not crash. It converges to a
+// different model, slowly, and every downstream comparison silently joins on a Work identity that
+// describes a computation which never happened.
+//
+// So admission is a separate carrier with its own refusals, and the observation cannot be widened
+// into it by renaming. What must hold is enumerated as a closed component roster rather than
+// checked ad hoc, because the failure is per-component: a missing optimizer state and a missing
+// RNG state are both "incomplete", and a check that asked "are there components?" would pass a
+// checkpoint holding only weights.
+type CheckpointComponent
+  = ModelWeights
+  | OptimizerState
+  | SchedulerState
+  | RngState
+  | DataOrderState
+
+fn checkpoint_components() -> List<CheckpointComponent> {
+  [ModelWeights, OptimizerState, SchedulerState, RngState, DataOrderState]
+}
+
+fn checkpoint_component_name(c: CheckpointComponent) -> NonEmptyStr {
+  match c {
+    ModelWeights => "model_weights"
+    OptimizerState => "optimizer_state"
+    SchedulerState => "scheduler_state"
+    RngState => "rng_state"
+    DataOrderState => "data_order_state"
+  }
+}
+
+fn checkpoint_component_eq(a: CheckpointComponent, b: CheckpointComponent) -> Bool {
+  checkpoint_component_name(c: a) == checkpoint_component_name(c: b)
+}
+
+// EACH COMPONENT CARRIES ITS OWN DIGEST AND ITS OWN MATERIALIZATION READBACK. A single digest over
+// the whole checkpoint would make "which part is missing" unanswerable, and a component recorded
+// without a readback is a claim that bytes exist somewhere -- the exact claim the resume is about
+// to bet a training run on.
+type CheckpointComponentReceipt {
+  component: CheckpointComponent
+  artifact: Sha256Digest
+  materialization: NonEmptyStr
+  readback: ObservationReceiptRef
+}
+
+// ATOMIC PUBLICATION IS OBSERVED, NOT ASSUMED, AND UNOBSERVED IS ITS OWN ARM. A writer that
+// published components one at a time can leave a checkpoint whose parts are individually valid and
+// jointly inconsistent. "We did not observe the publication standing" is not "publication was
+// incomplete" and is not "publication was atomic": it is the absence of a producer, and collapsing
+// it in either direction either blocks a healthy resume or authorizes a torn one.
+type CheckpointPublicationStanding
+  = AtomicallyPublished { receipt: ObservationReceiptRef }
+  | PublicationIncomplete { detail: NonEmptyStr }
+  | PublicationUnobserved { reason: NonEmptyStr }
+
+// THE ADMITTED CHECKPOINT IS WHAT A RESUME MAY CONSUME, and it is sealed so that possession means
+// the fold below ran. Note what possession does NOT mean under the current compiler: a generic
+// sealed carrier can be impersonated at a direct-call argument by another applied generic type,
+// measured and routed as a separate defect. So a consumer must still be handed, or re-derive, the
+// subject it expects rather than trusting the parameter's declared type.
+type AdmittedTrainingCheckpoint<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  global_step: Nat
+  components: List<CheckpointComponentReceipt>
+  effective_manifest: TrainingResolvedManifest
+  publication: ObservationReceiptRef
+}
+
+type CheckpointAdmissionRefusal<P>
+  = CheckpointAttemptOutsideRun { attempt: FabricIdentity<P, ExecutionAttemptKey> }
+  | CheckpointComponentMissing { component: CheckpointComponent }
+  | CheckpointComponentDigestMismatch {
+      component: CheckpointComponent,
+      observed: Sha256Digest,
+      component_artifact: Sha256Digest,
+    }
+  | CheckpointPublicationNotAtomic { detail: NonEmptyStr }
+  | CheckpointPublicationStandingUnobserved { reason: NonEmptyStr }
+  | CheckpointManifestDiverged { coordinate: TrainingResolutionAxis }
+
+type CheckpointAdmission<P>
+  = CheckpointAdmitted { checkpoint: AdmittedTrainingCheckpoint<P> }
+  | CheckpointRefused {
+      first: CheckpointAdmissionRefusal<P>,
+      more: List<CheckpointAdmissionRefusal<P>>,
+    }
+
+fn admitted_checkpoint_seal<P>(
+  subject: TrainingRunSubject<P>,
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  global_step: Nat,
+  components: List<CheckpointComponentReceipt>,
+  effective_manifest: TrainingResolvedManifest,
+  publication: ObservationReceiptRef,
+) -> AdmittedTrainingCheckpoint<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.checkpoint", decl_name: "admit_training_checkpoint"),
+  ]
+  = AdmittedTrainingCheckpoint {
+      subject: subject,
+      attempt: attempt,
+      global_step: global_step,
+      components: components,
+      effective_manifest: effective_manifest,
+      publication: publication,
+    }
+
+fn missing_component_refusals<P>(
+  components: List<CheckpointComponentReceipt>,
+) -> List<CheckpointAdmissionRefusal<P>> {
+  checkpoint_components().flat_map(c =>
+    if components.any(r => checkpoint_component_eq(a: r.component, b: c)) {
+      []
+    } else {
+      [CheckpointComponentMissing { component: c }]
+    }
+  )
+}
+
+fn publication_refusals<P>(
+  standing: CheckpointPublicationStanding,
+) -> List<CheckpointAdmissionRefusal<P>> {
+  match standing {
+    AtomicallyPublished { receipt: _ } => []
+    PublicationIncomplete { detail: d } => [CheckpointPublicationNotAtomic { detail: d }]
+    PublicationUnobserved { reason: r } =>
+      [CheckpointPublicationStandingUnobserved { reason: r }]
+  }
+}
+
+fn manifest_refusals<P>(
+  intended: TrainingResolvedManifest,
+  observed: TrainingResolvedManifest,
+) -> List<CheckpointAdmissionRefusal<P>> {
+  match training_manifest_agreement(intended: intended, observed: observed) {
+    TrainingManifestIdentical => []
+    TrainingManifestDiffers { first: f, more: m } =>
+      [[CheckpointManifestDiverged { coordinate: f }], m.map(a => CheckpointManifestDiverged { coordinate: a })]
+        .flat_map(x => x)
+  }
+}
+
+type RefusalSplit<P> {
+  head_taken: Bool
+  more: List<CheckpointAdmissionRefusal<P>>
+}
+
+fn refusals_after_head<P>(
+  rs: List<CheckpointAdmissionRefusal<P>>,
+) -> List<CheckpointAdmissionRefusal<P>> {
+  rs
+    .fold(
+      RefusalSplit { head_taken: false, more: [] },
+      (acc, r) =>
+        if acc.head_taken {
+          RefusalSplit { head_taken: true, more: [acc.more, [r]].flat_map(x => x) }
+        } else {
+          RefusalSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+// THE FOLD REPORTS EVERY REASON THE CHECKPOINT IS NOT RESUMABLE. A checkpoint missing its RNG state
+// AND diverging on sequence length would otherwise take two attempts to learn about, and the second
+// reason would read as a new defect introduced by fixing the first.
+//
+// The attempt must be a member of the admitted run graph. Without that, a checkpoint from another
+// run whose components all read back correctly is admissible here -- every component honest, the
+// publication genuinely atomic, and the state belonging to a different computation.
+fn admit_training_checkpoint<P>(
+  graph: TrainingRunAttemptGraph<P>,
+  observation: TrainingCheckpointObservation<P>,
+  components: List<CheckpointComponentReceipt>,
+  standing: CheckpointPublicationStanding,
+  intended_manifest: TrainingResolvedManifest,
+  observed_manifest: TrainingResolvedManifest,
+) -> CheckpointAdmission<P> {
+  let membership =
+    if graph_admits_attempt(graph: graph, attempt: observation.attempt) {
+      []
+    } else {
+      [CheckpointAttemptOutsideRun { attempt: observation.attempt }]
+    }
+  let refusals =
+    [
+      membership,
+      missing_component_refusals(components: components),
+      publication_refusals(standing: standing),
+      manifest_refusals(intended: intended_manifest, observed: observed_manifest),
+    ].flat_map(x => x)
+  match refusals.first() {
+    Present { value: head } =>
+      CheckpointRefused { first: head, more: refusals_after_head(rs: refusals) }
+    none =>
+      match standing {
+        AtomicallyPublished { receipt: pub_receipt } =>
+          CheckpointAdmitted {
+            checkpoint: admitted_checkpoint_seal(
+              subject: graph.subject,
+              attempt: observation.attempt,
+              global_step: observation.global_step,
+              components: components,
+              effective_manifest: observed_manifest,
+              publication: pub_receipt,
+            ),
+          }
+        PublicationIncomplete { detail: d } =>
+          CheckpointRefused { first: CheckpointPublicationNotAtomic { detail: d }, more: [] }
+        PublicationUnobserved { reason: r } =>
+          CheckpointRefused {
+            first: CheckpointPublicationStandingUnobserved { reason: r },
+            more: [],
+          }
+      }
+  }
+}

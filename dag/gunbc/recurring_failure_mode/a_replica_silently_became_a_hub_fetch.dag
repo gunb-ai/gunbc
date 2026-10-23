@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_replica_silently_became_a_hub_fetch
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_replica_silently_became_a_hub_fetch: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_replica_silently_became_a_hub_fetch" as NonEmptyStr,
+
+  receipts: [
+    "A REPLICA SILENTLY BECAME A HUB FETCH AND WAS REPORTED UPWARD AS A REPLICA. The invalid state is an acquisition whose ROLE was inferred from a failure: the checkpoint materialize asked each group peer to verify, and when none was admitted it fell through to fetching from the Hub -- so a target meant to replicate over the 50 Gb/s fabric rail fetched hundreds of gigabytes over the wireless management link instead, and the run that did it was dispatched, described and reported as a replica. Nothing refused. The fall-through was labelled fail-closed because nothing was missed; it is DESIGN section 5's absorbing fallback exactly -- the superset answer (fetch everything from upstream) standing in for the precise one, destroying the only signal that the precise mechanism (peer admission) was broken.",
+
+    "SPECIMEN, 2026-10-03, gunbc#13040 at 1924d37. Three dispatches described as rail replicas of the verified FP8 seed on srv7 -- srv6 37144472940, srv5 37144951358, srv8 37145004207 -- each ran `hf download` from the Hub instead (host reads: srv6 wlP9s9 rx 53 MB/s with rail rx 0; srv5 stalled at 17 GB; srv8 142 GB over the radio). srv7 was not admitted as a source because of a SECOND defect the fallback concealed: the nested peer-readback and peer-serve host sessions reused the target session's credential file name (gunbc-checkpoint-materialize-admin-password), and each nested bracket WIPES that file on exit, so the peer's `hf cache verify` and every later target leg ran `sudo` with an empty password and exited non-zero. srv7's snapshot was good throughout: run directly it verified 73 files, EXIT=0. The fallback converted a credential defect into hours of radio transfer that looked like progress.",
+
+    "THE TELL, for a reader of any acquisition receipt: the receipt says what the run DID, not what it was dispatched AS. A run dispatched as a replica whose receipt names a Hub source, or whose host shows the radio busy and the rail idle, is this class. The cheap discriminator is the role line: since the repair, every checkpoint receipt states `role: SEED` or `role: REPLICA of seed <host>`, and a replica's only non-success outcome is a refusal naming the seed's exact cause.",
+
+    "THE REPAIR (gunbc#13040 at 363b4f4, operator ruling 'eliminate all fallbacks'): the role is a MODELED FACT, never an inference -- gunbc.spark.arm_group_launch_dispatch glm53_checkpoint_seed_host names the seed; the seed fetches from the Hub; every other host is a rail replica of that seed or REFUSES with the seed's verify output and exit code (gunbc.spark.group_checkpoint_materialize checkpoint_materialize_work). An own-verify that learned nothing refuses with what it captured. The credential defect is fixed by distinct credential files per nested session (bebb0a1). The sweep of the path is posted on gunbc#13040.",
+
+    "RUNG FOUND AT: silent wrongness (outside the ladder, forbidden). RUNG NOW: mitigatable -- the replica role cannot fall through, because the fall-through arm no longer exists; its refusal is typed and located. ATTAINABLE CEILING: structurally impossible for this subject -- an acquisition's source set is a function of its declared role (seed: the Hub; replica: exactly its seed), so a replica with a Hub source has no constructor. NEXT-RUNG TRIGGER: the role carried on the acquisition subject itself (gunbc.spark.model_snapshot_acquisition ModelSnapshotRole already has SnapshotSeed | SnapshotReplicaOf), with the replica arm's source list built from the seed alone, so the Hub source is unrepresentable for a replica rather than merely unreached by the caller.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,23 @@
+module gunbc.frame_independent_symbol_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Forward-freeze receipt for the v1 seed realization of the already-modeled Symbol identity
+// rule: equality is decided by lexeme, never by the ordinal at which one evaluation frame met
+// that lexeme. Required-floor deliberately creates a fresh InterpContext per claim, while values
+// can cross that boundary through the declared pure-producer share; the old per-frame ordinal
+// therefore made equal spellings unequal and distinct spellings equal.
+data frame_independent_symbol_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CanonicalSymbolTable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CANONICAL_SYMBOLS", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "canonical_symbol_spelling", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: required-floor execution and its fresh-per-claim InterpContext lifecycle remain in the v1 seed, so the realization that interns the Symbol carrier is still Rust. The diff adds exactly FOUR shipped module-scope declarations: canonical_symbol_spelling provides process-canonical lexeme identity; CanonicalSymbolTable owns the retained population and exact spelling-byte count; CANONICAL_SYMBOLS is that process-lifetime store; and CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP makes its permitted spelling-payload growth explicit and fail-closed. Symbol already existed and is an ExistingSeedItemModified carrier; CanonicalSymbolTable::intern_with_cap, PartialEq::eq, and Hash::hash are methods inside impls; and cfg(test) functions are evidence rather than shipped seed growth. These items add no language behavior or semantic concept: they remove the seed fork from v2.std.symbol symbol_equality_is_lexeme_equality at the required-floor boundary while pricing the process-lifetime storage required by the seed realization. The companion changes to fields_get, portable values, and floor instrumentation modify existing declarations rather than adding module-scope items.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete canonical_symbol_spelling, CanonicalSymbolTable, CANONICAL_SYMBOLS, and CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP when the v2 evaluator owns Symbol construction and Value structural equality, and the v1 interpreter seed retires; the trigger requires the evaluator migration, not merely an empty cross-claim share roster, because ordinary values and matches require the same identity law.",
+  current_boundary: "v2.std.symbol symbol_equality_is_lexeme_equality -> v1_compiler.v1_interpreter Symbol / bounded canonical symbol table -> Value structural equality and pattern matching -> required-floor fresh evaluation frames"
+}

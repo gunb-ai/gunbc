@@ -1,0 +1,66 @@
+module extdeps.web_audio
+
+import std.types { String, Int, Bool }
+import std.measure { Hertz, hertz_count }
+import std.decimal { fixed_point_wire }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/webaudio/"
+  }
+}
+
+data web_audio_note: String = "Cited upstream: W3C Web Audio API. This models the small part of the API the dashboard's operation sounds actually reach — the OscillatorType enumeration, the AudioContext/OscillatorNode/GainNode interface names, and the gain-envelope method names — keeping the upstream spellings so the emitted JS is a projection of a modeled fact rather than a hand-spelled string (DESIGN section 3: cite the source, keep its real names, model what the API actually returns). It is deliberately the BOUNDED grain: not the whole graph API, only the rows a consumer needs today (DESIGN section 6, priced by displaced cost).
+
+Two upstream facts are load-bearing for the register above it and are recorded here rather than in the consumer, because they are the API's, not ours. FIRST, gain is a linear amplitude in [0, 1] and the API's own ramp for a percussive decay is exponentialRampToValueAtTime, which cannot ramp TO zero (the spec requires a nonzero target — a zero target throws); so a decay lands on a small epsilon and the node is stopped, which is why gain_epsilon_micros exists at all and is not an arbitrary fudge. SECOND, an AudioContext created outside a user gesture starts in the 'suspended' state under every browser's autoplay policy, and resumption is an EXPLICIT resume() call whose promise resolves when the clock actually runs — binding construction to a user gesture is what makes resume() permitted, never what makes it unnecessary. The earlier form of this sentence claimed a pointerdown-born context needs no resume dance; that inference was refuted by measurement (a fresh context can sit suspended with currentTime frozen at 0 even inside the gesture handler, so a short tick scheduled on that clock is silently swallowed — the operator's ears, remodel W1d A.2), and the consumer's contract is recorded in gunbc.roadmap_component.sound_preamble_note: gate on state, running plays immediately, anything else routes through resume().then(play).
+
+Amplitudes are carried as micros (parts per million) rather than a float because the substrate's arithmetic here is integral and a fractional literal would be a second representation of the same magnitude; wire projection divides once, at the boundary, where the API's own units demand it."
+
+type OscillatorType
+  = Sine
+  | Square
+  | Sawtooth
+  | Triangle
+
+fn oscillator_type_wire(t: OscillatorType) -> String {
+  match t {
+    Sine => "sine"
+    Square => "square"
+    Sawtooth => "sawtooth"
+    Triangle => "triangle"
+  }
+}
+
+data web_audio_context_interface: String = "AudioContext"
+data web_audio_create_oscillator_method: String = "createOscillator"
+data web_audio_create_gain_method: String = "createGain"
+data web_audio_connect_method: String = "connect"
+data web_audio_destination_property: String = "destination"
+data web_audio_current_time_property: String = "currentTime"
+data web_audio_frequency_property: String = "frequency"
+data web_audio_gain_property: String = "gain"
+data web_audio_type_property: String = "type"
+data web_audio_value_property: String = "value"
+data web_audio_set_value_at_time_method: String = "setValueAtTime"
+data web_audio_exponential_ramp_method: String = "exponentialRampToValueAtTime"
+data web_audio_start_method: String = "start"
+data web_audio_stop_method: String = "stop"
+
+data web_audio_gain_epsilon_micros: Int = 1000
+
+fn web_audio_frequency_wire(f: Hertz) -> String {
+  to_string(hertz_count(h: f))
+}
+
+data web_audio_micros_exponent: Int = 6
+
+fn micros_decimal_wire(micros: Int) -> String {
+  fixed_point_wire(value: micros, decimals: web_audio_micros_exponent)
+}
+
+fn milliseconds_seconds_wire(ms: Int) -> String {
+  micros_decimal_wire(micros: ms * 1000)
+}

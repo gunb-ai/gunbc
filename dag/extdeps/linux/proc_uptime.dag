@@ -1,0 +1,123 @@
+module extdeps.linux.proc_uptime
+
+import std.types { Int, String }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond, milliseconds_per_second }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.optional { Present, Absent }
+import v2.std.algebra { skip }
+import std.decimal { decimal_digits_only }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.linux.procfs
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/proc_uptime.5.html"
+  }
+}
+
+// /proc/uptime's SHAPE. proc_uptime(5): two numbers in seconds, the system's uptime (including time
+// spent in suspend) and the time spent idle. The kernel prints each as `%lu.%02lu`
+// (fs/proc/uptime.c), so the resolution is one centisecond and the fraction is always two digits.
+// The first value comes from the kernel's boot-based clock, which a wall-clock step (NTP, settimeofday)
+// does not move. That is why a duration between two readings of it is an elapsed interval, while two
+// `date` readings are not. This module owns the file's shape; the read is extdeps.linux.procfs
+// ReadUptime, one transport of N (DESIGN §3). The reading is carried as std.measure Millisecond:
+// std.measure has no centisecond scale, and the centisecond is a fact of this FORMAT, so the
+// conversion happens here, in the parse, and nowhere downstream.
+type ProcUptimeRead
+  = UptimeObserved { uptime: Millisecond }
+  | UptimeRefused { detail: String }
+
+// `%02lu`: the fraction counts hundredths of a second (fs/proc/uptime.c).
+data proc_uptime_fraction_units_per_second: Nat = 100
+
+// THE RECORD FRAMING, exactly as the kernel writes it: ONE line, `%lu.%02lu %lu.%02lu\n` -- two
+// fields separated by one space, and the single newline that ends the record. Missing or extra
+// fields, a second record, surrounding blanks and a missing newline are all refused with the text
+// read; only the first field (uptime) is carried, but the idle field must be well-formed too, so a
+// record the kernel could not have written never yields a reading.
+fn proc_uptime_parse(text: String) -> ProcUptimeRead {
+  let len = string_length(s: text)
+  if len == 0 || substring(s: text, start: len - 1, end: len) != "\n" {
+    return UptimeRefused { detail: concat("/proc/uptime record does not end with one newline: '", text, "'") }
+  }
+  let line = substring(s: text, start: 0, end: len - 1)
+  if contains(line, "\n") {
+    return UptimeRefused { detail: concat("/proc/uptime has more than one record: '", text, "'") }
+  }
+  let fields = split(s: line, delimiter: " ")
+  if count(fields) != 2 {
+    return UptimeRefused { detail: concat("/proc/uptime record is not exactly two fields: '", text, "'") }
+  }
+  match fields.first() {
+    Absent => UptimeRefused { detail: concat("/proc/uptime record is not exactly two fields: '", text, "'") }
+    Present { value: uptime } =>
+      match fields.skip(n: 1).first() {
+        Absent => UptimeRefused { detail: concat("/proc/uptime record is not exactly two fields: '", text, "'") }
+        Present { value: idle } =>
+          match proc_uptime_fixed_decimal(field: idle) {
+            ProcUptimeFieldRefused { detail: d } => UptimeRefused { detail: concat("/proc/uptime idle field: ", d) }
+            ProcUptimeFieldRead { value: _ } =>
+              match proc_uptime_fixed_decimal(field: uptime) {
+                ProcUptimeFieldRefused { detail: d } => UptimeRefused { detail: concat("/proc/uptime uptime field: ", d) }
+                ProcUptimeFieldRead { value: v } => UptimeObserved { uptime: v }
+              }
+          }
+      }
+  }
+}
+
+type ProcUptimeField
+  = ProcUptimeFieldRead { value: Millisecond }
+  | ProcUptimeFieldRefused { detail: String }
+
+// ONE FIELD, AN UNSIGNED FIXED-DECIMAL: one or more decimal digits, '.', exactly two decimal digits.
+// The grammar is checked on the characters (std.decimal decimal_digits_only) BEFORE any integer is
+// parsed, so a sign, a blank or a third fraction digit refuses here rather than depending on what
+// the signed parse_int happens to accept.
+fn proc_uptime_fixed_decimal(field: String) -> ProcUptimeField {
+  let parts = split(s: field, delimiter: ".")
+  if count(parts) != 2 {
+    return ProcUptimeFieldRefused { detail: concat("not seconds.hundredths: '", field, "'") }
+  }
+  match parts.first() {
+    Absent => ProcUptimeFieldRefused { detail: concat("not seconds.hundredths: '", field, "'") }
+    Present { value: whole } =>
+      match parts.skip(n: 1).first() {
+        Absent => ProcUptimeFieldRefused { detail: concat("not seconds.hundredths: '", field, "'") }
+        Present { value: frac } =>
+          if string_length(s: whole) == 0 || !decimal_digits_only(s: whole) || string_length(s: frac) != 2 || !decimal_digits_only(s: frac) {
+            ProcUptimeFieldRefused { detail: concat("not unsigned digits.two-digits: '", field, "'") }
+          } else {
+            match parse_int(s: whole) {
+              Absent => ProcUptimeFieldRefused { detail: concat("seconds not representable: '", field, "'") }
+              Present { value: si } =>
+                match parse_int(s: frac) {
+                  Absent => ProcUptimeFieldRefused { detail: concat("hundredths not representable: '", field, "'") }
+                  Present { value: ci } =>
+                    match checked_int_to_nat(n: si) {
+                      Absent => ProcUptimeFieldRefused { detail: concat("seconds not representable: '", field, "'") }
+                      Present { value: secs } =>
+                        match checked_int_to_nat(n: ci) {
+                          Absent => ProcUptimeFieldRefused { detail: concat("hundredths not representable: '", field, "'") }
+                          Present { value: hundredths } =>
+                            ProcUptimeFieldRead { value: millisecond(count: secs * milliseconds_per_second()
+                              + hundredths * (milliseconds_per_second() / proc_uptime_fraction_units_per_second)) }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ONE READING THROUGH THE procfs TRANSPORT. A failed read is its own refusal, never a parse of the
+// empty text it left behind.
+fn proc_uptime_read() -> ProcUptimeRead {
+  let r = linux.Procfs.ReadUptime()
+  if r.success { proc_uptime_parse(text: r.value) } else { UptimeRefused { detail: concat("/proc/uptime read failed: '", r.value, "'") } }
+}

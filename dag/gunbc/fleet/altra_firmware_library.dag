@@ -1,0 +1,233 @@
+module gunbc.altra_firmware_library
+
+import std.types { NonEmptyStr, List, Bool, String }
+import std.measure { ByteSize, byte_size }
+import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.uri { Uri, uri_https }
+import extdeps.firmware.types { FirmwareReleaseRow, BmcController }
+import extdeps.bmc.capability { BmcFirmwareObservation }
+import gunbc.fleet_bmc_observation { srv3_bmc_firmware_observation, srv4_bmc_firmware_observation }
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_bios_3_10_instant_flash_release,
+  asrock_altrad8ud_bmc_3_22_00_release, asrock_altrad8ud_download_authority,
+  asrock_altrad8ud_bmc_3_22_00_push_artifact_name, asrock_altrad8ud_bmc_3_22_00_push_artifact_bytes,
+  asrock_altrad8ud_bmc_3_22_00_push_artifact_digest,
+}
+import extdeps.boards.asrock_altrad8ud_beta_firmware {
+  AsrockAltrad8udBetaFirmwareListing, asrock_altrad8ud_beta_firmware_listings,
+  asrock_altrad8ud_beta_bios_4_01_listing, asrock_altrad8ud_beta_scp_2_10_20260210_listing,
+  asrock_altrad8ud_beta_disclaimer, AsrockBetaFirmwareVersion,
+  SemanticFirmwareVersion, ScpBuildVersion,
+}
+import extdeps.ampere.altra_ssif_patch {
+  AltraSsifPatchBundle, altra_ssif_v6,
+}
+
+// Our Drive locations belong to the fleet library, not ASRock's upstream facts.
+// All archive byte counts and SHA-256 values were measured from authenticated
+// Drive downloads on 2026-10-07. They identify the ZIP, never its flashable member.
+// The BIOS ZIP matched the existing vendor-download digest. BMC ZIP contains
+// altrad8ud-1l2t_3.22.00.static.mtd.tar; ROM ZIP contains ALTRAD8UD-1L2T_3.10.ROM.
+// A Drive /view link is for human retrieval, not an unauthenticated raw download.
+// A beta build is a listing on ASRock's beta table, not a cited release row, so
+// its archive names the listing it was downloaded against.
+type AltraLibraryArchiveSubject
+  = FirmwareDistribution { firmware_release: FirmwareReleaseRow }
+  | BetaFirmwareDistribution { listing: AsrockAltrad8udBetaFirmwareListing }
+  | SsifKernelPatchBundle
+
+type AltraLibraryArchive {
+  subject: AltraLibraryArchiveSubject
+  archive_name: NonEmptyStr
+  human_retrieval: Uri
+  archive_bytes: ByteSize
+  archive_digest: Digest?
+}
+
+data altra_firmware_drive_archives: List<AltraLibraryArchive> = [
+  AltraLibraryArchive {
+    subject: FirmwareDistribution { firmware_release: asrock_altrad8ud_bios_3_10_instant_flash_release },
+    archive_name: "ALTRAD8UD-1L2T(3.10)ROM.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1qnoi3fVvDYoQy3NLfF0dhQIghIWZxC41/view"),
+    archive_bytes: asrock_altrad8ud_bios_3_10_instant_flash_release.image_bytes,
+    archive_digest: asrock_altrad8ud_bios_3_10_instant_flash_release.image_digest,
+  },
+  AltraLibraryArchive {
+    subject: FirmwareDistribution { firmware_release: asrock_altrad8ud_bmc_3_22_00_release },
+    archive_name: "ALTRAD8UD-1L2T(03.22.00)BMC.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/19e4kjCDcDMmkYaEbt1juPsvMCR2l4e4R/view"),
+    archive_bytes: byte_size(count: 29060210),
+    archive_digest: Present { value: sha256_digest(hex: "0c1f458c396aff76ae0259509ea05c53eef57809fa202721875586792fa807bb") },
+  },
+  AltraLibraryArchive {
+    subject: SsifKernelPatchBundle,
+    archive_name: "SSIF_PATCH_V6.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1TdY8pJ86LwNVktYzrf0oGICwqElcUj5F/view"),
+    archive_bytes: byte_size(count: 5697),
+    archive_digest: Present { value: sha256_digest(hex: "74ca2343e20b682f419f3240006dfc55ed391978e57c86bdce698e8b72ee0531") },
+  },
+  AltraLibraryArchive {
+    subject: BetaFirmwareDistribution { listing: asrock_altrad8ud_beta_bios_4_01_listing },
+    archive_name: "ALTRAD8UD-1L2T(4.01)TAR.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1HNtIH6UOkuBHSXgr5SWH6ERYR7Gev8wz/view"),
+    archive_bytes: byte_size(count: 5359843),
+    archive_digest: Present { value: sha256_digest(hex: "5753a13b92c5f3c9cfeb5dc5fc2f06c6f1ef34e8e594a7ed9598a2ae3177d5b0") },
+  },
+  AltraLibraryArchive {
+    subject: BetaFirmwareDistribution { listing: asrock_altrad8ud_beta_bios_4_01_listing },
+    archive_name: "ALTRAD8UD-1L2T(4.01)ROM.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1gMuW0TU0bDwCSC60jtJbC3a8OfRtcPnb/view"),
+    archive_bytes: byte_size(count: 5359521),
+    archive_digest: Present { value: sha256_digest(hex: "8adc6439518a95b5aa1d472ae37d53f2814e43008eba524d2526c027a8f0dc51") },
+  },
+  AltraLibraryArchive {
+    subject: BetaFirmwareDistribution { listing: asrock_altrad8ud_beta_scp_2_10_20260210_listing },
+    archive_name: "ALTRAD8UD-1L2T(2.10.20260210)SCP.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1nK_8RYtqWTWcTul5SL93MjlLNWB8JUvl/view"),
+    archive_bytes: byte_size(count: 169220),
+    archive_digest: Present { value: sha256_digest(hex: "2b4de6a81e7f386af0e01ad709159dd71ccef7585d85674b4647f1b361778a76") },
+  },
+  AltraLibraryArchive {
+    subject: BetaFirmwareDistribution { listing: asrock_altrad8ud_beta_scp_2_10_20260210_listing },
+    archive_name: "ALTRAD8UD-1L2T(2.10.20260210)SLIM.zip",
+    human_retrieval: uri_https(locator: "drive.google.com/file/d/1ruwky8Ye7WWLndhcWIxVr1pBRzol6Ctb/view"),
+    archive_bytes: byte_size(count: 168971),
+    archive_digest: Present { value: sha256_digest(hex: "8eac1c95fd35e36d52b2ee0ef3c896e75708aff763a591524cb50fe7cb8f610b") },
+  },
+]
+
+// THE FLASHABLE MEMBER INSIDE EACH FIRMWARE ARCHIVE. An archive digest identifies
+// the download; a flash consumes the member, a different byte sequence. Where the
+// member is an OpenBMC push tar its MANIFEST version is recorded as read, because it
+// need not equal the archive's name: the SCP archive named 2.10.20260210 carries
+// obmc-scp-altrad8ud-1l2t-4.01.tar whose MANIFEST reads version=4.01, Type=scp, so a
+// BMC reading back that push reports 4.01. Measured 2026-10-08.
+type AltraLibraryMemberManifest
+  = OpenBmcManifestVersion { version: NonEmptyStr }
+  | NoOpenBmcManifest
+
+type AltraLibraryMember {
+  archive_name: NonEmptyStr
+  member_name: NonEmptyStr
+  member_bytes: ByteSize
+  member_digest: Digest
+  manifest: AltraLibraryMemberManifest
+}
+
+data altra_firmware_archive_members: List<AltraLibraryMember> = [
+  AltraLibraryMember {
+    archive_name: "ALTRAD8UD-1L2T(3.10)ROM.zip",
+    member_name: "ALTRAD8UD-1L2T_3.10.ROM",
+    member_bytes: byte_size(count: 33554432),
+    member_digest: sha256_digest(hex: "1c8b1a9375db36bd3aba3192f0f535808addc72fd7d6a673030bd98e8a100009"),
+    manifest: NoOpenBmcManifest,
+  },
+  AltraLibraryMember {
+    archive_name: "ALTRAD8UD-1L2T(03.22.00)BMC.zip",
+    member_name: asrock_altrad8ud_bmc_3_22_00_push_artifact_name,
+    member_bytes: asrock_altrad8ud_bmc_3_22_00_push_artifact_bytes,
+    member_digest: asrock_altrad8ud_bmc_3_22_00_push_artifact_digest,
+    manifest: OpenBmcManifestVersion { version: "3.22.00" },
+  },
+  AltraLibraryMember {
+    archive_name: "ALTRAD8UD-1L2T(4.01)TAR.zip",
+    member_name: "obmc-bios-altrad8ud-1l2t-4.01.all.tar",
+    member_bytes: byte_size(count: 33566720),
+    member_digest: sha256_digest(hex: "33937359ef707cf1a2bf2c55bf6c944011ed28c41cd928ba1785e5a14193c7a6"),
+    manifest: OpenBmcManifestVersion { version: "4.01" },
+  },
+  AltraLibraryMember {
+    archive_name: "ALTRAD8UD-1L2T(4.01)ROM.zip",
+    member_name: "ALTRAD8UD-1L2T_4.01.ROM",
+    member_bytes: byte_size(count: 33554432),
+    member_digest: sha256_digest(hex: "85d549ad93bc54ed2cce9aa6ec883880bb90253286f1f0dfb4cc8d3ac4288efa"),
+    manifest: NoOpenBmcManifest,
+  },
+  AltraLibraryMember {
+    archive_name: "ALTRAD8UD-1L2T(2.10.20260210)SCP.zip",
+    member_name: "obmc-scp-altrad8ud-1l2t-4.01.tar",
+    member_bytes: byte_size(count: 266240),
+    member_digest: sha256_digest(hex: "c3f6b8903c93c8bb8d51d865ff71c6c77a5dd0c0d400e180674bdd0b8b8ac248"),
+    manifest: OpenBmcManifestVersion { version: "4.01" },
+  },
+  AltraLibraryMember {
+    archive_name: "ALTRAD8UD-1L2T(2.10.20260210)SLIM.zip",
+    member_name: "altra_scp_signed_2.10.20260210.slim",
+    member_bytes: byte_size(count: 261120),
+    member_digest: sha256_digest(hex: "d7f748c6f29fbf02f9079bd19f9b4959e645425e20996c058481d6c282cca57e"),
+    manifest: NoOpenBmcManifest,
+  },
+]
+
+type AltraFirmwareReferenceReport {
+  drive_archives: List<AltraLibraryArchive>
+  archive_members: List<AltraLibraryMember>
+  ssif_patch_bundle: AltraSsifPatchBundle
+  beta_reference: Uri
+  beta_disclaimer: NonEmptyStr
+  beta_listings: List<AsrockAltrad8udBetaFirmwareListing>
+  bmc_version_comparisons: List<AltraBmcBetaVersionComparison>
+  qualification: AltraFixQualification
+}
+
+type AltraFixQualification = | AwaitingAffectedBehaviorTest
+
+type AltraBmcBetaVersionComparison {
+  observation: BmcFirmwareObservation
+  beta_version: AsrockBetaFirmwareVersion
+  same_version: Bool
+}
+
+// Version equality is only a join of recorded identities, never proof that the
+// affected behavior was fixed or that the underlying image bytes are identical.
+fn beta_bmc_version_comparisons(
+  observations: List<BmcFirmwareObservation>,
+) -> List<AltraBmcBetaVersionComparison> {
+  flat_map(
+    filter(asrock_altrad8ud_beta_firmware_listings, row => row.target == BmcController),
+    fn(row) {
+      map(observations, fn(observation) {
+        AltraBmcBetaVersionComparison {
+          observation: observation,
+          beta_version: row.version,
+          same_version: match row.version {
+            SemanticFirmwareVersion { value } => value == observation.firmware.version
+            ScpBuildVersion { major: _, minor: _, build_date: _ } => false
+          },
+        }
+      })
+    },
+  )
+}
+
+// Typed discovery report; write_reference_report is the operator CLI boundary.
+fn reference_report() -> AltraFirmwareReferenceReport {
+  AltraFirmwareReferenceReport {
+    drive_archives: altra_firmware_drive_archives,
+    archive_members: altra_firmware_archive_members,
+    ssif_patch_bundle: altra_ssif_v6,
+    beta_reference: asrock_altrad8ud_download_authority.uri,
+    beta_disclaimer: asrock_altrad8ud_beta_disclaimer,
+    beta_listings: asrock_altrad8ud_beta_firmware_listings,
+    bmc_version_comparisons: beta_bmc_version_comparisons(
+      observations: [srv3_bmc_firmware_observation, srv4_bmc_firmware_observation],
+    ),
+    qualification: AwaitingAffectedBehaviorTest,
+  }
+}
+
+// gunbc run --source-root dag --source-root src/v2
+// --entry dag/gunbc/fleet/altra_firmware_library.dag --function write_reference_report
+// --arg path=/tmp/altra-firmware-references.txt
+// A successful exit establishes only that the reference report was written.
+fn write_reference_report(path: String) -> ProcessExit {
+  let wrote = Filesystem.Write(path: path, content: to_string(reference_report()))
+  if wrote.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: wrote.error)
+  }
+}

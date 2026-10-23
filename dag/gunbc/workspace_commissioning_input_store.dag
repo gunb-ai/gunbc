@@ -1,0 +1,127 @@
+module gunbc.workspace_commissioning_input_store
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { ExpectSlotAbsent, CasObservedReadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedUnreadable }
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead, FieldMalformed, JsonDocumentUnreadable, FieldAbsent }
+import gunbc.workspace_commissioning_executor_plan { WorkspaceExecutorPlanBytes, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.durable_cas_file_store { observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+
+type WorkspaceCommissioningInputBytes {
+  body: String
+  shell: String
+  receipt: String
+  credential: String
+}
+
+type WorkspaceCommissioningInputRead
+  = WorkspaceCommissioningInputAbsent
+  | WorkspaceCommissioningInputPresent { bytes: WorkspaceCommissioningInputBytes, plan: WorkspaceExecutorPlanBytes }
+  | WorkspaceCommissioningInputRefused { reason: String }
+
+fn workspace_commissioning_input_text(bytes: WorkspaceCommissioningInputBytes) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "body", value: json_string(s: bytes.body)),
+    json_kv(key: "shell", value: json_string(s: bytes.shell)),
+    json_kv(key: "receipt", value: json_string(s: bytes.receipt)),
+    json_kv(key: "credential", value: json_string(s: bytes.credential)),
+  ]))
+}
+
+fn workspace_commissioning_input_decode(text: String) -> WorkspaceCommissioningInputRead {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: obj } => match json_field_string(obj: obj, key: "body") {
+      FieldRead { value: body } => match json_field_string(obj: obj, key: "shell") {
+        FieldRead { value: shell } => match json_field_string(obj: obj, key: "receipt") {
+          FieldRead { value: receipt } => match json_field_string(obj: obj, key: "credential") {
+            FieldRead { value: credential } => {
+              let bytes = WorkspaceCommissioningInputBytes { body: body, shell: shell, receipt: receipt, credential: credential }
+              if workspace_commissioning_input_text(bytes: bytes) != text {
+                WorkspaceCommissioningInputRefused { reason: "protected input is noncanonical" }
+              } else { match workspace_executor_plan_bytes(plan_body: body, apply_shell: shell, receipt_text: receipt, credential: credential) {
+                WorkspaceExecutorPlanBytesVerified { verified } => WorkspaceCommissioningInputPresent { bytes: bytes, plan: verified }
+                WorkspaceExecutorPlanBytesRefused { reason: _ } => WorkspaceCommissioningInputRefused { reason: "protected input fails reviewed bundle binding" }
+              } }
+            }
+            FieldAbsent => WorkspaceCommissioningInputRefused { reason: "input credential is missing" }
+            FieldMalformed { cause: _ } => WorkspaceCommissioningInputRefused { reason: "input credential is missing" }
+          }
+          FieldAbsent => WorkspaceCommissioningInputRefused { reason: "input receipt is missing" }
+          FieldMalformed { cause: _ } => WorkspaceCommissioningInputRefused { reason: "input receipt is missing" }
+        }
+        FieldAbsent => WorkspaceCommissioningInputRefused { reason: "input shell is missing" }
+        FieldMalformed { cause: _ } => WorkspaceCommissioningInputRefused { reason: "input shell is missing" }
+      }
+      FieldAbsent => WorkspaceCommissioningInputRefused { reason: "input plan is missing" }
+      FieldMalformed { cause: _ } => WorkspaceCommissioningInputRefused { reason: "input plan is missing" }
+    }
+    JsonDocumentUnreadable { gap: _ } => WorkspaceCommissioningInputRefused { reason: "input JSON is unreadable" }
+  }
+}
+
+fn workspace_commissioning_input_key(slot: NonEmptyStr) -> NonEmptyStr {
+  concat("executor-input-", slot as String) as NonEmptyStr
+}
+
+// The four reviewed artifacts publish as ONE protected CAS value. No half-written bundle,
+// overwritten active transaction, job-writable executable or mutable input pointer is consumed.
+fn workspace_commissioning_input_read(slot: NonEmptyStr) -> WorkspaceCommissioningInputRead {
+  let root = workspace_commissioning_store_location as NonEmptyStr
+  let key = workspace_commissioning_input_key(slot: slot)
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_cas_slot_state(root: root, key: key) {
+      CasObservedReadable { readable: CasReadableAbsent } => WorkspaceCommissioningInputAbsent
+      CasObservedReadable { readable: CasReadablePresent { version } } => match read_store_ownership(path: cas_file_slot_path(root: root, key: key, generation: version.generation)) {
+        OwnershipRead { ownership: StoreRootOwned } => match workspace_commissioning_input_decode(text: version.value as String) {
+          WorkspaceCommissioningInputPresent { bytes, plan } => if runner_slot_instance_name(slot: plan.provenance.slot) == slot {
+            WorkspaceCommissioningInputPresent { bytes: bytes, plan: plan }
+          } else { WorkspaceCommissioningInputRefused { reason: "protected input belongs to another slot" } }
+          refused => refused
+        }
+        OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningInputRefused { reason: "input generation is outside root custody" }
+        OwnershipUnread { reason: _ } => WorkspaceCommissioningInputRefused { reason: "input generation is outside root custody" }
+      }
+      CasObservedUnreadable { cause: _ } => WorkspaceCommissioningInputRefused { reason: "input head is unreadable" }
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningInputRefused { reason: "input store is outside root custody" }
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningInputRefused { reason: "input store is outside root custody" }
+  }
+}
+
+fn workspace_commissioning_input_publish(bytes: WorkspaceCommissioningInputBytes) -> WorkspaceCommissioningInputRead
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_dispatch", decl_name: "workspace_dispatch_stage")]
+{
+  match workspace_commissioning_input_decode(text: workspace_commissioning_input_text(bytes: bytes)) {
+    WorkspaceCommissioningInputPresent { bytes: _, plan } => {
+      let slot = runner_slot_instance_name(slot: plan.provenance.slot)
+      match workspace_commissioning_input_read(slot: slot) {
+        WorkspaceCommissioningInputPresent { bytes: stored, plan: existing } => if stored == bytes {
+          WorkspaceCommissioningInputPresent { bytes: stored, plan: existing }
+        } else { WorkspaceCommissioningInputRefused { reason: "another reviewed input owns this commissioning transaction" } }
+        WorkspaceCommissioningInputAbsent => match admit_cas_attempt_for_derived_payload(key: workspace_commissioning_input_key(slot: slot),
+          expected: ExpectSlotAbsent, proposed: workspace_commissioning_input_text(bytes: bytes) as NonEmptyStr) {
+          DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: workspace_commissioning_store_location as NonEmptyStr, publication: OwnerOnlyCreateOnly, verified: verified) {
+            CasCommitted { committed: _ } => workspace_commissioning_input_read(slot: slot)
+            CasPreconditionFailed { expected: _, observed: _ } => match workspace_commissioning_input_read(slot: slot) {
+              WorkspaceCommissioningInputPresent { bytes: stored, plan: existing } => if stored == bytes {
+                WorkspaceCommissioningInputPresent { bytes: stored, plan: existing }
+              } else { WorkspaceCommissioningInputRefused { reason: "competing input publication won" } }
+              WorkspaceCommissioningInputAbsent => WorkspaceCommissioningInputRefused { reason: "input publication result is unreadable" }
+              WorkspaceCommissioningInputRefused { reason: _ } => WorkspaceCommissioningInputRefused { reason: "input publication result is unreadable" }
+            }
+            CasStoreRefused { cause: _ } => WorkspaceCommissioningInputRefused { reason: "input publication did not settle" }
+          }
+          DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceCommissioningInputRefused { reason: "input publication is not addressable" }
+        }
+        refused => refused
+      }
+    }
+    refused => refused
+  }
+}

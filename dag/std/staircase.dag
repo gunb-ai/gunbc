@@ -1,0 +1,99 @@
+module std.staircase
+
+import std.types { List, String, NonEmptyStr }
+import std.list { first_duplicate_by_key }
+import v2.std.collection { list_at_optional }
+
+// A STAIRCASE IS AN ORDERED PLAN OF LEVELS, READ ONE LEVEL AT A TIME, THAT STOPS AT THE FIRST LEVEL A
+// CALLER'S RULE REFUSES. It is the shape shared by every capacity search that raises a population
+// until something named gives out -- concurrent serving clients, concurrent build seats -- and it
+// is domain-free: the levels, the step reading, the stop coproduct and whatever the rule carries from
+// one level to the next are all the caller's. This module owns only the four laws they share.
+//
+//   1. PLAN ORDER. Levels are read in the order the plan names them, and a capacity is always one of
+//      the planned levels, never a value between two.
+//   2. FIRST STOP WINS. The first level whose reading the rule stops on ends the staircase; nothing
+//      above it is read, whatever its readings say.
+//   3. A HOLE IS A STOP, NEVER A SKIP. A planned level with no reading, or with more than one, stops
+//      the staircase through the caller's own missing arm, so nothing is claimed above a hole.
+//   4. A PLAN THAT CANNOT BE READ IS REFUSED, not run: an empty plan, or one naming a level twice.
+//
+// THERE IS NO POLICY GATE HERE, deliberately. Whether the thresholds a rule applies are accepted is a
+// sign-off, and sign-off already has homes (std.decision's settled policy acceptance, the gunbc.auth
+// approval authorities); a proposed/signed pair minted here would be a second one. A caller passes
+// an already-accepted rule and does its own gating before calling (review of the shared-home
+// proposal by clever-gull-48, 2026-09-29).
+
+// WHAT THE RULE SAYS ABOUT ONE LEVEL: stop with the caller's cause, or continue carrying the caller's
+// accumulator to the next level (a previous level's per-request figure, say). The accumulator is the
+// caller's type, so no domain field lives in this module.
+type StepVerdict<S, A>
+  = StepStops { stop: S }
+  | StepContinues { acc: A }
+
+// THE PLAN REFUSALS ARE TYPED ARMS, not strings: they are the only two ways a plan itself is unreadable.
+type StaircaseRefusal<L>
+  = StaircasePlanEmpty
+  | StaircasePlanLevelDuplicated { level: L }
+
+// THE OUTCOME CARRIES LEVELS, NOT COUNTS, so a ladder of any level type reports its own ceiling.
+// last_sustained is the highest level the rule continued through before the stop; absent when the
+// first planned level stopped.
+type StaircaseOutcome<L, S>
+  = StaircaseStopped { last_sustained: L?, stop: S }
+  | StaircaseCompleted { last_sustained: L }
+  | StaircaseRefused { refusal: StaircaseRefusal<L> }
+
+type StairScan<L, S, A> {
+  stopped: S?
+  last: L?
+  acc: A
+}
+
+fn run_staircase<L, R, S, A>(
+  plan: List<L>,
+  readings: List<R>,
+  level_key: fn(L) -> String,
+  reading_level: fn(R) -> L,
+  init: A,
+  stop_of: fn(A, L, R) -> StepVerdict<S, A>,
+  missing: fn(L, NonEmptyStr) -> S,
+) -> StaircaseOutcome<L, S> {
+  match first_duplicate_by_key(xs: plan, key: level_key) {
+    Present { value: d } => StaircaseRefused { refusal: StaircasePlanLevelDuplicated { level: d } }
+    Absent => {
+      let scan = fold(plan, init: StairScan { stopped: none, last: none, acc: init }, f: fn(s, level) {
+        match s.stopped {
+          Present { value: _ } => s
+          Absent => {
+            let at = filter(readings, r => level_key(reading_level(r)) == level_key(level))
+            if length(at) != 1 {
+              StairScan {
+                stopped: Present { value: missing(level, if length(at) == 0 { "no reading at this planned level" as NonEmptyStr } else { "more than one reading at this planned level" as NonEmptyStr }) },
+                last: s.last,
+                acc: s.acc,
+              }
+            } else {
+              match list_at_optional(xs: at, index: 0) {
+                Absent => StairScan { stopped: Present { value: missing(level, "no reading at this planned level" as NonEmptyStr) }, last: s.last, acc: s.acc }
+                Present { value: reading } =>
+                  match stop_of(s.acc, level, reading) {
+                    StepStops { stop: stop } => StairScan { stopped: Present { value: stop }, last: s.last, acc: s.acc }
+                    StepContinues { acc: next } => StairScan { stopped: none, last: Present { value: level }, acc: next }
+                  }
+              }
+            }
+          }
+        }
+      })
+      match scan.stopped {
+        Present { value: stop } => StaircaseStopped { last_sustained: scan.last, stop: stop }
+        Absent =>
+          match scan.last {
+            Present { value: l } => StaircaseCompleted { last_sustained: l }
+            Absent => StaircaseRefused { refusal: StaircasePlanEmpty }
+          }
+      }
+    }
+  }
+}

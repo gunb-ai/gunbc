@@ -1,0 +1,45 @@
+module test.fixture.required_lane_claim.stale_claim_fixture
+
+import std.types { List, String }
+import v2.workflow.required_lane_claim_agreement { ProjectedDocument }
+
+// THE DISCRIMINATING RED, AUTHORED AS A FIXTURE RATHER THAN QUOTED FROM THE LEDGER. DESIGN section
+// 4b's authorable-RED question is answered here: the forbidden state is perfectly expressible in
+// source handed to the check, so the wall is not a permanently-green decoration. Reinstating the
+// real sentence in `gunbc.design_document` would also red the live row, but it would red it by
+// breaking the repository, which is not a control anyone can run.
+//
+// THE THREE ROWS ARE ONE RED AND TWO CONTROLS, and the controls are what stop the row above from
+// passing for the wrong reason. A check that refused every document, or that never saw its input at
+// all, satisfies the red alone.
+data stale_fixture_lane_id: String = "fixture-required-lane"
+data absent_fixture_lane_id: String = "fixture-non-required-lane"
+
+// RED: the standing negation AND a lane the caller will declare as rostered. Both halves present.
+data stale_fixture_document: ProjectedDocument = ProjectedDocument {
+  document: "fixture/stale.md",
+  text: "Three local checks. `fixture-required-lane` runs on every push and pull request but is not yet a `needs` of the required aggregate, so it does not gate a merge."
+}
+
+// CONTROL A -- the negation is present and the lane it names is NOT rostered. A ledger is allowed to
+// say a non-required job is not required; that sentence is TRUE. Refusing it would make this check
+// fire on correct documentation, which is the widening DESIGN section 5 refuses.
+data unrostered_negation_document: ProjectedDocument = ProjectedDocument {
+  document: "fixture/unrostered.md",
+  text: "`fixture-non-required-lane` is not a `needs` of the required aggregate, and that is deliberate."
+}
+
+// CONTROL B -- the rostered lane is named and NO negation is made. Naming a required lane is the
+// ordinary case and must stay silent, or the check degenerates into "never mention the roster".
+data rostered_mention_document: ProjectedDocument = ProjectedDocument {
+  document: "fixture/mention.md",
+  text: "`fixture-required-lane` is a member of the required lane roster, so a failure there blocks."
+}
+
+data stale_claim_fixture_documents: List<ProjectedDocument> = [
+  stale_fixture_document,
+  unrostered_negation_document,
+  rostered_mention_document
+]
+
+data stale_claim_fixture_rostered_job_ids: List<String> = [stale_fixture_lane_id]

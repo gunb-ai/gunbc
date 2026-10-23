@@ -1,0 +1,61 @@
+module gunbc.host_build_environment_seed_disposition
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List }
+import gunbc.capability_origin { CapabilityOrigin, NoNewCapability }
+import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedItemModified }
+
+// SEED CHANGE RECEIPT for the host build-environment allowlist (gunbc#9727). Every item here
+// is an EXISTING hand-Rust declaration MODIFIED, not added: the seed's prefix table
+// (RUST*/CARGO_*/*FLAGS) is replaced by exact-name admission against the .dag row
+// v2.std.host_transport HostBuildEnvironment carried per target by HostTransportDescriptor.build_environment, which the two transport
+// builtins now receive as an argument; the uncached transport, which inherited the whole
+// ambient environment, now applies the same constructed environment as the cached one.
+// No capability is new: the seed could already build and run an emitted program; it now does
+// so under a modeled environment instead of the shell's. ADMITTED AGAINST THE v1 FREEZE BY
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing): the required floor executes
+// emit_host witnesses in the seed, and a seed whose realization silently varies with the
+// CI shell's flags makes those witnesses assert about the shell -- the class named in
+// DESIGN section 3 (policy leaking into realization) and in gunbc.recurring_failure_mode
+// cache_impurity. NOT NewEscapeHatchOrAdmissionRow: the change REMOVES an admission (three
+// prefixes) and adds none; the only way to admit a variable is to name it in the .dag row.
+fn host_build_environment_dag_authority() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.std.host_transport",
+    decl_name: "HostBuildEnvironment",
+    field: WholeDeclaration
+  }
+}
+
+data host_build_environment_seed_dispositions: List<SeedGrowthChangeDisposition> = [
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "emit_host_constructed_build_environment", field: WholeDeclaration },
+    dag_authority: host_build_environment_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_emit_host_run_transport_builtin", field: WholeDeclaration },
+    dag_authority: host_build_environment_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_emit_host_run_transport_cached_builtin", field: WholeDeclaration },
+    dag_authority: host_build_environment_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "emit_host_run_transport_in_workspace", field: WholeDeclaration },
+    dag_authority: host_build_environment_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "run_cached_process_spec", field: WholeDeclaration },
+    dag_authority: host_build_environment_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
+  }
+]

@@ -1,0 +1,31 @@
+module test.claim.auth.token_exchange_cleanup_witness_test
+
+import std.types { Bool }
+import gunbc.roadmap_auth_routes { auth_token_exchange_disposition, TokenExchangeAnswered, TokenExchangeRefused }
+
+// THE STAGED TOKEN FORM'S DELETION GATES THE LOGIN, over supplied outcomes (DESIGN §3 witness rule:
+// the subject is the disposition, not the filesystem or Google). RED if a failed deletion ever lets
+// the exchange body through, whatever the exchange answered.
+test fn a_failed_cleanup_refuses_even_after_a_successful_exchange() -> Bool {
+  match auth_token_exchange_disposition(cleanup_succeeded: false, cleanup_error: "EACCES", exchange_succeeded: true, exchange_body: "{\"id_token\":\"x\"}") {
+    TokenExchangeAnswered { body: _ } => false
+    TokenExchangeRefused { response: r } => r.status == 503 && string_contains(s: r.body, pattern: "could not be removed: EACCES") && !string_contains(s: r.body, pattern: "id_token")
+  }
+}
+
+test fn a_failed_cleanup_and_exchange_reports_both() -> Bool {
+  match auth_token_exchange_disposition(cleanup_succeeded: false, cleanup_error: "EACCES", exchange_succeeded: false, exchange_body: "invalid_grant") {
+    TokenExchangeAnswered { body: _ } => false
+    TokenExchangeRefused { response: r } => r.status == 503 && string_contains(s: r.body, pattern: "EACCES") && string_contains(s: r.body, pattern: "invalid_grant")
+  }
+}
+
+test fn a_clean_cleanup_passes_the_exchange_through_or_its_refusal() -> Bool {
+  match auth_token_exchange_disposition(cleanup_succeeded: true, cleanup_error: "", exchange_succeeded: true, exchange_body: "tok") {
+    TokenExchangeAnswered { body: b } => b == "tok"
+    TokenExchangeRefused { response: _ } => false
+  } && match auth_token_exchange_disposition(cleanup_succeeded: true, cleanup_error: "", exchange_succeeded: false, exchange_body: "invalid_grant") {
+    TokenExchangeAnswered { body: _ } => false
+    TokenExchangeRefused { response: r } => r.status == 502
+  }
+}

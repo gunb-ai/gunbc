@@ -1,0 +1,52 @@
+module gunbc.recurring_failure_mode.compensating_errors_cancel_in_the_aggregate
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data compensating_errors_cancel_in_the_aggregate: RecurringFailureMode = RecurringFailureMode {
+  identity: "compensating_errors_cancel_in_the_aggregate" as NonEmptyStr,
+
+  receipts: [
+    "**compensating errors cancel in the aggregate** (a completeness check compares a COUNT on each side instead of joining the two populations by IDENTITY, so a member missing from one side and a phantom member on the other cancel exactly, and the check reports the coverage it was written to refuse.",
+
+    "The green is not a near miss: it is the check confirming a roster that covers nothing of the sort, and it is louder the longer both defects stand, because each new member added to either side keeps the totals in step.",
+
+    "Distinct from `executed_conjunct_discriminates_nothing`, where the conjunct can never go red: this one goes red readily on a SINGLE defect and is blind only to defects in opposing directions -- which is precisely the pair a long-lived roster accumulates, since the same neglect that leaves a new member unrostered leaves a deleted member rostered.",
+
+    "Receipt (2026-09-01): `test.claim.language_source_scaffold_index_test.compiler_tests_rust_blobs_are_all_rostered` asserted `declared_fn_count(ct_) == rostered_count_for(v1.compiler.compiler_tests_rust)`.",
+
+    "The tree carried 44 `ct_` blobs and 40 roster rows, so it was RED and enrolled in `v2.workflow.floor_expected_red` -- but the residues were not 4 of one kind.",
+
+    "FIVE live blobs were unrostered and ONE row, `ct_caret_parse_smoke_native_witness_tests`, had outlived the blob #8532 deleted from the carrier.",
+
+    "Rostering four of the five would have balanced the counts at 44 and greened the witness with one blob still unmarked and one row still naming a declaration that does not exist.",
+
+    "The count was never the claim; it was a NECESSARY CONDITION of the claim being read as the claim.",
+
+    "**Recognition rule: for any check whose sentence contains \"every\", \"all\" or \"covers\", ask what it would report if one member were missing from one side AND one phantom stood on the other.",
+
+    "If the answer is \"green\", the check measures a cardinality and reports a coverage, and the two are joined by an assumption nothing enforces.** The remedy is the join: name the two residues separately -- present-not-covered and covered-not-present -- and assert each is empty, so the two directions red with distinct meanings and neither can pay for the other.",
+
+    "Cardinality then survives as a third conjunct answering the one question containment cannot, a DUPLICATE within one side, and it is no longer the assertion.",
+
+    "The evidence must not stop at the repaired tree, since a repaired population makes both live arms permanently green and the join indistinguishable from the count it replaced: the discriminating REDs belong over authored fixtures, with the equal-counts-different-identities case enrolled explicitly, because that is the one case the previous form accepted.",
+
+    "NO SWEEP FOR SIBLINGS WAS PERFORMED, and that is a declared boundary rather than coverage: the recognition rule above is cheap enough to apply to any check whose sentence contains every, all or covers, and this repository certainly holds others, but the receipt below establishes the class at ONE subject and says nothing about the population.",
+
+    "Reading this row as a census of aggregate-cardinality checks would be the same substitution it names.",
+
+    "**SECOND SUBJECT, A DIFFERENT DOMAIN, AND IT ARRIVED HERE BY BEING REFUSED SOMEWHERE ELSE FIRST (quick-owl-739, 2026-09-13, gunbc-private#102).** Two lanes appended to one private witness roster and the merge collided. The completeness question -- did the merge keep every entry both sides intended -- was answerable two ways from data fully in scope: join the ENTRY NAMES as sets, or compare their COUNTS. Measured: mine=43, main=43, UNION=44, merged=44.",
+
+    "WHAT FOLLOWS IS A COUNTERFACTUAL AND IS LABELLED AS ONE: nothing was dropped, the merge kept all 44, and no discarded intermediate was observed. What the numbers establish is that HAD the merge substituted one parent for the union, a comparison against A PARENT'S COUNT would have read 43 and 43 and reported nothing -- one entry missing from one side and a different entry standing on the other, cancelling exactly, which is this row's invalid state in a git merge rather than in a test roster.",
+
+    "THE BLINDNESS IS BOUNDED TO THAT ORACLE and not to cardinality in general: a comparison against the UNION'S count of 44 WOULD have caught it. One-gained-one-lost is the shape of THIS substitution -- two appends at one position, one parent surviving -- not a property of roster collisions at large. The two parent counts are the tempting oracle precisely because they are the numbers already in hand.",
+
+    "**AND IT SHARPENS THIS ROW'S REMEDY RATHER THAN RESTATING IT: the join needs the right EXPECTED POPULATION, not merely identity grain.** An identity comparison against the SURVIVING PARENT'S SET passes too, while omitting the other parent's new member -- so identity-over-count is necessary and NOT sufficient. The population that answers this question is the UNION of both parents. A guard is only as wide as the set it is handed, and swapping cardinality for membership saves nothing if the expected set is wrong.",
+
+    "**WHY IT WAS FILED IN THE WRONG ROW FIRST, recorded because the misfiling is the more instructive half.** It went to `comparison_keyed_on_part_of_the_identity_it_compares`, and at disposition that PR was refused for it: the receipt did not inhabit that row's invalid state. That row requires a decision over ELEMENTS IDENTIFIED BY A COMPOSITE whose deciding key is reduced to a COMPONENT of that identity, with the discarded component present in scope and reappearing to render the finding, and harm that is PER-ELEMENT -- `two distinct elements that agree on the retained component are ONE key, so a member of one population is accepted as a member of the other by an element it is not`. A CARDINALITY is not a component of any element's identity; it is an aggregate over the population. No two elements collide, nothing is misidentified, and in this specimen nothing rendered the members at all -- the census printed two integers. The receipt's own text admitted the mismatch (`the subject is a SET, the discarded part is its entire member structure rather than one field of a composite key, and the key is a DERIVED SCALAR rather than a component`) and stayed in the row anyway.",
+
+    "THE REPAIR WAS NOT TO WIDEN THE OTHER ROW, and the attempt to is worth naming: its recognition rule had been edited to admit `a projection whose level sets can contain the defect, such as a cardinality over a set whose membership is the identity`. That makes the RULE recognise more than the row's own INVALID STATE admits, which is incoherent -- a rule is supposed to recognise its row's invalid state, not a superset of it -- and turns a precise class into a bucket. The rule is restored to the authority's wording and the specimen moved here, where the opening sentence already says COUNT-instead-of-identity-join in as many words.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,495 @@
+module test.claim.legacy_binding_observation_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
+import std.occurrence_identity { OccurrenceId }
+import std.observation_completeness {
+  ObservationComplete,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  ObservationRepeatedExpected
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyResolutionPolicy,
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject,
+  LegacyResolutionPolicy,
+  ImportScopedPolicy,
+  NamespaceOnlyPolicy,
+  LegacySubjectApplicability,
+  LegacySubjectApplicable,
+  LegacySubjectDiverged,
+  legacy_subject_applicability,
+  legacy_observation_completeness,
+  legacy_subject_identity,
+  decl_field_label
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE APPLICABILITY WALL, EXERCISED FIELD BY FIELD.
+//
+// An observation is evidence about the base it was taken on. The wall that says so is only a wall
+// if EVERY identity field can move it -- a subject comparison that checked six of eight fields
+// would answer "applicable" across a base that differs in the seventh, and the whole point of a
+// content-addressed subject is that no such gap exists.
+//
+// SO THE EXERCISES ARE PER FIELD, NOT ONE REPRESENTATIVE. A single "some field differs" arm is
+// satisfiable by a comparison that only reads that one field, which is exactly the failure being
+// guarded against; eight arms, each moving one field and holding the rest fixed, cannot be
+// satisfied by anything less than a total comparison. The RED is reachable for every one of them:
+// deleting any branch from legacy_subject_applicability turns its arm green-to-applicable, which
+// is the wrong answer rather than a missing one.
+//
+// THESE ARE SUBSTRATE INPUTS ONLY, and that is the honest declaration rather than a convenience.
+// Every subject here is hand-constructed and the function under test is a pure fold over it.
+// Nothing calls a producer, because there is no producer yet: the tap that observes X's decisions
+// is a separate authority under a separate owner, and standing a stub in for it here would be a
+// second, lying authority for the one fact this module deliberately does not own.
+fn lbo_digest(label: String) -> Fnv1a64Structural {
+  structural_content_hash(digest: label)
+}
+
+// THE FIXTURE'S RESOLVER REFERENCE NAMES A RECORD TYPE RATHER THAN THE RESOLVER FUNCTION, and that
+// is a deliberate choice about the arms below rather than a claim about what X actually is. Every
+// divergence arm must perturb EXACTLY ONE axis of the compared identity, and the reason is stronger
+// than picking the wrong population: a two-axis perturbation cannot discriminate WHICH axis the
+// comparison reads, so its green is the same green whether the second axis is folded into the
+// identity or not. It is permanently green by construction -- the decoration DESIGN section 4b calls
+// worse than absent, reached from the multiplicity direction rather than the unauthorable-RED one.
+// The general rule, which outlives this fixture: ANY divergence arm perturbing more than one axis of
+// a compared identity is uninformative by construction.
+//
+// So a single-axis module move needs one declared name living in two modules, and a single-axis
+// field move needs one of those declarations to carry a field. `OccurrenceId` satisfies both:
+// `std.occurrence_identity` and `std.observation` each declare it and the former carries `value`.
+// NO UNIQUENESS IS CLAIMED FOR IT, and an earlier revision of this annotation claimed exactly that
+// -- "the only pair in the corpus" -- which was false when written: a census over `dag`, `src/v1`
+// and `src/v2` at `90bfcfad293` found 47 names declared in two or more modules with at least one
+// declaration carrying a field. The first measurement that produced the claim searched two roots
+// and compared only adjacent rows of a sort, so it was a property of the search, not of the corpus.
+// 47 against 1 is not a near miss, it is the signature of a census whose denominator was its own
+// search, and the adjacent-rows filter names the mechanism: it can only ever surface PAIRS, never a
+// name declared three or more times, so it was blind by construction to the widest members of the
+// very population it was counting. A claim false at authorship is also worse than one that rotted,
+// because a rotted claim has a moment in the tree that justified it and a re-measurement disagrees
+// cleanly; this one has no such moment anywhere, so re-measuring it looks like a regression someone
+// introduced and the next reader spends their time hunting for the change that broke it.
+// The claim is not repaired by bounding it to a SHA, because the fixture never needed it: what the
+// arms need is that THIS pair holds, and that is self-checking rather than censused -- the citation
+// wall refuses this module if either declaration or the field stops existing, so the arms cannot go
+// quietly green over a reference that has rotted. A second qualifying pair appearing changes
+// nothing here.
+//
+// The resolver identity the production subject carries is a decision surface such as
+// `v1.compiler.infer_env` `lookup_binding_by_name`; nothing in the envelope depends on which.
+fn lbo_resolver() -> DeclarationRef {
+  decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId")
+}
+
+fn lbo_base_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: lbo_digest(label: "1111111111111111"),
+    source_set_digest: lbo_digest(label: "2222222222222222"),
+    compiler_artifact_digest: lbo_digest(label: "3333333333333333"),
+    resolver_identity: lbo_resolver(),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: lbo_digest(label: "4444444444444444"),
+    declaration_index_digest: lbo_digest(label: "5555555555555555")
+  }
+}
+
+fn lbo_diverged_field(other: LegacyBindingObservationSubject) -> String {
+  match legacy_subject_applicability(left: lbo_base_subject(), right: other) {
+    LegacySubjectDiverged { field: f } => f
+    LegacySubjectApplicable => ""
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT IS NOT DECORATION. Without it every arm below is satisfied by a
+// comparison that refuses unconditionally, which would be a wall that admits nothing -- useless in
+// the opposite direction and just as wrong.
+test fn an_identical_subject_is_applicable_to_itself() -> Bool {
+  match legacy_subject_applicability(left: lbo_base_subject(), right: lbo_base_subject()) {
+    LegacySubjectApplicable => true
+    LegacySubjectDiverged { field: _ } => false
+  }
+}
+
+test fn a_moved_semantic_source_digest_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: lbo_digest(label: "aaaaaaaaaaaaaaaa"),
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: base.resolver_identity,
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "semantic_source_digest"
+}
+
+test fn a_moved_source_set_digest_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: lbo_digest(label: "bbbbbbbbbbbbbbbb"),
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: base.resolver_identity,
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "source_set_digest"
+}
+
+test fn a_moved_compiler_artifact_digest_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: lbo_digest(label: "cccccccccccccccc"),
+    resolver_identity: base.resolver_identity,
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "compiler_artifact_digest"
+}
+
+// THE RESOLVER IDENTITY IS THE FIELD MOST LIKELY TO BE THOUGHT REDUNDANT WITH THE ARTIFACT DIGEST,
+// and it is not: one binary contains several decision surfaces, so an observation of one of them is
+// not evidence about another even though both were compiled from the same bytes. All three axes of
+// the reference move it, which is why there are three arms.
+test fn a_moved_resolver_module_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId"),
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "resolver_identity.module_path"
+}
+
+test fn a_moved_resolver_declaration_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "resolver_identity.decl_name"
+}
+
+// THE POLICY ARM IS THE ONE THIS ENVELOPE CANNOT DERIVE, which is exactly why it must be able to
+// refuse over it: the gate is a host thread-local no substrate program can read, so the producer
+// states it and this comparison is the only thing standing between an ImportScoped observation and
+// a NamespaceOnly one being treated as the same evidence. Same bytes, same sources, same resolver,
+// different answers.
+test fn a_moved_resolution_policy_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: base.resolver_identity,
+    resolver_policy: NamespaceOnlyPolicy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "resolver_policy"
+}
+
+test fn a_moved_occurrence_transport_digest_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: base.resolver_identity,
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: lbo_digest(label: "dddddddddddddddd"),
+    declaration_index_digest: base.declaration_index_digest
+  }) == "occurrence_transport_digest"
+}
+
+test fn a_moved_declaration_index_digest_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: base.resolver_identity,
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: lbo_digest(label: "eeeeeeeeeeeeeeee")
+  }) == "declaration_index_digest"
+}
+
+// COMPLETENESS, EXERCISED IN BOTH DIRECTIONS BECAUSE ONE DIRECTION IS NOT A LAW.
+//
+// The outcome vocabulary here is a two-arm test type, not X's. That is the type parameter earning
+// its keep: the join is about WHICH occurrences were answered for, never about what the answer
+// said, so it can be proven without the producer existing and without a stub pretending to be one.
+//
+// WHY BOTH ARMS ARE NECESSARY. A join that only checked for missing rows passes an observation
+// that answers for occurrences belonging to some other subject -- right count, wrong identities,
+// and it reads as success. A join that only checked for foreign rows passes an observation that
+// silently drops the occurrences the producer found inconvenient, which is the failure the whole
+// denominator discipline exists to prevent. Each arm below goes green only if its own direction is
+// checked, and neither is reachable by a comparison of counts: the missing and foreign fixtures
+// both carry exactly as many rows as the expected list has entries.
+type LboTestOutcome
+  = LboTestAnswered
+  | LboTestRefused
+
+fn lbo_row(id: Int) -> LegacyBindingObservationRow<LboTestOutcome> {
+  LegacyBindingObservationRow { occurrence: OccurrenceId { value: id }, outcome: LboTestRefused }
+}
+
+fn lbo_observation(ids: List<Int>) -> LegacyBindingObservation<LboTestOutcome> {
+  LegacyBindingObservation { subject: lbo_base_subject(), rows: ids |> map(id => lbo_row(id: id)) }
+}
+
+fn lbo_expected() -> List<Int> {
+  [11, 22, 33]
+}
+
+test fn an_observation_answering_exactly_the_expected_occurrences_is_complete() -> Bool {
+  match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 33]), expected: lbo_expected()) {
+    ObservationComplete => true
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
+  }
+}
+
+// THE ROW COUNT IS THREE ON BOTH SIDES AND THE JOIN STILL REFUSES. That is the whole difference
+// between an identity join and a count equality, stated as a fixture rather than as a claim.
+test fn an_observation_missing_one_expected_occurrence_refuses() -> Bool {
+  match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 99]), expected: lbo_expected()) {
+    ObservationMissingExpected { keys: missing } => (missing |> count) == 1
+    ObservationComplete => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
+  }
+}
+
+test fn an_observation_answering_for_a_non_subject_occurrence_refuses() -> Bool {
+  match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 33, 44]), expected: lbo_expected()) {
+    ObservationForeignObserved { keys: foreign } => (foreign |> count) == 1
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
+  }
+}
+
+// A WHOLLY-REFUSED OBSERVATION IS COMPLETE, AND THIS ARM IS WHY THAT IS NOT A CRISIS.
+//
+// Both sides of the completeness law come from the DENOMINATOR -- the expected list and the row
+// keys -- and neither comes from the producer. So an observation whose every row is a production
+// refusal is complete, applicable and true, which is exactly what a correct O_X(B) contains on
+// today's legacy resolver: measured, X carries zero exact declaration identities to its decision,
+// so every row is absent-at-decision. The next reader of an all-refused artifact will assume it is
+// broken; this arm is the standing answer that it is not.
+test fn an_observation_whose_every_row_is_refused_is_still_complete() -> Bool {
+  match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 33]), expected: lbo_expected()) {
+    ObservationComplete => true
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
+  }
+}
+
+// ONE OCCURRENCE, ONE OUTCOME -- AND MEMBERSHIP ALONE DOES NOT SAY SO.
+//
+// This fixture has every expected occurrence present and no foreign one, so a two-direction
+// membership check calls it complete while the artifact carries two outcomes for occurrence 11.
+// That is the grain confusion the row type warns about arriving through the completeness law: an
+// unreconciled producer hands over attempt-grain rows and, without this arm, they pass. Found by
+// review 56288 on the first cut of this module.
+test fn an_observation_answering_twice_for_one_occurrence_refuses() -> Bool {
+  match legacy_observation_completeness(observation: lbo_observation(ids: [11, 11, 22, 33]), expected: lbo_expected()) {
+    ObservationRepeatedObserved { keys: repeated } => (repeated |> count) == 1
+    ObservationRepeatedExpected { keys: _ } => false
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+  }
+}
+
+// THE FIELD HALF OF THE RESOLVER REFERENCE MOVES THE COMPARISON, and it must also move the content
+// address -- review 56288 and review 56285 both found the asymmetry, from opposite ends. The arm
+// below is the comparison half; legacy_subject_identity now folds the field, so the two cannot
+// disagree about whether these are the same base.
+test fn a_moved_resolver_field_refuses() -> Bool {
+  let base = lbo_base_subject()
+  lbo_diverged_field(other: LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value"),
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }) == "resolver_identity.field"
+}
+
+// AND THE ADDRESS MOVES WITH IT. This is the arm that would have caught the original defect: two
+// subjects differing only in the resolver reference's field are refused by the comparison AND carry
+// different content addresses. Either alone is satisfiable by the asymmetry the reviews found.
+test fn a_moved_resolver_field_also_moves_the_content_address() -> Bool {
+  let base = lbo_base_subject()
+  let other = LegacyBindingObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    resolver_identity: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value"),
+    resolver_policy: base.resolver_policy,
+    occurrence_transport_digest: base.occurrence_transport_digest,
+    declaration_index_digest: base.declaration_index_digest
+  }
+  legacy_subject_identity(subject: base).digest != legacy_subject_identity(subject: other).digest
+}
+
+// THE INJECTIVITY WITNESS, PER FIELD OVER ALL NINE INPUTS.
+//
+// The applicability arms are per-field on the stated grounds that a comparison reading eight of nine
+// fields must be impossible to write. That argument applies with equal force to the ADDRESS, and on
+// the first cut of this module it was not applied: the fold read seven of the nine inputs, and
+// nothing here would have noticed. Two reviews found it from opposite ends within minutes of each
+// other -- which is the honest reason these arms exist, and the reason a covered function's sibling
+// being uncovered is worth treating as a defect rather than as missing polish.
+//
+// NINE INPUTS, NOT EIGHT: the resolver reference contributes three (module path, declaration name,
+// field), so the identity fold has one more input than the subject has fields.
+fn lbo_address_moves(other: LegacyBindingObservationSubject) -> Bool {
+  legacy_subject_identity(subject: lbo_base_subject()).digest != legacy_subject_identity(subject: other).digest
+}
+
+fn lbo_with_semantic_source(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: d,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_source_set(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: d,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_artifact(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: d,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_transport(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: d,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_decl_index(d: Fnv1a64Structural) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: d
+  }
+}
+
+fn lbo_with_resolver(reference: DeclarationRef) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: reference,
+    resolver_policy: b.resolver_policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+fn lbo_with_policy(policy: LegacyResolutionPolicy) -> LegacyBindingObservationSubject {
+  let b = lbo_base_subject()
+  LegacyBindingObservationSubject {
+    semantic_source_digest: b.semantic_source_digest,
+    source_set_digest: b.source_set_digest,
+    compiler_artifact_digest: b.compiler_artifact_digest,
+    resolver_identity: b.resolver_identity,
+    resolver_policy: policy,
+    occurrence_transport_digest: b.occurrence_transport_digest,
+    declaration_index_digest: b.declaration_index_digest
+  }
+}
+
+test fn the_content_address_is_stable_for_an_unchanged_subject() -> Bool {
+  legacy_subject_identity(subject: lbo_base_subject()).digest == legacy_subject_identity(subject: lbo_base_subject()).digest
+}
+
+test fn every_identity_input_moves_the_content_address() -> Bool {
+  lbo_address_moves(other: lbo_with_semantic_source(d: lbo_digest(label: "aaaaaaaaaaaaaaaa")))
+    && lbo_address_moves(other: lbo_with_source_set(d: lbo_digest(label: "bbbbbbbbbbbbbbbb")))
+    && lbo_address_moves(other: lbo_with_artifact(d: lbo_digest(label: "cccccccccccccccc")))
+    && lbo_address_moves(other: lbo_with_transport(d: lbo_digest(label: "dddddddddddddddd")))
+    && lbo_address_moves(other: lbo_with_decl_index(d: lbo_digest(label: "eeeeeeeeeeeeeeee")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value")))
+    && lbo_address_moves(other: lbo_with_policy(policy: NamespaceOnlyPolicy))
+}
+
+// THE COLLISION THE OTHER NINE ARMS CANNOT SEE, because it needs two subjects differing only in the
+// DeclField ARM with the payload chosen to impersonate the nullary arm's label. Everything else
+// about these two subjects is identical, and decl_field_eq reports them different, so an address
+// that collided here would be the comparison and the address disagreeing -- the same defect the
+// field fold was added to fix, one level down inside the fix.
+test fn a_field_name_cannot_impersonate_the_whole_declaration_arm() -> Bool {
+  decl_field_label(field: WholeDeclaration) != decl_field_label(field: NamedField { field_name: "whole_declaration" as NonEmptyStr })
+}

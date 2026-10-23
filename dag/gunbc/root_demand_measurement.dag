@@ -1,0 +1,186 @@
+module gunbc.root_demand_measurement
+
+import std.types { Int, String, NonEmptyStr, Bool, List }
+import std.measure { ByteSize, byte_size, byte_size_count, gibibyte_scale_factor_bytes }
+import std.decl_ref { DeclarationRef }
+import gunbc.host_budget_source {
+  BudgetSourceCgroupMemoryMax,
+  host_budget_source_label,
+}
+import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileRootIdentity,
+  WholeCorpusCompileSourceCensus,
+  WholeCorpusCompileDemand,
+  WholeCorpusCompileDemandReceipt,
+  MeasuredForRoot,
+  whole_corpus_compile_root_identity_eq,
+}
+
+// HOW A ROOT ACQUIRES ITS FIRST ROW. Whole-root compile admission refuses a root with no
+// MeasuredForRoot row, and the run that would measure it is itself a whole-root compile, so without
+// a separate subject no new root could ever be measured. This is that subject, and it is DESIGN
+// section 5's one sanctioned second mode -- 'a stopped-line audit that replays the run to ledger
+// every deficit for that analysis -- it reports, it does not green' (direction ruling on gunbc#11265,
+// review 65495). It is not the compile subject with its refusal skipped: its only product is a typed
+// receipt, it emits no artifact and no subject verdict, and a row is authored FROM that receipt.
+//
+// ADMITTED ONLY UNDER AN OBSERVED memory.max THAT BOUNDS THIS PROCESS (direction ruling on gunbc#11265,
+// review 65682, correcting that ruling's earlier 'memory.max or memory.high'). Without a row the run has
+// no demand figure to be refused against, so the host itself must bound it, and only memory.max does:
+// memory.high throttles and reclaims and never kills -- whole_corpus_compile_measured_demand_note records
+// that a run above it degrades into swap rather than dying -- so under memory.high alone the Exceeded
+// receipt could never fire and the parent could wait on a thrashing child indefinitely. The limit is
+// READ AS memory.max directly, never taken from the budget resolution, which reports the lower of high
+// and max and so names memory.high whenever both are set. A declared budget is not read here at all.
+//
+// A FINITE memory.high BELOW memory.max IS ITS OWN STATE AND IT REFUSES (gate refusal on gunbc#11265
+// at 31a0207cc). Reading memory.max alone and stopping there re-admits the very hazard the arm above
+// excludes: with both set and high < max, the kernel throttles and reclaims at memory.high FIRST, so
+// the child degrades into the indefinite thrash before it can reach the kill line, and the parent's
+// blocking wait has no bounded end. The reading therefore carries the throttle line beside the kill
+// line whenever both bind, and only memory.high >= memory.max (or unset) leaves memory.max binding
+// first. The seed mirror reads both from the same leaf-to-root walk.
+type RootDemandMeasurementLimitReading
+  = MemoryMaxBindsProcess { cgroup_dir: NonEmptyStr, bytes: ByteSize }
+  | MemoryHighThrottlesBelowMax { cgroup_dir: NonEmptyStr, high: ByteSize, max: ByteSize }
+  | MemoryHighOnly { cgroup_dir: NonEmptyStr, high: ByteSize }
+  | NoCgroupMemoryLimit
+
+type RootDemandMeasurementAdmission
+  = RootDemandMeasurementAdmitted {
+      root: WholeCorpusCompileRootIdentity,
+      limit: ByteSize,
+      limit_source: NonEmptyStr,
+    }
+  | RootDemandMeasurementRefusedNoEnforceableLimit {
+      root: WholeCorpusCompileRootIdentity,
+      reason: NonEmptyStr,
+    }
+
+fn root_demand_measurement_admission(
+  limit: RootDemandMeasurementLimitReading,
+  root: WholeCorpusCompileRootIdentity
+) -> RootDemandMeasurementAdmission {
+  match limit {
+    MemoryMaxBindsProcess { cgroup_dir: d, bytes: b } =>
+      RootDemandMeasurementAdmitted {
+        root: root,
+        limit: b,
+        limit_source: host_budget_source_label(s: BudgetSourceCgroupMemoryMax { cgroup_dir: d }),
+      }
+    MemoryHighThrottlesBelowMax { cgroup_dir: _, high: _, max: _ } =>
+      RootDemandMeasurementRefusedNoEnforceableLimit {
+        root: root,
+        reason: "memory.high is set below memory.max: the kernel throttles and reclaims at memory.high before the process can reach the kill line, so memory.max does not bound the measurement; raise memory.high to memory.max (or unset it) on the measuring cgroup" as NonEmptyStr,
+      }
+    MemoryHighOnly { cgroup_dir: _, high: _ } =>
+      RootDemandMeasurementRefusedNoEnforceableLimit {
+        root: root,
+        reason: "memory.high is set but memory.max is not: memory.high throttles and never kills, so it does not bound the process; the measurement needs memory.max" as NonEmptyStr,
+      }
+    NoCgroupMemoryLimit =>
+      RootDemandMeasurementRefusedNoEnforceableLimit {
+        root: root,
+        reason: "no cgroup memory.max binds this process; a declared or physical-memory budget bounds nothing, and the measurement needs memory.max" as NonEmptyStr,
+      }
+  }
+}
+
+// THE RECEIPT, recorded by the PARENT of the measured process -- a killed process cannot write its
+// own. COMPLETED carries the exit status and the peak; EXCEEDED is a kill at the limit and is itself
+// an honest lower bound (demand > limit); TERMINATED is any other signal, which measures nothing.
+// The census is what the measured run reported resolving; a run killed before reporting has none.
+type RootDemandMeasurementCensus
+  = CensusReported { census: WholeCorpusCompileSourceCensus }
+  | CensusNotReported
+
+type RootDemandMeasurementRun {
+  root: WholeCorpusCompileRootIdentity
+  limit: ByteSize
+  limit_source: NonEmptyStr
+  measured_on_host: NonEmptyStr
+  instrument_run: NonEmptyStr
+  census: RootDemandMeasurementCensus
+}
+
+type RootDemandMeasurementReceipt
+  = MeasurementCompleted { run: RootDemandMeasurementRun, exit_status: Int, peak: ByteSize }
+  | MeasurementExceeded { run: RootDemandMeasurementRun }
+  | MeasurementTerminated { run: RootDemandMeasurementRun, signal: Int }
+
+// A ROW IS AUTHORED FROM A RECEIPT, never hand-typed. Only a COMPLETED run with exit status 0 and a
+// reported census yields a row: a refusing run's peak bounds the demand from below rather than
+// measuring it (gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_demand_note), an
+// exceeded run is a lower bound by construction, and a terminated run measured nothing. The root the
+// row is authored for must be the receipt's root -- identity is the join here as it is at admission.
+type MeasuredRowFromReceipt
+  = MeasuredRowAuthored { demand: WholeCorpusCompileDemand }
+  | MeasuredRowRefusedReceiptForAnotherRoot {
+      root: WholeCorpusCompileRootIdentity,
+      receipt_root: WholeCorpusCompileRootIdentity,
+    }
+  | MeasuredRowRefusedLowerBound { limit: ByteSize, why: NonEmptyStr }
+  | MeasuredRowRefusedRunDidNotComplete { why: NonEmptyStr }
+
+// The declared grain: a peak rounds UP to whole gibibytes, the fail-closed direction for a demand.
+// The gibibyte is std.measure's, not a literal here.
+fn root_demand_peak_at_grain(peak: ByteSize) -> ByteSize {
+  let n = byte_size_count(b: peak)
+  let gib = gibibyte_scale_factor_bytes()
+  let whole = n / gib
+  byte_size(if whole * gib == n { n } else { (whole + 1) * gib })
+}
+
+fn root_demand_measurement_run_of(receipt: RootDemandMeasurementReceipt) -> RootDemandMeasurementRun {
+  match receipt {
+    MeasurementCompleted { run: r, exit_status: _, peak: _ } => r
+    MeasurementExceeded { run: r } => r
+    MeasurementTerminated { run: r, signal: _ } => r
+  }
+}
+
+fn measured_for_root_from_receipt(
+  root: WholeCorpusCompileRootIdentity,
+  receipt: RootDemandMeasurementReceipt,
+  measured_on: NonEmptyStr,
+  evidence: DeclarationRef
+) -> MeasuredRowFromReceipt {
+  let run = root_demand_measurement_run_of(receipt: receipt)
+  if !whole_corpus_compile_root_identity_eq(a: root, b: run.root) {
+    MeasuredRowRefusedReceiptForAnotherRoot { root: root, receipt_root: run.root }
+  } else {
+    match receipt {
+      MeasurementExceeded { run: r } =>
+        MeasuredRowRefusedLowerBound {
+          limit: r.limit,
+          why: "the run was killed at its limit, so demand exceeds the limit and no peak was measured" as NonEmptyStr,
+        }
+      MeasurementTerminated { run: _, signal: _ } =>
+        MeasuredRowRefusedRunDidNotComplete { why: "the run was terminated by a signal other than a kill at the limit" as NonEmptyStr }
+      MeasurementCompleted { run: r, exit_status: code, peak: p } =>
+        if code != 0 {
+          MeasuredRowRefusedLowerBound {
+            limit: r.limit,
+            why: "the run exited nonzero, so its peak bounds a run that stopped early rather than measuring the demand" as NonEmptyStr,
+          }
+        } else {
+          match r.census {
+            CensusNotReported => MeasuredRowRefusedRunDidNotComplete { why: "the run reported no source census" as NonEmptyStr }
+            CensusReported { census: c } =>
+              MeasuredRowAuthored {
+                demand: MeasuredForRoot {
+                  root: root,
+                  census: c,
+                  peak: root_demand_peak_at_grain(peak: p),
+                  receipt: WholeCorpusCompileDemandReceipt {
+                    measured_on: measured_on,
+                    instrument_run: concat(r.instrument_run as String, concat(" on ", concat(r.measured_on_host as String, concat(" under ", r.limit_source as String)))) as NonEmptyStr,
+                    evidence: evidence,
+                  },
+                },
+              }
+          }
+        }
+    }
+  }
+}

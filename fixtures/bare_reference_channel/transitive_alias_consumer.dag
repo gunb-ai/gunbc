@@ -1,0 +1,3 @@
+module probe.brc.transitive_alias_consumer
+
+fn brc_transitive(id: BrcAliasId) -> BrcAliasId { brc_alias_identity(id: id) }

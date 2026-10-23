@@ -1,0 +1,45 @@
+module gunbc.site.element.section_heading
+
+import std.types { Int, List, String }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.design.material { BuildRule, StaticRule, decl }
+import gunbc.design.scale { scale_pair, space_0, space_8 }
+import gunbc.site.element.text { element_text_decls, ElementSectionHeading }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties { Margin }
+
+// SectionHeading: the heading of a section inside a card ("Parent (1)", "Sub-issues (1/3)"). The
+// count is a typed input, so the heading formats numbers its caller derived and never counts
+// anything itself.
+type SectionCount
+  = SectionUncounted
+  | SectionCounted { n: Int }
+  | SectionCountedOfTotal { n: Int, total: Int }
+
+type SectionHeading {
+  text: String
+  count: SectionCount
+}
+
+data section_heading_class: String = "el-section-heading"
+
+fn section_heading_text(input: SectionHeading) -> String {
+  match input.count {
+    SectionUncounted => input.text
+    SectionCounted { n } => join([input.text, " (", to_string(n), ")"], "")
+    SectionCountedOfTotal { n, total } => join([input.text, " (", to_string(n), "/", to_string(total), ")"], "")
+  }
+}
+
+fn section_heading(input: SectionHeading) -> Fragment {
+  el_attrs("h3", [attr(name: "class", value: section_heading_class)], [txt(section_heading_text(input: input))])
+}
+
+fn section_heading_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: section_heading_class }, decls: concat([
+      decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
+    ], element_text_decls(role: ElementSectionHeading)) },
+  ]
+}

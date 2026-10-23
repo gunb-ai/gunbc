@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.a_leader_only_pre_tune_seeds_a_rank_keyed_cache
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_leader_only_pre_tune_seeds_a_rank_keyed_cache: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_leader_only_pre_tune_seeds_a_rank_keyed_cache" as NonEmptyStr,
+
+  receipts: [
+    "A LEADER-ONLY PRE-TUNE SEEDING A RANK-KEYED CACHE MAKES A SYNCHRONIZED PHASE ASYMMETRIC. Upstream facts, read from the pinned Group A runtime's own sources (fleet-converge observe 37227706992): flashinfer.fused_moe.core MoERunner get_cache_key_extras includes tp_rank, ep_rank and cluster_rank in the persisted tactic key for trtllm::fused_moe::gemm1/gemm2; vllm.model_executor.warmup.flashinfer_sparse_mla_warmup tunes under autotune on the leader ONLY (rank_in_group == 0), saves, and every rank loads the leader's file; kernel_warmup flashinfer_autotune then averages per-tactic timings over world.cpu_group (gloo). The leader's keys hit, so it skips the timing collectives and waits at world.barrier; every other rank misses its own rank-keyed keys and blocks in a collective the leader never enters.",
+
+    "SPECIMEN, 2026-10-04, Group A nvfp4-8 (fleet-converge 37190290418), from the four rank logs read by valiant-crab-775: head tuned 2+2 fused_moe passes in the sparse-MLA phase and saved 52 configs at 09:15:25; all ranks loaded them; the workers then logged nothing for 30 minutes (09:15:25 -> 09:45:38), tuned fused_moe alone (gemm1 x84, gemm2 x84 each) and reached the barrier at 10:11 to 'Application timeout caused pair closure'; the head's barrier failed at 09:54:37. The launch was then killed by the step timeout (a separate class, a_step_timeout_shorter_than_the_wait_it_encloses) and rolled back by adoption.",
+
+    "AVOIDANCE, a declared knob (configuration, not a patch): VLLM_FLASHINFER_AUTOTUNE_SKIP_OPS=trtllm::fused_moe::gemm1,trtllm::fused_moe::gemm2 on the NVFP4 arm (gunbc.spark.glm53_arm_staircase glm53_nvfp4_autotune_skip_ops; extdeps.vllm.environment VllmFlashinferAutotuneSkipOps). Its cost is part of the fact: rank 0 keeps sparse-MLA-tuned fused_moe tactics, ranks 1-3 run the heuristic tactic, so the ranks are not kernel-identical and the arm's throughput is a lower bound. RUNG: mitigatable (avoided by configuration). CEILING: outside the modeled guarantee -- the asymmetry is upstream behaviour. NEXT TRIGGER: an upstream route for every rank to end tuned (each rank tuning its own rank-keyed shapes outside the synchronized collective, or a leader file carrying all ranks' keys), or the operator's decision that an upstream change is wanted.",
+  ],
+
+  evidence: [],
+}

@@ -1,0 +1,73 @@
+module gunbc.runner.runner_harness_refusal_receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+// THE HARNESS ARM THAT HAD NEVER FIRED, NOW FIRED ON PURPOSE.
+//
+// gunbc.runner.runner_bound_attempt_receipt recorded it as written and unexercised: every run since
+// the change had booted on its first attempt or hit a firmware error, so the arm that refuses on an
+// AMBIGUOUS reading had no evidence at all. An unexercised refusal is the one this lane has learned
+// least to trust -- it is indistinguishable from a refusal that cannot fire.
+
+// ── why the arm exists ─────────────────────────────────────────────────────────────────────────
+
+// THE HARNESS ONCE POWER-CYCLED A MACHINE RUNNING A LIVE CI JOB. A console the BMC had closed read
+// as a failed boot, so it cycled -- destroying the only observation of the run it existed to record,
+// and producing the capture that was then published under the wrong identity.
+//
+// THE DEFECT WAS NOT THE MISSED LINE. It was that an ambiguous reading triggered a DESTRUCTIVE
+// action: the observer could not distinguish "I stopped watching" from "it stopped working", so it
+// chose the arm that resolved the ambiguity in its own favour and charged the cost to whatever was
+// running.
+data arm_under_test: NonEmptyStr = "only a firmware error on a LIVE console authorises another power cycle; any other reading stops and tells the operator to look"
+
+// ── the first attempt to exercise it FAILED, and that is the more useful finding ───────────────
+
+// HOLDING THE SOL SESSION DID NOT PRODUCE AMBIGUITY. The intended setup was to occupy the BMC's
+// single console session so the harness would see nothing. It saw the console perfectly: the
+// harness's own `sol deactivate` reclaims the session before activating, so a competing holder is
+// simply evicted.
+//
+// SO THE STATE IS NOT REACHABLE BY CONTENTION, which is worth knowing independently of the test. A
+// dropped console on this BMC comes from the controller's own session handling, not from another
+// client taking it -- meaning the failure that destroyed a live run cannot be reproduced by racing
+// for the console, and any future attempt to reproduce it must come at the BMC differently.
+data contention_does_not_produce_the_state: NonEmptyStr = "the harness's own sol deactivate evicts a competing holder, so occupying the console does not blind it; that run hit the firmware-error path instead and retried, correctly"
+
+// ── the reading that did produce it ────────────────────────────────────────────────────────────
+
+// AN UNANSWERABLE CONTROLLER LOOKS EXACTLY LIKE A DROPPED CONSOLE FROM THE HARNESS'S SIDE: no loader
+// banner, no firmware error, an empty capture. That is the same reading, arrived at by a different
+// cause, and it is the reading the arm is written against.
+//
+// THE ARM FIRED ON THE FIRST ATTEMPT AND STOPPED. Exit 3, one attempt, no second power cycle -- where
+// the previous harness would have cycled up to four times.
+data observed_refusal: List<NonEmptyStr> = [
+  "attempt 1 produced no loader banner and no firmware error",
+  "the harness refused rather than cycling, and named the capture to inspect",
+  "exit 3, one attempt: the arm that previously cycled four times stopped at the first ambiguity",
+]
+
+// ── two things about the setup that were not careful ───────────────────────────────────────────
+
+// THE ADDRESS WAS CHOSEN WITHOUT CHECKING IT WAS FREE, and something lives there. Its MAC is on the
+// segment and it answers ping. The IPMI commands failed with "Unable to establish IPMI v2 / RMCP+
+// session", so no power command reached it -- but that was the credentials failing, not care taken
+// beforehand. Picking an address for a destructive-command harness without first establishing that
+// nothing is on it is the same shape as the reading this arm exists to refuse.
+data setup_defect: NonEmptyStr = "192.168.1.199 was assumed free and is not; a device answers there. No IPMI session was established so no power command landed, which was luck rather than a check"
+
+// AND THE CAUSE UNDER TEST IS NOT THE CAUSE THAT BIT US. The original incident was a console the BMC
+// closed mid-run; this exercise produced an unanswerable controller instead. The harness cannot tell
+// them apart, which is precisely why the arm is written against the READING rather than the cause --
+// but the receipt should not claim the original failure was reproduced, because it was not.
+data what_was_not_reproduced: NonEmptyStr = "a BMC-closed console during a live run was not reproduced; an equivalent READING was produced by a different cause, and the arm keys on the reading"
+
+// ── standing ───────────────────────────────────────────────────────────────────────────────────
+
+data arm_standing: NonEmptyStr = "exercised: the ambiguous-reading refusal fires and stops, proven against a real harness run rather than asserted"
+
+data still_unexercised: List<NonEmptyStr> = [
+  "the BMC-closed-console cause specifically, which cannot be produced by contention and has no known trigger",
+  "a release that fails or returns ambiguously, which remains the oldest unexercised arm in this lane",
+]

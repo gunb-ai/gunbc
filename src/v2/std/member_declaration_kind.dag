@@ -1,0 +1,105 @@
+module v2.std.member_declaration_kind
+
+import std.types { List }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { fold_list }
+import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
+import v2.std.integer { Int }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+// WHICH KIND OF DECLARATION AUTHORED EACH TOP-LEVEL MEMBER, carried because lowering erases it.
+// Normalize lowers a `data` declaration to a named nullary Arrow member
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member) whose shape is, by design,
+// identical to a zero-argument `fn` lowered by body_lower_fn_decl_to_arrow: both are a Conj member
+// whose Authored edge names an Arrow with an empty domain, a codomain and a body. After lowering no
+// reader of the Node can tell `data x: T = v` from `fn x() -> T { v }`, so a reader that must hold
+// the first and refuse the second has nothing to read, and classifying a generic Arrow as a data
+// declaration is the impersonation hole. The fact is read where it still exists -- on the parse, at
+// the one capture site of v2.compiler.normalize -- exactly as type_declaration_kinds is, sealed on
+// NormalizedTree beside the root rather than as a structural child edge (which would change the
+// content hash of every data declaration), and handed forward by the caller that holds it.
+type MemberDeclarationKind
+  = DeclaredDataMember
+  | DeclaredFnMember
+
+// A top-level member by its authored name and kind, as read from ONE module's parse. Unqualified:
+// the module that declares it is the NormalizedTree it rides on.
+type DeclaredMember {
+  name: Symbol
+  kind: MemberDeclarationKind
+}
+
+// A member by its DECLARING path -- the module's qualified name and the member's own name, never a
+// bare spelling, because .dag member names are corpus-global (the way symbol_index_fill qualifies).
+type QualifiedDeclaredMember {
+  module: QualifiedName
+  name: Symbol
+  kind: MemberDeclarationKind
+}
+
+// THE CHANNEL A LATER-GRAIN CONSUMER RECEIVES. It names the modules it COVERS, because an empty member
+// list is ambiguous between "this module declares no such member" and "nothing was read": the first is
+// a fact, the second is the absence of one, and a consumer that reads the second as the first refuses
+// every module (a false absence) while one that reads it as "fine" accepts every module (a fabricated
+// pass). MemberKindsUnavailable is the explicit second arm, so a constructor site that holds no parse
+// says so by value (no_member_declaration_kinds), like no_type_declaration_kinds.
+type MemberKindChannel
+  = MemberKindsUnavailable
+  | MemberKindsCaptured { covered: List<QualifiedName>, members: List<QualifiedDeclaredMember> }
+
+fn no_member_declaration_kinds() -> MemberKindChannel {
+  MemberKindsUnavailable
+}
+
+type MemberKindLookup
+  = MemberKindProvenanceUnavailable
+  | MemberKindNotDeclared
+  | MemberKindDeclared { kind: MemberDeclarationKind }
+
+fn member_kind_module_is(module: QualifiedName, wanted: String) -> Bool {
+  qualified_name_to_dotted_string(qn: module) == wanted
+}
+
+// The kind the channel records for `name` declared at the top level of the module whose dotted name is
+// `module`. Unavailable when the channel was never read OR does not cover that module: both mean the
+// provenance is not there, and neither may answer "not declared".
+fn member_kind_lookup(channel: MemberKindChannel, module: String, name: Symbol) -> MemberKindLookup {
+  match channel {
+    MemberKindsUnavailable => MemberKindProvenanceUnavailable
+    MemberKindsCaptured { covered: covered, members: members } =>
+      if fold(covered, init: false, f: fn(acc, m) { acc || member_kind_module_is(module: m, wanted: module) }) {
+        fold(members, init: MemberKindNotDeclared, f: fn(acc, m) {
+          if member_kind_module_is(module: m.module, wanted: module) && (m.name == name) {
+            MemberKindDeclared { kind: m.kind }
+          } else {
+            acc
+          }
+        })
+      } else {
+        MemberKindProvenanceUnavailable
+      }
+  }
+}
+
+// Two members of one module sharing a name is a duplicate declaration whatever their kinds (a data and a fn of
+// one name conflict as surely as two of one kind); the channel refuses it, never first-wins. ONE PASS: the names
+// seen so far ride a map, so each member costs one membership probe instead of a rescan of the list.
+type MemberNamesSeen {
+  seen: Map<Symbol, Bool>
+  duplicate: Bool
+}
+
+fn declared_members_have_duplicate(members: FreeMonoid<DeclaredMember>) -> Bool {
+  fold_list(
+    xs: members,
+    empty: MemberNamesSeen { seen: empty_map(), duplicate: false },
+    cons: fn(acc, m) {
+      MemberNamesSeen {
+        seen: map_insert(m: acc.seen, key: m.name, value: true),
+        duplicate: acc.duplicate || map_contains_key(m: acc.seen, key: m.name)
+      }
+    }
+  ).duplicate
+}

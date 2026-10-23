@@ -1,0 +1,102 @@
+module v2.lens.host_language_transport_script
+
+
+type TransportScriptArgShape
+  = ComputedApplication
+  | BareStringLiteral
+  | LetBoundStringLiteral
+  | StringInterpLiteralsOnly
+
+type TransportScriptPositionFact {
+  path: String
+  function: String
+  shape: TransportScriptArgShape
+}
+
+type TransportScriptPositionViolation {
+  path: String
+  function: String
+  shape: TransportScriptArgShape
+}
+
+data empty_transport_script_violations: List<TransportScriptPositionViolation> = []
+
+fn transport_script_arg_shape_is_literal_blob(shape: TransportScriptArgShape) -> Bool {
+  match shape {
+    ComputedApplication => false
+    BareStringLiteral => true
+    LetBoundStringLiteral => true
+    StringInterpLiteralsOnly => true
+  }
+}
+
+fn transport_script_fact_violation(
+  fact: TransportScriptPositionFact
+) -> List<TransportScriptPositionViolation> {
+  if transport_script_arg_shape_is_literal_blob(shape: fact.shape) {
+    [
+      TransportScriptPositionViolation {
+        path: fact.path,
+        function: fact.function,
+        shape: fact.shape
+      }
+    ]
+  } else {
+    empty_transport_script_violations
+  }
+}
+
+fn scan_transport_script_facts(
+  facts: List<TransportScriptPositionFact>
+) -> List<TransportScriptPositionViolation> {
+  fold_list(
+    xs: facts,
+    empty: empty_transport_script_violations,
+    cons: fn(acc, fact) {
+      fold_list(
+        xs: transport_script_fact_violation(fact: fact),
+        empty: acc,
+        cons: fn(inner, v) { list_snoc_item(xs: inner, item: v) }
+      )
+    }
+  )
+}
+
+fn transport_script_literal_violation_count(
+  facts: List<TransportScriptPositionFact>
+) -> Int {
+  length(xs: scan_transport_script_facts(facts: facts))
+}
+
+fn transport_script_literal_ban_holds(
+  facts: List<TransportScriptPositionFact>
+) -> Bool {
+  is_empty(xs: scan_transport_script_facts(facts: facts))
+}
+
+fn transport_script_lens_verdict(
+  facts: List<TransportScriptPositionFact>
+) -> LensVerdict {
+  if transport_script_literal_ban_holds(facts: facts) {
+    Holds
+  } else {
+    lens_verdict_module_violation(
+      reason: ^transport_script_literal_blob_in_script_position,
+      module_name: "v2.lens.host_language_transport_script"
+    )
+  }
+}
+
+fn transport_script_live_literal_violation_count_for_path(path: String) -> Int {
+  transport_script_literal_violation_count(
+    facts: transport_script_position_facts_for_path(path: path)
+  )
+}
+
+fn transport_script_position_facts_live(path: String) -> List<TransportScriptPositionFact> {
+  transport_script_position_facts_for_path(path: path)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

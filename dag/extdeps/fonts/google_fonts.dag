@@ -1,0 +1,63 @@
+module extdeps.fonts.google_fonts
+
+import std.types { String, CommitSha }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/google/fonts/tree/7085eb89a950e85db5b166b7a58d414544b4140c"
+  }
+}
+
+data sil_open_font_license_1_1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "openfontlicense.org/open-font-license-official-text/"
+  }
+}
+
+// Cited upstream: the google/fonts repository, the distribution this repository reads font
+// sources from, pinned at one commit (7085eb89a950e85db5b166b7a58d414544b4140c, committed
+// 2026-10-05T18:00:35Z). Both families are read from that one upstream at that one commit, so they
+// share this module; each family's own project (googlefonts/roboto-classic, googlefonts/googlesans)
+// is the copyright holder named in its OFL.txt, not a source this repository reads.
+//
+// Both directories sit under ofl/ and carry the SIL Open Font License 1.1 as OFL.txt, whose
+// copyright lines declare no Reserved Font Name, so a subset may keep the family name. The two
+// licence texts are committed verbatim at the paths in licence_copy. Google Sans additionally
+// ships ofl/googlesans/TRADEMARKS.md: the name is a trademark, which the licence does not grant.
+//
+// What this module states is upstream fact only: the commit, where each family's variable source
+// file is, its licence. The faces this repository DERIVES from those files (instance, subset,
+// WOFF2, digests) are this repository's receipts and live with their consumer.
+
+type GoogleFontsFamilySource {
+  family: String
+  commit: CommitSha
+  source_path: String
+  licence_path: String
+  licence: ExternalAuthority
+  licence_copy: String
+}
+
+data google_fonts_commit: CommitSha = "7085eb89a950e85db5b166b7a58d414544b4140c"
+
+data roboto_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
+  family: "Roboto",
+  commit: google_fonts_commit,
+  source_path: "ofl/roboto/Roboto[wdth,wght].ttf",
+  licence_path: "ofl/roboto/OFL.txt",
+  licence: sil_open_font_license_1_1,
+  licence_copy: "LICENSES/OFL-1.1-Roboto.txt",
+}
+
+data google_sans_source: GoogleFontsFamilySource = GoogleFontsFamilySource {
+  family: "Google Sans",
+  commit: google_fonts_commit,
+  source_path: "ofl/googlesans/GoogleSans[GRAD,opsz,wght].ttf",
+  licence_path: "ofl/googlesans/OFL.txt",
+  licence: sil_open_font_license_1_1,
+  licence_copy: "LICENSES/OFL-1.1-GoogleSans.txt",
+}

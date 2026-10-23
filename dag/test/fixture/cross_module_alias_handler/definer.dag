@@ -1,0 +1,7 @@
+module test.fixture.cross_module_alias_handler.definer
+
+type Handler = fn(Int) -> Int
+
+type Boxed {
+  handler: Handler
+}

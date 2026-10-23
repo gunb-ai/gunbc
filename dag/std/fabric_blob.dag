@@ -1,0 +1,180 @@
+module std.fabric_blob
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic, sha256_hex_digest }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.algebra { trim }
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.crypto.hash
+import extdeps.tools.coreutils_stat
+
+// THE FABRIC BLOB PLANE: OPAQUE STAGED FILES UNDER AN EXACT ADDRESS, BESIDE THE METADATA PLANE.
+//
+// std.fabric_storage is the fabric's METADATA plane: small structured immutable objects whose
+// preimage travels inside one request, links the store walks, compare-and-set heads, durable
+// history. Its object body is NonEmptyStr, so a tarball of executables has no constructor there, and
+// it must not grow one: fusing bulk bytes into the metadata wire would push every existing client
+// through a binary rewrite. This module is the BLOB plane beside it: a file that lives on disk on
+// both sides of a transfer, is never decoded by the store, and is addressed exactly. The two share
+// placement policy and a transport family; they do not share an object model (docs/plans/
+// fabric-storage.md, step 4A).
+//
+// THE ADDRESS IS AN ADMITTED CRYPTOGRAPHIC KEY, NOT THE CONTENT DIGEST. A consumer asks for "the
+// product of this request", whose bytes it does not know in advance, so the address is the
+// provider's request key (std.materialization_provider admits Sha256Family for CrossRunScope) and
+// the content is established on read: the reading below carries the SHA-256 and byte size DERIVED
+// from the staged file, and whatever verifies the blob's contents (for a build pack, its own member
+// manifest) consumes that reading. One address, one immutable object, published create-if-absent:
+// there is no listing, no prefix fallback, no overwrite and no delete on the publisher's surface,
+// and a reader never observes half a publication because the object is the whole publication.
+//
+// WHOLE OBJECTS, UP TO A DECLARED BOUND. This rung carries an object as one transfer; a placement
+// declares the largest object it admits and an object above it is REFUSED BEFORE UPLOAD, never
+// truncated or split. Multipart and chunked objects are the next rung (fabric-storage step 5); they
+// change how an object is carried, not what an address or a reading is.
+//
+// PLACEMENT, TRANSPORT AND RETENTION ARE NOT FACTS OF THIS MODULE (DESIGN 3). They belong to its
+// realizations, which spell neither the object key, the size bound nor the verdicts on their own.
+//
+// CONSUMERS (DESIGN 3c). The reading mint, the put plan and the address are exercised by
+// test.claim.std_fabric_blob. FabricBlobPut, FabricBlobGet and fabric_blob_fault_text are consumed by
+// gunbc.fabric.fabric_blob_r2 (put and get over R2), which this module's declared frontier named
+// (gunbc#13080) and which discharges it; the bounded local store's byte parts (C1b) are a second
+// consumer.
+
+type FabricBlobAddress {
+  key: Sha256Digest
+}
+
+fn fabric_blob_address_eq(a: FabricBlobAddress, b: FabricBlobAddress) -> Bool {
+  content_hash_eq_cryptographic(left: a.key, right: b.key)
+}
+
+// THE OBJECT NAME A PLACEMENT STORES AN ADDRESS UNDER: the key's lower hex, nothing chosen.
+fn fabric_blob_object_name(address: FabricBlobAddress) -> NonEmptyStr {
+  address.key.hex as NonEmptyStr
+}
+
+// A BLOB THIS HOST HOLDS ON DISK, WITH THE DIGEST AND BYTE SIZE OF THOSE BYTES. sole_constructor:
+// only read_staged_fabric_blob mints one, from the file it digested, so a path and a digest that
+// describe different bytes have no constructor (gunbc.recurring_failure_mode
+// subject_and_its_digest_as_independent_parameters). It is the blob plane's own reading and never
+// an OriginReading: a cache fetch proves the bytes came from the cache, not from the durable origin.
+type FabricBlobReading sole_constructor {
+  path: NonEmptyStr
+  digest: Sha256Digest
+  size: ByteSize
+}
+
+fn fabric_blob_reading_path(reading: FabricBlobReading) -> NonEmptyStr {
+  reading.path
+}
+
+fn fabric_blob_reading_digest(reading: FabricBlobReading) -> Sha256Digest {
+  reading.digest
+}
+
+fn fabric_blob_reading_size(reading: FabricBlobReading) -> ByteSize {
+  reading.size
+}
+
+// WHY A BLOB OPERATION FAILED, each arm with its own owner and remedy, and none of them absence.
+type FabricBlobFault
+  = FabricBlobStoreUnreachable { cause: NonEmptyStr }
+  | FabricBlobStoreRefused { cause: NonEmptyStr }
+  | FabricBlobUnauthorized { cause: NonEmptyStr }
+  | FabricBlobStagingFailed { cause: NonEmptyStr }
+  | FabricBlobReadingUnavailable { cause: NonEmptyStr }
+
+type FabricBlobReadingOutcome
+  = FabricBlobRead { reading: FabricBlobReading }
+  | FabricBlobReadRefused { fault: FabricBlobFault }
+
+// THE SOLE MINT. One operation digests the file, measures it and names it, so the three cannot
+// describe different bytes. The handlers are consumed: extdeps.crypto.hash owns SHA-256 and its
+// sha256sum transport (the handler gunbc.fabric_m0_origin_readback mints OriginReading through), and
+// extdeps.tools.coreutils_stat owns st_size. Every non-reading outcome refuses with a located cause.
+fn read_staged_fabric_blob(path: NonEmptyStr) -> FabricBlobReadingOutcome {
+  let observed = crypto.Sha256Sum.File(path: path as String)
+  if observed.success == false {
+    FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum could not read ", path as String) as NonEmptyStr } }
+  } else {
+    match sha256sum_line_digest(line: observed.line) {
+      Absent => FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum printed no digest field for ", path as String) as NonEmptyStr } }
+      Present { value: d } =>
+        match sha256_hex_digest(hex: d.hex as String) {
+          Absent => FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("sha256sum printed a field that is not a 64-digit lower-hex SHA-256 for ", path as String) as NonEmptyStr } }
+          Present { value: digest } => {
+            let st = coreutils.Stat.PathSize(path: path)
+            if st.success == false {
+              FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("stat could not read the size of ", path as String) as NonEmptyStr } }
+            } else {
+              match parse_int(s: trim(s: st.size_text)) {
+                Absent => FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("stat printed no byte count for ", path as String) as NonEmptyStr } }
+                Present { value: n } =>
+                  if n < 0 {
+                    FabricBlobReadRefused { fault: FabricBlobReadingUnavailable { cause: concat("stat printed a negative size for ", path as String) as NonEmptyStr } }
+                  } else {
+                    FabricBlobRead { reading: FabricBlobReading { path: path, digest: digest, size: byte_size(count: n) } }
+                  }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// ── THE TWO OPERATIONS, AS PLANS A REALIZATION EXECUTES ────────────────────────────────────────
+//
+// A plan is everything about an operation that is not transport: the address, the object it names,
+// and (for a put) the bound the object must fit. A realization -- the in-process R2 handler or the
+// emitted workflow shell -- maps what its transport observed onto the outcomes below; it decides
+// none of them.
+
+// THE PUT REFUSES AN OBJECT LARGER THAN ITS PLACEMENT ADMITS, BEFORE ANY BYTE MOVES.
+type FabricBlobPutPlan
+  = FabricBlobPutAdmitted { address: FabricBlobAddress, reading: FabricBlobReading }
+  | FabricBlobPutTooLarge { address: FabricBlobAddress, size: ByteSize, bound: ByteSize }
+
+fn fabric_blob_fits(size: ByteSize, bound: ByteSize) -> Bool {
+  measure_count(m: size) <= measure_count(m: bound)
+}
+
+fn fabric_blob_put_plan(address: FabricBlobAddress, reading: FabricBlobReading, bound: ByteSize) -> FabricBlobPutPlan {
+  if !fabric_blob_fits(size: reading.size, bound: bound) {
+    FabricBlobPutTooLarge { address: address, size: reading.size, bound: bound }
+  } else {
+    FabricBlobPutAdmitted { address: address, reading: reading }
+  }
+}
+
+// A PUT ANSWERS FOUR THINGS, NOT THREE (gunbc.cloudflare.r2_staged_transfer): stored; OCCUPIED (the
+// create-only write found an object at the address -- whether it holds the same bytes is established
+// by reading it back, never assumed); refused before anything committed; or OUTCOME UNKNOWN, which a
+// caller reconciles by reading and never by putting again. Too-large is the plan's refusal, carried
+// so a caller sees it on the same coproduct.
+type FabricBlobPut
+  = FabricBlobStored { address: FabricBlobAddress }
+  | FabricBlobOccupied { address: FabricBlobAddress }
+  | FabricBlobPutRefused { address: FabricBlobAddress, fault: FabricBlobFault }
+  | FabricBlobPutOutcomeUnknown { address: FabricBlobAddress, cause: NonEmptyStr }
+  | FabricBlobPutRefusedTooLarge { address: FabricBlobAddress, size: ByteSize, bound: ByteSize }
+
+// A GET ANSWERS THE STAGED BLOB WITH ITS READING, ITS ESTABLISHED ABSENCE, OR WHY NEITHER. Absence is
+// the only arm a consumer may treat as a miss; every other non-fetch arm refuses.
+type FabricBlobGet
+  = FabricBlobFetched { address: FabricBlobAddress, reading: FabricBlobReading }
+  | FabricBlobAbsent { address: FabricBlobAddress }
+  | FabricBlobGetUnavailable { address: FabricBlobAddress, fault: FabricBlobFault }
+
+fn fabric_blob_fault_text(fault: FabricBlobFault) -> String {
+  match fault {
+    FabricBlobStoreUnreachable { cause: c } => concat("blob store unreachable: ", c as String)
+    FabricBlobStoreRefused { cause: c } => concat("blob store refused: ", c as String)
+    FabricBlobUnauthorized { cause: c } => concat("blob credential unavailable: ", c as String)
+    FabricBlobStagingFailed { cause: c } => concat("blob staging failed: ", c as String)
+    FabricBlobReadingUnavailable { cause: c } => concat("blob reading unavailable: ", c as String)
+  }
+}

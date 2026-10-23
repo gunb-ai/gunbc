@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.admit_callers_names_no_caller_for_a_data_declaration
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data admit_callers_names_no_caller_for_a_data_declaration: RecurringFailureMode = RecurringFailureMode {
+  identity: "admit_callers_names_no_caller_for_a_data_declaration" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: an admit_callers-sealed mint called from a module-scope `data` declaration is refused with caller `<module>.<unknown>`, whatever the admit list says. v1.compiler.infer's admission arm resolves the caller from the enclosing FUNCTION scope; a data declaration has none, so the Absent arm names no caller and ConstructorCallAdmissionRefused fires. An admit list entry naming the data declaration is therefore unsatisfiable: the roster can SAY the row is admitted and the compiler can never agree.",
+    "SPECIMEN, 2026-09-29, the program census (extdeps.exec.program). Its identity rows were first written `data git_program: ProgramIdentity = uncataloged_program(invocation: \"git\")` with each row named in uncataloged_program's admit list; every one refused as `extdeps.git.<unknown>`. The rows were rewritten as nullary functions (`fn git_program() -> ProgramIdentity = ...`), which is a WORKAROUND of this gap, not a modeling choice: a constant is the natural form of an identity row, and every reader now spells a call.",
+    "HARM: not silent -- it refuses loudly, so it fails closed. The cost is representational: a sealed value can never be a module constant, so every sealed-mint roster whose natural members are constants is pushed onto nullary functions, and the refusal names `<unknown>` rather than the declaration, which reads as a compiler fault rather than as an unsatisfiable roster entry.",
+    "RUNG FOUND AT: mitigated (a typed, located refusal; nothing wrong is admitted). CEILING: structurally guaranteed -- the enclosing declaration of a data initializer is a resolved, decidable identity, exactly as a function's is, so admission can key on it.",
+    "NEXT-RUNG TRIGGER, capability grain: the admission arm resolves the caller of a sealed mint from the enclosing DECLARATION, function or data, so an admit list entry naming a data declaration admits that declaration's initializer and nothing else. Sufficient for extdeps.exec.program's identity rows to return to `data` declarations. Not satisfied by relabeling `<unknown>` in the diagnostic, nor by admitting every data declaration in the caller's module.",
+  ],
+  evidence: [],
+}

@@ -1,0 +1,39 @@
+module v2.test.language_model.rust_r1
+
+test fn rust_r1_fixture_pair_wired() -> Bool {
+  rust_r1_fixture().claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
+    && rust_r1_fixture().surface_spelling_fact == ^rust_surface_spelling_i32
+    && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
+    && rust_r1_fixture().happy.source == rust_r1_happy_fixture_source
+    && rust_r1_fixture().falsification.fixture.source == rust_r1_falsification_fixture_source
+}
+fn rust_r1_pending_verification_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^rust_r1_pending_verification_reason,
+    at: Textual { file: ^rust_r1_pending_verification_reason, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
+  claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
+  happy_verdict: verdict_fail(
+    actual: outcome_rejected(d: rust_r1_pending_verification_diagnostic())
+  ),
+  falsification_verdict: verdict_fail(
+    actual: outcome_rejected(d: rust_r1_pending_verification_diagnostic())
+  )
+}
+
+test fn rust_r1_verification_receipt_claim_id_wired() -> Bool {
+  rust_r1_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
+}
+
+test fn rust_r1_fixture_pair_carries_rust_dag_fact_anchors() -> Bool {
+  rust_r1_fixture().surface_spelling_fact == ^rust_surface_spelling_i32
+    && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
+}
+
+data rust_r1_modeled_falsification_expectation: TargetCompileVerdict = TargetCompileRejected {
+  diagnostic_code: ^target_diagnostic_e0308_type_mismatch
+}

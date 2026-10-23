@@ -1,0 +1,199 @@
+module gunbc.roadmap.roadmap_lineage
+
+import std.types { String, Int, Bool, List }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import gunbc.roadmap_model { RoadmapNode, NodeParent, MemberOf, AdmittedRoot, Closes }
+
+// THE ONE PARENT WALK. Every consumer that asks where a node sits -- the alignment chain, the
+// readiness predicate, the derived closing-contract minting, the page's project tree -- reads the
+// parent field each row declares (gunbc.roadmap_model NodeParent) through this walk, so no two
+// surfaces can disagree about a node's lineage. The walk is over a caller-supplied node list: the
+// declared authority for production, a planted fixture for a witness.
+//
+// A Closes node is a derived closing-contract task; its lineage is its TARGET's lineage with the
+// derived task standing in as the task level, so the chain reads [task, target's projects..., root].
+//
+// The fuel is the node count plus one: a rooted walk visits each node at most once, so a walk that
+// exhausts the fuel has revisited a node and is cyclic, never truncated into an answer.
+type LineageWalk
+  = LineageRooted { ids: List<String> }
+  | LineageNoParent { walked: List<String>, at: String }
+  | LineageUndeclared { walked: List<String>, node_id: String }
+  | LineageCyclic { node_id: String }
+
+type LineageStep { current: String, ids: List<String>, state: Int, stop_at: String }
+
+fn lineage_find(nodes: List<RoadmapNode>, id: String) -> RoadmapNode? {
+  fold(nodes, init: none, f: fn(acc, n) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if (n.node as String) == id { Present { value: n } } else { none }
+    }
+  })
+}
+
+// THE NODE INDEX, built once per node list. A consumer that walks EVERY node's lineage (readiness,
+// the closing-contract minting, the page's rows, alignment) builds it once and passes it, so a walk
+// is a lookup per level instead of a scan of the whole list per level -- the scan made the
+// whole-authority fold quadratic in the node count times the depth (measured 2026-10-01: the
+// readiness fold over the declared authority dominated every whole-authority witness). FIRST
+// declaration wins, exactly as lineage_find's fold keeps its first match.
+fn lineage_index(nodes: List<RoadmapNode>) -> Map<String, RoadmapNode> {
+  let empty: Map<String, RoadmapNode> = empty_map()
+  fold(nodes, init: empty, f: fn(acc, n) {
+    match lineage_lookup(index: acc, id: n.node as String) {
+      Present { value: _ } => acc
+      Absent => map_insert(m: acc, key: n.node as String, value: n)
+    }
+  })
+}
+
+fn lineage_lookup(index: Map<String, RoadmapNode>, id: String) -> RoadmapNode? {
+  map_lookup(m: index, key: id)
+}
+
+// state: 0 walking, 1 rooted, 2 no parent at stop_at, 3 undeclared stop_at, 4 cyclic at stop_at.
+fn lineage_step(index: Map<String, RoadmapNode>, acc: LineageStep) -> LineageStep {
+  if acc.state != 0 {
+    acc
+  } else {
+    match lineage_lookup(index: index, id: acc.current) {
+      Absent => LineageStep { current: acc.current, ids: acc.ids, state: 3, stop_at: acc.current }
+      Present { value: n } =>
+        match n.parent {
+          Absent => LineageStep { current: acc.current, ids: acc.ids, state: 2, stop_at: acc.current }
+          Present { value: p } =>
+            match p {
+              AdmittedRoot => LineageStep { current: acc.current, ids: acc.ids, state: 1, stop_at: "" }
+              MemberOf { project, contribution: _ } =>
+                if any(acc.ids, x => x == project) {
+                  LineageStep { current: acc.current, ids: acc.ids, state: 4, stop_at: project }
+                } else {
+                  LineageStep { current: project, ids: concat(acc.ids, [project]), state: 0, stop_at: "" }
+                }
+              Closes { target } =>
+                if any(acc.ids, x => x == target) {
+                  LineageStep { current: acc.current, ids: acc.ids, state: 4, stop_at: target }
+                } else {
+                  LineageStep { current: target, ids: concat(acc.ids, [target]), state: 0, stop_at: "" }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn lineage_drop_second(ids: List<String>) -> List<String> {
+  let folded = fold(ids, init: { index: 0, kept: [] as List<String> }, f: fn(acc, id) {
+    if acc.index == 1 {
+      { index: acc.index + 1, kept: acc.kept }
+    } else {
+      { index: acc.index + 1, kept: concat(acc.kept, [id]) }
+    }
+  })
+  folded.kept
+}
+
+fn lineage_starts_with_closes(nodes: List<RoadmapNode>, node_id: String) -> Bool {
+  lineage_index_starts_with_closes(index: lineage_index(nodes: nodes), node_id: node_id)
+}
+
+fn lineage_index_starts_with_closes(index: Map<String, RoadmapNode>, node_id: String) -> Bool {
+  match lineage_lookup(index: index, id: node_id) {
+    Absent => false
+    Present { value: n } =>
+      match n.parent {
+        Absent => false
+        Present { value: p } =>
+          match p {
+            Closes { target: _ } => true
+            MemberOf { project: _, contribution: _ } => false
+            AdmittedRoot => false
+          }
+      }
+  }
+}
+
+fn lineage_walk(node_id: String, nodes: List<RoadmapNode>) -> LineageWalk {
+  lineage_walk_in(node_id: node_id, index: lineage_index(nodes: nodes), fuel: count(nodes) + 1)
+}
+
+// The fuel is still the node count plus one; a resolved walk stops spending it, which is the same
+// answer the fold reached by stepping the settled state through the rest of its fuel unchanged.
+fn lineage_walk_steps(index: Map<String, RoadmapNode>, acc: LineageStep, fuel: Int) -> LineageStep {
+  if fuel <= 0 || acc.state != 0 {
+    acc
+  } else {
+    lineage_walk_steps(index: index, acc: lineage_step(index: index, acc: acc), fuel: fuel - 1)
+  }
+}
+
+fn lineage_walk_in(node_id: String, index: Map<String, RoadmapNode>, fuel: Int) -> LineageWalk {
+  let walked = lineage_walk_steps(index: index, acc: LineageStep { current: node_id, ids: [node_id], state: 0, stop_at: "" }, fuel: fuel)
+  let closes = lineage_index_starts_with_closes(index: index, node_id: node_id)
+  let ids = if closes { lineage_drop_second(ids: walked.ids) } else { walked.ids }
+  if walked.state == 1 {
+    LineageRooted { ids: ids }
+  } else if walked.state == 2 {
+    LineageNoParent { walked: ids, at: walked.stop_at }
+  } else if walked.state == 3 {
+    LineageUndeclared { walked: ids, node_id: walked.stop_at }
+  } else if walked.state == 4 {
+    LineageCyclic { node_id: walked.stop_at }
+  } else {
+    LineageCyclic { node_id: walked.current }
+  }
+}
+
+fn lineage_is_rooted(w: LineageWalk) -> Bool {
+  match w {
+    LineageRooted { ids: _ } => true
+    LineageNoParent { walked: _, at: _ } => false
+    LineageUndeclared { walked: _, node_id: _ } => false
+    LineageCyclic { node_id: _ } => false
+  }
+}
+
+fn lineage_refusal_detail(w: LineageWalk) -> String {
+  match w {
+    LineageRooted { ids: _ } => ""
+    LineageNoParent { walked: _, at } =>
+      join(["the parent walk stops at ", at, ", which declares no parent and is not the admitted root"], "")
+    LineageUndeclared { walked: _, node_id } =>
+      join(["the parent walk names ", node_id, ", which is not a declared node"], "")
+    LineageCyclic { node_id } =>
+      join(["the parent walk revisits ", node_id, "; project nesting is cyclic"], "")
+  }
+}
+
+// THE DECLARED CHILDREN of a node: the rows whose MemberOf parent names it. A node with members is
+// a project or milestone for every presentation purpose; there is no second list.
+fn lineage_member_ids(nodes: List<RoadmapNode>, project_id: String) -> List<String> {
+  nodes
+    |> filter(n => match n.parent {
+      Absent => false
+      Present { value: p } => match p {
+        MemberOf { project, contribution: _ } => project == project_id
+        AdmittedRoot => false
+        Closes { target: _ } => false
+      }
+    })
+    |> map(n => n.node as String)
+}
+
+fn lineage_has_members(nodes: List<RoadmapNode>, id: String) -> Bool {
+  count(lineage_member_ids(nodes: nodes, project_id: id)) > 0
+}
+
+fn lineage_root_ids(nodes: List<RoadmapNode>) -> List<String> {
+  nodes
+    |> filter(n => match n.parent {
+      Absent => false
+      Present { value: p } => match p {
+        AdmittedRoot => true
+        MemberOf { project: _, contribution: _ } => false
+        Closes { target: _ } => false
+      }
+    })
+    |> map(n => n.node as String)
+}

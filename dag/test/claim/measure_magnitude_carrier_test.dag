@@ -1,0 +1,30 @@
+module test.claim.measure_magnitude_carrier
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
+  byte_size_count(byte_size(42)) == 42
+    && mebibyte_count(mebibyte(128)) == 128
+    && millicore_count(millicore(100)) == 100
+}
+
+fn signed_microvolts(n: Int) -> Measure<ElectricPotential, Micro, Int> {
+  Measure { count: n }
+}
+
+fn signed_microvolts_count(v: Measure<ElectricPotential, Micro, Int>) -> Int {
+  v.count
+}
+
+test fn measure_signed_magnitude_roundtrip_holds() -> Bool {
+  signed_microvolts_count(signed_microvolts(-5)) == -5
+}
+
+test fn celsius_subzero_absolute_roundtrip_holds() -> Bool {
+  celsius_count(celsius(-12)) == -12
+}
+
+test fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
+  money_amount_micro_count(money_amount_micro(99)) == 99
+}

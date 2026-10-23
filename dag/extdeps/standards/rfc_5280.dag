@@ -1,0 +1,816 @@
+module extdeps.standards.rfc_5280
+
+import std.types { Int, String, List, Timestamp }
+import std.logic { Bool }
+import std.bignat { bignat_pad_front }
+import std.decimal { decimal_digits_only }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.x690_der {
+  DerElement, DerRefusal, DerRead, DerElementRead, DerRefused, DerContextSpecific, DerUniversal,
+  der_read_document, DerDocumentRead, DerDocumentRefused,
+  der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_expect, der_expect_sequence,
+  der_element_expect, der_element_expect_sequence, der_element_expect_universal,
+  der_value, der_tlv, der_unsigned_integer, der_big_endian, DerUnsignedRead, DerUnsignedRefused,
+  der_object_identifier, DerOidRead, DerOidRefused, der_bit_string_octets, DerBitsRead, DerBitsRefused,
+  der_boolean, DerBoolRead, DerBoolRefused,
+  der_tag_integer, der_tag_bit_string, der_tag_octet_string, der_tag_object_identifier, der_tag_boolean, der_tag_utc_time, der_tag_generalized_time, der_tag_sequence,
+  DerElementAbsent, DerChildCountUnexpected, DerTagUnexpected,
+  DerBooleanMalformed, DerBitStringUnusedBitsRefused, DerTruncated,
+}
+
+// RFC 5280, Internet X.509 PKI Certificate and CRL Profile, §4.1 (the Certificate, TBSCertificate,
+// AlgorithmIdentifier, Validity, SubjectPublicKeyInfo and Extension structures) and §4.1.2.5 (Time
+// as UTCTime or GeneralizedTime); RFC 5480 §2 for the EC SubjectPublicKeyInfo (id-ecPublicKey with
+// a namedCurve parameter) and RFC 5758 §3.2 for the ECDSA signature algorithm identifiers. The
+// signature value is ECDSA-Sig-Value (RFC 5480 §2 / SEC 1): SEQUENCE { r INTEGER, s INTEGER }.
+//
+// This reader decodes the structure and hands out its facts; it does not validate a path. Chain
+// verification (issuer/subject join, validity against a clock, signature under the issuer's key)
+// is the consumer's fold, because which anchors are trusted and which clock is authoritative are
+// the consumer's facts, not the profile's. What the PROFILE owns here is narrower than path
+// validation: the RFC 5280 CA-authority checks modeled here (§6.1.4 (k), (l)/(m), (n):
+// basicConstraints cA, pathLenConstraint, keyUsage keyCertSign) are x509_ca_authority, which a
+// consumer's chain fold applies to every intermediate it accepts.
+data rfc_5280_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc5280#section-4.1"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = rfc_5280_external_authority_anchor
+
+// Object identifiers, dotted as the registries spell them.
+data oid_id_ec_public_key: String = "1.2.840.10045.2.1"
+data oid_prime256v1: String = "1.2.840.10045.3.1.7"
+data oid_secp384r1: String = "1.3.132.0.34"
+data oid_ecdsa_with_sha256: String = "1.2.840.10045.4.3.2"
+data oid_ecdsa_with_sha384: String = "1.2.840.10045.4.3.3"
+
+type X509Extension {
+  oid: String
+  critical: Bool
+  value: List<Int>
+}
+
+// Names are kept as their DER (the whole Name TLV): the profile's issuer/subject join is byte
+// equality of encoded Names under DER (§7.1 permits comparison by exact encoding match first),
+// and no consumer here reads a Name's attributes.
+//
+// THE TBS IS ITS OWN CARRIER, NESTED ONCE: read_tbs returns what the signed part establishes and
+// nothing about the signature, so a certificate whose signature fields are unread has no
+// constructor (review 69626 of gunbc#11975), and X509Certificate carries that record rather than
+// re-declaring its fields (review 69648: two declarations of one field set drift).
+type X509TbsFields {
+  tbs_octets: List<Int>
+  serial: List<Int>
+  tbs_signature_algorithm: String
+  issuer_octets: List<Int>
+  not_before: X509Time
+  not_after: X509Time
+  subject_octets: List<Int>
+  spki_algorithm: String
+  spki_named_curve: String?
+  spki_public_key: List<Int>
+  extensions: List<X509Extension>
+}
+
+type X509Certificate {
+  tbs: X509TbsFields
+  signature_algorithm: String
+  signature_octets: List<Int>
+}
+
+type X509Refusal
+  = X509DerRefused { cause: DerRefusal }
+  | X509SignatureAlgorithmMismatch { tbs: String, outer: String }
+  | X509TimeTagUnexpected { at: Int, tag: Int }
+  | X509ExtensionMalformed { at: Int }
+  | X509ExtensionDefaultEncoded { at: Int }
+
+type X509Decode
+  = X509Decoded { certificate: X509Certificate }
+  | X509Refused { cause: X509Refusal }
+
+fn x509_der(c: DerRefusal) -> X509Decode {
+  X509Refused { cause: X509DerRefused { cause: c } }
+}
+
+// AlgorithmIdentifier ::= SEQUENCE { algorithm OID, parameters ANY OPTIONAL }.
+type AlgorithmIdentifier
+  = AlgorithmIdentifierRead { algorithm: String, parameters_oid: String? }
+  | AlgorithmIdentifierRefused { cause: DerRefusal }
+
+fn read_algorithm_identifier(octets: List<Int>, e: DerElement) -> AlgorithmIdentifier {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+    DerChildrenRead { elements: kids } =>
+      if count(kids) > 2 { AlgorithmIdentifierRefused { cause: DerChildCountUnexpected { at: e.value_at, expected: 2, found: count(kids) } } } else {
+      match typed_child(kids: kids, i: 0, at: e.value_at, tag_number: der_tag_object_identifier, constructed: false) {
+        DerRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+        DerElementRead { element: alg } =>
+          match der_object_identifier(octets: octets, e: alg) {
+            DerOidRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+            DerOidRead { dotted: oid } =>
+              match kids |> get(1) {
+                null => AlgorithmIdentifierRead { algorithm: oid, parameters_oid: none }
+                p =>
+                  if p.tag_number == der_tag_object_identifier {
+                    match der_object_identifier(octets: octets, e: p) {
+                      DerOidRefused { cause: c } => AlgorithmIdentifierRefused { cause: c }
+                      DerOidRead { dotted: curve } => AlgorithmIdentifierRead { algorithm: oid, parameters_oid: Present { value: curve } }
+                    }
+                  } else {
+                    AlgorithmIdentifierRead { algorithm: oid, parameters_oid: none }
+                  }
+              }
+          }
+      }
+      }
+  }
+}
+
+fn ascii_of(octets: List<Int>) -> String {
+  fold(octets, init: "", f: (acc, o) => acc + from_code_point(cp: o))
+}
+
+// Time ::= CHOICE { utcTime UTCTime, generalTime GeneralizedTime }: THE CHOICE IS CARRIED (review
+// 69660 of gunbc#11975 -- a bare String lost the arm, and the two arms read their year differently:
+// UTCTime's YY is 1950..2049 by §4.1.2.5.1, GeneralizedTime is four-digit). The contents stay the
+// ASCII the certificate carries ("210122121335Z", "20300313000000Z"). This module carries the arm
+// and does not interpret it; the conversion to an instant and the validity check at an observed
+// instant land with the verifier that needs them (gunbc#11989, this module's validity fold), a
+// consumer named here rather than a function this diff does not contain (review 69723).
+type X509Time
+  = UtcTime { text: String }
+  | GeneralizedTime { text: String }
+
+type X509TimeRead
+  = X509TimeOk { time: X509Time }
+  | X509TimeRefused { cause: X509Refusal }
+
+fn read_time(octets: List<Int>, e: DerElement) -> X509TimeRead {
+  match der_element_expect_universal(e: e, tag_number: der_tag_utc_time) {
+    Absent => X509TimeOk { time: UtcTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
+    Present { value: _ } =>
+      match der_element_expect_universal(e: e, tag_number: der_tag_generalized_time) {
+        Absent => X509TimeOk { time: GeneralizedTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
+        Present { value: _ } => X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
+      }
+  }
+}
+
+type X509Validity
+  = X509ValidityRead { not_before: X509Time, not_after: X509Time }
+  | X509ValidityRefused { cause: X509Refusal }
+
+fn read_validity(octets: List<Int>, e: DerElement) -> X509Validity {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
+    DerChildrenRead { elements: kids } =>
+      if count(kids) != 2 { X509ValidityRefused { cause: X509DerRefused { cause: DerChildCountUnexpected { at: e.value_at, expected: 2, found: count(kids) } } } } else {
+      match der_child_at(children: kids, i: 0, at: e.value_at) {
+        DerRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
+        DerElementRead { element: nb } =>
+          match der_child_at(children: kids, i: 1, at: e.value_at) {
+            DerRefused { cause: c } => X509ValidityRefused { cause: X509DerRefused { cause: c } }
+            DerElementRead { element: na } =>
+              match read_time(octets: octets, e: nb) {
+                X509TimeRefused { cause: c } => X509ValidityRefused { cause: c }
+                X509TimeOk { time: b } =>
+                  match read_time(octets: octets, e: na) {
+                    X509TimeRefused { cause: c } => X509ValidityRefused { cause: c }
+                    X509TimeOk { time: a } => X509ValidityRead { not_before: b, not_after: a }
+                  }
+              }
+          }
+      }
+      }
+  }
+}
+
+// Extension ::= SEQUENCE { extnID OID, critical BOOLEAN DEFAULT FALSE, extnValue OCTET STRING }.
+// A present `critical` must be TRUE: X.690 §11.5 forbids DER from encoding a component equal to
+// its default, so an explicit FALSE is a second encoding of one structure and refuses (review
+// 69648 of gunbc#11975).
+type X509ExtensionRead
+  = X509ExtensionOk { extension: X509Extension }
+  | X509ExtensionRefused { cause: X509Refusal }
+
+fn read_extension(octets: List<Int>, e: DerElement) -> X509ExtensionRead {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+    DerChildrenRead { elements: kids } =>
+      match typed_child(kids: kids, i: 0, at: e.value_at, tag_number: der_tag_object_identifier, constructed: false) {
+        DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+        DerElementRead { element: id } =>
+          match der_object_identifier(octets: octets, e: id) {
+            DerOidRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+            DerOidRead { dotted: oid } =>
+              if count(kids) == 2 {
+                match typed_child(kids: kids, i: 1, at: e.value_at, tag_number: der_tag_octet_string, constructed: false) {
+                  DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                  DerElementRead { element: v } => X509ExtensionOk { extension: X509Extension { oid: oid, critical: false, value: der_value(octets: octets, e: v) } }
+                }
+              } else if count(kids) == 3 {
+                match typed_child(kids: kids, i: 1, at: e.value_at, tag_number: der_tag_boolean, constructed: false) {
+                  DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                  DerElementRead { element: crit } =>
+                    match der_boolean(octets: octets, e: crit) {
+                      DerBoolRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                      DerBoolRead { value: critical } =>
+                        if !critical { X509ExtensionRefused { cause: X509ExtensionDefaultEncoded { at: crit.header_at } } }
+                        else {
+                          match typed_child(kids: kids, i: 2, at: e.value_at, tag_number: der_tag_octet_string, constructed: false) {
+                            DerRefused { cause: c } => X509ExtensionRefused { cause: X509DerRefused { cause: c } }
+                            DerElementRead { element: v } => X509ExtensionOk { extension: X509Extension { oid: oid, critical: true, value: der_value(octets: octets, e: v) } }
+                          }
+                        }
+                    }
+                }
+              } else {
+                X509ExtensionRefused { cause: X509ExtensionMalformed { at: e.header_at } }
+              }
+          }
+      }
+  }
+}
+
+type X509Extensions
+  = X509ExtensionsRead { extensions: List<X509Extension> }
+  | X509ExtensionsRefused { cause: X509Refusal }
+
+fn read_extensions_list(octets: List<Int>, kids: List<DerElement>, i: Int, acc: List<X509Extension>) -> X509Extensions {
+  if i >= count(kids) { X509ExtensionsRead { extensions: acc } } else {
+    match kids |> get(i) {
+      null => X509ExtensionsRead { extensions: acc }
+      e =>
+        match read_extension(octets: octets, e: e) {
+          X509ExtensionRefused { cause: c } => X509ExtensionsRefused { cause: c }
+          X509ExtensionOk { extension: x } => read_extensions_list(octets: octets, kids: kids, i: i + 1, acc: acc |> list_push(x))
+        }
+    }
+  }
+}
+
+// extensions [3] EXPLICIT Extensions: the context tag wraps one SEQUENCE OF Extension.
+fn read_tbs_extensions(octets: List<Int>, wrapper: DerElement) -> X509Extensions {
+  match der_expect_sequence(octets: octets, at: wrapper.value_at) {
+    DerRefused { cause: c } => X509ExtensionsRefused { cause: X509DerRefused { cause: c } }
+    DerElementRead { element: seq } =>
+      match der_children(octets: octets, parent: seq) {
+        DerChildrenRefused { cause: c } => X509ExtensionsRefused { cause: X509DerRefused { cause: c } }
+        DerChildrenRead { elements: kids } => read_extensions_list(octets: octets, kids: kids, i: 0, acc: [])
+      }
+  }
+}
+
+// The TBSCertificate fields after the optional [0] version: the index of serialNumber depends on
+// whether version is present.
+fn tbs_first_index(kids: List<DerElement>) -> Int {
+  match kids |> get(0) {
+    null => 0
+    e => match e.tag_class {
+      DerContextSpecific => if e.tag_number == 0 { 1 } else { 0 }
+      DerUniversal => 0
+      DerApplication => 0
+      DerPrivate => 0
+    }
+  }
+}
+
+// WHAT MAY FOLLOW subjectPublicKeyInfo: [1] issuerUniqueID, [2] subjectUniqueID and [3] extensions,
+// each at most once, in that order, and nothing else (§4.1). Anything else after index `from` is
+// refused rather than skipped (review 69660 of gunbc#11975): a reader that ignores a child it did
+// not expect accepts a second encoding of the structure.
+type TbsTail
+  = TbsTailRead { extensions: DerElement? }
+  | TbsTailRefused { cause: DerRefusal }
+
+fn tbs_tail(kids: List<DerElement>, from: Int) -> TbsTail {
+  let rest = kids |> skip(from)
+  let context_tags = map(rest, e => match e.tag_class {
+    DerContextSpecific => e.tag_number
+    DerUniversal => 0 - 1
+    DerApplication => 0 - 1
+    DerPrivate => 0 - 1
+  })
+  let ordered = context_tags == [] || context_tags == [3] || context_tags == [1] || context_tags == [2] || context_tags == [1, 2] || context_tags == [1, 3] || context_tags == [2, 3] || context_tags == [1, 2, 3]
+  if !ordered {
+    match rest |> get(0) {
+      null => TbsTailRefused { cause: DerElementAbsent { at: 0 } }
+      e => TbsTailRefused { cause: DerTagUnexpected { at: e.header_at, expected: 3, found: e.tag_number } }
+    }
+  } else {
+    TbsTailRead { extensions: fold(rest, init: none, f: (acc, e) => match acc {
+      Present { value: found } => Present { value: found }
+      Absent => match e.tag_class {
+        DerContextSpecific => if e.tag_number == 3 { Present { value: e } } else { none }
+        DerUniversal => none
+        DerApplication => none
+        DerPrivate => none
+      }
+    }) }
+  }
+}
+
+type SubjectPublicKeyInfo
+  = SpkiRead { algorithm: String, named_curve: String?, public_key: List<Int> }
+  | SpkiRefused { cause: DerRefusal }
+
+fn read_spki(octets: List<Int>, e: DerElement) -> SubjectPublicKeyInfo {
+  match der_children(octets: octets, parent: e) {
+    DerChildrenRefused { cause: c } => SpkiRefused { cause: c }
+    DerChildrenRead { elements: kids } =>
+      if count(kids) != 2 { SpkiRefused { cause: DerChildCountUnexpected { at: e.value_at, expected: 2, found: count(kids) } } } else {
+      match sequence_child(kids: kids, i: 0, at: e.value_at) {
+        DerRefused { cause: c } => SpkiRefused { cause: c }
+        DerElementRead { element: alg } =>
+          match read_algorithm_identifier(octets: octets, e: alg) {
+            AlgorithmIdentifierRefused { cause: c } => SpkiRefused { cause: c }
+            AlgorithmIdentifierRead { algorithm: a, parameters_oid: curve } =>
+              match typed_child(kids: kids, i: 1, at: e.value_at, tag_number: der_tag_bit_string, constructed: false) {
+                DerRefused { cause: c } => SpkiRefused { cause: c }
+                DerElementRead { element: bits } =>
+                  match der_bit_string_octets(octets: octets, e: bits) {
+                    DerBitsRefused { cause: c } => SpkiRefused { cause: c }
+                    DerBitsRead { octets: key } => SpkiRead { algorithm: a, named_curve: curve, public_key: key }
+                  }
+              }
+          }
+      }
+      }
+  }
+}
+
+// EVERY POSITIONAL READ ASSERTS THE ASN.1 TYPE the profile gives that position (review 69616 of
+// gunbc#11975: a positional read alone hands the issuer's TLV to whatever sits at the index).
+fn typed_child(kids: List<DerElement>, i: Int, at: Int, tag_number: Int, constructed: Bool) -> DerRead {
+  match der_child_at(children: kids, i: i, at: at) {
+    DerRefused { cause: c } => DerRefused { cause: c }
+    DerElementRead { element: e } =>
+      match der_element_expect(e: e, class: DerUniversal, tag_number: tag_number, constructed: constructed) {
+        Present { value: c } => DerRefused { cause: c }
+        Absent => DerElementRead { element: e }
+      }
+  }
+}
+
+fn sequence_child(kids: List<DerElement>, i: Int, at: Int) -> DerRead {
+  typed_child(kids: kids, i: i, at: at, tag_number: der_tag_sequence, constructed: true)
+}
+
+type TbsRead
+  = TbsOk { fields: X509TbsFields }
+  | TbsRefused { cause: X509Refusal }
+
+fn read_tbs(octets: List<Int>, tbs: DerElement) -> TbsRead {
+  match der_children(octets: octets, parent: tbs) {
+    DerChildrenRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+    DerChildrenRead { elements: kids } => {
+      let i0 = tbs_first_index(kids: kids)
+      match typed_child(kids: kids, i: i0, at: tbs.value_at, tag_number: der_tag_integer, constructed: false) {
+        DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+        DerElementRead { element: serial_e } =>
+          match der_unsigned_integer(octets: octets, e: serial_e) {
+            DerUnsignedRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+            DerUnsignedRead { magnitude: serial } =>
+              match sequence_child(kids: kids, i: i0 + 1, at: tbs.value_at) {
+                DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                DerElementRead { element: sig_alg_e } =>
+                  match read_algorithm_identifier(octets: octets, e: sig_alg_e) {
+                    AlgorithmIdentifierRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                    AlgorithmIdentifierRead { algorithm: tbs_alg, parameters_oid: _ } =>
+                      match sequence_child(kids: kids, i: i0 + 2, at: tbs.value_at) {
+                        DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                        DerElementRead { element: issuer_e } =>
+                          match sequence_child(kids: kids, i: i0 + 3, at: tbs.value_at) {
+                            DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                            DerElementRead { element: validity_e } =>
+                              match read_validity(octets: octets, e: validity_e) {
+                                X509ValidityRefused { cause: c } => TbsRefused { cause: c }
+                                X509ValidityRead { not_before: nb, not_after: na } =>
+                                  match sequence_child(kids: kids, i: i0 + 4, at: tbs.value_at) {
+                                    DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                    DerElementRead { element: subject_e } =>
+                                      match sequence_child(kids: kids, i: i0 + 5, at: tbs.value_at) {
+                                        DerRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                        DerElementRead { element: spki_e } =>
+                                          match read_spki(octets: octets, e: spki_e) {
+                                            SpkiRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                            SpkiRead { algorithm: spki_alg, named_curve: curve, public_key: key } =>
+                                              match tbs_tail(kids: kids, from: i0 + 6) {
+                                                TbsTailRefused { cause: c } => TbsRefused { cause: X509DerRefused { cause: c } }
+                                                TbsTailRead { extensions: Absent } => TbsOk { fields: X509TbsFields {
+                                                  tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
+                                                  issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
+                                                  subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
+                                                  extensions: [],
+                                                } }
+                                                TbsTailRead { extensions: Present { value: ext_e } } =>
+                                                  match read_tbs_extensions(octets: octets, wrapper: ext_e) {
+                                                    X509ExtensionsRefused { cause: c } => TbsRefused { cause: c }
+                                                    X509ExtensionsRead { extensions: exts } => TbsOk { fields: X509TbsFields {
+                                                      tbs_octets: der_tlv(octets: octets, e: tbs), serial: serial, tbs_signature_algorithm: tbs_alg,
+                                                      issuer_octets: der_tlv(octets: octets, e: issuer_e), not_before: nb, not_after: na,
+                                                      subject_octets: der_tlv(octets: octets, e: subject_e), spki_algorithm: spki_alg, spki_named_curve: curve, spki_public_key: key,
+                                                      extensions: exts,
+                                                    } }
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+// Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signatureValue BIT STRING }. The
+// outer signatureAlgorithm must equal the TBS's (§4.1.1.2), which is what keeps an attacker from
+// naming a weaker algorithm outside the signed bytes.
+fn decode_certificate(octets: List<Int>) -> X509Decode {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => x509_der(c: c)
+    DerDocumentRead { element: outer } =>
+      match der_element_expect_sequence(e: outer) {
+        Present { value: c } => x509_der(c: c)
+        Absent =>
+        match der_children(octets: octets, parent: outer) {
+          DerChildrenRefused { cause: c } => x509_der(c: c)
+          DerChildrenRead { elements: kids } =>
+            if count(kids) != 3 { x509_der(c: DerChildCountUnexpected { at: outer.value_at, expected: 3, found: count(kids) }) } else {
+            match sequence_child(kids: kids, i: 0, at: outer.value_at) {
+              DerRefused { cause: c } => x509_der(c: c)
+              DerElementRead { element: tbs } =>
+                match sequence_child(kids: kids, i: 1, at: outer.value_at) {
+                  DerRefused { cause: c } => x509_der(c: c)
+                  DerElementRead { element: alg_e } =>
+                    match typed_child(kids: kids, i: 2, at: outer.value_at, tag_number: der_tag_bit_string, constructed: false) {
+                      DerRefused { cause: c } => x509_der(c: c)
+                      DerElementRead { element: sig_e } =>
+                        match read_tbs(octets: octets, tbs: tbs) {
+                          TbsRefused { cause: c } => X509Refused { cause: c }
+                          TbsOk { fields: tbs_fields } =>
+                            match read_algorithm_identifier(octets: octets, e: alg_e) {
+                              AlgorithmIdentifierRefused { cause: c } => x509_der(c: c)
+                              AlgorithmIdentifierRead { algorithm: outer_alg, parameters_oid: _ } =>
+                                if outer_alg != tbs_fields.tbs_signature_algorithm { X509Refused { cause: X509SignatureAlgorithmMismatch { tbs: tbs_fields.tbs_signature_algorithm, outer: outer_alg } } }
+                                else {
+                                  match der_bit_string_octets(octets: octets, e: sig_e) {
+                                    DerBitsRefused { cause: c } => x509_der(c: c)
+                                    DerBitsRead { octets: sig } => X509Decoded { certificate: X509Certificate { tbs: tbs_fields, signature_algorithm: outer_alg, signature_octets: sig } }
+                                  }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            }
+        }
+      }
+  }
+}
+
+// ── Reading a certificate ────────────────────────────────────────────────────────────────────
+// An extension by OID, unique: §4.2 says a certificate MUST NOT include more than one instance of
+// a particular extension, so two is refused rather than first-wins.
+type X509ExtensionLookup
+  = X509ExtensionFound { extension: X509Extension }
+  | X509ExtensionAbsent { oid: String }
+  | X509ExtensionDuplicated { oid: String }
+
+fn x509_extension(cert: X509Certificate, oid: String) -> X509ExtensionLookup {
+  let hits = fold(cert.tbs.extensions, init: [], f: (acc, x) => if x.oid == oid { acc |> list_push(x) } else { acc })
+  if count(hits) == 0 { X509ExtensionAbsent { oid: oid } }
+  else if count(hits) > 1 { X509ExtensionDuplicated { oid: oid } }
+  else {
+    match hits |> get(0) {
+      null => X509ExtensionAbsent { oid: oid }
+      h => X509ExtensionFound { extension: h }
+    }
+  }
+}
+
+// ── Authority to act as a CA (§4.2.1.3, §4.2.1.9, §6.1.4) ────────────────────────────────────
+data oid_basic_constraints: String = "2.5.29.19"
+data oid_key_usage: String = "2.5.29.15"
+
+// keyCertSign is KeyUsage bit 5 (§4.2.1.3); named bits count from the high bit of the first
+// contents octet after the unused-bits count, so bit 5 is 0x04 of that octet.
+data key_usage_key_cert_sign_bit: Int = 5
+
+// pathLenConstraint is INTEGER (0..MAX) (§4.2.1.9): the profile sets no upper bound, so the reader
+// may not invent one. A value the Int carrier represents is PathLengthRepresentable; a larger one
+// is PathLengthAboveCarrier, which exceeds every Int and so can never be exceeded by a count of
+// intermediates.
+type X509PathLength
+  = PathLengthRepresentable { value: Int }
+  | PathLengthAboveCarrier
+
+// Why a certificate may not sign certificates below it. §6.1.4 (k): basicConstraints must be
+// PRESENT with cA TRUE; (l)/(m): a pathLenConstraint bounds the non-self-issued intermediates that
+// may follow; (n): IF keyUsage is present, keyCertSign must be set -- an ABSENT keyUsage does not
+// refuse, because the validation algorithm does not require one.
+type X509CaRefusal
+  = X509BasicConstraintsAbsent
+  | X509BasicConstraintsDuplicated
+  | X509BasicConstraintsMalformed { cause: DerRefusal }
+  | X509NotACa
+  | X509PathLengthExceeded { path_len_constraint: Int, intermediates_below: Int }
+  | X509KeyUsageDuplicated
+  | X509KeyUsageMalformed { cause: DerRefusal }
+  | X509KeyCertSignAbsent
+  | X509IntermediatesBelowNegative { intermediates_below: Int }
+
+type X509CaStanding
+  = X509CaAuthorized { path_len_constraint: X509PathLength? }
+  | X509CaRefused { cause: X509CaRefusal }
+
+type X509BasicConstraintsRead
+  = X509BasicConstraintsOk { ca: Bool, path_len_constraint: X509PathLength? }
+  | X509BasicConstraintsRefused { cause: X509CaRefusal }
+
+// BasicConstraints ::= SEQUENCE { cA BOOLEAN DEFAULT FALSE, pathLenConstraint INTEGER (0..MAX)
+// OPTIONAL }. Under DER a DEFAULT value is omitted (X.690 §11.5), so an encoded FALSE refuses.
+fn read_basic_constraints(octets: List<Int>) -> X509BasicConstraintsRead {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+    DerDocumentRead { element: seq } =>
+      match der_element_expect_sequence(e: seq) {
+        Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+        Absent =>
+          match der_children(octets: octets, parent: seq) {
+            DerChildrenRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+            DerChildrenRead { elements: kids } =>
+              if count(kids) > 2 { X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: DerChildCountUnexpected { at: seq.value_at, expected: 2, found: count(kids) } } } }
+              else {
+                match kids |> get(0) {
+                  null => X509BasicConstraintsOk { ca: false, path_len_constraint: none }
+                  first =>
+                    if first.tag_number == der_tag_boolean {
+                      match der_element_expect_universal(e: first, tag_number: der_tag_boolean) {
+                        Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+                        Absent =>
+                          match der_boolean(octets: octets, e: first) {
+                            DerBoolRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+                            DerBoolRead { value: ca } =>
+                              if !ca { X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: DerBooleanMalformed { at: first.value_at } } } }
+                              else {
+                                match kids |> get(1) {
+                                  null => X509BasicConstraintsOk { ca: true, path_len_constraint: none }
+                                  second => basic_constraints_path_len(octets: octets, e: second, ca: true)
+                                }
+                              }
+                          }
+                      }
+                    }
+                    else if count(kids) == 1 { basic_constraints_path_len(octets: octets, e: first, ca: false) }
+                    else { X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: DerTagUnexpected { at: first.header_at, expected: der_tag_boolean, found: first.tag_number } } } }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn basic_constraints_path_len(octets: List<Int>, e: DerElement, ca: Bool) -> X509BasicConstraintsRead {
+  match der_element_expect_universal(e: e, tag_number: der_tag_integer) {
+    Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+    Absent =>
+      match der_unsigned_integer(octets: octets, e: e) {
+        DerUnsignedRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+        DerUnsignedRead { magnitude: m } =>
+          X509BasicConstraintsOk { ca: ca, path_len_constraint: Present { value: path_length_of_magnitude(m: m) } }
+      }
+  }
+}
+
+// The carrier is a signed 64-bit Int: a magnitude of at most 8 octets whose top bit is clear
+// fits it; anything wider is above it.
+fn path_length_of_magnitude(m: List<Int>) -> X509PathLength {
+  let top = match m |> get(0) {
+    null => 0
+    o => o
+  }
+  if count(m) < 8 || (count(m) == 8 && top < 128) { PathLengthRepresentable { value: der_big_endian(octets: m, at: 0, n: count(m), acc: 0) } }
+  else { PathLengthAboveCarrier }
+}
+
+type X509KeyUsageRead
+  = X509KeyUsageBits { meaningful: Int, bits: List<Int> }
+  | X509KeyUsageRefused { cause: DerRefusal }
+
+// KeyUsage ::= BIT STRING. Unlike a key or a signature, a named-bit list legitimately carries
+// unused trailing bits, so this reads the unused count (0..7, X.690 §8.6.2.2) rather than refusing
+// it the way der_bit_string_octets does -- and then holds the rest of DER to it: the unused bits
+// are zero (X.690 §11.2.1), and a named-bit list ends at its last asserted bit with no trailing
+// zero octet (X.690 §11.2.2), so the lowest meaningful bit of the last octet is set. What it hands
+// out is the MEANINGFUL bit count, so a padding bit can never be read as a named bit.
+fn read_key_usage(octets: List<Int>) -> X509KeyUsageRead {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => X509KeyUsageRefused { cause: c }
+    DerDocumentRead { element: e } =>
+      match der_element_expect_universal(e: e, tag_number: der_tag_bit_string) {
+        Present { value: c } => X509KeyUsageRefused { cause: c }
+        Absent => {
+          let v = der_value(octets: octets, e: e)
+          match v |> get(0) {
+            null => X509KeyUsageRefused { cause: DerTruncated { at: e.value_at, needed: 1, available: 0 } }
+            unused =>
+              if unused > 7 || (count(v) == 1 && unused != 0) { X509KeyUsageRefused { cause: DerBitStringUnusedBitsRefused { at: e.value_at, unused: unused } } }
+              else if count(v) == 1 { X509KeyUsageBits { meaningful: 0, bits: [] } }
+              else {
+                let last = match v |> get(count(v) - 1) {
+                  null => 0
+                  o => o
+                }
+                let pad = key_usage_bit_weight(position: unused)
+                if last % pad != 0 || (last / pad) % 2 != 1 { X509KeyUsageRefused { cause: DerBitStringUnusedBitsRefused { at: e.value_at, unused: unused } } }
+                else { X509KeyUsageBits { meaningful: 8 * (count(v) - 1) - unused, bits: v |> skip(1) } }
+              }
+          }
+        }
+      }
+  }
+}
+
+// 2^position for a bit position 0..7 counted from the LOW end of an octet.
+fn key_usage_bit_weight(position: Int) -> Int {
+  if position == 0 { 1 } else if position == 1 { 2 } else if position == 2 { 4 } else if position == 3 { 8 } else if position == 4 { 16 } else if position == 5 { 32 } else if position == 6 { 64 } else { 128 }
+}
+
+// Named bit `bit` counts from the HIGH bit of the first octet; a bit at or beyond the meaningful
+// count is not asserted, whatever the padding holds.
+fn key_usage_bit_set(meaningful: Int, bits: List<Int>, bit: Int) -> Bool {
+  if bit < 0 || bit >= meaningful { false }
+  else {
+    match bits |> get(bit / 8) {
+      null => false
+      o => (o / key_usage_bit_weight(position: 7 - bit % 8)) % 2 == 1
+    }
+  }
+}
+
+// §6.1.4 (k), (m), (n) for one intermediate, with `intermediates_below` the number of
+// non-self-issued intermediate certificates that follow it in the path (0 when it issued the
+// end-entity directly). The trust anchor is not a subject of this check (§6.1: its information is
+// an input to the algorithm, not a certificate the path validates).
+fn x509_ca_authority(cert: X509Certificate, intermediates_below: Int) -> X509CaStanding {
+  if intermediates_below < 0 { X509CaRefused { cause: X509IntermediatesBelowNegative { intermediates_below: intermediates_below } } }
+  else { x509_ca_authority_counted(cert: cert, intermediates_below: intermediates_below) }
+}
+
+fn x509_ca_authority_counted(cert: X509Certificate, intermediates_below: Int) -> X509CaStanding {
+  match x509_extension(cert: cert, oid: oid_basic_constraints) {
+    X509ExtensionAbsent { oid: _ } => X509CaRefused { cause: X509BasicConstraintsAbsent }
+    X509ExtensionDuplicated { oid: _ } => X509CaRefused { cause: X509BasicConstraintsDuplicated }
+    X509ExtensionFound { extension: bc } =>
+      match read_basic_constraints(octets: bc.value) {
+        X509BasicConstraintsRefused { cause: c } => X509CaRefused { cause: c }
+        X509BasicConstraintsOk { ca: ca, path_len_constraint: plc } =>
+          if !ca { X509CaRefused { cause: X509NotACa } }
+          else {
+            let path_refusal = match plc {
+              Absent => none
+              Present { value: PathLengthAboveCarrier } => none
+              Present { value: PathLengthRepresentable { value: n } } => if intermediates_below > n { Present { value: X509PathLengthExceeded { path_len_constraint: n, intermediates_below: intermediates_below } } } else { none }
+            }
+            match path_refusal {
+              Present { value: r } => X509CaRefused { cause: r }
+              Absent =>
+                match x509_extension(cert: cert, oid: oid_key_usage) {
+                  X509ExtensionAbsent { oid: _ } => X509CaAuthorized { path_len_constraint: plc }
+                  X509ExtensionDuplicated { oid: _ } => X509CaRefused { cause: X509KeyUsageDuplicated }
+                  X509ExtensionFound { extension: ku } =>
+                    match read_key_usage(octets: ku.value) {
+                      X509KeyUsageRefused { cause: c } => X509CaRefused { cause: X509KeyUsageMalformed { cause: c } }
+                      X509KeyUsageBits { meaningful: m, bits: bits } =>
+                        if key_usage_bit_set(meaningful: m, bits: bits, bit: key_usage_key_cert_sign_bit) { X509CaAuthorized { path_len_constraint: plc } }
+                        else { X509CaRefused { cause: X509KeyCertSignAbsent } }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ECDSA-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER }, rendered as the fixed-width r || s the
+// curve verifiers take (P1363), each coordinate left-padded to `width` octets. A magnitude wider
+// than the coordinate refuses: it is not an element of the order.
+type EcdsaSigValue
+  = EcdsaSigValueRead { r_s_fixed: List<Int> }
+  | EcdsaSigValueRefused { cause: DerRefusal }
+  | EcdsaSigValueTooWide { component_octets: Int, width: Int }
+
+// Left-padding is std.bignat's bignat_pad_front, the one zero-fill the corpus already owns
+// (review 69626 of gunbc#11975: a private copy here was a re-mint).
+fn left_pad(m: List<Int>, width: Int) -> List<Int> {
+  bignat_pad_front(octets: m, zeros: width - count(m))
+}
+
+fn ecdsa_sig_value(octets: List<Int>, width: Int) -> EcdsaSigValue {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+    DerDocumentRead { element: seq } =>
+      match der_children(octets: octets, parent: seq) {
+        DerChildrenRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+        DerChildrenRead { elements: kids } =>
+          if count(kids) != 2 { EcdsaSigValueRefused { cause: DerChildCountUnexpected { at: seq.value_at, expected: 2, found: count(kids) } } }
+          else {
+            match typed_child(kids: kids, i: 0, at: seq.value_at, tag_number: der_tag_integer, constructed: false) {
+              DerRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+              DerElementRead { element: re } =>
+                match typed_child(kids: kids, i: 1, at: seq.value_at, tag_number: der_tag_integer, constructed: false) {
+                  DerRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+                  DerElementRead { element: se } =>
+                    match der_unsigned_integer(octets: octets, e: re) {
+                      DerUnsignedRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+                      DerUnsignedRead { magnitude: r } =>
+                        match der_unsigned_integer(octets: octets, e: se) {
+                          DerUnsignedRefused { cause: c } => EcdsaSigValueRefused { cause: c }
+                          DerUnsignedRead { magnitude: s } =>
+                            if count(r) > width { EcdsaSigValueTooWide { component_octets: count(r), width: width } }
+                            else if count(s) > width { EcdsaSigValueTooWide { component_octets: count(s), width: width } }
+                            else { EcdsaSigValueRead { r_s_fixed: concat(left_pad(m: r, width: width), left_pad(m: s, width: width)) } }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── Time (§4.1.2.5) ──────────────────────────────────────────────────────────────────────────
+// UTCTime is YYMMDDHHMMSSZ with YY in 50..99 read as 1950..1999 and 00..49 as 2000..2049
+// (§4.1.2.5.1); GeneralizedTime is YYYYMMDDHHMMSSZ (§4.1.2.5.2). Both are rendered as the RFC 3339
+// UTC instant std.types Timestamp carries ("YYYY-MM-DDTHH:MM:SSZ"), which compares lexicographically,
+// so validity is decided with the same comparison every other expiry in the corpus uses. A time
+// whose text is not exactly its arm's form refuses; nothing is guessed from a partial one.
+fn x509_rfc3339_of_full(yyyymmddhhmmss: String) -> Timestamp? {
+  if string_length(s: yyyymmddhhmmss) != 14 || !decimal_digits_only(s: yyyymmddhhmmss) { none } else {
+    let t = yyyymmddhhmmss
+    Present { value: substring(s: t, start: 0, end: 4) + "-" + substring(s: t, start: 4, end: 6) + "-" + substring(s: t, start: 6, end: 8) + "T" + substring(s: t, start: 8, end: 10) + ":" + substring(s: t, start: 10, end: 12) + ":" + substring(s: t, start: 12, end: 14) + "Z" }
+  }
+}
+
+fn x509_time_text(t: X509Time) -> String {
+  match t {
+    UtcTime { text: x } => x
+    GeneralizedTime { text: x } => x
+  }
+}
+
+// The conversion reads the CHOICE arm, never the length: UTCTime's YY is 1950..2049 (§4.1.2.5.1),
+// GeneralizedTime carries four digits (§4.1.2.5.2).
+fn x509_time_rfc3339(t: X509Time) -> Timestamp? {
+  match t {
+    UtcTime { text: text } =>
+      if string_length(s: text) == 13 && substring(s: text, start: 12, end: 13) == "Z" {
+        let yy = substring(s: text, start: 0, end: 2)
+        if !decimal_digits_only(s: yy) { none } else {
+          let century = if yy < "50" { "20" } else { "19" }
+          x509_rfc3339_of_full(yyyymmddhhmmss: century + substring(s: text, start: 0, end: 12))
+        }
+      } else { none }
+    GeneralizedTime { text: text } =>
+      if string_length(s: text) == 15 && substring(s: text, start: 14, end: 15) == "Z" {
+        x509_rfc3339_of_full(yyyymmddhhmmss: substring(s: text, start: 0, end: 14))
+      } else { none }
+  }
+}
+
+// Valid at an instant when notBefore <= observed <= notAfter: RFC 5280 §4.1.2.5's interval,
+// inclusive at both ends, answered as the profile states it (review 69725 of gunbc#11989: an
+// earlier cut applied the corpus's strict-upper-bound expiry rule here, which is a consumer's
+// policy and not the specification's -- a consumer that wants the boundary instant to refuse
+// tightens it at its own layer). `X509ValidityUndecodable` when either time does not decode.
+type X509ValidityStanding
+  = X509ValidAt
+  | X509NotYetValid { not_before: Timestamp, observed_at: Timestamp }
+  | X509Expired { not_after: Timestamp, observed_at: Timestamp }
+  | X509ValidityUndecodable { text: String }
+
+fn x509_validity_at(cert: X509Certificate, observed_at: Timestamp) -> X509ValidityStanding {
+  match x509_time_rfc3339(t: cert.tbs.not_before) {
+    Absent => X509ValidityUndecodable { text: x509_time_text(t: cert.tbs.not_before) }
+    Present { value: nb } =>
+      match x509_time_rfc3339(t: cert.tbs.not_after) {
+        Absent => X509ValidityUndecodable { text: x509_time_text(t: cert.tbs.not_after) }
+        Present { value: na } =>
+          if observed_at < nb { X509NotYetValid { not_before: nb, observed_at: observed_at } }
+          else if na < observed_at { X509Expired { not_after: na, observed_at: observed_at } }
+          else { X509ValidAt }
+      }
+  }
+}

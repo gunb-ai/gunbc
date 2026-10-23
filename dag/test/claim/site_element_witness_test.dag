@@ -1,0 +1,842 @@
+module test.claim.site_element_witness_test
+
+import std.types { Bool, Int, List, String }
+import std.list { distinct_by_key }
+import std.markup { Fragment, Element }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.languages.html { serialize_html_source }
+import extdeps.ietf.http_semantics { GET }
+import extdeps.http.server {
+  ServedRouteTable, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
+  serve_select_route, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+}
+import extdeps.google.issue_tracker {
+  IssueButtonContainedPrimary, IssueButtonOutlined, IssueButtonText,
+  IssueActionEnabled, IssueActionDisabled,
+  issue_tracker_visual_tokens,
+}
+import gunbc.roadmap_serve { RoadmapServeHandler, SpecimenPageHandler, roadmap_serve_route_table_build }
+import gunbc.roadmap_issue_status {
+  IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked, DisplayReturned,
+  DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_statuses, issue_display_status_is_closed,
+}
+import gunbc.roadmap_priority { RoadmapPriority, DerivedPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3 }
+import gunbc.roadmap_issue_location { issue_page_path }
+import gunbc.roadmap.roadmap_lineage { LineageCyclic }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusAccepted, NodeStatusWithheld, NodeStatusUnavailable, node_status_derived,
+  NodeChain, NodeChainRooted, NodeChainRefused,
+  NodeRelation, RelationRow, RelationKind, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
+  RowChildrenNotCarried, RowChildrenExpandable,
+}
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, AmbientRule, MediaRule, CssDecl, serialize_rules, serialize_decls, decl }
+import gunbc.design.palette { Swatch, grade_pairing, grade_rank, TextAa }
+import gunbc.design.theme_transition { rule_selector, unthemed_color_decls, untokened_length_decls }
+import gunbc.site.markup { txt, el_attrs }
+import gunbc.site.element.palette { palette_decls, palette_day, SlotGround, SlotSurface, SlotAction, SlotLink }
+import gunbc.site.element.tokens { element_token_decls, font_heading }
+import gunbc.site.element.text {
+  element_text_decls, element_control_small_size_decls, element_text_roles, ElementText,
+  ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl, ElementTitle,
+  ElementProseHeading, ElementIdentifier, ElementCode,
+}
+import gunbc.site.element.styles {
+  ElementStyle, element_styles, element_rules, SiteElement, element_style, site_elements,
+  SiteCard, SiteSectionHeading, SiteStatusChip, SiteButton, SiteChip, SitePriorityMark,
+  SiteNodeRow, SiteRelationTable, SiteNodeChain, SiteBuildMeter, SiteFieldList,
+}
+import gunbc.site.element.card { Card, CardLabelRow, CardEdgePlain, CardEdgeBar, card, card_rules }
+import gunbc.site.element.section_heading {
+  SectionHeading, SectionUncounted, SectionCounted, SectionCountedOfTotal, section_heading, section_heading_rules,
+}
+import gunbc.site.element.status_chip { status_chip, status_chip_rules }
+import gunbc.site.element.button { Button, ButtonSmall, ButtonRegular, button, button_rules }
+import gunbc.site.element.chip { Chip, chip, chip_rules }
+import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_rules, priority_mark_forms, priority_mark_form_decls }
+import gunbc.site.element.node_row {
+  NodeRow, NodeRowFlat, NodeRowInTree, NodeRowDensityTable, NodeRowDensityGrid,
+  node_row, node_row_header, node_row_rules,
+}
+import gunbc.site.element.relation_table { RelationTable, relation_table, relation_table_rules }
+import gunbc.site.element.node_chain { node_chain, node_chain_rules, node_chain_unfolded_levels }
+import gunbc.site.specimen {
+  specimen_route_path, specimen_layout_rules, specimen_field_list_fixture,
+  SpecimenSection, specimen_element_sections, specimen_section_node,
+  SpecimenMeterFixture, specimen_meter, specimen_pose_fixtures, specimen_more_fixtures,
+  SpecimenMeterToolHeavy, SpecimenMeterVerificationFailed, SpecimenMeterStale, SpecimenMeterWaiting, SpecimenMeterPublished,
+  SpecimenMeterRealRun, SpecimenMeterSingleTool, SpecimenMeterLegacy, SpecimenMeterRefused,
+  SpecimenCardSection, SpecimenHeadingSection, SpecimenStatusSection, SpecimenButtonSection, SpecimenChipSection,
+  SpecimenPrioritySection, SpecimenNodeRowSection, SpecimenRelationSection, SpecimenChainSection,
+  SpecimenPoseSection, SpecimenMeterSection, SpecimenFieldListSection,
+}
+import gunbc.site.element.build_meter { build_meter_art }
+import gunbc.site.element.field_list {
+  FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
+  FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list, field_list_rules, field_value_key,
+}
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { Color, Padding, css_property_wire }
+import extdeps.languages.css.media_queries { coarse_pointer, media_condition_wire }
+import gunbc.design.scale { scale_value_wire, font_sans }
+import gunbc.site.web_fonts { web_font_faces }
+import v2.std.algebra { filter }
+
+// GUARDS FOR THE FRONTEND ELEMENTS. Each claim below reads one interface with a supplied fixture:
+// an element's markup function, an element's rules, the token block, the palette, a text role.
+// None renders a page. The ownership claims are guards over the registered element rules and the
+// specimen's layout rules; they do not make a second declaration of an element class unwritable,
+// they report one that reaches the registry.
+
+fn html(node: Fragment) -> String {
+  serialize_html_source(node: node)
+}
+
+fn has(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
+// Card.
+test fn card_renders_its_edge_label_row_and_trailing_controls() -> Bool {
+  let full = html(node: card(input: Card {
+    edge: CardEdgeBar,
+    label_row: Present { value: CardLabelRow { label: "Description", trailing: [txt("trailing")] } },
+    body: [txt("body")],
+  }))
+  has(s: full, pattern: "<section class=\"el-card\" data-card-edge=\"bar\">")
+    && has(s: full, pattern: "<div class=\"el-card-label-row\"><h2 class=\"el-card-label\">Description</h2><div class=\"el-card-trailing\">trailing</div></div>body</section>")
+}
+
+test fn card_without_a_label_row_renders_none() -> Bool {
+  let plain = html(node: card(input: Card { edge: CardEdgePlain, label_row: Absent, body: [txt("body")] }))
+  let labelled = html(node: card(input: Card { edge: CardEdgePlain, label_row: Present { value: CardLabelRow { label: "Comments", trailing: [] } }, body: [] }))
+  plain == "<section class=\"el-card\" data-card-edge=\"plain\">body</section>"
+    && has(s: labelled, pattern: "<h2 class=\"el-card-label\">Comments</h2></div>")
+    && !has(s: labelled, pattern: "el-card-trailing")
+}
+
+test fn card_rules_draw_the_measured_card() -> Bool {
+  let css = serialize_rules(rules: card_rules())
+  has(s: css, pattern: ".el-card { --issue-action-ink: var(--issue-action); min-width: var(--space-0); background: var(--issue-surface); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-4); padding: var(--space-16); font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 400; color: var(--issue-text);")
+    && has(s: css, pattern: ".el-card[data-card-edge=\"bar\"] { border-left: var(--border-4) solid var(--issue-leading-bar) }")
+    && has(s: css, pattern: ".el-card-label-row { display: flex; align-items: center; gap: var(--space-8); min-height: var(--h-card-label-row) }")
+    && has(s: css, pattern: ".el-card-label { margin: var(--space-0); font-family: var(--font-sans); font-size: var(--text-11); line-height: var(--leading-15); font-weight: 500; color: var(--issue-text); text-transform: uppercase; letter-spacing: var(--tracking-80) }")
+}
+
+// SectionHeading.
+test fn section_heading_formats_the_counts_it_is_given() -> Bool {
+  html(node: section_heading(input: SectionHeading { text: "Acceptance criteria", count: SectionUncounted })) == "<h3 class=\"el-section-heading\">Acceptance criteria</h3>"
+    && html(node: section_heading(input: SectionHeading { text: "Parent", count: SectionCounted { n: 1 } })) == "<h3 class=\"el-section-heading\">Parent (1)</h3>"
+    && html(node: section_heading(input: SectionHeading { text: "Sub-issues", count: SectionCountedOfTotal { n: 1, total: 3 } })) == "<h3 class=\"el-section-heading\">Sub-issues (1/3)</h3>"
+}
+
+test fn section_heading_rule_is_the_section_heading_role() -> Bool {
+  serialize_rules(rules: section_heading_rules()) == ".el-section-heading { margin: var(--space-8) var(--space-0); font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 700; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal }"
+}
+
+// StatusChip.
+fn chip_is(status_html: String, form: String, label: String) -> Bool {
+  status_html == join(["<span class=\"el-status-chip\" data-status-form=\"", form, "\">", label, "</span>"], "")
+}
+
+test fn status_chip_renders_every_status_in_its_form() -> Bool {
+  chip_is(status_html: html(node: status_chip(status: DisplayReady)), form: "ready", label: "Ready")
+    && chip_is(status_html: html(node: status_chip(status: DisplayAssigned)), form: "assigned", label: "Assigned")
+    && chip_is(status_html: html(node: status_chip(status: DisplayActive)), form: "assigned", label: "Active")
+    && chip_is(status_html: html(node: status_chip(status: DisplayReview)), form: "assigned", label: "Review")
+    && chip_is(status_html: html(node: status_chip(status: DisplayBlocked)), form: "blocked", label: "Blocked")
+    && chip_is(status_html: html(node: status_chip(status: DisplayReturned)), form: "blocked", label: "Returned")
+    && chip_is(status_html: html(node: status_chip(status: DisplayDone)), form: "filled", label: "Done")
+    && chip_is(status_html: html(node: status_chip(status: DisplaySuperseded)), form: "quiet", label: "Superseded")
+    && chip_is(status_html: html(node: status_chip(status: DisplayUnknown)), form: "quiet", label: "Unknown")
+}
+
+test fn status_chip_rules_draw_the_measured_chip_and_its_three_forms() -> Bool {
+  let css = serialize_rules(rules: status_chip_rules())
+  has(s: css, pattern: ".el-status-chip { --el-status-chip-ring: var(--issue-text-dim); --el-status-chip-fill: var(--issue-bg-subtle); display: inline-flex; align-items: center; height: var(--h-chip); padding: var(--space-0) var(--space-4); border-radius: var(--radius-4); background: var(--el-status-chip-fill); box-shadow: inset 0 0 0 var(--border-1) var(--el-status-chip-ring); white-space: nowrap; font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22); font-weight: 400;")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"filled\"] { --el-status-chip-fill: var(--issue-text-dim); color: var(--issue-surface) }")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"ready\"] { --el-status-chip-ring: var(--status-ready-ink); --el-status-chip-fill: color-mix(in srgb, var(--status-ready-ink) 12%, var(--issue-surface)) }")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"assigned\"] { --el-status-chip-ring: var(--status-assigned-ink);")
+    && has(s: css, pattern: ".el-status-chip[data-status-form=\"blocked\"] { --el-status-chip-ring: var(--status-blocked-ink);")
+}
+
+// Button.
+test fn button_renders_its_idiom_size_and_availability() -> Bool {
+  html(node: button(input: Button { label: "Add", idiom: IssueButtonContainedPrimary, size: ButtonSmall, availability: IssueActionEnabled }))
+      == "<button class=\"el-button\" type=\"button\" data-button-idiom=\"contained-primary\" data-button-size=\"small\">Add</button>"
+    && has(s: html(node: button(input: Button { label: "Comment", idiom: IssueButtonOutlined, size: ButtonRegular, availability: IssueActionDisabled })),
+      pattern: "<button class=\"el-button\" type=\"button\" data-button-idiom=\"outlined\" data-button-size=\"regular\" disabled")
+    && has(s: html(node: button(input: Button { label: "More", idiom: IssueButtonText, size: ButtonRegular, availability: IssueActionEnabled })), pattern: "data-button-idiom=\"text\"")
+}
+
+test fn button_rules_draw_the_two_sizes_and_three_idioms() -> Bool {
+  let css = serialize_rules(rules: button_rules())
+  has(s: css, pattern: ".el-button { display: inline-flex; align-items: center; justify-content: center; height: var(--h-button); min-height: var(--h-button); padding: var(--space-0) var(--space-12); border: var(--border-1) solid transparent; border-radius: var(--radius-4); background: transparent; cursor: pointer; white-space: nowrap; font-family: var(--font-heading); font-size: var(--text-14); line-height: var(--leading-20); font-weight: 500; color: var(--issue-action-ink);")
+    && has(s: css, pattern: ".el-button[data-button-size=\"small\"] { height: var(--h-button-small); min-height: var(--h-button-small); padding: var(--space-0) var(--space-10); font-size: var(--text-13) }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"contained-primary\"] { background: var(--issue-action); color: var(--issue-on-action) }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"outlined\"] { background: var(--issue-surface); border-color: var(--issue-border) }")
+    && has(s: css, pattern: ".el-button:disabled { color: color-mix(in srgb, var(--issue-text) 38%, transparent); cursor: default }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"contained-primary\"]:disabled { background: color-mix(in srgb, var(--issue-text) 12%, transparent) }")
+    && has(s: css, pattern: ".el-button[data-button-idiom=\"contained-primary\"]:enabled:hover { background: var(--issue-action-hover) }")
+    && has(s: css, pattern: ".el-button:focus-visible { outline: var(--border-2) solid var(--issue-action); outline-offset: var(--space-2) }")
+}
+
+// THE HIERARCHY ELEMENTS. The fixture nodes are planted here; no claim below reads a declared
+// roadmap row or renders a page.
+fn fx_node(slug: String, status: NodeStatus, priority: RoadmapPriority) -> NodePresentation {
+  NodePresentation {
+    slug: slug,
+    title: join(["Title of ", slug], ""),
+    status: status,
+    priority: DerivedPriority { priority: priority, source: "", reason: "fixture" },
+    route: issue_page_path(node_id: slug),
+  }
+}
+
+fn fx_derived(slug: String, status: IssueDisplayStatus) -> NodePresentation {
+  fx_node(slug: slug, status: node_status_derived(status: status), priority: PriorityP2)
+}
+
+// Chip and PriorityMark.
+test fn chip_and_priority_mark_render_their_typed_inputs() -> Bool {
+  html(node: chip(input: Chip { text: "shell-typed-invocation" })) == "<span class=\"el-chip\">shell-typed-invocation</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP0, explanation: none })) == "<span class=\"el-priority-mark\" data-priority-form=\"solid\">P0</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP1, explanation: none })) == "<span class=\"el-priority-mark\" data-priority-form=\"ringed\">P1</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP2, explanation: none })) == "<span class=\"el-priority-mark\" data-priority-form=\"plain\">P2</span>"
+    && html(node: priority_mark(input: PriorityMark { priority: PriorityP3, explanation: Present { value: "P3 · fixture" } })) == "<span class=\"el-priority-mark\" data-priority-form=\"quiet\" title=\"P3 · fixture\">P3</span>"
+}
+
+test fn chip_and_priority_mark_rules_draw_the_measured_marks() -> Bool {
+  let chip_css = serialize_rules(rules: chip_rules())
+  let mark_css = serialize_rules(rules: priority_mark_rules())
+  has(s: chip_css, pattern: ".el-chip { display: inline-flex; align-items: center; min-height: var(--h-chip); padding: var(--space-0) var(--space-6); border-radius: var(--radius-4); background: color-mix(in srgb, var(--issue-text) 6%, transparent); font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22); font-weight: 400;")
+    && has(s: mark_css, pattern: ".el-priority-mark { display: inline-flex; align-items: center; justify-content: flex-start; box-sizing: border-box; min-width: var(--w-priority-mark); height: var(--h-chip); padding: var(--space-0) var(--space-2); border: var(--border-2) solid transparent; border-radius: var(--radius-4); font-family: var(--font-sans); font-size: var(--text-13);")
+    && has(s: mark_css, pattern: ".el-priority-mark[data-priority-form=\"ringed\"] { border-color: var(--issue-action) }")
+    && has(s: mark_css, pattern: ".el-priority-mark[data-priority-form=\"solid\"] { border-color: var(--issue-action); background: var(--issue-action); color: var(--issue-on-action) }")
+}
+
+// NodeRow.
+test fn node_row_renders_title_priority_slug_and_status_from_the_presentation() -> Bool {
+  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-parent", status: node_status_derived(status: DisplayActive), priority: PriorityP1), place: NodeRowFlat, density: NodeRowDensityTable }))
+  row == join([
+    "<tr class=\"el-node-row\" data-node-density=\"table\" data-node-state=\"open\" data-node-depth=\"0\">",
+    "<td class=\"el-node-row-cell\" data-node-column=\"title\"><div class=\"el-node-row-lead\"><a class=\"el-node-row-link\" href=\"/issue/fx-parent\">Title of fx-parent</a></div></td>",
+    "<td class=\"el-node-row-cell\" data-node-column=\"priority\"><span class=\"el-priority-mark\" data-priority-form=\"ringed\" title=\"P1 · fixture\">P1</span></td>",
+    "<td class=\"el-node-row-cell\" data-node-column=\"id\"><span class=\"el-chip\">fx-parent</span></td>",
+    "<td class=\"el-node-row-cell\" data-node-column=\"status\"><span class=\"el-status-chip\" data-status-form=\"assigned\">Active</span></td>",
+    "</tr>",
+  ], "")
+}
+
+test fn node_row_in_a_tree_shows_its_depth_and_links_the_count_it_refers_to() -> Bool {
+  let with_children = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-branch", status: DisplayReady), place: NodeRowInTree { depth: 2, children: RowChildrenExpandable { count: 3 } }, density: NodeRowDensityTable }))
+  let one_child = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-one", status: DisplayReady), place: NodeRowInTree { depth: 0, children: RowChildrenExpandable { count: 1 } }, density: NodeRowDensityTable }))
+  let leaf = html(node: node_row(input: NodeRow { node: fx_derived(slug: "fx-leaf", status: DisplayReady), place: NodeRowInTree { depth: 0, children: RowChildrenExpandable { count: 0 } }, density: NodeRowDensityTable }))
+  has(s: with_children, pattern: "data-node-depth=\"2\"")
+    && count(split(s: with_children, delimiter: "<span class=\"el-node-row-indent\" aria-hidden=\"true\"></span>")) == 3
+    && has(s: with_children, pattern: "<a class=\"el-node-row-link\" href=\"/issue/fx-branch\">Title of fx-branch</a><a class=\"el-node-row-children\" href=\"/issue/fx-branch\" data-node-children=\"3\">3 sub-issues</a></div>")
+    && has(s: one_child, pattern: "<a class=\"el-node-row-children\" href=\"/issue/fx-one\" data-node-children=\"1\">1 sub-issue</a>")
+    && has(s: leaf, pattern: "<div class=\"el-node-row-lead\"><a class=\"el-node-row-link\" href=\"/issue/fx-leaf\">Title of fx-leaf</a></div>")
+    && !has(s: leaf, pattern: "el-node-row-indent")
+    && !has(s: leaf, pattern: "el-node-row-children")
+    && !has(s: with_children, pattern: "<svg")
+    && !has(s: with_children, pattern: "<button")
+}
+
+test fn node_row_says_an_underived_status_is_unavailable() -> Bool {
+  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-gone", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  has(s: row, pattern: "<td class=\"el-node-row-cell\" data-node-column=\"status\"><span class=\"el-node-row-status-unavailable\" title=\"no authority establishes a status\" aria-label=\"Status unavailable: no authority establishes a status\">Status unavailable</span></td>")
+    && !has(s: row, pattern: "el-status-chip")
+    && has(s: row, pattern: "data-node-state=\"open\"")
+}
+
+// A row is drawn closed exactly when its presentation says the node is closed. For a planted
+// status that is the vocabulary's own predicate, and the claim walks the whole vocabulary, so a
+// status added to it is covered without an edit here. The two rows after it separate the closure
+// fact from the status word: a node the producer states is closed is drawn closed while shown as
+// Unknown, and a node shown as Done that the producer states is not closed is drawn open.
+fn row_state(status: NodeStatus) -> String {
+  let row = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-any", status: status, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  if has(s: row, pattern: "data-node-state=\"closed\"") && !has(s: row, pattern: "data-node-state=\"open\"") { "closed" }
+  else if has(s: row, pattern: "data-node-state=\"open\"") && !has(s: row, pattern: "data-node-state=\"closed\"") { "open" }
+  else { "neither" }
+}
+
+fn row_state_follows_predicate(status: IssueDisplayStatus) -> Bool {
+  row_state(status: node_status_derived(status: status)) == (if issue_display_status_is_closed(status: status) { "closed" } else { "open" })
+}
+
+test fn node_row_closed_styling_follows_the_status_predicate() -> Bool {
+  let css = serialize_rules(rules: node_row_rules())
+  all(issue_display_statuses, s => row_state_follows_predicate(status: s))
+    && any(issue_display_statuses, s => issue_display_status_is_closed(status: s))
+    && any(issue_display_statuses, s => !issue_display_status_is_closed(status: s))
+    && row_state(status: NodeStatusDerived { status: DisplayUnknown, closed: true }) == "closed"
+    && row_state(status: NodeStatusDerived { status: DisplayDone, closed: false }) == "open"
+    && row_state(status: NodeStatusUnavailable { reason: "no authority establishes a status" }) == "open"
+    && has(s: css, pattern: ".el-node-row[data-node-state=\"closed\"] .el-node-row-cell { background: var(--issue-closed-row); color: var(--issue-text-dim) }")
+    && has(s: css, pattern: ".el-node-row[data-node-state=\"closed\"] .el-node-row-link { color: var(--issue-text-dim) }")
+    && !has(s: css, pattern: "data-node-state=\"open\"")
+}
+
+test fn node_row_header_and_rules_draw_the_table_density() -> Bool {
+  let css = serialize_rules(rules: node_row_rules())
+  let flat = html(node: node_row_header(density: NodeRowDensityTable))
+  flat == "<tr class=\"el-node-row-head\" data-node-density=\"table\"><th class=\"el-node-row-heading\" data-node-column=\"title\" scope=\"col\">Title</th><th class=\"el-node-row-heading\" data-node-column=\"priority\" scope=\"col\">P</th><th class=\"el-node-row-heading\" data-node-column=\"id\" scope=\"col\">Id</th><th class=\"el-node-row-heading\" data-node-column=\"status\" scope=\"col\">Status</th></tr>"
+    && has(s: css, pattern: ".el-node-row[data-node-density=\"table\"] { --el-node-row-height: var(--h-relation-row) }")
+    && has(s: css, pattern: ".el-node-row-head[data-node-density=\"table\"] { --el-node-row-height: var(--h-relation-row) }")
+    && has(s: css, pattern: ".el-node-row[data-node-density=\"grid\"] { --el-node-row-height: var(--h-grid-row) }")
+    && has(s: html(node: node_row_header(density: NodeRowDensityGrid)), pattern: "<tr class=\"el-node-row-head\" data-node-density=\"grid\">")
+    && has(s: css, pattern: ".el-node-row-cell { height: var(--el-node-row-height); padding: var(--space-0) var(--space-4); border-bottom: var(--border-1) solid var(--issue-border); vertical-align: middle; text-align: left; white-space: nowrap; font-family: var(--font-sans); font-size: var(--text-13);")
+    && has(s: css, pattern: ".el-node-row-indent { flex: none; width: var(--space-24) }")
+    && has(s: css, pattern: ".el-node-row-children { font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-16); font-weight: 500; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal; flex: none; color: var(--issue-action-ink); text-decoration: none; white-space: nowrap }")
+}
+
+// RelationTable.
+fn fx_relation(kind: RelationKind, nodes: List<NodePresentation>, undeclared: List<String>) -> NodeRelation {
+  NodeRelation {
+    kind: kind,
+    rows: map(nodes, n => RelationRow { node: n, children: match kind {
+      RelationSubIssues => RowChildrenExpandable { count: 0 }
+      RelationParent => RowChildrenNotCarried
+      RelationBlockedBy => RowChildrenNotCarried
+      RelationBlocking => RowChildrenNotCarried
+    } }),
+    undeclared: undeclared,
+  }
+}
+
+fn table_html(relation: NodeRelation) -> String {
+  html(node: relation_table(input: RelationTable { relation: relation, depth: 0 }))
+}
+
+fn row_count(table: String) -> Int {
+  count(split(s: table, delimiter: "<tr class=\"el-node-row\"")) - 1
+}
+
+test fn relation_table_heading_counts_the_rows_it_shows() -> Bool {
+  let parent = table_html(relation: fx_relation(kind: RelationParent, nodes: [fx_derived(slug: "fx-parent", status: DisplayActive)], undeclared: []))
+  let blocked = table_html(relation: fx_relation(kind: RelationBlockedBy, nodes: [fx_derived(slug: "fx-a", status: DisplayBlocked), fx_derived(slug: "fx-b", status: DisplayDone)], undeclared: []))
+  has(s: parent, pattern: "<section class=\"el-relation-table\" data-relation-kind=\"parent\"><h3 class=\"el-section-heading\">Parent (1)</h3><table class=\"el-relation-table-rows\"><thead><tr class=\"el-node-row-head\"")
+    && row_count(table: parent) == 1
+    && has(s: blocked, pattern: "<h3 class=\"el-section-heading\">Blocked by (2)</h3>")
+    && row_count(table: blocked) == 2
+    && has(s: blocked, pattern: "data-node-state=\"closed\" data-node-depth=\"0\"><td class=\"el-node-row-cell\" data-node-column=\"title\"><div class=\"el-node-row-lead\"><a class=\"el-node-row-link\" href=\"/issue/fx-b\">")
+}
+
+test fn relation_table_sub_issues_read_closed_over_total_only_when_every_status_is_derived() -> Bool {
+  let derived = [fx_derived(slug: "fx-a", status: DisplayReady), fx_derived(slug: "fx-b", status: DisplayDone), fx_derived(slug: "fx-c", status: DisplaySuperseded)]
+  let all_derived = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: derived, undeclared: []))
+  let one_unavailable = table_html(relation: fx_relation(kind: RelationSubIssues, nodes: concat(derived, [fx_node(slug: "fx-d", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2)]), undeclared: []))
+  has(s: all_derived, pattern: "<h3 class=\"el-section-heading\">Sub-issues (2/3)</h3>")
+    && row_count(table: all_derived) == 3
+    && has(s: one_unavailable, pattern: "<h3 class=\"el-section-heading\">Sub-issues (4)</h3>")
+    && row_count(table: one_unavailable) == 4
+}
+
+test fn relation_table_states_an_empty_relation_and_names_an_undeclared_id() -> Bool {
+  let empty = table_html(relation: fx_relation(kind: RelationParent, nodes: [], undeclared: []))
+  let empty_blocking = table_html(relation: fx_relation(kind: RelationBlocking, nodes: [], undeclared: []))
+  let undeclared = table_html(relation: fx_relation(kind: RelationBlockedBy, nodes: [], undeclared: ["fx-missing"]))
+  empty == "<section class=\"el-relation-table\" data-relation-kind=\"parent\"><h3 class=\"el-section-heading\">Parent (0)</h3><p class=\"el-relation-table-empty\">No parent</p></section>"
+    && has(s: empty_blocking, pattern: "<p class=\"el-relation-table-empty\">Not blocking any issue</p>")
+    && has(s: undeclared, pattern: "<tr class=\"el-relation-table-undeclared\"><td class=\"el-relation-table-undeclared-cell\" colspan=\"4\"><div class=\"el-relation-table-undeclared-note\"><span class=\"el-chip\">fx-missing</span><span>Blocked by names no declared node</span></div></td></tr>")
+    && row_count(table: undeclared) == 0
+    && !has(s: undeclared, pattern: "el-relation-table-empty")
+}
+
+test fn relation_table_rules_style_the_table_and_no_row_internals() -> Bool {
+  let css = serialize_rules(rules: relation_table_rules())
+  has(s: css, pattern: ".el-relation-table-rows { width: 100%; border-collapse: collapse }")
+    && has(s: css, pattern: ".el-relation-table-empty { font-family: var(--font-sans); font-size: var(--text-13);")
+    && !has(s: css, pattern: ".el-node-row")
+    && !has(s: css, pattern: ".el-section-heading")
+}
+
+// NodeChain.
+fn fx_chain(levels: Int) -> NodeChain {
+  let slugs: List<String> = ["l1", "l2", "l3", "l4", "l5", "l6", "l7"]
+  let ancestors = map(slugs.take(n: levels - 1), slug => fx_derived(slug: slug, status: DisplayActive))
+  NodeChainRooted { ancestors: ancestors, self_node: fx_derived(slug: "self", status: DisplayReady) }
+}
+
+fn chain_html(levels: Int) -> String {
+  html(node: node_chain(chain: fx_chain(levels: levels)))
+}
+
+test fn node_chain_lists_every_level_as_a_titled_link_ending_in_the_current_node() -> Bool {
+  chain_html(levels: 3) == join([
+    "<nav class=\"el-node-chain\" aria-label=\"Issue hierarchy\" data-chain-state=\"rooted\"><ol class=\"el-node-chain-levels\">",
+    "<li class=\"el-node-chain-level\"><a class=\"el-node-chain-link\" href=\"/issue/l1\" title=\"Title of l1\" aria-label=\"l1: Title of l1\">l1</a></li>",
+    "<li class=\"el-node-chain-level\"><span class=\"el-node-chain-separator\" aria-hidden=\"true\">›</span><a class=\"el-node-chain-link\" href=\"/issue/l2\" title=\"Title of l2\" aria-label=\"l2: Title of l2\">l2</a></li>",
+    "<li class=\"el-node-chain-level\"><span class=\"el-node-chain-separator\" aria-hidden=\"true\">›</span><span class=\"el-node-chain-current\" aria-current=\"page\" title=\"Title of self\" aria-label=\"self: Title of self\">self</span></li>",
+    "</ol></nav>",
+  ], "")
+    && chain_html(levels: 1) == "<nav class=\"el-node-chain\" aria-label=\"Issue hierarchy\" data-chain-state=\"rooted\"><ol class=\"el-node-chain-levels\"><li class=\"el-node-chain-level\"><span class=\"el-node-chain-current\" aria-current=\"page\" title=\"Title of self\" aria-label=\"self: Title of self\">self</span></li></ol></nav>"
+}
+
+// Every level of a chain is in the rendered chain as a link (or as the current node), at every
+// length. A chain folds only past the unfolded limit, and a folded chain states how many levels
+// the fold holds: all of them but the first and the last two.
+fn chain_keeps_every_level(levels: Int) -> Bool {
+  let h = chain_html(levels: levels)
+  let links = count(split(s: h, delimiter: "<a class=\"el-node-chain-link\"")) - 1
+  let folds = count(split(s: h, delimiter: "<details class=\"el-node-chain-fold\">")) - 1
+  let fold_stated = if levels <= node_chain_unfolded_levels {
+    folds == 0 && !has(s: h, pattern: "<summary")
+  } else {
+    folds == 1
+      && has(s: h, pattern: join(["<summary class=\"el-node-chain-fold-count\" aria-label=\"", to_string(levels - 3), " more levels\" title=\"", to_string(levels - 3), " more levels\">… ", to_string(levels - 3), "</summary>"], ""))
+  }
+  links == levels - 1
+    && count(split(s: h, delimiter: "aria-current=\"page\"")) == 2
+    && fold_stated
+}
+
+test fn node_chain_overflow_never_hides_a_level_without_the_counted_control() -> Bool {
+  all([1, 2, 3, 4, 5, 6, 7, 8], n => chain_keeps_every_level(levels: n))
+    && node_chain_unfolded_levels == 4
+}
+
+test fn node_chain_folds_the_middle_and_keeps_the_first_and_the_last_two() -> Bool {
+  let h = chain_html(levels: 7)
+  has(s: h, pattern: "<ol class=\"el-node-chain-levels\"><li class=\"el-node-chain-level\"><a class=\"el-node-chain-link\" href=\"/issue/l1\" title=\"Title of l1\" aria-label=\"l1: Title of l1\">l1</a></li><li class=\"el-node-chain-level\"><span class=\"el-node-chain-separator\" aria-hidden=\"true\">›</span><details class=\"el-node-chain-fold\"><summary")
+    && has(s: h, pattern: "</summary><ol class=\"el-node-chain-levels\"><li class=\"el-node-chain-level\"><span class=\"el-node-chain-separator\" aria-hidden=\"true\">›</span><a class=\"el-node-chain-link\" href=\"/issue/l2\"")
+    && has(s: h, pattern: "aria-label=\"l5: Title of l5\">l5</a></li></ol></details></li><li class=\"el-node-chain-level\"><span class=\"el-node-chain-separator\" aria-hidden=\"true\">›</span><a class=\"el-node-chain-link\" href=\"/issue/l6\"")
+    && has(s: h, pattern: "aria-label=\"l6: Title of l6\">l6</a></li><li class=\"el-node-chain-level\"><span class=\"el-node-chain-separator\" aria-hidden=\"true\">›</span><span class=\"el-node-chain-current\" aria-current=\"page\"")
+}
+
+test fn node_chain_renders_a_refused_lineage_as_its_reason_and_no_level() -> Bool {
+  html(node: node_chain(chain: NodeChainRefused { refusal: LineageCyclic { node_id: "fx-loop" } }))
+    == "<nav class=\"el-node-chain\" aria-label=\"Issue hierarchy\" data-chain-state=\"refused\"><span class=\"el-node-chain-refused\">project path unavailable: the parent walk revisits fx-loop; project nesting is cyclic</span></nav>"
+}
+
+test fn node_chain_rules_draw_one_chip() -> Bool {
+  let css = serialize_rules(rules: node_chain_rules())
+  has(s: css, pattern: ".el-node-chain { display: inline-flex; align-items: center; min-height: var(--h-chip); padding: var(--space-0) var(--space-6); border-radius: var(--radius-4); background: color-mix(in srgb, var(--issue-text) 6%, transparent); font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22);")
+    && has(s: css, pattern: ".el-node-chain-current { color: var(--issue-text) }")
+    && has(s: css, pattern: ".el-node-chain-refused { color: var(--issue-error) }")
+    && has(s: css, pattern: ".el-node-chain-fold-count:focus-visible { outline: var(--border-2) solid var(--issue-action); outline-offset: var(--space-2) }")
+}
+
+// Tokens. The adopted values are the rulings of the element spec (R3 and section 1).
+test fn element_tokens_carry_the_adopted_radius_and_heights() -> Bool {
+  let css = serialize_decls(decls: element_token_decls())
+  has(s: css, pattern: "--radius-4: 4px")
+    && has(s: css, pattern: "--radius-2: 2px")
+    && has(s: css, pattern: "--h-chip: 22px")
+    && has(s: css, pattern: "--h-button-small: 24px")
+    && has(s: css, pattern: "--h-button: 32px")
+    && has(s: css, pattern: "--h-tab: 34px")
+    && has(s: css, pattern: "--h-relation-row: 32px")
+    && has(s: css, pattern: "--h-grid-row: 36px")
+    && has(s: css, pattern: "--h-bar: 48px")
+    && has(s: css, pattern: "--h-card-label-row: 36px")
+}
+
+test fn element_tokens_add_only_what_the_shared_scale_lacks() -> Bool {
+  let css = serialize_decls(decls: element_token_decls())
+  has(s: css, pattern: "--space-10: 10px")
+    && has(s: css, pattern: "--border-4: 4px")
+    && has(s: css, pattern: "--leading-15: 15px")
+    && has(s: css, pattern: "--leading-24: 24px")
+    && has(s: css, pattern: "--font-code: monospace")
+    && has(s: css, pattern: "--font-heading: 'Google Sans', 'Roboto', 'Arial', sans-serif")
+    && has(s: css, pattern: "--tracking-80: 0.80px")
+    && !has(s: css, pattern: "--space-16:")
+    && !has(s: css, pattern: "--text-13:")
+    && !has(s: css, pattern: "--border-1:")
+    && count(split(s: css, delimiter: "--leading-18:")) == 2
+}
+
+// Text roles.
+fn role_css(decls: List<CssDecl>) -> String {
+  serialize_decls(decls: decls)
+}
+
+test fn text_roles_body_label_and_headings() -> Bool {
+  role_css(decls: element_text_decls(role: ElementBody)) == "font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 400; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementLabel)) == "font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-16); font-weight: 500; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementCardLabel)) == "font-family: var(--font-sans); font-size: var(--text-11); line-height: var(--leading-15); font-weight: 500; color: var(--issue-text); text-transform: uppercase; letter-spacing: var(--tracking-80)"
+    && role_css(decls: element_text_decls(role: ElementSectionHeading)) == "font-family: var(--font-sans); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 700; color: var(--issue-text-dim); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementProseHeading)) == "font-family: var(--font-sans); font-size: var(--text-18); line-height: var(--leading-24); font-weight: 500; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+}
+
+test fn text_roles_control_title_identifier_and_code() -> Bool {
+  role_css(decls: element_text_decls(role: ElementControl)) == "font-family: var(--font-heading); font-size: var(--text-14); line-height: var(--leading-20); font-weight: 500; color: var(--issue-action-ink); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_control_small_size_decls()) == "font-size: var(--text-13)"
+    && role_css(decls: element_text_decls(role: ElementTitle)) == "font-family: var(--font-heading); font-size: var(--text-18); line-height: var(--leading-24); font-weight: 400; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementIdentifier)) == "font-family: var(--font-sans); font-size: var(--text-12); line-height: var(--leading-22); font-weight: 400; color: var(--issue-text); text-transform: none; letter-spacing: normal"
+    && role_css(decls: element_text_decls(role: ElementCode)) == "font-family: var(--font-code); font-size: var(--text-13); line-height: var(--leading-18); font-weight: 400; color: var(--issue-code-ink); text-transform: none; letter-spacing: normal"
+}
+
+// Palette.
+test fn palette_day_is_the_measured_light_palette_with_the_link_adoption() -> Bool {
+  let css = serialize_decls(decls: palette_decls(night: false))
+  has(s: css, pattern: "--issue-text: #202124")
+    && has(s: css, pattern: "--issue-text-dim: #5f6368")
+    && has(s: css, pattern: "--issue-border: #dadce0")
+    && has(s: css, pattern: "--issue-action: #1a73e8")
+    && has(s: css, pattern: "--issue-ground: #f8f9fa")
+    && has(s: css, pattern: "--issue-surface: #ffffff")
+    && has(s: css, pattern: "--issue-link: #1967d2")
+    && has(s: css, pattern: "--issue-action-ink: var(--issue-link)")
+}
+
+test fn palette_night_is_the_measured_dark_palette() -> Bool {
+  let css = serialize_decls(decls: palette_decls(night: true))
+  has(s: css, pattern: "--issue-text: #ffffff")
+    && has(s: css, pattern: "--issue-text-dim: #9aa0a6")
+    && has(s: css, pattern: "--issue-border: #3c4043")
+    && has(s: css, pattern: "--issue-action: #8ab4f8")
+    && has(s: css, pattern: "--issue-ground: #18191b")
+    && has(s: css, pattern: "--issue-surface: #18191b")
+    && has(s: css, pattern: "--issue-bg-subtle: #242528")
+    && has(s: css, pattern: "--issue-leading-bar: #1a73e8")
+}
+
+// Colours are approved as pairings: the action colour clears AA for body-size text on a card and
+// not on the ground, which is why link-coloured text on the ground takes the link slot.
+fn pairing_clears_text_aa(figure: Srgb8, ground: Srgb8) -> Bool {
+  match grade_pairing(figure: Swatch { name: "figure", color: figure }, ground: Swatch { name: "ground", color: ground }) {
+    Present { value: p } => grade_rank(g: p.grade) >= grade_rank(g: TextAa)
+    Absent => false
+  }
+}
+
+test fn link_pairing_on_the_ground_clears_aa_where_the_action_colour_does_not() -> Bool {
+  pairing_clears_text_aa(figure: palette_day(slot: SlotLink), ground: palette_day(slot: SlotGround))
+    && pairing_clears_text_aa(figure: palette_day(slot: SlotAction), ground: palette_day(slot: SlotSurface))
+    && !pairing_clears_text_aa(figure: palette_day(slot: SlotAction), ground: palette_day(slot: SlotGround))
+}
+
+// The specimen route.
+fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
+  match roadmap_serve_route_table_build() {
+    ServedRouteTableBuilt { table: t } => t
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+  }
+}
+
+test fn specimen_route_selects_the_specimen_handler() -> Bool {
+  match serve_select_route(table: live_table_or_empty(), method: GET, path: specimen_route_path) {
+    SelectedDynamic { handler: h, params: _ } => h == SpecimenPageHandler
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// EVERY REGISTERED ELEMENT HAS ITS SPECIMEN. Which sections an element has is a total match over
+// the element identity (gunbc.site.element.styles SiteElement) that the registry rows are also a
+// match over, so a registry row that names no sections does not compile (the language's red for
+// that state is test.claim.match_exhaustiveness_coproduct_witness
+// w_cross_module_provider_growth_reports_one_non_exhaustive). What is still writable is an element
+// mapped to no section, and a section that draws something other than its element: the first is a
+// join over the registry, the second is one rendered section per claim, each carrying its
+// element's class. Both have a red below.
+fn every_element_has_a_section(sections_of: fn(SiteElement) -> List<SpecimenSection>) -> Bool {
+  all(site_elements, e => count(sections_of(e)) > 0)
+}
+
+fn node_draws(node: Fragment, element: SiteElement) -> Bool {
+  has(s: html(node: node), pattern: join(["class=\"", element_style(element: element).class_name, "\""], ""))
+}
+
+fn section_draws(section: SpecimenSection, element: SiteElement) -> Bool {
+  any(specimen_element_sections(element: element), s => s == section)
+    && node_draws(node: specimen_section_node(section: section), element: element)
+}
+
+test fn every_registered_element_names_a_specimen_section() -> Bool {
+  every_element_has_a_section(sections_of: e => specimen_element_sections(element: e))
+    && !every_element_has_a_section(sections_of: e => if e == SiteChip { [] as List<SpecimenSection> } else { specimen_element_sections(element: e) })
+}
+
+test fn specimen_draws_the_card() -> Bool { section_draws(section: SpecimenCardSection, element: SiteCard) }
+test fn specimen_draws_the_section_heading() -> Bool { section_draws(section: SpecimenHeadingSection, element: SiteSectionHeading) }
+test fn specimen_draws_the_status_chip() -> Bool { section_draws(section: SpecimenStatusSection, element: SiteStatusChip) }
+test fn specimen_draws_the_button() -> Bool { section_draws(section: SpecimenButtonSection, element: SiteButton) }
+test fn specimen_draws_the_chip() -> Bool { section_draws(section: SpecimenChipSection, element: SiteChip) }
+test fn specimen_draws_the_priority_mark() -> Bool { section_draws(section: SpecimenPrioritySection, element: SitePriorityMark) }
+test fn specimen_draws_the_node_row() -> Bool { section_draws(section: SpecimenNodeRowSection, element: SiteNodeRow) }
+test fn specimen_draws_the_relation_table() -> Bool { section_draws(section: SpecimenRelationSection, element: SiteRelationTable) }
+test fn specimen_draws_the_node_chain() -> Bool { section_draws(section: SpecimenChainSection, element: SiteNodeChain) }
+
+// The build meter's two sections are strips of named fixtures, each fixture drawn by the meter
+// element (specimen_meter_node). A whole section costs as much as its meters together, so the
+// sections are checked as the element's and non-empty, and each fixture is drawn on its own claim.
+test fn specimen_meter_sections_are_the_build_meters() -> Bool {
+  any(specimen_element_sections(element: SiteBuildMeter), s => s == SpecimenPoseSection)
+    && any(specimen_element_sections(element: SiteBuildMeter), s => s == SpecimenMeterSection)
+    && count(specimen_pose_fixtures) > 0
+    && count(specimen_more_fixtures) > 0
+}
+
+// A fixture is drawn by the meter's own drawing (build_meter_art) over the fixture's view. The
+// summary's revision is a content hash over every recorded round, the most expensive part of a
+// forty-round fixture and no part of what it draws, so it is not paid here; specimen_meter_node
+// with its summary is exercised by the field list claim and the meter's own witnesses.
+fn fixture_draws_the_meter(fixture: SpecimenMeterFixture) -> Bool {
+  has(s: html(node: build_meter_art(view: specimen_meter(fixture: fixture).view)), pattern: "class=\"el-build-meter-art\"")
+}
+
+test fn specimen_meter_tool_heavy_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterToolHeavy) }
+test fn specimen_meter_verification_failed_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterVerificationFailed) }
+test fn specimen_meter_stale_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterStale) }
+test fn specimen_meter_waiting_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterWaiting) }
+test fn specimen_meter_published_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterPublished) }
+test fn specimen_meter_real_run_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterRealRun) }
+test fn specimen_meter_single_tool_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterSingleTool) }
+test fn specimen_meter_legacy_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterLegacy) }
+test fn specimen_meter_refused_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterRefused) }
+
+test fn specimen_draws_the_field_list() -> Bool { section_draws(section: SpecimenFieldListSection, element: SiteFieldList) }
+
+// The reds for the per-section claims: a section that is not one of the element's is reported,
+// and so is a section whose markup is hand-built rather than drawn by the element.
+test fn a_section_that_does_not_draw_its_element_is_reported() -> Bool {
+  !section_draws(section: SpecimenChipSection, element: SiteStatusChip)
+    && !node_draws(node: el_attrs("div", [], [txt("a hand-built chip")]), element: SiteChip)
+}
+
+// Ownership guards.
+fn style_selectors(style: ElementStyle) -> List<String> {
+  map(style.rules, r => rule_selector(rule: r))
+}
+
+fn selector_names_class(selector: String, class_name: String) -> Bool {
+  has(s: selector, pattern: join([".", class_name], ""))
+}
+
+fn style_owns_its_selectors(style: ElementStyle, all_styles: List<ElementStyle>) -> Bool {
+  all(style_selectors(style: style), sel =>
+    selector_names_class(selector: sel, class_name: style.class_name)
+      && all(all_styles, other => other.class_name == style.class_name || !selector_names_class(selector: sel, class_name: other.class_name)))
+}
+
+fn styles_have_one_owner_each(styles: List<ElementStyle>) -> Bool {
+  count(distinct_by_key(xs: styles, key: s => s.class_name)) == count(styles)
+    && all(styles, s => style_owns_its_selectors(style: s, all_styles: styles))
+}
+
+test fn each_element_class_is_declared_by_one_element_module() -> Bool {
+  styles_have_one_owner_each(styles: element_styles())
+}
+
+test fn a_rule_reaching_into_another_element_is_reported() -> Bool {
+  let rogue = StaticRule { selector: RawSelector { text: ".el-card .el-button" }, decls: [decl(prop: Padding, value: "0")] }
+  let stolen = StaticRule { selector: RawSelector { text: ".el-button" }, decls: [decl(prop: Color, value: "inherit")] }
+  !styles_have_one_owner_each(styles: concat(element_styles(), [ElementStyle { class_name: "el-card", rules: [] }]))
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-card", rules: [rogue] }, ElementStyle { class_name: "el-button", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-card", rules: [stolen] }, ElementStyle { class_name: "el-button", rules: [] }])
+}
+
+// The hierarchy elements are rows of the same registry, so the claims above already read them;
+// these name them, and plant the reaches a composing element or a page could be tempted into.
+test fn the_hierarchy_elements_are_registered_and_guarded() -> Bool {
+  let names = map(element_styles(), s => s.class_name)
+  let table_styling_a_row = StaticRule { selector: RawSelector { text: ".el-relation-table .el-node-row-cell" }, decls: [decl(prop: Padding, value: "0")] }
+  let row_styling_a_chip = StaticRule { selector: RawSelector { text: ".el-node-row .el-chip" }, decls: [decl(prop: Padding, value: "0")] }
+  let chain_styling_a_chip = StaticRule { selector: RawSelector { text: ".el-node-chain .el-status-chip" }, decls: [decl(prop: Color, value: "inherit")] }
+  let own_rule = StaticRule { selector: RawSelector { text: ".el-relation-table-rows" }, decls: [decl(prop: Padding, value: "0")] }
+  all(["el-chip", "el-priority-mark", "el-node-row", "el-relation-table", "el-node-chain"], n => any(names, have => have == n))
+    && styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-relation-table", rules: [own_rule] }, ElementStyle { class_name: "el-node-row", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-relation-table", rules: [table_styling_a_row] }, ElementStyle { class_name: "el-node-row", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-node-row", rules: [row_styling_a_chip] }, ElementStyle { class_name: "el-chip", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-node-chain", rules: [chain_styling_a_chip] }, ElementStyle { class_name: "el-status-chip", rules: [] }])
+}
+
+test fn the_specimen_page_styles_no_element_internals() -> Bool {
+  all(specimen_layout_rules(), r => all(element_styles(), s => !selector_names_class(selector: rule_selector(rule: r), class_name: s.class_name)))
+}
+
+test fn element_rules_carry_no_literal_colour_or_raw_length() -> Bool {
+  count(unthemed_color_decls(rules: element_rules())) == 0
+    && count(untokened_length_decls(rules: element_rules())) == 0
+}
+
+// FieldList. Each value arm is supplied directly (no producer runs): every arm that shows text
+// draws it as ONE single-line text element carrying the full value in `title`, and a value the
+// caller abbreviated keeps its full text in the DOM for assistive technology.
+fn field_html(value: FieldValue) -> String {
+  html(node: field_list(input: FieldList { rows: [FieldRow { label: "Field", value: value }] }))
+}
+
+fn field_face() -> Fragment {
+  Element { tag: "span", attributes: [], children: [txt("A")] }
+}
+
+data field_long: String = "a-very-long-service-identity@an-equally-long-project.iam.gserviceaccount.com"
+
+test fn field_list_value_arms_render_one_single_line_value_with_the_full_text_in_title() -> Bool {
+  let text = field_html(value: FieldText { text: field_long, full: none })
+  let short = field_html(value: FieldText { text: "attempt 0cfc…", full: Present { value: "attempt 0cfc18886a3d3b10" } })
+  let links = field_html(value: FieldLinks { links: [FieldLink { text: "Parent title", href: "/issue/p", full: none }], unlinked: ["undeclared: q"] })
+  let person = field_html(value: FieldIdentity { person: FieldPerson { face: field_face(), identity: field_long, full: Present { value: join(["Service — ", field_long], "") } } })
+  let control = field_html(value: FieldIdentityControl { person: FieldPerson { face: field_face(), identity: field_long, full: none }, action: "Change assignee", editor: [] })
+  text == join(["<dl class=\"el-field-list\"><div class=\"el-field-list-row\" data-field-value=\"text\"><dt class=\"el-field-list-label\">Field</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text\" title=\"", field_long, "\" tabindex=\"0\">", field_long, "</span></dd></div></dl>"], "")
+    && has(s: short, pattern: "title=\"attempt 0cfc18886a3d3b10\" tabindex=\"0\"><span aria-hidden=\"true\">attempt 0cfc…</span><span class=\"el-field-list-assistive\">attempt 0cfc18886a3d3b10</span>")
+    && has(s: links, pattern: "<span class=\"el-field-list-text\" title=\"Parent title, undeclared: q\"><a class=\"el-field-list-link\" href=\"/issue/p\" title=\"Parent title\">Parent title</a>, undeclared: q</span>")
+    && has(s: person, pattern: join(["title=\"Service — ", field_long, "\" tabindex=\"0\">"], ""))
+    && has(s: person, pattern: "<span class=\"el-field-list-face\" aria-hidden=\"true\">")
+    && has(s: control, pattern: join(["aria-label=\"Change assignee: ", field_long, "\""], ""))
+    && has(s: control, pattern: "data-field-open=\"in-place\"")
+    && !has(s: control, pattern: "tabindex")
+    && has(s: html(node: field_list(input: FieldList { rows: [FieldRow { label: "Status", value: FieldStatusControl { status: DisplayActive, detail: [] } }] })), pattern: "<span class=\"el-status-chip\" data-status-form=\"assigned\">Active</span>")
+    && has(s: field_html(value: FieldAction { text: "3 issues", attributes: [] }), pattern: "<button class=\"el-field-list-action\" type=\"button\" title=\"3 issues\">3 issues</button>")
+}
+
+// An absent value draws "--" and nothing else visible, with its reason in `title` and as the text
+// assistive technology reads; the mark itself is hidden from it.
+test fn field_list_absent_value_renders_the_mark_with_its_reason() -> Bool {
+  field_html(value: FieldAbsent { reason: "Not recorded" })
+    == "<dl class=\"el-field-list\"><div class=\"el-field-list-row\" data-field-value=\"absent\"><dt class=\"el-field-list-label\">Field</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text el-field-list-absent\" title=\"Not recorded\"><span aria-hidden=\"true\">--</span><span class=\"el-field-list-assistive\">Not recorded</span></span></dd></div></dl>"
+}
+
+// The rules draw the measured sidebar: a fixed label column clamped as measured, one row pitch,
+// the Label and Body roles, and single-line values cut with an ellipsis.
+test fn field_list_rules_draw_one_pitch_a_fixed_label_column_and_single_line_values() -> Bool {
+  let css = serialize_rules(rules: field_list_rules())
+  has(s: css, pattern: ".el-field-list { display: grid; grid-template-columns: var(--w-field-label-max) minmax(0, 1fr); column-gap: var(--space-10);")
+    && has(s: css, pattern: ".el-field-list-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: start; min-height: var(--h-field-row);")
+    && has(s: css, pattern: "max-width: var(--w-field-label-max); white-space: nowrap }")
+    && has(s: css, pattern: ".el-field-list-text { display: block; position: relative; min-width: var(--space-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }")
+    && has(s: css, pattern: "min-height: var(--h-button-small)")
+    && has(s: css, pattern: ".el-field-list-face { display: inline-flex; flex: none; width: var(--h-field-avatar); height: var(--h-field-avatar); border-radius: var(--radius-999)")
+}
+
+// The ownership guard reads the field list as a registered element: its rules name only its own
+// classes, a page rule reaching into a row is reported, and the field list may compose the status
+// chip and the build meter without styling either.
+test fn field_list_is_registered_and_guarded() -> Bool {
+  let reach = StaticRule { selector: RawSelector { text: ".issue-rail .el-field-list-value" }, decls: [decl(prop: Padding, value: "0")] }
+  let into_chip = StaticRule { selector: RawSelector { text: ".el-field-list-summary .el-status-chip" }, decls: [decl(prop: Padding, value: "0")] }
+  any(element_styles(), s => s.class_name == "el-field-list")
+    && styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-field-list", rules: field_list_rules() }, ElementStyle { class_name: "el-status-chip", rules: [] }, ElementStyle { class_name: "el-build-meter", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-card", rules: [reach] }, ElementStyle { class_name: "el-field-list", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-field-list", rules: [into_chip] }, ElementStyle { class_name: "el-status-chip", rules: [] }])
+}
+
+// The specimen's fixture holds every arm the rail uses and the long values that used to wrap. The
+// arms are read from the fixture's rows by the element's own key, so no second rendering of the
+// fixture is paid for here: specimen_draws_the_field_list renders it.
+test fn specimen_field_list_fixture_covers_the_rail_cases() -> Bool {
+  let rows = specimen_field_list_fixture().rows
+  let keys = map(rows, r => field_value_key(value: r.value))
+  all(["status-control", "identity-control", "work", "absent", "text", "links", "action", "identity"], k => any(keys, have => have == k))
+    && any(rows, r => match r.value {
+      FieldIdentityControl { person, action: _, editor: _ } => has(s: person.identity, pattern: "iam.gserviceaccount.com")
+      FieldText { text: _, full: _ } => false
+      FieldLinks { links: _, unlinked: _ } => false
+      FieldAction { text: _, attributes: _ } => false
+      FieldIdentity { person: _ } => false
+      FieldStatusControl { status: _, detail: _ } => false
+      FieldWork { summary: _, link_attributes: _ } => false
+      FieldAbsent { reason: _ } => false
+    })
+}
+
+// EVERY PRIORITY IS THE SAME BOX. The one rule that sets geometry (size, padding, border width,
+// alignment) names the element's class alone, and each form's rule may set only colours: the
+// border's colour, the fill and the ink. So no priority can move its label's left edge, and the
+// column is aligned by construction. A form rule that changed a length is reported.
+fn colour_only(decls: List<CssDecl>) -> Bool {
+  all(decls, d => any(["border-color", "background", "color"], n => css_property_wire(p: d.prop) == n))
+}
+
+test fn every_priority_mark_has_the_same_geometry() -> Bool {
+  let marks = map([PriorityP0, PriorityP1, PriorityP2, PriorityP3], p => html(node: priority_mark(input: PriorityMark { priority: p, explanation: none })))
+  all(priority_mark_forms, f => colour_only(decls: priority_mark_form_decls(form: f)))
+    && !colour_only(decls: [decl(prop: Padding, value: "var(--space-4)")])
+    && all(marks, m => has(s: m, pattern: "<span class=\"el-priority-mark\" data-priority-form=\""))
+    && count(priority_mark_rules()) == 4
+}
+
+// ACCEPTED AND WITHHELD ARE STATUSES, NOT ABSENCES. A node the acceptance authority lists draws the
+// Accepted chip in the filled form Done uses and reads closed; one the plan withholds draws the
+// Withheld chip in the quiet form and reads open; only a node no authority establishes says its
+// status is unavailable.
+test fn accepted_and_withheld_draw_their_own_chips() -> Bool {
+  let accepted = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-acc", status: NodeStatusAccepted, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  let withheld = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-wh", status: NodeStatusWithheld, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  let unknown = html(node: node_row(input: NodeRow { node: fx_node(slug: "fx-un", status: NodeStatusUnavailable { reason: "no authority establishes a status" }, priority: PriorityP2), place: NodeRowFlat, density: NodeRowDensityTable }))
+  has(s: accepted, pattern: "<span class=\"el-status-chip\" data-status-form=\"filled\">Accepted</span>") && has(s: accepted, pattern: "data-node-state=\"closed\"")
+    && has(s: withheld, pattern: "<span class=\"el-status-chip\" data-status-form=\"quiet\">Withheld</span>") && has(s: withheld, pattern: "data-node-state=\"open\"")
+    && !has(s: accepted, pattern: "unavailable") && !has(s: withheld, pattern: "unavailable")
+    && has(s: unknown, pattern: "Status unavailable")
+}
+
+// RULING R2 THROUGH THE TOKENS. Title and Control set the Google Sans stack, Code the generic
+// monospace family, and every other role the Roboto stack. Each stack, quotes aside, is the
+// product's measured stack, and its first family is one the served stylesheet declares
+// (gunbc.site.web_fonts), so no role can name a face the page does not load.
+fn role_font(role: ElementText) -> String {
+  serialize_decls(decls: element_text_decls(role: role).take(n: 1))
+}
+
+fn stack_opens_with_a_served_face(stack: String, served: List<String>) -> Bool {
+  any(served, f => starts_with(s: stack, prefix: join(["'", f, "', "], "")))
+}
+
+test fn text_roles_set_the_served_faces_through_the_family_tokens() -> Bool {
+  let served = map(web_font_faces, f => f.source.family)
+  let heading = scale_value_wire(v: font_heading.value)
+  let body = scale_value_wire(v: font_sans.value)
+  let google_sans = [ElementTitle, ElementControl]
+  let roboto = [ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementProseHeading, ElementIdentifier]
+  all(google_sans, r => role_font(role: r) == "font-family: var(--font-heading)")
+    && all(roboto, r => role_font(role: r) == "font-family: var(--font-sans)")
+    && role_font(role: ElementCode) == "font-family: var(--font-code)"
+    && count(google_sans) + count(roboto) + 1 == count(element_text_roles)
+    && starts_with(s: heading, prefix: "'Google Sans', ")
+    && starts_with(s: body, prefix: "'Roboto', ")
+    && stack_opens_with_a_served_face(stack: heading, served: served)
+    && stack_opens_with_a_served_face(stack: body, served: served)
+    && !stack_opens_with_a_served_face(stack: "'Product Sans', 'Roboto', sans-serif", served: served)
+    && replace(s: heading, from: "'", to: "") == issue_tracker_visual_tokens.font_heading
+    && replace(s: body, from: "'", to: "") == issue_tracker_visual_tokens.font_body
+}
+
+// R3 UNDER A COARSE POINTER. Every interactive control the elements draw (the buttons, the links of
+// NodeRow, NodeChain and FieldList, the disclosure summaries and the meter's link) takes the touch
+// target, the field list keeps one pitch, and nothing else is conditioned: a chip, a status or a
+// priority takes no rule. The rules are read from the registry every page serializes
+// (element_rules), each conditioned selector exactly once, and the fine-pointer rule a condition
+// overrides comes before it.
+fn coarse_rules(rules: List<BuildRule>) -> List<BuildRule> {
+  filter(rules, r => match r {
+    MediaRule { condition, selector: _, decls: _ } => media_condition_wire(c: condition) == media_condition_wire(c: coarse_pointer)
+    StaticRule { selector: _, decls: _ } => false
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => false
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+  })
+}
+
+data touch_target_selectors: List<String> = [
+  ".el-button", ".el-button[data-button-size=\"small\"]",
+  ".el-node-row-children", ".el-node-row-link",
+  ".el-node-chain-link", ".el-node-chain-fold-count",
+  ".el-build-meter",
+  ".el-field-list-summary", ".el-field-list-action", ".el-field-list-link",
+]
+
+data touch_pitch_selectors: List<String> = [".el-field-list-row", ".el-field-list-label", ".el-field-list-value"]
+
+test fn interactive_controls_take_the_touch_target_under_a_coarse_pointer() -> Bool {
+  let coarse = coarse_rules(rules: element_rules())
+  let selectors = map(coarse, r => rule_selector(rule: r))
+  let css = serialize_rules(rules: coarse)
+  let expected = concat(touch_target_selectors, touch_pitch_selectors)
+  let button_css = serialize_rules(rules: button_rules())
+  count(selectors) == count(expected)
+    && all(expected, e => count(filter(selectors, s => s == e)) == 1)
+    && all(touch_target_selectors, s => has(s: css, pattern: join(["@media (pointer: coarse) { ", s, " { "], "")))
+    && count(split(s: css, delimiter: "min-height: var(--h-control); min-width: var(--h-control)")) == count(touch_target_selectors) + 1
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-button { min-height: var(--h-control); min-width: var(--h-control) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-build-meter { display: inline-flex; align-items: center; min-height: var(--h-control); min-width: var(--h-control) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-field-list-link { display: inline-block; vertical-align: middle; max-width: 100%; line-height: var(--h-control); padding-block: var(--space-0); overflow: hidden; text-overflow: ellipsis; min-height: var(--h-control); min-width: var(--h-control) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-field-list-summary { min-height: var(--h-control); min-width: var(--h-control); margin-block: var(--space-0) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-field-list-row { min-height: var(--h-control) } }")
+    && !any(selectors, s => has(s: s, pattern: "chip") || has(s: s, pattern: "priority") || has(s: s, pattern: "status"))
+    && has(s: join(split(s: button_css, delimiter: "@media (pointer: coarse) { .el-button {").take(n: 1), ""), pattern: ".el-button { display: inline-flex; align-items: center; justify-content: center; height: var(--h-button); min-height: var(--h-button)")
+}

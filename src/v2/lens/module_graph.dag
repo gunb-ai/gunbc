@@ -1,0 +1,1062 @@
+module v2.lens.module_graph
+
+import std.types { List }
+import v2.compiler.normalized_tree { normalized_tree_record_declarations, normalized_tree_resource_declarations }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, is_empty, list_reverse }
+import v2.std.collection {
+  Map,
+  empty_map,
+  map_get_checked,
+  map_insert
+}
+import std.optional {
+  Absent,
+  Optional,
+  Present
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  WholeFile,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Node, Symbol, symbol_eq }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index {
+  SymbolIndex,
+  empty_symbol_index
+}
+import v2.std.text { String, string_eq }
+import v2.compiler.program_assembly { located_module_roots_from_source_root_ingest }
+import v2.compiler.reference_site_collector {
+  ReferenceSiteCollection,
+  UnreadableModuleRoot,
+  collect_module_reference_sites
+}
+import v2.compiler.resolution_provenance {
+  FileDependencyProvenance,
+  ReferenceSite,
+  module_dependencies_from_sites
+}
+import v2.compiler.source_authority {
+  SourceRef,
+  SourceRootArgumentAdmitted,
+  SourceRootArgumentUnrecognized,
+  SourceRootIngest,
+  admit_source_root_argument,
+  source_ref_for_storage_path
+}
+import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  qualified_name_from_module_node,
+  dag_surface_edge_label,
+}
+
+type ModuleDeclarationFact {
+  module: String
+  path: String
+}
+
+type ImportResolutionFact {
+  path: String
+  import_module: String
+  target_declared: Bool
+}
+
+type ModuleDependencyEdge {
+  path: String
+  target_module: String
+  target_declared: Bool
+}
+
+data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
+
+// Namespace-lane handoff specimens from gunbc#7908 (operator ruling 2026-08-06, msg_8e1c9e9d):
+// three closure-binding failures from #6848 import stripping that whole-tree compile-clean repaired
+// with explicit imports — NOT held for namespace-derived closure; main needed exact imports today,
+// namespace program owns making this class unwritable later. (1) v2.lens.complexity: direct imports
+// from v2.lens.cost stripped (PolynomialDegree, PolyLogExponent, SizeVariable, SymbolicCost,
+// asymptotic_class_*); module referenced cost symbols with zero import lines. (2)
+// v2.lens.enforcement.receipts: direct imports stripped from v2.lens.cost and
+// v2.lens.enforcement.vocab (SymbolicCost, EnrolledInFloorRoster, EnrollmentDiscoveryReceipt,
+// LensModuleFunctionObserved, etc.). (3) v2.extdeps.languages.rust_test_fixtures: missing
+// std.algebra { Cons, Empty } bindings (#7772 partial un-strip; see
+// rust_test_fixtures_rust_import_unstrip_note). Dissolve-on: bare-reference closure binding is
+// construction-backed repo-wide so stripped modules cannot compile only by pool-membership
+// coincidence.
+
+data reference_derived_edge_source_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.lens.module_graph",
+    decl_name: "reference_derived_resolution_facts",
+    field: WholeDeclaration
+  }
+}
+
+data reference_derived_edge_source_dissolution_note: String = "XL-4 swap body: collect_module_reference_sites.sites plus module_dependencies_from_sites. Unreadable roots travel on ReferenceDerivedEdgeFold; production Outcome refuses on the first unreadable root (outcome_from_reference_derived_edge_fold). Import-syntax mentions dropped in the EDGE fold. File ingest is located_roots_from_source_root_ingest. Collector-only: do not feed v2.lens.reference_deps parse-QN sites. Frontiers: the DissolutionCondition rows beside this carrier."
+
+fn import_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  import_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn reference_derived_import_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  reference_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+// THE UNION IS NATIVE NOW; the name is retained because gunbc.stage0_partition_closure and
+// gunbc.repo_atlas_projection cite this row by symbol. HISTORY, all measured: #8044 fixed two
+// quadratics in the interpreted composition here - a linear membership scan, then a list_snoc_item
+// accumulator - taking it from an OOM at 396s to 173.6-177.6s. The remaining cost was never the host
+// fact production those notes blamed. Per term in one process on the live corpus:
+// import_resolution_facts_live 146ms, reference_derived_import_resolution_facts_live 5ms, union and
+// dedup of the two 104,943ms, all of dependency_resolution_facts_live 112,261ms. The two host leaves
+// are 151ms of 112,261ms, so caching them recovers nothing; the interpreted composition WAS the
+// cost. Three further hypotheses were refuted by execution: duplicate (importer, target) work in the
+// consuming index (raw == unique exactly, measured post-join at module grain with path-to-module
+// injectivity measured and zero dropped edges); the interpreter Map primitive (map_insert 38ms at
+// n=2000 and 68ms at n=8000 against a take-only subtractive control - 1.8x for 4x the items, not
+// quadratic, NOT claimed as a defect); and the bucket's own list_snoc_item (replaced with a cons,
+// 105,007ms against a 104,943ms baseline - no change, reverted). THE REPAIR moved the composition
+// to the host builtin dependency_resolution_facts, whose single dedup authority is
+// v1_compiler.cli_run union_dedup_import_facts_reference_first. THE LAW IT CARRIES is the deleted
+// interpreted spelling's: reference-first order, first occurrence kept, exact identity on {path,
+// import_module, target_declared}, every target_declared: false row preserved because the
+// partition-closure census judges unresolved targets. The interpreted union, dedup, per-path bucket
+// and accumulator are deleted rather than kept dormant - a dead 105-second implementation beside
+// the live one is ambiguity, not authority. The executing consumer holding the native arm to the
+// law is test.claim.module_graph_edge_source_witness_test, which points the production function at
+// a four-module fixture and asserts the union at identity grain in both directions. DISSOLVE-ON:
+// the namespace terminal step retires the import producer; then this row's subject is the
+// reference-only producer and the union disappears with it.
+
+fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
+  module_declaration_facts(pool_roots: pool_roots)
+}
+
+// The keyed read beside the population one: the row for one module, or none. Same shape as
+// `module_declaration_facts_live` narrows to, so a consumer that asked "is this module declared,
+// and where" stops paying for every other module's row to find out.
+fn module_declaration_facts_at_live(
+  pool_roots: List<String>,
+  module_path: String
+) -> List<ModuleDeclarationFact> {
+  module_declaration_facts_at(pool_roots: pool_roots, module_path: module_path)
+}
+
+fn import_fact_to_dependency_edge(edge: ImportResolutionFact) -> ModuleDependencyEdge {
+  ModuleDependencyEdge {
+    path: edge.path,
+    target_module: edge.import_module,
+    target_declared: edge.target_declared
+  }
+}
+
+fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List<ModuleDependencyEdge> {
+  list_reverse(xs: fold_list(
+    xs: edges,
+    empty: Empty,
+    cons: fn(acc, edge) {
+      Cons { head: import_fact_to_dependency_edge(edge: edge), tail: acc }
+    }
+  ))
+}
+
+// NATIVE-REALIZED, and the measurement is the whole argument. This body used to compose the two
+// producers below in the interpreter, with a union+dedup and an edge mapping, now deleted. Measured
+// on the live corpus in ONE process, per term:
+//
+//   import_resolution_facts_live                      146ms
+//   reference_derived_import_resolution_facts_live      5ms
+//   union + dedup of the two                      104,943ms
+//   dependency_resolution_facts_live (all of it)  112,261ms
+//
+// The corpus scans assumed to dominate are 151ms of 112,261ms; the interpreted composition is the
+// entire cost, and effectively the whole partition-closure census that consumes it. So the repair
+// moves the COMPOSITION, not caches the leaves: a snapshot join over the producers would have
+// recovered 151ms and left the census over its envelope.
+//
+// The two producers stay where they were. This is the edge-source seam
+// dependency_edge_source_migration_note designates for the namespace terminal step, and it must
+// remain one swappable producer pair rather than a native black box — the native arm composes the
+// same two leaves through the same reference-first exact dedup on
+// \{path, import_module, target_declared\}, keeping first-occurrence order and every
+// target_declared: false row, because the partition-closure census judges unresolved targets.
+fn dependency_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+data no_located_roots: List<LocatedModuleRoot> = []
+
+data no_source_refs: List<SourceRef> = []
+
+data no_reference_derived_edges: List<ModuleDependencyEdge> = []
+
+data no_reference_sites: FreeMonoid<ReferenceSite> = Empty
+
+type ReferenceDerivedPool {
+  index: SymbolIndex
+  trees: Map<String, Node>
+  roster: FreeMonoid<QualifiedName>
+  qn_by_path: Map<String, QualifiedName>
+}
+
+// record_declarations rides beside the root for the same reason ModuleBindingSource carries it:
+// the record rehome erased it from the root, and the pool's symbol index answers the
+// declared-payload question from it (v2.compiler.symbol_index_fill symbol_index_fill_module_root).
+type LocatedModuleRoot {
+  path: String
+  root: Node
+  record_declarations: FreeMonoid<Symbol>
+  resource_declarations: FreeMonoid<Symbol>
+}
+
+type ReferenceDerivedEdgeFold {
+  edges: List<ModuleDependencyEdge>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+data empty_reference_derived_edge_fold: ReferenceDerivedEdgeFold = ReferenceDerivedEdgeFold {
+  edges: [],
+  unreadable_roots: Empty
+}
+
+fn reference_derived_edge_fold_is_total(fold: ReferenceDerivedEdgeFold) -> Bool {
+  is_empty(xs: fold.unreadable_roots)
+}
+
+fn reference_derived_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
+  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, sub: sub) })
+}
+
+fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool {
+  any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
+}
+
+fn path_is_under_pool_root(path: String, root: String) -> Bool {
+  path == root || starts_with(s: path, prefix: concat(root, "/"))
+}
+
+fn discovering_pool_root(path: String, pool_roots: List<String>) -> Optional<String> {
+  fold_list(
+    xs: pool_roots,
+    empty: Absent,
+    cons: fn(acc, root) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent => match path_is_under_pool_root(path: path, root: root) {
+          true => Present { value: root }
+          false => Absent
+        }
+      }
+    }
+  )
+}
+
+fn source_refs_from_declared(
+  declared: List<ModuleDeclarationFact>,
+  pool_roots: List<String>
+) -> Outcome<List<SourceRef>> {
+  fold_list(
+    xs: declared,
+    empty: outcome_accepted(value: no_source_refs),
+    cons: fn(acc, fact) {
+      bind_outcome(
+        o: acc,
+        f: fn(refs) {
+          match discovering_pool_root(path: fact.path, pool_roots: pool_roots) {
+            Absent =>
+              outcome_rejected(
+                d: Diagnostic {
+                  reason: ^declared_module_pool_root_unknown,
+                  at: Textual { file: ^declared_module_pool_root_unknown, extent: WholeFile },
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            Present { value: origin } =>
+              match admit_source_root_argument(argument: origin) {
+                SourceRootArgumentAdmitted { tree: tree } =>
+                  outcome_accepted(
+                    value: list_snoc_item(
+                      xs: refs,
+                      item: source_ref_for_storage_path(path: fact.path, source_root: tree)
+                    )
+                  )
+                SourceRootArgumentUnrecognized { argument: _ } =>
+                  outcome_rejected(
+                    d: Diagnostic {
+                      reason: ^declared_module_source_root_undetermined,
+                      at: Textual { file: ^declared_module_source_root_undetermined, extent: WholeFile },
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    }
+                  )
+              }
+          }
+        }
+      )
+    }
+  )
+}
+
+// The path-to-tree association is read from the assembly fold that produced it
+// (LocatedNormalizedTree), never recovered by zipping two lists positionally: a mislocated
+// mention is a fabricated plausible answer (DESIGN 5), and a count check cannot tell a
+// reordering from a correct pairing. An unpaired root has no representation here.
+fn located_roots_from_source_root_ingest(
+  ingest: SourceRootIngest
+) -> Outcome<List<LocatedModuleRoot>> {
+  bind_outcome(
+    o: located_module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model()),
+    f: fn(located) {
+      outcome_accepted(
+        value: fold_list(
+          xs: located,
+          empty: no_located_roots,
+          cons: fn(acc, item) {
+            list_snoc_item(
+              xs: acc,
+              item: LocatedModuleRoot {
+                path: item.path,
+                root: item.tree.root,
+                record_declarations: normalized_tree_record_declarations(t: item.tree),
+                resource_declarations: normalized_tree_resource_declarations(t: item.tree)
+              }
+            )
+          }
+        )
+      )
+    }
+  )
+}
+
+// Whether the mention sits under an import production. Each position label is compared WHOLE with
+// the dag surface production's label, so an authored name spelled like an import production is a
+// different label and never makes an ordinary mention read as import syntax.
+fn site_is_import_syntax_mention(site: ReferenceSite) -> Bool {
+  fold(site.position, init: false, f: fn(found, label) {
+    found
+      || (label == dag_surface_edge_label(edge: ^dag_surface_import_decl))
+      || (label == dag_surface_edge_label(edge: ^dag_surface_import_block))
+      || (label == dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name))
+  })
+}
+
+fn reference_sites_excluding_import_syntax(
+  sites: FreeMonoid<ReferenceSite>
+) -> FreeMonoid<ReferenceSite> {
+  fold_list(
+    xs: sites,
+    empty: no_reference_sites,
+    cons: fn(acc, site) {
+      if site_is_import_syntax_mention(site: site) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: site)
+      }
+    }
+  )
+}
+
+fn snoc_reference_edge_unique(
+  acc: List<ModuleDependencyEdge>,
+  edge: ModuleDependencyEdge
+) -> List<ModuleDependencyEdge> {
+  if any(xs: acc, predicate: fn(existing) {
+    existing.path == edge.path && existing.target_module == edge.target_module
+  }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: edge)
+  }
+}
+
+fn edges_from_provenance_owners(
+  rel_path: String,
+  provenance: FileDependencyProvenance
+) -> List<ModuleDependencyEdge> {
+  fold_list(
+    xs: provenance.dependencies,
+    empty: no_reference_derived_edges,
+    cons: fn(acc, owner) {
+      snoc_reference_edge_unique(
+        acc: acc,
+        edge: ModuleDependencyEdge {
+          path: rel_path,
+          target_module: qualified_name_to_dotted_string(qn: owner),
+          target_declared: true
+        }
+      )
+    }
+  )
+}
+
+fn load_reference_derived_pool(
+  declared: List<ModuleDeclarationFact>,
+  pool_roots: List<String>
+) -> Outcome<ReferenceDerivedPool> {
+  bind_outcome(
+    o: source_refs_from_declared(declared: declared, pool_roots: pool_roots),
+    f: fn(refs) {
+      bind_outcome(
+        o: source_root_ingest_from_source_refs(refs: refs),
+        f: fn(ingest) {
+          bind_outcome(
+            o: located_roots_from_source_root_ingest(ingest: ingest),
+            f: fn(items) {
+              outcome_accepted(value: reference_derived_pool_from_located_roots(items: items))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// The production site selection: every mention the collector yields MINUS import-syntax
+// mentions. It is a fixed composition, not a mode - an unused import must never mint a
+// reference-derived edge, and that property is not caller-selectable (DESIGN 3 meaning fork,
+// DESIGN 5 escape hatch). The discriminating mutant that re-admits import mentions is
+// composed at the test boundary from collect_module_reference_sites and
+// reference_edges_for_located_root_sites, never through a flag here (review 65639).
+fn sites_for_reference_edge_fold(root: Node) -> ReferenceSiteCollection {
+  let collected = collect_module_reference_sites(root: root)
+  ReferenceSiteCollection {
+    sites: reference_sites_excluding_import_syntax(sites: collected.sites),
+    unreadable_roots: collected.unreadable_roots
+  }
+}
+
+fn emit_reference_edges_for_located_root(
+  path: String,
+  root: Node,
+  pool: ReferenceDerivedPool
+) -> ReferenceDerivedEdgeFold {
+  reference_edges_for_located_root_sites(
+    path: path,
+    pool: pool,
+    collected: sites_for_reference_edge_fold(root: root)
+  )
+}
+
+// Edge derivation over an already-selected site collection. Consumed by the production
+// composition above and by the test-boundary mutant.
+// THE ABSENT ARM IS REACHED ONLY FOR A ROOT THE COLLECTOR HAS ALREADY COUNTED AS UNREADABLE.
+// The pool leaves a path out of qn_by_path exactly when qualified_name_from_module_node
+// rejects the root, and reference_site_collector module_reference_sites rejects on the SAME
+// call and snocs the root into unreadable_roots at its locus - one predicate, two consumers.
+// So `edges: none` here is not a silent drop: `collected.unreadable_roots` carries the root,
+// reference_derived_edge_fold_is_total answers false, and the production Outcome refuses.
+// Executed evidence, both root shapes:
+// v2.test.claim.reference_derived_graph_witness unreadable_root_is_counted_not_a_silent_leaf
+// (bare Atom) and a_headerless_module_root_is_counted_unreadable_not_zero_edges (a Conj
+// with a body and no header) - review 66859 on gunbc#11461 read this arm as uncounted; it
+// is counted one call earlier, and counting it here again would double the roster.
+fn reference_edges_for_located_root_sites(
+  path: String,
+  pool: ReferenceDerivedPool,
+  collected: ReferenceSiteCollection
+) -> ReferenceDerivedEdgeFold {
+  match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: path) {
+    Absent =>
+      ReferenceDerivedEdgeFold {
+        edges: no_reference_derived_edges,
+        unreadable_roots: collected.unreadable_roots
+      }
+    Present { value: module_qn } =>
+      ReferenceDerivedEdgeFold {
+        edges: edges_from_provenance_owners(
+          rel_path: path,
+          provenance: module_dependencies_from_sites(
+            index: pool.index,
+            roster: pool.roster,
+            module_qn: module_qn,
+            sites: collected.sites
+          )
+        ),
+        unreadable_roots: collected.unreadable_roots
+      }
+  }
+}
+
+fn empty_reference_derived_pool() -> ReferenceDerivedPool {
+  ReferenceDerivedPool {
+    index: empty_symbol_index(),
+    trees: empty_map(),
+    roster: Empty,
+    qn_by_path: empty_map()
+  }
+}
+
+fn reference_derived_pool_from_located_roots(
+  items: List<LocatedModuleRoot>
+) -> ReferenceDerivedPool {
+  fold_list(
+    xs: items,
+    empty: empty_reference_derived_pool(),
+    cons: fn(pool, item) {
+      match qualified_name_from_module_node(root: item.root) {
+        Rejected { diagnostics: _ } =>
+          ReferenceDerivedPool {
+            index: symbol_index_fill_module_root(
+              index: pool.index,
+              root: item.root,
+              record_declarations: item.record_declarations,
+              resource_declarations: item.resource_declarations
+            ),
+            trees: map_insert(m: pool.trees, key: item.path, value: item.root),
+            roster: pool.roster,
+            qn_by_path: pool.qn_by_path
+          }
+        Accepted { value: module_qn, diagnostics: _ } =>
+          ReferenceDerivedPool {
+            index: symbol_index_fill_module_root(
+              index: pool.index,
+              root: item.root,
+              record_declarations: item.record_declarations,
+              resource_declarations: item.resource_declarations
+            ),
+            trees: map_insert(m: pool.trees, key: item.path, value: item.root),
+            roster: list_snoc_item(xs: pool.roster, item: module_qn),
+            qn_by_path: map_insert(m: pool.qn_by_path, key: item.path, value: module_qn)
+          }
+      }
+    }
+  )
+}
+
+fn reference_derived_edges_from_located_roots(
+  items: List<LocatedModuleRoot>
+) -> ReferenceDerivedEdgeFold {
+  let pool = reference_derived_pool_from_located_roots(items: items)
+  fold_list(
+    xs: items,
+    empty: empty_reference_derived_edge_fold,
+    cons: fn(acc, item) {
+      let piece = emit_reference_edges_for_located_root(path: item.path, root: item.root, pool: pool)
+      ReferenceDerivedEdgeFold {
+        edges: list_append(left: acc.edges, right: piece.edges),
+        unreadable_roots: list_append(left: acc.unreadable_roots, right: piece.unreadable_roots)
+      }
+    }
+  )
+}
+
+// The pool is keyed from the same declared list the importer fold iterates, so an importer absent
+// from it is a broken invariant (e.g. declared-path and ingest-path spellings disagree), never an
+// importer with no references. It refuses with a typed, located cause rather than contributing an
+// empty edge fold (review 64967 on gunbc#11202; DESIGN 5).
+fn importer_absent_from_reference_pool() -> Outcome<ReferenceDerivedEdgeFold> {
+  outcome_rejected(
+    d: Diagnostic {
+      reason: ^reference_derived_importer_absent_from_pool,
+      at: Textual { file: ^reference_derived_importer_absent_from_pool, extent: WholeFile },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn emit_reference_edges_for_importer(
+  fact: ModuleDeclarationFact,
+  pool: ReferenceDerivedPool
+) -> Outcome<ReferenceDerivedEdgeFold> {
+  match map_lookup_where_rejected_unreachable(m: pool.trees, key: fact.path) {
+    Absent => importer_absent_from_reference_pool()
+    Present { value: root } =>
+      outcome_accepted(
+        value: emit_reference_edges_for_located_root(
+          path: fact.path,
+          root: root,
+          pool: pool
+        )
+      )
+  }
+}
+
+fn append_outcome_edge_folds(
+  acc: Outcome<ReferenceDerivedEdgeFold>,
+  more: Outcome<ReferenceDerivedEdgeFold>
+) -> Outcome<ReferenceDerivedEdgeFold> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc_fold) {
+      bind_outcome(
+        o: more,
+        f: fn(more_fold) {
+          outcome_accepted(
+            value: ReferenceDerivedEdgeFold {
+              edges: list_append(left: acc_fold.edges, right: more_fold.edges),
+              unreadable_roots: list_append(
+                left: acc_fold.unreadable_roots,
+                right: more_fold.unreadable_roots
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn outcome_from_reference_derived_edge_fold(
+  fold: ReferenceDerivedEdgeFold
+) -> Outcome<List<ModuleDependencyEdge>> {
+  match fold.unreadable_roots |> first {
+    Absent => outcome_accepted(value: fold.edges)
+    Present { value: unreadable } =>
+      outcome_rejected(
+        d: Diagnostic {
+          reason: ^reference_derived_graph_unreadable_roots,
+          at: unreadable.locus,
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+fn reference_derived_resolution_facts(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> Outcome<List<ModuleDependencyEdge>> {
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+    |> filter(fact => !reference_derived_path_excluded(path: fact.path, exclude_substrings: exclude_substrings))
+  bind_outcome(
+    o: load_reference_derived_pool(declared: declared, pool_roots: pool_roots),
+    f: fn(pool) {
+      bind_outcome(
+        o: fold_list(
+          xs: declared |> filter(fact => reference_derived_path_under_roots(path: fact.path, roots: importer_roots)),
+          empty: outcome_accepted(value: empty_reference_derived_edge_fold),
+          cons: fn(acc, fact) {
+            append_outcome_edge_folds(
+              acc: acc,
+              more: emit_reference_edges_for_importer(fact: fact, pool: pool)
+            )
+          }
+        ),
+        f: fn(fold) {
+          outcome_from_reference_derived_edge_fold(fold: fold)
+        }
+      )
+    }
+  )
+}
+
+data no_paths: FreeMonoid<String> = Empty
+
+data no_import_facts: List<ImportResolutionFact> = []
+
+fn add_unseen(acc: FreeMonoid<String>, item: String) -> FreeMonoid<String> {
+  if contains(xs: acc, item: item, eq: string_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn union_unseen(acc: FreeMonoid<String>, more: FreeMonoid<String>) -> FreeMonoid<String> {
+  fold_list(xs: more, empty: acc, cons: fn(a, x) { add_unseen(acc: a, item: x) })
+}
+
+type ImportClosureBfsState {
+  reached: FreeMonoid<String>
+  queue: List<String>
+}
+
+fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match v2.std.collection.map_get_checked(m: m, key: key) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn build_module_to_path(nodes: List<ModuleDeclarationFact>) -> Map<String, String> {
+  fold_list(
+    xs: nodes,
+    empty: empty_map(),
+    cons: fn(acc, node) {
+      map_insert(m: acc, key: node.module, value: node.path)
+    }
+  )
+}
+
+fn snoc_unseen_list(acc: List<String>, item: String) -> List<String> {
+  if contains(xs: acc, item: item, eq: string_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn extend_adjacency_for_dependency_edge(
+  acc: Map<String, List<String>>,
+  edge: ModuleDependencyEdge,
+  module_to_path: Map<String, String>
+) -> Map<String, List<String>> {
+  match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.target_module) {
+    Present { value: imported_path } =>
+      match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
+        Present { value: existing } =>
+          map_insert(
+            m: acc,
+            key: edge.path,
+            value: snoc_unseen_list(acc: existing, item: imported_path)
+          )
+        Absent =>
+          map_insert(
+            m: acc,
+            key: edge.path,
+            value: list_snoc_item(xs: no_paths, item: imported_path)
+          )
+      }
+    Absent => acc
+  }
+}
+
+fn build_dependency_adjacency(
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>
+) -> Map<String, List<String>> {
+  let module_to_path = build_module_to_path(nodes: nodes)
+  fold_list(
+    xs: edges,
+    empty: empty_map(),
+    cons: fn(acc, edge) {
+      extend_adjacency_for_dependency_edge(
+        acc: acc,
+        edge: edge,
+        module_to_path: module_to_path
+      )
+    }
+  )
+}
+
+fn extend_adjacency_for_edge(
+  acc: Map<String, List<String>>,
+  edge: ImportResolutionFact,
+  module_to_path: Map<String, String>
+) -> Map<String, List<String>> {
+  extend_adjacency_for_dependency_edge(
+    acc: acc,
+    edge: import_fact_to_dependency_edge(edge: edge),
+    module_to_path: module_to_path
+  )
+}
+
+fn build_import_adjacency(
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> Map<String, List<String>> {
+  build_dependency_adjacency(
+    edges: dependency_edges_from_import_facts(edges: edges),
+    nodes: nodes
+  )
+}
+
+fn bfs_absorb_neighbor(state: ImportClosureBfsState, path: String) -> ImportClosureBfsState {
+  if contains(xs: state.reached, item: path, eq: string_eq) {
+    state
+  } else {
+    ImportClosureBfsState {
+      reached: list_snoc_item(xs: state.reached, item: path),
+      queue: list_snoc_item(xs: state.queue, item: path)
+    }
+  }
+}
+
+fn bfs_absorb_neighbors(
+  state: ImportClosureBfsState,
+  neighbors: List<String>
+) -> ImportClosureBfsState {
+  fold_list(
+    xs: neighbors,
+    empty: state,
+    cons: fn(acc, path) { bfs_absorb_neighbor(state: acc, path: path) }
+  )
+}
+
+fn import_closure_bfs_walk(
+  state: ImportClosureBfsState,
+  adjacency: Map<String, List<String>>
+) -> FreeMonoid<String> {
+  match state.queue |> first {
+    Present { value: importer } =>
+      let rest = state.queue |> skip(1)
+      let neighbors = match map_lookup_where_rejected_unreachable(m: adjacency, key: importer) {
+        Present { value: paths } => paths
+        Absent => no_paths
+      }
+      let next = bfs_absorb_neighbors(
+        state: ImportClosureBfsState { reached: state.reached, queue: rest },
+        neighbors: neighbors
+      )
+      import_closure_bfs_walk(state: next, adjacency: adjacency)
+    Absent => state.reached
+  }
+}
+
+fn dependency_closure_over_adjacency(
+  entry_path: String,
+  adjacency: Map<String, List<String>>
+) -> FreeMonoid<String> {
+  import_closure_bfs_walk(
+    state: ImportClosureBfsState {
+      reached: list_snoc_item(xs: no_paths, item: entry_path),
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
+    adjacency: adjacency
+  )
+}
+
+fn dependency_closure(
+  entry_path: String,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  dependency_closure_over_adjacency(
+    entry_path: entry_path,
+    adjacency: build_dependency_adjacency(edges: edges, nodes: nodes)
+  )
+}
+
+fn import_closure(
+  entry_path: String,
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  dependency_closure(
+    entry_path: entry_path,
+    edges: dependency_edges_from_import_facts(edges: edges),
+    nodes: nodes
+  )
+}
+
+data module_graph_exclude_substrings: List<String> = []
+
+// THE KEYED READ OF THE ONE EDGE PRODUCER: the edges whose importer is `importer_path`, as the
+// population read dependency_resolution_facts_live would carry them for that path. The host groups
+// the same reference-first union by importer (v1_compiler.cli_run dependency_resolution_facts_at);
+// it is a narrowing of that authority, not a second reader.
+fn dependency_resolution_facts_at_live(
+  pool_roots: List<String>,
+  importer_path: String,
+  exclude_substrings: List<String>
+) -> List<ModuleDependencyEdge> {
+  dependency_resolution_facts_at(
+    pool_roots: pool_roots,
+    importer_path: importer_path,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+// THE LIVE CLOSURE IS EXPANDED FROM THE ENTRY, NOT READ OFF A CORPUS-WIDE ADJACENCY. The question is
+// "which modules does THIS entry reach", so the only edges it may demand are those of modules it has
+// already reached: each visited path asks the one edge producer's keyed read
+// (dependency_resolution_facts_at_live) for its own importer edges, and each target module resolves through the keyed declaration read
+// (module_declaration_facts_at_live). The previous body produced every module's edges and folded all
+// of them into an adjacency map before walking the entry's slice -- on the broker entry that
+// corpus-wide fold measured about 4.9s of a 5.4s claim (gunbc#12523's floor [cross-claim-demand]
+// line), paid for edges no walk would ever read. The edge law is unchanged: an edge whose target
+// module is undeclared contributes no path, as extend_adjacency_for_dependency_edge refuses it, and
+// the reached order is breadth-first from the entry. Visited membership is a keyed map rather than a
+// scan of the reached list, so absorbing a neighbor no longer costs the closure's size.
+type DemandClosureState {
+  reached: FreeMonoid<String>
+  seen: Map<String, Bool>
+  queue: List<String>
+}
+
+fn demand_closure_absorb(state: DemandClosureState, path: String) -> DemandClosureState {
+  match map_lookup_where_rejected_unreachable(m: state.seen, key: path) {
+    Present { value: _ } => state
+    Absent =>
+      DemandClosureState {
+        reached: list_snoc_item(xs: state.reached, item: path),
+        seen: map_insert(m: state.seen, key: path, value: true),
+        queue: list_snoc_item(xs: state.queue, item: path)
+      }
+  }
+}
+
+fn demand_edge_target_paths(edge: ModuleDependencyEdge, pool_roots: List<String>) -> List<String> {
+  map(module_declaration_facts_at_live(pool_roots: pool_roots, module_path: edge.target_module), d => d.path)
+}
+
+fn demand_closure_walk(
+  state: DemandClosureState,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  match state.queue |> first {
+    Present { value: importer } =>
+      let rest = state.queue |> skip(1)
+      let edges = dependency_resolution_facts_at_live(
+        pool_roots: pool_roots,
+        importer_path: importer,
+        exclude_substrings: exclude_substrings
+      )
+      let next = fold_list(
+        xs: edges,
+        empty: DemandClosureState { reached: state.reached, seen: state.seen, queue: rest },
+        cons: fn(acc, edge) {
+          fold_list(
+            xs: demand_edge_target_paths(edge: edge, pool_roots: pool_roots),
+            empty: acc,
+            cons: fn(inner, path) { demand_closure_absorb(state: inner, path: path) }
+          )
+        }
+      )
+      demand_closure_walk(state: next, pool_roots: pool_roots, exclude_substrings: exclude_substrings)
+    Absent => state.reached
+  }
+}
+
+fn dependency_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  demand_closure_walk(
+    state: DemandClosureState {
+      reached: list_snoc_item(xs: no_paths, item: entry_path),
+      seen: map_insert(m: empty_map(), key: entry_path, value: true),
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn import_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
+  dependency_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+  import_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: module_graph_exclude_substrings
+  )
+}
+
+fn strip_leading_dot_slash(s: String) -> String {
+  if starts_with(s: s, prefix: "./") {
+    substring(s: s, start: 2, end: string_length(s: s))
+  } else {
+    s
+  }
+}
+
+fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
+  let file = strip_leading_dot_slash(closure_path)
+  let target = strip_leading_dot_slash(touched_path)
+  file == target
+    || file.ends_with(suffix: target)
+    || target.ends_with(suffix: file)
+}
+
+fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
+  any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
+}
+
+// There is deliberately NO edgeless-entry arm here. The one this branch briefly carried
+// (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added
+// after the import strip, now deleted) was the absorbing fallback DESIGN 5 names verbatim: 'can't
+// compute the affected set -> rerun the entire suite'. It answered affected=true for every entry
+// with no outgoing edges — ~530 claim modules after the strip — silently and uncounted, so the
+// deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor
+// instead of a diagnostic. Nor was it answering an unknown: dependency_closure seeds with the entry
+// itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own
+// file is touched' is a real answer. The two states that arm conflated are split on the host twin
+// (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges
+// falls through to the closure; one that could not read or parse the file returns a typed
+// AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one.
+
+fn entry_affected_by_touched_paths_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>,
+  exclude_substrings: List<String>
+) -> Bool {
+  let closure = dependency_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
+  )
+  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
+}
+
+fn entry_affected_by_touched_paths(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> Bool {
+  entry_affected_by_touched_paths_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    touched_paths: touched_paths,
+    exclude_substrings: module_graph_exclude_substrings
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
+
+data reference_derived_edge_source_dissolve_on: DissolutionCondition = unbound_dissolution(description: "NAMESPACE-XL STAGE XL-6 swaps dependency_resolution_facts_live onto this producer; until then the live edge source stays the import/reference union and this body stays the unused swap target")
+
+data reference_derived_parse_tree_site_oracle_frontier: DissolutionCondition = unbound_dissolution(description: "The PARSE-tree site oracle (v2.test.claim.reference_derived_graph_call_arg_tree ca_parse_site_count) reports no site for a qualified spelling in TYPE position or as a BODY VALUE outside a call, while the production route over the normalized tree now derives the edge for both (positive controls: type_position_only_is_present_in_normalized_tree_holds, body_value_outside_call_is_present_in_normalized_tree_holds, flipped 2026-09-19 when gunbc#11574 Named type and data declarations at the graft). The same holds for a qualified spelling as a CALL ARGUMENT (positive controls call_argument_only_reference_is_present_in_normalized_tree_holds and v2.test.claim.reference_derived_graph_production_ingest production_route_call_argument_reference_yields_edge_holds, flipped 2026-10-01 once call-argument values lowered whole with their named labels conserved; the retired reference_derived_call_contents_frontier carried this row until then). Instruments still green on the absence: type_position_only_is_missing_from_parse_tree_today_holds, body_value_outside_call_is_missing_from_parse_tree_today_holds, call_argument_only_reference_is_missing_from_parse_tree_today_holds. Why the parse-only oracle misses those spellings is UNMEASURED (DESIGN 4d: a read obligation, not a fact): the discriminator is walking ca_parse_site_count and the production collector over the same fixture and naming the first node at which they diverge. Closes when that walk lands and the parse-tree rows either flip or are retired with the oracle.")
+
+
+data reference_derived_bare_field_type_frontier: DissolutionCondition = unbound_dissolution(description: "Bare field type spelling survives residual reconstruct (not a silent drop). Named skip of field_decl_block type_decl is gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft. Instruments: v2.test.claim.reference_derived_graph_production_ingest production_route_bare_field_type_site_is_present_holds, production_tree_field_fixture_wrapper_name_survives_today_holds, production_tree_field_fixture_field_name_survives_today_holds, production_tree_field_fixture_field_type_survives_today_holds. Positive controls: production_route_bare_param_type_in_field_fixture_is_present_holds, production_tree_field_fixture_param_type_atom_is_present_holds, production_route_bare_local_type_position_site_is_present_holds.")
+

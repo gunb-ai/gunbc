@@ -1,0 +1,43 @@
+module test.claim.cgroup_v1_memory_limit_witness
+
+import std.types { Bool, String }
+import std.measure { byte_size, byte_size_count }
+import extdeps.linux.cgroup_v1_memory {
+  CgroupV1MemoryLimitValue, CgroupV1MemoryLimited, CgroupV1MemoryUnlimited, CgroupV1MemoryLimitUnparseable,
+  cgroup_v1_hierarchical_memory_limit, cgroup_v1_unlimited_bytes,
+}
+
+// THE PARSE AT ITS OWN INTERFACE, OVER SUPPLIED memory.stat BODIES. Its production consumer is the
+// stage0 emission bound by gunbc.host_budget_source host_budget_source_seed_mirror_disposition; until
+// it lands the seed hand-mirrors this parse under that declared scaffold, and the seed's fixture-root
+// tests run the real locate-read-parse route.
+
+fn w_v1(v: CgroupV1MemoryLimitValue) -> String {
+  match v {
+    CgroupV1MemoryLimited { bytes: b } => to_string(byte_size_count(b: b))
+    CgroupV1MemoryUnlimited => "unlimited"
+    CgroupV1MemoryLimitUnparseable { body: _ } => "unparseable"
+  }
+}
+
+// A FINITE hierarchical_memory_limit IS THE BINDING LIMIT, whatever memory.limit_in_bytes says.
+test fn a_finite_hierarchical_limit_reads_as_the_limit() -> Bool {
+  let stat = "cache 4096\nrss 8192\nhierarchical_memory_limit 2147483648\nhierarchical_memsw_limit 9223372036854771712\n"
+  w_v1(v: cgroup_v1_hierarchical_memory_limit(memory_stat: stat, page_size: byte_size(count: 4096))) == "2147483648"
+}
+
+// THE SENTINEL FOLLOWS THE PAGE SIZE: the 4 KiB-page "unlimited" value is a real (huge) limit on a
+// 64 KiB-page kernel only if it falls below that kernel's sentinel -- it does not, so both read unlimited,
+// and a value one page below the 64 KiB sentinel is a limit there.
+test fn the_unlimited_sentinel_is_derived_from_the_page_size() -> Bool {
+  byte_size_count(b: cgroup_v1_unlimited_bytes(page_size: byte_size(count: 4096))) == 9223372036854771712
+    && byte_size_count(b: cgroup_v1_unlimited_bytes(page_size: byte_size(count: 65536))) == 9223372036854710272
+    && w_v1(v: cgroup_v1_hierarchical_memory_limit(memory_stat: "hierarchical_memory_limit 9223372036854771712", page_size: byte_size(count: 4096))) == "unlimited"
+    && w_v1(v: cgroup_v1_hierarchical_memory_limit(memory_stat: "hierarchical_memory_limit 9223372036854644736", page_size: byte_size(count: 65536))) == "9223372036854644736"
+}
+
+// THE RED: a missing key or a negative body is a malformed read, never "no limit".
+test fn a_missing_or_negative_limit_is_unparseable_not_unlimited() -> Bool {
+  w_v1(v: cgroup_v1_hierarchical_memory_limit(memory_stat: "cache 4096\nrss 8192\n", page_size: byte_size(count: 4096))) == "unparseable"
+    && w_v1(v: cgroup_v1_hierarchical_memory_limit(memory_stat: "hierarchical_memory_limit -1", page_size: byte_size(count: 4096))) == "unparseable"
+}

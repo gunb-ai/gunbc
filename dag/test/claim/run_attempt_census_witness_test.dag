@@ -1,0 +1,183 @@
+module test.claim.run_attempt_census_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, Int }
+import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, PageFoldSubject, PageBudgetExhausted, OffsetPage }
+import gunbc.ci_run_attempt_census {
+  AttemptExecution, AttemptExecuted, AttemptDidNotExecute, AttemptUnobserved,
+  attempt_execution_from_job_count, attempt_executed,
+  ZeroClaimStanding, ZeroClaimDiscriminating, ZeroClaimIndistinguishable, zero_claim_standing,
+  CensusObservation, CensusOutcome, CensusClosed, CensusRefused,
+  CensusRefusal, PagesUnclosed, DuplicateRunIdsObserved, FilterDisagreed,
+  ProviderTotalUnstable, ProviderTotalUnreconciled, CensusReadRefused,
+  admit_census, admit_census_over_fold, census_is_closed, census_refusal_text
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn obs(
+  dup: Int, uniq: Int, total: Int, recheck: Int,
+  violation: String?, ok: Bool
+) -> CensusObservation {
+  CensusObservation {
+    pages_read: 6,
+    unique_observed: uniq,
+    duplicate_count: dup,
+    provider_total: total,
+    provider_total_recheck: recheck,
+    filter_requested: "github-actions[bot]",
+    filter_violation: violation,
+    filter_violation_run_id: 34506290069,
+    read_succeeded: ok,
+    read_detail: "detail",
+    frozen_upper: "2026-09-10T00:00:00Z"
+  }
+}
+
+fn clean(uniq: Int) -> CensusObservation { obs(dup: 0, uniq: uniq, total: uniq, recheck: uniq, violation: none, ok: true) }
+
+// THE POSITIVE CONTROL FOR THE WHOLE SET. A closed census must exist, or the six refusals below
+// would be satisfied by a function that refuses everything.
+test fn witness_a_reconciled_stable_unduplicated_read_closes() -> Bool {
+  census_is_closed(c: admit_census(o: clean(uniq: 12)))
+}
+
+// SPECIMEN: two identical filtered queries reported 535 then 523. A census cannot close against a
+// denominator that moves between reads, and this fires BEFORE any count comparison because a
+// comparison against an unstable total is meaningless rather than merely wrong.
+test fn witness_unstable_provider_total_refuses() -> Bool {
+  match admit_census(o: obs(dup: 0, uniq: 535, total: 535, recheck: 523, violation: none, ok: true)) {
+    CensusRefused { cause } => match cause {
+      ProviderTotalUnstable { first_total, second_total } => first_total == 535 && second_total == 523
+      _ => false
+    }
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => false
+  }
+}
+
+// SPECIMEN: an actor-filtered query returned a row whose actor was gunbai-bot[bot]. That makes the
+// result the WRONG POPULATION, not an incomplete one -- a distinction the refusal states, because
+// "incomplete" invites reading more pages and "wrong" does not.
+test fn witness_filter_disagreement_refuses_and_names_the_row() -> Bool {
+  match admit_census(o: obs(dup: 0, uniq: 12, total: 12, recheck: 12, violation: Present { value: "gunbai-bot[bot]" }, ok: true)) {
+    CensusRefused { cause } => match cause {
+      FilterDisagreed { requested, observed, run_id } =>
+        requested == "github-actions[bot]" && observed == "gunbai-bot[bot]" && run_id == 34506290069
+      _ => false
+    }
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => false
+  }
+}
+
+// SPECIMEN: a six-page scan produced duplicate run ids and was reported as a population. The
+// duplicates ARE the evidence pagination moved, so they refuse rather than being deduped away.
+test fn witness_duplicate_ids_refuse_rather_than_being_deduped() -> Bool {
+  match admit_census(o: obs(dup: 2, uniq: 12, total: 12, recheck: 12, violation: none, ok: true)) {
+    CensusRefused { cause } => match cause {
+      DuplicateRunIdsObserved { duplicate_count, unique_observed } => duplicate_count == 2 && unique_observed == 12
+      _ => false
+    }
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => false
+  }
+}
+
+test fn witness_unreconciled_total_refuses() -> Bool {
+  match admit_census(o: obs(dup: 0, uniq: 12, total: 535, recheck: 535, violation: none, ok: true)) {
+    CensusRefused { cause } => match cause {
+      ProviderTotalUnreconciled { provider_total, unique_observed } => provider_total == 535 && unique_observed == 12
+      _ => false
+    }
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => false
+  }
+}
+
+// A FAILED READ CANNOT BE RECONCILED, so it refuses first. Ordering matters: if this arm came
+// after the count comparison, a read that returned nothing would refuse as "unreconciled" and
+// send the reader hunting a pagination problem that does not exist.
+test fn witness_failed_read_refuses_before_any_reconciliation() -> Bool {
+  match admit_census(o: obs(dup: 9, uniq: 0, total: 535, recheck: 523, violation: Present { value: "someone-else" }, ok: false)) {
+    CensusRefused { cause } => match cause {
+      CensusReadRefused { detail } => detail == "detail"
+      _ => false
+    }
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => false
+  }
+}
+
+// ── attempt execution ───────────────────────────────────────────────────────────────────────
+
+// A conclusion is not an execution receipt: nine runs concluded failure and five action_required
+// while all fourteen had zero attempt-1 jobs, and one concluded success on attempt 2 having run
+// nothing on attempt 1. Only the attempt's own job count separates them.
+test fn witness_job_count_alone_decides_execution() -> Bool {
+  attempt_executed(a: attempt_execution_from_job_count(observed: true, job_count: 5, detail: ""))
+    && !attempt_executed(a: attempt_execution_from_job_count(observed: true, job_count: 0, detail: ""))
+    && !attempt_executed(a: attempt_execution_from_job_count(observed: false, job_count: 0, detail: "read refused"))
+}
+
+// AN UNOBSERVED ATTEMPT IS NOT A NON-EXECUTING ONE. Both answer false to "did it execute", and
+// collapsing them would let a failed read report as a measured zero -- the exact conflation that
+// makes an unreached stage indistinguishable from a clean one.
+test fn witness_unobserved_is_distinct_from_did_not_execute() -> Bool {
+  match attempt_execution_from_job_count(observed: false, job_count: 0, detail: "403") {
+    AttemptUnobserved { detail } => detail == "403"
+    AttemptDidNotExecute => false
+    AttemptExecuted { job_count: _ } => false
+  } && match attempt_execution_from_job_count(observed: true, job_count: 0, detail: "") {
+    AttemptDidNotExecute => true
+    AttemptUnobserved { detail: _ } => false
+    AttemptExecuted { job_count: _ } => false
+  }
+}
+
+// THE ZERO-CLAIM RULE. All-zero observations cannot discriminate: "every attempt had 0 jobs" and
+// "this read always returns 0" are the same output. One observed non-zero from the same path is
+// what makes the zeros evidence.
+test fn witness_all_zero_without_a_control_is_indistinguishable() -> Bool {
+  match zero_claim_standing(observations: [AttemptDidNotExecute, AttemptDidNotExecute, AttemptDidNotExecute], control_run_ids: []) {
+    ZeroClaimIndistinguishable => true
+    ZeroClaimDiscriminating { control_run_id: _, control_job_count: _ } => false
+  }
+}
+
+test fn witness_one_observed_nonzero_makes_the_zeros_evidence() -> Bool {
+  match zero_claim_standing(
+    observations: [AttemptDidNotExecute, AttemptExecuted { job_count: 5 }, AttemptDidNotExecute],
+    control_run_ids: [34506290069]
+  ) {
+    ZeroClaimDiscriminating { control_run_id, control_job_count } => control_run_id == 34506290069 && control_job_count == 5
+    ZeroClaimIndistinguishable => false
+  }
+}
+
+// The refusal text names the numbers, so an operator learns which invariant broke without reading
+// the module.
+test fn witness_refusal_text_names_the_observed_numbers() -> Bool {
+  census_refusal_text(c: admit_census(o: obs(dup: 0, uniq: 535, total: 535, recheck: 523, violation: none, ok: true))).contains("535")
+    && census_refusal_text(c: admit_census(o: obs(dup: 0, uniq: 535, total: 535, recheck: 523, violation: none, ok: true))).contains("523")
+    && census_refusal_text(c: admit_census(o: clean(uniq: 12))) == ""
+}
+
+// AN UNCLOSED FOLD GATES EVERYTHING, and it is checked here because the census's own arms would
+// otherwise happily reconcile a population that never finished arriving. The fold's refusal is
+// carried through by key rather than re-modelled: std.page_fold owns pagination closure, and the
+// first draft of this module forked it.
+test fn witness_an_unclosed_fold_refuses_before_the_census_reconciles() -> Bool {
+  match admit_census_over_fold(
+    fold: PagesRefused {
+      refusal: PageBudgetExhausted {
+        subject: PageFoldSubject { operation: "github.WorkflowRuns.ListWorkflowRuns" },
+        max_pages: 6,
+        pages_read: 6,
+        stopped_at: OffsetPage { page: 7 }
+      }
+    },
+    o: clean(uniq: 12)
+  ) {
+    CensusRefused { cause } => match cause {
+      PagesUnclosed { fold_refusal_key: _ } => true
+      _ => false
+    }
+    CensusClosed { unique_observed: _, provider_total: _, frozen_upper: _ } => false
+  }
+}

@@ -1,0 +1,59 @@
+module v2.test.claim.self_host_contract.use_site_verdict_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.use_site_verdict {
+  UseSiteVerdict, MoveWhole, MoveField, Borrow, CloneShared, Unclassified,
+  UseSiteVerdictLookup, VerdictFound, VerdictAbsent, VerdictAmbiguous,
+  attach_use_site_verdict, use_site_verdict_lookup
+}
+import v2.std.node { Node, ComputationNode, Value, node_synthetic }
+
+// THE use_site_verdict ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.use_site_verdict attach_use_site_verdict followed by use_site_verdict_lookup returns
+// the attached verdict for every variant, a node with no verdict edge reads VerdictAbsent, and a
+// node carrying two reads VerdictAmbiguous -- asserted exactly, not merely as not-found.
+fn uvc_bare_node() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+fn uvc_round_trips(v: UseSiteVerdict) -> Bool {
+  match use_site_verdict_lookup(node: attach_use_site_verdict(node: uvc_bare_node(), verdict: v)) {
+    VerdictFound { verdict: found } => found == v
+    VerdictAbsent => false
+    VerdictAmbiguous => false
+  }
+}
+
+fn uvc_doubly_attached() -> UseSiteVerdictLookup {
+  use_site_verdict_lookup(
+    node: attach_use_site_verdict(
+      node: attach_use_site_verdict(node: uvc_bare_node(), verdict: Borrow),
+      verdict: MoveWhole
+    )
+  )
+}
+
+// The planted fault asserts ONLY the wrong acceptance: two verdict edges reading as a found
+// verdict.
+fn use_site_verdict_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  if inject_fault {
+    match uvc_doubly_attached() {
+      VerdictFound { verdict: _ } => true
+      VerdictAbsent => false
+      VerdictAmbiguous => false
+    }
+  } else {
+    uvc_round_trips(v: MoveWhole)
+      && uvc_round_trips(v: Borrow)
+      && uvc_round_trips(v: CloneShared)
+      && uvc_round_trips(v: Unclassified)
+      && uvc_round_trips(v: MoveField { field: ^seen })
+      && use_site_verdict_lookup(node: uvc_bare_node()) == VerdictAbsent
+      && uvc_doubly_attached() == VerdictAmbiguous
+  }
+}
+
+test fn use_site_verdict_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  use_site_verdict_emitted_contract_holds(inject_fault: false)
+    && !use_site_verdict_emitted_contract_holds(inject_fault: true)
+}

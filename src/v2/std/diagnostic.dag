@@ -1,0 +1,491 @@
+module v2.std.diagnostic
+
+import std.types { List }
+import v2.std.algebra { bag_eq, fold_list }
+import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.node { Node, Symbol, symbol_lexeme }
+
+type Extent
+  = WholeFile
+  | ByteRange { start: Int, end: Int }
+
+type LocusAnchor<T> {
+  at: T
+}
+
+// A DIAGNOSTIC IS LOCATED WHERE ITS SUBJECT LIVES, AND A DECLARATION LIVES IN THE NAMESPACE. The
+// first four arms locate in text, at a node, or at a port; none of them can name a declaration by
+// the identity the containment tree already gives it. The gap was papered over: a module the
+// resolver could not find was reported on a Textual whole-file locus with the module's dotted
+// name standing where a FILE belongs -- a qualified name wearing a filename's clothes, and a
+// consumer joining that locus to a real path would join on a name no file has. DESIGN section
+// 3's standing rule is the opposite: cite the SYMBOL, and add a position only where no symbol
+// exists to name. DeclarationLocus is that citation form. It carries the qualified path
+// structurally (the segments are the identity; the dotted string is display), so a consumer
+// that needs the module, the leaf, or a join against a symbol index reads segments rather than
+// re-parsing a rendering. It deliberately carries NO node: a declaration's node is its whole
+// body, and a locus that dragged the body along would make every persisted row that names a
+// competing binder the size of the binder. First consumer: v2.compiler.resolve names each
+// competing declaration of an ambiguous reference here, one diagnostic per binder.
+type Locus
+  = Textual { file: Symbol, extent: Extent }
+  | NodeLocus { anchor: LocusAnchor<Node> }
+  | SourcePortLocus { anchor: LocusAnchor<Symbol>, file: Symbol, extent: Extent }
+  | InvariantPortLocus { anchor: LocusAnchor<Symbol>, invariant: Symbol }
+  | DeclarationLocus { declaration: FreeMonoid<Symbol> }
+
+type NoCorrectionReason
+  = UserInputBoundary
+  | AmbiguousIntent
+  | ExternalContractUnknown
+  | CorrectionNotModeled
+
+type Correction
+  = Suggested { node: Node }
+  | Unavailable { reason: NoCorrectionReason }
+type Diagnostic {
+  reason: Symbol
+  at: Locus
+  correction: Correction
+}
+type NonEmptyDiagnostics {
+  head: Diagnostic
+  tail: List<Diagnostic>
+}
+
+data non_empty_diagnostics_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_host_emit_names_free_semigroup — NonEmptyDiagnostics is FreeSemigroup<Diagnostic> by shape (one required Diagnostic plus a list of Diagnostic). It is not an Option alias: that host-emit mapping is Diagnostics -> Option<NonEmptyDiagnostics> via v1.compiler.emit_rust render_rust_diagnostics_carrier_applied, which hardcodes the type name NonEmptyDiagnostics as the Option inner. Dissolve into std.algebra FreeSemigroup<Diagnostic> when that renderer names FreeSemigroup rather than this monomorph; until then a second pair carrier remains.")
+
+// A refusal's reasons by name, in order. A producer whose consumer seam is String-typed cannot hand
+// the refusal on as data, so the text it hands on instead must still name what refused and why.
+fn diagnostics_reason_lexemes(diagnostics: NonEmptyDiagnostics) -> String {
+  join(map(concat([diagnostics.head], diagnostics.tail), d => symbol_lexeme(sym: d.reason)), ", ")
+}
+
+type Diagnostics
+  = None
+  | Some { diagnostics: NonEmptyDiagnostics }
+
+type Outcome<T>
+  = Accepted { value: T, diagnostics: Diagnostics }
+  | Rejected { diagnostics: NonEmptyDiagnostics }
+
+type DiagnosticAccumulation
+  = Accumulate
+  | ShortCircuit
+type StageDiagnosticPolicy {
+  accumulation: DiagnosticAccumulation
+}
+fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics { head: d, tail: [] }
+}
+fn node_locus(node: Node) -> Locus {
+  NodeLocus { anchor: LocusAnchor { at: node } }
+}
+
+fn source_port_locus(port: Symbol, file: Symbol, extent: Extent) -> Locus {
+  SourcePortLocus { anchor: LocusAnchor { at: port }, file: file, extent: extent }
+}
+
+fn invariant_port_locus(port: Symbol, invariant: Symbol) -> Locus {
+  InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: invariant }
+}
+
+fn declaration_locus(declaration: FreeMonoid<Symbol>) -> Locus {
+  DeclarationLocus { declaration: declaration }
+}
+
+// A generic operation may receive its locus before it knows which refusal will fire. The
+// operation owns that classification: textual evidence becomes a source-bearing port locus;
+// every source-independent seed, including a structural node, becomes the exact invariant that
+// actually failed. A port refusal never silently sheds its port identity merely because an
+// upstream stage supplied a node. Callers therefore cannot use another locus arm as an escape
+// from naming the invariant.
+fn port_refusal_locus(at: Locus, port: Symbol, invariant: Symbol) -> Locus {
+  match at {
+    Textual { file: file, extent: extent } =>
+      source_port_locus(port: port, file: file, extent: extent)
+    SourcePortLocus { anchor: _, file: file, extent: extent } =>
+      source_port_locus(port: port, file: file, extent: extent)
+    InvariantPortLocus { anchor: _, invariant: _ } =>
+      invariant_port_locus(port: port, invariant: invariant)
+    NodeLocus { anchor: _ } => invariant_port_locus(port: port, invariant: invariant)
+    DeclarationLocus { declaration: _ } => invariant_port_locus(port: port, invariant: invariant)
+  }
+}
+
+fn textual_whole_file_locus(file: Symbol) -> Locus {
+  Textual { file: file, extent: WholeFile }
+}
+
+fn textual_whole_file_diagnostic(
+  reason: Symbol,
+  module_file: Symbol,
+  correction: Correction
+) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: textual_whole_file_locus(file: module_file),
+    correction: correction
+  }
+}
+
+fn module_unavailable_diagnostic(reason: Symbol, module_file: Symbol) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: reason,
+    module_file: module_file,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
+}
+
+fn outcome_accepted<T>(value: T) -> Outcome<T> {
+  Accepted { value: value, diagnostics: None }
+}
+fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
+  Rejected { diagnostics: diagnostics_singleton(d: d) }
+}
+
+fn extent_eq(a: Extent, b: Extent) -> Bool {
+  match a {
+    WholeFile => match b {
+      WholeFile => true
+      ByteRange { start: _, end: _ } => false
+    }
+    ByteRange { start: sa, end: ea } => match b {
+      WholeFile => false
+      ByteRange { start: sb, end: eb } => (sa == sb) && (ea == eb)
+    }
+  }
+}
+fn locus_eq(a: Locus, b: Locus) -> Bool {
+  match a {
+    Textual { file: fa, extent: ea } => match b {
+      Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
+    }
+    NodeLocus { anchor: na } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: nb } => na.at == nb.at
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
+    }
+    SourcePortLocus { anchor: pa, file: fa, extent: ea } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: pb, file: fb, extent: eb } =>
+        (pa.at == pb.at) && (fa == fb) && extent_eq(a: ea, b: eb)
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: _ } => false
+    }
+    InvariantPortLocus { anchor: pa, invariant: ia } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: pb, invariant: ib } => (pa.at == pb.at) && (ia == ib)
+      DeclarationLocus { declaration: _ } => false
+    }
+    DeclarationLocus { declaration: da } => match b {
+      Textual { file: _, extent: _ } => false
+      NodeLocus { anchor: _ } => false
+      SourcePortLocus { anchor: _, file: _, extent: _ } => false
+      InvariantPortLocus { anchor: _, invariant: _ } => false
+      DeclarationLocus { declaration: db } => da == db
+    }
+  }
+}
+fn correction_eq(a: Correction, b: Correction) -> Bool {
+  match a {
+    Suggested { node: na } => match b {
+      Suggested { node: nb } => na == nb
+      Unavailable { reason: _ } => false
+    }
+    Unavailable { reason: ra } => match b {
+      Suggested { node: _ } => false
+      Unavailable { reason: rb } => ra == rb
+    }
+  }
+}
+fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
+  (a.reason == b.reason)
+    && locus_eq(a: a.at, b: b.at)
+    && correction_eq(a: a.correction, b: b.correction)
+}
+
+fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
+  bag_eq(xs: a, ys: b, eq: diagnostic_eq)
+}
+fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
+  diagnostic_eq(a: a.head, b: b.head) && diagnostic_tail_eq(a: a.tail, b: b.tail)
+}
+
+fn non_empty_diagnostics_append(
+  a: NonEmptyDiagnostics,
+  b: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: a.head,
+    tail: list_append(left: list_snoc_item(xs: a.tail, item: b.head), right: b.tail)
+  }
+}
+fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
+  match outer {
+    None => inner
+    Some { diagnostics: oa } => match inner {
+      None => Some { diagnostics: oa }
+      Some { diagnostics: ib } =>
+        Some {
+          diagnostics: non_empty_diagnostics_append(a: oa, b: ib)
+        }
+    }
+  }
+}
+data diagnostics_monoid: Monoid<Diagnostics> = Monoid {
+  op: diagnostics_merge,
+  identity: None
+}
+data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = Semigroup {
+  op: non_empty_diagnostics_append
+}
+fn rejected_with_pending(
+  pending: Diagnostics,
+  rejected: NonEmptyDiagnostics,
+) -> NonEmptyDiagnostics {
+  match pending {
+    None => rejected
+    Some { diagnostics: p } => non_empty_diagnostics_append(a: p, b: rejected)
+  }
+}
+
+// THE FATAL DIAGNOSTIC IS THE LAST ONE, AND THIS IS THE ONE PLACE THAT SAYS SO. rejected_with_pending
+// PREPENDS the advisories that rode along in front of the refusal that fired, so the cause a
+// consumer should fold to is the tail, never the head -- the head is whatever advisory happened to
+// be pending first. Two consumers had each spelled this fold for themselves (the native CLI's fatal
+// pick and the native test route's fatal reason), which is the fork DESIGN section 3 forbids: the
+// ordering is created here, so the reading of it lives here.
+fn diagnostics_fatal(d: NonEmptyDiagnostics) -> Diagnostic {
+  fold_list(xs: d.tail, empty: d.head, cons: fn(_acc, diag) { diag })
+}
+
+fn diagnostics_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
+  diagnostics_fatal(d: d).reason
+}
+fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
+  match a {
+    None => match b {
+      None => true
+      Some { diagnostics: _ } => false
+    }
+    Some { diagnostics: da } => match b {
+      None => false
+      Some { diagnostics: db } => non_empty_diagnostics_eq(a: da, b: db)
+    }
+  }
+}
+
+fn diagnostics_list_has_reason(xs: List<Diagnostic>, reason: Symbol) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, d) {
+      acc || (d.reason == reason)
+    }
+  )
+}
+
+fn diagnostics_has_reason(d: Diagnostics, reason: Symbol) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: nds } =>
+      (nds.head.reason == reason)
+        || diagnostics_list_has_reason(xs: nds.tail, reason: reason)
+  }
+}
+fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}
+fn outcome_with_diagnostics<U>(value: U, diagnostics: Diagnostics) -> Outcome<U> {
+  Accepted { value: value, diagnostics: diagnostics }
+}
+fn accepted_thread_diagnostics<T>(
+  value: T,
+  accumulated: Diagnostics,
+  incoming: Diagnostics,
+) -> Outcome<T> {
+  Accepted {
+    value: value,
+    diagnostics: diagnostics_merge(outer: accumulated, inner: incoming)
+  }
+}
+fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
+  match inner {
+    Accepted { value: u, diagnostics: ud } =>
+      outcome_with_diagnostics(
+        value: u,
+        diagnostics: diagnostics_merge(outer: od, inner: ud)
+      )
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: od, rejected: r) }
+  }
+}
+// THE DIAGNOSTICS AN OUTCOME CARRIES, as a reader. bind_outcome hands a continuation the VALUE and
+// merges the diagnostics itself, which is right for a pipeline and wrong for a caller that must
+// FORWARD them to a producer expecting them as an argument -- v2.compiler.parse parse_module_prepared
+// takes the grammar's validation residue that way. Without this, such a caller has to destructure the
+// outcome itself, which re-spells the arms bind_outcome already owns.
+//
+// A REJECTED OUTCOME'S DIAGNOSTICS ARE ITS NON-EMPTY ONES, returned as the same Diagnostics the
+// accepted arm answers with, so a consumer forwarding them does not have to know which arm produced
+// them.
+fn outcome_diagnostics<T>(o: Outcome<T>) -> Diagnostics {
+  match o {
+    Accepted { value: _, diagnostics: d } => d
+    Rejected { diagnostics: r } => Some { diagnostics: r }
+  }
+}
+
+fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
+  match o {
+    Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn absorb_outcome_diagnostics<T, U>(
+  acc: Outcome<T>,
+  child: Outcome<U>,
+  policy: StageDiagnosticPolicy
+) -> Outcome<T> {
+  match policy.accumulation {
+    ShortCircuit => match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: v, diagnostics: ad } => match child {
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+        Accepted { value: _, diagnostics: cd } =>
+          accepted_thread_diagnostics(value: v, accumulated: ad, incoming: cd)
+      }
+    }
+    Accumulate => match acc {
+      Accepted { value: v, diagnostics: ad } => match child {
+        Accepted { value: _, diagnostics: cd } =>
+          accepted_thread_diagnostics(value: v, accumulated: ad, incoming: cd)
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+      }
+      Rejected { diagnostics: r } => match child {
+        Accepted { value: _, diagnostics: cd } =>
+          Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: non_empty_diagnostics_append(a: r, b: cr)
+          }
+      }
+    }
+  }
+}
+
+fn append_outcome_value<T>(
+  acc: Outcome<List<T>>,
+  child: Outcome<T>,
+  policy: StageDiagnosticPolicy
+) -> Outcome<List<T>> {
+  match policy.accumulation {
+    ShortCircuit => match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: values, diagnostics: ad } => match child {
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+        Accepted { value: child_value, diagnostics: cd } =>
+          accepted_thread_diagnostics(
+            value: list_snoc_item(xs: values, item: child_value),
+            accumulated: ad,
+            incoming: cd
+          )
+      }
+    }
+    Accumulate => match acc {
+      Accepted { value: values, diagnostics: ad } => match child {
+        Accepted { value: child_value, diagnostics: cd } =>
+          accepted_thread_diagnostics(
+            value: list_snoc_item(xs: values, item: child_value),
+            accumulated: ad,
+            incoming: cd
+          )
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+      }
+      Rejected { diagnostics: r } => match child {
+        Accepted { value: _, diagnostics: cd } =>
+          Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: non_empty_diagnostics_append(a: r, b: cr)
+          }
+      }
+    }
+  }
+}
+
+fn sequence_outcome<T>(
+  xs: List<Outcome<T>>,
+  policy: StageDiagnosticPolicy
+) -> Outcome<List<T>> {
+  fold_list(
+    xs: xs,
+    empty: outcome_accepted(value: freemonoid_empty()),
+    cons: fn(acc, o) {
+      append_outcome_value(acc: acc, child: o, policy: policy)
+    }
+  )
+}
+
+fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } =>
+        payload_eq(av, bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}
+
+type DiagnosticSeverity = SeverityError | SeverityWarning
+
+type EmitDirective {
+  severity: DiagnosticSeverity
+  message: String
+}
+
+fn diagnostic_severity_eq(a: DiagnosticSeverity, b: DiagnosticSeverity) -> Bool {
+  match a {
+    SeverityError => match b {
+      SeverityError => true
+      SeverityWarning => false
+    }
+    SeverityWarning => match b {
+      SeverityError => false
+      SeverityWarning => true
+    }
+  }
+}
+
+fn emit_directive_eq(a: EmitDirective, b: EmitDirective) -> Bool {
+  diagnostic_severity_eq(a: a.severity, b: b.severity) && (a.message == b.message)
+}

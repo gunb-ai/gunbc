@@ -1,0 +1,33 @@
+module extdeps.vendor.arista
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE NETWORKING COMPANY THAT MAKES THE 7050 SERIES SWITCHES AND THE EOS OPERATING SYSTEM,
+// CITED FROM ITS OWN CORPORATE SITE. This module owns only the company entity. The product
+// rows attributed to it live in their own modules (extdeps.network.arista_7050s_52), each an
+// independently versioned subject with its own authority -- DESIGN section 3, external
+// upstream decomposition.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "arista.com"
+  }
+}
+
+data arista: Vendor<Hardware> = Vendor { legal_name: "Arista Networks, Inc." }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.arista",
+      decl_name: "arista",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

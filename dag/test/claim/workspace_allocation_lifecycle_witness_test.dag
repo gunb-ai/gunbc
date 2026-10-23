@@ -1,0 +1,144 @@
+module gunbc.test.claim.workspace_allocation_lifecycle_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.durable_compare_and_set { ExpectSlotAbsent }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, LargeWorkspace, workspace_policy_ref }
+import gunbc.workspace_allocation_store {
+  WorkspaceOwnerSnapshot, WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceRecorded,
+  WorkspaceRunning, WorkspaceCleanupUncertain, WorkspaceReleased, WorkspaceAcquiring, WorkspaceTerminationRequested,
+  WorkspaceCreateNew, WorkspaceCreateReplay, WorkspaceCreateRefused,
+  workspace_create_decision, workspace_create_decision_at, workspace_allocation_json, workspace_allocation_decode, workspace_retired, workspace_retired_at, workspace_write_transition_admits,
+}
+import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
+import gunbc.workspace_allocation_lifecycle { workspace_connection_current }
+import gunbc.workspace_allocation_wait { workspace_await_allocation }
+
+fn allocation_test_owner(subject: NonEmptyStr) -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: subject }
+}
+
+fn allocation_test_request(key: NonEmptyStr) -> WorkspaceRequest {
+  WorkspaceRequest {
+    owner: allocation_test_owner(subject: "owner-a" as NonEmptyStr),
+    idempotency_key: key,
+    profile: SmallWorkspace,
+    image: "sha256:workspace-test-image" as NonEmptyStr,
+    public_key_ref: "workspace-test-key" as NonEmptyStr,
+    expires_at: "2026-09-27T13:00:00Z",
+    policy: workspace_policy_ref(),
+  }
+}
+
+fn allocation_test_record(key: NonEmptyStr) -> WorkspaceAllocation {
+  WorkspaceAllocation { retired_at: "", recorded_at: "", plan: none, desired: WorkspaceWanted, request: allocation_test_request(key: key), reservation: none,
+    phase: WorkspaceRecorded, connection: "", observed_at: "", reason: "Request recorded" }
+}
+
+test fn workspace_request_replay_and_changed_parameters_are_distinct() -> Bool {
+  let existing = allocation_test_record(key: "retry" as NonEmptyStr)
+  let snapshot = WorkspaceOwnerSnapshot { owner: existing.request.owner, expected: ExpectSlotAbsent, allocations: [existing] }
+  let changed = WorkspaceRequest { owner: existing.request.owner, idempotency_key: existing.request.idempotency_key,
+    profile: LargeWorkspace, image: existing.request.image, public_key_ref: existing.request.public_key_ref,
+    expires_at: existing.request.expires_at, policy: existing.request.policy }
+  let replay = match workspace_create_decision(snapshot: snapshot, request: existing.request) { WorkspaceCreateReplay { allocation: _ } => true other => false }
+  let refuses = match workspace_create_decision(snapshot: snapshot, request: changed) { WorkspaceCreateRefused { reason: _ } => true other => false }
+  replay && refuses
+}
+
+test fn workspace_cleanup_uncertainty_keeps_owner_quota_held() -> Bool {
+  let existing = allocation_test_record(key: "old" as NonEmptyStr)
+  let uncertain = WorkspaceAllocation { retired_at: "", recorded_at: "", plan: none, desired: WorkspaceRetired, request: existing.request, reservation: none,
+    phase: WorkspaceCleanupUncertain, connection: "", observed_at: "2026-09-27T12:01:00Z", reason: "cleanup unreadable" }
+  match workspace_create_decision(snapshot: WorkspaceOwnerSnapshot { owner: existing.request.owner, expected: ExpectSlotAbsent, allocations: [uncertain] }, request: allocation_test_request(key: "next" as NonEmptyStr)) {
+    WorkspaceCreateRefused { reason: _ } => true other => false
+  }
+}
+
+test fn workspace_released_history_allows_next_key_and_preserves_old_retry() -> Bool {
+  let existing = allocation_test_record(key: "old" as NonEmptyStr)
+  let released = WorkspaceAllocation { retired_at: "", recorded_at: "", plan: none, desired: WorkspaceRetired, request: existing.request, reservation: none,
+    phase: WorkspaceReleased, connection: "", observed_at: "2026-09-27T12:01:00Z", reason: "released" }
+  let snapshot = WorkspaceOwnerSnapshot { owner: existing.request.owner, expected: ExpectSlotAbsent, allocations: [released] }
+  let next = match workspace_create_decision(snapshot: snapshot, request: allocation_test_request(key: "next" as NonEmptyStr)) { WorkspaceCreateNew { allocation: _ } => true other => false }
+  let replay = match workspace_create_decision(snapshot: snapshot, request: existing.request) { WorkspaceCreateReplay { allocation: a } => a.phase == WorkspaceReleased other => false }
+  next && replay
+}
+
+test fn workspace_other_owner_cannot_admit_request_into_ledger() -> Bool {
+  match workspace_create_decision(snapshot: WorkspaceOwnerSnapshot { owner: allocation_test_owner(subject: "owner-b" as NonEmptyStr), expected: ExpectSlotAbsent, allocations: [] }, request: allocation_test_request(key: "new" as NonEmptyStr)) {
+    WorkspaceCreateRefused { reason: _ } => true other => false
+  }
+}
+
+test fn workspace_absolute_expiry_does_not_restart_lifetime() -> Bool {
+  let remaining = match workspace_lease_standing(expires_at: "2026-09-27T13:00:00Z", observed_at: "2026-09-27T12:59:00Z") { WorkspaceLeaseLive { remaining: n } => n == 60 other => false }
+  let expired = match workspace_lease_standing(expires_at: "2026-09-27T13:00:00Z", observed_at: "2026-09-27T13:00:00Z") { WorkspaceLeaseExpired => true other => false }
+  let unreadable = match workspace_lease_standing(expires_at: "not-a-time", observed_at: "2026-09-27T12:00:00Z") { WorkspaceLeaseUnreadable => true other => false }
+  remaining && expired && unreadable
+}
+
+test fn workspace_release_withdraws_connection_before_any_host_effect() -> Bool {
+  let record = allocation_test_record(key: "running" as NonEmptyStr)
+  let running = WorkspaceAllocation { retired_at: "", recorded_at: "", plan: none, desired: WorkspaceWanted, request: record.request, reservation: none,
+    phase: WorkspaceRunning, connection: "ssh workspace", observed_at: "2026-09-27T12:01:00Z", reason: "ready" }
+  let retired = workspace_retired(allocation: running, reason: "owner release")
+  retired.connection == "" && retired.desired == WorkspaceRetired
+    && !workspace_connection_current(allocation: retired, observed_at: "2026-09-27T12:01:01Z", maximum_age: 30)
+    && !workspace_connection_current(allocation: running, observed_at: "2026-09-27T12:02:00Z", maximum_age: 30)
+}
+
+test fn workspace_request_record_round_trips_without_a_reservation() -> Bool {
+  let record = allocation_test_record(key: "codec" as NonEmptyStr)
+  match workspace_allocation_decode(value: workspace_allocation_json(allocation: record)) {
+    Present { value: decoded } => decoded.request.idempotency_key == record.request.idempotency_key && decoded.desired == WorkspaceWanted && decoded.phase == WorkspaceRecorded
+    Absent => false
+  }
+}
+
+// Once acquisition wins, retirement cannot turn the record into a never-started cancellation.
+test fn workspace_retirement_preserves_the_durable_acquisition_obligation() -> Bool {
+  let original = allocation_test_record(key: "acquisition-race" as NonEmptyStr)
+  let acquiring = WorkspaceAllocation { retired_at: "", recorded_at: "",
+    desired: WorkspaceWanted, request: original.request, plan: none, reservation: none,
+    phase: WorkspaceAcquiring, connection: "", observed_at: "", reason: "acquiring",
+  }
+  let retired = workspace_retired(allocation: acquiring, reason: "cancel")
+  let incorrectly_settled = WorkspaceAllocation { retired_at: "", recorded_at: "",
+    desired: WorkspaceRetired, request: original.request, plan: none, reservation: none,
+    phase: WorkspaceReleased, connection: "", observed_at: "", reason: "not admitted",
+  }
+  let retired_before_start = workspace_retired(allocation: original, reason: "cancel before acquisition")
+  retired.phase == WorkspaceAcquiring && retired.desired == WorkspaceRetired
+    && !workspace_write_transition_admits(
+      snapshot: WorkspaceOwnerSnapshot { owner: original.request.owner, expected: ExpectSlotAbsent, allocations: [retired_before_start] },
+      allocation: acquiring,
+    )
+    && !workspace_write_transition_admits(
+      snapshot: WorkspaceOwnerSnapshot { owner: original.request.owner, expected: ExpectSlotAbsent, allocations: [retired] },
+      allocation: incorrectly_settled,
+    )
+}
+
+test fn workspace_retry_keeps_the_original_recording_time() -> Bool {
+  let request = allocation_test_request(key: "recorded-time" as NonEmptyStr)
+  match workspace_create_decision_at(snapshot: WorkspaceOwnerSnapshot { owner: request.owner, expected: ExpectSlotAbsent, allocations: [] }, request: request, observed_at: "2026-09-27T12:00:00Z") {
+    WorkspaceCreateNew { allocation: original } => match workspace_create_decision_at(
+      snapshot: WorkspaceOwnerSnapshot { owner: request.owner, expected: ExpectSlotAbsent, allocations: [original] },
+      request: request, observed_at: "2026-09-27T12:10:00Z",
+    ) {
+      WorkspaceCreateReplay { allocation: repeated } => repeated.recorded_at == "2026-09-27T12:00:00Z"
+      other => false
+    }
+    other => false
+  }
+}
+
+// Repeated stop observations preserve the first actual retirement observation.
+test fn workspace_retry_keeps_the_first_retirement_time() -> Bool {
+  let original = allocation_test_record(key: "retired-time" as NonEmptyStr)
+  let first = workspace_retired_at(allocation: original, reason: "owner release", observed_at: "2026-09-27T12:00:00Z")
+  let repeated = workspace_retired_at(allocation: first, reason: "lease also expired", observed_at: "2026-09-27T12:10:00Z")
+  first.retired_at == "2026-09-27T12:00:00Z" && repeated.retired_at == first.retired_at
+    && repeated.recorded_at == original.recorded_at
+}

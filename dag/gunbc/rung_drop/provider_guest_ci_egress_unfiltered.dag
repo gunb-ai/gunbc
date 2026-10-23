@@ -1,0 +1,41 @@
+module gunbc.rung_drop.provider_guest_ci_egress_unfiltered
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
+
+// THE DECLARED DROP for CI work on a provider guest rebuilt per job, admitted WITHOUT default-deny
+// egress by operator ruling (2026-10-09). gunbc.runner.runner_isolation_admission requires seven
+// guarantees of general CI, and the last one the microVM path earned was DefaultDenyEgress -- a
+// containment of what job code can reach, held there by forward filtering with a counted receipt.
+// A Hetzner Cloud guest has open internet, and a firewall inside the guest is not containment
+// because a job with root removes it. So a job on these guests can reach any host on the internet
+// while it holds its runner registration.
+//
+// WHY THIS IS A DROP AND NOT A NEW ROW OF THE OFFER: the guarantee is not evidenced and the offer
+// says so; what this row declares is that the admission EXCUSES it for a named population, which
+// is a rung lower than the fleet holds elsewhere, and DESIGN 4b(3) allows that only declared.
+//
+// THE OPERATOR'S DIRECTION FOR THE REPAIR is the network layer, not the guest: these machines will
+// sit behind a router at a site, and the fleet owns the hosts, so egress control is an SDN / VXLAN
+// design owned below the guest rather than a firewall the job could reach.
+data provider_guest_ci_egress_unfiltered: RungDrop = RungDrop {
+  identity: "provider_guest_ci_egress_unfiltered" as NonEmptyStr,
+
+  subject: "untrusted CI job code on a per-job-rebuilt provider guest reaching hosts it was not granted (gunbc.runner.runner_isolation_admission DefaultDenyEgress), excused by gunbc.runner.provider_guest_incarnation for the population below",
+
+  declared: "2026-10-09",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "operator ruling 2026-10-09: a guest rebuilt from the provider's image before every job, so nothing a job leaves behind survives into the next; egress itself is uncontained" },
+    population: [
+      "gunbc.fleet_host_identity operator_host_183527 (Hetzner Cloud CAX41 169308819, nbg1)",
+      "gunbc.fleet_host_identity operator_host_3dde7f (Hetzner Cloud CAX41 169308796, hel1)",
+    ],
+    restoration_trigger: "egress from these guests is contained BELOW the guest -- at the site's network layer (SDN / VXLAN behind a router the fleet owns) or at the provider's hypervisor -- so a job with root in the guest cannot widen it, and a filtered-egress receipt on one of them records denials and grants each proven by the guest's outcome and the enforcing layer's own counter, as gunbc.runner.runner_filtered_egress_receipt does for the microVM path. SUFFICIENT FOR deleting this row: the provider-rebuild offer lists DefaultDenyEgress as evidenced on that receipt and the excuse is removed from the admission in the same change. NOT satisfied by an nftables ruleset inside the guest."
+  }
+}

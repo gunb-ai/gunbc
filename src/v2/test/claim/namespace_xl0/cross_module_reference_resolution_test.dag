@@ -1,0 +1,665 @@
+module v2.test.claim.namespace_xl0.cross_module_reference_resolution
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.std.node_query { field_projection_optional }
+import v2.std.node { Node }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes, normalized_tree_roots_to_binding_sources}
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.repair_input_origin_roster {
+  RepairInputOriginRoster,
+  repair_input_origin_roster_is_total,
+  repair_input_origin_roster_over_roots
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.repair_input_origin {
+  RenderedTargetVocabularyCarrier,
+  RepairInputDeclared,
+  SourceCarrierCandidate,
+  SourceDeclarationCarrier
+}
+import v2.std.algebra { contains, fold_list, length }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.qualified_name {
+  QualifiedName,
+  declaration_reference_path_optional,
+  qualified_name_from_dotted_string
+}
+import v2.std.text { String, string_eq }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RESOLVER'S SIDE OF THE CROSS-MODULE REFERENCE CLASS, ON THE PRODUCTION ROUTE.
+//
+// WHAT THIS FILE PROVES, AND NO MORE: that a source-produced, root-qualified spine reaches the
+// resolver's qualified arm and is FOUND by its CURRENT lookup, which is corpus-root ABSOLUTE
+// (v2.compiler.resolve try_resolve_qualified_name_node, whose own header marks unique-on-chain
+// UNFIRED), that a found declaration is ACCEPTED carrying its exact declaring identity -- the
+// declaration's qualified path, as a qualified-name spine (v2.compiler.resolve
+// resolved_reference_node) -- and that every refusal it raises is typed and located: unbound for a
+// miss, ambiguous for a head also bound on the chain. It does NOT establish
+// docs/plans/namespace-resolution-design.md section 13 projection, which is measured by today-rows
+// below that are its trigger.
+//
+// v2.test.claim.namespace_xl0.call_argument_mention_survival measures what the COLLECTOR sees. This
+// file measures what RESOLUTION does with the same lowered shape, because the two consume one
+// producer: the fold_list qualified-name spine that body lowering now constructs for a dotted chain
+// (v2.compiler.body_lowering_fold body_lower_dotted_reference_optional). A spine the resolver
+// ACCEPTS by widening what resolves would be the fail-open arm DESIGN section 5 forbids, and a
+// spine it refuses without saying why would be silence. So the rows are a matched set and the
+// boundary is the IDENTITY: a DECLARED cross-module target resolves to its own path and to no other
+// declaration's, and an UNDECLARED one refuses unbound.
+//
+// THE DEFECT PROPER IS THE BARE-NAME ROW, NOT THE QUALIFIED ONE (fierce-wren-487, 2026-09-22). The
+// qualified door refused a found fn with a typed reason while resolution carried only a leaf; the
+// BARE door did not refuse at all: two consumers importing `xl0r_same_leaf` from two providers each
+// resolved, Accepted, to the same Atom -- one declaration's identity silently standing for
+// another's, with nothing downstream able to tell. That row (two_import_bound_same_leaf_targets...)
+// is the discriminating red: it fails against a resolver that mints the leaf and holds against one
+// that carries the declaring path.
+//
+// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_in_context
+// resolves the module the Admission names and consults the other ingested roots only through the
+// symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
+// That is what lets one warm producer serve every row: the parse-and-normalize of twelve inline
+// modules is the stage no row is about, and it is shared exactly as the sibling file shares its
+// ingest (v2.workflow.floor_pure_producer_share); the resolve is executed per claim.
+//
+// THE TARGET IS A FUNCTION, DELIBERATELY. A cross-module reference to a `data` or `type`
+// declaration still refuses on this route, and not because of anything in the reference: the
+// declaration itself never reaches the containment tree (v2.compiler.namespace_graft rehomes a
+// fn_decl under a Named edge and nothing rehomes a type_decl or data_decl -- see
+// v2.test.claim.namespace_xl0.field_type_tree_presence). That is a declaration-grafting loss with
+// its own trigger and is measured, not repaired, here: the row at the end of this file asserts the
+// refusal so it reds -- and gets re-stated -- when grafting lands.
+data xl0r_provider_source: String = "module v2.test.xl0r_provider\n\nimport std.types { Bool }\n\nfn xl0r_provided_fn(p: Bool) -> Bool { p }\n\ndata xl0r_provided_value: Bool = true\n"
+
+data xl0r_local_consumer_source: String = "module v2.test.xl0r_local_consumer\n\nimport std.types { Bool }\n\nfn xl0r_same_module(x: Bool) -> Bool { x }\n"
+
+data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_provided_fn() -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+
+data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
+
+data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
+
+data xl0r_provider_a_source: String = "module v2.test.xl0r_provider_a\n\nimport std.types { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+
+data xl0r_provider_b_source: String = "module v2.test.xl0r_provider_b\n\nimport std.types { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+
+data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport std.types { Bool }\n\nfn xl0r_uses_a() -> Bool { v2.test.xl0r_provider_a.xl0r_same_leaf }\n"
+
+data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport std.types { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
+
+data xl0r_import_consumer_a_source: String = "module v2.test.xl0r_import_consumer_a\n\nimport std.types { Bool }\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n\nfn xl0r_import_uses_a() -> Bool { xl0r_same_leaf }\n"
+
+data xl0r_import_consumer_b_source: String = "module v2.test.xl0r_import_consumer_b\n\nimport std.types { Bool }\nimport v2.test.xl0r_provider_b { xl0r_same_leaf }\n\nfn xl0r_import_uses_b() -> Bool { xl0r_same_leaf }\n"
+
+data xl0r_relay_source: String = "module v2.test.xl0r_relay\n\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n"
+
+data xl0r_relay_consumer_source: String = "module v2.test.xl0r_relay_consumer\n\nimport std.types { Bool }\nimport v2.test.xl0r_relay { xl0r_same_leaf }\n\nfn xl0r_relay_uses() -> Bool { xl0r_same_leaf }\n"
+
+data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport std.types { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
+
+data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport std.types { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
+
+data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport std.types { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+
+// A TYPE NAMED BY A SELECTIVE IMPORT, IN PARAMETER POSITION. The provider's type is bodyless, the
+// shape v2.std.node declares Symbol with. The seven-test canary's `Symbol` wall (gunbc#12198) was
+// first read as this route failing; it does not -- these two rows were green on the tree where the
+// wall stood, and the refusing occurrences were in closure modules that imported nothing
+// (v2.std.artifact, v2.compiler.body_producer_forward, v2.std.grounding). The pair keeps the
+// import route and its boundary both executed: the imported spelling binds to its declaring path,
+// and the same spelling with no import refuses unbound rather than being found by corpus search.
+data xl0r_type_provider_source: String = "module v2.test.xl0r_type_provider\n\ntype Xl0rOpaque\n"
+
+data xl0r_imported_param_type_consumer_source: String = "module v2.test.xl0r_imported_param_type_consumer\n\nimport std.types { Bool }\nimport v2.test.xl0r_type_provider { Xl0rOpaque }\n\nfn xl0r_takes_opaque(x: Xl0rOpaque) -> Bool { true }\n"
+
+data xl0r_unimported_param_type_consumer_source: String = "module v2.test.xl0r_unimported_param_type_consumer\n\nimport std.types { Bool }\n\nfn xl0r_takes_unimported(x: Xl0rOpaque) -> Bool { true }\n"
+
+fn xl0r_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data xl0r_ingest: SourceRootIngest = Cons {
+  head: xl0r_read(
+    source: xl0r_provider_source,
+    id: ^xl0r_provider_read,
+    unit: ^xl0r_provider_cu,
+    path: "src/v2/test/fixture/namespace_xl0/resolution_provider.dag"
+  ),
+  tail: Cons {
+    head: xl0r_read(
+      source: xl0r_local_consumer_source,
+      id: ^xl0r_local_consumer_read,
+      unit: ^xl0r_local_consumer_cu,
+      path: "src/v2/test/fixture/namespace_xl0/resolution_local_consumer.dag"
+    ),
+    tail: Cons {
+    head: xl0r_read(
+      source: xl0r_declared_consumer_source,
+      id: ^xl0r_declared_consumer_read,
+      unit: ^xl0r_declared_consumer_cu,
+      path: "src/v2/test/fixture/namespace_xl0/resolution_declared_consumer.dag"
+    ),
+    tail: Cons {
+      head: xl0r_read(
+        source: xl0r_undeclared_consumer_source,
+        id: ^xl0r_undeclared_consumer_read,
+        unit: ^xl0r_undeclared_consumer_cu,
+        path: "src/v2/test/fixture/namespace_xl0/resolution_undeclared_consumer.dag"
+      ),
+      tail: Cons {
+        head: xl0r_read(
+          source: xl0r_data_target_consumer_source,
+          id: ^xl0r_data_target_consumer_read,
+          unit: ^xl0r_data_target_consumer_cu,
+          path: "src/v2/test/fixture/namespace_xl0/resolution_data_target_consumer.dag"
+        ),
+        tail: Cons {
+          head: xl0r_read(
+            source: xl0r_field_access_consumer_source,
+            id: ^xl0r_field_access_consumer_read,
+            unit: ^xl0r_field_access_consumer_cu,
+            path: "src/v2/test/fixture/namespace_xl0/resolution_field_access_consumer.dag"
+          ),
+          tail: Cons {
+            head: xl0r_read(
+              source: xl0r_shadowing_consumer_source,
+              id: ^xl0r_shadowing_consumer_read,
+              unit: ^xl0r_shadowing_consumer_cu,
+              path: "src/v2/test/fixture/namespace_xl0/resolution_shadowing_consumer.dag"
+            ),
+            tail: Cons {
+              head: xl0r_read(source: xl0r_provider_a_source, id: ^xl0r_provider_a_read, unit: ^xl0r_provider_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_provider_a.dag"),
+              tail: Cons {
+                head: xl0r_read(source: xl0r_provider_b_source, id: ^xl0r_provider_b_read, unit: ^xl0r_provider_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_provider_b.dag"),
+                tail: Cons {
+                  head: xl0r_read(source: xl0r_consumer_a_source, id: ^xl0r_consumer_a_read, unit: ^xl0r_consumer_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_consumer_a.dag"),
+                  tail: Cons {
+                    head: xl0r_read(source: xl0r_consumer_b_source, id: ^xl0r_consumer_b_read, unit: ^xl0r_consumer_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_consumer_b.dag"),
+                    tail: Cons {
+                      head: xl0r_read(source: xl0r_method_call_consumer_source, id: ^xl0r_method_call_consumer_read, unit: ^xl0r_method_call_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_method_call_consumer.dag"),
+                      tail: Cons {
+                        head: xl0r_read(source: xl0r_import_consumer_a_source, id: ^xl0r_import_consumer_a_read, unit: ^xl0r_import_consumer_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_import_consumer_a.dag"),
+                        tail: Cons {
+                          head: xl0r_read(source: xl0r_import_consumer_b_source, id: ^xl0r_import_consumer_b_read, unit: ^xl0r_import_consumer_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_import_consumer_b.dag"),
+                          tail: Cons {
+                            head: xl0r_read(source: xl0r_relay_source, id: ^xl0r_relay_read, unit: ^xl0r_relay_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_relay.dag"),
+                            tail: Cons {
+                              head: xl0r_read(source: xl0r_relay_consumer_source, id: ^xl0r_relay_consumer_read, unit: ^xl0r_relay_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_relay_consumer.dag"),
+                              tail: Cons {
+                                head: xl0r_read(source: xl0r_type_provider_source, id: ^xl0r_type_provider_read, unit: ^xl0r_type_provider_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_type_provider.dag"),
+                                tail: Cons {
+                                  head: xl0r_read(source: xl0r_imported_param_type_consumer_source, id: ^xl0r_imported_param_type_consumer_read, unit: ^xl0r_imported_param_type_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_imported_param_type_consumer.dag"),
+                                  tail: Cons {
+                                    head: xl0r_read(source: xl0r_unimported_param_type_consumer_source, id: ^xl0r_unimported_param_type_consumer_read, unit: ^xl0r_unimported_param_type_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_unimported_param_type_consumer.dag"),
+                                    tail: Empty
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  }
+}
+
+// Nullary, pure, inline sources, and a value that reifies to the bottom -- the same shape the
+// sibling file's producer has. Enrolled WARM in v2.workflow.floor_pure_producer_share.
+fn xl0r_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: xl0r_ingest, lm: dag_language_model())
+}
+
+fn xl0r_admission(subject: String) -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+    imports: Empty
+  }
+}
+
+// THE SHARE POINT IS THE RESOLVED OUTCOME PER SUBJECT, AND THE ROAD HERE IS RECORDED BECAUSE THE
+// NEXT AUTHOR WILL WALK IT. gunbc#11582's first floor run (35317696454) reached every verdict and
+// refused on COST: each resolve row spent ~92k eval steps against the 72,300-step line for work
+// arriving after the cut, with the ingest already served. The second run (35327371663) tried to
+// share v2.compiler.name_resolve resolution_context and was refused
+// PureProducerShareWarmNotStored: the value carries the LanguageModel, whose
+// canonical_symbols.member is a CLOSURE, and the cross-claim store serves values, not functions --
+// a fair refusal of a non-portable producer, not an obstacle. Measured beside it (claim_batch on
+// the same file): the context is ~12k steps and resolving even a one-fn subject is ~64k, so a
+// portable context would still leave every row over the line. Resolution of the smallest subject
+// costs more than a new witness may spend; that is the resolver's cost profile and is not this
+// file's to repair.
+//
+// So each subject's resolution is a NULLARY WARM PRODUCER (one per subject, enrolled in
+// v2.workflow.floor_pure_producer_share beside the ingest), executed by the floor's preparation --
+// the real path, run once, refused loudly there if it cannot run -- and the rows below read the
+// Outcome<ResolvedTree> it produced. This is the shape v2.compiler.self_host.direct_rust_door_fixture
+// direct_rust_door_specimen_resolved already inhabits for a resolved specimen. The values are
+// Nodes and located diagnostics, portable to the bottom.
+fn xl0r_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match xl0r_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: xl0r_admission(subject: subject)
+      ).resolved
+  }
+}
+
+fn xl0r_resolved_local_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_local_consumer")
+}
+
+fn xl0r_resolved_declared_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_declared_consumer")
+}
+
+fn xl0r_resolved_undeclared_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_undeclared_consumer")
+}
+
+fn xl0r_resolved_data_target_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_data_target_consumer")
+}
+
+fn xl0r_resolved_field_access_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_field_access_consumer")
+}
+
+fn xl0r_resolved_method_call_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_method_call_consumer")
+}
+
+fn xl0r_resolved_shadowing_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_shadowing_consumer")
+}
+
+fn xl0r_resolved_consumer_a() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_consumer_a")
+}
+
+fn xl0r_resolved_consumer_b() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_consumer_b")
+}
+
+fn xl0r_resolved_import_consumer_a() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_import_consumer_a")
+}
+
+fn xl0r_resolved_import_consumer_b() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_import_consumer_b")
+}
+
+fn xl0r_resolved_relay_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_relay_consumer")
+}
+
+fn xl0r_resolved_imported_param_type_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_imported_param_type_consumer")
+}
+
+fn xl0r_resolved_unimported_param_type_consumer() -> Outcome<ResolvedTree> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_unimported_param_type_consumer")
+}
+
+// THE DECLARING PATHS A RESOLVED BODY CARRIES, read through the one reader the carrier has
+// (v2.std.qualified_name declaration_reference_path_optional): every qualified-name spine of two or
+// more segments in the resolved subtree. An Atom is not a reference to a corpus declaration after
+// resolution, so a resolver that minted the leaf answers an EMPTY list here and every row below
+// that asks for a path reds against it.
+fn xl0r_resolved_reference_paths(root: Node) -> FreeMonoid<QualifiedName> {
+  fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: qn } => Cons { head: qn, tail: acc }
+      Absent => acc
+    }
+  })
+}
+
+fn xl0r_qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
+fn xl0r_resolved_carries_reference(o: Outcome<ResolvedTree>, dotted: String) -> Bool {
+  match o {
+    Accepted { value: root, diagnostics: _ } =>
+      contains(
+        xs: xl0r_resolved_reference_paths(root: root.root),
+        item: qualified_name_from_dotted_string(dotted: dotted),
+        eq: xl0r_qualified_name_eq
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The FINAL refusal is the one the resolver raised, behind whatever pending parse-stage residue the
+// pipeline carries forward (rejected_with_pending prepends the pending rows, so `head` is not it).
+fn xl0r_last_reason(d: NonEmptyDiagnostics) -> Symbol {
+  fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+}
+
+test fn the_resolution_fixture_ingests_holds() -> Bool {
+  match xl0r_fixture_normalized() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE CONTROL: a module whose only reference is same-module resolves, so a red on the row after it
+// is about the cross-module chain and not about this route being dead. It is its own module so
+// that the primary's verdict cannot leak into it.
+test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool {
+  match xl0r_resolved_local_consumer() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE PRIMARY: a cross-module dotted reference to a DECLARED function REACHES the resolver's
+// qualified arm, is FOUND, and is ACCEPTED carrying the declaration's own path -- not its leaf, not
+// a reason symbol. The road here: before the lowering repair this module refused
+// resolve_reason_unbound_symbol on the bare `v2` the infix arm left behind; one revision Accepted it
+// carrying `resolve_reason_unbound_symbol` AS THE IDENTITY; the next carried the leaf name, which
+// the side-chat ruling on gunbc#11582 found equally fabricated (two `run`s in two modules collapse
+// to one Atom); the landed interim REFUSED with resolve_reason_qualified_target_identity_unrepresentable,
+// and this row asserted that refusal. The carrier landed (fierce-wren-487), the refusal is deleted,
+// and the row is re-stated as DESIGN section 4b(4) says it must be: the accepted body carries
+// exactly the path v2.test.xl0r_provider.xl0r_provided_fn.
+test fn a_cross_module_reference_to_a_declared_fn_resolves_to_its_declaring_path_holds() -> Bool {
+  xl0r_resolved_carries_reference(
+    o: xl0r_resolved_declared_consumer(),
+    dotted: "v2.test.xl0r_provider.xl0r_provided_fn"
+  )
+}
+
+// THE DECLARATION-IDENTITY DISCRIMINATOR (side-chat ruling on gunbc#11582, finding 1). Two
+// providers declare the same leaf `xl0r_same_leaf`; two consumers each name one by its full path.
+// A resolver that answered with the LEAF would make the two references indistinguishable, and the
+// import cut's replacement graph cannot be built on leaf names. Both were refused
+// identity-unrepresentable while no carrier existed; re-stated on the carrier's landing, as the
+// previous revision said it must be: each resolves to ITS provider's path, and neither carries the
+// other's -- the identities DIFFER, which is the fact, rather than "both resolve".
+test fn two_same_leaf_targets_in_different_modules_resolve_to_distinct_declaring_paths_holds() -> Bool {
+  let a = xl0r_resolved_consumer_a()
+  let b = xl0r_resolved_consumer_b()
+  xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+    && xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_b.xl0r_same_leaf")
+    && !xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_b.xl0r_same_leaf")
+    && !xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+}
+
+// THE DEFECT PROPER, AT THE BARE DOOR. Two consumers import `xl0r_same_leaf`, one from each
+// provider, and reference it BARE. The import is a binding on the consumer's chain (gunbc#12009),
+// the lexical lookup names the binder by its DECLARING path, and resolve_atom_bound used to throw
+// that path away and mint canonical_atom(identity: xl0r_same_leaf) for both: Accepted, equal, and
+// no refusal anywhere -- one declaration's identity standing silently for another's. Against that
+// resolver this row is RED (xl0r_resolved_reference_paths answers Empty for an Atom); against the
+// carrier it holds: each body carries its own provider's path and not the other's.
+// A RE-EXPORT RESOLVES TO THE HOME, NOT TO THE RELAY IT WAS REACHED THROUGH. `v2.test.xl0r_relay`
+// imports `xl0r_same_leaf` and declares nothing, so its own binding position is what
+// `v2.test.xl0r_relay_consumer` imports -- and the position a row TARGETS is not a declaration when
+// that position is another row's binding. Handing the target back as the declaring path gives one
+// declaration a second identity, one per relay it is reached through, which is the fork this
+// carrier exists to close (review 70003): the same `xl0r_same_leaf` would answer
+// `v2.test.xl0r_provider_a.xl0r_same_leaf` to a direct reference and
+// `v2.test.xl0r_relay.xl0r_same_leaf` to this one, and translate would emit the second as a Rust
+// path into a module the seed puts no item in, because a module that only imports declares nothing.
+// THE NEGATIVE IS THE DISCRIMINATOR, not the positive: an index that stops at the relay still
+// RESOLVES, so "the chain resolves at all" cannot see this. Red before
+// v2.std.symbol_index symbol_index_declaring_path_of, green after.
+test fn a_re_export_resolves_to_the_home_not_the_relay_holds() -> Bool {
+  let c = xl0r_resolved_relay_consumer()
+  xl0r_resolved_carries_reference(o: c, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+    && !xl0r_resolved_carries_reference(o: c, dotted: "v2.test.xl0r_relay.xl0r_same_leaf")
+}
+
+test fn two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_holds() -> Bool {
+  let a = xl0r_resolved_import_consumer_a()
+  let b = xl0r_resolved_import_consumer_b()
+  xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+    && xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_b.xl0r_same_leaf")
+    && !xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_b.xl0r_same_leaf")
+    && !xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+}
+
+test fn a_selectively_imported_type_in_parameter_position_resolves_to_its_declaring_path_holds() -> Bool {
+  xl0r_resolved_carries_reference(
+    o: xl0r_resolved_imported_param_type_consumer(),
+    dotted: "v2.test.xl0r_type_provider.Xl0rOpaque"
+  )
+}
+
+test fn an_unimported_type_in_parameter_position_refuses_unbound() -> Bool {
+  match xl0r_resolved_unimported_param_type_consumer() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+// THE BOUNDARY: the same chain shape naming a declaration that does not exist refuses, at resolve,
+// with the unbound-symbol reason -- reassembling the chain widened nothing.
+test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool {
+  match xl0r_resolved_undeclared_consumer() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+// RE-STATED TWICE (DESIGN 4b(4)). When declaration grafting landed (gunbc#11574) a DATA
+// declaration became a Named containment edge at its content, so the chain was FOUND and the row
+// moved from unbound to the interim identity-unrepresentable refusal. When the declaring-identity
+// carrier landed (fierce-wren-487) the refusal was deleted and the row flips again, as it said it
+// would: Accepted, carrying the data declaration's own path.
+test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring_path_holds() -> Bool {
+  xl0r_resolved_carries_reference(
+    o: xl0r_resolved_data_target_consumer(),
+    dotted: "v2.test.xl0r_provider.xl0r_provided_value"
+  )
+}
+
+// THE LOCAL-RECEIVER CLASS: A NEGATIVE CONTROL, NOT A TRIGGER (side-chat ruling on gunbc#11582,
+// finding 2, correcting an earlier revision of this comment).
+//
+// `r.v` over a parameter lowers to the same spine as a module path -- deliberately; the lowering's
+// header says why. The resolver finds the head `r` bound on the chain, cannot yet project through
+// it (its own header calls that arm UNFIRED), and refuses Unbound rather than reading the path
+// absolutely (v2.compiler.resolve qualified_head_bound_on_chain). It refused BEFORE this lowering
+// too, for a different wrong reason (the infix arm lowered it to Transform(dot, r, v) and the bare
+// `v` was unbound). What this row establishes is only that a receiver with NO SUCH CHILD never
+// Accepts. It does NOT flip when projection lands: `Bool` has no child `v`, so a correct projection
+// refuses this specimen too. The positive projection control is `type Rec { v: Bool }` +
+// `fn get(r: Rec) -> Bool { r.v }`, which needs BOTH the declaration graft (so Rec.v is in the
+// containment tree) AND the unique-on-chain projection, and is owned by those lanes, not enrolled
+// here as a today-row that could be retired by half of its trigger (DESIGN section 4b(3)).
+// THE PROPERTY IS UNCHANGED AND THE STAGE MOVED. `r.v` on `r: Bool` must never be accepted, and it is
+// not; what changed is WHERE it is refused and by what reason. v2.compiler.resolve now commits the
+// field-projection SHAPE for a bound head (resolve_bound_head_projection) instead of answering
+// resolve_reason_unbound_symbol, because deciding whether `v` exists needs a TYPE and resolve has none
+// -- v2.std.node_query field_projection_node's own header assigns that check to the stage over this
+// node. v2.compiler.infer then refuses it: `Bool`'s established type is not a record declaration, so the
+// receiver declares no fields.
+//
+// THE OLD REASON WAS THE COLLAPSE, NOT THE PROPERTY. Answering "unbound symbol" here reported a bound
+// head needing projection and a genuinely unbound name identically, which v2.compiler.resolve's own
+// header records as a defect. So this claim now asserts through infer, which is what "never accepts"
+// was always about: the assertion still forbids ACCEPTANCE, and it is strictly harder to satisfy than
+// before, because a program that resolved and then inferred clean would now fail it.
+// THE REASON INFER DECIDES, read once per fixture in a nullary producer the floor serves WARM
+// (v2.workflow.floor_pure_producer_share): resolve is already a warm producer, and infer over it is past one
+// claim's new-witness budget. A refusal at resolve answers ^xl0r_resolve_refused and an acceptance
+// ^xl0r_infer_accepted, so neither can be read as the infer refusal the rows pin.
+fn xl0r_infer_reason(o: Outcome<ResolvedTree>) -> Symbol {
+  match o {
+    Rejected { diagnostics: _ } => ^xl0r_resolve_refused
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => ^xl0r_infer_accepted
+        Rejected { diagnostics: d } => xl0r_last_reason(d: d)
+      }
+  }
+}
+
+fn xl0r_field_access_infer_reason() -> Symbol {
+  xl0r_infer_reason(o: xl0r_resolved_field_access_consumer())
+}
+
+fn xl0r_method_call_infer_reason() -> Symbol {
+  xl0r_infer_reason(o: xl0r_resolved_method_call_consumer())
+}
+
+// PINNED TO THE CONTRACT, NOT TO "SOME REFUSAL": the receiver's established type (Bool) is not a record
+// declaration, so infer refuses the projection as declaring no fields. A refusal for any other cause reds it.
+test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
+  xl0r_field_access_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
+}
+
+// THE CALL FORM OF THE LOCAL-RECEIVER ROW, ENROLLED ON gunbc#11683 (review 68231 asked for it by
+// execution, not argument). `r.v(x: p)` in a body now lowers to a Transform whose operator is the
+// spine `r.v` -- before that PR it lowered to Transform(r) with method and argument erased and
+// RESOLVED, a fabricated body Accepted -- and the resolver answers for the spine exactly as for
+// the value form above: the head `r` is a binder on the ancestor chain, the projection through it
+// is unfired, so the reference refuses Unbound. Loud where the route was silent. This is the
+// verdict the corpus sites review 68231 named (`elem_r.apply(...)`, `result.tokens.reverse()`,
+// `lens.gate(...)`) receive under v2 resolve; no required lane compiles those modules through v2
+// resolve (the native route over the corpus is a declared rung drop), so this row is the executed
+// evidence. Retired by the local-receiver projection, the same trigger as the value row.
+// THE SAME MOVE FOR THE METHOD-CALL FORM, and the rename is the honest part: this row said "refuses
+// unbound TODAY", naming a stage and a reason it never meant to pin. `r.v(x: p)` closes its spine into
+// a callee at the first call suffix, so the callee `r.v` is now the projection resolve commits, and
+// infer refuses it for the same reason as the bare form -- `Bool` declares no fields. What the row is
+// FOR is that a method call on a local receiver is not silently admitted, and that is what it now says.
+test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
+  xl0r_method_call_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
+}
+
+// THE COLLISION THE ABSOLUTE ARM ADMITTED, NOW REFUSED (review 67651 on gunbc#11582). A parameter
+// named like a root segment (`v2`) heading a chain that is also a valid absolute path: section 13
+// says two binders answer -- the one on the chain and the root -- and the reference REFUSES as
+// Ambiguous; it may never pick the root and Accept a meaning the source did not spell. For one
+// head of this PR the unfired absolute arm did exactly that, which was a refuse -> Accept flip
+// (before this lowering the body lowered to Transform(dot, v2, test) and refused `test` unbound),
+// i.e. a rung drop with no declaration. v2.compiler.resolve try_resolve_qualified_name_node now
+// looks the head up on the chain first and refuses Ambiguous when the chain and the root both
+// answer, so the verdict is a located refusal with the section-13 reason. What this row does NOT
+// claim: the projection through the binder (`v2.test...` read relative to the parameter, which is
+// meaningless here and meaningful for `r.v`). That is the local-receiver row's trigger.
+// THE GUARD DISSOLVED AND THE EVIDENCE DID NOT RETIRE (DESIGN section 4b(4)). `fn f(v2: Bool) -> Bool
+// { v2.test.xl0r_provider.xl0r_provided_fn }` binds `v2` while the absolute path also answers. The
+// interim rule refused that Ambiguous because v2.compiler.resolve could not project a bound head and
+// therefore must not let the absolute read silently win -- its own header said so in those words.
+//
+// SECTION 13'S RULE IS THAT THE CHAIN WINS: the first segment resolves on the ancestor chain and the
+// rest projects. The projection now exists, so the binder answers and this row asserts THAT rather
+// than the refusal that stood in for it. What the old claim forbade is still forbidden -- the absolute
+// read does not win over a binder the source spelled -- and is now answered correctly instead of
+// refused, which is the climb the interim arm was waiting for.
+//
+// IT IS STILL DISCRIMINATING: an implementation that consulted the absolute candidates first would
+// resolve this to the provider's declaring path, and the projection assertion below would fail.
+test fn a_binder_shadowing_a_root_segment_projects_from_the_binder_holds() -> Bool {
+  match xl0r_resolved_shadowing_consumer() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      xl0r_carries_a_field_projection(root: resolved.root)
+  }
+}
+
+// EVERY PROJECTION NODE IN THE TREE, through the shared reader rather than a shape test of its own.
+fn xl0r_carries_a_field_projection(root: Node) -> Bool {
+  match field_projection_optional(n: root) {
+    Present { value: _ } => true
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || xl0r_carries_a_field_projection(root: e.target)
+      })
+  }
+}
+
+// XL-0'S OWN PRODUCER, EXECUTED ON THE PRODUCTION ROUTE -- AND WHAT ITS ANSWER IS MADE OF. These
+// rows execute repair_input_origin_roster_over_roots itself over the same normalized roots and
+// measure two facts: the roster is TOTAL (no unreadable root) and non-empty, and it carries the
+// cross-module mention as a SourceDeclarationCarrier whose provenance arm is RepairInputDeclared.
+// WHAT THAT ARM IS NOT (review 67708 on gunbc#11582): the compiler resolver's answer. The roster's
+// provenance comes from v2.compiler.resolution_provenance resolve_reference_provenance, which
+// confirms the index HIT and then derives the declaring identity from the authored SPELLING
+// (carrier_declaration_ref), while try_resolve_qualified_name_node refuses the very same reference
+// identity-unrepresentable. v2.compiler.repair_input_origin_roster's own frontier row
+// (repair_input_declared_binding_frontier_dissolve_on) says this spelling-derived identity becomes
+// a second authority the moment the roster produces on the production route -- which is now. So
+// these rows are MEASUREMENTS of a producer that answers, not a delivery of XL-0's denominator:
+// XL-0 stays NOT-DERIVABLE, citing exactly that missing observation (gunbc.compiler_frontend_program_status
+// ResolverBoundDeclaringIdentity), and the second row below reds when the roster's `declaring` is
+// derived from the resolver's binding rather than from spelling -- at which point it is re-stated
+// to assert the exact identity.
+fn xl0r_roster() -> RepairInputOriginRoster {
+  match xl0r_fixture_normalized() {
+    Accepted { value: roots, diagnostics: _ } =>
+      repair_input_origin_roster_over_roots(sources: normalized_tree_roots_to_binding_sources(roots: roots))
+    Rejected { diagnostics: _ } =>
+      RepairInputOriginRoster { carriers: Empty, unreadable_roots: Empty }
+  }
+}
+
+fn xl0r_roster_has_declared_carrier(roster: RepairInputOriginRoster, spelling: String) -> Bool {
+  fold_list(
+    xs: roster.carriers,
+    empty: false,
+    cons: fn(acc, c) {
+      acc || (match c {
+        SourceDeclarationCarrier { identity: id } =>
+          string_eq(a: id.authored_spelling, b: spelling)
+            && (match id.provenance {
+              RepairInputDeclared { declaring: _ } => true
+              _ => false
+            })
+        SourceCarrierCandidate { identity: _ } => false
+        RenderedTargetVocabularyCarrier { identity: _ } => false
+      })
+    }
+  )
+}
+
+test fn the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_route_holds() -> Bool {
+  let roster = xl0r_roster()
+  repair_input_origin_roster_is_total(roster: roster) && length(xs: roster.carriers) > 0
+}
+
+test fn the_repair_input_origin_roster_carries_the_cross_module_mention_with_a_spelling_derived_declared_arm_today() -> Bool {
+  xl0r_roster_has_declared_carrier(
+    roster: xl0r_roster(),
+    spelling: "v2.test.xl0r_provider.xl0r_provided_fn"
+  )
+}

@@ -1,0 +1,39 @@
+module gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
+
+// FILED AS A STALL AND NOT AS PROSE IN THE PLAN THAT FOUND IT (gunbc.plans.joint_incompatibility_claim_join
+// section 6), on the manager's 2026-09-11 ruling: an instrument that is blind to almost every module in
+// the other repository, and does not say so in a typed way, will later be cited as coverage it never had.
+//
+// THE SUBJECT. The joint-claim join (v1_compiler.bin.joint_claim_join) reads ModuleDeclarationRecords,
+// and a record exists only for a module the .dag parse sweep reaches. gunbc-private's witness workflow
+// (strategy.private_witness_workflow) builds the public seed at main and runs gunbc run entries over a
+// copied overlay at public/private_overlay/dag -- no parse phase, no claim_executor --required-ci, and the
+// overlay path is outside DAG_PARSE_SWEEP_ROOTS (src/v1, dag, src/v2). So no DeclarationIndex covers the
+// private corpus, on any run, anywhere.
+//
+// WHY THE EXPOSURE IS LARGER THAN THE INTRA-REPO ONE. Measured on the private tree at #62 with a text
+// scan of import lines against its own module list: 113 of 114 private modules import from 77 distinct
+// public modules. A public PR that shrinks a surface is never compiled against private at all -- not
+// before merge, not after -- and private learns of it only when its next run resolves against a main that
+// has moved. That is exactly the join with the private corpus standing as one more subject whose claims
+// are the whole overlay's import set; the join cannot run because the subject has no records.
+//
+// THE BLOCKER IS ONE GROUNDING AND THE OVERLAY ALREADY NAMES IT. The overlay's own annotation states its
+// dissolution: gunbc admits an extra --source-root outside process_workspace_root with module-scope
+// annotations attaching as they do for an in-workspace root. The day the sweep admits that root, private
+// records exist and this row's trigger is met by the same change.
+data joint_claim_join_private_corpus_unindexed_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the joint-claim join is blind to the gunbc-private corpus: no DeclarationIndex is built over private modules (no parse phase there; the overlay is outside DAG_PARSE_SWEEP_ROOTS), so a public change shrinking a surface a private module claims is joined by nothing, before or after merge",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "the private overlay is not a source root the .dag parse sweep can read: DAG_PARSE_SWEEP_ROOTS is a closed triple of in-workspace roots, and the private workflow copies its dag/ to public/private_overlay/dag precisely because gunbc does not yet admit an extra --source-root outside the process workspace root with module-scope annotations attaching as for an in-workspace root -- the overlay's own declared dissolution trigger",
+  },
+  population: UncountedNotEnumerable {
+    reason: "every private module that imports a public module, on every future public change that shrinks a surface; open rather than a list, and listing the 113 importing modules here would be a second representation of the private corpus's import edges that rots on its next commit. IT IS MEASURABLE AND THE PREDICATE IS THE INSTRUMENT: joint_claim_join with the private corpus as one subject whose added claims are its whole import set answers it the moment private records exist; until then the count is a text scan of import lines against the private module list (113 of 114 at gunbc-private #62), a scoping figure and not a producer",
+  },
+  next_rung_trigger: climbs_when(capability: "THE PRIVATE OVERLAY IS AN ADMITTED SOURCE ROOT OF THE .dag PARSE SWEEP, so a ModuleDeclarationRecord exists for every private module on the same ingestion the public corpus gets -- sufficient for the private corpus to stand as one subject of joint_claim_join against every public change's removed surface, at which point a public change is joined against private BEFORE it merges rather than discovered by private's next run after it, and this row's class is mechanically preventable on the same instrument as the public one"),
+}

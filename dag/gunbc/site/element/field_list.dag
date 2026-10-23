@@ -1,0 +1,412 @@
+module gunbc.site.element.field_list
+
+import std.types { Bool, Int, List, String }
+import std.markup { Fragment, Attribute, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap_issue_status { IssueDisplayStatus, issue_display_status_label }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, MediaRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, height_control, space_0, space_1, space_2, space_3, space_4, space_6, space_8, radius_999, border_2 }
+import gunbc.site.element.tokens {
+  radius_element, height_button_small, height_field_row, field_label_max,
+  field_label_gap, field_avatar,
+}
+import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotTextDim, SlotAction, SlotHover }
+import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
+import gunbc.site.element.status_chip { status_chip }
+import gunbc.site.element.build_meter { CompactWorkSummary, build_meter }
+import gunbc.site.element.touch_target { touch_target_rule, touch_target_decls, TouchTargetBox, TouchTargetInlineLink }
+import extdeps.languages.css.media_queries { coarse_pointer }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, Border, FlexDirection, JustifyContent, BorderRadius, Color, Cursor, Display, Flex, FontFamily, FontSize,
+  Gap, GridTemplateColumns, Height, LineHeight, ListStyle, Margin, MarginLeft, MaxWidth, MinHeight, MinWidth,
+  Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextOverflow, WhiteSpace, Width,
+  RawProperty,
+}
+
+// FieldList: a list of labelled facts at one row pitch, the product's issue metadata sidebar
+// (extdeps.google.issue_tracker issue_tracker_measured_field_rail). A row is a label in a fixed
+// column and ONE value on one line: a value longer than its column is cut with an ellipsis, never
+// wrapped, and its full text stays in the DOM for assistive technology and in `title` for the
+// pointer. Every control a value holds (a disclosure, a link, a button) has a hit area of at least
+// the small button height and a drawn height inside the row pitch, so every closed row is the same
+// height whatever it holds. An opened disclosure grows its own row; nothing else does.
+//
+// The value is a closed set of arms, chosen by the caller from the fact it has; the element never
+// inspects a string to decide how to draw it.
+
+// A person, as a face and the identity text beside it. `full` is the complete identity (name and
+// address) when it says more than `identity`.
+type FieldPerson {
+  face: Fragment
+  identity: String
+  full: String?
+}
+
+type FieldLink {
+  text: String
+  href: String
+  full: String?
+}
+
+// How a disclosure opens: below its summary (the summary stays as the heading of what it shows),
+// or in place of it (the summary is the resting value and the panel is its editor).
+type FieldDisclosureOpen
+  = FieldOpensBelow
+  | FieldOpensInPlace
+
+type FieldValue
+  = FieldText { text: String, full: String? }
+  | FieldLinks { links: List<FieldLink>, unlinked: List<String> }
+  | FieldAction { text: String, attributes: List<Attribute> }
+  | FieldIdentity { person: FieldPerson }
+  | FieldStatusControl { status: IssueDisplayStatus, detail: List<Fragment> }
+  | FieldIdentityControl { person: FieldPerson, action: String, editor: List<Fragment> }
+  | FieldWork { summary: CompactWorkSummary, link_attributes: List<Attribute> }
+  | FieldAbsent { reason: String }
+
+type FieldRow {
+  label: String
+  value: FieldValue
+}
+
+type FieldList {
+  rows: List<FieldRow>
+}
+
+data field_list_class: String = "el-field-list"
+data field_list_row_class: String = "el-field-list-row"
+data field_list_label_class: String = "el-field-list-label"
+data field_list_value_class: String = "el-field-list-value"
+data field_list_text_class: String = "el-field-list-text"
+data field_list_link_class: String = "el-field-list-link"
+data field_list_action_class: String = "el-field-list-action"
+data field_list_face_class: String = "el-field-list-face"
+data field_list_person_class: String = "el-field-list-person"
+data field_list_absent_class: String = "el-field-list-absent"
+data field_list_assistive_class: String = "el-field-list-assistive"
+data field_list_disclosure_class: String = "el-field-list-disclosure"
+data field_list_summary_class: String = "el-field-list-summary"
+data field_list_panel_class: String = "el-field-list-panel"
+data field_list_value_attribute: String = "data-field-value"
+data field_list_open_attribute: String = "data-field-open"
+
+// What an absent value draws. "--" means absent and nothing else (element spec 5c).
+data field_list_absent_mark: String = "--"
+
+fn field_value_key(value: FieldValue) -> String {
+  match value {
+    FieldText { text: _, full: _ } => "text"
+    FieldLinks { links: _, unlinked: _ } => "links"
+    FieldAction { text: _, attributes: _ } => "action"
+    FieldIdentity { person: _ } => "identity"
+    FieldStatusControl { status: _, detail: _ } => "status-control"
+    FieldIdentityControl { person: _, action: _, editor: _ } => "identity-control"
+    FieldWork { summary: _, link_attributes: _ } => "work"
+    FieldAbsent { reason: _ } => "absent"
+  }
+}
+
+fn field_open_key(opens: FieldDisclosureOpen) -> String {
+  match opens {
+    FieldOpensBelow => "below"
+    FieldOpensInPlace => "in-place"
+  }
+}
+
+fn field_full_or(full: String?, text: String) -> String {
+  match full {
+    Present { value: f } => f
+    Absent => text
+  }
+}
+
+// Text the eye does not see and assistive technology reads: the full value where the visible
+// text is an abbreviation of it.
+fn field_assistive(text: String) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: field_list_assistive_class)], [txt(text)])
+}
+
+// One line of text. Where the caller abbreviated the value, the abbreviation is hidden from
+// assistive technology and the full value is read instead.
+// A line that is not itself inside a control takes keyboard focus, so the full value it may cut
+// is disclosed on focus as well as on hover (element spec 5c: a title is reachable by keyboard).
+fn field_text_attributes(title: String, focusable: Bool) -> List<Attribute> {
+  concat([attr(name: "class", value: field_list_text_class), attr(name: "title", value: title)], if focusable { [attr(name: "tabindex", value: "0")] } else { [] })
+}
+
+fn field_text_line(text: String, full: String?, focusable: Bool) -> Fragment {
+  match full {
+    Absent => el_attrs("span", field_text_attributes(title: text, focusable: focusable), [txt(text)])
+    Present { value: f } =>
+      if f == text {
+        el_attrs("span", field_text_attributes(title: text, focusable: focusable), [txt(text)])
+      } else {
+        el_attrs("span", field_text_attributes(title: f, focusable: focusable), [
+          el_attrs("span", [attr(name: "aria-hidden", value: "true")], [txt(text)]),
+          field_assistive(text: f),
+        ])
+      }
+  }
+}
+
+fn field_link_node(link: FieldLink) -> Fragment {
+  el_attrs("a", [
+    attr(name: "class", value: field_list_link_class),
+    attr(name: "href", value: link.href),
+    attr(name: "title", value: field_full_or(full: link.full, text: link.text)),
+  ], [txt(link.text)])
+}
+
+fn field_links_title(links: List<FieldLink>, unlinked: List<String>) -> String {
+  join(concat(map(links, l => field_full_or(full: l.full, text: l.text)), unlinked), ", ")
+}
+
+// Links and the related names no link can be made for, in order, on one line.
+fn field_links_nodes(links: List<FieldLink>, unlinked: List<String>) -> List<Fragment> {
+  let parts = concat(map(links, l => field_link_node(link: l)), map(unlinked, u => txt(u)))
+  fold(parts, init: [] as List<Fragment>, f: (acc, p) => if count(acc) == 0 { [p] } else { concat(acc, [txt(", "), p]) })
+}
+
+fn field_person_nodes(person: FieldPerson, focusable: Bool) -> List<Fragment> {
+  [
+    el_attrs("span", [attr(name: "class", value: field_list_face_class), attr(name: "aria-hidden", value: "true")], [person.face]),
+    field_text_line(text: person.identity, full: person.full, focusable: focusable),
+  ]
+}
+
+fn field_disclosure(opens: FieldDisclosureOpen, summary_attributes: List<Attribute>, summary: List<Fragment>, panel: List<Fragment>) -> Fragment {
+  el_attrs("details", [
+    attr(name: "class", value: field_list_disclosure_class),
+    attr(name: field_list_open_attribute, value: field_open_key(opens: opens)),
+  ], [
+    el_attrs("summary", concat([attr(name: "class", value: field_list_summary_class)], summary_attributes), summary),
+    el_attrs("div", [attr(name: "class", value: field_list_panel_class)], panel),
+  ])
+}
+
+fn field_value_nodes(value: FieldValue) -> List<Fragment> {
+  match value {
+    FieldText { text, full } => [field_text_line(text: text, full: full, focusable: true)]
+    FieldLinks { links, unlinked } => [
+      el_attrs("span", [attr(name: "class", value: field_list_text_class), attr(name: "title", value: field_links_title(links: links, unlinked: unlinked))], field_links_nodes(links: links, unlinked: unlinked)),
+    ]
+    FieldAction { text, attributes } => [
+      el_attrs("button", concat([
+        attr(name: "class", value: field_list_action_class),
+        attr(name: "type", value: "button"),
+        attr(name: "title", value: text),
+      ], attributes), [txt(text)]),
+    ]
+    FieldIdentity { person } => [el_attrs("span", [attr(name: "class", value: field_list_person_class)], field_person_nodes(person: person, focusable: true))]
+    FieldStatusControl { status, detail } =>
+      [field_disclosure(opens: FieldOpensBelow, summary_attributes: [attr(name: "title", value: issue_display_status_label(status: status))], summary: [status_chip(status: status)], panel: detail)]
+    FieldIdentityControl { person, action, editor } =>
+      [field_disclosure(opens: FieldOpensInPlace, summary_attributes: [attr(name: "aria-label", value: join([action, ": ", field_full_or(full: person.full, text: person.identity)], ""))], summary: field_person_nodes(person: person, focusable: false), panel: editor)]
+    FieldWork { summary, link_attributes } => [build_meter(summary: summary, link_attributes: link_attributes)]
+    FieldAbsent { reason } => [
+      el_attrs("span", [attr(name: "class", value: join([field_list_text_class, " ", field_list_absent_class], "")), attr(name: "title", value: reason)], [
+        el_attrs("span", [attr(name: "aria-hidden", value: "true")], [txt(field_list_absent_mark)]),
+        field_assistive(text: reason),
+      ]),
+    ]
+  }
+}
+
+fn field_row(row: FieldRow) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: field_list_row_class),
+    attr(name: field_list_value_attribute, value: field_value_key(value: row.value)),
+  ], [
+    el_attrs("dt", [attr(name: "class", value: field_list_label_class)], [txt(row.label)]),
+    el_attrs("dd", [attr(name: "class", value: field_list_value_class)], field_value_nodes(value: row.value)),
+  ])
+}
+
+fn field_list(input: FieldList) -> Fragment {
+  el_attrs("dl", [attr(name: "class", value: field_list_class)], map(input.rows, r => field_row(row: r)))
+}
+
+// Rules. A link keeps the line's height and reaches the hit area through its inline padding;
+// the face slot sizes whatever face it is given to the slot.
+
+fn field_selector(class_name: String) -> String {
+  join([".", class_name], "")
+}
+
+fn field_negative(t: String) -> String {
+  join(["calc(", t, " * -1)"], "")
+}
+
+// The label column is one fixed width, the measured maximum, shared by every row of a list (each
+// row is a subgrid of the list), so a value starts at the same x in every list on every page. A
+// label is one line and is never cut; a label wider than the column is a wording problem to report,
+// not a layout to absorb. The product's 23% clamp resolves to its minimum at the rail's width and
+// would make the column follow the labels, so neither the percentage nor the content width is used.
+fn field_label_column() -> String {
+  scale_var(t: field_label_max)
+}
+
+fn field_single_line_decls() -> List<CssDecl> {
+  [
+    decl(prop: Display, value: "block"),
+    decl(prop: Position, value: "relative"),
+    decl(prop: MinWidth, value: scale_var(t: space_0)),
+    decl(prop: Overflow, value: "hidden"),
+    decl(prop: TextOverflow, value: "ellipsis"),
+    decl(prop: WhiteSpace, value: "nowrap"),
+  ]
+}
+
+fn field_focus_rule(class_name: String) -> BuildRule {
+  ResponseRule { subject: ClassSelector { name: class_name }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
+    decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
+    decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
+  ] }
+}
+
+// Under a coarse pointer every control a value holds is a touch target (gunbc.site.element
+// touch_target), and the list keeps one row pitch by taking the target as its pitch: a row that
+// holds a control and a row that holds text stay the same height, and a disclosure's summary fills
+// its row instead of sitting inside it with the fine-pointer margins.
+fn field_touch_pitch_rule(class_name: String) -> BuildRule {
+  MediaRule { condition: coarse_pointer, selector: ClassSelector { name: class_name }, decls: [
+    decl(prop: MinHeight, value: scale_var(t: height_control)),
+  ] }
+}
+
+fn field_list_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: field_list_class }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: join([field_label_column(), " minmax(0, 1fr)"], "")),
+      decl(prop: RawProperty { name: "column-gap" }, value: scale_var(t: field_label_gap)),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_row_class }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: RawProperty { name: "grid-column" }, value: "1 / -1"),
+      decl(prop: GridTemplateColumns, value: "subgrid"),
+      decl(prop: AlignItems, value: "start"),
+      decl(prop: MinHeight, value: scale_var(t: height_field_row)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_label_class }, decls: concat(element_text_decls(role: ElementLabel), [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: MinHeight, value: scale_var(t: height_field_row)),
+      decl(prop: MaxWidth, value: scale_var(t: field_label_max)),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ]) },
+    StaticRule { selector: ClassSelector { name: field_list_value_class }, decls: concat(element_text_decls(role: ElementBody), [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: MinHeight, value: scale_var(t: height_field_row)),
+    ]) },
+    StaticRule { selector: ClassSelector { name: field_list_text_class }, decls: field_single_line_decls() },
+    StaticRule { selector: RawSelector { text: join([field_selector(class_name: field_list_text_class), ":focus-within"], "") }, decls: [
+      decl(prop: WhiteSpace, value: "normal"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_absent_class }, decls: [
+      decl(prop: Color, value: palette_var(slot: SlotTextDim)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_assistive_class }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Width, value: scale_var(t: space_1)),
+      decl(prop: Height, value: scale_var(t: space_1)),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+      decl(prop: RawProperty { name: "clip-path" }, value: "inset(50%)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_link_class }, decls: [
+      decl(prop: Color, value: palette_action_ink_var()),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Padding, value: scale_pair(a: space_3, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_action_class }, decls: concat(field_single_line_decls(), [
+      decl(prop: FontFamily, value: "inherit"),
+      decl(prop: FontSize, value: "inherit"),
+      decl(prop: LineHeight, value: "inherit"),
+      decl(prop: Color, value: palette_action_ink_var()),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "0"),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+      decl(prop: MinHeight, value: scale_var(t: height_button_small)),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: TextAlign, value: "left"),
+      decl(prop: Cursor, value: "pointer"),
+    ]) },
+    StaticRule { selector: ClassSelector { name: field_list_person_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_face_class }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: Flex, value: "none"),
+      decl(prop: Width, value: scale_var(t: field_avatar)),
+      decl(prop: Height, value: scale_var(t: field_avatar)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+      decl(prop: Overflow, value: "hidden"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([field_selector(class_name: field_list_face_class), " > *"], "") }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "100%"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_disclosure_class }, decls: [
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_summary_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: MinHeight, value: scale_var(t: height_button_small)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_4)),
+      decl(prop: Margin, value: scale_pair(a: space_6, b: space_0)),
+      decl(prop: MarginLeft, value: field_negative(t: scale_var(t: space_4))),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: Color, value: "inherit"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([field_selector(class_name: field_list_disclosure_class), "[", field_list_open_attribute, "=\"", field_open_key(opens: FieldOpensInPlace), "\"][open] > ", field_selector(class_name: field_list_summary_class)], "") }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: field_list_panel_class }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_0)),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    ResponseRule { subject: ClassSelector { name: field_list_summary_class }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: palette_var(slot: SlotHover)),
+    ] },
+    ResponseRule { subject: ClassSelector { name: field_list_link_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: TextDecoration, value: "underline"),
+    ] },
+    ResponseRule { subject: ClassSelector { name: field_list_action_class }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: TextDecoration, value: "underline"),
+    ] },
+    field_focus_rule(class_name: field_list_summary_class),
+    field_focus_rule(class_name: field_list_text_class),
+    field_focus_rule(class_name: field_list_link_class),
+    field_focus_rule(class_name: field_list_action_class),
+    field_touch_pitch_rule(class_name: field_list_row_class),
+    field_touch_pitch_rule(class_name: field_list_label_class),
+    field_touch_pitch_rule(class_name: field_list_value_class),
+    MediaRule { condition: coarse_pointer, selector: ClassSelector { name: field_list_summary_class }, decls: concat(touch_target_decls(shape: TouchTargetBox), [
+      decl(prop: RawProperty { name: "margin-block" }, value: scale_var(t: space_0)),
+    ]) },
+    touch_target_rule(selector: ClassSelector { name: field_list_action_class }, shape: TouchTargetBox),
+    touch_target_rule(selector: ClassSelector { name: field_list_link_class }, shape: TouchTargetInlineLink),
+  ]
+}

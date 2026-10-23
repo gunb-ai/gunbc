@@ -1,0 +1,17 @@
+# Memory safety: v1_compiler tests use 5-11 GB each.
+# On 16 GB machines, parallel cargo runs cause OOM → system watchdog restart.
+
+[build]
+jobs = 2  # max parallel rustc/linker invocations per cargo run
+# A warning is an error in this repository. The policy row is
+# `gunbc.repo_self_warning_policy` `repo_self_warning_denial`; this is the channel that
+# reaches an ORDINARY `cargo build`/`cargo test` run from a clone, which the clippy command
+# and the workflow's toolchain step do not. An ambient RUSTFLAGS overrides this file rather
+# than composing with it, and CI sets the same value, so the two channels agree by value.
+rustflags = ["-D", "warnings"]
+
+[env]
+# v1/v2 tests build large `Dag` fixtures; the default thread stack overflows (WSL / ctrl-build).
+# Committed here so local + CI runners stay aligned (CI inherits this config; ci.yml does not re-set it).
+RUST_MIN_STACK = { value = "16777216", force = false }
+RUST_TEST_THREADS = { value = "1", force = false }  # max parallel test threads per binary

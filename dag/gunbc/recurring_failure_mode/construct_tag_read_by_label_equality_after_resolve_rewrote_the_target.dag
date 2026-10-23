@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.construct_tag_read_by_label_equality_after_resolve_rewrote_the_target
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data construct_tag_read_by_label_equality_after_resolve_rewrote_the_target: RecurringFailureMode = RecurringFailureMode {
+  identity: "construct_tag_read_by_label_equality_after_resolve_rewrote_the_target" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a reader recognises a record construct (or a fielded constructor pattern) by comparing the construct's first edge LABEL with the identity of the Atom it targets (v2.std.node_query construct_tag_optional: label == atom identity), while an earlier stage has already replaced that target. body lowering builds Conj { R: Atom(R), fields } (v2.std.node_query construct_node), and v2.compiler.resolve rewrites the tag Atom through resolve_atom and resolved_reference_node into declaration_reference_node(path), leaving the label as the leaf Symbol. After resolve the label names a spelling and the target names a declaration, so the equality the reader keys on can no longer hold for any user constructor.",
+    "SPECIMEN, measured by execution (2026-09-29, lively-eagle-657): a provider declaring type Pcr = PcrA { n: Bool } | PcrB and a consumer importing it with fn pc_make() -> Pcr { PcrA { n: true } }, ingested and resolved through v2.compiler.name_resolve resolve_with_admission_context_policy. The resolved construct is Conj { PcrA -> <declaration reference> v2.test.pc_provider.PcrA, n -> true }: the tag is correctly bound to the VARIANT's own declaration path, and construct_tag_optional answers Absent. The run used the seed built on quiet-hawk-702's D1 tree over this lane's own .dag sources.",
+    "POPULATION: the readers that key on label == atom identity. construct_tag_optional answers Absent for a resolved user construct (MEASURED). v2.std.node arrow_body_record_construct_conforms requires the first edge to target an Atom, so it answers false and well_formed rejects the body; v2.std.compilers.target_model target_value_expr_record_construct_gate refuses it for the same reason. Those two are INFERRED from their definitions, not measured. Every consumer of construct_tag_optional downstream of resolve inherits the Absent: v2.lens.machine_shape constructed_tag misses a constructed MachineShape, and v2.compiler.body_lowering_fold body_lower_is_core_substrate is reached only before resolve. The readers were correct when written, and the form moved under them.",
+    "HARM: section 5 silent wrongness where a reader answers Absent and the consumer treats Absent as 'not a construct' (the lens, any fold that dispatches on the tag); a located refusal where the reader is a gate. Neither is a typed statement that a construct was seen and misread.",
+    "RUNG FOUND AT: below the ladder for the silent readers (a missed construct is indistinguishable from a non-construct), mitigatable for the refusing gates. CEILING: structurally impossible. Which edge of a construct is its tag is a structural role, not a spelling equality, so the invalid pairing need not have a constructor. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the construct's tag edge carries a structural Core marker (the typed EdgeLabel coproduct of gunbc#12473, arm ConstructTag), and its target is an ordinary reference, an authored qualified_name spine before resolve and declaration_reference_node after, so every reader recognises a construct by the marker at every stage and no reader compares a label with a target. Plan and full reader census: docs/plans/construct-tag-reference-design.md (gunbc#12701). The control that is RED on base (a resolved user construct read by construct_tag_optional) lands with the cut and stays enrolled after it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.node_query", decl_name: "construct_tag_optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node", decl_name: "arrow_body_record_construct_conforms", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "target_value_expr_record_construct_gate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.qualified_construct", decl_name: "qc_a_resolved_user_construct_reads_its_tag_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.body_lowering.qualified_construct", decl_name: "qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,140 @@
+module test.claim.scope_rank_view_test
+
+import std.types { Bool, Int }
+import gunbc.scope_rank_view {
+  scope_rank_view_slots,
+  scope_rank_view_readers,
+  scope_rank_view_acceptance,
+  scope_rank_view_scope_counts,
+  scope_rank_slot_count,
+  scope_rank_polarity_arm_total,
+  scope_rank_lowest_rank_slots,
+  scope_rank_highest_rank_slots,
+  scope_rank_reader_count,
+  scope_rank_enumerating_readers,
+  scope_rank_whole_key_readers,
+  scope_rank_provenance_readers,
+  scope_rank_unconsumed_construction_readers,
+  scope_rank_admission_is_structural_after,
+  scope_rank_admission_regression_reachable,
+  scope_rank_instrument_read_counts,
+  scope_rank_transcribed_counts,
+  scope_rank_paired_acceptance_rows,
+  scope_rank_relayed_acceptance_rows
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// WHAT THIS WITNESS IS AND IS NOT. It executes the MODEL, not the seed: no assertion here moves if
+// the interpreter's fold changes tomorrow, and a green here is not evidence that any scope resolves
+// correctly. It exists because gunbc.scope_rank_view is the carrier the reader migration will be
+// designed against, and a model nothing executes is DESIGN section 5's specification-without-
+// execution -- the artifact that looks finished because it typechecks.
+//
+// NO ASSERTION COMPARES A COUNT TO A LITERAL POPULATION SIZE. Every number below is a fold over the
+// rows compared against another fold over the same rows, so adding a slot or a reader cannot make
+// this file stale and no assertion can be silenced by editing a number.
+
+// THE POLARITY COLUMN IS A PARTITION. Every slot sits in exactly one arm, so the four arm counts
+// must sum to the slot count. RED case: add a fifth polarity arm and file a slot in it without
+// extending the histogram, and this sum breaks.
+test fn scope_rank_polarity_column_partitions_every_slot() -> Bool {
+  scope_rank_polarity_arm_total() == scope_rank_slot_count()
+}
+
+// THE FINDING THIS LANE EXISTS TO CARRY, ASSERTED RATHER THAN NARRATED: the slots being replaced DO
+// NOT AGREE on how a scope decides a contested key. The brief names minimum rank, which is right for
+// the bare function slot and is the OPPOSITE of what the service-operation slot does. If this went
+// green with only one arm populated, a uniform minimum-rank cutover would be correct and this model
+// would be carrying no information. RED case: file every slot at one polarity.
+test fn the_slots_do_not_share_one_polarity() -> Bool {
+  (scope_rank_lowest_rank_slots() |> count) > 0
+    && (scope_rank_highest_rank_slots() |> count) > 0
+}
+
+// A POLARITY NOBODY CAN CHECK IS A POLARITY AN AUTHOR GUESSED. Every slot must name the input that
+// separates its rule from the others, including the slots whose discriminating case is not reachable
+// on the current grammar -- those say so in the field rather than leaving it blank. RED case: file a
+// slot with an empty discriminating_case.
+test fn every_slot_names_what_would_discriminate_its_polarity() -> Bool {
+  scope_rank_view_slots |> all(s => s.discriminating_case != "" && s.resolved_by != "")
+}
+
+// THE HONEST BOUNDARY COLUMN IS NOT EMPTY. The prize is scope ENTRY, and a reader that enumerates a
+// scope pays at the ask what it stops paying at entry. If no reader enumerated, the view would be
+// free everywhere and this column would be ceremony. RED case: score every reader as a point lookup,
+// which is the shape of a cutover that reports half a ledger.
+test fn some_reader_enumerates_rather_than_looks_up() -> Bool {
+  (scope_rank_enumerating_readers() |> count) > 0
+}
+
+// AND THE HARDEST ROW IS CARRIED SEPARATELY. A kind-filtered enumeration is served by a partitioned
+// corpus list; a whole-key enumeration is not, and it is the one row where the view is not obviously
+// cheaper. RED case: collapse the two enumeration arms into one, and the row that must be measured
+// stops being distinguishable from the rows that need not be.
+test fn the_whole_key_enumeration_is_carried_as_its_own_arm() -> Bool {
+  (scope_rank_whole_key_readers() |> count) > 0
+    && (scope_rank_whole_key_readers() |> count) < (scope_rank_enumerating_readers() |> count)
+}
+
+// THE ARM THE PER-SITE SWEEP ADDED, AND THE REASON IT IS NOT A POINT LOOKUP. A provenance reader
+// wants the WINNER'S DECLARING MODULE and decides a builtin dispatch from it, so a polarity or
+// admission error surfaces there as a different function executing rather than as a missing name.
+// It must be non-empty (or the cut order in the design has no first step) and a proper subset (or
+// the column is not discriminating). RED case: score the three interpreter dispatch guards as point
+// lookups, which is what a census that read only the call shape would have done.
+test fn some_reader_wants_the_winners_module_not_the_declaration() -> Bool {
+  (scope_rank_provenance_readers() |> count) > 0
+    && (scope_rank_provenance_readers() |> count) < scope_rank_reader_count()
+}
+
+// THE SITE THAT WOULD HAVE FORCED MATERIALIZATION TO SURVIVE THE CUT IS CARRIED, NOT ASSUMED AWAY.
+// It hands out a whole ResolvedGraph built from the scope map, which no resolver can serve; it has
+// no consumer, so it deletes. "The blocker is not real" is the claim a reader most wants to check,
+// so it is a row with its proof rather than a silent absence. RED case: drop the row, and the
+// cutover's hardest apparent obstacle stops being visible anywhere.
+test fn the_materialization_forcing_site_is_carried_with_its_proof() -> Bool {
+  (scope_rank_unconsumed_construction_readers() |> count) > 0
+}
+
+test fn every_reader_row_is_scored() -> Bool {
+  scope_rank_reader_count() == (scope_rank_view_readers |> count)
+    && scope_rank_reader_count() > 0
+}
+
+// THE HARD CONSTRAINT SURVIVES THE MIGRATION AS A CONSTRUCTION, NOT AS A FILTER. The guarantee holds
+// today because the map is materialized from the scope's own members; the corpus-wide index deletes
+// that construction, so the model must say how it is re-established. RED case: file the after state
+// as UnadmittedAnswerReachable -- which is what a cutover that reaches the prize by removing the
+// admission gate would honestly have to write, and this witness refuses it.
+test fn qualified_admission_stays_structural_after_the_cutover() -> Bool {
+  scope_rank_admission_is_structural_after() && (scope_rank_admission_regression_reachable() == false)
+}
+
+// THE SCOPE-COUNT RECONCILIATION IS A READING QUESTION, AND BOTH READINGS MUST BE PRESENT FOR IT TO
+// BE ONE. One figure comes from an instrument, the other is a transcription of that same line at an
+// earlier revision; carrying only the instrument read would delete the finding, and carrying only
+// the transcription would leave the design quoting prose. RED case: drop either row.
+test fn both_scope_count_readings_are_carried() -> Bool {
+  (scope_rank_instrument_read_counts() |> count) > 0
+    && (scope_rank_transcribed_counts() |> count) > 0
+}
+
+// AND THE TWO FIGURES MUST ACTUALLY DIFFER, or the reconciliation is about nothing. RED case: edit
+// the transcribed figure to match the measured one, which is the tempting repair that would make the
+// delta disappear without anyone re-deriving the instrument.
+test fn the_two_scope_count_figures_disagree() -> Bool {
+  scope_rank_view_scope_counts |> any(a =>
+    scope_rank_view_scope_counts |> any(b => a.figure != b.figure)
+  )
+}
+
+// AND THE RELAYED FIGURES ARE STILL CARRIED, MARKED AS WHAT THEY ARE. Deleting them would hide that
+// this lane was handed numbers it declined to assert; the distinction only carries information while
+// both kinds of row exist. RED case: drop the relayed row and the type's third arm is unreachable.
+test fn the_relayed_figures_are_carried_and_not_used_as_an_oracle() -> Bool {
+  (scope_rank_relayed_acceptance_rows() |> count) > 0
+    && (scope_rank_paired_acceptance_rows() |> count) > 0
+    && ((scope_rank_paired_acceptance_rows() |> count) + (scope_rank_relayed_acceptance_rows() |> count))
+      == (scope_rank_view_acceptance |> count)
+}

@@ -1,0 +1,9 @@
+module test.fixture.forked_spelling.variant_bystander
+
+import std.types { Int }
+import test.fixture.forked_spelling.variant_twin { fsp_variant_twin_answer }
+
+// Imported by the witness for this function alone, so variant_twin reaches the closure unnamed.
+fn fsp_variant_bystander_answer() -> Int {
+  fsp_variant_twin_answer()
+}

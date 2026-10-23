@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data regen_candidate_reverts_hand_authored_mirror: RecurringFailureMode = RecurringFailureMode {
+  identity: "regen_candidate_reverts_hand_authored_mirror" as NonEmptyStr,
+
+  receipts: [
+    "a regeneration installs over a hand-authored file and reports success (THE CANDIDATE TREE CARRIES EVERY MIRROR FILE, INCLUDING THE ONES REGENERATION DOES NOT AUTHOR, so installing the candidate wholesale reverts hand edits to those files while every figure the run prints stays green.",
+
+    "Invalid state: an install step whose population is `every file in the candidate` over a directory that holds BOTH generated and hand-authored files. Harm: hand-authored rows silently disappear -- not only the author's own, but rows other lanes landed earlier, because the candidate's copy is as old as the last build that produced it. The run then reports first_generation_equal and the author reports the verification they genuinely performed BEFORE the install.",
+
+    "THE OTHER DIRECTION OF THE SAME CONFUSION, gunbc#11291: not a regeneration reverting a hand edit, but an AUTHOR hand-editing a file the regeneration owns, which the drift phase then refuses. Recorded here rather than as a neighbour because both arise from one unresolved question -- WHICH SIDE AUTHORS THIS FILE -- and a reader who has internalised only the revert direction still reaches for the editor when the build breaks.",
+
+    "THE MECHANISM, AND WHY IT LOOKED NECESSARY AT THE TIME. Deleting a host seam removed its .dag roster row and its interpreter family arm, while the COMMITTED generated dispatch file still carried the arm's enum variant. The match went non-exhaustive, so the tree would not build -- and with no binary from that tree, there was apparently nothing to regenerate with. The editor looked like the only move. It was not: the PREVIOUS generation's binary, built before the deletion, reads the NEW .dag sources and emits the new mirrors without any edit. A previous-generation seed regenerating the next generation is the bootstrap itself, and the appearance of deadlock came from looking only at the tree that would not build.",
+
+    "THE TELL IS THE AUTHOR'S OWN STATE, NOT THE DIFF, which is what makes this worth a receipt: noticing that you are routing around the build IS the line-stop signal, and the author did not stop. DESIGN section 5 names the workaround as an absorbing fallback executed by the author, and its concealed deficit is usually in the layer the author is least equipped to inspect -- here the bootstrap order. The second instance in the same change had no deadlock at all: a projection mirror was hand-written for a NEW primitive, and the only difference from the emitted candidate turned out to be ROW ORDER, the emitter following the roster order the author had not matched. Same reach for the editor, no obstacle to justify it.",
+
+    "THE DISCRIMINATOR A REVIEWER CAN APPLY WITHOUT READING THE DIFF, offered because a fixed point is what made this one hard to see: a regeneration that AGREES with a hand edit proves the bytes are right and proves nothing about the method, so `first_generation_equal=true` is not evidence the file was authored correctly. Ask instead where the bytes came from. The receipt a generated surface owes is `installed from the candidate emitted by seed X`, and `hand-edited, later confirmed by regeneration` is a different claim wearing the same green.",
+
+    "RUNG FOUND AT: 1, mitigatable.",
+
+    "RECEIPT, gunbc#10688. Two `NAMESPACE_TRANSITION_ADMISSIONS` rows were authored in `src/v1/stage0/src/namespace_wave_admission.rs`, the phase was run, and it reported both ADMITTED-BY. The regen loop then installed the candidate, which reverted that file to a state predating gunbc#10676 -- deleting the two new rows AND the nine gunbc#10676 rows that had been on main for a day. The commit landed with a message asserting the phase green over bytes that no longer carried the admissions, and `git show --stat` on that commit read 23 insertions / 118 DELETIONS in a file the change was supposed to grow.",
+
+    "WHY IT SURVIVES REVIEW, and it is not inattention: the verification is REAL and it is simply taken at the wrong moment. Build, run the phase, read green, install, commit -- the install sits between the evidence and the artifact, and nothing in the loop's output mentions the file. A second run would have caught it, which is exactly why a loop that ends in an install must not be the last step.",
+
+    "RECOGNITION RULE: when an install step copies a produced tree over a source tree, ask which files in the DESTINATION are not authored by the producer. Any such file is reverted on every install, and the revert is silent because the producer never claimed to own it. The tell in the log is the absence of a tell -- the file is not named on either side.",
+
+    "A SECOND RULE, and it is the cheaper one: after any generate-and-install loop, read `git diff --stat` for NEGATIVE line counts on files the change was supposed to grow. A net deletion in a file you added rows to is the signature, and it is visible without knowing anything about the mechanism.",
+
+    "CEILING: 3, structurally guaranteed. The generator KNOWS which files it emitted -- it adjudicates them one by one -- so an install whose population is the emitted set rather than the candidate directory cannot touch a file the generator did not author, and no exclusion list is needed. NEXT-RUNG TRIGGER, a capability: the install step consuming the regeneration's own per-file adjudication roster as its population, so an unadjudicated file in the candidate is not installable rather than being skipped by name.",
+
+    "WHAT IS NOT CLAIMED: nothing in the repository was repaired by this row. The actuator that exhibited it is a local loop script, so the mitigation was an exclusion list of file NAMES -- which is the maintained-roster shape this repository files elsewhere, and it is wrong for the same reason: the next hand-authored mirror file is reverted until someone remembers to add it. The class stands at rung 1.)",
+  ],
+
+  evidence: [],
+}

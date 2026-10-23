@@ -1,0 +1,18 @@
+module v2.test.manual.posix_output_capture
+
+import v2.extdeps.posix { CapturedOutputPipes }
+import std.algebra { FreeMonoid }
+import v2.std.algebra { is_empty }
+
+data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
+  stdout: Empty,
+  stderr: Empty
+}
+
+test fn witness_captured_pipes_stdout_is_empty() -> Bool {
+  is_empty(xs: empty_captured_pipes.stdout)
+}
+
+test fn witness_captured_pipes_stderr_is_empty() -> Bool {
+  is_empty(xs: empty_captured_pipes.stderr)
+}

@@ -1,0 +1,38 @@
+module v2.lens.mock_totality
+
+
+fn mock_unhandled_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^mock_totality_unhandled_member,
+    at: Textual { file: ^mock_totality_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn mock_unhandled_rejection<M>() -> Outcome<M> {
+  Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
+}
+
+fn mock_totality_missing<C>(
+  published: List<C>,
+  handled: List<C>,
+  eq: fn(C, C) -> Bool
+) -> List<Coverage<C>> {
+  missing_coverage(expected: published, actual: handled, eq: eq)
+}
+
+fn mock_totality_lens<C>(
+  published: List<C>,
+  handled: List<C>,
+  eq: fn(C, C) -> Bool
+) -> Outcome<List<C>> {
+  if is_empty(xs: mock_totality_missing(published: published, handled: handled, eq: eq)) {
+    outcome_accepted(value: published)
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}

@@ -1,0 +1,99 @@
+module extdeps.vllm.sparse_indexer_topk
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.source_build { vllm_d2d649e6_revision }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/d2d649e674c75425d2d6975c87eb89fd4d55fff8/vllm/model_executor/layers/indexer_topk.py"
+  },
+}
+
+// WHICH TOP-K KERNEL THE SPARSE ATTENTION INDEXER RUNS, READ FROM UPSTREAM AT d2d649e6.
+//
+// DeepSeek V4.1's attention (vllm/models/deepseek_v4_1/attention.py) builds a SparseAttnIndexer, and
+// that indexer's decode top-k stage is vllm.model_executor.layers.indexer_topk SparseIndexerTopk. The
+// revision matters: indexer_topk.py and cmake/external_projects/deepselect.cmake do not exist at
+// 07b75534 (the revision extdeps.vllm.deepseek_v4_1_sm12 reads), so these facts are anchored to the
+// V4.1 runtime candidate's own source, d2d649e6, and to nothing older.
+
+// ── DEEPSELECT IS NOT BUILT FOR SM_12X, BY UPSTREAM'S OWN ARCH GATE ────────────────────────────
+//
+// cmake/external_projects/deepselect.cmake sets DEEPSELECT_SUPPORT_ARCHS to `10.0f` alone, and only
+// when the CUDA compiler is 12.9 or newer, then takes cuda_archs_loose_intersection with the build's
+// CUDA_ARCHS. `10.0f` is a family entry for major 10, so a 12.1 target selects nothing and the
+// extension is never compiled. setup.py registers `vllm._deepselect_C` as CMakeExtension(optional=True)
+// under the comment "DeepSelect requires CUDA 12.9 or later (SM100a/SM103a only)". So the import warning
+// `Failed to import the DeepSelect extension (vllm._deepselect_C)` in an sm_121 image is the expected
+// state of every correct build for this device, not a recipe defect, and no recipe change can remove
+// it short of porting DeepSelect's SM10x kernels.
+//
+// AN OPTIONAL EXTENSION'S GATE IS NOT AN FP4 SOURCE BLOCK. extdeps.vllm.deepseek_v4_1_sm12
+// VllmArchGatedSourceBlock carries compile defines for sources inside the main extension; this gate
+// decides whether a separate Python module exists at all, so what it carries is the module name.
+type VllmOptionalExtensionArchGate sole_constructor {
+  block: NonEmptyStr
+  arch_entries: List<NonEmptyStr>
+  minimum_cuda: NonEmptyStr
+  extension_module: NonEmptyStr
+  sources: List<NonEmptyStr>
+}
+
+data vllm_d2d649e6_deepselect_block: VllmOptionalExtensionArchGate = VllmOptionalExtensionArchGate {
+  block: "DEEPSELECT_ARCHS (cmake/external_projects/deepselect.cmake)" as NonEmptyStr,
+  arch_entries: ["10.0f" as NonEmptyStr],
+  minimum_cuda: "12.9" as NonEmptyStr,
+  extension_module: "vllm._deepselect_C" as NonEmptyStr,
+  sources: [
+    "DeepSelect csrc/api.cpp" as NonEmptyStr,
+    "DeepSelect csrc/cuda_kernels/v3/instantiations/*.cu" as NonEmptyStr,
+    "DeepSelect csrc/cuda_kernels/v3_fp32/instantiations/*.cu" as NonEmptyStr,
+    "DeepSelect csrc/cuda_kernels/v3_cluster/instantiations/*.cu" as NonEmptyStr,
+  ],
+}
+
+// ── AND ITS ABSENCE CHANGES NO ROUTE, ON ANY DEVICE ──────────────────────────────────────────────
+//
+// SparseIndexerTopk._resolve_auto is the chain that runs under kernel_config.sparse_indexer_topk_backend
+// = "auto", upstream's default, which this repository's launch arguments do not override. Its
+// docstring says so outright: "cooperative -> persistent -> per_row. deep_select/flashinfer/torch are
+// opt-in only". DeepSelect is therefore never selected automatically, even on SM100 where it is built,
+// so its absence here costs nothing on the default route.
+//
+// WHAT SM_12X LOSES IS COOPERATIVE, NOT DEEPSELECT. _cooperative_capable is
+// `has_device_capability(90) and not is_device_capability_family(120)`, so on a GB10 the first arm is
+// refused and a decode with topk_tokens in (512, 1024, 2048) resolves to "persistent" --
+// torch.ops._C.persistent_topk, from csrc/libtorch_stable/topk.cu, which CMakeLists.txt lists in the
+// unconditional VLLM_STABLE_EXT_SRC set and so is compiled for every target, 12.1 included. V4.1's
+// index_topk is 512 (extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_index_topk), which is in
+// that set. Prefill does not go through SparseIndexerTopk at all: SparseAttnIndexer calls
+// ops.top_k_per_row_prefill directly (vllm/model_executor/layers/sparse_attn_indexer.py).
+type VllmIndexerTopkRoute sole_constructor {
+  device_family: NonEmptyStr
+  selected_by: NonEmptyStr
+  decode_backend: NonEmptyStr
+  decode_operator: NonEmptyStr
+  prefill_operator: NonEmptyStr
+  established_against: VllmSourceRevision
+}
+
+data vllm_d2d649e6_sm12_indexer_topk_route: VllmIndexerTopkRoute = VllmIndexerTopkRoute {
+  device_family: "CUDA compute capability major 12 (is_device_capability_family(120))" as NonEmptyStr,
+  selected_by: "vllm.model_executor.layers.indexer_topk.SparseIndexerTopk._resolve_auto" as NonEmptyStr,
+  decode_backend: "persistent" as NonEmptyStr,
+  decode_operator: "_C.persistent_topk" as NonEmptyStr,
+  prefill_operator: "_C.top_k_per_row_prefill" as NonEmptyStr,
+  established_against: vllm_d2d649e6_revision,
+}
+
+// THE CLASS A PROBE ASKS FOR THE ROUTE, spelled as it is imported, so the route reading is the
+// resolver's own answer rather than a restatement of the chain above.
+data vllm_d2d649e6_indexer_topk_class: NonEmptyStr = "vllm.model_executor.layers.indexer_topk.SparseIndexerTopk" as NonEmptyStr
+
+// RADIX_TOPK_WORKSPACE_SIZE in indexer_topk.py: the scratch persistent_topk takes, 1024 * 1024 bytes.
+data vllm_d2d649e6_radix_topk_workspace: ByteSize = byte_size(count: 1048576)

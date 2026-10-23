@@ -1,0 +1,107 @@
+module test.claim.printed_chassis_manufacturing_manifest_livetree_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree IS TRUTHFUL AND IT NO LONGER MEANS NON-GATING. compile_dag_diagnostic_census
+// resolves synthetic sources against the live checkout, so the declaration is the honest one. What
+// changed is what it BUYS. It used to route the file to RequiredFloorDisposition DeclinedLiveTree --
+// discovered, declined, never run -- and an earlier draft of this annotation said exactly that.
+// v2.workflow.required_floor has since DELETED that arm at the root: the interpreter's
+// hermetic-checkout carve-out already decides the same question per identity at the effect boundary,
+// so the decline was a prediction standing where a decision existed. live_tree_disposition now feeds
+// affected-set eligibility and nothing else. The claim was not wrong when written; it was
+// invalidated by composition with main, which is why review 5103871417 caught it in a file this
+// change never edited.
+//
+// SO THIS BATTERY'S DISPOSITION IS WHATEVER THE EXACT-HEAD REQUIRED RUN REPORTS, and this annotation
+// deliberately does not predict it. If the identities are planned they execute and they gate; if the
+// census reaches a host effect with no hermetic arm, the interpreter refuses with
+// HermeticHostEffectRefused and the claim reports route_gap, which BLOCKS rather than quietly
+// passing. Either outcome is louder than the silence the deleted arm produced, and neither one is
+// established by a sentence here.
+//
+// THEY LIVE IN THEIR OWN FILE ANYWAY. live_tree_disposition is a per-FILE declaration, so folding
+// this battery in beside the eight substrate-only witnesses in
+// test.claim.printed_chassis_manufacturing_manifest_witness_test would bind those eight to whatever
+// route outcome a live-tree read gets. The split keeps the admission logic's evidence answerable on
+// its own terms.
+
+// THE CATALOG CITATION IS RESOLVED, AND NOT BY ANYTHING IN THIS FILE. Review 59176 observed that the
+// catalog module path was a literal corroborated only by a witness restating it. The carrier repair
+// landed -- the manifest holds a1_mini_catalog_ref as a DeclarationRef -- and an earlier draft of
+// this annotation went on to claim the ref was resolvable-in-principle but unresolved-in-evidence,
+// on the reasoning that declaration_ref_resolves needs an expensive decl_facts index resolved
+// against a pool. That claim was FALSE, and the required floor proved it by refusing: its
+// declarations phase resolves every cited module path in the corpus and failed this PR with
+// CITED-MODULE-ABSENT when a sibling fixture cited a module nobody declares. What was nearly recorded
+// instead was a fabricated gap -- an admission of missing evidence for a check that was already
+// running -- which understates a rung exactly as inflation overstates it.
+//
+// THE GATE HOLDS AT MODULE-PATH GRAIN, AND NO FURTHER. That red proves the cited module_path is
+// resolved. It does NOT establish that the decl_name resolves, that the field exists, or that the
+// named declaration is a catalog row -- no mutation here tested any of those, and claiming the whole
+// DeclarationRef has been adjudicated would promote the evidence past what it measured. This is why
+// the manifest compares module_path alone and its refusal arm carries expected_module/found_module:
+// the admission asserts that the asset's catalog module identifies the A1 mini product AUTHORITY,
+// not that it names an exact catalog row, because extdeps.printing.bambu_lab_a1_mini exposes product
+// facts such as a1_mini_build_envelope and no separately named catalog record for one to point at.
+// The trigger for the stronger claim is authoring that catalog declaration; until it exists, the
+// weaker sentence is the true one.
+
+data forged_source: String = "module probe_manifest_forged_admitted\nimport product.printed_chassis.manufacturing_manifest { AdmittedPrinterAsset }\nimport product.placement_supply { PhysicalAsset, PhysicalAssetIdentity }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nfn forged() -> AdmittedPrinterAsset {\n  AdmittedPrinterAsset {\n    asset: PhysicalAsset {\n      identity: \"forged\" as PhysicalAssetIdentity,\n      catalog: DeclarationRef { module_path: \"extdeps.printing.bambu_lab_a1_mini\", decl_name: \"a1_mini_build_envelope\", field: WholeDeclaration },\n      physical_serial: Absent,\n      procurement: Absent,\n    },\n  }\n}\n"
+
+data lawful_source: String = "module probe_manifest_lawful_admitted\nimport product.printed_chassis.manufacturing_manifest { AdmittedPrinterAsset }\nimport product.placement_supply { PhysicalAsset, PhysicalAssetIdentity }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nfn lawful(value: AdmittedPrinterAsset) -> AdmittedPrinterAsset {\n  value\n}\n"
+
+fn rows_of_subject(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
+  rows |> filter(r => r.subject_name == wanted)
+}
+
+// -1 on the NotRunnable arm, so a harness that never ran satisfies no witness below: every assertion
+// here compares against a non-negative quantity.
+fn seal_violation_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(
+      rows: rows_of_subject(
+        rows: census_rows_of_class(
+          rows: census_blocking_rows(rows: rows),
+          wanted: "SoleConstructorViolation"
+        ),
+        wanted: "AdmittedPrinterAsset"
+      )
+    )
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE SEAL THE MANIFEST'S HEADER CLAIMS, MEASURED RATHER THAN ASSERTED. That header bills
+// AdmittedPrinterAsset as a value only a join against the authority can mint; if a foreign module
+// can write the record literal, admit_printer_asset is a validator every consumer may bypass and the
+// claimed rung is inflated. Review 59176 flagged exactly that the claim had no evidence naming it.
+test fn w_a_foreign_record_literal_of_the_admitted_printer_refuses() -> Bool {
+  seal_violation_count(source: forged_source) >= 1
+}
+
+// The positive control. Same imports, same closure, no record literal: it proves the type resolves
+// and is legally nameable from a foreign module, so the red above is the literal being refused
+// rather than the import failing.
+test fn w_lawful_foreign_use_of_the_admitted_printer_is_unsealed() -> Bool {
+  seal_violation_count(source: lawful_source) == 0
+}
+
+// The differential. The two counts above could both be satisfied by a census dominated by the shared
+// closure; the subtraction states that the forged literal is the whole difference.
+test fn w_the_printer_seal_is_the_only_difference_between_the_sources() -> Bool {
+  seal_violation_count(source: forged_source) - seal_violation_count(source: lawful_source) >= 1
+}

@@ -1,0 +1,146 @@
+module gunbc.instruments.type_declaration_use_census_reading
+
+import std.types { String, Bool, List, Int }
+import std.algebra { Cons, Empty }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import v2.workflow.required_floor { required_gate_admits }
+
+// HOW `gunbc test //gunbc/instruments:type-declaration-use-census` READS ITS RUNS (the nominal-type
+// plan's M0). The census itself is native (the emitted v2 compiler's `census-infer` verb, whose
+// per-module fold and receipt are gunbc.instruments.type_declaration_use_census); this module is the
+// host-side reader the instrument row hands three runs to, and it decides the standing:
+//
+//   1. the FIXTURE ROOT (type_census_fixture_files): every expected row present and no unexpected
+//      row -- an identity join both ways, never a count -- and the run held;
+//   2. the UNINDEXED ROOT: a module that does not resolve, so the run MUST refuse with no
+//      observation (status 2). Any other status is the could-not-tell arm defaulting to a class;
+//   3. the WHOLE TREE (`dag` + `src/v2`): its receipt passes through, and the modules it names as
+//      affected are filtered by the required gate's own authority (v2.workflow.required_floor
+//      required_gate_admits) into the out-of-gate list M2's PR body carries. The gate is read here,
+//      on the host, because the emitted compiler's closure has no business carrying a workflow roster.
+//
+// Exit: 0 both controls held and the whole tree held; 1 a control did not hold; 2 the whole tree
+// refused (an unreached module or an undecided declaration -- no observation), or a run is missing.
+
+type TypeCensusFixtureFile {
+  path: String
+  content: String
+}
+
+// THE FIXTURE CLOSURE. Every class the REAL route can decide today has one declaration or one cast
+// here. A cast INTO a nominal (`n as Port`) makes native infer refuse its module today (the N7
+// frontier), so `fx.intro` holds that one cast alone and its expected class is OperandTypeUndecided:
+// when native infer admits the crossing, the expectation goes red and is updated, which is the signal.
+// The brand arm and the hash, concat and genuine-conversion arms are exercised at the receipt's
+// interface by test.claim.type_declaration_use_census_witness_test, because their evidence needs
+// std.types and std.content_hash, which a one-root fixture cannot resolve.
+fn type_census_fixture_files() -> List<TypeCensusFixtureFile> {
+  [
+    TypeCensusFixtureFile {
+      path: "fx/types.dag",
+      content: "module fx.types\n\ntype Alias = String\n\ntype Port = Int where port_ok\n\ntype Sealed nominal_opaque = String\n\ntype Pair { x: Int, y: Int }\n\ntype Choice = Left | Right\n\ntype Unused = Int\n\nfn port_ok(value: Int) -> Bool {\n  true\n}\n"
+    },
+    TypeCensusFixtureFile {
+      path: "fx/casts.dag",
+      content: "module fx.casts\n\nimport fx.types { Alias, Port, Sealed, Pair, Choice }\n\nfn project(p: Port) -> Int {\n  p as Int\n}\n\nfn compare(p: Port, q: Port) -> Bool {\n  (p as Int) == (q as Int)\n}\n\nfn identity(n: Int) -> Int {\n  n as Int\n}\n\nfn holders(a: Alias, s: Sealed, r: Pair, c: Choice) -> Int {\n  1\n}\n"
+    },
+    TypeCensusFixtureFile {
+      path: "fx/intro.dag",
+      content: "module fx.intro\n\nimport fx.types { Port }\n\nfn introduce(n: Int) -> Port {\n  n as Port\n}\n"
+    }
+  ]
+}
+
+fn type_census_unindexed_files() -> List<TypeCensusFixtureFile> {
+  [
+    TypeCensusFixtureFile {
+      path: "fx/broken.dag",
+      content: "module fx.broken\n\nfn f() -> Int {\n  not_declared_anywhere()\n}\n"
+    }
+  ]
+}
+
+// The rows the fixture must produce, each as the line prefix and class the receipt prints for it.
+type ExpectedRow {
+  prefix: String
+  class: String
+}
+
+fn type_census_fixture_expected() -> List<ExpectedRow> {
+  [
+    ExpectedRow { prefix: "decl fx.types Alias ", class: "TrueAlias" },
+    ExpectedRow { prefix: "decl fx.types Port ", class: "CheckedConstructionStage" },
+    ExpectedRow { prefix: "decl fx.types Sealed ", class: "Opaque" },
+    ExpectedRow { prefix: "decl fx.types Pair ", class: "MultiFieldRecord" },
+    ExpectedRow { prefix: "decl fx.types Choice ", class: "Sum" },
+    ExpectedRow { prefix: "decl fx.types Unused ", class: "UNCONSUMED" },
+    ExpectedRow { prefix: "cast fx.casts project@", class: "NominalProjection" },
+    ExpectedRow { prefix: "cast fx.casts compare@", class: "OperationWorkaround:compare" },
+    ExpectedRow { prefix: "cast fx.casts compare@", class: "OperationWorkaround:compare" },
+    ExpectedRow { prefix: "cast fx.casts identity@", class: "AliasNoOp" },
+    ExpectedRow { prefix: "cast fx.intro introduce@", class: "OperandTypeUndecided" }
+  ]
+}
+
+fn report_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "decl ") || starts_with(s: l, prefix: "cast "))
+}
+
+fn line_matches(line: String, e: ExpectedRow) -> Bool {
+  starts_with(s: line, prefix: e.prefix) && string_contains(s: line, pattern: " class=" + e.class + " ")
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN (DESIGN section 5): each expected row is matched by as many lines
+// as it is expected, and every printed row is matched by some expectation.
+fn fixture_join_failure(stdout: String) -> Optional<String> {
+  let lines = report_lines(stdout: stdout)
+  let expected = type_census_fixture_expected()
+  let missing = expected |> filter(e => count(lines |> filter(l => line_matches(line: l, e: e))) < count(expected |> filter(x => (x.prefix == e.prefix) && (x.class == e.class))))
+  let unexpected = lines |> filter(l => count(expected |> filter(e => line_matches(line: l, e: e))) == 0)
+  match first(missing) {
+    Present { value: e } => Present { value: "fixture row missing: " + e.prefix + " class=" + e.class }
+    Absent =>
+      match first(unexpected) {
+        Present { value: l } => Present { value: "fixture printed an unexpected row: " + l }
+        Absent => Absent
+      }
+  }
+}
+
+fn out_of_gate_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "affected "))
+    |> map(l => substring(s: l, start: 9, end: string_length(s: l)))
+    |> filter(m => !required_gate_admits(module_path: m))
+    |> map(m => "out_of_gate " + m)
+}
+
+fn type_declaration_use_census_standing(
+  fixture_stdout: String,
+  fixture_status: Int,
+  unindexed_status: Int,
+  tree_stdout: String,
+  tree_status: Int
+) -> CliWireResponse {
+  let gate = out_of_gate_lines(stdout: tree_stdout) |> join(separator: "\n")
+  let bytes = tree_stdout + "\n" + gate + "\n"
+  if fixture_status != 0 {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "fixture control: the census did not hold over the fixture root (status " + to_string(fixture_status) + ")" } }
+  } else {
+    match fixture_join_failure(stdout: fixture_stdout) {
+      Present { value: why } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "fixture control: " + why } }
+      Absent =>
+        if unindexed_status != 2 {
+          CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "unindexed control: a module with no reference index must refuse with status 2, got " + to_string(unindexed_status) } }
+        } else if tree_status == 0 {
+          CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+        } else if tree_status == 2 {
+          CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "whole tree: no observation (see the unreached and undecided rows above)" } }
+        } else {
+          CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "whole tree: the census exited " + to_string(tree_status) + ", outside its 0/1/2 contract" } }
+        }
+    }
+  }
+}

@@ -1,0 +1,279 @@
+module test.claim.mtjade1_rmedia_residue_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.machine_intake_mtjade1_access_observation {
+  FactoryEmpty,
+  MegaRacObservedShare,
+  PutAcknowledgedNotApplied,
+  PutApplyUnread,
+  RecordedManagerDecoded,
+  RecordedManagerRefused,
+  ResidueShareIncomplete,
+  ResidueCaptureUnreadable,
+  ResidueDigestMismatch,
+  ResidueCaptureHttpNotSuccess,
+  ResidueJsonUnreadable,
+  ResidueManagerUnread,
+  ResiduePutEchoOrPersistMismatch,
+  RmediaGeneralResidueObserved,
+  RmediaGeneralResidueRefused,
+  RmediaGeneralResidueStanding,
+  StickyAfterEmptyBefore,
+  decode_rmedia_general_residue,
+  mtjade1_j3_before_general_path,
+  mtjade1_j3_before_general_sha256,
+  mtjade1_j3_media_incident_receipt_path,
+  mtjade1_j3_media_incident_receipt_sha256,
+  put_apply_standing_of,
+  read_mtjade1_current_manager_read,
+  read_mtjade1_media_general_put_standing,
+  read_mtjade1_rmedia_general_residue,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE REAL PATH: empty before_general + SEQUENCE digest + sticky GET. Origin reds if before is
+// occupied or the GET digest is wrong. The .188 path is the GET's contents, not a provenance constant.
+test fn w_mtjade1_rmedia_residue_is_sticky_after_empty_before() -> Bool {
+  match read_mtjade1_rmedia_general_residue() {
+    RmediaGeneralResidueRefused { gap: _ } => false
+    RmediaGeneralResidueObserved { residue: r } =>
+      (r.subject as String) == "mtjade1"
+        && r.share.server_address == "192.168.1.188"
+        && r.share.source_path == "/srv/bmc"
+        && r.share.share_type == "nfs"
+        && r.share.mount_cd == "0"
+        && r.share.remote_media_support == "0"
+        && match r.origin {
+          FactoryEmpty { before_path: _, before_sha256: _ } => false
+          StickyAfterEmptyBefore { before_path: bp, before_sha256: bh, incident_receipt_path: ip, incident_receipt_sha256: ih } =>
+            (bp as String) == (mtjade1_j3_before_general_path as String)
+              && (bh as String) == (mtjade1_j3_before_general_sha256 as String)
+              && (ip as String) == (mtjade1_j3_media_incident_receipt_path as String)
+              && (ih as String) == (mtjade1_j3_media_incident_receipt_sha256 as String)
+        }
+  }
+}
+
+test fn w_a_digest_mismatch_on_the_restore_get_refuses_the_residue() -> Bool {
+  let before = "{ \"cd_remote_server_address\": \"\", \"cd_remote_source_path\": \"\", \"cd_remote_share_type\": \"\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+  let bh = sha256_hex_of_text(text: before) as NonEmptyStr
+  let seq = "seq"
+  let sh = sha256_hex_of_text(text: seq) as NonEmptyStr
+  match decode_rmedia_general_residue(
+    before_content: before,
+    before_sha256: bh,
+    get_content: "{}",
+    get_sha256: "not-the-digest",
+    sequence_content: seq,
+    sequence_sha256: sh,
+    before_path: "before" as NonEmptyStr,
+    get_path: "get" as NonEmptyStr,
+    incident_path: "seq" as NonEmptyStr,
+  ) {
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueDigestMismatch { expected: _, observed: _ } => true
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueShareIncomplete { role: _, share: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+    RmediaGeneralResidueObserved { residue: _ } => false
+  }
+}
+
+test fn w_occupied_before_refuses_this_lane_residue() -> Bool {
+  let body = "{ \"cd_remote_server_address\": \"192.168.1.1\", \"cd_remote_source_path\": \"/x\", \"cd_remote_share_type\": \"nfs\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+  let h = sha256_hex_of_text(text: body) as NonEmptyStr
+  match decode_rmedia_general_residue(
+    before_content: body,
+    before_sha256: h,
+    get_content: body,
+    get_sha256: h,
+    sequence_content: "seq",
+    sequence_sha256: sha256_hex_of_text(text: "seq") as NonEmptyStr,
+    before_path: "before" as NonEmptyStr,
+    get_path: "get" as NonEmptyStr,
+    incident_path: "seq" as NonEmptyStr,
+  ) {
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueShareIncomplete { role: r, share: s } => (r as String) == "before" && s.server_address == "192.168.1.1"
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+    RmediaGeneralResidueObserved { residue: _ } => false
+  }
+}
+
+test fn w_empty_before_and_empty_get_are_factory_empty() -> Bool {
+  let body = "{ \"cd_remote_server_address\": \"\", \"cd_remote_source_path\": \"\", \"cd_remote_share_type\": \"\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+  let h = sha256_hex_of_text(text: body) as NonEmptyStr
+  match decode_rmedia_general_residue(
+    before_content: body,
+    before_sha256: h,
+    get_content: body,
+    get_sha256: h,
+    sequence_content: "seq",
+    sequence_sha256: sha256_hex_of_text(text: "seq") as NonEmptyStr,
+    before_path: "before.json" as NonEmptyStr,
+    get_path: "get.json" as NonEmptyStr,
+    incident_path: "seq" as NonEmptyStr,
+  ) {
+    RmediaGeneralResidueRefused { gap: _ } => false
+    RmediaGeneralResidueObserved { residue: r } => match r.origin {
+      FactoryEmpty { before_path: p, before_sha256: _ } => (p as String) == "before.json"
+      StickyAfterEmptyBefore { before_path: _, before_sha256: _, incident_receipt_path: _, incident_receipt_sha256: _ } => false
+    }
+  }
+}
+
+// Echo vs persist, firmware from the Manager capture. A GET that matched the request would refuse.
+test fn w_media_general_put_echoed_and_did_not_persist() -> Bool {
+  let mgr = read_mtjade1_current_manager_read()
+  let fw = match mgr.identity.decoded {
+    RecordedManagerRefused { gap: _ } => ""
+    RecordedManagerDecoded { observation: o } => o.firmware_version
+  }
+  match read_mtjade1_media_general_put_standing() {
+    PutApplyUnread { gap: _ } => false
+    PutAcknowledgedNotApplied { firmware_wire: w, requested: req, persisted: got, request_path: _, request_sha256: _, response_path: _, response_sha256: _, get_path: _, get_sha256: _ } =>
+      (w as String) == fw
+        && fw == "2.11.104000"
+        && req.server_address == ""
+        && got.server_address == "192.168.1.188"
+        && got.source_path == "/srv/bmc"
+  }
+}
+
+fn empty_general_json() -> String {
+  "{ \"cd_remote_server_address\": \"\", \"cd_remote_source_path\": \"\", \"cd_remote_share_type\": \"\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+}
+
+fn partial_empty_server_retained_path() -> String {
+  "{ \"cd_remote_server_address\": \"\", \"cd_remote_source_path\": \"/srv/bmc\", \"cd_remote_share_type\": \"nfs\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+}
+
+fn decode_supplied(before: String, get: String) -> RmediaGeneralResidueStanding {
+  decode_rmedia_general_residue(
+    before_content: before,
+    before_sha256: sha256_hex_of_text(text: before) as NonEmptyStr,
+    get_content: get,
+    get_sha256: sha256_hex_of_text(text: get) as NonEmptyStr,
+    sequence_content: "seq",
+    sequence_sha256: sha256_hex_of_text(text: "seq") as NonEmptyStr,
+    before_path: "before" as NonEmptyStr,
+    get_path: "get" as NonEmptyStr,
+    incident_path: "seq" as NonEmptyStr,
+  )
+}
+
+test fn w_partial_before_is_not_an_empty_baseline() -> Bool {
+  match decode_supplied(before: partial_empty_server_retained_path(), get: empty_general_json()) {
+    RmediaGeneralResidueObserved { residue: _ } => false
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueShareIncomplete { role: r, share: s } => (r as String) == "before" && s.source_path == "/srv/bmc" && s.server_address == ""
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+  }
+}
+
+test fn w_partial_after_is_not_factory_empty() -> Bool {
+  match decode_supplied(before: empty_general_json(), get: partial_empty_server_retained_path()) {
+    RmediaGeneralResidueObserved { residue: r } => match r.origin {
+      FactoryEmpty { before_path: _, before_sha256: _ } => false
+      StickyAfterEmptyBefore { before_path: _, before_sha256: _, incident_receipt_path: _, incident_receipt_sha256: _ } => false
+    }
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueShareIncomplete { role: r, share: s } => (r as String) == "after" && s.server_address == "" && s.source_path == "/srv/bmc"
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+  }
+}
+
+fn partial_empty_server_empty_path_typed() -> String {
+  "{ \"cd_remote_server_address\": \"\", \"cd_remote_source_path\": \"\", \"cd_remote_share_type\": \"nfs\", \"mount_cd\": 0, \"remote_media_support\": 0 }"
+}
+
+test fn w_empty_server_and_path_with_type_is_not_factory_empty() -> Bool {
+  match decode_supplied(before: empty_general_json(), get: partial_empty_server_empty_path_typed()) {
+    RmediaGeneralResidueObserved { residue: r } => match r.origin {
+      FactoryEmpty { before_path: _, before_sha256: _ } => false
+      StickyAfterEmptyBefore { before_path: _, before_sha256: _, incident_receipt_path: _, incident_receipt_sha256: _ } => false
+    }
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueShareIncomplete { role: r, share: s } => (r as String) == "after" && s.share_type == "nfs" && s.server_address == "" && s.source_path == ""
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+  }
+}
+
+test fn w_http_500_trailer_refuses_the_share_decode() -> Bool {
+  let body = join([empty_general_json(), "HTTP_CODE:500"], "\n")
+  match decode_supplied(before: body, get: empty_general_json()) {
+    RmediaGeneralResidueObserved { residue: _ } => false
+    RmediaGeneralResidueRefused { gap: g } => match g {
+      ResidueCaptureHttpNotSuccess { trailer: t } => t == "HTTP_CODE:500"
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueShareIncomplete { role: _, share: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+      ResiduePutEchoOrPersistMismatch { cause: _ } => false
+    }
+  }
+}
+
+test fn w_put_standing_refuses_when_get_matches_request() -> Bool {
+  let empty = MegaRacObservedShare {
+    server_address: "",
+    source_path: "",
+    share_type: "",
+    mount_cd: "0",
+    remote_media_support: "0",
+  }
+  match put_apply_standing_of(
+    firmware_wire: "x" as NonEmptyStr,
+    requested: empty,
+    echoed: empty,
+    persisted: empty,
+    request_path: "r" as NonEmptyStr,
+    request_sha256: "r" as NonEmptyStr,
+    response_path: "p" as NonEmptyStr,
+    response_sha256: "p" as NonEmptyStr,
+    get_path: "g" as NonEmptyStr,
+    get_sha256: "g" as NonEmptyStr,
+  ) {
+    PutAcknowledgedNotApplied { firmware_wire: _, requested: _, persisted: _, request_path: _, request_sha256: _, response_path: _, response_sha256: _, get_path: _, get_sha256: _ } => false
+    PutApplyUnread { gap: g } => match g {
+      ResiduePutEchoOrPersistMismatch { cause: _ } => true
+      ResidueCaptureUnreadable { error: _ } => false
+      ResidueDigestMismatch { expected: _, observed: _ } => false
+      ResidueJsonUnreadable { gap: _ } => false
+      ResidueCaptureHttpNotSuccess { trailer: _ } => false
+      ResidueShareIncomplete { role: _, share: _ } => false
+      ResidueManagerUnread { cause: _ } => false
+    }
+  }
+}

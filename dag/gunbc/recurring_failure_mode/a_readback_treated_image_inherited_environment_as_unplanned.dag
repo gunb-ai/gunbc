@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_readback_treated_image_inherited_environment_as_unplanned
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_readback_treated_image_inherited_environment_as_unplanned: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_readback_treated_image_inherited_environment_as_unplanned" as NonEmptyStr,
+
+  receipts: [
+    "A CONTAINER READBACK REFUSED THE IMAGE'S OWN ENVIRONMENT AS 'ASSIGNMENTS NOBODY PLANNED'. A container's Config.Env is the image's Config.Env overlaid by the create call's -e assignments, so a readback that compares the observed env against the spec alone classifies every image-declared assignment (PATH, CUDA_VERSION, LD_LIBRARY_PATH, ...) as unplanned. gunbc.spark.native_serving_apply spark_native_rank_readback refused on any such name, while the authority that computed them (gunbc.spark.serving_relaunch_transaction env_unclaimed_names) documented that list as 'not consulted by the verdict' -- the note and the verdict disagreed about what the list was for.",
+
+    "SPECIMEN, 2026-10-04, gunbc#13040, Group A fp8-8 launch run 37172948981: every host refused with 'environment assignments nobody planned: PATH, NVARCH, NVIDIA_REQUIRE_CUDA, ..., VLLM_IMAGE_TAG' -- the vLLM image's own declarations -- and the arm rolled back.",
+
+    "THE OVER-CORRECTION THIS CLASS INVITES IS THE ABSORBING FALLBACK: admitting any name the image declares, or treating an unread image env as 'nothing inherited' / 'everything inherited'. Both hide the case the readback exists for -- PATH or LD_LIBRARY_PATH changed underneath the plan. The comparison is by ASSIGNMENT: an observed NAME=VALUE identical to one in the image's Config.Env is inherited; a declared name with a different observed value that the spec does not claim is an override nobody planned and refuses; the image is read by the id the container reports and must be the image the plan resolves to, before any env comparison; an unread image refuses with its cause.",
+
+    "REPAIR (gunbc#13040, operator decision relayed 2026-10-04): spark_native_image_facts reads the planned reference's content id and Config.Env in the administrator session (no new grant); spark_native_image_readback_gap refuses an unread image or a container created from a different id (which also discharges the declared tag-resolution trigger on the image row); spark_native_unplanned_assignments compares assignments; env_unclaimed_names' note now says what the verdict does. RUNG FOUND AT: mitigatable (it refused, loudly, but refused a correct arm). RUNG NOW: mechanically preventable (witnesses w_image_inherited_env_is_admitted_by_assignment and w_the_image_gap_refuses_an_unread_or_different_image). CEILING: mechanically preventable (external producer). NEXT-RUNG TRIGGER: those witnesses run over an image Config.Env and a container inspect document CAPTURED from a Group A host rather than designed.",
+  ],
+
+  evidence: [],
+}

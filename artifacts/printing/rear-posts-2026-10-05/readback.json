@@ -1,0 +1,76 @@
+[
+  {
+    "plate": "rear-and-upper-posts",
+    "objects": [
+      "M140",
+      "G140",
+      "CU-1-1",
+      "CU-11",
+      "CU1-1",
+      "CU11",
+      "CP-1-1",
+      "CP-11",
+      "CP1-1",
+      "CP11"
+    ],
+    "sha256": "6c7fbb7afd5e6c9aaecc252c693df416e0cd170e8523e667e3a2cd49d0c9a5d1",
+    "seconds": 56110,
+    "grams": 200.4,
+    "support_fraction": 0.0431805612335687,
+    "support_mm_by_object": {
+      "CU11": 174.20300999999913,
+      "CU-11": 174.20300999999915,
+      "G140": 783.3089899999517,
+      "M140": 1413.358740000025,
+      "CU-1-1": 181.0683000000004,
+      "CU1-1": 174.20300999999915,
+      "CP-1-1": 0.0,
+      "CP-11": 0.0,
+      "CP1-1": 0.0,
+      "CP11": 0.0
+    },
+    "extrusion_mm_by_feature": {
+      "Support": 2507.9353999998425,
+      "Outer wall": 15872.752379999927,
+      "Inner wall": 37541.26568999349,
+      "Bottom surface": 185.691060000001,
+      "Brim": 222.78522999999848,
+      "Gap infill": 905.6723700000108,
+      "Internal solid infill": 2837.5871899997996,
+      "Sparse infill": 5518.038489999481,
+      "Internal Bridge": 468.8338699999985,
+      "Top surface": 474.9304900000076,
+      "Support interface": 392.40965999999634,
+      "Overhang wall": 109.81214000000061,
+      "Bridge": 130.12676999999977
+    },
+    "path_bounds": {
+      "project": "rear-and-upper-posts.3mf",
+      "extrusion_centerline_bounds_xy_mm": [
+        3.472,
+        20.516,
+        174.681,
+        158.517
+      ],
+      "arc_moves_checked": 49053,
+      "edge_allowance_mm": 0.25
+    },
+    "warnings": [
+      {
+        "msg": "bed_temperature_too_high_than_filament",
+        "level": "3",
+        "error_code": "1000C001"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "2",
+        "error_code": "10018003"
+      },
+      {
+        "msg": "not_support_traditional_timelapse",
+        "level": "3",
+        "error_code": "1000C003"
+      }
+    ]
+  }
+]

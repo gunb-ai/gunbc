@@ -1,0 +1,33 @@
+module gunbc.recurring_failure_mode.metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound: RecurringFailureMode = RecurringFailureMode {
+  identity: "metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound" as NonEmptyStr,
+
+  receipts: [
+    "**a budget is declared over one quantity, its clock counts a broader one, and an implementation detail routes an unintended cost through the difference** (INVALID STATE: an evaluation budget meant to bound how much the interpreter EVALUATES reads CLOCK_THREAD_CPUTIME_ID, which counts the thread's user AND system time, and a spawn path that forces a real fork() of a multi-GB process charges the page-table copy and copy-on-write faults to that thread as system time. HARM: the budget refuses -- correctly by its clock, wrongly by its intent -- and every conclusion drawn from the metered number is about the wrong quantity.",
+
+    "SPECIMEN (2026-09-11, v1_interpreter configure_shell_process_group_for_wall_kill). With a wall deadline armed, every shell spawn carried a pre_exec(setpgid), which forces Rust std off posix_spawn onto fork(). Production arms the wall budget. THE INSTRUMENT that exposed it, and that re-derives it: the serve thread's utime and stime read from /proc/<pid>/task/<tid>/stat immediately before and after one POST /dispatch against a lab serve instance, run once on main and once on gunbc#11027's build. Before, system time was nearly all of the thread-CPU delta and the route sat just under its CPU limit; after, system time was negligible. The before/after table is recorded on gunbc#11027 rather than transcribed here.",
+
+    "DISTINGUISHING FACTS, the ones that made it survive a night of careful measurement. (1) THE REFUSAL WAS LOUD AND TYPED, so it read as the budget working. (2) THE COST WAS PROPORTIONAL TO RESIDENT SIZE, so the same route measured differently from run to run and read as host noise. (3) IT HAD A CONSTANT PER-EFFECT SIGNATURE -- in a timestamped effect trace of one dispatch, every subprocess cost about the same whatever it ran, git rev-parse included -- which is the tell: a cost that does not vary with the work is not the work. (4) The first two hypotheses were wrong in instructive directions: the route was blamed on two unrelated branches from a difference with no baseline, then on child-process CPU, which the clock provably excludes.",
+
+    "RECOGNITION RULE: for any budget, name the quantity it INTENDS to bound, then list every component its clock actually counts, and ask what else can land on that clock. For a thread-CPU budget, split utime from stime before believing either: a stime-dominated reading is the kernel working on the thread's behalf, not the thread's program.",
+
+    "DISTINCT FROM ITS NEIGHBOURS. denominator_moved_between_measurement_and_comparison is about a comparison whose base changed between two readings; here the reading is stable and the quantity it names is the wrong one. artifact_declares_a_threshold_it_is_not_measured_against is a threshold with no measurement behind it; here the measurement exists and is exact about a different quantity. guard_protects_a_different_object_than_the_harm_travels_through (gunbc#11021, open when this row was filed) is the general shape; this row is its metering case, and carries a mechanism of its own.",
+
+    "RUNG FOUND AT: mitigatable for the refusal itself (typed, located, stopped the route), and SILENT WRONGNESS for what was inferred from the number: a proposed authorization condition, 'the dev instance completes a dispatch within the production CPU budget', was measuring fork frequency and had to be corrected upward.",
+
+    "RUNG AFTER REPAIR, for the specimen only: the spawn path no longer forks, so this particular cost no longer reaches the clock. The positive control is v1_interpreter wall_deadline_kill_tests armed_wall_deadline_spawns_the_child_as_its_own_process_group_leader (process-group semantics kept); it executes locally only, because Rust unit tests are off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). The cost evidence is the before/after serve-thread measurement recorded on gunbc#11027.",
+
+    "ATTAINABLE CEILING FOR THE CLASS: MECHANICALLY PREVENTABLE, not higher. The clock cannot be narrowed to user time alone and still be a sound bound: evaluation legitimately incurs system time (allocation faults, I/O it performs), so excluding system time would open the opposite hole. What IS decidable is the SPLIT: a budget receipt can carry user and system time separately and refuse naming which component crossed, which makes a mis-denominated refusal visible at the moment it fires instead of after a night of hypotheses.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the evaluation-budget refusal and its receipt carry thread user time and system time as separate fields, so every EvaluationBudgetExceeded on the thread-CPU clock states the split, and a consumer can refuse to treat a system-time-dominated reading as evaluation cost. Recording the split in an ad-hoc measurement does not satisfy this trigger; the refusal itself must carry it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "configure_shell_process_group_for_wall_kill", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,47 @@
+module gunbc.host_speed_calibration_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that renders the enrolment margin's same-run host-speed
+// calibration (node adhoc-c9504740-637; sharp-raven-357 ruling with the operator's go-ahead,
+// 2026-10-05). gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated
+// hand growth in src/v1 a stop-line, so each ADDED declaration is enumerated below. Modified items
+// keep their names and are not netted (ExistingSeedItemModified): EnrolmentThresholds (the
+// host_speed_factor_permille field), enrolment_margin_standing_for (every CPU figure calibrated by
+// that factor before a threshold is consulted), run_required_floor (reads the calibration policy,
+// classifies the specimen replicates' readings and takes the fastest, refuses on a non-calibrated arm, and reports raw beside
+// calibrated ms), and the unit-test constant TEST_ENROLMENT_THRESHOLDS (the reference factor 1000).
+//
+// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
+// v1_seed_standing admits a change when it serves the v2 self-host program. The required floor is the
+// instrument guarding that program, and without this change its enrolment margin flips same-step
+// claims on runner speed (gunbc#13168), so lanes restructure tiny claims to fit runner noise.
+//
+// THE DECISION LIVES IN .dag; THE RUST IS ITS MIRROR, NOT A SECOND RULE. The factor, its range, its
+// refusal arms and the calibrated reading are v2.workflow.floor_eval_step_calibration
+// (HostSpeedCalibration, host_speed_calibration_of, calibrated_cpu_ms) and
+// v2.workflow.floor_enrolment_margin (enrolment_host_speed_calibration, enrolment_calibrated_reading),
+// tested by v2.test.floor_enrolment_margin. Every policy figure the host uses is read from the model
+// through floor_enrolment_margin's enrolment_host_speed_* read points.
+data host_speed_calibration_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "HostSpeedCalibrationPolicy", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_host_speed_calibration_policy", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "HostSpeedCalibration", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "host_speed_calibration_for", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "host_speed_calibration_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "host_speed_calibration_of_replicate", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "calibrated_cpu_ms", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "test_calibration_policy", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "calibration_occurrence", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "calibrated_factor_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "the_same_claim_gets_the_same_enrolment_verdict_at_two_runner_speeds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "the_host_speed_calibration_refuses_without_an_exact_plausible_specimen_reading", field: WholeDeclaration },
+  ],
+  reason: "The required floor's host must judge v2.workflow.floor_enrolment_margin in calibrated CPU ms: it reads the calibration policy from the model, classifies the calibration specimen's reading in the same run, refuses the run on any non-calibrated arm, and rescales every enrolment reading by the one factor (adhoc-c9504740-637). The unit tests are the seed-side controls: same verdict at two runner speeds, expensive claims still refuse, a missing or implausible specimen refuses.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "The enrolment-margin gate's host rendering migrates with required_floor_runner's other enrolment arms: when v2.workflow.floor_enrolment_margin's standing and enrolment_host_speed_calibration are evaluated from the model on the required path rather than mirrored in host Rust, the policy reader, the calibration mirror and these tests delete.",
+  current_boundary: "Reachable only from run_required_floor's enrolment-margin gate (witnesses lane) and only when that gate evaluates; decides no other gate and rescales no budget other than the enrolment margin's thresholds.",
+}

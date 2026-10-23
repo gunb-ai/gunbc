@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.required_floor_strict_prep_sits_on_memory_high
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data required_floor_strict_prep_sits_on_memory_high: RecurringFailureMode = RecurringFailureMode {
+  identity: "required_floor_strict_prep_sits_on_memory_high" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the required floor's Strict-prep of the gate closure already sits on the CI cgroup memory.high watermark (memory_governor DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES) at prepared-subject-warm, on ordinary merge_group runs that do not plan the MegaRAC forged-probe census. HARM: a changed-witness seed that adds even a small extra Strict module (or extra high-event pressure while already throttled) tips the lane into a wall-time cancel. The class is the floor's resident set at the edge, not a unique typed graph of this witness.",
+
+    "RECOGNITION RULE. Read the same two seams on a green merge_group floor and on a control that only plans an extra witness: prepare-closure-resolve and prepared-subject-warm. If both already sit on memory.high (re-derive from gunbc.cli_run.required_floor_runner floor-cgroup events_local at those seams) an extra planned module is a tipping input, not a gigabyte-scale typed graph of its own. Raising memory.high, sharding, or excluding the witness is the absorbing fallback.",
+
+    "DISTINGUISHING FACT: fixture_compile_retained_on_the_process_shared_index is a different class (census-probe both-closure rows on the process-shared MultiEntryIndex). This class is Strict-prep of the prepared subject before any census probe runs. The forged-probe witness's authored imports are four production modules; unit control forged_probe_witness_module_both_closure_excludes_string_literal_imports refuses MegaRAC paths named only inside forged_probe_source.",
+
+    "MEASURED MARGIN (same phases). Re-derive from gunbc.cli_run.required_floor_runner at prepare-closure-resolve and prepared-subject-warm. Named pair: merge_group run 37744410173 (does not plan the seven forged-probe census claims) and control #13576 run 37743678634 (plans them). Both logs sit on the CI cgroup memory.high watermark at prepared-subject-warm. The extra planned seed adds high-event pressure while throttled, not a gigabyte-scale unique typed graph. A contradicting re-derivation is a with/without pair whose prepare-closure-resolve peak differs by gigabytes.",
+
+    "STRUCTURAL PREDICTION (DESIGN section 6b): deleting the changed_module_seeds Strict-prep of this witness, or not retaining its typed module on prepared.graph into discovery, cannot recover tens of GiB because those tens are already the gate closure. Prepare-only on main 15951783a2 (assemble_prepared_subject_from_corpus then prepare_repository_from_corpus over witness_layer_roots): gate seeds keep 2981 modules, peak VmHWM 19.45 GiB; the same seeds plus test.claim.megarac_managed_host_forged_probe_witness keep 2982, peak 18.71 GiB. Added identity is that witness alone (40 visible names); zero v1.compiler / v2.compiler modules. A contradicting instrument is a with/without floor pair whose prepare-closure-resolve peak differs by gigabytes.",
+
+    "LOOKUP REALIZATION (DESIGN section 6b). Demand is each bare-name resolution during typecheck. The shared-state LCA is that module's TypeEnv. Materializing ancestry_str_bindings on every typed module on prepared.graph is this class's pin, and that flatten (B1) is what ships: an empty-ancestry parent walk was tried and reverted because commit_workflow closure reconcile went ~20x (main 15951783a2 wall 62s vs walk head 1251s) while RSS stayed in the same band. The class stays UNFIXED until the next-rung trigger below holds. Do not read a walk overlay as the current retain shape.",
+
+    "RUNG FOUND AT: silent wrongness on a planned-witness floor (90-minute cancel). RUNG NOW: mitigatable at best, UNFIXED. Recording this class and isolating the sibling fixture-index leak does not discharge this class. The prepared subject's resident set at prepared-subject-warm still sits on memory.high on ordinary merge_group floors. CEILING: structurally guaranteed once the prepared graph cannot retain a flattened ancestry overlay (or any other typecheck-only carrier) whose working set reaches memory.high. NEXT-RUNG TRIGGER: the required floor can finish Strict-prep — including when it plans the MegaRAC forged-probe census claims — with prepared-subject-warm runner-local high at 0 and current well below memory.high.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Observed by gunbc.cli_run.required_floor_runner prepare-closure-resolve / prepared-subject-warm. GREEN/RED for the sibling fixture-index class stay enrolled separately.",
+  ],
+
+  evidence: [],
+}

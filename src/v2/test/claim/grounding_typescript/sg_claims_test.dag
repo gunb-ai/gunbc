@@ -1,0 +1,170 @@
+module v2.test.grounding_typescript.sg_claims
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+fn ts_g2_claim_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^ts_g2_claim_fail_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+
+fn ts_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
+  content_hash(n: a) == content_hash(n: b)
+}
+
+fn ts_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: symbol_kernel_type_node() }
+}
+
+fn ts_g2_sg1_bool_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: bool_node() }
+}
+
+fn ts_g2_sg1_text_string_evidence() -> GroundingEvidenceSchema {
+  Sg1Evidence { source_carrier: ts_std_text_string_type_node() }
+}
+
+fn ts_g2_sg2_evidence() -> GroundingEvidenceSchema {
+  Sg2Evidence { source_carrier: symbol_kernel_type_node() }
+}
+
+fn ts_g2_sg5_set_absence_evidence() -> GroundingEvidenceSchema {
+  Sg5Evidence { source_carrier: target_collection_set_carrier_node() }
+}
+
+fn ts_g2_sg5_free_monoid_absence_evidence() -> GroundingEvidenceSchema {
+  Sg5Evidence { source_carrier: target_carrier_free_monoid_node() }
+}
+
+fn ts_g2_sg1_symbol_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_symbol_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
+    _ => false
+  }
+}
+
+fn ts_g2_sg1_bool_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_bool_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: bool_node())
+    _ => false
+  }
+}
+
+fn ts_g2_sg1_text_string_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg1_text_string_evidence() {
+    Sg1Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: ts_std_text_string_type_node()
+      )
+    _ => false
+  }
+}
+
+fn ts_g2_sg2_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg2_evidence() {
+    Sg2Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(a: source_carrier, b: symbol_kernel_type_node())
+    _ => false
+  }
+}
+
+fn ts_g2_sg5_set_absence_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg5_set_absence_evidence() {
+    Sg5Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: target_collection_set_carrier_node()
+      )
+    _ => false
+  }
+}
+
+fn ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier() -> Bool {
+  match ts_g2_sg5_free_monoid_absence_evidence() {
+    Sg5Evidence { source_carrier } =>
+      ts_g2_source_carrier_eq(
+        a: source_carrier,
+        b: target_carrier_free_monoid_node()
+      )
+    _ => false
+  }
+}
+
+fn ts_g2_sg1_atom_lookup_accepts(source_carrier: Node) -> Bool {
+  match target_atom_realization_lookup_in_catalog(
+    catalog: ts_target_atom_realization_catalog,
+    source_carrier: source_carrier
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ts_g2_sg1_atom_realizations_hold() -> Bool {
+  ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_bool_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_text_string_evidence_targets_canonical_carrier()
+    && ts_g2_sg1_atom_lookup_accepts(source_carrier: symbol_kernel_type_node())
+    && ts_g2_sg1_atom_lookup_accepts(source_carrier: bool_node())
+    && ts_g2_sg1_atom_lookup_accepts(source_carrier: ts_std_text_string_type_node())
+}
+
+test fn ts_g2_g14_fact_registry_accepts() -> Bool {
+  match ts_build_per_language_fact_bundle_registry() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_g2_sg2_project_instantiation_emitted() -> Node {
+  match translate_type_expression_project(
+    node: ts_sg2_instantiation_source_type_node(),
+    target: ts_sg2_type_expr_target_model(),
+    projection: ts_type_expression_projection()
+  ) {
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => ts_g2_claim_fail_node()
+  }
+}
+
+fn ts_g2_sg2_instantiation_projection_matches_golden() -> Bool {
+  content_hash(n: ts_g2_sg2_project_instantiation_emitted()) ==
+    content_hash(n: ts_sg2_foobar_xy_emitted())
+}
+
+test fn ts_g2_sg2_type_expression_projection_holds() -> Bool {
+  ts_g2_sg2_evidence_targets_canonical_carrier()
+    && match target_bundle_child_optional_type_expr_projection(
+      target: ts_sg2_type_expr_target_model()
+    ) {
+      Accepted { value: ProjectionPresent, diagnostics: _ } => true
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
+    }
+    && ts_g2_sg2_instantiation_projection_matches_golden()
+}
+
+test fn ts_g2_sg5_collection_realization_absence_holds() -> Bool {
+  ts_g2_sg5_set_absence_evidence_targets_canonical_carrier()
+    && ts_g2_sg5_free_monoid_absence_evidence_targets_canonical_carrier()
+    && match collection_realization_from_target(target: ts_sg2_type_expr_target_model()) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+    && match free_monoid_collection_realization_from_target(
+      target: ts_sg2_type_expr_target_model()
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+}
+
+test fn ts_g2_sg1_symbol_carrier_holds() -> Bool {
+  ts_g2_sg1_symbol_evidence_targets_canonical_carrier()
+}

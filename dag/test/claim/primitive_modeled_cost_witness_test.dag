@@ -1,0 +1,241 @@
+module test.claim.primitive_modeled_cost_witness_test
+
+// WHAT THIS SUITE IS FOR. `PrimitiveCostFact.cost` moved from a coarse `CostShape` to the
+// structured `CostBound` that `std.realization_cost_fidelity` compares, and the whole risk of that
+// move is the parameter: `AtomicCost.param` is a bare `String`, so nothing in the type system stops
+// a row from naming an axis that does not exist. These witnesses execute the derivation rather than
+// inspecting it -- the agreement witness re-derives the coarse shape each row used to carry and
+// compares it to the shape itself, so a bound that drifts from the fact it replaced goes red here
+// and not in a reviewer's head.
+import std.algebra {
+  CostShape,
+  ShapeConstant,
+  FiniteSupport,
+  FinitelySupportedFunctionProfile,
+  OpenSupport,
+  PartialFunctionProfile,
+  ShapeIterateBody,
+  ShapeLinearScan,
+  ShapeSortBody,
+  algebra_profile_support,
+}
+import std.induction { CostBound, cost_bound_params, cost_bound_to_shape, cost_linear }
+import std.primitive_identity {
+  CoarseCostOnly,
+  PrimitiveCostFact,
+  PrimitiveModeledCost,
+  StructuredCost,
+  finite_support_cardinality_param,
+  linear_support_scan_cost,
+  carrier_support_axis_no_longer_finite_cause,
+  primitive_d0_cost_facts,
+  primitive_map_keys_cost,
+  primitive_map_values_cost,
+  primitive_sorted_map_keys_cost,
+  primitive_fold_list_cost,
+  primitive_index_by_cost,
+  primitive_map_keys,
+  primitive_sorted_map_keys,
+  primitive_map_values,
+  primitive_fold_list,
+  primitive_index_by,
+  primitive_identity_eq,
+}
+import std.types { Bool, Int, List, String }
+
+fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {
+  match cost {
+    StructuredCost { bound: b } => Present { value: b }
+    CoarseCostOnly { shape: _, cause: _ } => none
+  }
+}
+
+fn modeled_cost_coarse_shape(cost: PrimitiveModeledCost) -> CostShape? {
+  match cost {
+    StructuredCost { bound: b } => cost_bound_to_shape(b: b)
+    CoarseCostOnly { shape: s, cause: _ } => Present { value: s }
+  }
+}
+
+fn shape_rank(s: CostShape) -> Int {
+  match s {
+    ShapeConstant => 0
+    ShapeLinearScan => 1
+    ShapeIterateBody => 2
+    ShapeSortBody => 3
+  }
+}
+
+fn shape_eq(a: CostShape, b: CostShape) -> Bool {
+  shape_rank(s: a) == shape_rank(s: b)
+}
+
+fn row_is_structured(row: PrimitiveCostFact) -> Bool {
+  match modeled_cost_bound(cost: row.cost) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE ONE-FUNCTION CONSTRAINT, EXECUTED. The operator's ruling was that the axis must come from a
+// single function reading the carrier, never a literal authored per row, so that two rows about one
+// carrier cannot spell it differently. This asserts the property that constraint exists to buy --
+// the two grounded rows scaling in the SAME axis -- rather than asserting that the function was
+// called, which a reader could not distinguish from two identical literals.
+fn row_axis_names(row: PrimitiveCostFact) -> List<String> {
+  match modeled_cost_bound(cost: row.cost) {
+    Present { value: b } => cost_bound_params(b: b)
+    Absent => []
+  }
+}
+
+fn axis_lists_agree(a: List<String>, b: List<String>) -> Bool {
+  (a |> count) == (b |> count)
+    && (a |> count) > 0
+    && (a |> all(x => b |> any(y => x == y)))
+    && (b |> all(y => a |> any(x => x == y)))
+}
+
+test fn both_grounded_rows_scale_in_the_same_derived_axis() -> Bool {
+  axis_lists_agree(
+    a: row_axis_names(row: primitive_map_keys_cost),
+    b: row_axis_names(row: primitive_map_values_cost),
+  )
+}
+
+// THE AGREEMENT WITNESS, and it is the reason this migration is not a rewrite. Each grounded row
+// carried a coarse shape before the structured form existed; `cost_bound_to_shape` must re-derive
+// exactly that shape from the new bound. A bound that scaled in the wrong power -- a plausible
+// authoring slip, since nothing types the parameter -- would still typecheck and would fail here.
+test fn the_structured_bound_rederives_the_coarse_shape_it_replaced() -> Bool {
+  match modeled_cost_coarse_shape(cost: primitive_map_keys_cost.cost) {
+    Absent => false
+    Present { value: s } => shape_eq(a: s, b: ShapeLinearScan)
+  }
+}
+
+test fn map_values_structured_bound_also_rederives_its_coarse_shape() -> Bool {
+  match modeled_cost_coarse_shape(cost: primitive_map_values_cost.cost) {
+    Absent => false
+    Present { value: s } => shape_eq(a: s, b: ShapeLinearScan)
+  }
+}
+
+// THE DISCRIMINATING RED, authored as a fixture rather than waited for. `PartialFunctionProfile`
+// declares `OpenSupport`, so it has no cardinality for a parameter to name. Passing it to the same
+// constructor the live rows use must produce the refusal arm -- if this ever returns a structured
+// bound, the derivation is inventing an axis for a carrier that has none, which is precisely the
+// fabricated fact `std.realization_cost_fidelity` exists to refuse.
+test fn an_open_support_carrier_refuses_instead_of_naming_an_axis() -> Bool {
+  match linear_support_scan_cost(
+    profile: PartialFunctionProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ) {
+    StructuredCost { bound: _ } => false
+    CoarseCostOnly { shape: _, cause: _ } => true
+  }
+}
+
+// THE POSITIVE CONTROL FOR THAT RED, so a green above cannot come from the constructor refusing
+// everything. Same call, the carrier the live rows actually use, and it must reach the structured
+// arm.
+test fn a_finite_support_carrier_reaches_the_structured_arm() -> Bool {
+  match linear_support_scan_cost(
+    profile: FinitelySupportedFunctionProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ) {
+    StructuredCost { bound: _ } => true
+    CoarseCostOnly { shape: _, cause: _ } => false
+  }
+}
+
+// THE PARAM PRODUCER ITSELF, both directions, because the two arms above route through it.
+test fn a_finite_support_profile_names_an_axis() -> Bool {
+  match finite_support_cardinality_param(profile: FinitelySupportedFunctionProfile) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn an_open_support_profile_names_no_axis() -> Bool {
+  match finite_support_cardinality_param(profile: PartialFunctionProfile) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE THREE UNGROUNDED ROWS. Each must carry the cause and no bound -- and must still carry the
+// coarse fact it always had, which is the half a reader is most likely to assume was dropped.
+test fn sorted_map_keys_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
+  !row_is_structured(row: primitive_sorted_map_keys_cost)
+    && match modeled_cost_coarse_shape(cost: primitive_sorted_map_keys_cost.cost) {
+      Absent => false
+      Present { value: s } => shape_eq(a: s, b: ShapeSortBody)
+    }
+}
+
+test fn fold_list_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
+  !row_is_structured(row: primitive_fold_list_cost)
+    && match modeled_cost_coarse_shape(cost: primitive_fold_list_cost.cost) {
+      Absent => false
+      Present { value: s } => shape_eq(a: s, b: ShapeIterateBody)
+    }
+}
+
+test fn index_by_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
+  !row_is_structured(row: primitive_index_by_cost)
+    && match modeled_cost_coarse_shape(cost: primitive_index_by_cost.cost) {
+      Absent => false
+      Present { value: s } => shape_eq(a: s, b: ShapeIterateBody)
+    }
+}
+
+// EVERY ROW ANSWERS THE COARSE QUESTION, whichever arm it took. This is what makes the refusal arm a
+// declared two-grain state rather than a hole: no row lost information in the migration.
+test fn every_row_still_answers_the_coarse_question() -> Bool {
+  primitive_d0_cost_facts
+    |> all(row => match modeled_cost_coarse_shape(cost: row.cost) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// THE ROSTER JOINS THE ROWS BY IDENTITY, NOT BY COUNT. A length check would pass while a row was
+// swapped for a duplicate of another, and this module's own history is the argument: the frontier
+// note that scheduled this work said "six populated rows" because a grep counted the type
+// declaration beside the five. Membership is asserted per primitive, by name.
+fn roster_has(p: PrimitiveIdentity) -> Bool {
+  primitive_d0_cost_facts |> any(row => primitive_identity_eq(left: row.primitive, right: p))
+}
+
+test fn the_roster_joins_every_cost_row_by_identity() -> Bool {
+  roster_has(p: primitive_map_keys)
+    && roster_has(p: primitive_sorted_map_keys)
+    && roster_has(p: primitive_map_values)
+    && roster_has(p: primitive_fold_list)
+    && roster_has(p: primitive_index_by)
+}
+
+// THE OTHER DIRECTION OF THE JOIN, so a roster that grew a row nobody named would be caught too.
+test fn the_roster_carries_no_row_outside_the_five() -> Bool {
+  (primitive_d0_cost_facts |> count) == 5
+    && (primitive_d0_cost_facts |> all(row =>
+      primitive_identity_eq(left: row.primitive, right: primitive_map_keys)
+        || primitive_identity_eq(left: row.primitive, right: primitive_sorted_map_keys)
+        || primitive_identity_eq(left: row.primitive, right: primitive_map_values)
+        || primitive_identity_eq(left: row.primitive, right: primitive_fold_list)
+        || primitive_identity_eq(left: row.primitive, right: primitive_index_by)))
+}
+
+// EXACTLY TWO ROWS ARE STRUCTURED TODAY, and this is deliberately an identity statement rather than
+// a tally: the two that are structured are named, so enrolling a third without modelling its
+// parameter reds here instead of silently changing a count.
+test fn the_structured_rows_are_exactly_the_two_grounded_ones() -> Bool {
+  row_is_structured(row: primitive_map_keys_cost)
+    && row_is_structured(row: primitive_map_values_cost)
+    && !row_is_structured(row: primitive_sorted_map_keys_cost)
+    && !row_is_structured(row: primitive_fold_list_cost)
+    && !row_is_structured(row: primitive_index_by_cost)
+}

@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.parameter_refinement_has_no_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data parameter_refinement_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "parameter_refinement_has_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a fn parameter's type is refined by a where clause (`lifetime_seconds: Int where range(min: 1, max: 3600)`), which v1 reads (`v1` `02_parse` `parse_param`), and v2 has no way to carry the refinement on a lowered parameter: the one where-clause reader (`v2.compiler.body_lowering_fold` `body_lower_kept_where_clause`) serves a type variant, and a parameter's type is read by `body_lower_type_expr_lowered_optional`, whose sequence fallback keeps the base type and drops the clause.",
+    "HARM: a parameter lowered without its refinement admits every value of the base type at the call boundary the author narrowed, silently -- the refinement is the parameter's contract.",
+    "CONTAINED, NOT SILENT: the grammar parses the refinement (`v2.extdeps.languages.dag` `dag_grammar_typed_param_expr`, the refined arm taken only where a clause is written) and body lowering refuses the fn on both arms, located at the clause, as `body_lowering_reason_parameter_refinement_unmodeled` (`body_lower_param_refinement_refusal_optional`). The module refuses at normalize.",
+    "RUNG FOUND AT: mitigated (typed, located refusal). CEILING: structurally impossible -- a parameter's refinement is part of its lowered type. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a parameter's lowered type carries its where-clause refinement, read through the one where-clause reader type variants use rather than a second one, so `body_lowering_reason_parameter_refinement_unmodeled` has no producer.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_refuses_at_its_clause_holds", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,68 @@
+module v2.test.self_host.frontier_probe_assemble_detail
+
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Unavailable,
+  invariant_port_locus
+}
+import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_receipt_from_assemble_rejection
+}
+import v2.compiler.self_host.frontier_probe_types {
+  AssembleRejectionDetail,
+  FrontierProbeDetailAbsent,
+  NoFrontierProbeDetail,
+  MissingModuleIdentityUnavailable,
+  ProbeStageEmit,
+  frontier_probe_receipt_without_assemble_detail,
+  RealizationGap
+}
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.node { Symbol }
+
+fn assemble_detail_test_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
+  match frontier_probe_receipt_without_assemble_detail(
+    module_path: "src/v2/compiler/example.dag",
+    blocker: RealizationGap,
+    located_stage: ProbeStageEmit,
+    located_reason: ^probe_emit_accept_self_host_bar_unbound,
+    detail: FrontierProbeDetailAbsent
+  ).assemble_detail {
+    NoFrontierProbeDetail => true
+    _ => false
+  }
+}
+
+// The receipt's located reason and its cause come from the rejection's FATAL (last) diagnostic, and
+// the chain keeps the whole list in order: a two-diagnostic rejection reads as head then tail.
+test fn assemble_receipt_carries_the_whole_rejection_chain_and_its_fatal_cause() -> Bool {
+  let receipt = frontier_probe_receipt_from_assemble_rejection(
+    module_path: "src/v2/compiler/example.dag",
+    diagnostics: NonEmptyDiagnostics {
+      head: assemble_detail_test_diagnostic(reason: ^normalize_rejected),
+      tail: Cons { head: assemble_detail_test_diagnostic(reason: ^resolve_module_not_found), tail: Empty }
+    },
+    detail: FrontierProbeDetailAbsent
+  )
+  (receipt.located_reason == ^resolve_module_not_found)
+    && match receipt.assemble_detail {
+      AssembleRejectionDetail { rejection_chain: chain, cause: cause, at: _ } =>
+        (chain.head == ^normalize_rejected)
+          && (length(xs: chain.tail) == 1)
+          && match cause {
+            MissingModuleIdentityUnavailable => true
+            _ => false
+          }
+      _ => false
+    }
+}

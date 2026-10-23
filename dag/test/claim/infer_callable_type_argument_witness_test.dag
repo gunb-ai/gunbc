@@ -1,0 +1,114 @@
+module test.claim.infer_callable_type_argument_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for, blocking_class_count_for }
+
+// EXECUTING EVIDENCE FOR THE TYPE-ARGUMENT RESIDUE OF gunbc.recurring_failure_mode
+// arity_proxy_for_callability_misroutes_a_found_local.
+//
+// A function type written as a TYPE ARGUMENT -- `List<fn() -> R>` -- lost its arrow when
+// v1.compiler.infer_types child_type_node read the child's `inferred` field as the type it denotes: an
+// Arrow stores its RETURN type there, so the element of `List<fn() -> Int>` became `Int`. Every
+// binding drawn from that element then refused at the call seam as `function 'r' not found in
+// scope` (class InternalError, subject function:r): a fold or map lambda's parameter, a match arm
+// over `first`. It surfaced on extdeps.apple.app_attest first_assertion_refusal, a fold over
+// `List<fn() -> AssertionRefusal?>`. The refusal is raised in inference, which every emission
+// target runs, so it refused under --target dag and --target rust alike.
+//
+// Each cell is a source string compiled by the seed through gunbc.compile_census_probe, so the
+// REDs assert zero blocking rows (a repair that swapped the misdirected refusal for another would
+// still fail), and the control asserts a genuinely unbound callee inside the same lambda still
+// refuses with that callee as the subject -- the repair admits the bound parameter, not any name.
+
+data fold_thunk_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn first_some(rs: List<fn() -> Int?>) -> Int? {\n  fold(rs, init: none, f: (acc, r) => match acc {\n    Present { value: a } => Present { value: a }\n    Absent => r()\n  })\n}\n"
+
+data map_unary_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn apply_all(rs: List<fn(Int) -> Int>) -> List<Int> { rs |> map(r => r(1)) }\n"
+
+data match_arm_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn head_value(rs: List<fn() -> Int>) -> Int {\n  match rs |> first {\n    Present { value: r } => r()\n    Absent => 0\n  }\n}\n"
+
+data unbound_callee_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn apply_all(rs: List<fn() -> Int>) -> List<Int> { rs |> map(r => unbound_callee_zzz()) }\n"
+
+fn resolves_clean(source: String) -> Bool {
+  blocking_subject_count_for(source: source, wanted_class: "InternalError", wanted_subject: "function:r") == 0
+    && total_blocking_count_for(source: source) == 0
+}
+
+test fn fold_lambda_calls_a_nullary_element_parameter() -> Bool {
+  resolves_clean(source: fold_thunk_source)
+}
+
+test fn map_lambda_calls_a_unary_element_parameter() -> Bool {
+  resolves_clean(source: map_unary_source)
+}
+
+test fn match_arm_calls_a_callable_element() -> Bool {
+  resolves_clean(source: match_arm_source)
+}
+
+test fn unbound_callee_in_the_same_lambda_still_refuses() -> Bool {
+  blocking_subject_count_for(source: unbound_callee_source, wanted_class: "InternalError", wanted_subject: "function:unbound_callee_zzz") > 0
+}
+
+// KEEPING THE ARROW MUST NOT LOSE A REFUSAL THE ERASURE HAD. While child_type_node erased an Arrow
+// type argument to its codomain, returning `List<fn() -> Int>` where `List<fn() -> String>` is
+// declared refused -- by accident, as List<Int> against List<String>. With the arrow kept the pair
+// reaches v1.compiler.infer declared_type_conformance_diags as two function-typed elements, which
+// it now hands to callable_signature_mismatch one element peel deep. So the codomain cell is the
+// preserved refusal, the parameter and arity cells are refusals the erasure never had (both were
+// accepted on main), and the same-signature cell is the accepted control that keeps the wall from
+// being a blanket refusal of function-typed elements.
+
+data codomain_mismatch_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, String, List }\nfn widen(xs: List<fn() -> Int>) -> List<fn() -> String> { xs }\n"
+
+data parameter_mismatch_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, String, List }\nfn widen(xs: List<fn(Int) -> Int>) -> List<fn(String) -> Int> { xs }\n"
+
+data arity_mismatch_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn widen(xs: List<fn() -> Int>) -> List<fn(Int) -> Int> { xs }\n"
+
+data same_signature_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn keep(xs: List<fn(Int) -> Int>) -> List<fn(Int) -> Int> { xs }\n"
+
+test fn element_codomain_mismatch_refuses_at_the_declared_return() -> Bool {
+  blocking_class_count_for(source: codomain_mismatch_source, wanted_class: "TypeMismatch") > 0
+}
+
+test fn element_parameter_mismatch_refuses_at_the_declared_return() -> Bool {
+  blocking_class_count_for(source: parameter_mismatch_source, wanted_class: "TypeMismatch") > 0
+}
+
+test fn element_arity_mismatch_refuses_at_the_declared_return() -> Bool {
+  blocking_class_count_for(source: arity_mismatch_source, wanted_class: "TypeMismatch") > 0
+}
+
+test fn element_same_signature_is_accepted_at_the_declared_return() -> Bool {
+  total_blocking_count_for(source: same_signature_source) == 0
+}
+
+// THE COMMON-FIELD CONSUMER. v1.compiler.infer_emit_info enum_field_type_consistent decides whether
+// a field every variant carries is ONE common field, judging with node_type_equals over
+// child_type_node, and the Rust emitter renders an access to a common field as an accessor call.
+// Before the signature relation, two Arrow elements compared equal by the name Callable, so
+// `List<fn() -> Int>` against `List<fn() -> String>` was admitted as common and `m.callbacks`
+// rendered `m.callbacks()` -- a call to an accessor the emitter never generates, because the two
+// arms carry different types. The negative cell asserts that call is gone; the control asserts the
+// same access over one shared signature still renders through the accessor.
+
+data mixed_callbacks_source: String = "module test.claim.callable_common_field_mixed_probe\nimport std.types { Int, String, List }\ntype MixedCallbacks = IntCallbacks { callbacks: List<fn() -> Int> } | StringCallbacks { callbacks: List<fn() -> String> }\nfn count_mixed(m: MixedCallbacks) -> Int { m.callbacks |> count }\n"
+
+data same_callbacks_source: String = "module test.claim.callable_common_field_same_probe\nimport std.types { Int, List }\ntype SameCallbacks = LeftCallbacks { callbacks: List<fn(Int) -> Int> } | RightCallbacks { callbacks: List<fn(Int) -> Int> }\nfn count_same(s: SameCallbacks) -> Int { s.callbacks |> count }\n"
+
+test fn callbacks_differing_in_codomain_are_not_one_common_field() -> Bool {
+  compile_dag_rust_emit_check(
+    mixed_callbacks_source,
+    "src/test_claim_callable_common_field_mixed_probe.rs",
+    [],
+    ["m.callbacks()", "impl MixedCallbacks"]
+  )
+}
+
+test fn callbacks_with_one_signature_are_one_common_field() -> Bool {
+  compile_dag_rust_emit_check(
+    same_callbacks_source,
+    "src/test_claim_callable_common_field_same_probe.rs",
+    ["impl SameCallbacks", "s.callbacks()"],
+    []
+  )
+}

@@ -1,0 +1,102 @@
+module product.printed_chassis.slice_run
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+import extdeps.languages.json.parse {JsonDocumentUnreadable}
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonString,JsonArray}
+
+import std.types { String, FilePath, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slice_to_project_command }
+import extdeps.exec.command { LocalExec,ArgvCommand,env_prefixed_command_in }
+import extdeps.shell.exec { ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonKeyValue, JsonObject, json_object, json_kv, json_string, serialize_json }
+
+// Selected slicing settings, not a claim of live printer telemetry. The 2 mm brim
+// keeps the 170.94 mm gauge inside the 180 mm envelope without scaling the gauge.
+fn fit_prototype_settings_members() -> List<JsonKeyValue> {
+  [
+    json_kv(key: "type", value: json_string(s: "process")),
+    json_kv(key: "from", value: json_string(s: "user")),
+    json_kv(key: "name", value: json_string(s: "Unpowered fit prototype 0.20 mm PLA")),
+    json_kv(key: "curr_bed_type", value: json_string(s: "Textured PEI Plate")),
+    json_kv(key: "brim_type", value: json_string(s: "outer_only")),
+    json_kv(key: "brim_width", value: json_string(s: "2")),
+    json_kv(key: "skirt_loops", value: json_string(s: "0")),
+    json_kv(key: "enable_support", value: json_string(s: "0")),
+  ]
+}
+
+// Runs the exact pinned upstream artifact over explicitly supplied model and profiles.
+// A successful process result must still be followed by project/G-code readback before printing.
+fn run(appimage: String, model: String, output: String, machine: String, filament: String, process: String) -> ProcessExit {
+  run_with_settings(appimage:appimage,model:model,output:output,machine:machine,filament:filament,process:process,overrides:fit_prototype_settings_members())
+}
+
+// First full unpowered cassette trial. These settings were read back from P1/P2;
+// neither process success nor this profile is a mechanical qualification.
+fn cassette_settings_members() -> List<JsonKeyValue> {
+ [
+  json_kv(key: "from", value: json_string(s: "user")),
+  json_kv(key: "name", value: json_string(s: "Cassette unpowered prototype 0.20 PLA supported")),
+  json_kv(key: "curr_bed_type", value: json_string(s: "Textured PEI Plate")),
+  json_kv(key: "brim_type", value: json_string(s: "outer_only")),
+  json_kv(key: "brim_width", value: json_string(s: "2")),
+  json_kv(key: "skirt_loops", value: json_string(s: "0")),
+  json_kv(key: "enable_support", value: json_string(s: "1")),
+  json_kv(key: "support_type", value: json_string(s: "normal(auto)")),
+  json_kv(key: "support_on_build_plate_only", value: json_string(s: "0")),
+  json_kv(key: "wall_loops", value: json_string(s: "4")),
+  json_kv(key: "sparse_infill_density", value: json_string(s: "20%")),
+  json_kv(key: "sparse_infill_pattern", value: json_string(s: "gyroid")),
+  json_kv(key: "top_shell_layers", value: json_string(s: "5")),
+  json_kv(key: "bottom_shell_layers", value: json_string(s: "5")),
+ ]
+}
+fn run_cassette(appimage:String,model:String,output:String,machine:String,filament:String,process:String) -> ProcessExit {
+ run_with_settings(appimage:appimage,model:model,output:output,machine:machine,filament:filament,process:process,overrides:cassette_settings_members())
+}
+fn run_with_settings(appimage:String,model:String,output:String,machine:String,filament:String,process:String,overrides:List<JsonKeyValue>) -> ProcessExit {
+  let settings = concat(output, ".settings.json")
+  let original = Filesystem.Read(path: process)
+  if !original.success { return exit_failure(reason: "Cannot read base process profile") }
+  let content = match parse_json_document(s: original.content) {
+    JsonDocumentParsed { value: JsonObject { members: members } } =>
+      serialize_json(v: json_object(members: concat(filter(members, m => !any(overrides, o => o.key == m.key)), overrides)))
+    JsonDocumentParsed {value:JsonNull}=>"" JsonDocumentParsed {value:JsonBool {value:_}}=>"" JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>"" JsonDocumentParsed {value:JsonString {value:_}}=>"" JsonDocumentParsed {value:JsonArray {elements:_}}=>"" JsonDocumentUnreadable {gap:_}=>""
+  }
+  if content == "" || !Filesystem.Write(path: settings, content: content).success {
+    return exit_failure(reason: "Cannot parse or write fit-prototype process profile")
+  }
+  slice_profile(appimage:appimage,model:model,output:output,machine:machine,filament:filament,process:settings)
+}
+
+// Explicit cassette profiles retain their support and shell settings. This shares
+// the pinned execution boundary, without imposing the gauge-only support override.
+fn slice_profile(appimage:String,model:String,output:String,machine:String,filament:String,process:String) -> ProcessExit {
+ slice_profile_in(directory:"",appimage:appimage,model:model,output:output,machine:machine,filament:filament,process:process)
+}
+
+// Orca also writes result/log files relative to cwd. Fleet preparation gives every
+// plate its own directory so independent preparations do not share those files.
+fn slice_command_in(directory:String,command:ArgvCommand) -> ArgvCommand {
+ if directory=="" {command} else {env_prefixed_command_in(directory:directory,bindings:[],command:command)}
+}
+fn slice_profile_in(directory:String,appimage:String,model:String,output:String,machine:String,filament:String,process:String) -> ProcessExit {
+  match with_verified_orca(appimage: appimage as FilePath, use: executable => {
+    let probe = run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_version_probe_command(executable: executable)), transport: LocalExec)
+    match probe {
+      ProcessRefused { exit_code: _, stderr: _ } => return probe
+      ProcessOutputAbsent => {}
+      ProcessOutputPresent {text:_} => {}
+    }
+    run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_slice_to_project_command(
+        executable: executable, input_model: model, output_project: output,
+        printer_profile: machine, filament_profile: filament, process_profile: process,
+      )), transport: LocalExec)
+  }) {
+    ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+    ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
+  }
+}

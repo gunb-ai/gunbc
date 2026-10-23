@@ -1,0 +1,37 @@
+module product.printed_chassis.stack_mass_review
+import product.printed_chassis.rear_cooling {rear_opening,select_rear_fans,rear_fan_candidates,rear_cooling_json}
+import product.printed_chassis.cassette {tray_w}
+import product.printed_chassis.platform_projects_review {platform_projects_review}
+import product.printed_chassis.cooler_configuration {residential_cooler}
+import product.printed_chassis.server_power_interface {server_power_review}
+import std.types {String,List,Int}
+import std.measure {Micrometer,micrometer,gram,gram_count}
+import std.affine_space {signed_frame_component_count}
+import gunbc.fleet_intent {srv3_memory_population,srv4_memory_population}
+import product.printed_chassis.component_mass {MassComponent,MassLedger,MassIncomplete,MassComplete,MassNeeded,VendorNominal,BoundedMass,PlanningMassRange,node_components_for_cooler,node_components,station_components,mass_ledger}
+import product.printed_chassis.placed_mass_model {load_from_ledger,LowerMassEndpoint,SupportRectangle,InvalidLoadScenario,RigidBodyScreen}
+import product.printed_chassis.stack_geometry {stack_pitch_for_cooler,stack_pitch,footprint_half_width,footprint_half_depth}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_array,json_null,serialize_json}
+import gunbc.cli_wire {CliWireResponse,CliWirePrintable}
+import std.process {ExitSuccess}
+fn row_json(r:MassComponent) -> JsonValue {
+ let bounds=match r.mass {MassNeeded {reason:_}=>json_null() VendorNominal {mass:g}=>json_array(elements:[json_int(n:gram_count(g:g)),json_int(n:gram_count(g:g))]) PlanningMassRange {lower:l,upper:u,basis:_}=>json_array(elements:[json_int(n:gram_count(g:l)),json_int(n:gram_count(g:u))]) BoundedMass {lower:l,upper:u,basis:_}=>json_array(elements:[json_int(n:gram_count(g:l)),json_int(n:gram_count(g:u))])}
+ json_object(members:[json_kv(key:"id",value:json_string(s:r.id)),json_kv(key:"mass_evidence",value:json_string(s:match r.mass {PlanningMassRange {lower:_,upper:_,basis:_}=>"planning_estimate" VendorNominal {mass:_}=>"vendor_nominal" BoundedMass {lower:_,upper:_,basis:_}=>"bounded" MassNeeded {reason:_}=>"design_input_pending"})),json_kv(key:"mass_basis",value:json_string(s:match r.mass {PlanningMassRange {lower:_,upper:_,basis:b}=>b as String BoundedMass {lower:_,upper:_,basis:b}=>b as String VendorNominal {mass:_}=>"Vendor nominal; manufacturing tolerance not supplied" MassNeeded {reason:_}=>"Resolve from selected BOM / slicing / design allowance; no operator weighing request"})),json_kv(key:"quantity",value:json_int(n:r.quantity)),json_kv(key:"each_mass_bounds_g",value:bounds),json_kv(key:"position_um",value:json_array(elements:[json_int(n:signed_frame_component_count(c:r.at.x)),json_int(n:signed_frame_component_count(c:r.at.y)),json_int(n:signed_frame_component_count(c:r.at.z))])),json_kv(key:"position_evidence",value:json_string(s:"review placement; centre of mass not surveyed"))])
+}
+fn node_json(id:String,rows:List<MassComponent>,pitch_um:Micrometer) -> JsonValue {
+ let hardware=filter(rows,r=>r.id=="BOARD" || r.id=="PROCESSOR" || r.id=="DIMMS" || r.id=="COOLER" || r.id=="F1" || r.id=="F2" || r.id=="F3" || r.id=="SSD")
+ let subtotal=match mass_ledger(components:hardware,measurements:[]) {
+  MassIncomplete {issues:_}=>json_null()
+  MassComplete {total:t,rows:_}=>json_object(members:[json_kv(key:"lower_g",value:json_int(n:gram_count(g:t.lower))),json_kv(key:"upper_g",value:json_int(n:gram_count(g:t.upper))),json_kv(key:"estimated_rows",value:json_int(n:t.estimated_rows)),json_kv(key:"scope",value:json_string(s:"Hardware planning subtotal only; excludes printed structure, mounting hardware, harness and power cassette. Endpoints are not certified bounds."))])
+ }
+
+ let ledger=mass_ledger(components:rows,measurements:[])
+ let reading=load_from_ledger(ledger:ledger,endpoint:LowerMassEndpoint,support:SupportRectangle {half_x_um:micrometer(count: footprint_half_width()),half_z_um:micrometer(count: footprint_half_depth())},push_height_um:pitch_um)
+ json_object(members:[json_kv(key:"id",value:json_string(s:id)),json_kv(key:"hardware_planning_subtotal",value:subtotal),json_kv(key:"components",value:json_array(elements:map(rows,r=>row_json(r:r)))),json_kv(key:"load_screen",value:json_string(s:match reading {InvalidLoadScenario {reason:r}=>r as String RigidBodyScreen {mass_g:_,cg_x_um:_,cg_y_um:_,cg_z_um:_,restoring_x_positive_mn_mm:_,restoring_x_negative_mn_mm:_,restoring_z_positive_mn_mm:_,restoring_z_negative_mn_mm:_,tip_push_mn:_,tip_base_acceleration_um_s2:_,corner_reactions_mn:_,boundary:b}=>b as String}))])
+}
+fn main() -> CliWireResponse {
+ let plane=micrometer(count: 30000)
+ let pitch=stack_pitch_for_cooler(cooler:residential_cooler,contact_plane_um:plane)
+ let report=json_object(members:[json_kv(key:"schema",value:json_string(s:"gunbc.stack-mass-review.v1")),json_kv(key:"nodes",value:json_array(elements:[node_json(id:"srv3",pitch_um:micrometer(count: stack_pitch()),rows:node_components(population:srv3_memory_population)),node_json(id:"srv4",pitch_um:micrometer(count: stack_pitch()),rows:node_components(population:srv4_memory_population))])),json_kv(key:"residential_noctua_planning_pitch_um",value:json_int(n:pitch)),json_kv(key:"residential_noctua_variant",value:node_json(id:"srv3-population-with-Noctua-design-variant",pitch_um:micrometer(count: pitch),rows:node_components_for_cooler(population:srv3_memory_population,cooler:residential_cooler,contact_plane_um:plane))),json_kv(key:"power_station",value:json_array(elements:map(station_components(),r=>row_json(r:r)))),json_kv(key:"server_power_interface",value:server_power_review()),json_kv(key:"platform_projects",value:platform_projects_review()),json_kv(key:"residential_rear_cooling",value:rear_cooling_json(reading:select_rear_fans(candidates:rear_fan_candidates,opening:rear_opening(width_um:tray_w,pitch_um:micrometer(count: pitch),left_um:micrometer(count: 20000),right_um:micrometer(count: 20000),bottom_um:micrometer(count: 20000),top_um:micrometer(count: 20000),depth_um:micrometer(count: 60000)),bed_um:micrometer(count: 170000)))),json_kv(key:"safe_stack_height",value:json_null())])
+ CliWirePrintable {bytes:serialize_json(v:report),exit:ExitSuccess}
+}

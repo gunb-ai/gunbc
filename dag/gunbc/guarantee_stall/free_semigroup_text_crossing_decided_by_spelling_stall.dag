@@ -1,0 +1,19 @@
+module gunbc.guarantee_stall.free_semigroup_text_crossing_decided_by_spelling_stall
+
+import gunbc.guarantee_rung { StructurallyGuaranteed, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data free_semigroup_text_crossing_decided_by_spelling_stall: GuaranteeStall = GuaranteeStall {
+  subject: "Two deciders answer whether host text may cross into a structural text formal. At a FreeMonoid<Char> formal the declaration-identity wall decides (v1.compiler.infer_env text_representations_cross; gunbc.rung_drop text_boundary_identity_wall): the value unfolds through the declared row or the crossing refuses, before the base check runs, and the base check then sees an argument already typed as the destination. At a FreeSemigroup<Char> formal -- a nonempty code-point sequence, the shape v2.std.text string_replace takes as its needle -- the identity classifier reads the formal as NotText, so the wall makes no judgment and the pre-existing, spelling-keyed base inhabitance check decides (v1.compiler.infer kernel_value_declared_type_mismatch, extended by gunbc#12695 to peel the produced side's where-refinement). Whether the two agree is re-derived by running test.claim.text_boundary_identity_wall_witness_test and test.claim.kernel_refinement_at_structured_parameter_witness_test on one binary; agreement on those fixtures does not make them one authority -- they are two authorities for one question, and the second keys on spelling rather than identity. Nothing fell -- the base check decided this case before the wall existed -- so this is a stall, not a drop.",
+  current: StructurallyGuaranteed,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+    "v1.compiler.infer_env.text_representation_by_identity",
+    "v1.compiler.infer_env.text_representations_cross",
+    "v1.compiler.infer.kernel_value_declared_type_mismatch",
+    "test.claim.kernel_refinement_at_structured_parameter_witness_test.a_cast_nonempty_needle_at_string_replace_must_refuse",
+    "test.claim.kernel_refinement_at_structured_parameter_witness_test.a_plain_literal_needle_at_string_replace_still_refuses"
+  ] },
+  next_rung_trigger: climbs_when(capability: "the identity classifier recognizes std.algebra FreeSemigroup applied to std.types Char as a (nonempty) code-point sequence, SUFFICIENT FOR every host-text crossing into a structural text formal -- FreeMonoid<Char> and FreeSemigroup<Char> alike -- to be decided by text_representations_cross, with kernel_value_declared_type_mismatch's text case retired (no text crossing reaches it), and kernel_refinement_at_structured_parameter_witness_test still passing through the identity route.")
+}

@@ -1,0 +1,133 @@
+module test.claim.deployment_risk_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool }
+import v2.std.collection { Present, Absent }
+import extdeps.ntfy.ntfy { NtfyTopic }
+import gunbc.auth.approval_notification { approval_ntfy_topic }
+import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
+import gunbc.deployment_risk {
+  DeploymentId,
+  DeploymentRiskClass,
+  TestRisk,
+  ProdRisk,
+  ProdRoleSelection,
+  NoProdRole,
+  ProdRoleHeldBy,
+  DeploymentExternalBindingSet,
+  DeploymentExternalBindingTable,
+  DeploymentBindingResolution,
+  DeploymentBindingsResolved,
+  DeploymentBindingSetAbsent,
+  deployment_risk_class,
+  resolve_deployment_bindings,
+  prod_role_selection,
+  deployment_external_binding_table,
+  srv1_daily_workspace_deployment,
+  srv1_lab_codex_feedback_deployment,
+  srv2_deploy_deployment,
+}
+import gunbc.recurring_failure_mode.a_test_deployment_acts_on_the_prod_deployments_state { a_test_deployment_acts_on_the_prod_deployments_state }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  dashboard_instance_risk_class,
+  macbook_local_dashboard_instance,
+  srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
+  srv2_preview_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+  srv2_lab_dashboard_instance,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The discriminating RED: a TestRisk deployment never reaches the prod attachments ────────────
+// THE REAL ROW AND THE REAL TABLE. The srv1 lab shares a host with the prod deployment and, before
+// this model, shared its ntfy topic and publication app. Through the model it derives TestRisk,
+// finds no TestRisk set, and REFUSES -- it does not receive the ProdRisk set that exists one row
+// away.
+test fn a_test_deployment_refuses_rather_than_resolving_the_prod_bindings() -> Bool {
+  match resolve_deployment_bindings(
+    selection: prod_role_selection,
+    table: deployment_external_binding_table,
+    deployment: srv1_lab_codex_feedback_deployment,
+  ) {
+    DeploymentBindingSetAbsent { deployment: d, class: TestRisk } => d == srv1_lab_codex_feedback_deployment
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL, same row and table: the prod-role holder resolves today's topic and app.
+// Without it the RED above would pass for a resolver that refuses everyone.
+test fn the_prod_role_holder_resolves_the_prod_topic_and_app() -> Bool {
+  match resolve_deployment_bindings(
+    selection: prod_role_selection,
+    table: deployment_external_binding_table,
+    deployment: srv1_daily_workspace_deployment,
+  ) {
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } =>
+      b.approval_ntfy_topic == approval_ntfy_topic && b.publication_app == gunbai_bot_declared
+    _ => false
+  }
+}
+
+// NO BORROWING EVEN WHEN A TEST SET EXISTS. A fixture table carrying both classes: the test
+// deployment gets ITS set's topic and app, and the prod one never leaks across. A resolver that
+// returned "the first set" or "the prod set" would fail one of the two conjuncts.
+data fx_test_topic: NtfyTopic = "gunbc-approvals-test" as NtfyTopic
+
+data fx_both_classes: DeploymentExternalBindingTable = DeploymentExternalBindingTable {
+  prod: Present { value: DeploymentExternalBindingSet { approval_ntfy_topic: approval_ntfy_topic, publication_app: gunbai_bot_declared } },
+  test: Present { value: DeploymentExternalBindingSet { approval_ntfy_topic: fx_test_topic, publication_app: gunbai_ci_declared } },
+}
+
+test fn each_class_resolves_only_its_own_set() -> Bool {
+  let test_side = match resolve_deployment_bindings(selection: prod_role_selection, table: fx_both_classes, deployment: srv1_lab_codex_feedback_deployment) {
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.approval_ntfy_topic == fx_test_topic && b.publication_app != gunbai_bot_declared
+    _ => false
+  }
+  let prod_side = match resolve_deployment_bindings(selection: prod_role_selection, table: fx_both_classes, deployment: srv1_daily_workspace_deployment) {
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.approval_ntfy_topic == approval_ntfy_topic
+    _ => false
+  }
+  test_side && prod_side
+}
+
+// ── The switch: one row moves prod, or turns it off ─────────────────────────────────────────────
+test fn no_prod_role_makes_the_former_holder_test_risk_and_it_refuses() -> Bool {
+  deployment_risk_class(selection: NoProdRole, deployment: srv1_daily_workspace_deployment) == TestRisk
+    && match resolve_deployment_bindings(selection: NoProdRole, table: deployment_external_binding_table, deployment: srv1_daily_workspace_deployment) {
+      DeploymentBindingSetAbsent { deployment: _, class: TestRisk } => true
+      _ => false
+    }
+}
+
+test fn moving_the_role_moves_the_class_and_nothing_else_decides_it() -> Bool {
+  let moved = ProdRoleHeldBy { deployment: srv2_deploy_deployment }
+  deployment_risk_class(selection: moved, deployment: srv2_deploy_deployment) == ProdRisk
+    && deployment_risk_class(selection: moved, deployment: srv1_daily_workspace_deployment) == TestRisk
+}
+
+// ── Every dashboard instance answers, through its deployment ────────────────────────────────────
+// All six constructors, against the real row: exactly the daily workspace derives ProdRisk.
+fn dashboard_instances() -> List<HostDashboardInstance> {
+  [
+    macbook_local_dashboard_instance(),
+    srv1_live_dashboard_instance(),
+    srv1_lab_dashboard_instance(),
+    srv2_preview_dashboard_instance(),
+    srv2_deploy_dashboard_instance(),
+    srv2_lab_dashboard_instance(),
+  ]
+}
+
+test fn exactly_one_dashboard_instance_derives_prod_risk_and_it_is_the_daily_workspace() -> Bool {
+  let prod = filter(dashboard_instances(), i => dashboard_instance_risk_class(instance: i) == ProdRisk)
+  count(prod) == 1 && all(prod, i => i.deployment == srv1_daily_workspace_deployment)
+}
+
+// THE FAILURE-MODE ROW RESOLVES AND NAMES THIS WITNESS AS ITS EVIDENCE, so a rename here cannot
+// leave the row citing a declaration that no longer exists.
+test fn the_wrong_instance_failure_mode_row_cites_this_red() -> Bool {
+  any(a_test_deployment_acts_on_the_prod_deployments_state.evidence, r => r.decl_name == "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings")
+}

@@ -1,0 +1,372 @@
+module test.claim.host_boot_attempt_admission_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { dimm_figure_banks }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  AttemptConfigurationReceipt, FirmwareReadbacks, FirmwareReadBeforeActuation, FirmwareReadbacksNotRecorded,
+  ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
+  StimulusAppliedByReceipt, StimulusApplicationNotRecorded, PopulationOperatorAttested, PopulationNotRecorded,
+  PopulationLiveObserved, PopulationConflicted,
+}
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
+import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
+import gunbc.host_boot_attempt_admission {
+  PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_minted, attempt_configuration_with_pre_power,
+  AttemptReceiptRefusal, ReceiptValidation, ReceiptValidated, ReceiptRefused,
+  ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing, ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe,
+  ReceiptPathOutsideReceipts, ReceiptFileUnreadable, ReceiptNotJson, ReceiptSchemaMismatch,
+  ReceiptFieldUnreadable, ReceiptTimeUnreadable, ReceiptSubjectMismatch, ReceiptAttemptMismatch, ReceiptPlanMismatch,
+  ReceiptOrderingViolated, AttemptAlreadyConsumed, AttemptSlotKeyNotAddressable, AttemptSlotPreconditionIncoherent, AttemptSlotStoreRefused,
+  ConfigurationReceiptNotNamed, ConfigurationReceiptAdmitted,
+  validate_attempt_receipt, named_receipt_validation, attempt_slot_key, attempt_configuration_receipt_of,
+  RosterSlot, mt_collins_slot_roster, tracked_entry_refusal,
+  ReceiptNotTracked, ReceiptNotRegularFile, ReceiptDigestUnavailable,
+  ReceiptCpusNotTheExpectedSockets, ReceiptDimmUnknownSlot, ReceiptDimmOnWrongSocket, ReceiptDimmSlotOmitted,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE VALIDATION FOLD AT ITS INTERFACE: each claim supplies the one file read the
+// fold is handed and asserts the typed answer. The real read and the slot are exercised by
+// test.claim.host_boot_attempt_admission_wet_witness.
+fn q(s: String) -> String {
+  concat(concat("\"", s), "\"")
+}
+
+fn receipt_text(subject: String, attempt: String, plan_subject: String, plan_attempt: String, requested: String, fixed_at: String, completed_at: String) -> String {
+  receipt_text_with(subject: subject, attempt: attempt, plan_subject: plan_subject, plan_attempt: plan_attempt, requested: requested, fixed_at: fixed_at, completed_at: completed_at, cpus: cpus_json(sockets: [0, 1]), dimms: dimms_json(rows: [dimm(label: "J1", socket: 0), dimm(label: "J25", socket: 1)]))
+}
+
+fn receipt_text_with(subject: String, attempt: String, plan_subject: String, plan_attempt: String, requested: String, fixed_at: String, completed_at: String, cpus: String, dimms: String) -> String {
+  join([
+    "{", q(s: "schema"), ":", q(s: "gunbc.boot_attempt_receipt.v1"), ",",
+    q(s: "plan"), ":{", q(s: "subject"), ":", q(s: subject), ",", q(s: "attempt"), ":", q(s: attempt), ",",
+    q(s: "expected_sockets"), ":[0,1],", q(s: "requested"), ":", requested, ",",
+    q(s: "fixed_at"), ":", q(s: fixed_at), ",", q(s: "fixed_by"), ":", q(s: "eager-gull-22"), "},",
+    q(s: "inspection"), ":{", q(s: "plan_subject"), ":", q(s: plan_subject), ",", q(s: "plan_attempt"), ":", q(s: plan_attempt), ",",
+    q(s: "applied"), ":", q(s: "socket 1 CPU reseated"), ",",
+    q(s: "cpus"), ":", cpus, ",",
+    q(s: "dimms"), ":", dimms, ",",
+    q(s: "completed_at"), ":", q(s: completed_at), ",", q(s: "witnessed_by"), ":", q(s: "operator"), "}}",
+  ], "")
+}
+
+fn cpus_json(sockets: List<Int>) -> String {
+  concat(concat("[", join(map(sockets, k => join(["{", q(s: "socket"), ":", to_string(k), ",", q(s: "installed"), ":true}"], "")), ",")), "]")
+}
+
+type DimmFixture {
+  label: String
+  socket: Int
+}
+
+fn dimm(label: String, socket: Int) -> DimmFixture {
+  DimmFixture { label: label, socket: socket }
+}
+
+fn dimms_json(rows: List<DimmFixture>) -> String {
+  concat(concat("[", join(map(rows, r => join(["{", q(s: "label"), ":", q(s: r.label), ",", q(s: "socket"), ":", to_string(r.socket), ",", q(s: "populated"), ":true}"], "")), ",")), "]")
+}
+
+// A TWO-SLOT ROSTER keeps each claim's parse small; one claim below joins the real 32-connector roster.
+fn small_roster() -> List<RosterSlot> {
+  [RosterSlot { label: "J1", socket: 0 }, RosterSlot { label: "J25", socket: 1 }]
+}
+
+fn a_digest() -> Sha256FileDigest {
+  Sha256FileDigest { digest: sha256_digest(hex: "689624b261a32784a3a7d0373b1f05cfd7a46c1cff63e1ff761736cd9184a590") }
+}
+
+data path: NonEmptyStr = "artifacts/receipts/mtcollins1-n42.json"
+
+fn valid_text() -> String {
+  receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: q(s: "reseat socket 1 CPU"), fixed_at: "2026-10-04T05:00:00Z", completed_at: "2026-10-04T05:30:00Z")
+}
+
+fn validate(text: String, nonce: NonEmptyStr) -> ReceiptValidation {
+  validate_attempt_receipt(subject: operator_host_mtcollins1, nonce: nonce, path: path, commit: "0123abc", slots: small_roster(), content: text, digest: a_digest())
+}
+
+fn refused_with(v: ReceiptValidation) -> AttemptReceiptRefusal? {
+  match v {
+    ReceiptRefused { cause: c } => Present { value: c }
+    ReceiptValidated { receipt: _ } => none
+  }
+}
+
+fn refusal_tag(cause: AttemptReceiptRefusal) -> String {
+  match cause {
+    ReceiptHostHasNoRoute { host: _ } => "ReceiptHostHasNoRoute"
+    ReceiptExecutorForAnotherHost { executor_host: _, bound: _ } => "ReceiptExecutorForAnotherHost"
+    ReceiptExecutorNotOnStoreHost { reason: _ } => "ReceiptExecutorNotOnStoreHost"
+    ReceiptHostUnbound { detail: _ } => "ReceiptHostUnbound"
+    ReceiptNonceMissing { variable: _, detail: _ } => "ReceiptNonceMissing"
+    ReceiptNonceNotSlotSafe { nonce: _ } => "ReceiptNonceNotSlotSafe"
+    ReceiptHostNotSlotSafe { host: _ } => "ReceiptHostNotSlotSafe"
+    ReceiptPathOutsideReceipts { path: _ } => "ReceiptPathOutsideReceipts"
+    ReceiptNotTracked { path: _, commit: _ } => "ReceiptNotTracked"
+    ReceiptNotRegularFile { path: _, mode: _, kind: _ } => "ReceiptNotRegularFile"
+    ReceiptDigestUnavailable { path: _, reason: _ } => "ReceiptDigestUnavailable"
+    ReceiptCpusNotTheExpectedSockets { expected: _, recorded: _ } => "ReceiptCpusNotTheExpectedSockets"
+    ReceiptDimmUnknownSlot { label: _ } => "ReceiptDimmUnknownSlot"
+    ReceiptDimmOnWrongSocket { label: _, recorded: _, roster: _ } => "ReceiptDimmOnWrongSocket"
+    ReceiptDimmSlotOmitted { label: _ } => "ReceiptDimmSlotOmitted"
+    ReceiptFileUnreadable { path: _, detail: _ } => "ReceiptFileUnreadable"
+    ReceiptNotJson { path: _, detail: _ } => "ReceiptNotJson"
+    ReceiptSchemaMismatch { observed: _ } => "ReceiptSchemaMismatch"
+    ReceiptFieldUnreadable { field: _, cause: _ } => "ReceiptFieldUnreadable"
+    ReceiptTimeUnreadable { field: _, rendering: _ } => "ReceiptTimeUnreadable"
+    ReceiptSubjectMismatch { receipt: _, bound: _ } => "ReceiptSubjectMismatch"
+    ReceiptAttemptMismatch { receipt: _, dispatched: _ } => "ReceiptAttemptMismatch"
+    ReceiptPlanMismatch { field: _, plan: _, inspection: _ } => "ReceiptPlanMismatch"
+    ReceiptOrderingViolated { fixed_at: _, completed_at: _ } => "ReceiptOrderingViolated"
+    AttemptAlreadyConsumed { slot: _, consumed_by: _ } => "AttemptAlreadyConsumed"
+    AttemptSlotKeyNotAddressable { slot: _ } => "AttemptSlotKeyNotAddressable"
+    AttemptSlotPreconditionIncoherent { slot: _ } => "AttemptSlotPreconditionIncoherent"
+    AttemptSlotStoreRefused { slot: _, cause: _ } => "AttemptSlotStoreRefused"
+  }
+}
+
+fn refusal_detail(cause: AttemptReceiptRefusal) -> String {
+  match cause {
+    ReceiptHostHasNoRoute { host: h } => h as String
+    ReceiptExecutorForAnotherHost { executor_host: e, bound: b } => join([e as String, b as String], "|")
+    ReceiptExecutorNotOnStoreHost { reason: r } => r as String
+    ReceiptHostUnbound { detail: d } => d as String
+    ReceiptNonceMissing { variable: v, detail: d } => join([v as String, d], "|")
+    ReceiptNonceNotSlotSafe { nonce: n } => n as String
+    ReceiptHostNotSlotSafe { host: h } => h as String
+    ReceiptPathOutsideReceipts { path: x } => x as String
+    ReceiptNotTracked { path: x, commit: c } => join([x as String, c as String], "|")
+    ReceiptNotRegularFile { path: x, mode: m, kind: k } => join([x as String, m, k], "|")
+    ReceiptDigestUnavailable { path: x, reason: r } => join([x as String, r], "|")
+    ReceiptCpusNotTheExpectedSockets { expected: e, recorded: r } => join([join(map(e, k => to_string(k)), ","), join(map(r, k => to_string(k)), ",")], "|")
+    ReceiptDimmUnknownSlot { label: l } => l as String
+    ReceiptDimmOnWrongSocket { label: l, recorded: r, roster: k } => join([l as String, to_string(r), to_string(k)], "|")
+    ReceiptDimmSlotOmitted { label: l } => l as String
+    ReceiptFileUnreadable { path: x, detail: d } => join([x as String, d], "|")
+    ReceiptNotJson { path: x, detail: d } => join([x as String, d], "|")
+    ReceiptSchemaMismatch { observed: o } => o
+    ReceiptFieldUnreadable { field: f, cause: _ } => f as String
+    ReceiptTimeUnreadable { field: f, rendering: r } => join([f as String, r], "|")
+    ReceiptSubjectMismatch { receipt: r, bound: b } => join([r, b as String], "|")
+    ReceiptAttemptMismatch { receipt: r, dispatched: d } => join([r, d as String], "|")
+    ReceiptPlanMismatch { field: f, plan: x, inspection: i } => join([f as String, x, i], "|")
+    ReceiptOrderingViolated { fixed_at: a, completed_at: b } => join([a as String, b as String], "|")
+    AttemptAlreadyConsumed { slot: k, consumed_by: c2 } => join([k as String, c2], "|")
+    AttemptSlotKeyNotAddressable { slot: k } => k as String
+    AttemptSlotPreconditionIncoherent { slot: k } => k as String
+    AttemptSlotStoreRefused { slot: k, cause: _ } => k as String
+  }
+}
+
+// ── THE POSITIVE CONTROL: a valid receipt projects into the account's operator-attested fields ───
+test fn w_a_valid_receipt_projects_its_plan_and_inspection_into_the_attempt_configuration() -> Bool {
+  match validate(text: valid_text(), nonce: "n42") {
+    ReceiptRefused { cause: _ } => false
+    ReceiptValidated { receipt: r } => {
+      let projected = attempt_configuration_receipt_of(host: operator_host_mtcollins1, source: ConfigurationReceiptAdmitted { receipt: r, slot: "attempt-10-mtcollins1-n42" }, attempt: "run-1")
+      let expected_ok = match projected.expected { ExpectedSockets { sockets: ks, source: _ } => ks.length() == 2  ExpectedTopologyNotRecorded { reason: _ } => false }
+      let requested_ok = match projected.requested { StimulusRequested { description: d } => (d as String) == "reseat socket 1 CPU"  NoStimulusRequested => false  StimulusRequestNotRecorded { reason: _ } => false }
+      let applied_ok = match projected.applied { StimulusAppliedByReceipt { receipt: _, attested_by: a } => (a as String) == "operator"  StimulusApplicationNotRecorded { reason: _ } => false }
+      let cpus_ok = match projected.cpus {
+        PopulationOperatorAttested { rows: rs, receipt: rc } => rs.length() == 2 && string_contains(s: rc as String, pattern: "artifacts/receipts/mtcollins1-n42.json@0123abc")
+        PopulationLiveObserved { rows: _, source: _ } => false
+        PopulationConflicted { readings: _ } => false
+        PopulationNotRecorded { reason: _ } => false
+      }
+      expected_ok && requested_ok && applied_ok && cpus_ok && (projected.attempt as String) == "n42"
+    }
+  }
+}
+
+test fn w_an_explicit_null_request_is_no_stimulus_and_a_missing_one_refuses() -> Bool {
+  let null_text = receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: "null", fixed_at: "2026-10-04T05:00:00Z", completed_at: "2026-10-04T05:30:00Z")
+  let null_ok = match validate(text: null_text, nonce: "n42") {
+    ReceiptValidated { receipt: r } => match r.plan.requested { NoStimulusRequested => true  StimulusRequested { description: _ } => false  StimulusRequestNotRecorded { reason: _ } => false }
+    ReceiptRefused { cause: _ } => false
+  }
+  let missing_text = replace(s: valid_text(), from: concat(q(s: "requested"), ":"), to: concat(q(s: "requested_by_nobody"), ":"))
+  let missing_ok = match refused_with(v: validate(text: missing_text, nonce: "n42")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptFieldUnreadable" && refusal_detail(cause: c) == "requested"
+    Absent => false
+  }
+  null_ok && missing_ok
+}
+
+// ── THE ATTEMPT BINDING: a valid receipt for attempt A, dispatched as attempt B, refuses ─────────
+test fn w_a_valid_receipt_for_another_attempt_refuses() -> Bool {
+  match refused_with(v: validate(text: valid_text(), nonce: "n43")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptAttemptMismatch" && refusal_detail(cause: c) == "n42|n43"
+    Absent => false
+  }
+}
+
+test fn w_a_receipt_for_another_host_refuses() -> Bool {
+  let other = receipt_text(subject: "mtjade1", attempt: "n42", plan_subject: "mtjade1", plan_attempt: "n42", requested: "null", fixed_at: "2026-10-04T05:00:00Z", completed_at: "2026-10-04T05:30:00Z")
+  match refused_with(v: validate(text: other, nonce: "n42")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptSubjectMismatch" && refusal_detail(cause: c) == "mtjade1|mtcollins1"
+    Absent => false
+  }
+}
+
+test fn w_an_inspection_naming_another_plan_refuses() -> Bool {
+  let crossed = receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n41", requested: "null", fixed_at: "2026-10-04T05:00:00Z", completed_at: "2026-10-04T05:30:00Z")
+  match refused_with(v: validate(text: crossed, nonce: "n42")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptPlanMismatch" && refusal_detail(cause: c) == "attempt|n42|n41"
+    Absent => false
+  }
+}
+
+// ── THE ATTESTED TIMES: ordered only against each other, and only in the admitted shape ──────────
+test fn w_an_inspection_attested_before_its_plan_refuses_and_an_unshaped_time_refuses() -> Bool {
+  let early = receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: "null", fixed_at: "2026-10-04T05:00:00Z", completed_at: "2026-10-04T04:59:59Z")
+  let early_ok = match refused_with(v: validate(text: early, nonce: "n42")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptOrderingViolated" && refusal_detail(cause: c) == "2026-10-04T05:00:00Z|2026-10-04T04:59:59Z"
+    Absent => false
+  }
+  let local = receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: "null", fixed_at: "2026-10-04 05:00", completed_at: "2026-10-04T05:30:00Z")
+  let shape_ok = match refused_with(v: validate(text: local, nonce: "n42")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptTimeUnreadable" && refusal_detail(cause: c) == "fixed_at|2026-10-04 05:00"
+    Absent => false
+  }
+  early_ok && shape_ok
+}
+
+// ── THE FILE: malformed and absent both refuse, never NotRecorded ───────────────────────────────
+test fn w_a_named_receipt_that_is_malformed_or_undigested_refuses() -> Bool {
+  let malformed_ok = match refused_with(v: validate(text: "{\"schema\":", nonce: "n42")) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptNotJson"
+    Absent => false
+  }
+  let undigested_ok = match refused_with(v: validate_attempt_receipt(subject: operator_host_mtcollins1, nonce: "n42", path: path, commit: "0123abc", slots: small_roster(), content: valid_text(), digest: Sha256FileDigestUnavailable { path: "-", reason: "sha256sum could not digest the input" })) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptDigestUnavailable"
+    Absent => false
+  }
+  malformed_ok && undigested_ok
+}
+
+// ── BEFORE ANY READ: a nonce or path outside the admitted shape refuses ─────────────────────────
+test fn w_an_unsafe_nonce_or_a_path_outside_receipts_refuses_before_the_file_is_read() -> Bool {
+  let nonce_ok = match refused_with(v: named_receipt_validation(host: operator_host_mtcollins1, nonce: "n42/../x", path: path as String, revision: "0123abc", slots: small_roster())) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptNonceNotSlotSafe"
+    Absent => false
+  }
+  let path_ok = match refused_with(v: named_receipt_validation(host: operator_host_mtcollins1, nonce: "n42", path: "artifacts/receipts/../../etc/passwd.json", revision: "0123abc", slots: small_roster())) {
+    Present { value: c } => refusal_tag(cause: c) == "ReceiptPathOutsideReceipts"
+    Absent => false
+  }
+  nonce_ok && path_ok
+}
+
+// ── THE SLOT KEY IS INJECTIVE: the length prefix separates hosts whose labels share a prefix ─────
+test fn w_two_host_and_nonce_pairs_that_concatenate_alike_get_distinct_slots() -> Bool {
+  let a = attempt_slot_key(host: "ab" as HostIdentity, nonce: "c-d")
+  let b = attempt_slot_key(host: "ab-c" as HostIdentity, nonce: "d")
+  (a as String) != (b as String) && (a as String) == "attempt-2-ab-c-d" && !string_contains(s: a as String, pattern: ".") && !string_contains(s: a as String, pattern: "/")
+}
+
+// ── ABSENT IS NOT REFUSED: a dispatch that names no receipt records nothing and judges nothing ───
+test fn w_no_named_receipt_leaves_every_field_not_recorded() -> Bool {
+  let projected = attempt_configuration_receipt_of(host: operator_host_mtcollins1, source: ConfigurationReceiptNotNamed, attempt: "run-1")
+  let expected_ok = match projected.expected { ExpectedTopologyNotRecorded { reason: r } => string_contains(s: r as String, pattern: "boot_attempt_configuration_inspection")  ExpectedSockets { sockets: _, source: _ } => false }
+  let cpus_ok = match projected.cpus {
+    PopulationNotRecorded { reason: _ } => true
+    PopulationOperatorAttested { rows: _, receipt: _ } => false
+    PopulationLiveObserved { rows: _, source: _ } => false
+    PopulationConflicted { readings: _ } => false
+  }
+  expected_ok && cpus_ok && (projected.attempt as String) == "run-1"
+}
+
+// ── THE TRACKED BLOB: only a regular file tracked at the revision can be a receipt ───────────────
+fn tab() -> String { from_code_point(9) }
+fn nul() -> String { from_code_point(0) }
+
+fn refusal_tag_of(c: AttemptReceiptRefusal?) -> String {
+  match c {
+    Present { value: x } => refusal_tag(cause: x)
+    Absent => "none"
+  }
+}
+
+test fn w_only_a_regular_tracked_blob_at_the_revision_is_a_receipt() -> Bool {
+  let regular = refusal_tag_of(c: tracked_entry_refusal(path: path, commit: "0123abc", entries_nul: join(["100644 blob 1111111111111111111111111111111111111111", tab(), path as String, nul()], "")))
+  let symlink = refusal_tag_of(c: tracked_entry_refusal(path: path, commit: "0123abc", entries_nul: join(["120000 blob 2222222222222222222222222222222222222222", tab(), path as String, nul()], "")))
+  let untracked = refusal_tag_of(c: tracked_entry_refusal(path: path, commit: "0123abc", entries_nul: ""))
+  regular == "none" && symlink == "ReceiptNotRegularFile" && untracked == "ReceiptNotTracked"
+}
+
+// ── THE ATTESTED TIMES ARE CANONICAL UTC INSTANTS (gunbc.auth.approval_capability) ───────────────
+fn with_fixed_at(t: String) -> String {
+  refusal_tag_of(c: refused_with(v: validate(text: receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: "null", fixed_at: t, completed_at: "2026-10-04T05:30:00Z"), nonce: "n42")))
+}
+
+test fn w_an_impossible_calendar_time_refuses_and_equal_instants_are_admitted() -> Bool {
+  let equal = receipt_text(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: "null", fixed_at: "2026-10-04T05:30:00Z", completed_at: "2026-10-04T05:30:00Z")
+  with_fixed_at(t: "2026-99-04T05:00:00Z") == "ReceiptTimeUnreadable"
+    && with_fixed_at(t: "2026-02-30T05:00:00Z") == "ReceiptTimeUnreadable"
+    && with_fixed_at(t: "2026-10-04T24:00:00Z") == "ReceiptTimeUnreadable"
+    && refusal_tag_of(c: refused_with(v: validate(text: equal, nonce: "n42"))) == "none"
+}
+
+// ── THE POPULATIONS JOIN EXACTLY: expected sockets, and the host's slot roster ───────────────────
+fn with_rows(cpus: List<Int>, dimms: List<DimmFixture>) -> String {
+  refusal_tag_of(c: refused_with(v: validate(text: receipt_text_with(subject: "mtcollins1", attempt: "n42", plan_subject: "mtcollins1", plan_attempt: "n42", requested: "null", fixed_at: "2026-10-04T05:00:00Z", completed_at: "2026-10-04T05:30:00Z", cpus: cpus_json(sockets: cpus), dimms: dimms_json(rows: dimms)), nonce: "n42")))
+}
+
+test fn w_a_population_that_does_not_join_its_roster_refuses() -> Bool {
+  let full = [dimm(label: "J1", socket: 0), dimm(label: "J25", socket: 1)]
+  with_rows(cpus: [0], dimms: full) == "ReceiptCpusNotTheExpectedSockets"
+    && with_rows(cpus: [0, 1], dimms: [dimm(label: "J1", socket: 0), dimm(label: "25", socket: 1)]) == "ReceiptDimmUnknownSlot"
+    && with_rows(cpus: [0, 1], dimms: [dimm(label: "J1", socket: 0), dimm(label: "J25", socket: 0)]) == "ReceiptDimmOnWrongSocket"
+    && with_rows(cpus: [0, 1], dimms: [dimm(label: "J1", socket: 0)]) == "ReceiptDimmSlotOmitted"
+    && with_rows(cpus: [0, 1], dimms: full) == "none"
+}
+
+// THE REAL ROSTER: 32 connectors, J1-J16 on socket 0 and J17-J32 on socket 1, from the guide's Figure 9.
+test fn w_the_mt_collins_roster_is_the_guides_32_connectors_by_socket() -> Bool {
+  let roster = mt_collins_slot_roster(banks: dimm_figure_banks)
+  count(roster) == 32
+    && count(filter(roster, r => r.socket == 0)) == 16
+    && any(roster, r => (r.label as String) == "J25" && r.socket == 1)
+    && any(roster, r => (r.label as String) == "J16" && r.socket == 0)
+    && !any(roster, r => (r.label as String) == "25")
+}
+
+// ── THE PRE-POWER FIRMWARE READ, bound to the attempt admission admitted ─────────────────────────
+fn admitted_configuration() -> AttemptConfigurationReceipt {
+  match validate(text: valid_text(), nonce: "n42") {
+    ReceiptValidated { receipt: r } => attempt_configuration_receipt_of(host: operator_host_mtcollins1, source: ConfigurationReceiptAdmitted { receipt: r, slot: "attempt-10-mtcollins1-n42" }, attempt: "run-1")
+    ReceiptRefused { cause: _ } => attempt_configuration_receipt_of(host: operator_host_mtcollins1, source: ConfigurationReceiptNotNamed, attempt: "run-1")
+  }
+}
+
+fn firmware_attempt(f: FirmwareReadbacks) -> String {
+  match f {
+    FirmwareReadBeforeActuation { attempt: a, source: _, rows: rs } => if count(rs) == 5 && any(rs, r => (r.component as String) == "APP" && (r.version as String) == "0.32 01112100") { a as String } else { "wrong rows" }
+    FirmwareReadbacksNotRecorded { reason: _ } => "not recorded"
+  }
+}
+
+// B'S READING JOINS B'S CONFIGURATION; A'S OTHERWISE VALID READING IS REFUSED FOR B, NOT RELABELLED; AN
+// UNREAD TABLE STAYS NOT RECORDED.
+test fn a_firmware_reading_joins_only_the_attempt_it_was_taken_for() -> Bool {
+  let b = admitted_configuration()
+  let table = hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32)
+  let same = attempt_configuration_with_pre_power(c: b, firmware: pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: "n42", table: table, source: "ipmitool hpm check"))
+  let other = attempt_configuration_with_pre_power(c: b, firmware: pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: "n41", table: table, source: "ipmitool hpm check"))
+  let unread = attempt_configuration_with_pre_power(c: b, firmware: PrePowerFirmwareUnread { reason: "hpm check was not read: timeout" })
+  let other_refused = match other.firmware {
+    FirmwareReadbacksNotRecorded { reason: r } => string_contains(s: r as String, pattern: "taken for attempt n41") && string_contains(s: r as String, pattern: "refused, not relabelled")
+    FirmwareReadBeforeActuation { attempt: _, source: _, rows: _ } => false
+  }
+  firmware_attempt(f: same.firmware) == "n42" && other_refused && firmware_attempt(f: unread.firmware) == "not recorded"
+}

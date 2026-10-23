@@ -1,0 +1,1057 @@
+module v2.lens.cost
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+import v2.extdeps.languages.llvm_ir { LlvmInstruction }
+import std.algebra {
+  BoundedLattice,
+  Equal,
+  Greater,
+  Monoid,
+}
+import v2.std.cardinality {
+  loop_bound_measure,
+  loop_bound_witness_for_node,
+  NonZeroNat
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  CostEdgeComposed,
+  CostEdgeNotPriced,
+  CostEdgePricedOnce,
+  cost_edge_role,
+  Authored,
+  Node,
+  NodeFold,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  fold_node
+}
+import std.nat { Nat, Succ, Zero, nat_add, nat_compare }
+import v2.std.witness { Holds, Violates, Witness }
+
+type SizeVariable {
+  source: Node
+}
+
+type PolynomialDegree {
+  predecessor_after_linear: NonZeroNat
+}
+
+type PolyLogExponent {
+  predecessor_after_log: NonZeroNat
+}
+
+type ExponentialBase {
+  predecessor_after_one: NonZeroNat
+}
+
+type SymbolicCost
+  = ConstantCost { value: std.nat.Nat }
+  | LinearCost { variable: SizeVariable }
+  | LogCost { variable: SizeVariable }
+  | PolynomialCost { variable: SizeVariable, degree: PolynomialDegree }
+  | PolyLogCost { variable: SizeVariable, exponent: PolyLogExponent }
+  | ExponentialCost { variable: SizeVariable, base: ExponentialBase }
+  | FactorialCost { variable: SizeVariable }
+  | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
+  | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
+  | UnknownCost { diagnostic: Diagnostic }
+
+type AsymptoticClass
+  = ClassConstant
+  | ClassLog
+  | ClassLinear
+  | ClassLinearithmic
+  | ClassPolynomial { degree: PolynomialDegree }
+  | ClassPolyLog { exponent: PolyLogExponent }
+  | ClassExponential
+  | ClassFactorial
+  | ClassUnknown
+
+type CostCompositionMode
+  = SequentialCost
+  | AlternativeCost
+  | IterativeCost
+
+// `once` is the work a node performs a single time BESIDE its composed children: a Loop's domain
+// (v2.std.node cost_edge_role CostEdgePricedOnce) is evaluated once, so it is summed with the iteration rather than
+// multiplied into it. It is kept apart from `cost` so the answer does not depend on where a producer
+// placed the domain edge among the loop's children; symbolic_cost_fold_total joins the two.
+type SymbolicCostFoldState {
+  mode: CostCompositionMode
+  cost: SymbolicCost
+  once: SymbolicCost
+  parent: Node
+}
+
+fn symbolic_cost_fold_total(s: SymbolicCostFoldState) -> SymbolicCost {
+  symbolic_sequential(a: s.cost, b: s.once)
+}
+
+fn constant_cost(value: std.nat.Nat) -> SymbolicCost {
+  ConstantCost { value: value }
+}
+
+fn zero_cost() -> SymbolicCost {
+  constant_cost(value: Zero)
+}
+
+fn unit_cost() -> SymbolicCost {
+  constant_cost(value: Succ { prev: Zero })
+}
+
+fn nonzero_one() -> NonZeroNat {
+  NonZeroNat { prev: Zero }
+}
+
+fn polynomial_degree_two() -> PolynomialDegree {
+  PolynomialDegree { predecessor_after_linear: nonzero_one() }
+}
+
+fn polylog_exponent_two() -> PolyLogExponent {
+  PolyLogExponent { predecessor_after_log: nonzero_one() }
+}
+
+fn size_of_node(n: Node) -> SizeVariable {
+  SizeVariable { source: n }
+}
+
+fn linear_in_node(n: Node) -> SymbolicCost {
+  LinearCost { variable: size_of_node(n: n) }
+}
+
+data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
+  reason: ^cost_reason_unmodeled_symbolic_cost,
+  at: Textual { file: ^cost_lattice_top_virtual_file, extent: WholeFile },
+  correction: Unavailable { reason: AmbiguousIntent }
+}
+
+fn unknown_cost(diagnostic: Diagnostic) -> SymbolicCost {
+  UnknownCost { diagnostic: diagnostic }
+}
+
+fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
+  match c {
+    ConstantCost { value: _ } => Holds { value: c }
+    LinearCost { variable: _ } => Holds { value: c }
+    LogCost { variable: _ } => Holds { value: c }
+    PolynomialCost { variable: _, degree: _ } => Holds { value: c }
+    PolyLogCost { variable: _, exponent: _ } => Holds { value: c }
+    ExponentialCost { variable: _, base: _ } => Holds { value: c }
+    FactorialCost { variable: _ } => Holds { value: c }
+    SumCost { lhs: _, rhs: _ } => Holds { value: c }
+    ProductCost { lhs: _, rhs: _ } => Holds { value: c }
+    UnknownCost { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
+  match c {
+    Atom { identity: _ } => zero_cost()
+    Conj => zero_cost()
+    Disj => zero_cost()
+    Arrow => unit_cost()
+    Cardinality => linear_in_node(n: n)
+    Instantiation => unit_cost()
+  }
+}
+
+fn base_cost_for_loop(n: Node) -> SymbolicCost {
+  match loop_bound_witness_for_node(n: n) {
+    Holds { value: bound } =>
+      linear_in_node(n: loop_bound_measure(bound: bound))
+    Violates { diagnostic: d } =>
+      unknown_cost(diagnostic: d)
+  }
+}
+
+fn base_cost_for_behavior(b: Behavior, n: Node) -> SymbolicCost {
+  match b {
+    Value => zero_cost()
+    Transform => unit_cost()
+    Branch => unit_cost()
+    Loop => base_cost_for_loop(n: n)
+    Bind => zero_cost()
+    Match => unit_cost()
+  }
+}
+
+fn cost_mode_for_connective(c: Connective) -> CostCompositionMode {
+  match c {
+    Atom { identity: _ } => SequentialCost
+    Conj => SequentialCost
+    Disj => AlternativeCost
+    Arrow => SequentialCost
+    Cardinality => IterativeCost
+    Instantiation => SequentialCost
+  }
+}
+
+fn cost_mode_for_behavior(b: Behavior) -> CostCompositionMode {
+  match b {
+    Value => SequentialCost
+    Transform => SequentialCost
+    Branch => AlternativeCost
+    Loop => IterativeCost
+    Bind => SequentialCost
+    Match => AlternativeCost
+  }
+}
+
+fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
+  match n.kind {
+    TypeNode { connective: c } =>
+      SymbolicCostFoldState {
+        mode: cost_mode_for_connective(c: c),
+        cost: base_cost_for_connective(c: c, n: n),
+        once: zero_cost(),
+        parent: n
+      }
+    ComputationNode { behavior: b } =>
+      SymbolicCostFoldState {
+        mode: cost_mode_for_behavior(b: b),
+        cost: base_cost_for_behavior(b: b, n: n),
+        once: zero_cost(),
+        parent: n
+      }
+  }
+}
+
+fn symbolic_sequential_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match b {
+    ConstantCost { value: bv } =>
+      match bv {
+        Zero => a
+        Succ { prev: _ } => SumCost { lhs: a, rhs: b }
+      }
+    UnknownCost { diagnostic: _ } => b
+    LinearCost { variable: _ } => SumCost { lhs: a, rhs: b }
+    LogCost { variable: _ } => SumCost { lhs: a, rhs: b }
+    PolynomialCost { variable: _, degree: _ } => SumCost { lhs: a, rhs: b }
+    PolyLogCost { variable: _, exponent: _ } => SumCost { lhs: a, rhs: b }
+    ExponentialCost { variable: _, base: _ } => SumCost { lhs: a, rhs: b }
+    FactorialCost { variable: _ } => SumCost { lhs: a, rhs: b }
+    SumCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+    ProductCost { lhs: _, rhs: _ } => SumCost { lhs: a, rhs: b }
+  }
+}
+
+fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match a {
+    ConstantCost { value: av } =>
+      match av {
+        Zero => b
+        Succ { prev: _ } => symbolic_sequential_rhs(a: a, b: b)
+      }
+    UnknownCost { diagnostic: _ } => a
+    LinearCost { variable: _ } => symbolic_sequential_rhs(a: a, b: b)
+    LogCost { variable: _ } => symbolic_sequential_rhs(a: a, b: b)
+    PolynomialCost { variable: _, degree: _ } => symbolic_sequential_rhs(a: a, b: b)
+    PolyLogCost { variable: _, exponent: _ } => symbolic_sequential_rhs(a: a, b: b)
+    ExponentialCost { variable: _, base: _ } => symbolic_sequential_rhs(a: a, b: b)
+    FactorialCost { variable: _ } => symbolic_sequential_rhs(a: a, b: b)
+    SumCost { lhs: _, rhs: _ } => symbolic_sequential_rhs(a: a, b: b)
+    ProductCost { lhs: _, rhs: _ } => symbolic_sequential_rhs(a: a, b: b)
+  }
+}
+
+// Zero is checked on BOTH operands before anything else, and the order is the whole point. An
+// earlier revision matched a's arms first - including UnknownCost - and only then inspected b, so
+// zero times unknown absorbed to zero while unknown times ZERO returned unknown. Multiplication is
+// commutative, so an operand order that changes the answer is a defect on its face, not a stylistic
+// asymmetry: the authority absorbed zero only when zero happened to be written on the left. Found
+// by comparing this authority against v2.lens.cost.valuation, whose exact evaluator has the same
+// obligation - a zero multiplicity means the other factor is never executed, so its work is zero
+// whatever that factor is and however little is known about it. Both paths now answer zero for both
+// orders, so the two agree completely rather than agreeing in one direction and diverging in the
+// other. The scope of that claim is CLASSIFICATION, not provenance, and saying so here is what
+// stops a later reader from concluding the function is symmetric in every respect and then being
+// surprised. One asymmetry survives deliberately: unknown times unknown returns the LEFT operand's
+// diagnostic, so the reverse order returns the right one and the other is dropped. That is a lesser
+// class than what this change fixed - before it, the operand order changed the KIND of the answer,
+// and now it changes only which of two equally valid diagnostics is carried - and it is not
+// introduced here: symbolic_sequential carries the identical left-biased drop, so it is a
+// module-wide pattern of UnknownCost holding exactly one diagnostic. Closing it means widening
+// UnknownCost to carry several, which is a real change with its own witnesses and does not belong
+// on the annihilator fix.
+
+fn symbolic_product_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match b {
+    ConstantCost { value: bv } =>
+      match bv {
+        Zero => zero_cost()
+        Succ { prev: bv_prev } =>
+          match bv_prev {
+            Zero => a
+            Succ { prev: _ } => ProductCost { lhs: a, rhs: b }
+          }
+      }
+    UnknownCost { diagnostic: _ } => b
+    LinearCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+    LogCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+    PolynomialCost { variable: _, degree: _ } => ProductCost { lhs: a, rhs: b }
+    PolyLogCost { variable: _, exponent: _ } => ProductCost { lhs: a, rhs: b }
+    ExponentialCost { variable: _, base: _ } => ProductCost { lhs: a, rhs: b }
+    FactorialCost { variable: _ } => ProductCost { lhs: a, rhs: b }
+    SumCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+    ProductCost { lhs: _, rhs: _ } => ProductCost { lhs: a, rhs: b }
+  }
+}
+
+fn symbolic_product_unknown_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match b {
+    ConstantCost { value: bv } =>
+      match bv {
+        Zero => zero_cost()
+        Succ { prev: _ } => a
+      }
+    UnknownCost { diagnostic: _ } => a
+    LinearCost { variable: _ } => a
+    LogCost { variable: _ } => a
+    PolynomialCost { variable: _, degree: _ } => a
+    PolyLogCost { variable: _, exponent: _ } => a
+    ExponentialCost { variable: _, base: _ } => a
+    FactorialCost { variable: _ } => a
+    SumCost { lhs: _, rhs: _ } => a
+    ProductCost { lhs: _, rhs: _ } => a
+  }
+}
+
+fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match a {
+    ConstantCost { value: av } =>
+      match av {
+        Zero => zero_cost()
+        Succ { prev: av_prev } =>
+          match av_prev {
+            Zero => b
+            Succ { prev: _ } => symbolic_product_rhs(a: a, b: b)
+          }
+      }
+    UnknownCost { diagnostic: _ } => symbolic_product_unknown_rhs(a: a, b: b)
+    LinearCost { variable: _ } => symbolic_product_rhs(a: a, b: b)
+    LogCost { variable: _ } => symbolic_product_rhs(a: a, b: b)
+    PolynomialCost { variable: _, degree: _ } => symbolic_product_rhs(a: a, b: b)
+    PolyLogCost { variable: _, exponent: _ } => symbolic_product_rhs(a: a, b: b)
+    ExponentialCost { variable: _, base: _ } => symbolic_product_rhs(a: a, b: b)
+    FactorialCost { variable: _ } => symbolic_product_rhs(a: a, b: b)
+    SumCost { lhs: _, rhs: _ } => symbolic_product_rhs(a: a, b: b)
+    ProductCost { lhs: _, rhs: _ } => symbolic_product_rhs(a: a, b: b)
+  }
+}
+
+fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match b {
+    ConstantCost { value: bv } =>
+      match bv {
+        Zero => a
+        Succ { prev: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+      }
+    UnknownCost { diagnostic: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    LinearCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    LogCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    PolynomialCost { variable: _, degree: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    PolyLogCost { variable: _, exponent: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    ExponentialCost { variable: _, base: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    FactorialCost { variable: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    SumCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+    ProductCost { lhs: _, rhs: _ } =>
+          if a == b {
+            a
+          } else {
+            if symbolic_cost_dominates(a: a, b: b) {
+              if symbolic_cost_dominates(a: b, b: a) {
+                SumCost { lhs: a, rhs: b }
+              } else {
+                a
+              }
+            } else {
+              b
+            }
+          }
+  }
+}
+
+fn symbolic_max(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  match a {
+    ConstantCost { value: av } =>
+      match av {
+        Zero => b
+        Succ { prev: _ } => symbolic_max_rhs(a: a, b: b)
+      }
+    UnknownCost { diagnostic: _ } => symbolic_max_rhs(a: a, b: b)
+    LinearCost { variable: _ } => symbolic_max_rhs(a: a, b: b)
+    LogCost { variable: _ } => symbolic_max_rhs(a: a, b: b)
+    PolynomialCost { variable: _, degree: _ } => symbolic_max_rhs(a: a, b: b)
+    PolyLogCost { variable: _, exponent: _ } => symbolic_max_rhs(a: a, b: b)
+    ExponentialCost { variable: _, base: _ } => symbolic_max_rhs(a: a, b: b)
+    FactorialCost { variable: _ } => symbolic_max_rhs(a: a, b: b)
+    SumCost { lhs: _, rhs: _ } => symbolic_max_rhs(a: a, b: b)
+    ProductCost { lhs: _, rhs: _ } => symbolic_max_rhs(a: a, b: b)
+  }
+}
+
+
+fn polynomial_degree_dominates(a: PolynomialDegree, b: PolynomialDegree) -> Bool {
+  nonzero_nat_dominates(a: a.predecessor_after_linear, b: b.predecessor_after_linear)
+}
+
+fn polylog_exponent_dominates(a: PolyLogExponent, b: PolyLogExponent) -> Bool {
+  nonzero_nat_dominates(a: a.predecessor_after_log, b: b.predecessor_after_log)
+}
+
+fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
+  nat_dominates(a: a.prev, b: b.prev)
+}
+
+fn nat_dominates(a: std.nat.Nat, b: std.nat.Nat) -> Bool {
+  match nat_compare(a: a, b: b) {
+    Greater => true
+    Equal => true
+    Less => false
+  }
+}
+
+fn add_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
+  PolynomialDegree {
+    predecessor_after_linear: NonZeroNat {
+      prev: Succ {
+        prev: Succ {
+          prev: nat_add(a: a.predecessor_after_linear.prev, b: b.predecessor_after_linear.prev)
+        }
+      }
+    }
+  }
+}
+
+fn increment_polynomial_degree(d: PolynomialDegree) -> PolynomialDegree {
+  PolynomialDegree {
+    predecessor_after_linear: NonZeroNat { prev: Succ { prev: d.predecessor_after_linear.prev } }
+  }
+}
+
+fn increment_polylog_exponent(e: PolyLogExponent) -> PolyLogExponent {
+  PolyLogExponent {
+    predecessor_after_log: NonZeroNat { prev: Succ { prev: e.predecessor_after_log.prev } }
+  }
+}
+
+fn add_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
+  PolyLogExponent {
+    predecessor_after_log: NonZeroNat {
+      prev: Succ {
+        prev: Succ {
+          prev: nat_add(a: a.predecessor_after_log.prev, b: b.predecessor_after_log.prev)
+        }
+      }
+    }
+  }
+}
+
+fn polynomial_degree_to_polylog_exponent(d: PolynomialDegree) -> PolyLogExponent {
+  PolyLogExponent { predecessor_after_log: d.predecessor_after_linear }
+}
+
+fn polylog_exponent_to_polynomial_degree(e: PolyLogExponent) -> PolynomialDegree {
+  PolynomialDegree { predecessor_after_linear: e.predecessor_after_log }
+}
+
+fn max_polynomial_degree(a: PolynomialDegree, b: PolynomialDegree) -> PolynomialDegree {
+  if polynomial_degree_dominates(a: a, b: b) {
+    a
+  } else {
+    b
+  }
+}
+
+fn max_polylog_exponent(a: PolyLogExponent, b: PolyLogExponent) -> PolyLogExponent {
+  if polylog_exponent_dominates(a: a, b: b) {
+    a
+  } else {
+    b
+  }
+}
+
+fn compose_child_cost(
+  mode: CostCompositionMode,
+  acc: SymbolicCost,
+  child: SymbolicCost
+) -> SymbolicCost {
+  match mode {
+    SequentialCost => symbolic_sequential(a: acc, b: child)
+
+    AlternativeCost => symbolic_max(a: acc, b: symbolic_max(a: child, b: unit_cost()))
+
+    IterativeCost =>
+      symbolic_product(
+        a: acc,
+        b: symbolic_max(a: child, b: unit_cost())
+      )
+  }
+}
+
+fn cost_fold_composed(acc: SymbolicCostFoldState, child: SymbolicCostFoldState) -> SymbolicCostFoldState {
+  SymbolicCostFoldState {
+    mode: acc.mode,
+    cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: symbolic_cost_fold_total(s: child)),
+    once: acc.once,
+    parent: acc.parent
+  }
+}
+
+// Each edge is priced as v2.std.node cost_edge_role says: composed under the parent's mode, priced
+// once beside that composition, or not priced.
+fn cost_fold_step(
+  acc: SymbolicCostFoldState,
+  e: Edge,
+  child: SymbolicCostFoldState
+) -> SymbolicCostFoldState {
+  match cost_edge_role(parent: acc.parent, e: e) {
+    CostEdgeComposed => cost_fold_composed(acc: acc, child: child)
+    CostEdgePricedOnce =>
+      SymbolicCostFoldState {
+        mode: acc.mode,
+        cost: acc.cost,
+        once: symbolic_sequential(a: acc.once, b: symbolic_cost_fold_total(s: child)),
+        parent: acc.parent
+      }
+    CostEdgeNotPriced => acc
+  }
+}
+
+fn symbolic_cost_fold() -> NodeFold<SymbolicCostFoldState> {
+  NodeFold {
+    init: cost_fold_init,
+    step: cost_fold_step
+  }
+}
+
+fn symbolic_cost_fold_state(n: Node) -> SymbolicCostFoldState {
+  fold_node(n: n, algebra: symbolic_cost_fold())
+}
+
+fn symbolic_cost_of_node(n: Node) -> SymbolicCost {
+  symbolic_cost_fold_total(s: symbolic_cost_fold_state(n: n))
+}
+
+fn cost_lens(n: Node) -> Witness<SymbolicCost> {
+  symbolic_cost_witness(c: symbolic_cost_of_node(n: n), n: n)
+}
+
+fn asymptotic_class_join(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
+  if asymptotic_class_dominates(a: a, b: b) {
+    a
+  } else {
+    b
+  }
+}
+
+fn asymptotic_class_meet(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
+  if asymptotic_class_dominates(a: a, b: b) {
+    b
+  } else {
+    a
+  }
+}
+
+fn asymptotic_class_dominates(a: AsymptoticClass, b: AsymptoticClass) -> Bool {
+  match a {
+    ClassUnknown => true
+    ClassFactorial =>
+      match b {
+        ClassUnknown => false
+        ClassConstant => true
+        ClassLog => true
+        ClassLinear => true
+        ClassLinearithmic => true
+        ClassPolynomial { degree: _ } => true
+        ClassPolyLog { exponent: _ } => true
+        ClassExponential => true
+        ClassFactorial => true
+      }
+    ClassExponential =>
+      match b {
+        ClassUnknown => false
+        ClassFactorial => false
+        ClassConstant => true
+        ClassLog => true
+        ClassLinear => true
+        ClassLinearithmic => true
+        ClassPolynomial { degree: _ } => true
+        ClassPolyLog { exponent: _ } => true
+        ClassExponential => true
+      }
+    ClassPolynomial { degree: ad } =>
+      match b {
+        ClassConstant => true
+        ClassLog => true
+        ClassLinear => true
+        ClassLinearithmic => true
+        ClassPolynomial { degree: bd } => polynomial_degree_dominates(a: ad, b: bd)
+        ClassPolyLog { exponent: _ } => true
+        ClassExponential => false
+        ClassFactorial => false
+        ClassUnknown => false
+      }
+    ClassLinearithmic =>
+      match b {
+        ClassConstant => true
+        ClassLog => true
+        ClassLinear => true
+        ClassLinearithmic => false
+        ClassPolyLog { exponent: _ } => true
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
+        ClassUnknown => false
+      }
+    ClassLinear =>
+      match b {
+        ClassConstant => true
+        ClassLog => true
+        ClassPolyLog { exponent: _ } => true
+        ClassLinear => true
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
+        ClassUnknown => false
+      }
+    ClassPolyLog { exponent: ae } =>
+      match b {
+        ClassConstant => true
+        ClassLog => true
+        ClassPolyLog { exponent: be } => polylog_exponent_dominates(a: ae, b: be)
+        ClassLinear => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
+        ClassUnknown => false
+      }
+    ClassLog =>
+      match b {
+        ClassConstant => true
+        ClassLog => true
+        ClassPolyLog { exponent: _ } => false
+        ClassLinear => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
+        ClassUnknown => false
+      }
+    ClassConstant =>
+      match b {
+        ClassConstant => true
+        ClassLog => false
+        ClassLinear => false
+        ClassLinearithmic => false
+        ClassPolynomial { degree: _ } => false
+        ClassPolyLog { exponent: _ } => false
+        ClassExponential => false
+        ClassFactorial => false
+        ClassUnknown => false
+      }
+  }
+}
+
+fn symbolic_cost_dominates(a: SymbolicCost, b: SymbolicCost) -> Bool {
+  match a {
+    ConstantCost { value: av } =>
+      match b {
+        ConstantCost { value: bv } => nat_dominates(a: av, b: bv)
+        UnknownCost { diagnostic: _ } => false
+        LinearCost { variable: _ } => false
+        LogCost { variable: _ } => false
+        PolynomialCost { variable: _, degree: _ } => false
+        PolyLogCost { variable: _, exponent: _ } => false
+        ExponentialCost { variable: _, base: _ } => false
+        FactorialCost { variable: _ } => false
+        SumCost { lhs: _, rhs: _ } => false
+        ProductCost { lhs: _, rhs: _ } => false
+      }
+    UnknownCost { diagnostic: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    LinearCost { variable: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    LogCost { variable: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    PolynomialCost { variable: _, degree: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    PolyLogCost { variable: _, exponent: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    ExponentialCost { variable: _, base: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    FactorialCost { variable: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    SumCost { lhs: _, rhs: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+    ProductCost { lhs: _, rhs: _ } => symbolic_cost_dominates_nonconstant_rhs(a: a, b: b)
+  }
+}
+
+fn symbolic_cost_dominates_nonconstant_rhs(a: SymbolicCost, b: SymbolicCost) -> Bool {
+  match b {
+    ConstantCost { value: bv } =>
+      match bv {
+        Zero => true
+        Succ { prev: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+      }
+    UnknownCost { diagnostic: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    LinearCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    LogCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    PolynomialCost { variable: _, degree: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    PolyLogCost { variable: _, exponent: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    ExponentialCost { variable: _, base: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    FactorialCost { variable: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    SumCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+    ProductCost { lhs: _, rhs: _ } =>
+          asymptotic_class_dominates(
+            a: asymptotic_class_of_cost(cost: a),
+            b: asymptotic_class_of_cost(cost: b)
+          )
+  }
+}
+
+fn multiply_classes(a: AsymptoticClass, b: AsymptoticClass) -> AsymptoticClass {
+  match a {
+    ClassConstant => b
+    ClassUnknown => ClassUnknown
+    ClassFactorial => ClassFactorial
+    ClassExponential => match b {
+      ClassConstant => ClassExponential
+      ClassLog => ClassExponential
+      ClassLinear => ClassExponential
+      ClassLinearithmic => ClassExponential
+      ClassPolynomial { degree: _ } => ClassExponential
+      ClassPolyLog { exponent: _ } => ClassExponential
+      ClassFactorial => ClassFactorial
+      ClassUnknown => ClassUnknown
+      ClassExponential => ClassExponential
+    }
+    ClassPolynomial { degree: ad } =>
+      match b {
+        ClassConstant => a
+        ClassLog => ClassUnknown
+        ClassLinear => ClassPolynomial { degree: increment_polynomial_degree(d: ad) }
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: bd } =>
+          ClassPolynomial { degree: add_polynomial_degree(a: ad, b: bd) }
+        ClassPolyLog { exponent: _ } => ClassUnknown
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
+      }
+    ClassLinear =>
+      match b {
+        ClassConstant => ClassLinear
+        ClassLog => ClassLinearithmic
+        ClassLinear => ClassPolynomial { degree: polynomial_degree_two() }
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: bd } =>
+          ClassPolynomial { degree: increment_polynomial_degree(d: bd) }
+        ClassPolyLog { exponent: _ } => ClassUnknown
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
+      }
+    ClassLinearithmic =>
+      match b {
+        ClassConstant => ClassLinearithmic
+        ClassLog => ClassUnknown
+        ClassLinear => ClassUnknown
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: _ } => ClassUnknown
+        ClassPolyLog { exponent: _ } => ClassUnknown
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
+      }
+    ClassPolyLog { exponent: e } =>
+      match b {
+        ClassConstant => a
+        ClassLog => ClassPolyLog { exponent: increment_polylog_exponent(e: e) }
+        ClassPolyLog { exponent: be } =>
+          ClassPolyLog { exponent: add_polylog_exponent(a: e, b: be) }
+        ClassLinear => ClassUnknown
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: _ } => ClassUnknown
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
+      }
+    ClassLog =>
+      match b {
+        ClassConstant => ClassLog
+        ClassLog => ClassPolyLog { exponent: polylog_exponent_two() }
+        ClassPolyLog { exponent: e } =>
+          ClassPolyLog { exponent: increment_polylog_exponent(e: e) }
+        ClassLinear => ClassLinearithmic
+        ClassLinearithmic => ClassUnknown
+        ClassPolynomial { degree: _ } => ClassUnknown
+        ClassExponential => ClassExponential
+        ClassFactorial => ClassFactorial
+        ClassUnknown => ClassUnknown
+      }
+  }
+}
+
+fn asymptotic_class_of_cost(cost: SymbolicCost) -> AsymptoticClass {
+  match cost {
+    ConstantCost { value: _ } => ClassConstant
+    LinearCost { variable: _ } => ClassLinear
+    LogCost { variable: _ } => ClassLog
+    PolynomialCost { variable: _, degree: d } => ClassPolynomial { degree: d }
+    PolyLogCost { variable: _, exponent: e } => ClassPolyLog { exponent: e }
+    ExponentialCost { variable: _, base: _ } => ClassExponential
+    FactorialCost { variable: _ } => ClassFactorial
+    SumCost { lhs: lhs, rhs: rhs } =>
+      asymptotic_class_join(
+        a: asymptotic_class_of_cost(cost: lhs),
+        b: asymptotic_class_of_cost(cost: rhs)
+      )
+    ProductCost { lhs: lhs, rhs: rhs } =>
+      multiply_classes(
+        a: asymptotic_class_of_cost(cost: lhs),
+        b: asymptotic_class_of_cost(cost: rhs)
+      )
+    UnknownCost { diagnostic: _ } => ClassUnknown
+  }
+}
+
+fn cost_lattice_meet(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  if symbolic_cost_dominates(a: a, b: b) {
+    b
+  } else {
+    a
+  }
+}
+
+fn cost_lattice_join(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+  symbolic_max(a: a, b: b)
+}
+
+data symbolic_cost_sequential_monoid: Monoid<SymbolicCost> = Monoid {
+  op: symbolic_sequential,
+  identity: ConstantCost { value: Zero }
+}
+
+data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
+  meet: cost_lattice_meet,
+  join: cost_lattice_join,
+  top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
+  bottom: ConstantCost { value: Zero }
+}
+
+data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = BoundedLattice {
+  meet: asymptotic_class_meet,
+  join: asymptotic_class_join,
+  top: ClassUnknown,
+  bottom: ClassConstant
+}
+
+fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
+  match i {
+    Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
+    Conversion { result: _, result_type: _, op: OpBitCast, value: _ } => 0
+    Conversion { result: _, result_type: _, op: _, value: _ } => 1
+    IntCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
+    FloatCompare { result: _, predicate: _, lhs: _, rhs: _ } => 1
+    Alloca { result: _, allocated_type: _, element_count: _ } => 1
+    Load { result: _, result_type: _, pointer: _, ordering: _ } => 4
+    Store { value: _, pointer: _, ordering: _ } => 4
+    GetElementPtr { result: _, source_type: _, base: _, indices: _ } => 1
+    AtomicRmw { result: _, op: _, pointer: _, operand: _, ordering: _ } => 8
+    CmpXchg { result: _, pointer: _, compare_value: _, new_value: _, success_ordering: _, failure_ordering: _ } => 8
+    Fence { ordering: _ } => 4
+    ExtractValue { result: _, aggregate: _, indices: _ } => 0
+    InsertValue { result: _, aggregate: _, element: _, indices: _ } => 1
+    ExtractElement { result: _, vector: _, index: _ } => 1
+    InsertElement { result: _, vector: _, element: _, index: _ } => 1
+    ShuffleVector { result: _, first: _, second: _, mask: _ } => 1
+    Select { result: _, condition: _, if_true: _, if_false: _ } => 1
+    Call { callee: _, arguments: _, result: _ } => 5
+    Freeze { result: _, value: _ } => 0
+    FNeg { result: _, result_type: _, operand: _ } => 1
+    VaArg { result: _, result_type: _, va_list: _, arg_type: _ } => 2
+    LandingPad { result: _, result_type: _, is_cleanup: _, clauses: _ } => 1
+    CatchPad { result: _, catch_switch: _, args: _ } => 1
+    CleanupPad { result: _, parent_pad: _, args: _ } => 1
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow {
+    mechanism: SubstrateMandatoryTag,
+    authority: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+  }
+}

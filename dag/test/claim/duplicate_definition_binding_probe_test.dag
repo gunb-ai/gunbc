@@ -1,0 +1,113 @@
+module test.claim.duplicate_definition_binding_probe_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS PROBE MEASURES, and why its RED is the point rather than a defect in the probe.
+// A module that defines one name TWICE is accepted by the source -> .dag acceptance path with
+// ZERO diagnostics, and the SECOND definition silently wins. Measured on a controlled fixture
+// in both directions: with `fn which_one() -> Bool { false }` first and `{ true }` second the
+// program answers true; with the order swapped it answers false. Nothing is reported at either
+// ordering. That is not a rung that slipped -- it is BELOW FLOOR (DESIGN section 4b): a name
+// binding to two definitions with no refusal is silent wrongness, which is outside the ladder,
+// not a weak rung on it.
+//
+// THIS ROW DID NOT EXECUTE BEFORE THE ROOT CUT, AND THAT HISTORY IS DECLARED HERE RATHER THAN
+// LEFT TO BE RECONSTRUCTED. `compile_dag_diagnostic_census` resolves the synthetic source against
+// `build_module_path_index_from_witness_roots`, which walks the live tree, so the read is real and
+// the declaration below is `ReadsLiveTree`. Before the root cut, `run_required_floor` routed every
+// such site to `DeclinedLiveTree` -- discovered, counted, never run -- so enrolment would have
+// asserted a verdict that did not exist. The root deletion has now fired that execution trigger:
+// this row executes. It was enrolled in `v2.workflow.floor_expected_red` on that same change,
+// and that enrolment has since been REMOVED because the row now PASSES: the floor reported it as
+// a stale quarantine (enrolled as expected-red and PASSED, on the plain arm rather than the
+// PassedOverBudget one), with its single-definition positive control clean in the same run, so the
+// assertion discriminates rather than having gone green by the probe source breaking some other
+// way. What is NOT claimed here is the mechanism: the row asserts a blocking-diagnostic count and
+// the count is now met; which predicate produces that diagnostic has not been read, and naming one
+// from the row's passing alone would be a situation mistaken for a cause. Per DESIGN 4b(4) the
+// probe does not retire with its roster row -- it stays enrolled as a permanent regression control.
+// The honest ReadsLiveTree declaration remains the affected-set selection fact.
+// An earlier revision of this module WAS enrolled, justified by a sibling census probe that
+// declares no disposition and was inferred to route and pass. That inference was wrong twice over:
+// undeclared is `ReadsLiveTree` by the fail-closed default (`cli_run`
+// `parse_entry_live_tree_disposition`), so the sibling is declined too, and its passing was never
+// measured -- a population fit standing where mechanism confirmation was required.
+//
+// THE ASSERTION HERE IS THE CORRECT BEHAVIOUR, NOT THE OBSERVED ONE. Written the other way --
+// "assert the second definition binds" -- the row would go GREEN today and become a DEFENDER OF
+// THE DEFECT, cited forever after as coverage of a wall that does not exist. So the row asserts
+// that the compiler REFUSES a module carrying two definitions of one name, is enrolled as an
+// expected red with the wrong answer recorded above as the observed state, and flips to green of
+// its own accord when the wall lands. Per DESIGN section 4b meta-obligation (4) it does not
+// retire at that point: it converts to a permanent regression control.
+//
+// THE FIX IS A WALL, NOT A RATCHET. Membership is decidable at ingestion, where the module's
+// own declarations are already being folded: two declarations sharing one name in one module is
+// a property of one module's source, needing no corpus walk, no resolution and no type
+// information. DESIGN section 5's decidability test is met, so a lens counting occurrences would
+// be validation standing where construction was available.
+//
+// THE BOUNDARY THIS ROW MEASURES, stated so no receipt reads coverage it does not have
+// (DESIGN section 4b: a class's rung is the MINIMUM across its in-scope paths): source -> .dag
+// acceptance, through our own binary, single module, function declarations. NOT measured here:
+// the Rust emission path, `type`/`data` declarations, cross-module collisions, and whether a
+// `test fn` collides with a plain `fn` of the same name. Each is its own row when someone
+// measures it; none is claimed by this one.
+
+// THE WALL LANDED (2026-08-27, this lane). `v1.compiler.resolve` `check_duplicate_declarations`
+// folds each module's own item list and emits a blocking `DuplicateDeclaration` on the second
+// declaration of one name, so the two rows below assert the behaviour the compiler now has rather
+// than the behaviour it lacked. THE ROW STILL DOES NOT EXECUTE HERE: the disposition above is
+// unchanged and this site is still `DeclinedLiveTree`, so what flipped is the SUBJECT, not this
+// row's reach -- the execution trigger recorded above is still the only thing that retires it.
+// The executing evidence for the wall is `duplicate_declaration_wall_witness` in
+// `v1.compiler.compiler_tests_rust`, at the fixture boundary; that harness runs LOCALLY only,
+// which is stated in the gap-analysis row rather than claimed as CI coverage here.
+// WHERE THE WALL SITS vs where this row said it should: at RESOLVE, over each module's item list,
+// not at ingestion. It reads nothing outside the module it judges, so the "no corpus walk"
+// property that made the class decidable is preserved; what is NOT yet done is the R4 climb the
+// row above implies, a keyed declaration roster at ingestion that cannot HOLD two entries for one
+// name. That remains this class's next-rung trigger.
+// TWO SHAPES THIS ROW STILL DOES NOT MEASURE, and the second had LIVE exposure: a `data` and a
+// `fn` sharing one name (the wall refuses it; measured on `dag/gunbc/systemctl_list_units.dag`,
+// where a bare reference intended for a `data` String bound the function instead), and the Rust
+// emission path. Both are covered by the seed witness, neither by this module.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// -1 on CensusNotRunnable, so could-not-measure REDS both rows below and greens neither
+// (DESIGN section 5: bottom-as-answer must never be readable as bottom-as-ignorance).
+fn blocking_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// The discriminating RED: two definitions of one name, differing in body so that which one
+// binds is observable rather than benign.
+data duplicate_definition_source: String = "module probe_duplicate_definition\nimport std.types { Bool }\nfn which_one() -> Bool { false }\nfn which_one() -> Bool { true }\n"
+
+test fn duplicate_definition_in_one_module_is_refused() -> Bool {
+  blocking_count(source: duplicate_definition_source) >= 1
+}
+
+// The positive control: the same module with ONE definition must stay at zero blocking
+// diagnostics, so the row above cannot pass by the probe source being broken in some other way.
+data single_definition_source: String = "module probe_single_definition\nimport std.types { Bool }\nfn which_one() -> Bool { true }\n"
+
+test fn single_definition_module_is_clean() -> Bool {
+  blocking_count(source: single_definition_source) == 0
+}

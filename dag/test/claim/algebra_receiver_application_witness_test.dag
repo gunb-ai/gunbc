@@ -1,0 +1,25 @@
+module test.claim.algebra_receiver_application_witness_test
+
+import std.types { Bool, String, Int }
+import std.algebra { FreeMonoid }
+
+type ApplicationRow {
+  label: String
+}
+
+type ApplicationRows = RowsPresent { rows: FreeMonoid<ApplicationRow> } | RowsAbsent
+
+// The field's resolved type carries FreeMonoid's nominal argument outside its expanded
+// FreeMonoid body. Binding the field must not substitute that body's Empty member
+// for ApplicationRow when instantiating the any callback.
+fn declared_application_rows() -> ApplicationRows {
+  RowsPresent { rows: [ApplicationRow { label: "kept" }] }
+}
+
+test fn matched_collection_retains_receiver_type_argument() -> Bool {
+  let subject = declared_application_rows()
+  match subject {
+    RowsPresent { rows } => rows |> any(row => row.label == "kept")
+    RowsAbsent => false
+  }
+}

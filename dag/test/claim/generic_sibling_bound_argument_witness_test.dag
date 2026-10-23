@@ -1,0 +1,36 @@
+module test.claim.generic_sibling_bound_argument_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { any_class_count_for }
+
+// THE EXECUTING EVIDENCE for gunbc.recurring_failure_mode
+// generic_formal_unjudged_against_a_sibling_bound_argument, at its honest rung. The class sits
+// inside the declared drop gunbc.rung_drop.direct_call_unbound_carried_generic_compat, so today the
+// mismatch is COUNTED (DeclaredTypeInhabitanceUndecided) and not refused. The red cell therefore
+// asserts the mismatch is never SILENT -- refused, or counted -- which holds now, keeps holding when
+// the drop's trigger lands and the advisory becomes DeclaredTypeNotInhabited, and goes red only on
+// the regression that matters: the case falling out of both. The control pins that refusal is
+// reachable at this position for a concrete formal, so the advisory means "the generic formal was
+// not substituted" rather than "this argument cannot be judged".
+
+data sibling_bound_pair_source: String = "module test.claim.sibling_bound_pair_probe\nimport std.types { Int, String }\ntype SbItem { v: Int }\ntype SbOther { w: String }\nfn sb_other() -> SbOther { SbOther { w: \"o\" } }\nfn sb_pair<U>(a: U, b: U) -> U { a }\nfn probe() -> SbItem { sb_pair(a: SbItem { v: 1 }, b: sb_other()) }\n"
+
+data sibling_bound_snoc_source: String = "module test.claim.sibling_bound_snoc_probe\nimport std.types { List, Int, String }\ntype SbItem { v: Int }\ntype SbOther { w: String }\nfn sb_other() -> SbOther { SbOther { w: \"o\" } }\nfn probe(xs: List<SbItem>) -> List<SbItem> { list_snoc_item(xs: xs, item: sb_other()) }\n"
+
+data concrete_formal_source: String = "module test.claim.concrete_formal_probe\nimport std.types { Int, String }\ntype SbItem { v: Int }\ntype SbOther { w: String }\nfn sb_other() -> SbOther { SbOther { w: \"o\" } }\nfn sb_take(b: SbItem) -> SbItem { b }\nfn probe() -> SbItem { sb_take(b: sb_other()) }\n"
+
+test fn sibling_bound_mismatch_is_refused_or_counted_never_silent() -> Bool {
+  any_class_count_for(source: sibling_bound_pair_source, wanted_class: "DeclaredTypeNotInhabited")
+    + any_class_count_for(source: sibling_bound_pair_source, wanted_class: "DeclaredTypeInhabitanceUndecided") >= 1
+}
+
+test fn the_same_mismatch_at_a_concrete_formal_refuses() -> Bool {
+  any_class_count_for(source: concrete_formal_source, wanted_class: "DeclaredTypeNotInhabited") >= 1
+}
+
+// The second specimen the row's SUFFICIENT FOR names: the std generic whose parameter is fixed by
+// the list argument, the shape a fold step reaches when it pushes a foreign element.
+test fn sibling_bound_snoc_mismatch_is_refused_or_counted_never_silent() -> Bool {
+  any_class_count_for(source: sibling_bound_snoc_source, wanted_class: "DeclaredTypeNotInhabited")
+    + any_class_count_for(source: sibling_bound_snoc_source, wanted_class: "DeclaredTypeInhabitanceUndecided") >= 1
+}

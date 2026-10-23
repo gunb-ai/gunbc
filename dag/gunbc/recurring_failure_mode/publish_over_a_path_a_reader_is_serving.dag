@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.publish_over_a_path_a_reader_is_serving
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data publish_over_a_path_a_reader_is_serving: RecurringFailureMode = RecurringFailureMode {
+  identity: "publish_over_a_path_a_reader_is_serving" as NonEmptyStr,
+
+  receipts: [
+    "**publishing by writing over the path a live reader is currently serving makes on-disk identity and served identity diverge, and a matching digest then certifies the wrong view** (INVALID STATE: a new image is `cp`'d onto the exact file a firmware controller has mounted over NFS. The bytes on disk become the new image; the reader's cached view does not. HARM: two boots failed with `Boot option loading failed` after a 302 MiB copy whose on-disk digest MATCHED the build -- so integrity checking the file the publisher wrote cannot see the defect, and the failure presents as firmware or media. DISTINGUISHING FACTS: this lane already had the repair in `gunbc.machine_intake_boot_image_fetch`, which publishes by atomic rename so a reader never observes a path mid-write; a convenience copy in a build script reintroduced the hazard that design exists to remove. A fresh name fixed the next boot. RECOGNITION RULE: whenever a publish overwrites a path, ask who is holding that path open or mounted; if anyone is, the write is not a publication, it is a cache invalidation you did not perform. RUNG FOUND AT: mitigatable -- two failed boots, then a renamed path. CEILING: structurally impossible once the published name is content-addressed, because there is no constructor that writes a new object onto a live reader's path. Atomic rename of a stable name reaches mechanically preventable and stops there, because the stable name stays writable. NEXT-RUNG TRIGGER: publication mints a content-addressed name (or an atomic rename onto a name no live reader holds) as the only constructor, sufficient that `cp` onto a served path has no spelling in the installer. Citing the existing fetch module as coverage does not discharge this -- that module was already there when the copy landed.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_guest_network_receipt", decl_name: "defect_publish_over_live_path", field: WholeDeclaration },
+
+  ],
+}

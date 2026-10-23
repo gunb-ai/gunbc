@@ -1,0 +1,44 @@
+module gunbc.memory_envelope_receipt_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE ROW EXISTS BECAUSE THE SEED GREW BY HAND (review 78391 on gunbc#13658): `gunbc test` gained
+// the memory-envelope requirement and receipt in the retained CLI kernel (std.compiler_entry
+// RetainedHostCliKernel). The DECISION and the VERDICT are not hand-authored facts: they are
+// modeled in gunbc.memory_envelope as folds over supplied inputs, and the Rust rows below are their
+// mirror, exactly as memory_governor cgroup_bind_decision mirrors gunbc.memory_cgroup_binding
+// (test.claim.memory_envelope_witness_test reaches every arm by supplied value). What stays hand-
+// written is the HOST side: reading the requirement from the environment, asking the governor's
+// walk which cgroup carries the numeric memory.max that binds the process, reading memory.peak /
+// memory.events / memory.swap.* before and after the producer, and rendering the receipt. Admitted
+// under the v1 PURPOSE test (gunbc.v1_maintenance_standing v1_seed_standing): the one required job
+// is the v2 emit-and-build gate, and the operator ruled the memory envelope into its verdict
+// (2026-10-09). test_verb_checked itself is already rostered by gunbc.target_invocation_seed_growth.
+data memory_envelope_receipt_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MEMORY_ENVELOPE_REQUIRED_ENV", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MEMORY_ENVELOPE_SLOT_VALUE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MemoryEnvelopeRequirement", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MemoryEnvelopeGrain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MemoryEnvelopeRefusalCause", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MemoryEnvelopeDecision", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "memory_envelope_requirement_from_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "memory_envelope_decision", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "memory_envelope_violated", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "MemoryEnvelope", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "memory_envelope_requirement", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "memory_envelope_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_memory_supervisor", decl_name: "CgroupSwapRead", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_memory_supervisor", decl_name: "read_cgroup_swap", field: WholeDeclaration }
+  ],
+
+  reason: "THE HOST SIDE OF A MODELED DECISION. gunbc.memory_envelope owns the requirement, the grain, the decision and the verdict as pure folds; the mirror rows (MemoryEnvelopeRequirement .. memory_envelope_violated) restate them in the seed because the emitted compiler does not yet run that fold for the retained CLI's test verb, and the shells (memory_envelope_requirement, memory_envelope_receipt, read_cgroup_swap) acquire what no .dag fold can receive today: the environment variable, the governor's binding_cap_cgroup_dir walk, and memory.peak / memory.events / memory.swap.max / memory.swap.current / memory.swap.peak before and after the producer (the file names are extdeps.linux.cgroup_v2_memory's). Every input is modeled and pinned: gunbc.emitted_subject_build_gate native_step_memory_envelope_env_name and native_step_memory_envelope_slot_value, by test.claim.compiler_gate_emit_build_lane_witness_test. Two items ride beside the rows and are uncitable by std.decl_ref, so they are named here as the roster convention asks: the impl method MemoryEnvelopeGrain::label (the mirror of memory_envelope_grain_label) and the #[cfg(test)] module memory_envelope_tests, whose functions are the mirror rows' unit tests and compile under cargo test only.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete the mirror rows when the retained CLI's test verb evaluates gunbc.memory_envelope memory_envelope_decision and memory_envelope_verdict directly (the emitted compiler running the fold); delete the shells when the native door (v2.cli.compile_cli, std.compiler_entry NativeCliDriver) can receive the cgroup readings AS VALUES -- a resource supplying memory.max, memory.peak, memory.events and the memory.swap files for the process's own cgroup, declared through the derived dependency demand of D13 (gunbc.plans.demand_engine_program). The same lane as the SourceRootEvalDriver's remaining host-fact obligations (gunbc.source_root_eval_driver_seed_growth).",
+
+  current_boundary: "gunbc.compiler_gate_workflow compiler_gate_emit_build_step -> the step's env rows (gunbc.emitted_subject_build_gate native_step_memory_inputs, decided by gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership) -> gunbc test (v1_compiler.target_invocation_host test_verb_checked) -> memory_governor apply_memory_cgroup_bind and binding_cap_cgroup_dir, floor_memory_supervisor read_cgroup_memory / read_cgroup_swap -> the mirrored memory_envelope_decision / memory_envelope_violated -> the MEMORY RECEIPT line and the MemoryEnvelopeAbsent / MemoryEnvelopeGrainUnknown / MemoryReceiptUnreadable / MemoryEnvelopeViolated refusals in the required run's log."
+}

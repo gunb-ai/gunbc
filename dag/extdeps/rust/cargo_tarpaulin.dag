@@ -1,0 +1,29 @@
+module extdeps.cargo_tarpaulin
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/xd009642/tarpaulin"
+  }
+}
+
+// WORKSPACE FOOTPRINT. cargo-tarpaulin writes coverage reports into the working tree in the
+// formats requested (--out Html/Json/Xml/Lcov). WHERE aggregated output is collected is the
+// invoking repository's policy, so that directory pattern is a parameter.
+fn tarpaulin_report_footprint(coverage_output_dir_pattern: String) -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "Coverage reports (cargo-tarpaulin)", upstream: "github.com/xd009642/tarpaulin" },
+    artifacts: [
+      WorkspaceArtifact { pattern: "tarpaulin-report.html", meaning: "HTML coverage report (--out Html)", reason: RegenerableFromSource },
+      WorkspaceArtifact { pattern: "tarpaulin-report.json", meaning: "JSON coverage report (--out Json)", reason: RegenerableFromSource },
+      WorkspaceArtifact { pattern: "cobertura.xml", meaning: "Cobertura XML coverage report (--out Xml)", reason: RegenerableFromSource },
+      WorkspaceArtifact { pattern: "lcov.info", meaning: "LCOV coverage report (--out Lcov)", reason: RegenerableFromSource },
+      WorkspaceArtifact { pattern: coverage_output_dir_pattern, meaning: "repo-chosen coverage output directory", reason: RegenerableFromSource }
+    ]
+  }
+}

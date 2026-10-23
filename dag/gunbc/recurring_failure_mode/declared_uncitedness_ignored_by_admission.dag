@@ -1,0 +1,12 @@
+module gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data declared_uncitedness_ignored_by_admission: RecurringFailureMode = RecurringFailureMode {
+  identity: "declared_uncitedness_ignored_by_admission" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a rate table carries CitedFigureStanding but its consumer admits any matching row without reading that standing. HARM: a declared TranscribedUncited figure becomes an admitted hardware operating rate. SPECIMEN: gunbc#10954 product.node_power_envelope rank_specific_2dpc_clock refused empty rows but admitted nonempty uncited rows; the positive witness itself supplied such a table. DISTINGUISHING FACT: row presence and provenance are independent inputs; refusing absence does not refuse explicitly uncited presence. RUNG FOUND AT: mitigatable, caught during review. REPAIR: the matching-row arm consumes table.evidence and propagates RankSpecificRateUncited with its read obligation through ChannelClockUnresolved and MemoryBandwidthUnresolved. The absent-row arm remains RankSpecificRateMissing. CONTROLS: test.claim.node_power_envelope_witness emptying_rank_specific_ceiling_rows_does_not_admit_an_effective_rate and uncited_rank_specific_rows_do_not_admit_an_effective_rate, paired with a_rank_specific_ceiling_row_admits_the_capped_effective_rate. CEILING: mechanically preventable for consuming the declared provenance, with citation truth remaining an external boundary. NEXT TRIGGER: acceptance derives and enforces provenance consumption for every admitted figure, rather than relying on each domain's match and witnesses. A CitedToAuthority constructor does not independently prove that its document attests the figure; the synthetic positive fixture cites itself and establishes no Ampere operating rate.",
+  ],
+  evidence: [],
+}

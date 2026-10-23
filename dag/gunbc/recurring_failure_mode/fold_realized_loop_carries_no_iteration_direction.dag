@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.fold_realized_loop_carries_no_iteration_direction
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fold_realized_loop_carries_no_iteration_direction: RecurringFailureMode = RecurringFailureMode {
+  identity: "fold_realized_loop_carries_no_iteration_direction" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a fold-realized Loop's encoding does not show its iteration direction. v2.compiler.fold_lowering fold_recurrence_encoding builds the identical Loop for the collection fold, fold_list (left), fold_list_right (right) and, since N7-1b, map, whose synthesized step conses onto the carrier and is order-preserving ONLY under right-to-left iteration (all joins with &&, which is order-insensitive). An executor that ran a map encoding left to right would return its results reversed: silent wrongness. CLIMBED IN gunbc#13069 (review 74982 asked that the PR introducing map not ship the reversible encoding with only this row): the direction is now a DECLARED FACT OF THE REALIZATION, v2.compiler.fold_lowering FoldIterationDirection, owned by the step synthesis that needs it (callback_realization_iteration_direction: map right to left) and by the authored forms (an authored fold and fold_list left, fold_list_right right), and derived for any Loop from the realized declaration it already carries (^loop_realized_declaration_edge) by fold_realized_iteration_direction. fold_list and fold_list_right are therefore no longer indistinguishable, and a path that names no collection fold derives no direction rather than a default.",
+    "WHAT REMAINS: no executor of a fold-realized Loop exists to consume the fact. Both installed Loop handlers REFUSE: v2.extdeps.runtimes.v2_evaluator v2_eval_step_loop and v2.program program_step_loop each return a rejected outcome, so v2.compiler.eval's eval_loop_node reaches a typed refusal, never a value, and the native route executes the seed's emission of the .dag source, not this encoding. So the residual is fail-closed, not latent silent wrongness. The obligation it leaves is on the executor that replaces those refusals: it must read fold_realized_iteration_direction, not assume an order.",
+    "DISTINGUISHING FACTS: this is not a cost defect. Each synthesized step is O(1) per member (one Cons onto the carrier, never snoc or append), held structurally by v2.test.claim.compiler.collection_callback_realization ccr_map_step_conses_onto_its_accumulator; a snoc step would make map left to right at quadratic cost, which is why the order is declared rather than designed away.",
+    "RUNG: the fact is structurally carried and its derivation is enforced by discriminating controls (ccr_map_loop_iterates_right_to_left on the real map route; ccr_fold_list_and_fold_list_right_are_told_apart; both red when map or fold_list_right is declared left to right, measured). CEILING: structurally impossible once execution exists. NEXT-RUNG TRIGGER, stated as the capability: an executor of fold-realized Loops replacing the refusing step_loop handlers that consumes fold_realized_iteration_direction, SUFFICIENT FOR map, fold_list and fold_list_right encodings to evaluate in their declared order, with an executing control that reverses the declared direction and goes red.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "fold_recurrence_encoding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "CallbackRealization", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "FoldIterationDirection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "fold_realized_iteration_direction", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.runtimes.v2_evaluator", decl_name: "v2_eval_step_loop", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.program", decl_name: "program_step_loop", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.collection_callback_realization", decl_name: "ccr_map_loop_iterates_right_to_left", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.collection_callback_realization", decl_name: "ccr_fold_list_and_fold_list_right_are_told_apart", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.collection_callback_realization", decl_name: "ccr_map_step_conses_onto_its_accumulator", field: WholeDeclaration },
+  ],
+}

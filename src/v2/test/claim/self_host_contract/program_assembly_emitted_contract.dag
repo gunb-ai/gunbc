@@ -1,0 +1,83 @@
+module v2.test.claim.self_host_contract.program_assembly_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.target_carriers { lossless_source }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+
+// THE program_assembly ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.program_assembly assemble_program_from_ingest accepts a well-formed one-module ingest
+// and refuses an unparseable one with parse_g0_tokens_remain among its diagnostics.
+data pac_well_formed_text: String = "module self_host.program_assembly_witness\nfn add(x: Int, y: Int) -> Int \{ x + y \}\n"
+
+data pac_unparseable_text: String = "module self_host.program_assembly_witness\nfn add(x: Int, y: Int -> Int \{\n"
+
+type PacReading = PacAssembled | PacRefusedWithTokensRemain | PacRefusedOtherwise
+
+fn pac_names_tokens_remain(d: NonEmptyDiagnostics) -> Bool {
+  d.head.reason == ^parse_g0_tokens_remain
+    || (d.tail |> filter(x => x.reason == ^parse_g0_tokens_remain) |> count) > 0
+}
+
+fn pac_assemble(text: String) -> PacReading {
+  match assemble_program_from_ingest(
+    ingest: [DagSourceReadWitness {
+      source: lossless_source(text: text),
+      artifact: Artifact {
+        kind: SourceFile,
+        id: ^self_host_program_assembly_witness_artifact,
+        file_path: "self_host/program_assembly_witness.dag"
+      },
+      compilation_unit: ^self_host_program_assembly_witness_unit,
+      source_root: V2Tree
+    }],
+    admission: Admission {
+      subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "self_host.program_assembly_witness") },
+      imports: []
+    },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => PacAssembled
+    Rejected { diagnostics: d } =>
+      if pac_names_tokens_remain(d: d) { PacRefusedWithTokensRemain } else { PacRefusedOtherwise }
+  }
+}
+
+// The planted fault holds exactly when the unparseable ingest is NOT refused through
+// parse_g0_tokens_remain.
+fn program_assembly_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let unparseable_refused = pac_assemble(text: pac_unparseable_text) == PacRefusedWithTokensRemain
+  if inject_fault {
+    !unparseable_refused
+  } else {
+    pac_assemble(text: pac_well_formed_text) == PacAssembled && unparseable_refused
+  }
+}
+
+// NOT A FLOOR CLAIM, ALONE OF THE FIFTEEN, AND THE REASON IS MEASURED. One assembly is a whole
+// tokenize-parse-normalize-resolve of its source and costs about the floor's entire per-claim
+// budget whatever the source says: the required floor measured 214,850 eval steps for this
+// function's three assemblies against a budget of 72,300, and locally the cost per assembly is
+// the same for a one-line module as for a module with a function. So no smaller input makes it
+// affordable there and splitting it leaves each half at the line. Declaring the long home was
+// tried and does not change that: the floor still executed it as a newly enrolled claim under the
+// same budget.
+//
+// So this function carries no test marker and the floor does not execute it, and the file is not
+// named *_test.dag, because a file so named must declare a floor claim and this one has none. ITS EXECUTING
+// CONSUMER IS THE SELF-HOST BEHAVIORAL RECEIPT: tools.self_host_curated_seed_linked_harness
+// cssl_driver_claim_runs names it by derivation from the roster row, and the receipt runs it
+// interpreted (gunbc run --claim-run executes a named Bool function and reports its verdict)
+// beside the emitted run, under the instrument's own ceiling. The floor still typechecks this
+// module against the real declarations on every change, which is the property the hand driver
+// lacked; what is given up is the per-change interpreted run of this one contract.
+fn program_assembly_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  program_assembly_emitted_contract_holds(inject_fault: false)
+    && !program_assembly_emitted_contract_holds(inject_fault: true)
+}

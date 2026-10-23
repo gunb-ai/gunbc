@@ -1,0 +1,337 @@
+module gunbc.runner.runner_qualification_ref_pin
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.resources { Network }
+import std.decl_ref { decl_ref }
+import extdeps.transports.rest {
+  RestResult, RestAnswered, RestRefused, RestReadExchange, RestMutationExchange, classify_rest_refusal,
+  RestRefusal, RestExchangeRefusal, RestExchangeStatusRefused,
+  RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
+}
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused }
+import gunbc.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused, RestrictedRunnerGroup,
+  observe_runner_group_restriction,
+}
+import gunbc.github_effect_perform {
+  ControllerInstallationToken, GitRefRead, read_git_ref_with, create_git_ref_with, delete_git_ref_with,
+  read_runner_groups_with, update_runner_group_workflows_with,
+}
+import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
+
+// THE QUALIFICATION REF PIN: ONE CREATE-ONCE BRANCH PER ATTEMPT, AND THE DEDICATED GROUP PINNED TO IT.
+//
+// WHY A BRANCH. The floor must run the pinned revision and nothing else, and the runner that serves
+// it must accept no other code. The JIT slot registers into a runner group restricted to one
+// selected workflow, and GitHub selects a dispatched (non-reusable) workflow only at a branch
+// ("Pin non-reusable workflows to a branch", extdeps.github.org_actions github.OrgRunnerGroupsRest);
+// a SHA or tag pin is not available to it. So the pin is a branch created for this attempt at the
+// pinned revision, and the dedicated qualification group is restricted to the qualification workflow
+// at THAT branch. A dispatch can then only run the revision the branch was created at, and a run on
+// any other ref -- the default branch after a move, another attempt's branch -- does not match the
+// group, so the attempt's runner never takes it and collection ends RunNeverReachedAttemptRunner.
+//
+// CREATE-ONCE. The branch is created by CreateRef, which never moves an existing ref (422 "Reference
+// already exists"); a branch already present before creation is refused, never adopted or moved,
+// because its revision is not one this attempt pinned. Readback must show the exact revision.
+//
+// CONFINED BY CONSTRUCTION. Every ref this module touches is a QualificationBranchName, minted only by
+// qualification_branch_name, which admits a single path segment under refs/heads/qualification/.
+// Every group write goes through a QualificationGroupWriteTarget, minted only from a read whose name
+// is qualification_runner_group_name -- the DEDICATED group; no other group can be written.
+//
+// REMOVED ON EVERY EXIT, by readback (remove_qualification_ref_pin), the same ensure shape as
+// gunbc.runner.runner_jit_deregistration: absence is read, never inferred from a delete status.
+// The group stays restricted to the deleted branch's path until the next attempt pins it: no run can
+// match a branch that no longer exists, so the stale entry admits nothing.
+//
+// AUTHORIZATION, TWO FACTS. The per-attempt branch create and delete are pre-approved by the
+// operator's 2026-10-03 ruling, whose scope the operator confirmed on 2026-10-05
+// (gunbc.auth.privileged_effect_census runner_lifecycle_scope_ruling). The dedicated group's
+// selected-workflow pin is NOT under that ruling: it is authorized by its own federated standing, the
+// census row's parameters selected without a ruling discharge, and is limited to the dedicated
+// qualification group by this module's construction. The token is the gunbai-ci installation token
+// (contents:write for the ref; organization self-hosted-runners write for the group). No workflow
+// fires on creating the branch: see test.claim.runner_qualification_ref_pin_witness.
+
+data qualification_branch_prefix: NonEmptyStr = "qualification/"
+
+// THE QUALIFICATION WORKFLOW IS THE GENERATED FLEET-CONVERGE WORKFLOW, and the group selects it at
+// the pin branch. These live here, beside the group write that consumes them; the dispatch module
+// (gunbc.runner.runner_qualification_dispatch) imports them.
+fn qualification_workflow_path() -> NonEmptyStr {
+  artifact_path(a: FleetConvergeYamlArtifact) as NonEmptyStr
+}
+
+// The selected-workflow spelling a restricted runner group carries (owner/repo/path@ref), the same
+// form gunbc.runner_group_restriction_observation microvm_shakedown_selected_workflow derives.
+fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
+  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
+}
+data qualification_runner_group_name: NonEmptyStr = "runner-qualification"
+
+// ── THE BRANCH NAME ─────────────────────────────────────────────────────────────────────────────
+
+type QualificationBranchName sole_constructor {
+  attempt: NonEmptyStr
+  branch: NonEmptyStr
+}
+
+type QualificationBranchNameStanding
+  = QualificationBranchNamed { name: QualificationBranchName }
+  | QualificationBranchNameRefused { attempt: String, cause: NonEmptyStr }
+
+// ONE PATH SEGMENT UNDER THE PREFIX. An attempt label carrying a slash, a `..`, whitespace, a ref
+// metacharacter or a leading dot would address a ref outside refs/heads/qualification/<attempt> or an
+// invalid one, so it refuses rather than being escaped.
+fn attempt_is_one_ref_segment(attempt: String) -> Bool {
+  string_length(s: attempt) > 0
+    && !starts_with(s: attempt, prefix: ".")
+    && !string_contains(s: attempt, pattern: "/")
+    && !string_contains(s: attempt, pattern: "..")
+    && !string_contains(s: attempt, pattern: " ")
+    && !string_contains(s: attempt, pattern: "~")
+    && !string_contains(s: attempt, pattern: "^")
+    && !string_contains(s: attempt, pattern: ":")
+    && !string_contains(s: attempt, pattern: "?")
+    && !string_contains(s: attempt, pattern: "*")
+    && !string_contains(s: attempt, pattern: "[")
+    && !string_contains(s: attempt, pattern: "\\")
+    && !string_contains(s: attempt, pattern: "@{")
+    && !ends_with(s: attempt, suffix: ".lock")
+}
+
+fn qualification_branch_name(attempt: NonEmptyStr) -> QualificationBranchNameStanding {
+  if attempt_is_one_ref_segment(attempt: attempt as String) {
+    QualificationBranchNamed {
+      name: QualificationBranchName { attempt: attempt, branch: concat(qualification_branch_prefix as String, attempt as String) as NonEmptyStr },
+    }
+  } else {
+    QualificationBranchNameRefused { attempt: attempt as String, cause: "the attempt label is not one ref segment, so the branch would leave refs/heads/qualification/" as NonEmptyStr }
+  }
+}
+
+fn branch_full_ref(name: QualificationBranchName) -> NonEmptyStr {
+  concat("refs/heads/", name.branch as String) as NonEmptyStr
+}
+
+fn branch_api_ref(name: QualificationBranchName) -> NonEmptyStr {
+  concat("heads/", name.branch as String) as NonEmptyStr
+}
+
+// ── THE DEDICATED GROUP ─────────────────────────────────────────────────────────────────────────
+
+type QualificationGroupWriteTarget sole_constructor {
+  group_id: Int
+}
+
+type QualificationGroupTargetStanding
+  = QualificationGroupTargeted { target: QualificationGroupWriteTarget }
+  | QualificationGroupNotTargetable { cause: NonEmptyStr }
+
+// The only group that may be written is the one whose name is the dedicated qualification group's,
+// found exactly once in a complete read. Any other name -- the shakedown group, Default -- refuses.
+fn qualification_group_target(requested: NonEmptyStr, listed: RunnerGroupListDecode) -> QualificationGroupTargetStanding {
+  if (requested as String) != (qualification_runner_group_name as String) {
+    QualificationGroupNotTargetable { cause: concat("only the dedicated qualification group may be written; refused: ", requested as String) as NonEmptyStr }
+  } else {
+    match listed {
+      RunnerGroupListDecodeRefused { reason: r } => QualificationGroupNotTargetable { cause: r }
+      RunnerGroupListDecoded { groups: gs } => {
+        let rows = gs |> filter(g => (g.name as String) == (requested as String))
+        match first(rows) {
+          Absent => QualificationGroupNotTargetable { cause: "the dedicated qualification runner group does not exist" as NonEmptyStr }
+          Present { value: row } =>
+            if count(rows) != 1 {
+              QualificationGroupNotTargetable { cause: "the dedicated qualification runner group name is duplicated" as NonEmptyStr }
+            } else {
+              QualificationGroupTargeted { target: QualificationGroupWriteTarget { group_id: row.id } }
+            }
+        }
+      }
+    }
+  }
+}
+
+// ── THE PIN ─────────────────────────────────────────────────────────────────────────────────────
+
+type QualificationRefPin sole_constructor {
+  name: QualificationBranchName
+  revision: CommitSha
+  group: RestrictedRunnerGroup
+}
+
+type QualificationRefPinRefusal
+  = PinBranchNameRefused { cause: NonEmptyStr }
+  | PinBranchPreexisting { observed_sha: String }
+  | PinBranchReadUnreadable { refusal: RestExchangeRefusal }
+  | PinBranchCreateRefused { status: Int, body: String }
+  | PinBranchCreateAmbiguous { detail: NonEmptyStr }
+  | PinBranchReadbackMismatch { pinned: CommitSha, observed: String }
+  | PinGroupNotTargetable { cause: NonEmptyStr }
+  | PinGroupWriteNotSucceeded { refusal: RestExchangeRefusal }
+  | PinGroupReadbackRefused { standing: MicrovmRunnerGroupStanding }
+
+type QualificationRefPinStanding
+  = QualificationRefPinned { pin: QualificationRefPin }
+  | QualificationRefPinRefused { attempt: NonEmptyStr, refusal: QualificationRefPinRefusal }
+
+// A REFUSED READ OF THE REF IS ABSENCE ONLY WHEN GITHUB DECIDED 404; every other refusal is unreadable.
+fn branch_absent(refusal: RestExchangeRefusal) -> Bool {
+  match refusal {
+    RestExchangeStatusRefused { status: s, body: _ } => (s as Int) == 404
+    RestExchangeCommitAmbiguous { detail: _ } => false
+    RestExchangeUnreached { cause: _ } => false
+    RestExchangeUndecodable { status: _, cause: _ } => false
+  }
+}
+
+// THE CREATE'S STANDING, decided from the mutation classifier: only a created ref proceeds to
+// readback; a 422 is the create-once refusal (the ref exists); an ambiguous answer is its own arm --
+// the ref may exist, so removal is still owed.
+fn branch_create_refusal(created: RestResult<GitRefWire>) -> QualificationRefPinRefusal? {
+  match created {
+    RestAnswered { answer: _ } => none
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status: s, body: b } =>
+          if (s as Int) == 422 { Present { value: PinBranchPreexisting { observed_sha: "(422 Reference already exists)" } } }
+          else { Present { value: PinBranchCreateRefused { status: s as Int, body: b } } }
+        RestExchangeCommitAmbiguous { detail: d } => Present { value: PinBranchCreateAmbiguous { detail: d } }
+        RestExchangeUnreached { cause: c } => Present { value: PinBranchCreateAmbiguous { detail: c } }
+        RestExchangeUndecodable { status: _, cause: c } => Present { value: PinBranchCreateAmbiguous { detail: c } }
+      }
+  }
+}
+
+fn ref_read_refusal(refusal: RestRefusal) -> RestExchangeRefusal {
+  classify_rest_refusal(standing: RestReadExchange { refusal: refusal })
+}
+
+// THE PIN'S ONLY MINT, over values read back. Callers are admitted by name: the effectful ensure, and
+// the witness claims that supply readbacks at this interface and return Bool.
+fn qualification_ref_pin_of(
+  name: QualificationBranchName,
+  revision: CommitSha,
+  readback: RestResult<GitRefWire>,
+  group: MicrovmRunnerGroupStanding,
+) -> QualificationRefPinStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
+    decl_ref(module_path: "test.claim.runner_qualification_ref_pin_witness", decl_name: "the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+  ]
+{
+  match readback {
+    RestAnswered { answer: observed } =>
+      if observed.object.sha != (revision as String) {
+        QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadbackMismatch { pinned: revision, observed: observed.object.sha } }
+      } else {
+        match group {
+          RunnerGroupRestrictedToWorkflow { restriction: r } =>
+            QualificationRefPinned { pin: QualificationRefPin { name: name, revision: revision, group: r } }
+          other => QualificationRefPinRefused { attempt: name.attempt, refusal: PinGroupReadbackRefused { standing: other } }
+        }
+      }
+    RestRefused { refusal } => QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadUnreadable { refusal: ref_read_refusal(refusal: refusal) } }
+  }
+}
+
+fn pin_refused(attempt: NonEmptyStr, refusal: QualificationRefPinRefusal) -> QualificationRefPinStanding {
+  QualificationRefPinRefused { attempt: attempt, refusal: refusal }
+}
+
+fn ensure_qualification_ref_pin(
+  token: ControllerInstallationToken,
+  organization: NonEmptyStr,
+  attempt: NonEmptyStr,
+  revision: CommitSha,
+) -> QualificationRefPinStanding uses net: Network {
+  let owner = gunbc_repository.owner as NonEmptyStr
+  let repo = gunbc_repository.name as NonEmptyStr
+  match qualification_branch_name(attempt: attempt) {
+    QualificationBranchNameRefused { attempt: _, cause: c } => pin_refused(attempt: attempt, refusal: PinBranchNameRefused { cause: c })
+    QualificationBranchNamed { name: name } => {
+      let before = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
+      match before.reference {
+        RestAnswered { answer: existing } => pin_refused(attempt: attempt, refusal: PinBranchPreexisting { observed_sha: existing.object.sha })
+        RestRefused { refusal: read_refusal } =>
+          if !branch_absent(refusal: ref_read_refusal(refusal: read_refusal)) {
+            pin_refused(attempt: attempt, refusal: PinBranchReadUnreadable { refusal: ref_read_refusal(refusal: read_refusal) })
+          } else {
+            match branch_create_refusal(created: create_git_ref_with(token: token, owner: owner, repo: repo, full_ref: branch_full_ref(name: name), sha: revision as String)) {
+              Present { value: r } => pin_refused(attempt: attempt, refusal: r)
+              Absent => {
+                let after = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
+                let selected = qualification_selected_workflow(branch: name.branch)
+                match qualification_group_target(requested: qualification_runner_group_name, listed: read_runner_groups_with(token: token, organization: organization)) {
+                  QualificationGroupNotTargetable { cause: c } => pin_refused(attempt: attempt, refusal: PinGroupNotTargetable { cause: c })
+                  QualificationGroupTargeted { target: t } =>
+                    match update_runner_group_workflows_with(token: token, organization: organization, runner_group_id: t.group_id, selected_workflows: [selected as String]) {
+                      RestAnswered { answer: _ } =>
+                        qualification_ref_pin_of(
+                          name: name,
+                          revision: revision,
+                          readback: after.reference,
+                          group: observe_runner_group_restriction(name: qualification_runner_group_name, selected_workflow: selected, listed: read_runner_groups_with(token: token, organization: organization)),
+                        )
+                      RestRefused { refusal: w } => pin_refused(attempt: attempt, refusal: PinGroupWriteNotSucceeded { refusal: classify_rest_refusal(standing: RestMutationExchange { refusal: w }) })
+                    }
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+// ── REMOVAL, ON EVERY EXIT ──────────────────────────────────────────────────────────────────────
+
+type QualificationRefPinRemoval
+  = QualificationBranchRemoved { name: QualificationBranchName, deleted: Bool }
+  | QualificationBranchRemovalRefused { name: QualificationBranchName, cause: QualificationBranchRemovalRefusal }
+
+type QualificationBranchRemovalRefusal
+  = BranchStillPresent { observed_sha: String, delete_refusal: RestExchangeRefusal? }
+  | BranchReadUnreadable { refusal: RestExchangeRefusal }
+
+// THE VERDICT READS THE READBACK AND NOTHING ELSE: a branch is removed when a read finds it absent.
+// delete_refusal is the delete's own refusal when one was sent and refused, carried only to explain a
+// branch still present; it never decides the verdict.
+fn classify_branch_removal(name: QualificationBranchName, readback: RestResult<GitRefWire>, deleted: Bool, delete_refusal: RestExchangeRefusal?) -> QualificationRefPinRemoval {
+  match readback {
+    RestAnswered { answer: present } => QualificationBranchRemovalRefused { name: name, cause: BranchStillPresent { observed_sha: present.object.sha, delete_refusal: delete_refusal } }
+    RestRefused { refusal } =>
+      if branch_absent(refusal: ref_read_refusal(refusal: refusal)) {
+        QualificationBranchRemoved { name: name, deleted: deleted }
+      } else {
+        QualificationBranchRemovalRefused { name: name, cause: BranchReadUnreadable { refusal: ref_read_refusal(refusal: refusal) } }
+      }
+  }
+}
+
+fn delete_refusal_of(deleted: RestResult<GitRefDeletedBody>) -> RestExchangeRefusal? {
+  match deleted {
+    RestAnswered { answer: _ } => none
+    RestRefused { refusal } => Present { value: classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) }
+  }
+}
+
+fn remove_qualification_ref_pin(token: ControllerInstallationToken, name: QualificationBranchName) -> QualificationRefPinRemoval uses net: Network {
+  let owner = gunbc_repository.owner as NonEmptyStr
+  let repo = gunbc_repository.name as NonEmptyStr
+  let before = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
+  match before.reference {
+    RestAnswered { answer: _ } => {
+      let delete = delete_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
+      let after = read_git_ref_with(token: token, owner: owner, repo: repo, ref: branch_api_ref(name: name))
+      classify_branch_removal(name: name, readback: after.reference, deleted: true, delete_refusal: delete_refusal_of(deleted: delete))
+    }
+    RestRefused { refusal } => classify_branch_removal(name: name, readback: RestRefused { refusal: refusal }, deleted: false, delete_refusal: none)
+  }
+}

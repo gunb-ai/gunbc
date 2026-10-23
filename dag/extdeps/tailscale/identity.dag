@@ -1,0 +1,110 @@
+module extdeps.tailscale.identity
+
+import std.types { NonEmptyStr, String }
+import std.logic { Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tailscale.com/kb/1312/serve"
+  }
+}
+
+// ── The identity tailscale serve injects ─────────────────────────────────────────────────────
+// When `tailscale serve` proxies a request from a tailnet device to a local backend, it adds
+// headers naming the authenticated tailnet user. That identity is established by Tailscale's own
+// authentication -- the device is enrolled, the user signed in -- so a request carrying it has been
+// authenticated by something the backend did not have to implement.
+//
+// This module owns the header NAME and the shape. It deliberately does not own the question of
+// whether the value can be trusted, because that is not a fact about Tailscale.
+data tailscale_user_login_header: NonEmptyStr = "Tailscale-User-Login" as NonEmptyStr
+
+// ── THE PROPERTY THAT MAKES OR BREAKS THIS ───────────────────────────────────────────────────
+// The header is trustworthy exactly insofar as the tailscale proxy is the ONLY route to the
+// backend socket. Anything that can open a connection directly can send the same header itself,
+// and the backend cannot tell the two apart -- there is no signature on it and no channel binding.
+//
+// So the guarantee is a DEPLOYMENT property, not a property of this value: the backend binds to
+// loopback, and `tailscale serve` is the only path in. On a host where an ordinary process can
+// reach that port, this identity is self-asserted by whoever connected, and treating it as
+// authentication is worse than having none -- it is a check that reports success to an attacker.
+//
+// That is why the absent case below refuses rather than resolving to an anonymous caller. A
+// deployment that stops routing through the proxy loses the header, and losing it must close the
+// door rather than open it to everyone.
+data identity_header_trust_is_a_deployment_property_note: NonEmptyStr = "Tailscale-User-Login is unauthenticated data on the wire: it is trustworthy only because tailscale serve is the sole route to the backend socket, which is a deployment fact this module cannot check. A consumer owes evidence that the backend is loopback-bound and unreachable except through the proxy. Where that does not hold, the header is self-asserted by whoever connected and establishes nothing."
+
+type TailnetIdentity
+  = TailnetUser { login: NonEmptyStr }
+  | TailnetIdentityAbsent
+
+// ABSENT IS NOT ANONYMOUS. An empty header is the shape a direct connection produces, a
+// misconfigured proxy produces, and a stripped header produces -- three deployment faults, none of
+// which is a person the backend may act for. Resolving it to a user, a default, or a permissive
+// "unknown" is the absorbing fallback: the arm that cannot compute its answer substituting one
+// that lets the request proceed.
+fn tailnet_identity_of(header_value: String) -> TailnetIdentity {
+  if header_value == "" {
+    TailnetIdentityAbsent
+  } else {
+    TailnetUser { login: header_value as NonEmptyStr }
+  }
+}
+
+fn tailnet_identity_login(i: TailnetIdentity) -> String {
+  match i {
+    TailnetUser { login: l } => l as String
+    TailnetIdentityAbsent => ""
+  }
+}
+
+fn tailnet_identity_is_present(i: TailnetIdentity) -> Bool {
+  match i {
+    TailnetUser { login: _ } => true
+    TailnetIdentityAbsent => false
+  }
+}
+
+// ── Matching an identity to the operator a request names ─────────────────────────────────────
+// The comparison is exact. Tailscale logins are stable identifiers rather than display names, so
+// there is no normalization to do here, and inventing one -- case folding, domain stripping,
+// trimming a suffix -- would widen the set of identities that match beyond the one the request
+// authorized. A widening comparison in an authentication check is the same defect as a widening
+// failure arm.
+type IdentityMatch
+  = IdentityMatches { login: NonEmptyStr }
+  | IdentityMismatch { presented: NonEmptyStr, expected: NonEmptyStr }
+  | IdentityMissing { expected: NonEmptyStr }
+
+fn match_tailnet_identity(presented: TailnetIdentity, expected: NonEmptyStr) -> IdentityMatch {
+  match presented {
+    TailnetIdentityAbsent => IdentityMissing { expected: expected }
+    TailnetUser { login: l } =>
+      if (l as String) == (expected as String) {
+        IdentityMatches { login: l }
+      } else {
+        IdentityMismatch { presented: l, expected: expected }
+      }
+  }
+}
+
+fn identity_match_ok(m: IdentityMatch) -> Bool {
+  match m {
+    IdentityMatches { login: _ } => true
+    IdentityMismatch { presented: _, expected: _ } => false
+    IdentityMissing { expected: _ } => false
+  }
+}
+
+fn identity_match_reason(m: IdentityMatch) -> String {
+  match m {
+    IdentityMatches { login: l } => concat("tailnet identity ", l as String)
+    IdentityMismatch { presented: p, expected: e } =>
+      concat("tailnet identity ", concat(p as String, concat(" is not the operator this request names, ", e as String)))
+    IdentityMissing { expected: e } =>
+      concat("no tailnet identity on this request; it names operator ", concat(e as String, " -- the request did not arrive through the tailscale proxy, or the proxy is not the only route to this socket"))
+  }
+}

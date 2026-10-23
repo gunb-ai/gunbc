@@ -1,0 +1,141 @@
+module gunbc.emit_copy_qualification_wet_battery
+
+import gunbc.emit_copy_qualification {
+  CopyScalarControl, OwnedStringCarrier, SharedRecordCarrier, PersistentSequenceCarrier,
+  PersistentMapCarrier, NestedCheapDeepRecordCarrier,
+  EmitCopyQualification, Qualified, QualificationRefusedBehaviorMismatch, QualificationRefusedCaseNotExecutable,
+  QualificationRefusedCostOracleUnavailable, QualificationRefusedObservationUnavailable,
+  QualificationRefusedExcessCopy, QualificationRefusedRedundantClone,
+  qualification_is_qualified, qualification_slug
+}
+import gunbc.emit_copy_qualification_fixture_gen {
+  CleanSubject, PlantRedundantShareClone, PlantHiddenDeepCopy, PlantRedundantDeepClone,
+  DisconnectCounter, PlantCopiedAccumulator
+}
+import tools.emit_copy_qualification_transport {
+  run_shard_with_receipt, shard_all_qualified, verdicts_all_refuse_with,
+  emitted_prelude_grounds_structural_sequence
+}
+
+// EMIT-COST-QUAL-0 wet battery: each fn is one shard transaction through the production
+// emission door (gunbc compile -> clippy(json, clone lint armed) -> cargo build -> serial
+// runner with per-case allocator windows -> interpreted driver -> qualification join).
+// CLEAN SHARDS must qualify every applicable case — a real finding (redundant clone, excess
+// copy, behavior mismatch, unobservable case) is a BLOCKING report to the owning lane, never
+// an expected-red row here. The CALIBRATION fns are the instrument falsifiers the ruling
+// requires: named modeled mutants that must produce specific typed refusals, proving the two
+// observation arms independent and the battery able to go red.
+// ── Clean shards: the qualification claim, one fn per carrier shard ──────────────────────────
+// FLOOR STANDING (why this is NOT a *_test.dag module): v2.workflow.floor_changed_witness
+// blocks any CHANGED witness identity without a terminal floor verdict, and these transactions
+// route-gap hermetically at the witness-binary readiness probe (IsExecutable, NoMockResponse) —
+// so wet-only witness identities cannot be introduced while their executing lane ships inert
+// per the ROOT-N division ruling. The battery therefore lands as plain claim functions run by
+// the emit-copy-qualification-battery job's claim_batch --functions invocation; converting this
+// module to floor-enrolled witnesses is part of the job's activation edit, alongside deleting
+// the inert standing row.
+fn ecq_wet_shard_copy_scalar_qualifies_holds() -> Bool {
+  shard_all_qualified(verdicts: run_shard_with_receipt(c: CopyScalarControl, mutant: CleanSubject))
+}
+
+fn ecq_wet_shard_owned_string_qualifies_holds() -> Bool {
+  shard_all_qualified(verdicts: run_shard_with_receipt(c: OwnedStringCarrier, mutant: CleanSubject))
+}
+
+fn ecq_wet_shard_shared_record_qualifies_holds() -> Bool {
+  shard_all_qualified(verdicts: run_shard_with_receipt(c: SharedRecordCarrier, mutant: CleanSubject))
+}
+
+fn ecq_wet_shard_persistent_sequence_qualifies_holds() -> Bool {
+  shard_all_qualified(verdicts: run_shard_with_receipt(c: PersistentSequenceCarrier, mutant: CleanSubject))
+}
+
+fn ecq_wet_shard_persistent_map_qualifies_holds() -> Bool {
+  shard_all_qualified(verdicts: run_shard_with_receipt(c: PersistentMapCarrier, mutant: CleanSubject))
+}
+
+fn ecq_wet_shard_nested_record_qualifies_holds() -> Bool {
+  shard_all_qualified(verdicts: run_shard_with_receipt(c: NestedCheapDeepRecordCarrier, mutant: CleanSubject))
+}
+
+// ── Calibration matrix (ruling §9): five specimens proving the arms independent ──────────────
+// The static-sensitive calibrations are DIFFERENTIAL against the same carrier's clean shard:
+// the production emitter's own output already carries redundant clones (a real finding of this
+// battery), so an absolute "no redundant refusals" baseline would test the emitter, not the
+// instrument. The planted mutation must move exactly its own axis relative to clean.
+fn refusal_count(verdicts: List<EmitCopyQualification>, slug_expected: String) -> Int {
+  verdicts |> filter(q => qualification_slug(q: q) == slug_expected) |> count
+}
+
+// The clean baseline is NOT clone-free — the emitter's own output refuses redundant-clone
+// broadly (the battery's flagship static finding), so a planted RUNNER clone must be found by
+// its FILE: emitter findings live in the emitted module, planted ones in src/bin/.
+fn runner_file_redundant_clone_count(verdicts: List<EmitCopyQualification>) -> Int {
+  verdicts |> filter(q =>
+    match q {
+      QualificationRefusedRedundantClone { case: _, lint: _, emitted_item: item, line: _ } =>
+        (split(s: item, delimiter: "src/bin/") |> count) > 1
+      Qualified { case: _, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => false
+      QualificationRefusedBehaviorMismatch { case: _, expected_line: _, observed_line: _ } => false
+      QualificationRefusedCaseNotExecutable { case: _, phase: _, detail: _ } => false
+      QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => false
+      QualificationRefusedObservationUnavailable { case: _, cause: _ } => false
+      QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+    }
+  ) |> count
+}
+
+// Redundant SHARE clone shard: the plant is a pre-window String-typed redundant clone hoisted
+// above the case loops (instrument boundary: clippy's redundant_clone does not fire on the same
+// clone-last-use shape inside a loop — see the plant note in
+// gunbc.emit_copy_qualification_fixture_gen). The calibration proves the static arm reds on a
+// planted redundant clone in the runner file while the runtime arm stays unmoved.
+fn ecq_calibration_redundant_share_clone_reds_static_only_holds() -> Bool {
+  let clean = run_shard_with_receipt(c: SharedRecordCarrier, mutant: CleanSubject)
+  let mutant = run_shard_with_receipt(c: SharedRecordCarrier, mutant: PlantRedundantShareClone)
+  runner_file_redundant_clone_count(verdicts: mutant) > 0
+    && runner_file_redundant_clone_count(verdicts: clean) == 0
+    && refusal_count(verdicts: mutant, slug_expected: "refused_excess_copy") == refusal_count(verdicts: clean, slug_expected: "refused_excess_copy")
+}
+
+// Hidden deep copy on the carrier whose clean shard qualifies fully: the in-window rebuild adds
+// excess-copy refusals and no redundant-clone refusals relative to clean.
+fn ecq_calibration_hidden_deep_copy_reds_runtime_only_holds() -> Bool {
+  let clean = run_shard_with_receipt(c: PersistentSequenceCarrier, mutant: CleanSubject)
+  let mutant = run_shard_with_receipt(c: PersistentSequenceCarrier, mutant: PlantHiddenDeepCopy)
+  refusal_count(verdicts: mutant, slug_expected: "refused_excess_copy") > refusal_count(verdicts: clean, slug_expected: "refused_excess_copy")
+    && refusal_count(verdicts: mutant, slug_expected: "refused_redundant_clone") == refusal_count(verdicts: clean, slug_expected: "refused_redundant_clone")
+}
+
+// Obvious redundant deep clone: the planted String clone adds redundant-clone refusals
+// relative to clean.
+fn ecq_calibration_redundant_deep_clone_reds_holds() -> Bool {
+  let clean = run_shard_with_receipt(c: OwnedStringCarrier, mutant: CleanSubject)
+  let mutant = run_shard_with_receipt(c: OwnedStringCarrier, mutant: PlantRedundantDeepClone)
+  runner_file_redundant_clone_count(verdicts: mutant) > 0
+    && runner_file_redundant_clone_count(verdicts: clean) == 0
+}
+
+// Disconnected counter: every case refuses observation-unavailable — the dead-counter
+// precedent made a control, never a rendered zero.
+fn ecq_calibration_disconnected_counter_refuses_observation_holds() -> Bool {
+  let verdicts = run_shard_with_receipt(c: OwnedStringCarrier, mutant: DisconnectCounter)
+  verdicts_all_refuse_with(verdicts: verdicts, slug_expected: "refused_observation_unavailable")
+}
+
+// Copied-accumulator mutant: behavior preserved (no behavior-mismatch refusal anywhere) while
+// the cost shape changes — the excess-copy refusal must appear, and only the runtime arm can
+// see it. This one travels the FULL emission path: the transformation is .dag-grain.
+fn ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds() -> Bool {
+  let verdicts = run_shard_with_receipt(c: OwnedStringCarrier, mutant: PlantCopiedAccumulator)
+  let excess = verdicts |> filter(q => qualification_slug(q: q) == "refused_excess_copy") |> count
+  let mismatch = verdicts |> filter(q => qualification_slug(q: q) == "refused_behavior_mismatch") |> count
+  excess > 0 && mismatch == 0
+}
+
+// ── Grounding: the DeepCloningSequence inapplicability derivation cites the emitted prelude's
+//    structural sequence realization; this receipt reads the real emitted bytes. If it flips,
+//    the carrier column enters the applicable population and the derivation arm must change. ──
+fn ecq_emitted_prelude_grounds_structural_sequence_holds() -> Bool {
+  emitted_prelude_grounds_structural_sequence()
+}

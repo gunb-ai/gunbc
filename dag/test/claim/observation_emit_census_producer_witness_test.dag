@@ -1,0 +1,105 @@
+module test.claim.observation_emit_census_producer_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { unbound_dissolution }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.observation_emit_census {
+  CensusedEmitSite,
+  MigratedToObservation,
+  CountedFrontierSite,
+  ProducerDeclared,
+  ProducerUnlocated,
+  MachineConsumed,
+  HumanPresentationOnly,
+  ConsumerUnresolved,
+  observation_emit_roster,
+  floor_heartbeat_site,
+  floor_claim_memory_site,
+  emit_site_is_frontier,
+  emit_site_dissolve_on,
+  emit_site_consumer_unresolved,
+  emit_site_producer_symbol,
+  observation_emit_located_producer_count,
+  observation_emit_unresolved_consumer_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HALF OF THE CENSUS THAT EXECUTES ON THE REQUIRED FLOOR (2026-09-11). The hygiene suite over
+// this roster (test.claim.observation_emit_census_witness_test) reads the seed and is declined by
+// the floor's live-tree arm, and the zero-target acceptance is enrolled expected-red, so until this
+// module nothing green-by-execution looked at a roster row. These witnesses are pure folds over the
+// roster and its new producer/consumption fields: they cannot see the seed, so they say nothing
+// about whether a named producer exists there (that stays with the declined suite and, at
+// outside-index grain, with the ingestion citation wall); what they hold is the roster's own
+// obligations -- every row names a producer, the restored heartbeat row is migrated through the
+// renderer it claims, and the consumption fold counts what it says it counts.
+
+test fn w_every_roster_row_names_a_located_producer() -> Bool {
+  observation_emit_located_producer_count() == count(observation_emit_roster)
+    && all(observation_emit_roster, site => match emit_site_producer_symbol(site: site) {
+      Present { value: name } => name != ""
+      Absent => false
+    })
+}
+
+// The restoration receipt: the heartbeat row is MigratedToObservation and its projection names the
+// renderer and the mirror that the seed now calls; the claim-memory half is still counted, and its
+// dissolution names the projection it waits on rather than the heartbeat's.
+test fn w_the_floor_heartbeat_row_is_migrated_through_the_ci_renderer() -> Bool {
+  !emit_site_is_frontier(site: floor_heartbeat_site)
+    && string_contains(s: emit_site_dissolve_on(site: floor_heartbeat_site), pattern: "gunbc.observation_ci_render.ci_heartbeat_line")
+    && string_contains(s: emit_site_dissolve_on(site: floor_heartbeat_site), pattern: "render_heartbeat_line_mirror")
+    && emit_site_is_frontier(site: floor_claim_memory_site)
+    && string_contains(s: emit_site_dissolve_on(site: floor_claim_memory_site), pattern: "measurement-delta projection")
+}
+
+fn planted(consumption: gunbc.observation_emit_census.EmitConsumption, producer: gunbc.observation_emit_census.EmitProducer) -> CensusedEmitSite {
+  CensusedEmitSite {
+    marker: "[planted]" as NonEmptyStr,
+    producer: producer,
+    consumption: consumption,
+    disposition: CountedFrontierSite {
+      reason: "planted control" as NonEmptyStr,
+      dissolution: unbound_dissolution(description: "never; this row exists only in this witness")
+    }
+  }
+}
+
+fn planted_ref(name: String) -> DeclarationRef {
+  DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: name, field: WholeDeclaration }
+}
+
+// THE FOLDS DISCRIMINATE: a machine-consumed row and a human-only row do not count as unresolved,
+// an unresolved one does; a located producer yields its symbol, an unlocated one yields nothing.
+// Planted here rather than drawn from the roster so the check stays red-authorable after every
+// live row resolves its reader.
+test fn w_consumption_and_producer_folds_discriminate_on_planted_rows() -> Bool {
+  let machine = planted(
+    consumption: MachineConsumed { reader: planted_ref(name: "a_reader"), fields_read: ["wall_ms" as NonEmptyStr] },
+    producer: ProducerDeclared { declaration: planted_ref(name: "a_producer") }
+  )
+  let human = planted(
+    consumption: HumanPresentationOnly { evidence: "planted evidence" as NonEmptyStr },
+    producer: ProducerUnlocated { reason: "planted" as NonEmptyStr }
+  )
+  let unresolved = planted(
+    consumption: ConsumerUnresolved { searched: "planted search" as NonEmptyStr },
+    producer: ProducerDeclared { declaration: planted_ref(name: "a_producer") }
+  )
+  !emit_site_consumer_unresolved(site: machine)
+    && !emit_site_consumer_unresolved(site: human)
+    && emit_site_consumer_unresolved(site: unresolved)
+    && (match emit_site_producer_symbol(site: machine) { Present { value: n } => n == "a_producer"  Absent => false })
+    && (match emit_site_producer_symbol(site: human) { Present { value: _ } => false  Absent => true })
+}
+
+// The unresolved count is bounded by the roster and, today, equals it: every family's reader survey
+// is in-repo only. This is stated as an inequality against the roster rather than a literal, so a
+// row that resolves its reader moves the count down without editing this witness, and a count
+// above the roster is impossible by construction of the fold.
+test fn w_unresolved_consumers_are_bounded_by_the_roster() -> Bool {
+  observation_emit_unresolved_consumer_count() <= count(observation_emit_roster)
+    && observation_emit_unresolved_consumer_count() > 0
+}

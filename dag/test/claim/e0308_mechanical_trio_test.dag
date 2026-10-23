@@ -1,0 +1,121 @@
+module test.claim.e0308_mechanical_trio_test
+
+// THE MECHANICAL E0308 TRIO IN THE v1 SEED EMITTER, migrated from
+// src/v1/tests/src/e0308_mechanical_trio_test.rs, which is deleted in the same
+// change. Three lowering defects that all surface as E0308 at the Rust
+// boundary, each with its own fixture: Range-vs-usize (a list slice and
+// skip().first() must carry `as usize` bounds rather than a bare integer
+// range), String-vs-str (a String argument must be borrowed at the call site),
+// and Unit-vs-Option (an optional tail under a `-> Unit` return must be
+// discarded, never returned).
+//
+// WHY THIS COULD BE MIGRATED AT ALL. The Rust module's retirement row held that
+// a .dag floor witness could not reach the host compile-and-inspect path
+// without importing the v1 compiler crate. That reason predates
+// compile_dag_rust_emit_check, which IS that path: it sends a virtual module
+// through the production v1 emitter and asserts over the emitted file.
+// Nineteen floor witnesses already consume it. The row was a historical
+// observation the substrate overtook, not a standing wall.
+//
+// WHY THE FORBIDDEN LISTS ARE NOT THE RUST MODULE'S. The primitive matches over
+// the WHOLE selected emitted file; the Rust module first sliced a fn body out
+// of the emitted text and only then forbade the bare tokens `Some(` and `None`.
+// Ported unsliced, that exclusion is a false red, and this is measured rather
+// than reasoned: probes asserting the unit fixture's emitted file CONTAINS
+// `None` and `Some(` both pass. So every pin here is scoped by fn name, and
+// every forbidden token names a real defect form rather than a token that could
+// never appear — the next paragraph records how that is kept honest, and how it
+// used to be kept honest at four times the cost.
+//
+// ONE CROSSING PER FIXTURE (witness-cost consolidation, 2026-08-19). Each
+// claim here sends a source through the whole v1 frontend and emitter, and the
+// seed memo is keyed on the include and exclude lists as well as the source, so
+// two claims naming the same source with different lists are two full compiles.
+// Four of the nine claims were `!compile_dag_rust_emit_check(source, path,
+// [defect_form], [])` -- an assertion that a defect token is ABSENT, which is
+// exactly what the sibling claim's own exclude list already says about the same
+// source, and says more strongly: the negated form is also satisfied by a compile
+// that produced hard diagnostics, while the exclude form requires the compile to
+// be clean AND the required token to be present. So the four were duplicate
+// coverage at four times the cost, and they are folded into the exclude lists
+// they restated. The string-borrow exclude is NEW here -- that one red named a
+// form its sibling did not forbid.
+//
+// AND THE VACUITY OBJECTION THE ORIGINAL NOTE RAISED IS ANSWERED BY THE INCLUDE
+// LIST, NOT BY A SECOND CLAIM: an exclude list over an emitted file that does not
+// contain the subject at all would pass for the wrong reason, and what rules that
+// out is the required token in the same call, which fails if the fn was not
+// emitted. The planted-wrong red control below is a DIFFERENT fixture, not a
+// restatement, so it stays a claim of its own.
+//
+// The Unit witness pins the pair (`-> ()` signature, optional value still
+// constructed in the body). That conjunction is the behavior: the tail is built
+// and then discarded. A defect that returned it would have to widen the
+// signature, which the forbidden form and the planted-wrong fixture both catch.
+fn e0308_string_borrow_source() -> String {
+  "module e0308strlen\n\nimport std.types { Int, String }\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n"
+}
+
+fn e0308_list_slice_source() -> String {
+  "module e0308slice\n\nimport std.types { Int }\n\nfn tail(items: List<Int>) -> List<Int> {\n  items[1..3]\n}\n"
+}
+
+fn e0308_skip_first_source() -> String {
+  "module e0308skip\n\nimport std.types { Int }\n\nfn second(xs: List<Int>) -> Int? {\n  xs.skip(n: 1).first()\n}\n"
+}
+
+fn e0308_unit_tail_source() -> String {
+  "module e0308unit\n\nimport std.types { Bool, String, Unit }\n\nfn maybe_discard(flag: Bool) -> Unit {\n  if flag { Present { value: \"x\" } } else { none }\n}\n"
+}
+
+// The planted-wrong companion to the unit fixture: the SAME body under a
+// declared optional return. The emitter must then widen the signature, so the
+// unit witness's own required/forbidden pair must refuse it.
+fn e0308_unit_tail_planted_wrong_source() -> String {
+  "module e0308unitwrong\n\nimport std.types { Bool, String }\n\nfn maybe_discard(flag: Bool) -> String? {\n  if flag { Present { value: \"x\" } } else { none }\n}\n"
+}
+
+test fn string_length_call_borrows_string_arg() -> Bool {
+  compile_dag_rust_emit_check(
+    e0308_string_borrow_source(),
+    "src/e0308strlen.rs",
+    ["v1_rt::string_length(&"],
+    ["v1_rt::string_length(s"]
+  )
+}
+
+test fn list_slice_emits_usize_range_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    e0308_list_slice_source(),
+    "src/e0308slice.rs",
+    ["[1 as usize..3 as usize]"],
+    ["[1..3]"]
+  )
+}
+
+test fn skip_first_emits_iter_skip_next() -> Bool {
+  compile_dag_rust_emit_check(
+    e0308_skip_first_source(),
+    "src/e0308skip.rs",
+    [".iter().cloned().skip(", "as usize).next()"],
+    [".next().cloned()", ".get(1 as usize)"]
+  )
+}
+
+test fn unit_return_discards_optional_tail() -> Bool {
+  compile_dag_rust_emit_check(
+    e0308_unit_tail_source(),
+    "src/e0308unit.rs",
+    ["pub fn maybe_discard(flag: bool) -> ()", "Some(\"x\".to_string())"],
+    ["pub fn maybe_discard(flag: bool) -> Option"]
+  )
+}
+
+test fn red_planted_optional_return_refuses_unit_witness() -> Bool {
+  !compile_dag_rust_emit_check(
+    e0308_unit_tail_planted_wrong_source(),
+    "src/e0308unitwrong.rs",
+    ["pub fn maybe_discard(flag: bool) -> ()", "Some(\"x\".to_string())"],
+    ["pub fn maybe_discard(flag: bool) -> Option"]
+  )
+}

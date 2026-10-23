@@ -1,0 +1,85 @@
+module test.claim.long.web_fonts_bytes_witness_test
+import gunbc.site.web_fonts {
+  WebFontFace, web_font_stylesheet, web_font_stylesheet_path,
+  web_font_roboto_400, web_font_roboto_500, web_font_roboto_700, web_font_google_sans_400, web_font_google_sans_500,
+}
+import gunbc.roadmap_serve { roadmap_serve_handle_over, DailyBodyRenderedUnderThisPlan }
+import gunbc.roadmap_authority { RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.auth.request_authentication { IngressUnattested }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import extdeps.http.server { ServeWireResponse, WireHeaderCacheControl }
+import std.encoding { base64_decode, Standard }
+
+// THE COMMITTED BASE64 IS THE RECORDED NUMBER OF OCTETS. The base64 alphabet carries six bits per
+// character and pads to whole quadruples, so the octet count is a function of the text's length
+// and its padding: three per quadruple less one per '='. That is read per face here at the cost of
+// a length, where decoding and hashing every face through the pure std.encoding and
+// extdeps.crypto.sha2 folds took millions of eval steps per face and never reached a verdict inside
+// the floor (CI job 112527986443). The digest is the derivation's receipt (gunbc.site.web_fonts
+// web_font_derivation, two independent runs agreeing); a floor-reachable octet digest is the next
+// rung, and its trigger is a host-realized SHA-256 over octets in std. The decode itself keeps one
+// inhabitance claim, over a short prefix of a real face, so the alphabet and padding the faces use
+// are the ones std.encoding reads.
+fn padding_of(s: String) -> Int {
+  if ends_with(s: s, suffix: "==") { 2 } else if ends_with(s: s, suffix: "=") { 1 } else { 0 }
+}
+
+fn base64_octets(s: String) -> Int {
+  (string_length(s: s) / 4) * 3 - padding_of(s: s)
+}
+
+fn face_size_matches_record(face: WebFontFace) -> Bool {
+  string_length(s: face.woff2_base64) % 4 == 0 && base64_octets(s: face.woff2_base64) == face.woff2_byte_size
+}
+
+test fn roboto_400_size_matches_record() -> Bool { face_size_matches_record(face: web_font_roboto_400) }
+test fn roboto_500_size_matches_record() -> Bool { face_size_matches_record(face: web_font_roboto_500) }
+test fn roboto_700_size_matches_record() -> Bool { face_size_matches_record(face: web_font_roboto_700) }
+test fn google_sans_400_size_matches_record() -> Bool { face_size_matches_record(face: web_font_google_sans_400) }
+test fn google_sans_500_size_matches_record() -> Bool { face_size_matches_record(face: web_font_google_sans_500) }
+
+// RED: a face whose recorded size is off by one is refused by the same check.
+test fn a_misrecorded_face_size_is_refused() -> Bool {
+  let f = web_font_google_sans_400
+  !face_size_matches_record(face: WebFontFace {
+    source: f.source, weight: f.weight, axis_pins: f.axis_pins,
+    woff2_sha256: f.woff2_sha256, woff2_byte_size: f.woff2_byte_size + 1, woff2_base64: f.woff2_base64,
+  })
+}
+
+// Inhabitance of the decode: the first quadruples of a real face decode to the WOFF2 signature.
+test fn a_real_face_decodes_to_the_woff2_signature() -> Bool {
+  match base64_decode(s: substring(s: web_font_roboto_400.woff2_base64, start: 0, end: 8), variant: Standard) {
+    Absent => false
+    Present { value: octets } => octets.take(n: 4) == [119, 79, 70, 50]
+  }
+}
+
+fn get(path: String) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { RoadmapAuthorityProjectionRefused { detail: "the font stylesheet route reads no plan" } },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: "GET",
+    path: path,
+    body: "",
+    tailscale_identity: "",
+    ingress: IngressUnattested,
+    request_headers: [],
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+// The served entry answers the content-addressed path with the stylesheet as text/css and an
+// immutable cache header; a stale fonts path is not served.
+test fn the_served_entry_answers_the_stylesheet_route() -> Bool {
+  let r = get(path: web_font_stylesheet_path())
+  r.status == 200
+    && r.content_type_label == "text/css; charset=utf-8"
+    && r.body == web_font_stylesheet()
+    && count(r.headers) == 1
+    && all(r.headers, h => h.name == WireHeaderCacheControl && h.value == "public, max-age=31536000, immutable")
+    && get(path: "/assets/fonts-0000000000000000.css").status == 404
+}
+

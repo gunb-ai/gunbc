@@ -1,0 +1,465 @@
+module test.claim.roadmap.roadmap_attempt_metering_witness_test
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { token_count, token_count_value, second_count }
+import extdeps.clock { ClockUnixMillisObserved }
+import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId, PartitionId, ChainWalked, ChainBudgetExhausted }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
+import gunbc.harness.harness_turn { harness_event_round_usage, harness_event_round_usage_unavailable, harness_event_type_only }
+import gunbc.harness.harness_seat_pointer {
+  HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode, harness_seat_pointer_json,
+}
+import gunbc.roadmap_attempt_metering {
+  MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor,
+  RoleTokens, TokensObserved, TokensStreamAbsent, TokensRefused,
+  SeatHeld, SeatReleased, SeatStillHeld, SeatRefused, SeatPointerAbsent,
+  MeteredRoleUsage, AttemptMeteringRecord, ComputeNotAttributable, compute_not_attributable_reason,
+  MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
+  MeteringObserved, MeteringProvisional, MeteringRefused, MeteringNotYetWritten,
+  MeteringRoster, RosterOpen, RosterSealed, RosterRefused, RosterEntryText, RosterAdmitted, RosterAdmissionRefused,
+  OptionalFileAbsent, OptionalFileContent,
+  metering_roster_digest, metering_roster_from_entries, metering_roster_entry_json, metering_launch_entry_name,
+  metering_roster_seal_json, metering_roster_seal_decode, metering_admission_after_entry, metering_roster_launches,
+  role_tokens_from_events, seat_held_from_events, seat_held_from_walk, seat_pointer_owned_by,
+  metered_role_seat_owner, metering_record_from_usage, metering_record_inadmissible, metering_token_total, metering_seat_time_total,
+  attempt_metering_json, metering_observe_from_text,
+}
+
+// PLANTED FIXTURES, answers computed by hand. Attempt node-x-a7 launched a worker and one reviewer
+// (criterion r1-c1 at head h1). The worker's stream: two rounds (in 10+20, out 100+200), then
+// turn.completed. The reviewer's: one round (in 5, out 7), then turn.completed. The ledger acquires
+// the worker's seat at 1000 and releases it at 1042, and the reviewer's at 2000 -> 2010, interleaved
+// with an unrelated seat that must not be attributed.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn reviewer_role() -> MeteredRole {
+  MeteredReviewer { criterion_key: "r1-c1" as NonEmptyStr, head: "h1" as NonEmptyStr }
+}
+
+fn roster() -> List<MeteredRole> {
+  [MeteredWorker, reviewer_role()]
+}
+
+fn worker_stream() -> String {
+  join([
+    "{\"type\":\"turn.started\"}",
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":20,\"output_tokens\":200,\"epoch_ms\":3000}",
+    "{\"type\":\"turn.completed\"}",
+  ], "\n")
+}
+
+fn reviewer_stream() -> String {
+  join([
+    "{\"type\":\"turn.started\"}",
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":5,\"output_tokens\":7,\"epoch_ms\":9000}",
+    "{\"type\":\"turn.completed\"}",
+  ], "\n")
+}
+
+fn owner_of(role: MeteredRole) -> String {
+  metered_role_seat_owner(node_id: "node-x", attempt_key: "7", role: role)
+}
+
+fn reference_for(owner: String, stamp: String) -> String {
+  join([to_string(string_length(s: owner)), ":", owner, "@", stamp, "#0/3:key^gpu"], "")
+}
+
+fn pointer_for(role: MeteredRole, stamp: String) -> HarnessSeatPointer {
+  HarnessSeatPointer {
+    partition: "group-b-tolerant-seat-c4-v1" as NonEmptyStr as PartitionId,
+    reference: reference_for(owner: owner_of(role: role), stamp: stamp) as NonEmptyStr,
+    owner: owner_of(role: role) as NonEmptyStr,
+  }
+}
+
+fn env(id: String, at: Int, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope { id: id as NonEmptyStr as EventId, event: ChainEvent {
+    partition: "group-b-tolerant-seat-c4-v1" as NonEmptyStr as PartitionId,
+    parent: none, recorded_at: at, actor: "worker:/w" as NonEmptyStr, payload: payload,
+  } }
+}
+
+fn ledger_acquire(id: String, at: Int, reference: String, amount: Int) -> ChainEnvelope<PoolEvent> {
+  env(id: id, at: at, payload: PoolAcquired { reference: reference as NonEmptyStr, amount: amount, term_seconds: 300 })
+}
+
+fn ledger_release(id: String, at: Int, reference: String) -> ChainEnvelope<PoolEvent> {
+  env(id: id, at: at, payload: PoolReleased { reference: reference as NonEmptyStr, reason: "done" as NonEmptyStr })
+}
+
+fn ledger() -> List<ChainEnvelope<PoolEvent>> {
+  [
+    ledger_acquire(id: "e1", at: 990, reference: "other", amount: 1),
+    ledger_acquire(id: "e2", at: 1000, reference: pointer_for(role: MeteredWorker, stamp: "1000").reference as String, amount: 1),
+    ledger_release(id: "e3", at: 1010, reference: "other"),
+    ledger_release(id: "e4", at: 1042, reference: pointer_for(role: MeteredWorker, stamp: "1000").reference as String),
+    ledger_acquire(id: "e5", at: 2000, reference: pointer_for(role: reviewer_role(), stamp: "2000").reference as String, amount: 1),
+    ledger_release(id: "e6", at: 2010, reference: pointer_for(role: reviewer_role(), stamp: "2000").reference as String),
+  ]
+}
+
+fn usage(role: MeteredRole, tokens: RoleTokens, seat: SeatHeld) -> MeteredRoleUsage {
+  MeteredRoleUsage { role: role, tokens: tokens, seat: seat }
+}
+
+fn worker_seat() -> SeatHeld {
+  seat_held_from_events(pointer: pointer_for(role: MeteredWorker, stamp: "1000"), oldest_first: ledger())
+}
+
+fn reviewer_seat() -> SeatHeld {
+  seat_held_from_events(pointer: pointer_for(role: reviewer_role(), stamp: "2000"), oldest_first: ledger())
+}
+
+fn complete_usage() -> List<MeteredRoleUsage> {
+  [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat()),
+    usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: reviewer_seat()),
+  ]
+}
+
+fn sealed() -> MeteringRoster {
+  RosterSealed { launches: roster(), digest: metering_roster_digest(launches: roster()) }
+}
+
+// Records are bound to the sealed roster of the fixture attempt unless a claim says otherwise.
+fn record_of(roles: List<MeteredRoleUsage>) -> AttemptMeteringRecord {
+  metering_record_from_usage(node_id: "node-x", attempt_key: "7", metered_at: 3000, sealed_roster: Present { value: metering_roster_digest(launches: roster()) }, roles: roles)
+}
+
+fn tokens_complete(r: AttemptMeteringRecord) -> Bool {
+  match metering_token_total(record: r, output: true) {
+    MeteringTokensObserved { value: _ } => true
+    MeteringTokensIncomplete { cause: _ } => false
+  }
+}
+
+fn seats_complete(r: AttemptMeteringRecord) -> Bool {
+  match metering_seat_time_total(record: r) {
+    MeteringSeatTimeObserved { held: _ } => true
+    MeteringSeatTimeIncomplete { cause: _ } => false
+  }
+}
+
+fn observe_under(record: AttemptMeteringRecord, roster_state: MeteringRoster) -> String {
+  match metering_observe_from_text(node_id: "node-x", attempt_key: "7", roster: roster_state, raw: attempt_metering_json(record: record)) {
+    MeteringObserved { record: _ } => "observed"
+    MeteringProvisional { record: _ } => "provisional"
+    MeteringNotYetWritten => "absent"
+    MeteringRefused { cause: _ } => "refused"
+  }
+}
+
+fn observe(record: AttemptMeteringRecord) -> String {
+  observe_under(record: record, roster_state: sealed())
+}
+
+fn refused(cause: String?) -> Bool {
+  match cause {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// POSITIVE CONTROL: every launch terminal and released -> Final, read back in the Observed arm, with
+// tokens 300+7 out and 30+5 in, and seat time 42+10 seconds derived from the ledger instants.
+test fn a_complete_attempt_is_final_and_totals_every_launch() -> Bool {
+  let r = record_of(roles: complete_usage())
+  observe(record: r) == "observed"
+    && (match metering_token_total(record: r, output: true) {
+      MeteringTokensObserved { value: v } => token_count_value(t: v) == 307
+      MeteringTokensIncomplete { cause: _ } => false
+    })
+    && (match metering_token_total(record: r, output: false) {
+      MeteringTokensObserved { value: v } => token_count_value(t: v) == 35
+      MeteringTokensIncomplete { cause: _ } => false
+    })
+    && (match metering_seat_time_total(record: r) {
+      MeteringSeatTimeObserved { held: h } => second_count(s: h) == 52
+      MeteringSeatTimeIncomplete { cause: _ } => false
+    })
+}
+
+// A LAUNCH WHOSE STREAM NEVER APPEARED STAYS IN THE POPULATION: the reviewer wrote its seat pointer and
+// died before its first event. Its row is present, its tokens are absent, and the total is
+// incomplete -- not 300, which is what dropping the row would report.
+test fn a_launch_with_a_pointer_and_no_stream_makes_the_total_incomplete() -> Bool {
+  let r = record_of(roles: [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat()),
+    usage(role: reviewer_role(), tokens: TokensStreamAbsent, seat: reviewer_seat()),
+  ])
+  !tokens_complete(r: r) && observe(record: r) == "provisional"
+}
+
+// A LAUNCH WITH TOKENS BUT NO SEAT POINTER IS NOT A COMPLETE ROW: its seat time is unknown.
+test fn a_launch_with_tokens_and_no_seat_makes_the_seat_total_incomplete() -> Bool {
+  let r = record_of(roles: [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat()),
+    usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: SeatPointerAbsent),
+  ])
+  !seats_complete(r: r) && observe(record: r) == "provisional"
+}
+
+// A ROW THE ROSTER NAMES CANNOT BE DROPPED, A ROW IT DOES NOT NAME CANNOT BE ADDED, AND NO LAUNCH
+// APPEARS TWICE -- one claim per case, since each pays its own encode and decode.
+test fn a_record_missing_a_rostered_launch_refuses() -> Bool {
+  observe(record: record_of(roles: [usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat())])) == "refused"
+}
+
+test fn a_record_with_an_unrostered_launch_refuses() -> Bool {
+  observe(record: record_of(roles: concat(complete_usage(), [usage(role: MeteredAuditor { head: "h1" as NonEmptyStr }, tokens: TokensStreamAbsent, seat: SeatPointerAbsent)]))) == "refused"
+}
+
+test fn a_record_with_a_launch_twice_refuses() -> Bool {
+  observe(record: record_of(roles: concat(complete_usage(), [usage(role: MeteredWorker, tokens: TokensStreamAbsent, seat: SeatPointerAbsent)]))) == "refused"
+}
+
+test fn an_empty_record_is_never_an_observed_zero() -> Bool {
+  let empty = record_of(roles: [])
+  !tokens_complete(r: empty) && !seats_complete(r: empty)
+    && refused(cause: metering_record_inadmissible(record: empty, roster: [], seal: none))
+}
+
+// A SEAT POINTER IS ACCEPTED ONLY FOR ITS OWN LAUNCH: another attempt's pointer, a worker pointer at a
+// reviewer path, one criterion's pointer at another's, and a reference not minted for the declared
+// owner all refuse; the launch's own pointer is accepted.
+test fn a_seat_pointer_from_another_launch_refuses() -> Bool {
+  let other_owner = metered_role_seat_owner(node_id: "node-x", attempt_key: "8", role: MeteredWorker)
+  let other_attempt = HarnessSeatPointer {
+    partition: "group-b-tolerant-seat-c4-v1" as NonEmptyStr as PartitionId,
+    reference: reference_for(owner: other_owner, stamp: "1") as NonEmptyStr,
+    owner: other_owner as NonEmptyStr,
+  }
+  let forged_reference = HarnessSeatPointer {
+    partition: "group-b-tolerant-seat-c4-v1" as NonEmptyStr as PartitionId,
+    reference: reference_for(owner: owner_of(role: reviewer_role()), stamp: "1") as NonEmptyStr,
+    owner: owner_of(role: MeteredWorker) as NonEmptyStr,
+  }
+  let other_criterion = MeteredReviewer { criterion_key: "r1-c2" as NonEmptyStr, head: "h1" as NonEmptyStr }
+  refused(cause: seat_pointer_owned_by(pointer: other_attempt, owner: owner_of(role: MeteredWorker)))
+    && refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: MeteredWorker, stamp: "1"), owner: owner_of(role: reviewer_role())))
+    && refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: other_criterion, stamp: "1"), owner: owner_of(role: reviewer_role())))
+    && refused(cause: seat_pointer_owned_by(pointer: forged_reference, owner: owner_of(role: MeteredWorker)))
+    && !refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: MeteredWorker, stamp: "1"), owner: owner_of(role: MeteredWorker)))
+}
+
+test fn a_seat_acquired_for_more_than_one_unit_refuses() -> Bool {
+  let p = pointer_for(role: MeteredWorker, stamp: "1000")
+  match seat_held_from_events(pointer: p, oldest_first: [ledger_acquire(id: "e1", at: 1000, reference: p.reference as String, amount: 2), ledger_release(id: "e2", at: 1042, reference: p.reference as String)]) {
+    SeatRefused { cause: _ } => true
+    SeatReleased { pointer: _, granted_at: _, released_at: _ } => false
+    SeatStillHeld { pointer: _, granted_at: _ } => false
+    SeatPointerAbsent => false
+  }
+}
+
+// ONE SEAT CANNOT PAY FOR TWO LAUNCHES.
+test fn one_seat_attributed_to_two_launches_refuses() -> Bool {
+  observe(record: record_of(roles: [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat()),
+    usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: worker_seat()),
+  ])) == "refused"
+}
+
+// FINAL ONLY WHEN NOTHING CAN CHANGE: a seat still held, or a launch not yet terminal, is Provisional
+// -- a distinct arm, never Observed. The standing is derived from the rows, so a record cannot claim
+// Final over such a row at all.
+fn held_record() -> AttemptMeteringRecord {
+  record_of(roles: [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: SeatStillHeld { pointer: pointer_for(role: MeteredWorker, stamp: "1000"), granted_at: 1000 }),
+    usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: reviewer_seat()),
+  ])
+}
+
+test fn a_record_with_a_held_seat_is_provisional() -> Bool {
+  observe(record: held_record()) == "provisional"
+}
+
+test fn a_record_with_a_running_launch_is_provisional() -> Bool {
+  observe(record: record_of(roles: [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":1,\"output_tokens\":2,\"epoch_ms\":1}"), seat: worker_seat()),
+    usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: reviewer_seat()),
+  ])) == "provisional"
+}
+
+// THE STREAM IS READ STRICTLY: a truncated usage line, or the harness's own round.usage_unavailable,
+// refuses the launch's tokens -- the throughput reader would have skipped the first and totalled 100.
+test fn a_truncated_or_unavailable_round_refuses_the_tokens() -> Bool {
+  let truncated = join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    "{\"type\":\"round.usage\",\"step\":2,\"input_tok",
+  ], "\n")
+  let unavailable = join([
+    "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
+    harness_event_round_usage_unavailable(step: 2, cause: "provider omitted usage", clock: ClockUnixMillisObserved { millis: 2000 }),
+  ], "\n")
+  (match role_tokens_from_events(body: truncated) {
+    TokensRefused { cause: _ } => true
+    TokensObserved { rounds: _, input_tokens: _, output_tokens: _, terminal: _ } => false
+    TokensStreamAbsent => false
+  })
+    && (match role_tokens_from_events(body: unavailable) {
+      TokensRefused { cause: _ } => true
+      TokensObserved { rounds: _, input_tokens: _, output_tokens: _, terminal: _ } => false
+      TokensStreamAbsent => false
+    })
+}
+
+test fn the_seat_pointer_the_harness_writes_is_the_one_the_metering_reads() -> Bool {
+  match harness_seat_pointer_decode(raw: harness_seat_pointer_json(pointer: pointer_for(role: MeteredWorker, stamp: "1000"))) {
+    HarnessSeatPointerDecoded { pointer: p } =>
+      (p.owner as String) == owner_of(role: MeteredWorker)
+        && !refused(cause: seat_pointer_owned_by(pointer: p, owner: owner_of(role: MeteredWorker)))
+    HarnessSeatPointerUndecodable { cause: _ } => false
+  }
+}
+
+test fn an_unreadable_ledger_walk_is_not_a_zero() -> Bool {
+  match seat_held_from_walk(pointer: pointer_for(role: MeteredWorker, stamp: "1000"), walk: ChainBudgetExhausted { at: "e9" as NonEmptyStr as EventId }) {
+    SeatRefused { cause: _ } => true
+    SeatReleased { pointer: _, granted_at: _, released_at: _ } => false
+    SeatStillHeld { pointer: _, granted_at: _ } => false
+    SeatPointerAbsent => false
+  }
+}
+
+// THE REAL PRODUCER ROUTE: the stream is written by gunbc.harness.harness_turn's own event writers
+// (harness_event_round_usage each round, harness_event_type_only for the turn's start and terminal
+// events). If either writer's shape drifts from what the metering reads, this goes red where the
+// planted fixtures above would stay green.
+fn real_round(step: Int, i: Int, o: Int, ms: Int) -> String {
+  harness_event_round_usage(step: step, input_tokens: token_count(count: i), output_tokens: token_count(count: o), clock: ClockUnixMillisObserved { millis: ms }, tool_calls: 1, files_changed: none)
+}
+
+test fn the_harness_writers_are_what_the_metering_totals() -> Bool {
+  let body = join([
+    harness_event_type_only(event_type: "turn.started"),
+    real_round(step: 1, i: 11, o: 13, ms: 1000),
+    real_round(step: 2, i: 17, o: 19, ms: 2000),
+    harness_event_type_only(event_type: "turn.completed"),
+  ], "\n")
+  match role_tokens_from_events(body: body) {
+    TokensObserved { rounds: n, input_tokens: i, output_tokens: o, terminal: t } => n == 2 && token_count_value(t: i) == 28 && token_count_value(t: o) == 32 && t
+    TokensRefused { cause: _ } => false
+    TokensStreamAbsent => false
+  }
+}
+
+// ── the roster: append-only entries, a seal, and the binding ───────────────────────────────────
+fn entry(role: MeteredRole) -> RosterEntryText {
+  RosterEntryText { name: metering_launch_entry_name(role: role), content: metering_roster_entry_json(node_id: "node-x", attempt_key: "7", role: role) }
+}
+
+fn open_launches(entries: List<RosterEntryText>) -> List<MeteredRole> {
+  match metering_roster_from_entries(node_id: "node-x", attempt_key: "7", entries: entries) {
+    RosterOpen { launches: ls } => ls
+    RosterSealed { launches: _, digest: _ } => [] as List<MeteredRole>
+    RosterRefused { cause: _ } => [] as List<MeteredRole>
+  }
+}
+
+// TWO ADMISSIONS FROM ONE OBSERVED ROSTER BOTH SURVIVE: each commits its own create-only entry, so the
+// listing after both is the worker and both launches -- a stale writer has no whole-roster write that
+// could erase the other.
+test fn two_concurrent_admissions_both_survive() -> Bool {
+  let auditor = MeteredAuditor { head: "h1" as NonEmptyStr }
+  let ls = open_launches(entries: [entry(role: reviewer_role()), entry(role: auditor)])
+  list_length(items: ls) == 3
+    && any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: reviewer_role()))
+    && any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
+}
+
+// AN ENTRY CANNOT BE RENAMED INTO ANOTHER LAUNCH'S PLACE, nor name another attempt.
+test fn a_misnamed_or_foreign_roster_entry_refuses() -> Bool {
+  let misnamed = RosterEntryText { name: metering_launch_entry_name(role: MeteredAuditor { head: "h1" as NonEmptyStr }), content: entry(role: reviewer_role()).content }
+  let foreign = RosterEntryText { name: entry(role: reviewer_role()).name, content: metering_roster_entry_json(node_id: "node-x", attempt_key: "8", role: reviewer_role()) }
+  (match metering_roster_from_entries(node_id: "node-x", attempt_key: "7", entries: [misnamed]) { RosterRefused { cause: _ } => true _ => false })
+    && (match metering_roster_from_entries(node_id: "node-x", attempt_key: "7", entries: [foreign]) { RosterRefused { cause: _ } => true _ => false })
+}
+
+// A COMPLETE RECORD OVER AN OPEN ROSTER IS PROVISIONAL: while the attempt is in the ledger another
+// launch may still be admitted, so nothing measured against it is final.
+test fn a_complete_record_on_an_open_roster_is_provisional() -> Bool {
+  let r = metering_record_from_usage(node_id: "node-x", attempt_key: "7", metered_at: 3000, sealed_roster: none, roles: complete_usage())
+  observe_under(record: r, roster_state: RosterOpen { launches: roster() }) == "provisional"
+}
+
+// SEAL THEN COMPLETE ROWS IS FINAL, and the seal round-trips through its own decoder with its digest.
+test fn a_sealed_roster_with_complete_rows_is_final() -> Bool {
+  match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: roster())) {
+    RosterSealed { launches: ls, digest: d } =>
+      list_length(items: ls) == 2 && observe_under(record: record_of(roles: complete_usage()), roster_state: RosterSealed { launches: ls, digest: d }) == "observed"
+    _ => false
+  }
+}
+
+// THE RECORD BINDS ITS SEAL: a record bound to another population's seal, or claiming a seal the
+// attempt does not carry, refuses; a seal whose digest does not match its own launches refuses.
+test fn a_record_bound_to_another_seal_refuses() -> Bool {
+  let grown = concat(roster(), [MeteredSupervisor { turn: 1 }])
+  observe_under(record: record_of(roles: complete_usage()), roster_state: RosterSealed { launches: roster(), digest: metering_roster_digest(launches: grown) }) == "refused"
+    && observe_under(record: record_of(roles: complete_usage()), roster_state: RosterOpen { launches: roster() }) == "refused"
+    && (match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: replace(s: metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: roster()), from: metering_roster_digest(launches: roster()), to: "0000")) {
+      RosterRefused { cause: _ } => true
+      _ => false
+    })
+}
+
+// THE TWO INTERLEAVINGS OF A SEAL AND AN ADMISSION. The admission commits its entry, then reads the
+// closing marker; the sealer writes the marker, then lists. (1) Entry committed before the marker:
+// the admission sees no marker and spawns, and the sealer's listing contains the entry, so the
+// sealed population contains the launch. (2) Marker written before the admission reads it: the
+// admission refuses its spawn, and the sealed population is unchanged by its entry.
+test fn an_admission_racing_the_seal_lands_in_it_or_refuses() -> Bool {
+  let auditor = MeteredAuditor { head: "h1" as NonEmptyStr }
+  let listed_after_entry = open_launches(entries: [entry(role: reviewer_role()), entry(role: auditor)])
+  let landed = (match metering_admission_after_entry(closing: OptionalFileAbsent) { RosterAdmitted => true RosterAdmissionRefused { cause: _ } => false })
+    && (match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: listed_after_entry)) {
+      RosterSealed { launches: ls, digest: _ } => any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
+      _ => false
+    })
+  let sealed_first = metering_roster_seal_json(node_id: "node-x", attempt_key: "7", launches: open_launches(entries: [entry(role: reviewer_role())]))
+  let refused_after_marker = (match metering_admission_after_entry(closing: OptionalFileContent { content: "closed" }) { RosterAdmissionRefused { cause: _ } => true RosterAdmitted => false })
+    && (match metering_roster_seal_decode(node_id: "node-x", attempt_key: "7", raw: sealed_first) {
+      RosterSealed { launches: ls, digest: _ } => list_length(items: ls) == 2 && !any(ls, r => metering_launch_entry_name(role: r) == metering_launch_entry_name(role: auditor))
+      _ => false
+    })
+  landed && refused_after_marker
+}
+
+// ── seat ownership through the durable reader ─────────────────────────────────────────────────
+fn swapped(a: MeteredRole, a_stream: String, b: MeteredRole, b_stream: String) -> String {
+  observe_under(
+    record: metering_record_from_usage(node_id: "node-x", attempt_key: "7", metered_at: 3000, sealed_roster: Present { value: metering_roster_digest(launches: [MeteredWorker, a, b]) }, roles: [
+      usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat()),
+      usage(role: a, tokens: role_tokens_from_events(body: a_stream), seat: SeatReleased { pointer: pointer_for(role: b, stamp: "2"), granted_at: 2000, released_at: 2010 }),
+      usage(role: b, tokens: role_tokens_from_events(body: b_stream), seat: SeatReleased { pointer: pointer_for(role: a, stamp: "1"), granted_at: 2000, released_at: 2010 }),
+    ]),
+    roster_state: RosterSealed { launches: [MeteredWorker, a, b], digest: metering_roster_digest(launches: [MeteredWorker, a, b]) },
+  )
+}
+
+// WORKER AND REVIEWER POINTERS SWAPPED IN A SERIALIZED RECORD: the reader refuses.
+test fn swapped_worker_and_reviewer_pointers_refuse_through_the_reader() -> Bool {
+  observe(record: record_of(roles: [
+    usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: reviewer_seat()),
+    usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: worker_seat()),
+  ])) == "refused"
+}
+
+// ONE CRITERION AT TWO HEADS, AND THE AUDITOR AT TWO HEADS: their seat owners differ by head, so
+// exchanging their pointers refuses through the reader; the matching pointers are accepted.
+test fn swapped_reviewer_pointers_across_heads_refuse_through_the_reader() -> Bool {
+  let c_h1 = MeteredReviewer { criterion_key: "r1-c1" as NonEmptyStr, head: "h1" as NonEmptyStr }
+  let c_h2 = MeteredReviewer { criterion_key: "r1-c1" as NonEmptyStr, head: "h2" as NonEmptyStr }
+  swapped(a: c_h1, a_stream: reviewer_stream(), b: c_h2, b_stream: reviewer_stream()) == "refused"
+    && owner_of(role: c_h1) != owner_of(role: c_h2)
+    && !refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: c_h2, stamp: "2"), owner: owner_of(role: c_h2)))
+}
+
+test fn swapped_auditor_pointers_across_heads_refuse_through_the_reader() -> Bool {
+  let a_h1 = MeteredAuditor { head: "h1" as NonEmptyStr }
+  let a_h2 = MeteredAuditor { head: "h2" as NonEmptyStr }
+  swapped(a: a_h1, a_stream: reviewer_stream(), b: a_h2, b_stream: reviewer_stream()) == "refused"
+    && !refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: a_h2, stamp: "2"), owner: owner_of(role: a_h2)))
+}

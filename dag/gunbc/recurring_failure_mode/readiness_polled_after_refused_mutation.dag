@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.readiness_polled_after_refused_mutation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data readiness_polled_after_refused_mutation: RecurringFailureMode = RecurringFailureMode {
+  identity: "readiness_polled_after_refused_mutation" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a deployment polls for a candidate after its mutation already refused, withholding the original error until the startup bound expires. An old service answering health probes is not evidence that the failed installation needs more startup time.",
+    "OBSERVED 2026-10-09 during srv1 workspace bringup, PR #13607, candidate 19b12d88d6c0206c3f259cf85b0b664e65000b26: the operator-local deploy installed its generated ghrunner sudoers, then refused the exact tailscale grant probe under the operator account. It nevertheless performed 720 readiness waits against the previous release before returning the refusal. Independent grant-list readback admits the same exact path for ghrunner and refuses it for the operator; the retry uses the existing deployment-account entry without widening the operator grant roster.",
+    "REPAIR: live_deploy_apply_via_transport polls only after a converged mutation. A refused mutation supplies an unpermitted door standing and still reaches the cutover recovery gate: an earlier interrupted route transaction may require rollback, even when this mutation failed. Skipping the entire remainder would remove that recovery. CURRENT RUNG: mechanically prevented at this caller; the existing readiness and cutover refusal controls remain required.",
+  ],
+  evidence: [],
+}

@@ -1,0 +1,144 @@
+module test.claim.workspace_request_consumer_witness_test
+
+import std.types { Bool, NonEmptyStr, Timestamp }
+import std.durable_compare_and_set { ExpectSlotAbsent }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_policy_ref }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired }
+import gunbc.workspace_request_consumer { workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare }
+
+import extdeps.shell
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceReleased, workspace_record_preparation_wait, workspace_request_release_at, WorkspaceStoreConflict }
+import gunbc.workspace_request_consumer { workspace_consumer_reconcile_owner, workspace_consumer_reconcile_enrolled, WorkspaceConsumerSettled, WorkspaceConsumerIdle }
+
+fn recorded() -> WorkspaceAllocation {
+  WorkspaceAllocation { retired_at: "", recorded_at: "2026-09-27T12:00:00Z", plan: none, desired: WorkspaceWanted,
+    request: WorkspaceRequest { owner: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "consumer-test" },
+      idempotency_key: "consumer-test", profile: SmallWorkspace, image: "test-image", public_key_ref: "test-key",
+      expires_at: "2026-09-27T13:00:00Z", policy: workspace_policy_ref() },
+    reservation: none, phase: WorkspaceRecorded, connection: "", observed_at: "", reason: "Request recorded" }
+}
+
+test fn unreadable_discovery_is_not_idle() -> Bool {
+  match workspace_consumer_select(read: WorkspaceStoreUnreadable { reason: "store unavailable" }, observed_at: "2026-09-27T12:01:00Z") {
+    WorkspaceConsumerRefused { reason: reason } => reason == "store unavailable"
+    other => false
+  }
+}
+
+test fn expired_unplanned_request_retires_without_supply() -> Bool {
+  let allocation = recorded()
+  match workspace_consumer_select(read: WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot {
+    owner: allocation.request.owner, expected: ExpectSlotAbsent, allocations: [allocation] } }, observed_at: "2026-09-27T13:00:00Z") {
+    WorkspaceConsumerRetire { allocation: found } => found.request == allocation.request
+    other => false
+  }
+}
+
+test fn explicit_retirement_does_not_require_a_readable_clock_or_supply() -> Bool {
+  let allocation = workspace_retired(allocation: recorded(), reason: "owner release")
+  match workspace_consumer_select(read: WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot {
+    owner: allocation.request.owner, expected: ExpectSlotAbsent, allocations: [allocation] } }, observed_at: "") {
+    WorkspaceConsumerRetire { allocation: found } => found.request == allocation.request
+    other => false
+  }
+}
+
+test fn live_unplanned_request_selects_preparation_without_extending_lease() -> Bool {
+  let allocation = recorded()
+  match workspace_consumer_select(read: WorkspaceStoreReadOk { snapshot: WorkspaceOwnerSnapshot {
+    owner: allocation.request.owner, expected: ExpectSlotAbsent, allocations: [allocation] } }, observed_at: "2026-09-27T12:01:00Z") {
+    WorkspaceConsumerPrepare { allocation: found } => found.request.expires_at == allocation.request.expires_at
+    other => false
+  }
+}
+
+// A fresh reader reconstructs the obligation from persisted state. No offers, controller or host
+// are supplied: expiry before planning has no capacity dependency.
+test fn persisted_expired_request_settles_after_reader_restart_without_offers() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => {
+      let request = recorded().request
+      match workspace_record_request_at(store: FabricStorageLocalFiles { root: root }, request: request,
+        observed_at: "2026-09-27T12:00:00Z") {
+        WorkspaceStoreWritten { allocation: _ } => {
+          let reopened = FabricStorageLocalFiles { root: fabric_storage_file_root(root: directory.path) }
+          match workspace_consumer_reconcile_owner(store: reopened, owner: request.owner, observed_at: "2026-09-27T13:00:00Z") {
+            WorkspaceConsumerSettled { allocation: settled } => settled.phase == WorkspaceReleased
+              && settled.request == request
+              && (match workspace_consumer_reconcile_owner(store: reopened, owner: request.owner, observed_at: "2026-09-27T13:01:00Z") {
+                WorkspaceConsumerIdle => true
+                other => false
+              })
+            other => false
+          }
+        }
+        other => false
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}
+
+
+test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  let request = recorded().request
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => match workspace_record_request_at(store: store, request: request, observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceStoreWritten { allocation: original } => match workspace_record_preparation_wait(store: store, request: request, reason: "no commissioned offers") {
+        WorkspaceStoreWritten { allocation: waiting } => waiting.reason == "no commissioned offers"
+          && waiting.observed_at == original.observed_at && waiting.connection == original.connection
+          && (match workspace_request_release_at(store: store, owner: request.owner, idempotency_key: request.idempotency_key,
+            expected_generation: 0, observed_at: "2026-09-27T12:01:00Z") {
+            WorkspaceStoreWritten { allocation: _ } => match workspace_record_preparation_wait(store: store, request: request, reason: "late wait") {
+              WorkspaceStoreConflict => true
+              other => false
+            }
+            other => false
+          })
+        other => false
+      }
+      other => false
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}
+
+// Owner discovery is the enrolled roster. A customer enrolled after the operator has its live
+// request discovered; the same store reconciled over the operator alone -- the former fixed
+// owner -- reports Idle, which is the obligation the single-owner consumer silently missed.
+test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  let operator = PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "operator-test" }
+  let request = recorded().request
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => match workspace_record_request_at(store: store, request: request, observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceStoreWritten { allocation: _ } =>
+        (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator, request.owner], observed_at: "2026-09-27T12:01:00Z") {
+          WorkspaceConsumerPrepare { allocation: found } => found.request == request
+          other => false
+        })
+        && (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator], observed_at: "2026-09-27T12:01:00Z") {
+          WorkspaceConsumerIdle => true
+          other => false
+        })
+      other => false
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}

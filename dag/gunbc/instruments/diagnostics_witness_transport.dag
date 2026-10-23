@@ -1,0 +1,43 @@
+module tools.diagnostics_witness_transport
+
+import tools.host_prelude { run_witness_bin }
+import std.logic { Bool }
+
+data diagnostics_import_resolution_suite: String = "import_resolution"
+data diagnostics_reexport_surface_suite: String = "reexport_surface"
+data diagnostics_type_and_arity_suite: String = "type_and_arity"
+data diagnostics_empty_list_context_suite: String = "empty_list_context"
+data diagnostics_constructor_owner_suite: String = "constructor_owner"
+data diagnostics_record_field_walls_suite: String = "record_field_walls"
+
+fn run_diagnostics_suite(suite: String) -> Bool {
+  run_witness_bin(
+    var_name: "DIAGNOSTICS_WITNESS",
+    bin_name: "diagnostics_witness",
+    args: [suite]
+  )
+}
+
+fn run_diagnostics_import_resolution_witness() -> Bool {
+  run_diagnostics_suite(suite: diagnostics_import_resolution_suite)
+}
+
+fn run_diagnostics_reexport_surface_witness() -> Bool {
+  run_diagnostics_suite(suite: diagnostics_reexport_surface_suite)
+}
+
+fn run_diagnostics_type_and_arity_witness() -> Bool {
+  run_diagnostics_suite(suite: diagnostics_type_and_arity_suite)
+}
+
+fn run_diagnostics_empty_list_context_witness() -> Bool {
+  run_diagnostics_suite(suite: diagnostics_empty_list_context_suite)
+}
+
+fn run_diagnostics_constructor_owner_witness() -> Bool {
+  run_diagnostics_suite(suite: diagnostics_constructor_owner_suite)
+}
+
+fn run_diagnostics_record_field_walls_witness() -> Bool {
+  run_diagnostics_suite(suite: diagnostics_record_field_walls_suite)
+}

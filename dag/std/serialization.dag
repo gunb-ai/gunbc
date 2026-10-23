@@ -1,0 +1,28 @@
+module std.serialization
+
+import std.decl_ref { DeclarationRef }
+
+type VariantNaming
+  = AsAuthored
+  | SnakeCase
+  | ScreamingSnakeCase
+  | StripPrefixAndSnakeCase { prefix: String }
+  | StripSuffixAndSnakeCase { suffix: String }
+  | StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String }
+
+type VariantEncoding
+  = StringVariant { naming: VariantNaming }
+  | InternallyTaggedObject { tag_field: String, naming: VariantNaming }
+  | UntaggedVariant
+  | TaggedVariant
+
+type CoproductWireContract {
+  coproduct: DeclarationRef
+  encoding: VariantEncoding
+}
+
+type WireContract {
+  variant_encoding: VariantEncoding
+}
+
+type WireFormat = Json | Text

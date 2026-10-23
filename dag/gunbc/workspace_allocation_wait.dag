@@ -1,0 +1,132 @@
+module gunbc.workspace_allocation_wait
+
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import std.types { String, NonEmptyStr, Int, Timestamp }
+import std.measure { second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.workspace_allocation_milestones { workspace_record_first_ready }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.runner_microvm_lifecycle { AttemptIdentity, TerminalTrigger, StopRequested, DeadlineReached, VmmExited, attempt_identity_same }
+import gunbc.runner_microvm_lifecycle_realize { AttemptLaunch, VmmStarted, observe_unit_exit_status }
+import gunbc.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_text }
+import gunbc.workspace_allocation_store {
+  WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceReserved, WorkspaceRunning,
+  WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceStoreWritten,
+  workspace_read_owner, workspace_write_allocation, workspace_retired_at,
+}
+import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
+
+// This is the existing controller's workload wait callback, not a second controller. Its store
+// root must address the control plane's SAME store instance; a host-local replica cannot admit
+// ownership or release. A missing/unreadable desired state stops the workload conservatively.
+fn workspace_await_allocation(
+  store: FabricStorageBinding,
+  owner: PrincipalRef,
+  idempotency_key: NonEmptyStr,
+  identity: AttemptIdentity,
+  launch: AttemptLaunch,
+  observe_connection: fn(AttemptIdentity, AttemptLaunch) -> WorkspaceConnectionReading,
+) -> TerminalTrigger {
+  match launch {
+    VmmStarted { unit: unit, receipt: _ } =>
+      if !systemd.Systemctl.IsActive(unit: unit).active {
+        workspace_stop_desired(store: store, owner: owner, idempotency_key: idempotency_key, identity: identity,
+          reason: "Workspace VMM exited; cleanup required", trigger: VmmExited { status: observe_unit_exit_status(unit: unit) })
+      } else {
+        match clock_now_probed_at() {
+          Absent => workspace_stop_desired(store: store, owner: owner, idempotency_key: idempotency_key, identity: identity,
+            reason: "Lease clock is unreadable; stopping workspace", trigger: StopRequested)
+          Present { value: now } => workspace_await_observed_at(store: store, owner: owner, idempotency_key: idempotency_key,
+            identity: identity, launch: launch, observe_connection: observe_connection, now: now as Timestamp)
+        }
+      }
+    other => StopRequested
+  }
+}
+
+fn workspace_stop_desired(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr, identity: AttemptIdentity, reason: String, trigger: TerminalTrigger) -> TerminalTrigger {
+  match workspace_read_owner(store: store, owner: owner) {
+    WorkspaceStoreUnreadable { reason: _ } => StopRequested
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
+      Absent => StopRequested
+      Present { value: allocation } => match allocation.reservation {
+        Absent => StopRequested
+        Present { value: r } => if r.generation != identity.allocation_generation || r.slot.host != identity.attempt.slot.host || r.slot.slot_index != identity.attempt.slot.slot_index {
+          StopRequested
+        } else {
+          let retired_at = match clock_now_probed_at() {
+            Present { value: observed_clock } => observed_clock
+            Absent => ""
+          }
+          match workspace_write_allocation(store: store, snapshot: snapshot, allocation: workspace_retired_at(allocation: allocation, reason: reason, observed_at: retired_at)) {
+            WorkspaceStoreWritten { allocation: _ } => trigger
+            other => StopRequested
+          }
+        }
+      }
+    }
+  }
+}
+
+fn workspace_await_observed_at(
+  store: FabricStorageBinding,
+  owner: PrincipalRef,
+  idempotency_key: NonEmptyStr,
+  identity: AttemptIdentity,
+  launch: AttemptLaunch,
+  observe_connection: fn(AttemptIdentity, AttemptLaunch) -> WorkspaceConnectionReading,
+  now: Timestamp,
+) -> TerminalTrigger {
+  match workspace_read_owner(store: store, owner: owner) {
+    WorkspaceStoreUnreadable { reason: _ } => StopRequested
+    WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
+      Absent => StopRequested
+      Present { value: allocation } => match allocation.reservation {
+        Absent => StopRequested
+        Present { value: reservation } =>
+          if reservation.generation != identity.allocation_generation
+            || reservation.slot.host != identity.attempt.slot.host
+            || reservation.slot.slot_index != identity.attempt.slot.slot_index {
+            StopRequested
+          } else if allocation.desired == WorkspaceRetired {
+            StopRequested
+          } else {
+            match workspace_lease_standing(expires_at: allocation.request.expires_at, observed_at: now) {
+              WorkspaceLeaseUnreadable => workspace_stop_desired(store: store, owner: owner, idempotency_key: idempotency_key, identity: identity,
+                reason: "Lease instant is unreadable; stopping workspace", trigger: StopRequested)
+              WorkspaceLeaseExpired => match workspace_write_allocation(store: store, snapshot: snapshot, allocation: workspace_retired_at(allocation: allocation, reason: "Lease expired; cleanup required", observed_at: now)) {
+                WorkspaceStoreWritten { allocation: _ } => DeadlineReached
+                other => StopRequested
+              }
+              WorkspaceLeaseLive { remaining: remaining } => {
+                let supplied = observe_connection(identity, launch)
+                let reading = match supplied {
+                  WorkspaceConnectionReady { connection: c } => if attempt_identity_same(a: identity, b: c.identity) { supplied }
+                    else { WorkspaceConnectionUnavailable { reason: "SSH observation belongs to another allocation incarnation" } }
+                  unavailable => unavailable
+                }
+                let connection = match reading { WorkspaceConnectionReady { connection: c } => workspace_connection_text(connection: c) WorkspaceConnectionUnavailable { reason: _ } => "" }
+                let reason = match reading { WorkspaceConnectionReady { connection: _ } => "Workspace SSH access observed" WorkspaceConnectionUnavailable { reason: r } => r }
+                let observed = WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+                  plan: allocation.plan,
+                  desired: allocation.desired, request: allocation.request, reservation: allocation.reservation,
+                  phase: if connection == "" { WorkspaceReserved } else { WorkspaceRunning },
+                  connection: connection, observed_at: now, reason: reason,
+                }
+                match workspace_write_allocation(store: store, snapshot: snapshot, allocation: observed) {
+                  WorkspaceStoreWritten { allocation: _ } => {
+                    let recorded_ready = if connection == "" { true } else { workspace_record_first_ready(store: store, reservation: reservation, observed_at: now) }
+                    let slept = sleep_delay_seconds_second_carrier_projection(duration: second(count: 5))
+                    workspace_await_allocation(store: store, owner: owner, idempotency_key: idempotency_key,
+                      identity: identity, launch: launch, observe_connection: observe_connection)
+                  }
+                  other => StopRequested
+                }
+              }
+            }
+          }
+      }
+    }
+  }
+}

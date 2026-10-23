@@ -1,0 +1,5 @@
+module test.fixture.complexity_accumulator_copy.clean_linear_arrow
+
+fn clean_linear_arrow(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => acc + x)
+}

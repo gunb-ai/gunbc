@@ -1,0 +1,45 @@
+module gunbc.rung_drop.v2_native_frontier_nightly_cadence
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+
+// DECLARED 2026-09-23, REWRITTEN 2026-09-27 (operator rulings via neat-boar-16). The row began as
+// the differently-named drop gunbc.rung_drop v2_native_route_off_the_merge_path pre-authorised as
+// its third option: a nightly `native-frontier` workflow running `//gunbc/instruments:v2-native-frontier`,
+// with gunbc.native_frontier_ratchet judging that run against the committed roster. It claimed
+// Mitigatable: caught a day late, not blocking.
+//
+// WHY THE RUNG IS NOW OUTSIDE THE LADDER. The nightly never executed the universe: every scheduled
+// run refused in preflight (UserManagerUnreachable on the runner host). The 2026-09-27 ruling then
+// deleted it and bound the frontier to the native route's REQUIRED lane, which is staged under
+// node://adhoc-11684de4-07b and not yet live. Between the two nothing runs the ratchet, so a
+// frontier regression is not caught late -- it is not caught. Keeping Mitigatable would be rung
+// inflation (DESIGN section 4b(1)); the row states the silent state honestly and names the capability
+// whose execution ends it. It keeps its identity, because the subject (the frontier off the merge
+// path) is unchanged; only the interim mechanism was withdrawn.
+
+data v2_native_frontier_nightly_cadence_population: List<String> = [
+  "gunbc.native_frontier_ratchet native_frontier_verdict over the whole v2.test.* universe, on every merge candidate (nothing runs it at all until the required native-route lane is live)",
+  "the derived v2.test.* universe executed by the emitted-native compiler, on every merge candidate",
+  "the [native-frontier-roster] proposal a mint or re-mint pull request carries: with no run there is no proposal, so the roster stays RosterUnminted and the ratchet has no baseline to hold",
+  "what the route cannot see even when it runs, so a shrinking roster bounds the frontier from below and never measures it exactly: (i) every refusal inside a module whose FILE the front end refused; (ii) sites under a refused binder, which resolve marks ObservationIncomplete and never visits; (iii) call arguments, which do not reach resolve (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering); and, per identity, every refusal after the FIRST terminal one",
+]
+
+data v2_native_frontier_nightly_cadence: RungDrop = RungDrop {
+  identity: "v2_native_frontier_nightly_cadence" as NonEmptyStr,
+
+  subject: "The v2 native frontier (the ratchet over the emitted-native route's refusals) runs on no merge candidate and on no schedule until the required native-route lane is live",
+
+  declared: "2026-09-23",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "the native route's REQUIRED lane on the merge_group revision (node://adhoc-11684de4-07b), running //gunbc/instruments:v2-native-frontier" },
+    population: v2_native_frontier_nightly_cadence_population,
+    restoration_trigger: "The required native-route lane's run on the merge_group revision executes //gunbc/instruments:v2-native-frontier over the whole v2.test.* universe, its red blocks the landing, AND that run produces a [native-frontier-roster] proposal that a mint pull request carries into gunbc.native_frontier_roster -- the capability is a ratchet judging every merge candidate against a minted roster, so the lane existing, or running without a mint taken from it, does NOT retire this row. The receipt (run id, merge_group sha as tested_tree, the minting pull request) becomes trigger_fired. The lower-bound population (front-end file refusals, ObservationIncomplete under refused binders, call arguments, per-identity refusals after the first) is NOT restored by that lane either. Each of those retires only when the route observes it, and a row naming one of them must be split out rather than retired with this one",
+  }
+}

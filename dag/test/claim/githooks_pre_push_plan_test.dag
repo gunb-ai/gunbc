@@ -1,0 +1,72 @@
+module test.claim.githooks_pre_push_plan
+
+import gunbc.githooks_pre_push_plan {
+  pre_push_all_bindings,
+  pre_push_active_kinds,
+  pre_push_zero_sha_authority,
+  pre_push_check_only_note,
+}
+import gunbc.local_tidy_spec { local_tidy_path_matches_glob }
+import tools.rust_stage0_gates { path_is_rust_monolith }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn witness_plan_roster_authority() -> Bool {
+  length(pre_push_all_bindings()) > 0
+    && any(
+      pre_push_all_bindings(),
+      b => match b.kind {
+        DocWitnessRun { entry: _, function: _ } => true
+        CargoFmtCheck => true
+      }
+    )
+}
+
+fn witness_plan_skips_unrelated_path() -> Bool {
+  length(pre_push_active_kinds(changed_paths: ["README"])) == 0
+}
+
+fn witness_nested_rs_triggers_fmt() -> Bool {
+  path_is_rust_monolith(path: "src/v1/stage0/src/foo.rs")
+    && length(
+      pre_push_active_kinds(changed_paths: ["src/v1/stage0/src/foo.rs"])
+    ) > 0
+}
+
+fn witness_suffix_glob_matches_nested_rs() -> Bool {
+  local_tidy_path_matches_glob(path: "src/v1/stage0/src/foo.rs", glob: "*.rs")
+}
+
+fn witness_check_only_policy_documented() -> Bool {
+  string_contains(s: pre_push_check_only_note, pattern: "refuse")
+}
+
+// TWO ROWS DELETED WITH THE WITNESS-CORPUS GATE, AND WHAT THEY MEASURED IS THE FINDING.
+//
+// witness_plan_fires_on_dag_path and witness_witness_corpus_fires_on_v2_path both asserted
+// that touching a .dag file ARMS A PRE-PUSH GATE. Measured against the roster, the only
+// binding that made either true was the witness-corpus one: gunbc.commit_workflow enrolls
+// exactly ONE check on GitPrePushHook, CommitCargoFmtCheck, whose trigger is
+// path_is_rust_monolith and which no .dag path can satisfy. So with the corpus binding
+// deleted, no gate arms on a .dag push and both rows are false.
+//
+// THEY ARE DELETED RATHER THAN WEAKENED, because they were asserting the divergent side of
+// a split that had been open since 2026-07-25: the emitted .githooks/pre-push has been
+// fmt-only since that operator ruling, while this plan kept declaring a corpus gate on
+// every dag/ and src/v2/ push. The two rows were green against the plan and false about
+// the hook anyone actually runs. Re-pointing them at whatever still passes would preserve
+// a green and erase the check; the honest residue is that no pre-push gate arms on .dag
+// changes, which is the emitted hook behaviour and now the plan's.
+//
+// The remaining rows still discriminate on the axis this module owns: witness_nested_rs_
+// triggers_fmt is the positive control for the one surviving binding, and
+// witness_plan_skips_unrelated_path is its red.
+test fn githooks_pre_push_plan_witnesses() -> Bool {
+  witness_plan_roster_authority()
+    && witness_plan_skips_unrelated_path()
+    && witness_nested_rs_triggers_fmt()
+    && witness_suffix_glob_matches_nested_rs()
+    && witness_check_only_policy_documented()
+    && pre_push_zero_sha_authority() == "0000000000000000000000000000000000000000"
+}

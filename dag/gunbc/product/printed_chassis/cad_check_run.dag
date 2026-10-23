@@ -1,0 +1,45 @@
+module product.printed_chassis.cad_check_run
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+
+import std.types {String}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import product.printed_chassis.residential_review {residential_assembly,ResidentialAssemblyReady,ResidentialAssemblyRefused}
+import product.printed_chassis.review_realization {program_for}
+import product.printed_chassis.cassette_review {manifest_for}
+import product.printed_chassis.cassette {rear_socket_bolt_clearances}
+import gunbc.cli_wire {CliWirePrintable,CliWireUnprintable}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.languages.json.emit {serialize_json,json_array,json_string}
+import extdeps.cadquery.cadquery {cadquery_run_program_command}
+import extdeps.exec.command {LocalExec}
+import gunbc.command_runner {run_shell_command_capture}
+import extdeps.shell.exec {ProcessRefused}
+
+// The workflow executes the existing realization/check adapter, rather than only
+// emitting it and relying on a caller's Python script. Source checks, kernel solids,
+// mesh/STEP round trips, assembly intersections and per-part bed fit are mandatory.
+// Output is still an unqualified review artifact, never thermal/load qualification.
+fn check_residential_cad(output:String) -> ProcessExit {
+ if output=="" {return exit_failure(reason:"CAD check output path is required")}
+ match residential_assembly() {
+  ResidentialAssemblyRefused {reason:r}=>exit_failure(reason:r)
+  ResidentialAssemblyReady {parts:parts,joints:joints,pitch:_,cooling:_}=>match program_for(parts:parts,joints:joints) {
+   CliWireUnprintable {cause:_}=>exit_failure(reason:"Cannot render CAD check program")
+   CliWirePrintable {bytes:program,exit:ExitSuccess}=>{
+    let manifest_path=concat(output,".manifest.json")
+    let script_path=concat(output,".cad-check.py")
+    let argv=serialize_json(v:json_array(elements:map([script_path,manifest_path,output],s=>json_string(s:s))))
+    let required=serialize_json(v:json_array(elements:map(rear_socket_bolt_clearances(),p=>json_string(s:p.id))))
+    let source=join(["import sys\nsys.argv = ",argv,"\n_required_keepout_ids = ",required,"\n",program],"")
+    if !Filesystem.Write(path:manifest_path,content:serialize_json(v:manifest_for(parts:parts,joints:joints))).success || !Filesystem.Write(path:script_path,content:source).success {return exit_failure(reason:"Cannot stage generated CAD checks")}
+    match run_shell_command_capture(command:cadquery_run_program_command(script_path:script_path),transport:LocalExec) {
+     ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:e)
+     ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
+    }
+   }
+   CliWirePrintable {bytes:_,exit:e}=>e
+  }
+ }
+}
+
+fn run(output:String) -> ProcessExit {check_residential_cad(output:output)}

@@ -1,0 +1,120 @@
+module gunbc.rust_item_identity
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+
+data rust_item_identity_note: String = "ITEM-GRAIN identity for seed-growth admission (Lane swift-lynx-164, operator mandate 2026-08-06). std.decl_ref.DeclarationRef is the declaration-identity vocabulary for .dag modules and top-level Rust items, but it CANNOT cite an impl-block method: DeclField offers only WholeDeclaration or NamedField, and a trait-impl method is neither a field of its enum nor uniquely named across impl blocks. The Cargo-manifest bridge row proved this: six of seven hand-authored items were representable; the seventh (impl std::fmt::Display for Stage0CargoBinManifestParseRefusal) survives only as prose. THIS MODULE EXTENDS THE VOCABULARY before the G1 completeness join can be exact. Item identity is PRIMARY; LOC is secondary metadata trivially manipulated by formatting. Generated-vs-hand for the G0 host script is derived from gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths and gunbc.generated_artifact artifact_path — unclassified paths refuse."
+
+type RustItemKind
+  = RustModule
+  | RustStruct
+  | RustEnum
+  | RustTypeAlias
+  | RustTrait
+  | RustFunction
+  | RustConst
+  | RustStatic
+  | RustMacroRules
+  | RustImplBlock
+  | RustImplMethod
+  | RustTestFunction
+
+// enclosing_module CARRIES THE INLINE-MODULE PATH BECAUSE THE CITATION VOCABULARY ALREADY DOES.
+// gunbc.declaration_index_seed_growth cites seven declarations under
+// v1_compiler.cli_run.bare_reference_scanner_tests -- an inline `mod` inside cli_run.rs whose
+// members are cited individually -- so a repo_path plus a bare name cannot address them: two
+// same-named items in two inline modules of one file would collide onto one key, and the join
+// would silently treat an addition as already justified. It is "" for a file-level item, which is
+// the ordinary case rather than an absence: a file-level item is not enclosed by anything, and
+// there is no third state for the field to conflate.
+type RustItemIdentity {
+  repo_path: FilePath
+  kind: RustItemKind
+  name: NonEmptyStr
+  impl_subject: String
+  enclosing_module: String
+  start_line: Int
+  loc: Int
+}
+
+type RustItemDeclField
+  = RustItemWhole
+  | RustItemNamedField { field_name: NonEmptyStr }
+  | RustItemImplMethod {
+      impl_subject: NonEmptyStr,
+      method_name: NonEmptyStr
+    }
+
+type RustItemDeclarationRef {
+  module_path: NonEmptyStr
+  decl_name: NonEmptyStr
+  field: RustItemDeclField
+}
+
+fn rust_item_identity_qualified_name(item: RustItemIdentity) -> String {
+  if item.enclosing_module == "" {
+    item.name as String
+  } else {
+    concat(item.enclosing_module, concat(".", item.name as String))
+  }
+}
+
+fn rust_item_identity_key(item: RustItemIdentity) -> String {
+  if item.impl_subject == "" {
+    concat(
+      concat(item.repo_path as String, "::"),
+      concat(
+        rust_item_kind_label(kind: item.kind),
+        concat("::", rust_item_identity_qualified_name(item: item))
+      )
+    )
+  } else {
+    concat(
+      concat(item.repo_path as String, "::"),
+      concat(
+        rust_item_kind_label(kind: item.kind),
+        concat(
+          "::",
+          concat(item.impl_subject, concat("::", rust_item_identity_qualified_name(item: item)))
+        )
+      )
+    )
+  }
+}
+
+fn rust_item_kind_label(kind: RustItemKind) -> String {
+  match kind {
+    RustModule => "mod"
+    RustStruct => "struct"
+    RustEnum => "enum"
+    RustTypeAlias => "type"
+    RustTrait => "trait"
+    RustFunction => "fn"
+    RustConst => "const"
+    RustStatic => "static"
+    RustMacroRules => "macro_rules"
+    RustImplBlock => "impl_block"
+    RustImplMethod => "impl_method"
+    RustTestFunction => "test_fn"
+  }
+}
+
+fn rust_item_declaration_ref_key(ref: RustItemDeclarationRef) -> String {
+  match ref.field {
+    RustItemWhole =>
+      concat(concat(ref.module_path as String, "::"), ref.decl_name as String)
+    RustItemNamedField { field_name: field_name } =>
+      concat(
+        concat(concat(ref.module_path as String, "::"), ref.decl_name as String),
+        concat("::", field_name as String)
+      )
+    RustItemImplMethod { impl_subject: impl_subject, method_name: method_name } =>
+      concat(
+        concat(concat(ref.module_path as String, "::"), impl_subject as String),
+        concat("::", method_name as String)
+      )
+  }
+}
+
+data rust_item_host_observation_producer_note: String = "THE PRODUCER LANDED, AND THIS ROW REPLACES THE SCAFFOLD NOTE THAT STOOD HERE. What was here declared a MODELED G0 PRODUCER that did not exist, with a dissolution reading \"producer lands and enrolls; Python script deleted\". That is a CONJUNCTION, and its second half fired on 2026-08-24 for an unrelated reason -- gunbc#9132 bankrupted the measurement corpus and took scripts/rust_item_census.py with it -- while the producer never landed. So the trigger was half-satisfied by a cut that restored nothing, which is exactly the failure DESIGN section 4b(3) names when it requires a restoration trigger to state the CAPABILITY rather than an artifact that would contribute to one. The capability itself went to zero and nobody declared the drop, because the census's consumers were lanes rather than modules and no dependent could refuse. THE PRODUCER IS NOW gunbc.rust_item_scan scan_rust_source, reading item identities from rustfmt-normalized Rust source with its item-keyword population taken from extdeps.languages.rust.syntax rust_item_forms rather than from a second roster, and gunbc.rust_item_host_observation, which supplies the two populations the admission join consumes -- the merge-base-to-HEAD change and the live hand-Rust surface. WHAT IS STILL OPEN: no modeled Rust INGEST grammar exists, so the reader recognizes item headers and extents rather than parsing, and refuses on any structural line it cannot classify. That refusal is the wall, not a gap; the next rung is a Rust ingest grammar publishing real item identities, at which point gunbc.rust_item_scan deletes in favour of it."
+
+data rust_item_identity_extension_proposal_note: String = "PROPOSED std.decl_ref EXTENSION (report before G1 lands). Add ImplMethod { impl_subject: NonEmptyStr, method_name: NonEmptyStr } to DeclField. Rationale: the seventh Cargo-manifest item is impl std::fmt::Display for Stage0CargoBinManifestParseRefusal — an impl-block method, not a field of the enum. MIGRATION: existing DeclarationRef rows remain valid (WholeDeclaration / NamedField unchanged). New seed-growth justifications cite impl methods via ImplMethod. Dissolve-on: when std.decl_ref adopts ImplMethod, rust_item_identity.RustItemDeclField deletes in favor of the std type."

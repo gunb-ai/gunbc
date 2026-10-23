@@ -1,0 +1,1420 @@
+#![allow(clippy::disallowed_macros)]
+
+use im::HashMap;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::rc::Rc;
+use std::time::Instant;
+
+use v1_compiler::cli_run::{
+    closure_subject_for_entry, discover_floor_witness_roster, entry_closure_source_paths,
+    make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
+    precompute_whole_tree_published_mock_keys, process_shared_index, resolve_entry_with_index,
+    run_claim_measured, witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+};
+use v1_compiler::recorded_fixture::RecordedFixtureStore;
+use v1_compiler::v1_compiler_compile::ResolvedGraph;
+use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
+use v1_compiler::v1_std_core::NewlineIndex;
+
+type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
+
+/// The batch's running ledger — counts, clocks, and the verdict flag — one value threaded
+/// through every witness so no caller can carry a clock without the verdict it belongs to.
+#[derive(Default)]
+struct ResolveTimings {
+    resolves: u64,
+    resolve_ms: u128,
+    witnesses: u64,
+    witness_ms: u128,
+    any_failed: bool,
+}
+
+fn peak_rss_lines() -> String {
+    std::fs::read_to_string("/proc/self/status")
+        .map(|s| {
+            s.lines()
+                .filter(|l| l.starts_with("VmHWM") || l.starts_with("VmRSS"))
+                .map(|l| format!("  {}\n", l))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn peak_rss_bytes() -> Option<u64> {
+    peak_rss_vhwm_bytes()
+}
+
+/// Peak RSS of terminated child processes (Linux `getrusage(RUSAGE_CHILDREN)`).
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    // Hand-decoded `struct rusage` (no libc dep): layout assumes Linux lp64
+    // (x86_64 / aarch64) — 144-byte buffer, `ru_maxrss` at byte offset 32 after
+    // two 16-byte `timeval`s. Non-lp64 Linux is gated out below; syscall failure → None.
+    // If this probe survives phase-0, replace with `libc::rusage` (dissolves with PerformanceReceipt).
+    extern "C" {
+        fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
+    }
+    const RUSAGE_CHILDREN: i32 = -1;
+    const RU_MAXRSS_OFFSET: usize = 32; // after two struct timeval (16 bytes each)
+    let mut buf = [0u8; 144];
+    if unsafe { getrusage(RUSAGE_CHILDREN, buf.as_mut_ptr().cast()) } != 0 {
+        return None;
+    }
+    let ru_maxrss = i64::from_ne_bytes(
+        buf[RU_MAXRSS_OFFSET..RU_MAXRSS_OFFSET + 8]
+            .try_into()
+            .ok()?,
+    );
+    Some(ru_maxrss as u64 * 1024)
+}
+
+#[cfg(all(target_os = "linux", not(target_pointer_width = "64")))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+fn emit_rss_measurement(label: &str) {
+    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+    eprintln!(
+        "{}",
+        v1_compiler::cli_run::render_peak_rss_line_mirror(label, peak_rss_bytes(), emoji)
+    );
+}
+
+fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
+    eprintln!("[interp-stats] mutation-primitive copy work (this context):");
+    eprint!("{}", ctx.mutation_counters_snapshot());
+    let (snap_calls, snap_items) = v1_compiler::v1_interpreter::flatten_counters_snapshot();
+    let flatten_calls = snap_calls.saturating_sub(flatten_baseline.0);
+    let flatten_items = snap_items.saturating_sub(flatten_baseline.1);
+    eprintln!(
+        "  {:<12} {:>12} calls  {:>16} items materialized  (avg {:.1}/call; delta over the witness loop)",
+        "fm_flatten",
+        flatten_calls,
+        flatten_items,
+        if flatten_calls == 0 {
+            0.0
+        } else {
+            flatten_items as f64 / flatten_calls as f64
+        }
+    );
+    let intern = ctx.interner_stats_snapshot();
+    eprintln!("[interp-stats] symbol interning receipt (#4799; this context):");
+    eprintln!(
+        "  {:<12} {:>12} calls  {:>16} distinct  {:>16} hits  (dedup {:.1}x; {} heap bytes)",
+        "intern",
+        intern.calls,
+        intern.distinct,
+        intern.hits,
+        if intern.distinct == 0 {
+            0.0
+        } else {
+            intern.calls as f64 / intern.distinct as f64
+        },
+        intern.heap_bytes
+    );
+    eprintln!(
+        "[interp-stats] canonical-symbol-retention entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+        intern.canonical_entries,
+        intern.canonical_retained_spelling_bytes,
+        intern.canonical_spelling_cap_bytes
+    );
+    eprintln!("[interp-stats] retained value accounting (data cache + pure-call memo):");
+    eprint!("{}", ctx.account_retained_memory(&[]));
+    eprintln!("[interp-stats] process memory:");
+    eprint!("{}", peak_rss_lines());
+}
+
+fn print_interp_stats_multi_entry(flatten_baseline: (u64, u64)) {
+    let (snap_calls, snap_items) = v1_compiler::v1_interpreter::flatten_counters_snapshot();
+    let flatten_calls = snap_calls.saturating_sub(flatten_baseline.0);
+    let flatten_items = snap_items.saturating_sub(flatten_baseline.1);
+    eprintln!("[interp-stats] flatten counters (all entries combined):");
+    eprintln!(
+        "  {:<12} {:>12} calls  {:>16} items materialized  (avg {:.1}/call)",
+        "fm_flatten",
+        flatten_calls,
+        flatten_items,
+        if flatten_calls == 0 {
+            0.0
+        } else {
+            flatten_items as f64 / flatten_calls as f64
+        }
+    );
+    eprintln!("[interp-stats] process memory:");
+    eprint!("{}", peak_rss_lines());
+}
+
+fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    match args.get(idx) {
+        Some(v) => Ok(v.clone()),
+        None => {
+            eprintln!("claim_batch: {} requires a value", flag);
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+/// Path-valued arguments resolve against the PROCESS CWD at the CLI boundary, refusing
+/// on a nonexistent path — never falling back to the compile-time-baked workspace root
+/// (`v1_compiler::cli_run::resolve_cli_path_arg`; DESIGN §5 fail-open closed there).
+fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    let given = require_value(args, idx, flag)?;
+    match v1_compiler::cli_run::resolve_cli_path_arg("claim_batch", flag, &given) {
+        Ok(resolved) => Ok(resolved),
+        Err(msg) => {
+            eprintln!("{msg}");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+struct EntryGroup {
+    entry: String,
+    functions: Vec<String>,
+}
+
+struct ParsedArgs {
+    source_roots: Vec<String>,
+    entry_groups: Vec<EntryGroup>,
+    discovery: Option<DiscoveryConfig>,
+    execution_mode: ExecutionMode,
+    fixture_store: Option<PathBuf>,
+    eval_budget_ms: Option<u64>,
+    pre_push: bool,
+    print_entry_closure: bool,
+}
+
+struct DiscoveryConfig {
+    scan_dirs: Vec<String>,
+    notice_title: String,
+}
+
+fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
+    use v1_compiler::v1_compiler_infer_items::{item_kind, ItemKind};
+
+    for group in entry_groups {
+        if group.functions.is_empty() {
+            continue;
+        }
+        let parsed = v1_compiler::module_path_index::parsed_dag_file::parse_dag_file(
+            std::path::Path::new(&group.entry),
+        )
+        .ok_or_else(|| {
+            eprintln!(
+                "claim_batch: cannot parse --entry {} while validating functions",
+                group.entry
+            );
+            ExitCode::from(2)
+        })?;
+        let declared: std::collections::BTreeSet<String> = parsed
+            .items
+            .iter()
+            .filter(|item| matches!(item_kind((*item).clone()), ItemKind::FnItem))
+            .map(|item| item.name.clone())
+            .collect();
+        let missing: Vec<&str> = group
+            .functions
+            .iter()
+            .filter(|function| !declared.contains(function.as_str()))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            eprintln!(
+                "claim_batch: --entry {} does not declare requested function(s): {}",
+                group.entry,
+                missing.join(", ")
+            );
+            return Err(ExitCode::from(2));
+        }
+    }
+    Ok(())
+}
+
+fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
+    let mut source_roots: Vec<String> = Vec::new();
+    let mut entry_groups: Vec<EntryGroup> = Vec::new();
+    let mut roster_from_discovery = false;
+    let mut scan_dirs: Vec<String> = Vec::new();
+    let mut notice_title = "v2 CI claim gate".to_string();
+    let mut execution_mode = ExecutionMode::Hermetic;
+    let mut fixture_store: Option<PathBuf> = None;
+    let mut eval_budget_ms: Option<u64> = None;
+    let mut pre_push = false;
+    let mut print_entry_closure = false;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--source-root" => {
+                i += 1;
+                source_roots.push(require_path_value(args, i, "--source-root")?);
+            }
+            "--entry" => {
+                i += 1;
+                let entry = require_path_value(args, i, "--entry")?;
+                entry_groups.push(EntryGroup {
+                    entry,
+                    functions: Vec::new(),
+                });
+            }
+            "--function" => {
+                i += 1;
+                let f = require_value(args, i, "--function")?;
+                match entry_groups.last_mut() {
+                    Some(g) => g.functions.push(f),
+                    None => {
+                        eprintln!("claim_batch: --function before --entry");
+                        return Err(ExitCode::from(2));
+                    }
+                }
+            }
+            "--functions" => {
+                i += 1;
+                let csv = require_value(args, i, "--functions")?;
+                match entry_groups.last_mut() {
+                    Some(g) => g.functions.extend(
+                        csv.split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string()),
+                    ),
+                    None => {
+                        eprintln!("claim_batch: --functions before --entry");
+                        return Err(ExitCode::from(2));
+                    }
+                }
+            }
+            "--roster-from-discovery" => roster_from_discovery = true,
+            "--scan-dir" => {
+                i += 1;
+                scan_dirs.push(require_path_value(args, i, "--scan-dir")?);
+            }
+            "--notice-title" => {
+                i += 1;
+                notice_title = require_value(args, i, "--notice-title")?;
+            }
+            "--claim-run" => {}
+            "--wet" => execution_mode = ExecutionMode::Wet,
+            "--hermetic" => execution_mode = ExecutionMode::Hermetic,
+            "--record" => execution_mode = ExecutionMode::Record,
+            "--eval-budget-ms" => {
+                i += 1;
+                let v = require_value(args, i, "--eval-budget-ms")?;
+                let ms: u64 = v.parse().map_err(|_| {
+                    eprintln!(
+                        "claim_batch: --eval-budget-ms requires a positive integer, got {v:?}"
+                    );
+                    ExitCode::from(2)
+                })?;
+                eval_budget_ms = Some(ms);
+            }
+            "--fixture-store" => {
+                i += 1;
+                fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
+            }
+            "--pre-push" => pre_push = true,
+            "--print-entry-closure" => print_entry_closure = true,
+            other => {
+                eprintln!("claim_batch: unknown argument: {}", other);
+                return Err(ExitCode::from(2));
+            }
+        }
+        i += 1;
+    }
+
+    let discovery = if roster_from_discovery {
+        if scan_dirs.is_empty() && entry_groups.is_empty() {
+            eprintln!(
+                "claim_batch: --roster-from-discovery requires at least one --scan-dir and/or explicit --entry row"
+            );
+            return Err(ExitCode::from(2));
+        }
+        Some(DiscoveryConfig {
+            scan_dirs,
+            notice_title,
+        })
+    } else {
+        None
+    };
+
+    Ok(ParsedArgs {
+        source_roots,
+        entry_groups,
+        discovery,
+        execution_mode,
+        fixture_store,
+        eval_budget_ms,
+        pre_push,
+        print_entry_closure,
+    })
+}
+
+fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) {
+    match outcome {
+        ClaimOutcome::Pass => println!("PASS {}", function),
+        ClaimOutcome::Fail => {
+            println!("FAIL {}", function);
+            *any_failed = true;
+        }
+        // THE EXECUTOR SURFACE THE DISSOLVE-ON NAMED. This line is where a gate-class claim's
+        // typed refusal reason reaches the operator: `tools.emit_host_gate` once shelled its
+        // per-smoke verdict line out to printf because this path could only print bare FAIL
+        // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
+        // narration op is deleted, and this arm prints what the claim itself returned.
+        ClaimOutcome::ExitFailure { code, reason } => {
+            match reason {
+                Some(r) => println!(
+                    "FAIL {} (returned ProcessExit::ExitFailure, code {}: {})",
+                    function, code, r
+                ),
+                None => println!(
+                    "FAIL {} (returned ProcessExit::ExitFailure, code {}, no reason given)",
+                    function, code
+                ),
+            }
+            *any_failed = true;
+        }
+        ClaimOutcome::NotBool { got } => {
+            println!(
+                "FAIL {} (returned `{}`, not Bool; --claim-run entries must return Bool)",
+                function, got
+            );
+            *any_failed = true;
+        }
+        // AN UNWIND IS ITS OWN LINE, NOT A FAIL. `FAIL` asserts the witness answered false;
+        // the host unwound here, so the claim answered nothing. Reported as a failed run
+        // (`any_failed`) because the line must still stop — what changes is what the line says.
+        ClaimOutcome::Panicked { payload } => {
+            println!(
+                "PANICKED {} (the host unwound during evaluation: {})",
+                function, payload
+            );
+            *any_failed = true;
+        }
+        // Never minted on this path — only the required floor publishes not-attempted rows —
+        // and named rather than wildcarded so a future producer cannot arrive silently.
+        ClaimOutcome::NotAttempted { halted_by } => {
+            println!(
+                "FAIL {} (reported as not-attempted behind {}, which this path never mints)",
+                function, halted_by
+            );
+            *any_failed = true;
+        }
+        ClaimOutcome::RuntimeError { cause, message, .. } => {
+            println!(
+                "FAIL {} (runtime error [{}]: {})",
+                function,
+                cause.token(),
+                message
+            );
+            *any_failed = true;
+        }
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            println!(
+                "FAIL {} (host tool unresolved: {:?} (probed: {}))",
+                function,
+                name,
+                probed.join(", ")
+            );
+            *any_failed = true;
+        }
+        // ALSO A FAILURE HERE, and deliberately so despite not being a verdict. This
+        // transport reports one line per row and has no third channel; between "green" and
+        // "failed", a claim that never reached its subject must not be green. The line says
+        // what it actually is, so the reader is not told the witness answered false.
+        ClaimOutcome::HostEffectRefused { operation, ground } => {
+            println!(
+                "FAIL {} (hermetic route has no arm for {}: {} — the claim never reached its \
+                 subject, so this is a route gap and not a verdict)",
+                function,
+                operation,
+                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+            );
+            *any_failed = true;
+        }
+        // BOTH BUDGET ARMS RENDER THROUGH `ClaimOutcome::budget_figure_phrase`, the single
+        // authority for a budget figure, so this transport and the required floor's cannot
+        // disagree about one outcome — they have before. This site used to hand-write "at least
+        // {n}ms elapsed against a {budget}ms budget", which puts a right-censored BOUND in the
+        // field a reader scans for a cost; the renderer never does that, and no local format
+        // string here can reintroduce it.
+        ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
+            println!(
+                "FAIL {} ({})",
+                function,
+                // Unreachable: the two arms matched here are exactly the two the renderer
+                // answers `Some` for.
+                outcome
+                    .budget_figure_phrase()
+                    .unwrap_or_else(|| "budget outcome carried no figure".to_string())
+            );
+            *any_failed = true;
+        }
+    }
+}
+
+fn resolve_timed(
+    index: &MultiEntryIndex,
+    entry: &str,
+    timings: &mut ResolveTimings,
+) -> Result<ResolvedEntry, ExitCode> {
+    let started = Instant::now();
+    match resolve_entry_with_index(index, entry) {
+        Ok((graph, source_indices)) => {
+            let ms = started.elapsed().as_millis();
+            eprintln!(
+                "[resolve] {}: {}ms  ({} modules, {} resolved items in closure)",
+                entry,
+                ms,
+                graph.modules.len(),
+                graph.item_registry.len(),
+            );
+            timings.resolves += 1;
+            timings.resolve_ms += ms;
+            if timings.resolves == 1 {
+                emit_rss_measurement("post-first-entry-resolve-rss");
+            }
+            Ok((graph, source_indices))
+        }
+        Err(msg) => {
+            eprintln!("claim_batch: resolve failed for {}:\n{}", entry, msg);
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+/// The per-witness cost line, with BOTH clocks labelled.
+///
+/// The fast-lane budget is enforced on CPU — `run_claim_measured` feeds `cpu_nanos` to
+/// `budget_completion_outcome` — while this line used to print `wall_nanos` under a bare
+/// `{}ms`. So the local instrument did not report the enforced quantity, and the bound only
+/// cuts one way: `cpu <= wall`, meaning a wall figure bounds CPU from above and can never
+/// establish that a witness is OVER the cap. Three sessions read this line as the budget
+/// instrument on 2026-08-05. Labelling both is cheaper than every reader knowing which is which.
+///
+/// Extracted from the `eprintln!` so the property — the enforced quantity is reported, distinctly
+/// from the recorded one — has an executing consumer rather than only a format string.
+///
+/// `eval_steps` IS HERE BECAUSE IT IS NOW THE QUANTITY THE REQUIRED FLOOR ENFORCES ON
+/// (`v2.workflow.required_floor` `claim_eval_step_budget_for_identity`, 2026-09-12), and because
+/// it is the instrument the pinned calibration fixture in `v2.workflow.floor_eval_step_calibration`
+/// is read from: that row's step count and its millisecond reading both come off this line. A
+/// budget stated in steps with no local instrument reporting steps would be a figure nobody could
+/// re-derive without a CI run. The fast lane's own cap is still CPU, so both travel.
+fn witness_report_line(
+    function: &str,
+    receipt: &v1_compiler::v1_interpreter::PerformanceReceipt,
+) -> String {
+    format!(
+        "[witness] {}: cpu={}ms wall={}ms eval_steps={} subject={} eval_self={:.3}ms",
+        function,
+        receipt.cpu_nanos / 1_000_000,
+        receipt.wall_nanos / 1_000_000,
+        receipt.eval_steps,
+        receipt.subject_key,
+        receipt.eval_self_nanos as f64 / 1.0e6,
+    )
+}
+
+fn run_claim_timed(
+    ctx: &InterpContext,
+    closure_subject: &str,
+    function: &str,
+    timings: &mut ResolveTimings,
+) {
+    let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
+    report_outcome(function, outcome, &mut timings.any_failed);
+    eprintln!("{}", witness_report_line(function, &receipt));
+    print_eval_profile(function);
+    timings.witnesses += 1;
+    timings.witness_ms += receipt.wall_nanos / 1_000_000;
+}
+
+fn print_eval_profile(function: &str) {
+    use v1_compiler::v1_interpreter::{
+        eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
+    };
+    let prof = eval_profile_snapshot();
+    let total_ns: u128 = prof.self_nanos.iter().sum();
+    let total_count: u64 = prof.counts.iter().sum();
+    if total_count == 0 {
+        return;
+    }
+    let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
+        .filter(|&i| prof.counts[i] > 0)
+        .collect();
+    rows.sort_by(|&a, &b| prof.self_nanos[b].cmp(&prof.self_nanos[a]));
+    eprintln!(
+        "[eval-profile] {}: {} node-evals, {:.3}ms self-time total (sorted by self-time)",
+        function,
+        total_count,
+        total_ns as f64 / 1.0e6,
+    );
+    for i in rows {
+        let ns = prof.self_nanos[i];
+        let count = prof.counts[i];
+        eprintln!(
+            "  {:<16} {:>12} evals  {:>10.3}ms self ({:>5.1}%)  {:>8.0}ns/eval",
+            expr_variant_name(i),
+            count,
+            ns as f64 / 1.0e6,
+            if total_ns == 0 {
+                0.0
+            } else {
+                100.0 * ns as f64 / total_ns as f64
+            },
+            if count == 0 {
+                0.0
+            } else {
+                ns as f64 / count as f64
+            },
+        );
+    }
+}
+
+fn fixture_store_rc(path: &Option<PathBuf>) -> Option<Rc<RecordedFixtureStore>> {
+    path.as_ref()
+        .map(|p| Rc::new(RecordedFixtureStore::open(p.clone())))
+}
+
+fn validate_fixture_flags(
+    execution_mode: ExecutionMode,
+    fixture_store: &Option<PathBuf>,
+) -> Result<(), ExitCode> {
+    if execution_mode.is_record() && fixture_store.is_none() {
+        eprintln!("claim_batch: --record requires --fixture-store <path>");
+        return Err(ExitCode::from(2));
+    }
+    Ok(())
+}
+
+fn run_witnesses(
+    index: &MultiEntryIndex,
+    group: &EntryGroup,
+    execution_mode: ExecutionMode,
+    fixture_store: Option<Rc<RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    eval_budget_ms: Option<u64>,
+    timings: &mut ResolveTimings,
+) -> Result<(), ExitCode> {
+    let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
+    let closure_subject = closure_subject_for_entry(index, &group.entry).map_err(|e| {
+        eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
+        ExitCode::from(1)
+    })?;
+    let ctx = make_eval_context_with_runtime_options(
+        &graph,
+        source_indices,
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    );
+    ctx.set_witness_eval_budget(eval_budget_ms);
+    for function in &group.functions {
+        run_claim_timed(&ctx, &closure_subject, function, timings);
+        // The eval-call memo's eviction scope is the witness frame, not this
+        // shared per-entry ctx — ctx-lifetime retention of argument+result
+        // values across witnesses is byte-unbounded (20GiB-class kills).
+        v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
+        v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
+    }
+    Ok(())
+}
+
+fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
+    let mut groups: Vec<EntryGroup> = Vec::new();
+    for row in rows {
+        match groups.last_mut() {
+            Some(g) if g.entry == row.entry => g.functions.push(row.function),
+            _ => groups.push(EntryGroup {
+                entry: row.entry,
+                functions: vec![row.function],
+            }),
+        }
+    }
+    groups
+}
+
+/// Contiguous wall checkpoints from process start: each mark closes the span since the previous
+/// one, so the rows partition the process wall with no gap between them by construction.
+struct ProcessPartition {
+    started: Instant,
+    last: Instant,
+    spans: Vec<(&'static str, u128)>,
+}
+
+impl ProcessPartition {
+    fn new(started: Instant) -> Self {
+        Self {
+            started,
+            last: started,
+            spans: Vec::new(),
+        }
+    }
+
+    fn mark(&mut self, name: &'static str) {
+        let now = Instant::now();
+        self.spans
+            .push((name, now.duration_since(self.last).as_millis()));
+        self.last = now;
+    }
+
+    fn render(&self, timings: &ResolveTimings) -> String {
+        let mut line = format!(
+            "[process-partition] total_ms={}",
+            self.last.duration_since(self.started).as_millis()
+        );
+        for (name, ms) in &self.spans {
+            line.push_str(&format!(" {name}_ms={ms}"));
+        }
+        // `entries` is the resolve-and-evaluate loop; these two are its already-reported parts.
+        line.push_str(&format!(
+            " entries_resolve_ms={} entries_witness_ms={}",
+            timings.resolve_ms, timings.witness_ms
+        ));
+        line
+    }
+}
+
+fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
+    let mut partition = ProcessPartition::new(process_started);
+    partition.mark("pre_run");
+    let invocation_started = Instant::now();
+    let args: Vec<String> = std::env::args().collect();
+    let parsed = parse_args(&args)?;
+    if parsed.pre_push {
+        return Ok(v1_compiler::cli_run::handle_pre_push());
+    }
+    let source_roots = parsed.source_roots;
+    let execution_mode = parsed.execution_mode;
+    let eval_budget_ms = parsed.eval_budget_ms;
+    let fixture_store_path = parsed.fixture_store;
+    validate_fixture_flags(execution_mode, &fixture_store_path)?;
+    let fixture_store = fixture_store_rc(&fixture_store_path);
+
+    if source_roots.is_empty() {
+        eprintln!("claim_batch: provide at least one --source-root");
+        return Err(ExitCode::from(2));
+    }
+
+    // A closure question must stop at the loader boundary. In particular, keep it ahead of the
+    // whole-pool bare-reference warm, output-policy resolution, mock precompute, and typed entry
+    // resolve below: those are precisely the costs a prospective skip decision must avoid.
+    if parsed.print_entry_closure {
+        if parsed.discovery.is_some() {
+            eprintln!("claim_batch: --print-entry-closure does not accept --roster-from-discovery");
+            return Err(ExitCode::from(2));
+        }
+        if parsed.entry_groups.is_empty() {
+            eprintln!("claim_batch: --print-entry-closure requires at least one --entry");
+            return Err(ExitCode::from(2));
+        }
+        if parsed
+            .entry_groups
+            .iter()
+            .any(|group| !group.functions.is_empty())
+        {
+            eprintln!(
+                "claim_batch: --print-entry-closure is a non-evaluating mode and does not accept --function/--functions"
+            );
+            return Err(ExitCode::from(2));
+        }
+        let query_started = Instant::now();
+        let index = process_shared_index(&source_roots);
+        let mut emitted_paths = 0usize;
+        for group in &parsed.entry_groups {
+            let paths = entry_closure_source_paths(&index, &group.entry).map_err(|why| {
+                eprintln!(
+                    "claim_batch: entry closure failed for {}: {why}",
+                    group.entry
+                );
+                ExitCode::from(1)
+            })?;
+            for path in paths {
+                println!("[entry-closure] {}: file={:?}", group.entry, path);
+                emitted_paths += 1;
+            }
+        }
+        // A terminal positive receipt is load-bearing for a membership query: without it, shell
+        // plumbing that masks a missing/non-running binary can turn zero output into a false
+        // "path is absent" verdict. This line is printed only after every entry answered.
+        println!(
+            "[entry-closure-summary] state=complete entries={} path_rows={}",
+            parsed.entry_groups.len(),
+            emitted_paths
+        );
+        eprintln!(
+            "[entry-closure-timing] total_ms={} own_query_ms={}",
+            invocation_started.elapsed().as_millis(),
+            query_started.elapsed().as_millis()
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    // Explicit names are entry-local facts. Refuse stale/typoed argv before the whole-tree
+    // bare-reference warm, output-policy resolution, module-index construction, or entry resolve.
+    // Discovery-produced rows are validated by their producer and join later in this function.
+    validate_explicit_functions(&parsed.entry_groups)?;
+    partition.mark("args");
+
+    // The harness's real subject. Built here, ahead of the preparation that first reads it, so its
+    // cost is its own row rather than part of whichever consumer touched it first.
+    let index = process_shared_index(&source_roots);
+    partition.mark("index_build");
+
+    // SHARED-BUILD ATTRIBUTION (see `warm_bare_reference_edge_index`). The bare-reference edge
+    // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
+    // required floor it was charged in full to whichever claim resolved an entry first.
+    //
+    // PLACED AHEAD OF EVERY CONSUMER, which is the invariant; `install_output_policy` below is no
+    // longer one of them, and the history is worth keeping because it is how the seam was found.
+    //
+    // WHAT WAS MEASURED HERE, ON THE PRE-FIX INSTALLER: with the warm sitting AFTER
+    // `install_output_policy`, the phase line reported `provenance=already-warm-on-entry cpu_ms=0` while a ~30.8s
+    // span sat billed to an output-policy read. That installer resolved
+    // `dag/gunbc/output_policy.dag` through `resolve_entry_graph_shared` -> `process_shared_index`,
+    // so a five-decision policy read was this harness's ACCIDENTAL FIRST TOUCHER of the corpus
+    // index — a cost owned by nothing and bounded by nothing. That is why `claim_batch` never
+    // reproduced the floor's witness row: not because the cost was absent, but because a non-claim
+    // happened to pay it.
+    //
+    // THAT INSTALLER IS NOW FIXED (`Scope the early output-policy read to its own closure`,
+    // still-koi-527): it resolves the policy's own import closure and never enters the shared
+    // index. So the ordering against it is no longer load-bearing, and this comment does not claim
+    // it is. The warm stays HERE because the invariant is "before any consumer", not "before that
+    // one" — and because the next accidental first toucher will not announce itself either.
+    //
+    // THE SUBJECT DECIDES THE SCOPE. A discovery roster's subject is the scanned tree, and its
+    // entries are not known until discovery (itself a consumer) has run, so it keeps the
+    // whole-pool demand. A run over explicitly named entries consumes only the rows their closures
+    // reach, so it demands exactly those: the rows of every other pool file were produced for no
+    // consumer.
+    let warm_failed = |e: String| {
+        eprintln!("claim_batch: bare-reference edge index warm failed: {e}");
+        ExitCode::from(1)
+    };
+    let (edge_index_warm, warm_scope) = if parsed.discovery.is_some() {
+        let warm =
+            v1_compiler::cli_run::warm_bare_reference_edge_index(&index).map_err(warm_failed)?;
+        let scope = format!("whole-pool pool_files={}", warm.source_files);
+        (warm, scope)
+    } else {
+        let entries: Vec<String> = parsed
+            .entry_groups
+            .iter()
+            .map(|g| g.entry.clone())
+            .collect();
+        let warm =
+            v1_compiler::cli_run::warm_bare_reference_edge_index_for_entries(&index, &entries)
+                .map_err(warm_failed)?;
+        (
+            warm.observation,
+            format!(
+                "entry-closure-union entries={} entries_refused={} pool_files={}",
+                warm.entries, warm.entries_refused, warm.pool_files
+            ),
+        )
+    };
+    eprintln!(
+        "[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} source_files={} bare_eligible={} provenance={} scope={}",
+        edge_index_warm.cpu_ms,
+        edge_index_warm.wall_ms,
+        edge_index_warm.rss_growth_bytes,
+        edge_index_warm.source_files,
+        edge_index_warm.bare_eligible,
+        edge_index_warm.provenance.render(),
+        warm_scope,
+    );
+    partition.mark("edge_index_warm");
+
+    // Funnel host-effect traces per the .dag output policy (see claim_executor).
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_batch: {why}");
+        return Err(ExitCode::from(1));
+    }
+    // GUNBC_FLOOR_PHASE_PROFILE support (same as claim_executor): without this,
+    // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
+    // phases — a 20-minute silent resolve is uninterpretable.
+    let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
+    partition.mark("output_policy");
+
+    let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
+        let excludes = witness_exclusion_substrings();
+        let mut rows =
+            match discover_floor_witness_roster(&source_roots, &disc.scan_dirs, &excludes, &[]) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("claim_batch: discovery roster failed: {e}");
+                    return Err(ExitCode::from(2));
+                }
+            };
+        let mut seen: std::collections::BTreeSet<(String, String)> = rows
+            .iter()
+            .map(|r| (r.entry.clone(), r.function.clone()))
+            .collect();
+        for group in &parsed.entry_groups {
+            for function in &group.functions {
+                if seen.insert((group.entry.clone(), function.clone())) {
+                    rows.push(DiscoveryRow {
+                        label: function.clone(),
+                        entry: group.entry.clone(),
+                        function: function.clone(),
+                        // claim_batch runs every row (no selection); the undeclared
+                        // fail-closed default is the honest fill for a transient row.
+                        reads_live_tree: true,
+                    });
+                }
+            }
+        }
+        if rows.is_empty() {
+            eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
+            return Err(ExitCode::from(2));
+        }
+        rows.sort_by(|a, b| {
+            a.entry
+                .cmp(&b.entry)
+                .then_with(|| a.function.cmp(&b.function))
+        });
+        (group_discovered_rows(rows), Some(disc.notice_title))
+    } else {
+        (parsed.entry_groups, None)
+    };
+
+    partition.mark("roster");
+
+    if entry_groups.is_empty() {
+        eprintln!("claim_batch: --entry <file.dag> is required");
+        return Err(ExitCode::from(2));
+    }
+    for group in &entry_groups {
+        if group.functions.is_empty() {
+            eprintln!(
+                "claim_batch: --entry {} has no --function or --functions",
+                group.entry
+            );
+            return Err(ExitCode::from(2));
+        }
+    }
+
+    let total_witnesses: usize = entry_groups.iter().map(|g| g.functions.len()).sum();
+    eprintln!(
+        "claim_batch: {} entry group(s), {} witness(es) total",
+        entry_groups.len(),
+        total_witnesses,
+    );
+
+    // THE ENTRY ROUTE'S HALF OF THE UNIMPORTED-BARE-PROVIDER RULE, the same judgment the floor
+    // applies to a touched file (`v2.workflow.floor_unimported_bare_provider_debt`): a file that
+    // declares imports and bare-references a declaration outside its import closure refuses HERE,
+    // at the file and naming the import to add, rather than later as a registry-row error at every
+    // call site. Rostered debt is admitted on both routes alike.
+    let entry_paths: Vec<String> = entry_groups.iter().map(|g| g.entry.clone()).collect();
+    match v1_compiler::cli_run::unimported_bare_provider_entry_refusals(
+        &index,
+        &source_roots,
+        &entry_paths,
+    ) {
+        Ok(refusals) if refusals.is_empty() => {}
+        Ok(refusals) => {
+            for r in &refusals {
+                eprintln!("claim_batch: {r}");
+            }
+            return Err(ExitCode::from(1));
+        }
+        Err(e) => {
+            eprintln!("claim_batch: unimported-bare-provider check failed: {e}");
+            return Err(ExitCode::from(1));
+        }
+    }
+
+    partition.mark("unimported_bare_provider_check");
+
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
+        Ok(keys) => {
+            emit_rss_measurement("post-mock-precompute-rss");
+            if let Some(bytes) = children_max_rss_bytes() {
+                let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+                eprintln!(
+                    "{}",
+                    v1_compiler::cli_run::render_peak_rss_line_mirror(
+                        "post-mock-precompute-children-max-rss",
+                        Some(bytes),
+                        emoji,
+                    )
+                );
+            }
+            if keys.is_empty() {
+                eprintln!(
+                    "claim_batch: whole-tree published mock corpus — no dag/ corpora precomputed; \
+                     using entry-closure fallback per witness"
+                );
+                None
+            } else {
+                eprintln!(
+                    "claim_batch: whole-tree published mock corpus — {} operation key(s)",
+                    keys.len()
+                );
+                Some(Rc::new(keys))
+            }
+        }
+        Err(e) => {
+            eprintln!("claim_batch: whole-tree published mock corpus precompute failed: {e}");
+            return Err(ExitCode::from(1));
+        }
+    };
+
+    partition.mark("published_mock_precompute");
+
+    let flatten_baseline = v1_compiler::v1_interpreter::flatten_counters_snapshot();
+    let stats_requested = std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0");
+
+    let mut timings = ResolveTimings::default();
+
+    if entry_groups.len() == 1 {
+        let group = &entry_groups[0];
+        // Two lines so the log cannot lie about sequencing: the past-tense line
+        // printed BEFORE the resolve once mis-attributed a resolve-phase OOM to
+        // witness eval (eager-ram-612 bisect, 2026-07-10).
+        eprintln!(
+            "claim_batch: resolving {} once ({} witness(es))",
+            group.entry,
+            group.functions.len()
+        );
+        let (graph, source_indices) = resolve_timed(&index, &group.entry, &mut timings)?;
+        eprintln!(
+            "claim_batch: resolved {}; running {} witness(es)",
+            group.entry,
+            group.functions.len()
+        );
+        let closure_subject = closure_subject_for_entry(&index, &group.entry).map_err(|e| {
+            eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
+            ExitCode::from(1)
+        })?;
+        let ctx = make_eval_context_with_runtime_options(
+            &graph,
+            source_indices,
+            execution_mode,
+            fixture_store.clone(),
+            whole_tree_published_keys.clone(),
+        );
+        ctx.set_witness_eval_budget(eval_budget_ms);
+        for function in &group.functions {
+            run_claim_timed(&ctx, &closure_subject, function, &mut timings);
+            // Witness frame exit on the single-entry fast path too — this is
+            // the exact path the 6-witness 20GiB-kill recipe runs (the memo
+            // must not retain values across witnesses sharing this ctx).
+            v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
+        }
+        if stats_requested {
+            print_interp_stats(&ctx, flatten_baseline);
+        }
+    } else {
+        for group in &entry_groups {
+            eprintln!(
+                "claim_batch: resolving {} ({} witness(es))",
+                group.entry,
+                group.functions.len()
+            );
+            // A group whose resolve fails is COUNTED — every enrolled witness in
+            // it reports FAIL and the batch continues (exit stays 1 via
+            // any_failed). Aborting the whole batch on the first red entry
+            // truncated the measurement: each run revealed only the NEXT red
+            // class, and everything alphabetically after it went unmeasured.
+            if run_witnesses(
+                &index,
+                group,
+                execution_mode,
+                fixture_store.clone(),
+                whole_tree_published_keys.clone(),
+                eval_budget_ms,
+                &mut timings,
+            )
+            .is_err()
+            {
+                for function in &group.functions {
+                    println!("FAIL {} (entry resolve failed: {})", function, group.entry);
+                }
+                timings.any_failed = true;
+            }
+        }
+        if stats_requested {
+            print_interp_stats_multi_entry(flatten_baseline);
+        }
+    }
+
+    partition.mark("entries");
+
+    eprintln!(
+        "[resolve-summary] {} resolve(s) in {}ms wall; {} witness(es) in {}ms wall",
+        timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
+    );
+    // The expectation frontier: effect sites that dispatched WITHOUT declaring
+    // `expect:`, counted at their located `service.op`. This receipt is the whole
+    // reason `ExpectationDeclaration::UntracedDefault` is a value rather than a
+    // silent `unwrap_or` — an absorbed default that is tallied is a declared
+    // interim frontier that can be prioritised and shrunk; one that is not is the
+    // fail-open the type deletes. Silence here means every effect this run
+    // dispatched declared its arm, which is also the dissolution condition for
+    // the `UntracedDefault` arm itself.
+    {
+        let frontier = v1_compiler::v1_interpreter::untraced_expectation_frontier();
+        if !frontier.is_empty() {
+            let total: u64 = frontier.iter().map(|(_, n)| *n).sum();
+            let rendered = frontier
+                .iter()
+                .map(|(k, n)| format!("{k}={n}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            eprintln!(
+                "[expectation-frontier] {} site(s), {} dispatch(es) undeclared: {}",
+                frontier.len(),
+                total,
+                rendered,
+            );
+        }
+    }
+    {
+        let st = v1_compiler::cli_run::resolve_stage_totals();
+        let ms = |n: u128| n as f64 / 1.0e6;
+        eprintln!(
+            "[resolve-split] load={:.1}ms parse={:.1}ms resolve={:.1}ms normalize={:.1}ms typecheck={:.1}ms parent_envs={:.1}ms reconcile_assembly={:.1}ms ownership={:.1}ms",
+            ms(st.load),
+            ms(st.parse),
+            ms(st.resolve),
+            ms(st.normalize),
+            ms(st.typecheck_compute),
+            ms(st.parent_envs),
+            ms(st.reconcile_assembly),
+            ms(st.ownership),
+        );
+        eprintln!(
+            "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
+            ms(st.assembly_schedule),
+            ms(st.assembly_probe),
+            ms(st.assembly_graph),
+            ms(st.assembly_symbol_index),
+            ms(st.assembly_pool_fill),
+            ms(st.assembly_symbol_index_merge),
+            ms(st.assembly_variant_base),
+            ms(st.assembly_root_symbol_index),
+            ms(st.assembly_root_variant_base),
+            ms(st.assembly_environment),
+            ms(st.assembly_diagnostics),
+            ms(st.assembly_registry),
+            ms(st.assembly_services),
+            ms(st.assembly_rewire_type_env),
+            ms(st.assembly_rewire_func_env),
+            ms(st.assembly_emit_info),
+            ms(st.reconcile_assembly),
+            ms(st.assembly_rewire),
+        );
+        // The two lines above are INCLUSIVE-universe rows: they sum every resolve this
+        // thread ran, which is a strictly larger set than `[resolve-summary]`'s
+        // witness-entry resolves. The partition below reports against the span total that
+        // actually contains them, and refuses rather than quoting a share off the mismatch.
+        let partition = v1_compiler::cli_run::exclusive_cost_partition();
+        eprintln!(
+            "[cost-partition] {}",
+            v1_compiler::cli_run::render_exclusive_cost_partition_json(
+                &partition,
+                &[
+                    (
+                        "witness_entry_resolve_wall_nanos",
+                        timings.resolve_ms.saturating_mul(1_000_000),
+                    ),
+                    (
+                        "witness_eval_wall_nanos",
+                        timings.witness_ms.saturating_mul(1_000_000),
+                    ),
+                ],
+            )
+        );
+    }
+
+    if v1_compiler::v1_interpreter::eval_profile_enabled() {
+        let (kernel_calls, lookup_calls, lookup_items) =
+            v1_compiler::v1_interpreter::cast_lookup_counters();
+        eprintln!(
+            "[cast-profile] kernel_calls={kernel_calls} type_lookup_calls={lookup_calls} \
+             type_lookup_items={lookup_items}"
+        );
+        let (data_eval_lookups, data_eval_evals) =
+            v1_compiler::v1_interpreter::data_eval_counters();
+        eprintln!(
+            "[data-profile] data_eval_lookups={data_eval_lookups} data_eval_evals={data_eval_evals} \
+             data_eval_cache_hit_ratio={}",
+            if data_eval_lookups > 0 {
+                format!(
+                    "{:.2}%",
+                    ((data_eval_lookups - data_eval_evals) as f64 / data_eval_lookups as f64) * 100.0
+                )
+            } else {
+                "N/A".to_string()
+            }
+        );
+    }
+
+    emit_rss_measurement("per-shard-peak-rss");
+    if let Some(bytes) = children_max_rss_bytes() {
+        let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+        eprintln!(
+            "{}",
+            v1_compiler::cli_run::render_peak_rss_line_mirror(
+                "children-max-rss",
+                Some(bytes),
+                emoji,
+            )
+        );
+    }
+
+    // Where the process wall went, including everything outside the resolve spans. The
+    // `[pre-entry]` rows are the same thread's tree-scale and closure-scale phase receipts
+    // (`cli_run::pre_entry_phase`), which overlap the partition rows above and say which part of
+    // each scales with the pool.
+    partition.mark("reporting");
+    eprintln!("{}", partition.render(&timings));
+    for line in v1_compiler::cli_run::pre_entry_phase::take_lines() {
+        eprintln!("{line}");
+    }
+
+    if timings.any_failed {
+        return Ok(ExitCode::from(1));
+    }
+
+    if let Some(title) = discovery_notice {
+        println!("{title}: {total_witnesses} discriminating witness(es) passed");
+    }
+
+    Ok(ExitCode::SUCCESS)
+}
+
+fn main() -> ExitCode {
+    let process_started = Instant::now();
+    // THE SAME BIND claim_executor performs, and it is here because the validation of that
+    // change found this binary refusing where the other one would have proceeded: claim_batch
+    // asked for its budget on a remote action bound by nothing, took the correct
+    // HostBudgetUnreadable refusal, and no witness could run. Two entry points reach the same
+    // resolve, so a limit bound by only one of them leaves the other exactly as unbounded as
+    // before — and it is claim_batch that runs a `.dag` witness, so the developer route to the
+    // witness corpus stays dead without this.
+    // Authority: `gunbc.memory_cgroup_binding`.
+    let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
+    eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
+    if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
+        return ExitCode::FAILURE;
+    }
+    // ONE DECLARATION CENSUS FOR THE RUN, for the same reason the required floor registers one:
+    // the witnesses this binary evaluates ask keyed questions of it (`decl_facts_at`), and a fold
+    // over N citations makes N demands of one census. With the memo closed each demand re-walks the
+    // corpus, so the keyed read would cost more than the population read it replaces. The subject
+    // this hangs on is the invocation itself: one process, one tree, roots supplied on the command
+    // line, and `clear_decl_census_memo` on the way out rather than a cell that outlives its
+    // subject.
+    v1_compiler::coproduct_reflection::register_decl_census_memo();
+    let code = match run(process_started) {
+        Ok(code) => code,
+        Err(code) => code,
+    };
+    let run_returned = Instant::now();
+    v1_compiler::coproduct_reflection::clear_decl_census_memo();
+    // The partition's last mark is inside `run`; what follows it there is the release of `run`'s
+    // own holders. Thread-local state (the process-shared index among it) is released after `main`
+    // returns, where no line can be printed, so that span is the caller's process wall minus
+    // `main_end_ms`.
+    eprintln!(
+        "[process-partition-exit] run_returned_ms={} main_end_ms={}",
+        run_returned.duration_since(process_started).as_millis(),
+        process_started.elapsed().as_millis()
+    );
+    code
+}
+
+#[cfg(test)]
+mod cli_path_resolution_wiring_tests {
+    use super::{parse_args, validate_explicit_functions, EntryGroup};
+    use v1_compiler::cli_run::workspace_root;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        std::iter::once("claim_batch")
+            .chain(v.iter().copied())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).
+    #[test]
+    fn absolute_existing_args_parse_and_survive_resolution() {
+        let ws = workspace_root();
+        let root = ws.join("dag").to_string_lossy().into_owned();
+        let entry = ws
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let parsed = parse_args(&args(&[
+            "--source-root",
+            &root,
+            "--entry",
+            &entry,
+            "--function",
+            "w_site_label_is_the_module_path_as_package",
+        ]))
+        .unwrap_or_else(|_| panic!("absolute existing paths must parse"));
+        assert_eq!(parsed.source_roots, vec![root]);
+        assert_eq!(parsed.entry_groups.len(), 1);
+        assert_eq!(parsed.entry_groups[0].entry, entry);
+    }
+
+    /// A nonexistent --source-root refuses at the CLI boundary (exit-code error), never
+    /// proceeding to a partial run.
+    #[test]
+    fn nonexistent_source_root_refuses_at_parse() {
+        assert!(parse_args(&args(&["--source-root", "/no/such/tree"])).is_err());
+    }
+
+    /// Relative args resolve against the PROCESS CWD, not the baked workspace root.
+    /// `cargo test` runs bin unit tests with cwd == the package dir (src/v1/stage0),
+    /// where `dag` does not exist — while it DOES exist under the baked workspace root.
+    /// parse_args must therefore agree with the cwd, whichever it is: refuse when
+    /// cwd/dag is absent (a baked-root fallback would accept), accept when present.
+    #[test]
+    fn relative_source_root_follows_process_cwd_not_baked_root() {
+        let cwd = std::env::current_dir().expect("test cwd");
+        let cwd_has_dag = cwd.join("dag").is_dir();
+        let result = parse_args(&args(&[
+            "--source-root",
+            "dag",
+            "--entry",
+            "dag/test/claim/discovery_census_witness_test.dag",
+            "--function",
+            "w_site_label_is_the_module_path_as_package",
+        ]));
+        assert_eq!(
+            result.is_ok(),
+            cwd_has_dag,
+            "relative --source-root must resolve against the process cwd {} (dag present: {cwd_has_dag}), never the baked workspace root {}",
+            cwd.display(),
+            workspace_root().display()
+        );
+    }
+
+    #[test]
+    fn nonexistent_explicit_function_refuses_before_resolution() {
+        let entry = workspace_root()
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let groups = vec![EntryGroup {
+            entry,
+            functions: vec!["this_function_does_not_exist".to_string()],
+        }];
+        assert!(validate_explicit_functions(&groups).is_err());
+    }
+
+    #[test]
+    fn closure_only_mode_is_parsed_without_a_function() {
+        let ws = workspace_root();
+        let root = ws.join("dag").to_string_lossy().into_owned();
+        let entry = ws
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let parsed = parse_args(&args(&[
+            "--source-root",
+            &root,
+            "--entry",
+            &entry,
+            "--print-entry-closure",
+        ]))
+        .expect("closure-only argv must parse");
+        assert!(parsed.print_entry_closure);
+        assert!(parsed.entry_groups[0].functions.is_empty());
+    }
+
+    #[test]
+    fn declared_explicit_function_passes_preflight() {
+        let entry = workspace_root()
+            .join("dag/test/claim/discovery_census_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let groups = vec![EntryGroup {
+            entry,
+            functions: vec!["w_site_label_is_the_module_path_as_package".to_string()],
+        }];
+        assert!(validate_explicit_functions(&groups).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod witness_report_line_tests {
+    use super::witness_report_line;
+    use v1_compiler::v1_interpreter::PerformanceReceipt;
+
+    fn receipt(wall_ms: u128, cpu_ms: u128) -> PerformanceReceipt {
+        PerformanceReceipt {
+            opaque_host_call_reach:
+                v1_compiler::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
+            subject_key: "subj".to_string(),
+            work_shape: "w".to_string(),
+            wall_nanos: wall_ms * 1_000_000,
+            cpu_nanos: cpu_ms * 1_000_000,
+            eval_self_nanos: 0,
+            eval_steps: 0,
+            sample_count: 1,
+        }
+    }
+
+    /// The line must report the ENFORCED quantity (thread CPU) and the RECORDED one (wall) as
+    /// separately labelled fields. The two are deliberately different here, because a line that
+    /// carried only one of them — or carried one unlabelled, as this line did before — cannot be
+    /// compared to the fast-lane budget without the reader knowing which clock they are holding.
+    #[test]
+    fn reports_both_clocks_distinctly_labelled() {
+        let line = witness_report_line("some_witness", &receipt(9_000, 1_000));
+        assert!(
+            line.contains("cpu=1000ms"),
+            "the enforced quantity must be reported and labelled: {line}"
+        );
+        assert!(
+            line.contains("wall=9000ms"),
+            "the recorded quantity must stay, labelled: {line}"
+        );
+    }
+
+    /// cpu == wall is the degenerate case an uncontended single-threaded run approaches, and it
+    /// must NOT be the only case the format is correct for: both labels stay present, so a reader
+    /// who sees one figure knows it is one figure and not the other.
+    #[test]
+    fn both_labels_survive_when_the_clocks_agree() {
+        let line = witness_report_line("some_witness", &receipt(500, 500));
+        assert!(line.contains("cpu=500ms"), "{line}");
+        assert!(line.contains("wall=500ms"), "{line}");
+    }
+}
+
+#[cfg(test)]
+mod discovery_exclude_tests {
+    use v1_compiler::cli_run::floor_discovery_path_excluded;
+
+    #[test]
+    fn real_ingest_gate_only_path_excluded_on_ci_style_paths() {
+        let paths = [
+            "src/v2/test/claim/program_assembly/real_ingest_test.dag",
+            "/opt/actions-runner/work/gunbc/gunbc/src/v2/test/claim/program_assembly/real_ingest_test.dag",
+        ];
+        for path in paths {
+            assert!(
+                floor_discovery_path_excluded(path),
+                "expected gate-only overlay witness excluded: {path}"
+            );
+        }
+    }
+}

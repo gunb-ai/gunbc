@@ -1,0 +1,362 @@
+module test.claim.superseded_run_starvation_census_witness
+
+import std.types { Bool, Int, String, Timestamp }
+import gunbc.superseded_run_starvation_census {
+  dead_head_start_standing,
+  DeadHeadReachedInProgressFirst,
+  LiveHeadRegisteredJobFirst,
+  NeitherRunRegisteredAJob,
+  pr_number_for_run,
+  first_run_with_different_head,
+  count_jobs,
+  count_jobs_with_conclusion,
+  count_jobs_with_status,
+  filter_completed_jobs,
+  earliest_started_at,
+  earliest_created_at,
+}
+import extdeps.github.workflow_runs {
+  WorkflowRun,
+  WorkflowRunPullRequest,
+  WorkflowJobRun,
+  Queued,
+  Completed,
+  InProgress,
+  Success,
+  Cancelled,
+  Failure,
+  TimedOut,
+}
+
+test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
+    live_first_job_created_at: Present { value: "2026-09-04T00:00:20Z" }
+  ) {
+    DeadHeadReachedInProgressFirst => true
+    LiveHeadRegisteredJobFirst => false
+    NeitherRunRegisteredAJob => false
+  }
+}
+
+test fn started_dead_job_precedes_live_job_that_has_not_registered() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
+    live_first_job_created_at: none
+  ) {
+    DeadHeadReachedInProgressFirst => true
+    LiveHeadRegisteredJobFirst => false
+    NeitherRunRegisteredAJob => false
+  }
+}
+
+test fn registered_live_job_precedes_dead_job_that_has_not_started() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: none,
+    live_first_job_created_at: Present { value: "2026-09-04T00:00:20Z" }
+  ) {
+    DeadHeadReachedInProgressFirst => false
+    LiveHeadRegisteredJobFirst => true
+    NeitherRunRegisteredAJob => false
+  }
+}
+
+test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
+  match dead_head_start_standing(
+    dead_first_job_started_at: none,
+    live_first_job_created_at: none
+  ) {
+    DeadHeadReachedInProgressFirst => false
+    LiveHeadRegisteredJobFirst => false
+    NeitherRunRegisteredAJob => true
+  }
+}
+
+// THE FIVE FIELDS #10966 ADDED, ANSWERED FOR THIS FIXTURE RATHER THAN STUBBED.
+// event and head_branch: a run carrying a pull_requests embedding is a pull_request-event run on
+// the PR's head branch; a run with an empty embedding is not, and the honest shape for it is a
+// push run on the default branch. Reversing that would make pr_number_for_run's negative case
+// describe a PR run whose embedding GitHub dropped, which is a different fact.
+// run_attempt: 1. These fixtures model single executions -- one created_at, one updated_at, no
+// re-run -- and #10966 records that run_attempt is the field that says which attempt a row
+// describes. Writing 2 here would assert a re-run this fixture does not carry, and the census's
+// dead_run_attempt is exactly the row that would then read wrong.
+// actor and triggering_actor: none. They are optional in the projection, no census fold reads
+// them, and inventing a login would be a fabricated observation rather than an absent one.
+data run_with_pull_request: WorkflowRun = WorkflowRun { display_title: none,
+  id: 1,
+  name: none,
+  path: none,
+  head_sha: "abc123",
+  head_branch: Present { value: "feature/pr-42" },
+  event: "pull_request",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 1,
+  run_attempt: 1,
+  actor: none,
+  triggering_actor: none,
+  html_url: "https://github.com/owner/repo/actions/runs/1",
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T01:00:00Z",
+  pull_requests: [WorkflowRunPullRequest { number: 42 }],
+}
+
+data run_without_pull_request: WorkflowRun = WorkflowRun { display_title: none,
+  id: 2,
+  name: none,
+  path: none,
+  head_sha: "def456",
+  head_branch: Present { value: "main" },
+  event: "push",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 2,
+  run_attempt: 1,
+  actor: none,
+  triggering_actor: none,
+  html_url: "https://github.com/owner/repo/actions/runs/2",
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T01:00:00Z",
+  pull_requests: [],
+}
+
+test fn pr_number_for_run_with_pr_returns_number() -> Bool {
+  match pr_number_for_run(run: run_with_pull_request) {
+    Present { value: n } => n == 42
+    Absent => false
+  }
+}
+
+test fn pr_number_for_run_without_pr_returns_none() -> Bool {
+  match pr_number_for_run(run: run_without_pull_request) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+data run_sha_abc: WorkflowRun = WorkflowRun { display_title: none,
+  id: 3,
+  name: none,
+  path: none,
+  head_sha: "abc123",
+  head_branch: Present { value: "feature/pr-42" },
+  event: "pull_request",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 3,
+  run_attempt: 1,
+  actor: none,
+  triggering_actor: none,
+  html_url: "https://github.com/owner/repo/actions/runs/3",
+  created_at: "2026-09-01T00:00:00Z",
+  updated_at: "2026-09-01T01:00:00Z",
+  pull_requests: [WorkflowRunPullRequest { number: 42 }],
+}
+
+data run_sha_def: WorkflowRun = WorkflowRun { display_title: none,
+  id: 4,
+  name: none,
+  path: none,
+  head_sha: "def456",
+  head_branch: Present { value: "feature/pr-42" },
+  event: "pull_request",
+  status: Queued,
+  conclusion: none,
+  workflow_id: 10,
+  run_number: 4,
+  run_attempt: 1,
+  actor: none,
+  triggering_actor: none,
+  html_url: "https://github.com/owner/repo/actions/runs/4",
+  created_at: "2026-09-01T01:00:00Z",
+  updated_at: "2026-09-01T02:00:00Z",
+  pull_requests: [WorkflowRunPullRequest { number: 42 }],
+}
+
+test fn first_run_with_different_head_finds_differing_sha() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_def]) {
+    Present { value: r } => r.id == 4
+    Absent => false
+  }
+}
+
+test fn first_run_with_different_head_skips_matching_and_finds_differing() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_def]) {
+    Present { value: r } => r.id == 4
+    Absent => false
+  }
+}
+
+test fn first_run_with_different_head_returns_none_when_no_differing() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_abc]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
+  match first_run_with_different_head(head_sha: "abc123", runs: []) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+data job_cancelled: WorkflowJobRun = WorkflowJobRun {
+  id: 100,
+  run_id: 1,
+  run_attempt: 1,
+  name: "test-job",
+  status: Completed,
+  conclusion: Present { value: Cancelled },
+  labels: [],
+  runner_id: none,
+  runner_name: none,
+  created_at: Present { value: "2026-09-01T00:01:00Z" },
+  started_at: Present { value: "2026-09-01T00:10:00Z" },
+  completed_at: Present { value: "2026-09-01T00:20:00Z" },
+}
+
+data job_failed: WorkflowJobRun = WorkflowJobRun {
+  id: 101,
+  run_id: 1,
+  run_attempt: 1,
+  name: "build-job",
+  status: Completed,
+  conclusion: Present { value: Failure },
+  labels: [],
+  runner_id: none,
+  runner_name: none,
+  created_at: Present { value: "2026-09-01T00:00:00Z" },
+  started_at: Present { value: "2026-09-01T00:00:00Z" },
+  completed_at: Present { value: "2026-09-01T00:15:00Z" },
+}
+
+data job_success: WorkflowJobRun = WorkflowJobRun {
+  id: 102,
+  run_id: 1,
+  run_attempt: 1,
+  name: "lint-job",
+  status: Completed,
+  conclusion: Present { value: Success },
+  labels: [],
+  runner_id: none,
+  runner_name: none,
+  created_at: Present { value: "2026-09-01T00:02:00Z" },
+  started_at: Present { value: "2026-09-01T00:05:00Z" },
+  completed_at: Present { value: "2026-09-01T00:10:00Z" },
+}
+
+data job_queued: WorkflowJobRun = WorkflowJobRun {
+  id: 103,
+  run_id: 1,
+  run_attempt: 1,
+  name: "deploy-job",
+  status: Queued,
+  conclusion: none,
+  labels: [],
+  runner_id: none,
+  runner_name: none,
+  created_at: Present { value: "2026-09-01T00:03:00Z" },
+  started_at: none,
+  completed_at: none,
+}
+
+data job_in_progress: WorkflowJobRun = WorkflowJobRun {
+  id: 104,
+  run_id: 1,
+  run_attempt: 1,
+  name: "test-in-progress",
+  status: InProgress,
+  conclusion: none,
+  labels: [],
+  runner_id: none,
+  runner_name: none,
+  created_at: Present { value: "2026-09-01T00:04:00Z" },
+  started_at: Present { value: "2026-09-01T00:30:00Z" },
+  completed_at: none,
+}
+
+test fn count_jobs_counts_all_jobs() -> Bool {
+  count_jobs(jobs: [job_cancelled, job_failed, job_success]) == 3
+}
+
+test fn count_jobs_empty_returns_zero() -> Bool {
+  count_jobs(jobs: []) == 0
+}
+
+test fn count_jobs_with_conclusion_counts_exact_match() -> Bool {
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: Cancelled) == 1
+}
+
+test fn count_jobs_with_conclusion_counts_no_match_as_zero() -> Bool {
+  count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: TimedOut) == 0
+}
+
+test fn count_jobs_with_status_count_queued() -> Bool {
+  count_jobs_with_status(jobs: [job_cancelled, job_queued, job_in_progress], status: Queued) == 1
+}
+
+test fn filter_completed_jobs_only_returns_completed_jobs() -> Bool {
+  let completed = filter_completed_jobs(jobs: [job_cancelled, job_queued, job_success, job_in_progress])
+  count_jobs(jobs: completed) == 2
+}
+
+test fn earliest_started_at_finds_min_timestamp() -> Bool {
+  match earliest_started_at(jobs: [job_success, job_cancelled, job_failed]) {
+    Present { value: ts } => ts == "2026-09-01T00:00:00Z"
+    Absent => false
+  }
+}
+
+test fn earliest_started_at_returns_none_when_no_jobs() -> Bool {
+  match earliest_started_at(jobs: []) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn earliest_started_at_skips_jobs_without_started_at() -> Bool {
+  match earliest_started_at(jobs: [job_queued, job_success]) {
+    Present { value: ts } => ts == "2026-09-01T00:05:00Z"
+    Absent => false
+  }
+}
+
+test fn earliest_created_at_finds_min_timestamp() -> Bool {
+  match earliest_created_at(jobs: [job_success, job_cancelled, job_failed]) {
+    Present { value: ts } => ts == "2026-09-01T00:00:00Z"
+    Absent => false
+  }
+}
+
+test fn earliest_created_at_returns_none_when_no_jobs() -> Bool {
+  match earliest_created_at(jobs: []) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
+  let job_no_created = WorkflowJobRun {
+    id: 200,
+    run_id: 1,
+    run_attempt: 1,
+    name: "no-created",
+    status: InProgress,
+    conclusion: none,
+    labels: [],
+    runner_id: none,
+    runner_name: none,
+    created_at: none,
+    started_at: none,
+    completed_at: none,
+  }
+  match earliest_created_at(jobs: [job_no_created]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

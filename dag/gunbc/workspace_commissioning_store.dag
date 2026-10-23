@@ -1,0 +1,305 @@
+module gunbc.workspace_commissioning_store
+
+import gunbc.workspace_commissioning { WorkspaceCommissionedSlot, WorkspaceCommissioningAdmission, WorkspaceCommissioningReady, WorkspaceCommissioningRefused, workspace_commissioning_restore_recorded }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import std.decl_ref { decl_ref }
+import gunbc.workspace_slot_mutation { workspace_slot_mutation_supply_open }
+import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
+import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
+import std.types { String, NonEmptyStr, Bool }
+import std.measure { byte_size_count, hardware_thread_count_value, byte_size, hardware_thread_count }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_nat, json_field_bool, json_field_value }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_bool, serialize_json }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.workspace_commissioning_transaction {
+  WorkspaceCommissioningProvenance, WorkspaceCommissioningRecord,
+  WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted,
+  workspace_commissioning_next, WorkspaceCommissioningPrepare, WorkspaceCommissioningCommit, WorkspaceCommissioningAlreadyCommitted, WorkspaceCommissioningTransitionRefused,
+  WorkspaceCommissioningRecordReading, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable, WorkspaceCommissioningWriteReadiness,
+}
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, read_cell_readiness_store, OwnershipUnread }
+import std.durable_compare_and_set {
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasObservedReadable, CasReadableAbsent, CasReadablePresent,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedUnreadable,
+}
+import gunbc.durable_cas_file_store {
+  observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
+  file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable,
+}
+
+data workspace_commissioning_store_root: NonEmptyStr = workspace_commissioning_store_location as NonEmptyStr
+
+// The root is separately installed by reviewed convergence, never created by a read or publication.
+// Records use the existing generation-CAS realization. No allocation hold generation is consumed.
+type WorkspaceCommissioningStoreSnapshot sole_constructor {
+  root: NonEmptyStr
+  key: NonEmptyStr
+  provenance: WorkspaceCommissioningProvenance
+  expected: CasExpectation
+  reading: WorkspaceCommissioningRecordReading
+}
+
+type WorkspaceCommissioningStoreObservation
+  = WorkspaceCommissioningStoreObserved { snapshot: WorkspaceCommissioningStoreSnapshot }
+  | WorkspaceCommissioningStoreRefused { reason: String }
+
+type WorkspaceCommissioningStorePublication
+  = WorkspaceCommissioningStorePublished
+  | WorkspaceCommissioningStoreConflict
+  | WorkspaceCommissioningStorePublicationRefused { reason: String }
+
+fn workspace_commissioning_record_text(record: WorkspaceCommissioningRecord) -> NonEmptyStr {
+  let provenance = match record {
+    WorkspaceCommissioningPrepared { provenance } => provenance
+    WorkspaceCommissioningCommitted { provenance } => provenance
+  }
+  let phase = match record {
+    WorkspaceCommissioningPrepared { provenance: _ } => "prepared"
+    WorkspaceCommissioningCommitted { provenance: _ } => "committed"
+  }
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "workspace-commissioning/v1")),
+    json_kv(key: "phase", value: json_string(s: phase)),
+    json_kv(key: "slot", value: json_string(s: runner_slot_instance_name(slot: provenance.slot) as String)),
+    json_kv(key: "plan_hash", value: json_string(s: provenance.plan_hash as String)),
+    json_kv(key: "source_revision", value: json_string(s: provenance.source_revision as String)),
+    json_kv(key: "installed_tree_digest", value: json_string(s: provenance.installed_tree_digest as String)),
+    json_kv(key: "controller_digest", value: json_string(s: provenance.controller_digest as String)),
+    json_kv(key: "guest_image_digest", value: json_string(s: provenance.guest_image_digest as String)),
+    json_kv(key: "cpu_budget", value: json_int(n: hardware_thread_count_value(t: provenance.cpu_budget))),
+    json_kv(key: "attempt_envelope_bytes", value: json_int(n: byte_size_count(b: provenance.attempt_envelope))),
+    json_kv(key: "no_swap", value: json_bool(b: provenance.no_swap)),
+    json_kv(key: "sanitation_observation", value: json_string(s: provenance.sanitation_observation as String)),
+    json_kv(key: "initial_generation", value: json_int(n: 0)),
+  ])) as NonEmptyStr
+}
+
+fn workspace_commissioning_record_read(value: NonEmptyStr, provenance: WorkspaceCommissioningProvenance) -> WorkspaceCommissioningRecordReading {
+  let prepared = WorkspaceCommissioningPrepared { provenance: provenance }
+  let committed = WorkspaceCommissioningCommitted { provenance: provenance }
+  if value == workspace_commissioning_record_text(record: prepared) {
+    WorkspaceCommissioningRecordRead { record: prepared }
+  } else if value == workspace_commissioning_record_text(record: committed) {
+    WorkspaceCommissioningRecordRead { record: committed }
+  } else { WorkspaceCommissioningRecordUnreadable { reason: "commissioning record is malformed or belongs to different provenance" } }
+}
+
+fn workspace_commissioning_record_field(doc: JsonValue, field: String) -> String {
+  match json_field_value(r: json_field_string(obj: doc, key: field)) { Present { value: v } => v Absent => "" }
+}
+
+// THE PROVENANCE IS RECOVERED FROM THE RECORD AND ADMITTED ONLY BY EXACT RE-RENDER. A consumer that
+// holds no reviewed directive (preparation, which runs after commissioning) reads the subject the
+// record names; the canonical record text is the authority, so an unknown, missing or duplicated
+// field, a different slot, or any non-canonical spelling refuses rather than being parsed leniently.
+// The recovered provenance is then observed through workspace_commissioning_store_observe like any other.
+fn workspace_commissioning_record_provenance(value: NonEmptyStr, slot: RunnerSlotIdentity) -> WorkspaceCommissioningProvenance? {
+  match parse_json_document(s: value as String) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => {
+      let cpu = json_field_value(r: json_field_nat(obj: doc, key: "cpu_budget"))
+      let envelope = json_field_value(r: json_field_nat(obj: doc, key: "attempt_envelope_bytes"))
+      let no_swap = json_field_value(r: json_field_bool(obj: doc, key: "no_swap"))
+      match cpu { Absent => none Present { value: cpu_threads } => match envelope { Absent => none Present { value: envelope_bytes } => match no_swap { Absent => none Present { value: swap_free } =>
+        if workspace_commissioning_record_field(doc: doc, field: "plan_hash") == "" || workspace_commissioning_record_field(doc: doc, field: "source_revision") == "" || workspace_commissioning_record_field(doc: doc, field: "installed_tree_digest") == ""
+          || workspace_commissioning_record_field(doc: doc, field: "controller_digest") == "" || workspace_commissioning_record_field(doc: doc, field: "guest_image_digest") == "" || workspace_commissioning_record_field(doc: doc, field: "sanitation_observation") == "" { none }
+        else {
+          let provenance = WorkspaceCommissioningProvenance { slot: slot, plan_hash: workspace_commissioning_record_field(doc: doc, field: "plan_hash") as NonEmptyStr,
+            source_revision: workspace_commissioning_record_field(doc: doc, field: "source_revision") as NonEmptyStr, installed_tree_digest: workspace_commissioning_record_field(doc: doc, field: "installed_tree_digest") as NonEmptyStr,
+            controller_digest: workspace_commissioning_record_field(doc: doc, field: "controller_digest") as NonEmptyStr, guest_image_digest: workspace_commissioning_record_field(doc: doc, field: "guest_image_digest") as NonEmptyStr,
+            cpu_budget: hardware_thread_count(count: cpu_threads), attempt_envelope: byte_size(count: envelope_bytes), no_swap: swap_free,
+            sanitation_observation: workspace_commissioning_record_field(doc: doc, field: "sanitation_observation") as NonEmptyStr }
+          match workspace_commissioning_record_read(value: value, provenance: provenance) {
+            WorkspaceCommissioningRecordRead { record: _ } => Present { value: provenance }
+            WorkspaceCommissioningRecordAbsent => none
+            WorkspaceCommissioningRecordUnreadable { reason: _ } => none
+          }
+        }
+      } } }
+    }
+  }
+}
+
+// Only our exact canonical prepared/committed records for the expected subject are admitted.
+// Unknown schema, changed provenance, malformed bytes and an unreadable head all refuse.
+fn workspace_commissioning_store_observe(root: NonEmptyStr, provenance: WorkspaceCommissioningProvenance) -> WorkspaceCommissioningStoreObservation {
+  let key = runner_slot_instance_name(slot: provenance.slot)
+  match read_store_ownership(path: root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_cas_slot_state(root: root, key: key) {
+      CasObservedReadable { readable: CasReadableAbsent } => WorkspaceCommissioningStoreObserved {
+        snapshot: WorkspaceCommissioningStoreSnapshot { root: root, key: key, provenance: provenance,
+          expected: ExpectSlotAbsent, reading: WorkspaceCommissioningRecordAbsent },
+      }
+      CasObservedReadable { readable: CasReadablePresent { version } } => {
+        match read_store_ownership(path: cas_file_slot_path(root: root, key: key, generation: version.generation)) {
+          OwnershipRead { ownership: StoreRootOwned } => match workspace_commissioning_record_read(value: version.value, provenance: provenance) {
+              WorkspaceCommissioningRecordRead { record } => WorkspaceCommissioningStoreObserved {
+                snapshot: WorkspaceCommissioningStoreSnapshot { root: root, key: key, provenance: provenance,
+                  expected: ExpectSlotGeneration { generation: version.generation },
+                  reading: WorkspaceCommissioningRecordRead { record: record } },
+              }
+              WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
+              WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
+            }
+          OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningStoreRefused { reason: "commissioning record is not root-owned and protected from other writers" }
+          OwnershipUnread { reason: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning record is not root-owned and protected from other writers" }
+        }
+      }
+      CasObservedUnreadable { cause: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning CAS head is unreadable; no absent transaction was established" }
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningStoreRefused { reason: "commissioning store is absent, unreadable or writable outside root" }
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning store is absent, unreadable or writable outside root" }
+  }
+}
+
+type WorkspaceCommissioningPhasePublication sole_constructor {
+  snapshot: WorkspaceCommissioningStoreSnapshot
+  record: WorkspaceCommissioningRecord
+}
+
+// Readiness admission is rerun at publication, rather than trusting a proposed committed record.
+// This entry is called only while the installed slot controller owns its exclusive invocation.
+fn workspace_commissioning_store_publish(snapshot: WorkspaceCommissioningStoreSnapshot, admitted: WorkspaceCommissionedSlot) -> WorkspaceCommissioningStorePublication
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_controller", decl_name: "workspace_commissioning_controller_step")]
+{
+  match workspace_commissioning_next(admitted: admitted, provenance: snapshot.provenance,
+    transaction: snapshot.reading, readiness: read_cell_readiness_store()) {
+    WorkspaceCommissioningPrepare { record } => workspace_commissioning_publish_phase(
+      publication: WorkspaceCommissioningPhasePublication { snapshot: snapshot, record: record })
+    WorkspaceCommissioningCommit { record } => workspace_commissioning_publish_phase(
+      publication: WorkspaceCommissioningPhasePublication { snapshot: snapshot, record: record })
+    WorkspaceCommissioningWriteReadiness { write: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
+    WorkspaceCommissioningAlreadyCommitted => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
+    WorkspaceCommissioningTransitionRefused { reason: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
+  }
+}
+
+// The snapshot binds key, root, predecessor and provenance. The phase permit is minted only
+// after fresh readiness admission. CAS refuses a changed predecessor; no hold generation moves.
+fn workspace_commissioning_publish_phase(publication: WorkspaceCommissioningPhasePublication) -> WorkspaceCommissioningStorePublication {
+  let snapshot = publication.snapshot
+  match read_store_ownership(path: snapshot.root as String) {
+    OwnershipRead { ownership: StoreRootOwned } => match admit_cas_attempt_for_derived_payload(key: snapshot.key,
+      expected: snapshot.expected, proposed: workspace_commissioning_record_text(record: publication.record)) {
+      DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: snapshot.root, publication: OwnerOnlyCreateOnly, verified: verified) {
+        CasCommitted { committed: _ } => WorkspaceCommissioningStorePublished
+        CasPreconditionFailed { expected: _, observed: _ } => WorkspaceCommissioningStoreConflict
+        CasStoreRefused { cause: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning CAS refused; reread before retrying" }
+      }
+      DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning slot is not addressable by the CAS store" }
+    }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning store custody changed before publication" }
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning store custody changed before publication" }
+  }
+}
+
+// Supply consumes this sealed readback, not the initial admission or a prepared transaction.
+type WorkspaceCommittedCommissioning sole_constructor {
+  admitted: WorkspaceCommissionedSlot
+  provenance: WorkspaceCommissioningProvenance
+}
+
+type WorkspaceCommissioningSupplyReadback
+  = WorkspaceCommissioningSupplyReady { committed: WorkspaceCommittedCommissioning }
+  | WorkspaceCommissioningSupplyRefused { reason: String }
+
+fn workspace_commissioning_store_admit_supply(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback {
+  if !workspace_slot_mutation_supply_open(slot_key: runner_slot_instance_name(slot: snapshot.provenance.slot)) {
+    WorkspaceCommissioningSupplyRefused { reason: "enclosing slot mutation is outstanding; committed controller provenance is not yet supply" }
+  } else if !workspace_commissioning_executor_complete(provenance: snapshot.provenance) {
+    WorkspaceCommissioningSupplyRefused { reason: "enclosing executor has not committed its fleet generation; a released guard alone is not supply" }
+  } else {
+  match workspace_commissioning_store_observe(root: snapshot.root, provenance: snapshot.provenance) {
+    WorkspaceCommissioningStoreObserved { snapshot: current } =>
+      if current.expected != snapshot.expected || current.reading != snapshot.reading {
+        WorkspaceCommissioningSupplyRefused { reason: "commissioning record changed before supply admission" }
+      } else { workspace_commissioning_current_supply(snapshot: current) }
+    WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningSupplyRefused { reason: reason }
+  }
+}
+
+}
+
+// The mutation guard is released before fleet publication. Do not expose generation-zero
+// readiness during that gap: the protected executor must have settled the SAME plan first.
+fn workspace_commissioning_executor_complete(provenance: WorkspaceCommissioningProvenance) -> Bool {
+  match workspace_executor_journal_observe(slot_key: runner_slot_instance_name(slot: provenance.slot)) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => record.phase == ExecutorGenerationCommitted
+        && record.subject.plan_hash == provenance.plan_hash
+      Absent => false
+    }
+    WorkspaceExecutorJournalUnreadable { reason: _ } => false
+  }
+}
+
+fn workspace_commissioning_current_supply(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_store_admit_supply")]
+{
+  match snapshot.reading {
+    WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningCommitted { provenance } } => {
+      let admitted = workspace_commissioning_restore_recorded(slot: provenance.slot, plan_hash: provenance.plan_hash,
+        cpu_budget: provenance.cpu_budget, attempt_envelope: provenance.attempt_envelope)
+      match workspace_commissioning_next(admitted: admitted, provenance: provenance,
+        transaction: snapshot.reading, readiness: read_cell_readiness_store()) {
+        WorkspaceCommissioningAlreadyCommitted => WorkspaceCommissioningSupplyReady {
+          committed: WorkspaceCommittedCommissioning { admitted: admitted, provenance: provenance },
+        }
+        WorkspaceCommissioningPrepare { record: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningWriteReadiness { write: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningCommit { record: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningTransitionRefused { reason: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+      }
+    }
+    WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
+    WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningPrepared { provenance: _ } } => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
+    WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
+  }
+}
+
+// Restart recovery reads the original prepared authority instead of pretending existing readiness
+// is absent. The controller still owes fresh sanitation/runtime/purpose checks before reconciliation.
+fn workspace_commissioning_store_restore_admission(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningAdmission {
+  match workspace_commissioning_store_observe(root: snapshot.root, provenance: snapshot.provenance) {
+    WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningRefused { reason: reason }
+    WorkspaceCommissioningStoreObserved { snapshot: current } =>
+      if current.expected != snapshot.expected || current.reading != snapshot.reading {
+        WorkspaceCommissioningRefused { reason: "commissioning record changed during recovery admission" }
+      } else { match current.reading {
+        WorkspaceCommissioningRecordRead { record: _ } => {
+          let p = current.provenance
+          let admitted = workspace_commissioning_restore_recorded(slot: p.slot, plan_hash: p.plan_hash,
+            cpu_budget: p.cpu_budget, attempt_envelope: p.attempt_envelope)
+          match workspace_commissioning_next(admitted: admitted, provenance: p,
+            transaction: current.reading, readiness: read_cell_readiness_store()) {
+            WorkspaceCommissioningTransitionRefused { reason } => WorkspaceCommissioningRefused { reason: reason }
+            WorkspaceCommissioningPrepare { record: _ } => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningWriteReadiness { write: _ } => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningCommit { record: _ } => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningAlreadyCommitted => WorkspaceCommissioningReady { commissioned: admitted }
+          }
+        }
+        WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
+        WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
+      } }
+  }
+}
+
+// Preparation's reader: the slot's own committed record names its provenance, which is then
+// re-observed and admitted by exactly the path a directive-holding caller uses. An absent,
+// prepared-only, malformed or foreign record never becomes supply.
+fn workspace_commissioning_committed_for_slot(slot: RunnerSlotIdentity) -> WorkspaceCommissioningSupplyReadback {
+  match observe_cas_slot_state(root: workspace_commissioning_store_root, key: runner_slot_instance_name(slot: slot) as NonEmptyStr) {
+    CasObservedReadable { readable: CasReadableAbsent } => WorkspaceCommissioningSupplyRefused { reason: "slot has no commissioning record" }
+    CasObservedUnreadable { cause: _ } => WorkspaceCommissioningSupplyRefused { reason: "commissioning CAS head is unreadable" }
+    CasObservedReadable { readable: CasReadablePresent { version } } => match workspace_commissioning_record_provenance(value: version.value, slot: slot) {
+      Absent => WorkspaceCommissioningSupplyRefused { reason: "commissioning record is malformed or names another slot" }
+      Present { value: provenance } => match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+        WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningSupplyRefused { reason: reason }
+        WorkspaceCommissioningStoreObserved { snapshot } => workspace_commissioning_store_admit_supply(snapshot: snapshot)
+      }
+    }
+  }
+}

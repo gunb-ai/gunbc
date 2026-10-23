@@ -1,0 +1,205 @@
+module v2.test.execution.infer_declaration_formation
+
+import v2.compiler.infer { inferred_facts_resolved_type }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Disj, Authored, Node, Positional, Symbol, TypeNode, node_subtree_nodes, StructuralLabel }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.witness { Holds, Violates }
+import v2.std.type_binder { node_inferred_subtree_nodes }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A LOWERED TYPE DECLARATION GROUNDS, BY THE FORMATION ITS SHAPE STATES (v2.compiler.infer
+// infer_formation_facts_from_entries): a coproduct forms a SUM over its Named alternatives, a payloadless
+// alternative is the empty product because its sum says so (infer_sum_nullary_payload_edge), an alias or
+// generic member re-forms its wrapper with the binder edge carried as metadata
+// (infer_declaration_binder_edge), and a bodyless declaration derives the type-denotation kind and
+// nothing more (infer_opaque_declaration_facts). Before these rules every such declaration, and every
+// module spine enclosing one, stayed GroundingNotDerived.
+//
+// Each row reads the REAL pipeline -- lowered, resolved and inferred through infer_and_discharge -- and
+// asserts both the WHOLE tree's frontier count and what the declared name's target derived AS, because
+// a zero count alone would also hold if the declaration had been dropped. Two rows assert that a
+// frontier SURVIVES where no rule applies: a generic alias whose right-hand side is its own binder has no
+// symbolic grounding route for `T` and is not substituted, and an authored empty record is not grounded
+// by the opaque rule.
+type FormationVerdict
+  = FormationInferred { not_derived: Int, target: Symbol, missing_facts: Int }
+  | FormationRefused
+
+fn formation_kind_tag(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: Disj } => ^formation_sum
+    TypeNode { connective: Conj } => ^formation_conj
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^kind_type_denotation { ^formation_type_denotation } else { ^formation_atom }
+    _ => ^formation_other
+  }
+}
+
+// The target the tree declares under `name`: the first Named edge carrying that label.
+fn formation_declared_target(root: Node, name: Symbol) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: optional_absent(), f: fn(acc, n) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        fold(n.children, init: optional_absent(), f: fn(a, e) {
+          match a {
+            Present { value: _ } => a
+            Absent =>
+              match e.label {
+                StructuralLabel { label: _ } => a
+                Authored { name: l } => if l == name { optional_present(value: e.target) } else { a }
+                Positional => a
+              }
+          }
+        })
+    }
+  })
+}
+
+// ONE NULLARY PRODUCER PER SPECIMEN (WARM in v2.workflow.floor_pure_producer_share): each pays a full
+// front end and infer, more than one claim's budget. It publishes two scalars, never a Node.
+fn formation_verdict_of(src: String, name: Symbol) -> FormationVerdict {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: _ } => FormationRefused
+    Accepted { value: root, diagnostics: _ } =>
+      match infer_and_discharge(tree: root) {
+        Rejected { diagnostics: _ } => FormationRefused
+        Accepted { value: t, diagnostics: _ } =>
+          let not_derived = fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+            match t.facts.lookup(n) {
+              Absent => acc
+              Present { value: f } =>
+                match f.grounding {
+                  DerivedGrounding { grounding: _ } => acc
+                  GroundingNotDerived { node: _ } => acc + 1
+                }
+            }
+          })
+          let target = match formation_declared_target(root: t.root, name: name) {
+            Absent => ^formation_undeclared
+            Present { value: d } =>
+              match t.facts.lookup(d) {
+                Absent => ^formation_no_facts
+                Present { value: f } =>
+                  match inferred_facts_resolved_type(facts: f) {
+                    Holds { value: ty } => formation_kind_tag(n: ty)
+                    Violates { diagnostic: _ } => ^formation_not_derived
+                  }
+              }
+          }
+          let missing_facts = fold(node_inferred_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+            match t.facts.lookup(n) {
+              Absent => acc + 1
+              Present { value: _ } => acc
+            }
+          })
+          FormationInferred { not_derived: not_derived, target: target, missing_facts: missing_facts }
+      }
+  }
+}
+
+fn formation_coproduct_verdict() -> FormationVerdict {
+  formation_verdict_of(src: "module p\n\ntype Decision = Allowed | Blocked\n", name: ^Decision)
+}
+
+fn formation_payload_coproduct_verdict() -> FormationVerdict {
+  formation_verdict_of(src: "module p\n\ntype Shape = Dot | Box { w: Int }\n", name: ^Shape)
+}
+
+fn formation_plain_alias_verdict() -> FormationVerdict {
+  formation_verdict_of(src: "module p\n\ntype Id = Int\n", name: ^Id)
+}
+
+fn formation_bodyless_verdict() -> FormationVerdict {
+  formation_verdict_of(src: "module p\n\ntype PointerWidth\n", name: ^PointerWidth)
+}
+
+fn formation_generic_binder_alias_verdict() -> FormationVerdict {
+  formation_verdict_of(src: "module p\n\ntype Same<T> = T\n", name: ^Same)
+}
+
+fn formation_empty_record_verdict() -> FormationVerdict {
+  formation_verdict_of(src: "module p\n\ntype Empty {}\n", name: ^Empty)
+}
+
+// A coproduct of payloadless alternatives forms a SUM, and the whole tree grounds: each alternative's
+// childless payload is the empty product because the Disj fixes that position.
+test fn a_payloadless_coproduct_forms_a_sum_and_grounds_holds() -> Bool {
+  match formation_coproduct_verdict() {
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_sum)
+    FormationRefused => false
+  }
+}
+
+// Mixed alternatives: the payloadless arm by its position, the fielded arm by product introduction.
+test fn a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds() -> Bool {
+  match formation_payload_coproduct_verdict() {
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_sum)
+    FormationRefused => false
+  }
+}
+
+// A plain alias re-forms its wrapper -- a Conj carrying the empty binder edge as metadata beside the
+// derived right-hand side -- and grounds; the empty binder list is never walked as a unit value.
+test fn a_plain_alias_forms_its_wrapper_and_grounds_holds() -> Bool {
+  match formation_plain_alias_verdict() {
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_conj)
+    FormationRefused => false
+  }
+}
+
+// A bodyless declaration derives the TYPE-DENOTATION KIND and nothing else -- not the empty product,
+// not a member -- and the tree grounds.
+test fn a_bodyless_declaration_denotes_a_type_and_grounds_holds() -> Bool {
+  match formation_bodyless_verdict() {
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n == 0) && (t == ^formation_type_denotation)
+    FormationRefused => false
+  }
+}
+
+// THE FRONTIER SURVIVES WHERE NO RULE APPLIES (1): a generic alias whose right-hand side is its own
+// binder `T` has no symbolic grounding route for `T`, so the alias is NOT formed -- not substituted,
+// not instantiated, not closed over some outer `T`.
+test fn a_generic_alias_over_its_own_binder_stays_on_the_frontier_holds() -> Bool {
+  match formation_generic_binder_alias_verdict() {
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n > 0) && (t == ^formation_not_derived)
+    FormationRefused => false
+  }
+}
+
+// THE FRONTIER SURVIVES WHERE NO RULE APPLIES (2): an authored empty record is a member, not a bodyless
+// declaration, so the opaque rule does not ground it, and a childless Conj outside a sum stays refused.
+test fn an_authored_empty_record_is_not_grounded_by_the_opaque_rule_holds() -> Bool {
+  match formation_empty_record_verdict() {
+    FormationInferred { not_derived: n, target: t, missing_facts: _ } => (n > 0) && (t == ^formation_not_derived)
+    FormationRefused => false
+  }
+}
+
+// EVERY NODE INFER IS SAID TO COVER HAS FACTS (v2.std.type_binder node_inferred_subtree_nodes). The
+// partition closure demands a facts entry for exactly that set, so a node in it without one refuses
+// the whole program as partition_facts_miss. Infer declines a declaration's binder subtree
+// (infer_declaration_binder_edge), and the walker must decline the same subtree through the same
+// predicate: before it did, every module declaring an alias, a bodyless declaration or a generic
+// declaration refused at the partition. Read on the three wrapper shapes, whose binder edge is the
+// declined one, including a generic alias whose right-hand side stays on the frontier.
+test fn every_node_infer_covers_has_facts_for_declaration_wrappers_holds() -> Bool {
+  (match formation_plain_alias_verdict() {
+    FormationInferred { not_derived: _, target: _, missing_facts: m } => m == 0
+    FormationRefused => false
+  })
+    && (match formation_bodyless_verdict() {
+      FormationInferred { not_derived: _, target: _, missing_facts: m } => m == 0
+      FormationRefused => false
+    })
+    && (match formation_generic_binder_alias_verdict() {
+      FormationInferred { not_derived: _, target: _, missing_facts: m } => m == 0
+      FormationRefused => false
+    })
+}

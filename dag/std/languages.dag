@@ -1,0 +1,1200 @@
+module std.languages
+
+import std.types { LanguageId }
+
+type NamingCase
+  = SnakeCase
+  | ScreamingSnakeCase
+  | PascalCase
+  | CamelCase
+  | Lowercase
+  | KebabCase
+
+type CommentSyntax {
+  line_prefix: String?
+  block_start: String?
+  block_end: String?
+  doc_prefix: String?
+}
+
+type SerializationKnobs {
+  assign: String
+  entry_separator: String
+  open: String
+  close: String
+  quote_keys: Bool
+  value_quote: String?
+}
+
+type SerialField {
+  key: String
+  value: SerialValue
+}
+
+type SerialValue
+  = ScalarValue { text: String }
+  | RecordValue { fields: List<SerialField> }
+
+type NamingConvention {
+  type_case: NamingCase
+  function_case: NamingCase
+  variable_case: NamingCase
+  constant_case: NamingCase
+  module_case: NamingCase
+}
+
+type IndentStyle
+  = SpaceIndent { width: Int }
+  | TabIndent
+
+type ImportGrouping
+  = StdExternalLocal
+  | NoGrouping
+
+type ImportTrigger
+  = TypeUsageTrigger { type_name: String }
+  | TraitImplTrigger { trait_name: String }
+  | DeriveMacroTrigger { macro_name: String }
+  | ContainerUsageTrigger { container: String }
+  | AsyncUsageTrigger
+
+type ImportRule {
+  trigger: ImportTrigger
+  import_path: String
+}
+
+type TypeMapping {
+  string: String
+  int: String
+  float: String
+  bool: String
+  bytes: String
+  list_template: String
+  optional_template: String
+  map_template: String
+}
+
+type StatementSyntax {
+  let_binding: String
+  let_binding_inferred: String
+  assignment: String
+  return_value: String
+  return_void: String
+  expression_statement: String
+  statement_terminator: String
+}
+
+type ExpressionSyntax {
+  binary_op: String
+  unary_op: String
+  field_access: String
+  method_call: String
+  function_call: String
+  index_access: String
+  string_interpolation: String?
+  closure: String
+}
+
+type ForEachSyntax {
+  prefix: String
+  separator: String
+}
+
+type ControlFlowSyntax {
+  if_then: String
+  if_else: String
+  match_header: String
+  match_arm: String
+  for_each_syntax: ForEachSyntax
+  while_loop: String
+  loop_infinite: String?
+  break_keyword: String
+  continue_keyword: String
+}
+
+type LiteralSyntax {
+  true_keyword: String
+  false_keyword: String
+  null_keyword: String
+  string_delimiter: String
+  raw_string_delimiter: String?
+  multiline_string: String?
+  string_escape_backslash: Bool
+  integer_separator: String?
+}
+
+type ModuleSyntax {
+  import_single: String
+  import_from: String?
+  import_alias: String
+  module_declaration: String?
+  visibility_public: String?
+  visibility_private: String?
+  path_separator: String
+}
+
+type FunctionSyntax {
+  definition: String
+  definition_exported: String
+  definition_void: String
+  param_with_type: String
+  param_separator: String
+  async_definition: String?
+  async_await: String?
+  return_type_separator: String
+}
+
+type ErrorHandlingSyntax
+  = ResultType {
+      ok_template: String
+      err_constructor: String
+      ok_constructor: String
+      try_operator: String
+    }
+  | ExceptionBased {
+      try_block: String
+      except_clause: String
+      raise_keyword: String
+      finally_block: String?
+    }
+  | MultiReturn {
+      error_interface: String
+      error_check: String
+      error_return: String
+      error_format: String
+    }
+
+type TypeDefinitionSyntax {
+  struct_def: String
+  struct_empty: String
+  struct_field: String
+  enum_def: String
+  enum_unit_variant: String
+  enum_data_variant: String
+  type_alias: String
+  generic_param: String
+  derive_attribute: String?
+  visibility_modifier: String?
+}
+
+type PatternMatchSyntax {
+  match_expr: String
+  match_arm: String
+  variant_pattern: String
+  variant_pattern_empty: String
+  field_binding: String
+  field_binding_separator: String
+  wildcard: String
+  guard: String?
+  or_pattern: String?
+}
+
+type AsyncSyntax
+  = AwaitBased {
+      async_fn_def: String
+      await_expr: String
+      spawn_task: String?
+      gather: String?
+    }
+  | GoroutineBased {
+      go_stmt: String
+      channel_send: String
+      channel_recv: String
+      select_stmt: String
+    }
+
+type CollectionOps {
+  count: String
+  first: String
+  last: String
+  enumerate: String
+  join: String
+  map: String
+  filter: String
+  flat_map: String
+  fold: String
+  any: String
+  all: String
+  empty_list: String
+  list_literal: String
+}
+
+type StringOps {
+  split: String
+  chars: String
+  concat: String
+  string_literal: String
+  string_interp: String
+  code_point: String
+  from_code_point: String
+}
+
+type MapOps {
+  empty_map: String
+  map_insert: String
+  map_get: String
+  map_contains: String
+}
+
+type NullCoalesceStrategy
+  = MethodBased {
+      template: String
+    }
+  | TernaryBased {
+      template: String
+    }
+  | IIFEBased {
+      template: String
+    }
+
+type ReservedWordStrategy
+  = PrefixEscape {
+      prefix: String
+    }
+  | SuffixEscape {
+      suffix: String
+    }
+  | NoEscape
+
+type ReservedWords {
+  keywords: List<String>
+  strategy: ReservedWordStrategy
+}
+
+type ValueSemantics
+  = OwnershipBased {
+      reference_prefix: String
+      mutable_prefix: String
+      copy_primitives: List<String>
+      clone_expr: String
+      deref_clone_expr: String
+      field_clone_expr: String
+      iterator_clone_suffix: String
+    }
+  | ReferenceBased
+  | ValueBased {
+      pointer_prefix: String
+    }
+
+type SerializationFramework {
+  struct_derives: String?
+  enum_derives: String?
+  tag_attribute: String?
+  rename_attribute: String?
+  json_parse: String?
+  json_emit: String?
+  json_type: String
+  default_value: String
+}
+
+type ProjectScaffold {
+  manifest_file: String?
+  module_init_file: String?
+  source_file_extension: String
+  source_dir: String?
+  entry_point_file: String?
+}
+
+type ServiceCallSemantics
+  = AwaitQuestion {
+      template: String
+    }
+  | AwaitPrefix {
+      template: String
+    }
+  | MultiReturnError {
+      template: String
+    }
+
+type Language {
+  id: LanguageId
+  name: String
+  extensions: List<String>
+  comment: CommentSyntax
+  naming: NamingConvention?
+  types: TypeMapping?
+}
+
+type LanguageSpec {
+
+  language: Language
+
+  statements: StatementSyntax
+  expressions: ExpressionSyntax
+  control_flow: ControlFlowSyntax
+  literals: LiteralSyntax
+  modules: ModuleSyntax
+  functions: FunctionSyntax
+  errors: ErrorHandlingSyntax
+  type_defs: TypeDefinitionSyntax
+  patterns: PatternMatchSyntax
+  async_model: AsyncSyntax?
+
+  collection_ops: CollectionOps
+  string_ops: StringOps
+  map_ops: MapOps
+  null_coalesce: NullCoalesceStrategy
+
+  reserved_words: ReservedWords
+
+  value_semantics: ValueSemantics
+
+  serialization: SerializationFramework
+
+  scaffold: ProjectScaffold
+
+  service_calls: ServiceCallSemantics
+}
+
+type MarkupFormat {
+  id: LanguageId
+  name: String
+  extensions: List<String>
+  comment: CommentSyntax
+  code_fence: String?
+}
+
+type ConfigFormat {
+  id: LanguageId
+  name: String
+  extensions: List<String>
+  comment: CommentSyntax
+  record: SerializationKnobs?
+}
+
+data rust_language: Language = {
+  id: "rust",
+  name: "Rust",
+  extensions: [".rs"],
+  comment: {
+    line_prefix: "//",
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: "///"
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    variable_case: SnakeCase,
+    constant_case: ScreamingSnakeCase,
+    module_case: SnakeCase
+  },
+  types: {
+    string: "String",
+    int: "i64",
+    float: "f64",
+    bool: "bool",
+    bytes: "Vec<u8>",
+    list_template: "Vec<\{0\}>",
+    optional_template: "Option<\{0\}>",
+    map_template: "HashMap<\{0\}, \{1\}>"
+  }
+}
+
+data go_language: Language = {
+  id: "go",
+  name: "Go",
+  extensions: [".go"],
+  comment: {
+    line_prefix: "//",
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: null
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: CamelCase,
+    variable_case: CamelCase,
+    constant_case: PascalCase,
+    module_case: Lowercase
+  },
+  types: {
+    string: "string",
+    int: "int64",
+    float: "float64",
+    bool: "bool",
+    bytes: "[]byte",
+    list_template: "[]\{0\}",
+    optional_template: "*\{0\}",
+    map_template: "map[\{0\}]\{1\}"
+  }
+}
+
+data python_language: Language = {
+  id: "python",
+  name: "Python",
+  extensions: [".py"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    variable_case: SnakeCase,
+    constant_case: ScreamingSnakeCase,
+    module_case: SnakeCase
+  },
+  types: {
+    string: "str",
+    int: "int",
+    float: "float",
+    bool: "bool",
+    bytes: "bytes",
+    list_template: "list[\{0\}]",
+    optional_template: "\{0\} | None",
+    map_template: "dict[\{0\}, \{1\}]"
+  }
+}
+
+data typescript_language: Language = {
+  id: "typescript",
+  name: "TypeScript",
+  extensions: [".ts", ".tsx"],
+  comment: {
+    line_prefix: "//",
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: "/**"
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: CamelCase,
+    variable_case: CamelCase,
+    constant_case: ScreamingSnakeCase,
+    module_case: CamelCase
+  },
+  types: {
+    string: "string",
+    int: "number",
+    float: "number",
+    bool: "boolean",
+    bytes: "Uint8Array",
+    list_template: "\{0\}[]",
+    optional_template: "\{0\} | undefined",
+    map_template: "Map<\{0\}, \{1\}>"
+  }
+}
+
+data rust_statements: StatementSyntax = {
+  let_binding: "let \{name\}: \{type\} = \{value\};",
+  let_binding_inferred: "let \{name\} = \{value\};",
+  assignment: "\{name\} = \{value\};",
+  return_value: "return \{value\};",
+  return_void: "return;",
+  expression_statement: "\{expr\};",
+  statement_terminator: ";"
+}
+
+data rust_expressions: ExpressionSyntax = {
+  binary_op: "\{lhs\} \{op\} \{rhs\}",
+  unary_op: "\{op\}\{expr\}",
+  field_access: "\{object\}.\{field\}",
+  method_call: "\{object\}.\{method\}(\{args\})",
+  function_call: "\{func\}(\{args\})",
+  index_access: "\{object\}[\{index\}]",
+  string_interpolation: null,
+  closure: "|\{params\}| \{body\}"
+}
+
+data rust_control_flow: ControlFlowSyntax = {
+  if_then: "if \{cond\} { \{body\} }",
+  if_else: "if \{cond\} { \{then\} } else { \{else\} }",
+  match_header: "match \{expr\} {",
+  match_arm: "\{pattern\} => \{body\},",
+  for_each_syntax: { prefix: "for ", separator: " in " },
+  while_loop: "while \{cond\} { \{body\} }",
+  loop_infinite: "loop { \{body\} }",
+  break_keyword: "break",
+  continue_keyword: "continue"
+}
+
+data rust_literals: LiteralSyntax = {
+  true_keyword: "true",
+  false_keyword: "false",
+  null_keyword: "None",
+  string_delimiter: "\"",
+  raw_string_delimiter: "r\"",
+  multiline_string: null,
+  string_escape_backslash: true,
+  integer_separator: "_"
+}
+
+data rust_modules: ModuleSyntax = {
+  import_single: "use \{path\};",
+  import_from: "use \{module\}::\{names\};",
+  import_alias: "use \{path\} as \{alias\};",
+  module_declaration: "mod \{name\};",
+  visibility_public: "pub",
+  visibility_private: null,
+  path_separator: "::"
+}
+
+data rust_functions: FunctionSyntax = {
+  definition: "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  definition_exported: "pub fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  definition_void: "fn \{name\}(\{params\}) { \{body\} }",
+  param_with_type: "\{name\}: \{type\}",
+  param_separator: ", ",
+  async_definition: "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  async_await: "\{expr\}.await",
+  return_type_separator: " -> "
+}
+
+data rust_errors: ErrorHandlingSyntax = ResultType {
+  ok_template: "Result<\{0\}, \{1\}>",
+  err_constructor: "Err(\{value\})",
+  ok_constructor: "Ok(\{value\})",
+  try_operator: "\{expr\}?"
+}
+
+data rust_type_defs: TypeDefinitionSyntax = {
+  struct_def: "pub struct \{name\} {\n\{fields\}\n}",
+  struct_empty: "pub struct \{name\};",
+  struct_field: "    pub \{name\}: \{type\},",
+  enum_def: "pub enum \{name\} {\n\{variants\}\n}",
+  enum_unit_variant: "    \{name\},",
+  enum_data_variant: "    \{name\} {\n\{fields\}\n    },",
+  type_alias: "pub type \{name\} = \{type\};",
+  generic_param: "<\{params\}>",
+  derive_attribute: "#[derive(\{traits\})]",
+  visibility_modifier: "pub "
+}
+
+data rust_patterns: PatternMatchSyntax = {
+  match_expr: "match \{expr\} {\n\{arms\}\n}",
+  match_arm: "    \{pattern\} => \{body\},",
+  variant_pattern: "\{name\} { \{bindings\} }",
+  variant_pattern_empty: "\{name\}",
+  field_binding: "\{field\}: \{binding\}",
+  field_binding_separator: ", ",
+  wildcard: "_",
+  guard: " if \{cond\}",
+  or_pattern: "\{a\} | \{b\}"
+}
+
+data rust_async: AsyncSyntax = AwaitBased {
+  async_fn_def: "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  await_expr: "\{expr\}.await",
+  spawn_task: "tokio::spawn(\{expr\})",
+  gather: "futures::join!(\{exprs\})"
+}
+
+data go_statements: StatementSyntax = {
+  let_binding: "var \{name\} \{type\} = \{value\}",
+  let_binding_inferred: "\{name\} := \{value\}",
+  assignment: "\{name\} = \{value\}",
+  return_value: "return \{value\}",
+  return_void: "return",
+  expression_statement: "\{expr\}",
+  statement_terminator: ""
+}
+
+data go_expressions: ExpressionSyntax = {
+  binary_op: "\{lhs\} \{op\} \{rhs\}",
+  unary_op: "\{op\}\{expr\}",
+  field_access: "\{object\}.\{field\}",
+  method_call: "\{object\}.\{method\}(\{args\})",
+  function_call: "\{func\}(\{args\})",
+  index_access: "\{object\}[\{index\}]",
+  string_interpolation: null,
+  closure: "func(\{params\}) \{ret\} { \{body\} }"
+}
+
+data go_control_flow: ControlFlowSyntax = {
+  if_then: "if \{cond\} { \{body\} }",
+  if_else: "if \{cond\} { \{then\} } else { \{else\} }",
+  match_header: "switch \{expr\} {",
+  match_arm: "case \{pattern\}: \{body\}",
+  for_each_syntax: { prefix: "for _, ", separator: " := range " },
+  while_loop: "for \{cond\} { \{body\} }",
+  loop_infinite: "for { \{body\} }",
+  break_keyword: "break",
+  continue_keyword: "continue"
+}
+
+data go_literals: LiteralSyntax = {
+  true_keyword: "true",
+  false_keyword: "false",
+  null_keyword: "nil",
+  string_delimiter: "\"",
+  raw_string_delimiter: "`",
+  multiline_string: "`",
+  string_escape_backslash: true,
+  integer_separator: "_"
+}
+
+data go_modules: ModuleSyntax = {
+  import_single: "import \"\{path\}\"",
+  import_from: null,
+  import_alias: "import \{alias\} \"\{path\}\"",
+  module_declaration: "package \{name\}",
+  visibility_public: null,
+  visibility_private: null,
+  path_separator: "/"
+}
+
+data go_functions: FunctionSyntax = {
+  definition: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
+  definition_exported: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
+  definition_void: "func \{name\}(\{params\}) { \{body\} }",
+  param_with_type: "\{name\} \{type\}",
+  param_separator: ", ",
+  async_definition: null,
+  async_await: null,
+  return_type_separator: " "
+}
+
+data go_errors: ErrorHandlingSyntax = MultiReturn {
+  error_interface: "error",
+  error_check: "if \{name\} != nil { \{handler\} }",
+  error_return: "return \{zero\}, fmt.Errorf(\{msg\})",
+  error_format: "fmt.Errorf(\"\{template\}\", \{args\})"
+}
+
+data go_type_defs: TypeDefinitionSyntax = {
+  struct_def: "type \{name\} struct {\n\{fields\}\n}",
+  struct_empty: "type \{name\} struct{}",
+  struct_field: "\t\{name\} \{type\}",
+  enum_def: "type \{name\} int\n\nconst (\n\{variants\}\n)",
+  enum_unit_variant: "\t\{name\} \{type\} = iota",
+  enum_data_variant: "\t\{name\} \{type\} = iota",
+  type_alias: "type \{name\} = \{type\}",
+  generic_param: "[\{params\}]",
+  derive_attribute: null,
+  visibility_modifier: null
+}
+
+data go_patterns: PatternMatchSyntax = {
+  match_expr: "switch \{expr\} {\n\{arms\}\n}",
+  match_arm: "case \{pattern\}:\n\t\{body\}",
+  variant_pattern: "\{name\}",
+  variant_pattern_empty: "\{name\}",
+  field_binding: "\{field\}",
+  field_binding_separator: ", ",
+  wildcard: "_",
+  guard: null,
+  or_pattern: "\{a\}, \{b\}"
+}
+
+data go_async: AsyncSyntax = GoroutineBased {
+  go_stmt: "go \{expr\}",
+  channel_send: "\{chan\} <- \{value\}",
+  channel_recv: "<-\{chan\}",
+  select_stmt: "select {\n\{cases\}\n}"
+}
+
+data python_statements: StatementSyntax = {
+  let_binding: "\{name\}: \{type\} = \{value\}",
+  let_binding_inferred: "\{name\} = \{value\}",
+  assignment: "\{name\} = \{value\}",
+  return_value: "return \{value\}",
+  return_void: "return",
+  expression_statement: "\{expr\}",
+  statement_terminator: ""
+}
+
+data python_expressions: ExpressionSyntax = {
+  binary_op: "\{lhs\} \{op\} \{rhs\}",
+  unary_op: "\{op\}\{expr\}",
+  field_access: "\{object\}.\{field\}",
+  method_call: "\{object\}.\{method\}(\{args\})",
+  function_call: "\{func\}(\{args\})",
+  index_access: "\{object\}[\{index\}]",
+  string_interpolation: "f\"\{expr\}\"",
+  closure: "lambda \{params\}: \{body\}"
+}
+
+data python_control_flow: ControlFlowSyntax = {
+  if_then: "if \{cond\}:\n    \{body\}",
+  if_else: "if \{cond\}:\n    \{then\}\nelse:\n    \{else\}",
+  match_header: "match \{expr\}:",
+  match_arm: "case \{pattern\}: \{body\}",
+  for_each_syntax: { prefix: "for ", separator: " in " },
+  while_loop: "while \{cond\}:\n    \{body\}",
+  loop_infinite: "while True:\n    \{body\}",
+  break_keyword: "break",
+  continue_keyword: "continue"
+}
+
+data python_literals: LiteralSyntax = {
+  true_keyword: "True",
+  false_keyword: "False",
+  null_keyword: "None",
+  string_delimiter: "\"",
+  raw_string_delimiter: "r\"",
+  multiline_string: "\"\"\"",
+  string_escape_backslash: true,
+  integer_separator: "_"
+}
+
+data python_modules: ModuleSyntax = {
+  import_single: "import \{path\}",
+  import_from: "from \{module\} import \{names\}",
+  import_alias: "import \{path\} as \{alias\}",
+  module_declaration: null,
+  visibility_public: null,
+  visibility_private: null,
+  path_separator: "."
+}
+
+data python_functions: FunctionSyntax = {
+  definition: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  definition_exported: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  definition_void: "def \{name\}(\{params\}):\n    \{body\}",
+  param_with_type: "\{name\}: \{type\}",
+  param_separator: ", ",
+  async_definition: "async def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  async_await: "await \{expr\}",
+  return_type_separator: " -> "
+}
+
+data python_errors: ErrorHandlingSyntax = ExceptionBased {
+  try_block: "try:\n    \{body\}",
+  except_clause: "except \{type\} as \{name\}:\n    \{handler\}",
+  raise_keyword: "raise",
+  finally_block: "finally:\n    \{body\}"
+}
+
+data python_type_defs: TypeDefinitionSyntax = {
+  struct_def: "@dataclass\nclass \{name\}:\n\{fields\}",
+  struct_empty: "@dataclass\nclass \{name\}:\n    pass",
+  struct_field: "    \{name\}: \{type\}",
+  enum_def: "class \{name\}(Enum):\n\{variants\}",
+  enum_unit_variant: "    \{name\} = auto()",
+  enum_data_variant: "@dataclass\nclass \{name\}:\n\{fields\}",
+  type_alias: "\{name\} = \{type\}",
+  generic_param: "[\{params\}]",
+  derive_attribute: "@dataclass",
+  visibility_modifier: null
+}
+
+data python_patterns: PatternMatchSyntax = {
+  match_expr: "match \{expr\}:\n\{arms\}",
+  match_arm: "    case \{pattern\}:\n        \{body\}",
+  variant_pattern: "\{name\}(\{bindings\})",
+  variant_pattern_empty: "\{name\}()",
+  field_binding: "\{field\}=\{binding\}",
+  field_binding_separator: ", ",
+  wildcard: "_",
+  guard: " if \{cond\}",
+  or_pattern: "\{a\} | \{b\}"
+}
+
+data python_async: AsyncSyntax = AwaitBased {
+  async_fn_def: "async def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  await_expr: "await \{expr\}",
+  spawn_task: "asyncio.create_task(\{expr\})",
+  gather: "asyncio.gather(\{exprs\})"
+}
+
+data rust_collection_ops: CollectionOps = {
+  count: "\{recv\}.len()",
+  first: "\{recv\}.first().cloned()",
+  last: "\{recv\}.last().cloned()",
+  enumerate: "\{recv\}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()",
+  join: "\{recv\}.join(&\{arg\})",
+  map: "\{recv\}.into_iter().map(\{body\}).collect::<Vec<_>>()",
+  filter: "\{recv\}.into_iter().filter(\{body\}).collect::<Vec<_>>()",
+  flat_map: "\{recv\}.into_iter().flat_map(\{body\}).collect::<Vec<_>>()",
+  fold: "\{recv\}.into_iter().fold(\{init\}, \{body\})",
+  any: "\{recv\}.iter().any(\{body\})",
+  all: "\{recv\}.iter().all(\{body\})",
+  empty_list: "vec![]",
+  list_literal: "vec![\{elements\}]"
+}
+
+data rust_string_ops: StringOps = {
+  split: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
+  chars: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
+  concat: "format!(\"\{fmt\}\", \{args\})",
+  string_literal: "\"\{value\}\".to_string()",
+  string_interp: "format!(\"\{fmt\}\", \{args\})",
+  code_point: "\{recv\} as u32 as i64",
+  from_code_point: "char::from_u32(\{arg\} as u32).map(|c| c.to_string()).unwrap_or_default()"
+}
+
+data rust_map_ops: MapOps = {
+  empty_map: "HashMap::new()",
+  map_insert: "\{recv\}.insert(\{key\}, \{value\})",
+  map_get: "\{recv\}.get(&\{key\}).cloned()",
+  map_contains: "\{recv\}.contains_key(&\{key\})"
+}
+
+data rust_null_coalesce: NullCoalesceStrategy = MethodBased {
+  template: "\{lhs\}.unwrap_or_else(|| \{rhs\})"
+}
+
+data rust_reserved_words: ReservedWords = {
+  keywords: [
+    "as", "async", "await", "break", "const", "continue", "crate",
+    "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
+    "impl", "in", "let", "loop", "match", "mod", "move", "mut",
+    "pub", "ref", "return", "self", "Self", "static", "struct",
+    "super", "trait", "true", "type", "unsafe", "use", "where",
+    "while", "yield", "abstract", "become", "box", "do", "final",
+    "macro", "override", "priv", "try", "typeof", "unsized",
+    "virtual"
+  ],
+  strategy: SuffixEscape { suffix: "_" }
+}
+
+data rust_value_semantics: ValueSemantics = OwnershipBased {
+  reference_prefix: "&",
+  mutable_prefix: "mut ",
+  copy_primitives: ["Int", "Bool", "Float", "Unit"],
+  clone_expr: "\{0\}.clone()",
+  deref_clone_expr: "(*\{0\}).clone()",
+  field_clone_expr: "\{0\}.\{1\}.clone()",
+  iterator_clone_suffix: ".cloned()"
+}
+
+data rust_serialization: SerializationFramework = {
+  struct_derives: "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
+  enum_derives: "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
+  tag_attribute: "#[serde(tag = \"_variant\")]",
+  rename_attribute: "#[serde(rename = \"\{key\}\")]",
+  json_parse: "serde_json::from_str(\{input\})?",
+  json_emit: "serde_json::to_string(\{value\})?",
+  json_type: "serde_json::Value",
+  default_value: "Default::default()"
+}
+
+data rust_scaffold: ProjectScaffold = {
+  manifest_file: "Cargo.toml",
+  module_init_file: null,
+  source_file_extension: ".rs",
+  source_dir: "src/",
+  entry_point_file: "src/main.rs"
+}
+
+data rust_service_calls: ServiceCallSemantics = AwaitQuestion {
+  template: "\{call\}.await?"
+}
+
+data go_collection_ops: CollectionOps = {
+  count: "len(\{recv\})",
+  first: "\{recv\}[0]",
+  last: "\{recv\}[len(\{recv\})-1]",
+  enumerate: "\{recv\}",
+  join: "strings.Join(\{recv\}, \{arg\})",
+  map: "func() []interface{} { var r []interface{}; for _, v := range \{recv\} { r = append(r, \{body\}) }; return r }()",
+  filter: "func() []interface{} { var r []interface{}; for _, v := range \{recv\} { if \{body\} { r = append(r, v) } }; return r }()",
+  flat_map: "func() []interface{} { var r []interface{}; for _, v := range \{recv\} { r = append(r, \{body\}...) }; return r }()",
+  fold: "func() interface{} { acc := \{init\}; for _, v := range \{recv\} { acc = \{body\} }; return acc }()",
+  any: "func() bool { for _, v := range \{recv\} { if \{body\} { return true } }; return false }()",
+  all: "func() bool { for _, v := range \{recv\} { if !(\{body\}) { return false } }; return true }()",
+  empty_list: "nil",
+  list_literal: "[]\{type\}{ \{elements\} }"
+}
+
+data go_string_ops: StringOps = {
+  split: "strings.Split(\{recv\}, \{arg\})",
+  chars: "strings.Split(\{recv\}, \"\")",
+  concat: "fmt.Sprintf(\"\{fmt\}\", \{args\})",
+  string_literal: "\"\{value\}\"",
+  string_interp: "fmt.Sprintf(\"\{fmt\}\", \{args\})",
+  code_point: "int64([]rune(\{recv\})[0])",
+  from_code_point: "string(rune(\{arg\}))"
+}
+
+data go_map_ops: MapOps = {
+  empty_map: "make(map[\{key_type\}]\{value_type\})",
+  map_insert: "\{recv\}[\{key\}] = \{value\}",
+  map_get: "\{recv\}[\{key\}]",
+  map_contains: "func() bool { _, ok := \{recv\}[\{key\}]; return ok }()"
+}
+
+data go_null_coalesce: NullCoalesceStrategy = IIFEBased {
+  template: "func() interface{} { if \{lhs\} != nil { return \{lhs\} }; return \{rhs\} }()"
+}
+
+data go_reserved_words: ReservedWords = {
+  keywords: [
+    "break", "case", "chan", "const", "continue",
+    "default", "defer", "else", "fallthrough", "for",
+    "func", "go", "goto", "if", "import",
+    "interface", "map", "package", "range", "return",
+    "select", "struct", "switch", "type", "var",
+    "bool", "byte", "complex64", "complex128", "error",
+    "float32", "float64", "int", "int8", "int16", "int32", "int64",
+    "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
+    "uintptr", "true", "false", "iota", "nil",
+    "append", "cap", "close", "complex", "copy", "delete",
+    "imag", "len", "make", "new", "panic", "print", "println",
+    "real", "recover"
+  ],
+  strategy: NoEscape
+}
+
+data go_value_semantics: ValueSemantics = ValueBased {
+  pointer_prefix: "*"
+}
+
+data go_serialization: SerializationFramework = {
+  struct_derives: null,
+  enum_derives: null,
+  tag_attribute: null,
+  rename_attribute: null,
+  json_parse: "json.Unmarshal([]byte(\{input\}), &\{target\})",
+  json_emit: "json.Marshal(\{value\})",
+  json_type: "interface{}",
+  default_value: "nil"
+}
+
+data go_scaffold: ProjectScaffold = {
+  manifest_file: "go.mod",
+  module_init_file: null,
+  source_file_extension: ".go",
+  source_dir: null,
+  entry_point_file: "main.go"
+}
+
+data go_service_calls: ServiceCallSemantics = MultiReturnError {
+  template: "\{result\}, \{err\} := \{call\}"
+}
+
+data python_collection_ops: CollectionOps = {
+  count: "len(\{recv\})",
+  first: "\{recv\}[0] if \{recv\} else None",
+  last: "\{recv\}[-1] if \{recv\} else None",
+  enumerate: "list(enumerate(\{recv\}))",
+  join: "\{arg\}.join(\{recv\})",
+  map: "[\{body\} for \{param\} in \{recv\}]",
+  filter: "[x for x in \{recv\} if \{body\}]",
+  flat_map: "[item for sublist in [\{body\} for \{param\} in \{recv\}] for item in sublist]",
+  fold: "functools.reduce(\{body\}, \{recv\}, \{init\})",
+  any: "any(\{body\} for \{param\} in \{recv\})",
+  all: "all(\{body\} for \{param\} in \{recv\})",
+  empty_list: "[]",
+  list_literal: "[\{elements\}]"
+}
+
+data python_string_ops: StringOps = {
+  split: "\{recv\}.split(\{arg\})",
+  chars: "[ord(c) for c in \{recv\}]",
+  concat: "f\"\{fmt\}\"",
+  string_literal: "\"\{value\}\"",
+  string_interp: "f\"\{fmt\}\"",
+  code_point: "ord(\{recv\})",
+  from_code_point: "chr(\{arg\})"
+}
+
+data python_map_ops: MapOps = {
+  empty_map: "{}",
+  map_insert: "\{recv\}[\{key\}] = \{value\}",
+  map_get: "\{recv\}.get(\{key\})",
+  map_contains: "\{key\} in \{recv\}"
+}
+
+data python_null_coalesce: NullCoalesceStrategy = TernaryBased {
+  template: "(\{lhs\} if \{lhs\} is not None else \{rhs\})"
+}
+
+data python_reserved_words: ReservedWords = {
+  keywords: [
+    "False", "None", "True", "and", "as", "assert", "async", "await",
+    "break", "class", "continue", "def", "del", "elif", "else",
+    "except", "finally", "for", "from", "global", "if", "import",
+    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+    "return", "try", "while", "with", "yield",
+    "type", "match", "case"
+  ],
+  strategy: SuffixEscape { suffix: "_" }
+}
+
+data python_value_semantics: ValueSemantics = ReferenceBased
+
+data python_serialization: SerializationFramework = {
+  struct_derives: "@dataclass",
+  enum_derives: null,
+  tag_attribute: null,
+  rename_attribute: null,
+  json_parse: "json.loads(\{input\})",
+  json_emit: "json.dumps(\{value\})",
+  json_type: "dict",
+  default_value: "None"
+}
+
+data python_scaffold: ProjectScaffold = {
+  manifest_file: null,
+  module_init_file: "__init__.py",
+  source_file_extension: ".py",
+  source_dir: null,
+  entry_point_file: "__main__.py"
+}
+
+data python_service_calls: ServiceCallSemantics = AwaitPrefix {
+  template: "await \{call\}"
+}
+
+data rust_spec: LanguageSpec = {
+  language: rust_language,
+  statements: rust_statements,
+  expressions: rust_expressions,
+  control_flow: rust_control_flow,
+  literals: rust_literals,
+  modules: rust_modules,
+  functions: rust_functions,
+  errors: rust_errors,
+  type_defs: rust_type_defs,
+  patterns: rust_patterns,
+  async_model: rust_async,
+  collection_ops: rust_collection_ops,
+  string_ops: rust_string_ops,
+  map_ops: rust_map_ops,
+  null_coalesce: rust_null_coalesce,
+  reserved_words: rust_reserved_words,
+  value_semantics: rust_value_semantics,
+  serialization: rust_serialization,
+  scaffold: rust_scaffold,
+  service_calls: rust_service_calls
+}
+
+data go_spec: LanguageSpec = {
+  language: go_language,
+  statements: go_statements,
+  expressions: go_expressions,
+  control_flow: go_control_flow,
+  literals: go_literals,
+  modules: go_modules,
+  functions: go_functions,
+  errors: go_errors,
+  type_defs: go_type_defs,
+  patterns: go_patterns,
+  async_model: go_async,
+  collection_ops: go_collection_ops,
+  string_ops: go_string_ops,
+  map_ops: go_map_ops,
+  null_coalesce: go_null_coalesce,
+  reserved_words: go_reserved_words,
+  value_semantics: go_value_semantics,
+  serialization: go_serialization,
+  scaffold: go_scaffold,
+  service_calls: go_service_calls
+}
+
+data python_spec: LanguageSpec = {
+  language: python_language,
+  statements: python_statements,
+  expressions: python_expressions,
+  control_flow: python_control_flow,
+  literals: python_literals,
+  modules: python_modules,
+  functions: python_functions,
+  errors: python_errors,
+  type_defs: python_type_defs,
+  patterns: python_patterns,
+  async_model: python_async,
+  collection_ops: python_collection_ops,
+  string_ops: python_string_ops,
+  map_ops: python_map_ops,
+  null_coalesce: python_null_coalesce,
+  reserved_words: python_reserved_words,
+  value_semantics: python_value_semantics,
+  serialization: python_serialization,
+  scaffold: python_scaffold,
+  service_calls: python_service_calls
+}
+
+data markdown_format: MarkupFormat = {
+  id: "markdown",
+  name: "Markdown",
+  extensions: [".md", ".markdown"],
+  comment: {
+    line_prefix: null,
+    block_start: "<!-- ",
+    block_end: " -->",
+    doc_prefix: null
+  },
+  code_fence: "```"
+}
+
+data html_format: MarkupFormat = {
+  id: "html",
+  name: "HTML",
+  extensions: [".html", ".htm"],
+  comment: {
+    line_prefix: null,
+    block_start: "<!-- ",
+    block_end: " -->",
+    doc_prefix: null
+  },
+  code_fence: null
+}
+
+data yaml_format: ConfigFormat = {
+  id: "yaml",
+  name: "YAML",
+  extensions: [".yml", ".yaml"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  },
+  record: { assign: ": ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: null }
+}
+
+data toml_format: ConfigFormat = {
+  id: "toml",
+  name: "TOML",
+  extensions: [".toml"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  },
+  record: { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: "\"" }
+}
+
+data makefile_format: ConfigFormat = {
+  id: "makefile",
+  name: "Makefile",
+  extensions: ["Makefile", "*.mk"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  },
+  record: { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: null }
+}
+
+data gitignore_format: ConfigFormat = {
+  id: "gitignore",
+  name: "Gitignore",
+  extensions: [".gitignore"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  },
+  record: null
+}
+
+data css_format: ConfigFormat = {
+  id: "css",
+  name: "CSS",
+  extensions: [".css"],
+  comment: {
+    line_prefix: null,
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: null
+  },
+  record: null
+}
+
+data json_record_knobs: SerializationKnobs = {
+  assign: ": ",
+  entry_separator: ", ",
+  open: "{",
+  close: "}",
+  quote_keys: true,
+  value_quote: "\""
+}

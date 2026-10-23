@@ -1,0 +1,21 @@
+module test.fixture.primitive_egress_decoy.decoy
+
+fn scan_to_eol(s: String, start: Int) -> Int {
+  start
+}
+
+fn decoy_caller() -> Int {
+  scan_to_eol(s: "ab", start: 1)
+}
+
+fn free_call_consumer() -> Int {
+  count([1, 2, 3])
+}
+
+fn method_form_consumer() -> Int {
+  [1, 2] |> count
+}
+
+fn aliased_spelling_consumer() -> Bool {
+  map_has(empty_map(), "k")
+}

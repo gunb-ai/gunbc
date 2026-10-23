@@ -1,0 +1,710 @@
+module v2.lens.leaf_model_verification
+
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.extdeps.languages.rust { rust_target_model_staging }
+
+
+
+data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"
+
+data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \"string\" }\n"
+
+fn rust_r1_happy_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r1_happy_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r1_falsification_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r1_falsification_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r1_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r1_i32_surface_spelling,
+    surface_spelling_fact: ^rust_surface_spelling_i32,
+    coercion_spelling_fact: ^rust_coercion_field_i32_spelling,
+    happy: rust_r1_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r1_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: ^target_diagnostic_e0308_type_mismatch
+      }
+    }
+  }
+}
+
+fn rust_r1_fixture() -> LeafModelFixturePair {
+  rust_r1_fixture_pair()
+}
+
+data python_r1_happy_fixture_source: String = "def r1_test() -> int:\n    return 0\n"
+
+data python_r1_falsification_fixture_source: String = "def r1_test() -> i32:\n    return 0\n"
+
+fn python_r1_happy_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r1_happy_fixture_source }
+}
+
+fn python_r1_falsification_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r1_falsification_fixture_source }
+}
+
+fn python_r1_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r1_int_surface_spelling,
+    surface_spelling_fact: ^python_surface_spelling_int,
+    encoding_spelling_fact: ^python_facts_field_encoding,
+    happy: python_r1_happy_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r1_falsification_fixture(),
+      expected_verdict: TargetPythonExecRejected {
+        diagnostic_code: ^target_diagnostic_python_name_error_undefined_name
+      }
+    }
+  }
+}
+
+fn python_r1_fixture() -> LeafModelPythonFixturePair {
+  python_r1_fixture_pair()
+}
+
+data python_r2a_happy_fixture_source: String = "def r2a_test(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n"
+
+data python_r2a_falsification_fixture_source: String = "def r2a_test(a: int) -> int:\n    return a.log2_exact()\n\nif __name__ == \"__main__\":\n    r2a_test(1)\n"
+
+fn python_r2a_happy_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r2a_happy_fixture_source }
+}
+
+fn python_r2a_falsification_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r2a_falsification_fixture_source }
+}
+
+fn python_r2a_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r2a_int_algebra_operations,
+    surface_spelling_fact: ^python_integer_algebra_inhabitance_python_facts_int,
+    encoding_spelling_fact: ^python_integer_algebra_inhabitance_python_facts_int,
+    happy: python_r2a_happy_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r2a_falsification_fixture(),
+      expected_verdict: TargetPythonExecRejected {
+        diagnostic_code: ^target_diagnostic_python_attribute_error_method_not_found
+      }
+    }
+  }
+}
+
+fn python_r2a_fixture() -> LeafModelPythonFixturePair {
+  python_r2a_fixture_pair()
+}
+
+data python_r2b_runtime_fixture_source: String = "def r2b_test() -> int:\n    return (2**63 - 1) + 1\n\nif __name__ == \"__main__\":\n    assert r2b_test() == 2**63\n"
+
+fn python_r2b_runtime_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r2b_runtime_fixture_source }
+}
+
+fn python_r2b_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r2b_int_arbitrary_precision_add,
+    surface_spelling_fact: ^python_integer_algebra_inhabitance_python_facts_int,
+    encoding_spelling_fact: ^python_integer_algebra_inhabitance_python_facts_int,
+    happy: python_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r2b_runtime_fixture(),
+      expected_verdict: TargetPythonExerciseAccepted
+    }
+  }
+}
+
+fn python_r2b_fixture() -> LeafModelPythonFixturePair {
+  python_r2b_fixture_pair()
+}
+
+data python_cross_runtime_drift_python_source: String = "def add_exact(a: int, b: int) -> int:\n    return a + b\n\nif __name__ == \"__main__\":\n    print(add_exact((2 ** 63) - 1, 1))\n"
+
+data python_cross_runtime_drift_rust_source: String = "fn add_exact(a: i64, b: i64) -> i64 { a.wrapping_add(b) }\nfn main() {\n    println!(\"{}\", add_exact(i64::MAX, 1));\n}\n"
+
+data python_cross_runtime_drift_go_source: String = "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\nfunc addExact(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tfmt.Println(addExact(math.MaxInt64, 1))\n}\n"
+
+data python_cross_runtime_drift_arbitrary_precision_value: String = "9223372036854775808"
+
+data python_cross_runtime_drift_fixed_width_value: String = "-9223372036854775808"
+
+fn python_cross_runtime_drift_probe() -> LeafModelCrossRuntimeDriftProbe {
+  LeafModelCrossRuntimeDriftProbe {
+    claim_id: leaf_model_claim_python_cross_runtime_drift_arbitrary_precision,
+    arbitrary_precision_fact: ^python_repr_int_arbitrary_precision,
+    fixed_width_rust_fact: ^rust_repr_integer_twos_complement,
+    fixed_width_go_fact: ^go_repr_twos_complement_integer,
+    arbitrary_precision_source: python_cross_runtime_drift_python_source,
+    fixed_width_rust_source: python_cross_runtime_drift_rust_source,
+    fixed_width_go_source: python_cross_runtime_drift_go_source,
+    expected_divergence: ValueDiff {
+      expected: python_cross_runtime_drift_arbitrary_precision_value,
+      actual: python_cross_runtime_drift_fixed_width_value
+    }
+  }
+}
+
+data python_l2_parity_r2a_python_source: String = "def add_small(a: int, b: int) -> int:\n    return a + b\n\nif __name__ == \"__main__\":\n    print(add_small(2, 3))\n"
+data python_l2_parity_r2a_rust_source: String = "fn add_small(a: i64, b: i64) -> i64 { a + b }\nfn main() {\n    println!(\"{}\", add_small(2, 3));\n}\n"
+data python_l2_parity_r2a_go_source: String = "package main\n\nimport \"fmt\"\n\nfunc addSmall(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tfmt.Println(addSmall(2, 3))\n}\n"
+data python_l2_parity_r2a_value: String = "5"
+
+data python_l2_parity_r3_python_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef project() -> str:\n    return Symbol(\"x\").value\n\nif __name__ == \"__main__\":\n    print(project())\n"
+data python_l2_parity_r3_rust_source: String = "struct Symbol { value: String }\nfn project() -> String { Symbol { value: \"x\".to_string() }.value }\nfn main() {\n    println!(\"{}\", project());\n}\n"
+data python_l2_parity_r3_go_source: String = "package main\n\nimport \"fmt\"\n\ntype Symbol struct { value string }\n\nfunc project() string { return Symbol{ value: \"x\" }.value }\n\nfunc main() {\n\tfmt.Println(project())\n}\n"
+data python_l2_parity_r3_value: String = "x"
+
+fn python_l2_parity_r2a_probe() -> LeafModelCrossTargetParityProbe {
+  LeafModelCrossTargetParityProbe {
+    claim_id: leaf_model_claim_python_l2_cross_target_parity_r2a_add,
+    python_fact: ^python_repr_int_arbitrary_precision,
+    rust_fact: ^rust_repr_integer_twos_complement,
+    go_fact: ^go_repr_twos_complement_integer,
+    python_source: python_l2_parity_r2a_python_source,
+    rust_source: python_l2_parity_r2a_rust_source,
+    go_source: python_l2_parity_r2a_go_source,
+    expected_parity: ValueDiff {
+      expected: python_l2_parity_r2a_value,
+      actual: python_l2_parity_r2a_value
+    }
+  }
+}
+
+fn python_l2_parity_r3_probe() -> LeafModelCrossTargetParityProbe {
+  LeafModelCrossTargetParityProbe {
+    claim_id: leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection,
+    python_fact: ^python_atom_realization_symbol,
+    rust_fact: ^rust_atom_realization_symbol,
+    go_fact: ^go_atom_realization_symbol,
+    python_source: python_l2_parity_r3_python_source,
+    rust_source: python_l2_parity_r3_rust_source,
+    go_source: python_l2_parity_r3_go_source,
+    expected_parity: ValueDiff {
+      expected: python_l2_parity_r3_value,
+      actual: python_l2_parity_r3_value
+    }
+  }
+}
+
+fn python_l2_parity_probe_roster() -> List<LeafModelCrossTargetParityProbe> {
+  [
+    python_l2_parity_r2a_probe(),
+    python_l2_parity_r3_probe()
+  ]
+}
+
+data python_r3_external_happy_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(\"x\")\n\nif __name__ == \"__main__\":\n    r3_test()\n"
+
+data python_r3_external_falsification_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(1, 2)\n\nif __name__ == \"__main__\":\n    r3_test()\n"
+
+fn python_r3_external_happy_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r3_external_happy_fixture_source }
+}
+
+fn python_r3_external_falsification_fixture() -> LeafModelPythonFixture {
+  LeafModelPythonFixture { source: python_r3_external_falsification_fixture_source }
+}
+
+fn python_r3_external_fixture_pair() -> LeafModelPythonFixturePair {
+  LeafModelPythonFixturePair {
+    claim_id: leaf_model_claim_python_r3_external_symbol_projection,
+    surface_spelling_fact: ^python_atom_realization_symbol,
+    encoding_spelling_fact: ^python_atom_realization_symbol,
+    happy: python_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetPythonExerciseAccepted,
+    falsification: LeafModelPythonFalsificationCase {
+      fixture: python_r3_external_falsification_fixture(),
+      expected_verdict: TargetPythonExecRejected {
+        diagnostic_code: ^target_diagnostic_python_type_error_init_arity_mismatch
+      }
+    }
+  }
+}
+
+fn python_r3_external_fixture() -> LeafModelPythonFixturePair {
+  python_r3_external_fixture_pair()
+}
+
+data typescript_r2a_happy_fixture_source: String = "function r2a_test(a: number, b: number): [number, boolean] { return [a + b, a < b]; }\n"
+
+data typescript_r2a_falsification_fixture_source: String = "function r2a_test(a: number): number { return a.log2_exact(); }\n"
+
+fn typescript_r2a_happy_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r2a_happy_fixture_source }
+}
+
+fn typescript_r2a_falsification_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r2a_falsification_fixture_source }
+}
+
+fn typescript_r2a_fixture_pair() -> LeafModelTypeScriptFixturePair {
+  LeafModelTypeScriptFixturePair {
+    claim_id: leaf_model_claim_ts_r2a_number_algebra_operations,
+    surface_spelling_fact: ^ts_number_algebra_inhabitance_ts_facts_number,
+    encoding_spelling_fact: ^ts_number_algebra_inhabitance_ts_facts_number,
+    happy: typescript_r2a_happy_fixture(),
+    expected_happy_verdict: TargetTypeScriptCompileAccepted,
+    falsification: LeafModelTypeScriptFalsificationCase {
+      fixture: typescript_r2a_falsification_fixture(),
+      expected_verdict: TargetTypeScriptCompileRejected {
+        diagnostic_code: ^target_diagnostic_ts2339_property_does_not_exist
+      }
+    }
+  }
+}
+
+fn typescript_r2a_fixture() -> LeafModelTypeScriptFixturePair {
+  typescript_r2a_fixture_pair()
+}
+
+data typescript_r2b_runtime_happy_fixture_source: String = "const ok = (2n ** 63n - 1n) + 1n === 2n ** 63n;\nif (!ok) { console.error(\"r2b bigint lane failed\"); process.exit(1); }\n"
+
+data typescript_r2b_runtime_falsification_fixture_source: String = "const bigintExact = (2n ** 63n + 1n) === 2n ** 63n;\nconst numberLane = (2 ** 63 + 1) === 2 ** 63;\nif (bigintExact || !numberLane) { console.error(\"expected bigint inequality and number-lane IEEE754 false positive\"); process.exit(1); }\n"
+
+fn typescript_r2b_runtime_happy_fixture() -> LeafModelTypeScriptRuntimeFixture {
+  LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_happy_fixture_source }
+}
+
+fn typescript_r2b_runtime_falsification_fixture() -> LeafModelTypeScriptRuntimeFixture {
+  LeafModelTypeScriptRuntimeFixture { source: typescript_r2b_runtime_falsification_fixture_source }
+}
+
+fn typescript_r2b_runtime_fixture_pair() -> LeafModelTypeScriptRuntimeFixturePair {
+  LeafModelTypeScriptRuntimeFixturePair {
+    claim_id: leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
+    surface_spelling_fact: ^ts_bigint_algebra_inhabitance_ts_facts_bigint,
+    encoding_spelling_fact: ^ts_bigint_algebra_inhabitance_ts_facts_bigint,
+    happy: typescript_r2b_runtime_happy_fixture(),
+    expected_happy_verdict: TargetRuntimeExerciseAccepted,
+    falsification: typescript_r2b_runtime_falsification_fixture(),
+
+    expected_falsification_verdict: TargetRuntimeExerciseAccepted
+  }
+}
+
+fn typescript_r2b_fixture() -> LeafModelTypeScriptRuntimeFixturePair {
+  typescript_r2b_runtime_fixture_pair()
+}
+
+data typescript_r3_external_happy_fixture_source: String = "const s: symbol = Symbol(\"x\");\n"
+
+data typescript_r3_external_falsification_fixture_source: String = "const s: symbol = new Symbol(\"x\");\n"
+
+fn typescript_r3_external_happy_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r3_external_happy_fixture_source }
+}
+
+fn typescript_r3_external_falsification_fixture() -> LeafModelTypeScriptFixture {
+  LeafModelTypeScriptFixture { source: typescript_r3_external_falsification_fixture_source }
+}
+
+fn typescript_r3_external_fixture_pair() -> LeafModelTypeScriptFixturePair {
+  LeafModelTypeScriptFixturePair {
+    claim_id: leaf_model_claim_ts_r3_external_symbol_projection,
+    surface_spelling_fact: ^ts_atom_realization_symbol,
+    encoding_spelling_fact: ^ts_atom_realization_symbol,
+    happy: typescript_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetTypeScriptCompileAccepted,
+    falsification: LeafModelTypeScriptFalsificationCase {
+      fixture: typescript_r3_external_falsification_fixture(),
+      expected_verdict: TargetTypeScriptCompileRejected {
+        diagnostic_code: ^target_diagnostic_ts7009_new_expression_not_constructable
+      }
+    }
+  }
+}
+
+fn typescript_r3_external_fixture() -> LeafModelTypeScriptFixturePair {
+  typescript_r3_external_fixture_pair()
+}
+
+data rust_r2a_happy_fixture_source: String = "pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }\n"
+
+data rust_r2a_falsification_fixture_source: String = "pub fn r2a_test(a: i32) -> i32 { a.log2_exact() }\n"
+
+fn rust_r2a_happy_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r2a_happy_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r2a_falsification_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r2a_falsification_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r2a_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r2a_i32_algebra_operations,
+    surface_spelling_fact: ^rust_integer_algebra_inhabitance_rust_facts_i32,
+    coercion_spelling_fact: ^rust_integer_algebra_inhabitance_rust_facts_i32,
+    happy: rust_r2a_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r2a_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: ^target_diagnostic_e0599_method_not_found
+      }
+    }
+  }
+}
+
+fn rust_r2a_fixture() -> LeafModelFixturePair {
+  rust_r2a_fixture_pair()
+}
+
+data rust_r2b_runtime_fixture_source: String = "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }\npub fn main() { let _ = r2b_test(i32::MAX, 1); }\n"
+
+fn rust_r2b_runtime_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r2b_runtime_fixture_source,
+    crate_type: leaf_model_rust_crate_type_bin
+  }
+}
+
+fn rust_r2b_debug_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r2b_debug_default_overflow,
+    surface_spelling_fact: ^rust_integer_algebra_inhabitance_rust_facts_i32,
+    coercion_spelling_fact: ^rust_integer_algebra_inhabitance_rust_facts_i32,
+    happy: rust_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r2b_runtime_fixture(),
+      expected_verdict: TargetCompileAccepted
+    }
+  }
+}
+
+fn rust_r2b_release_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r2b_release_default_overflow,
+    surface_spelling_fact: ^rust_integer_algebra_inhabitance_rust_facts_i32,
+    coercion_spelling_fact: ^rust_integer_algebra_inhabitance_rust_facts_i32,
+    happy: rust_r2b_runtime_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r2b_runtime_fixture(),
+      expected_verdict: TargetCompileAccepted
+    }
+  }
+}
+
+fn rust_r2b_debug_fixture() -> LeafModelFixturePair {
+  rust_r2b_debug_fixture_pair()
+}
+
+fn rust_r2b_release_fixture() -> LeafModelFixturePair {
+  rust_r2b_release_fixture_pair()
+}
+
+data rust_r3_external_happy_fixture_source: String = "pub struct Symbol(pub String);\npub fn r3_test() -> Symbol { Symbol(\"x\".to_string()) }\n"
+
+data rust_r3_external_falsification_fixture_source: String = "pub type Symbol = String;\npub fn r3_test() -> Symbol { Symbol(\"x\") }\n"
+
+fn rust_r3_external_happy_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r3_external_happy_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r3_external_falsification_fixture() -> LeafModelRustFixture {
+  LeafModelRustFixture {
+    source: rust_r3_external_falsification_fixture_source,
+    crate_type: leaf_model_rust_crate_type_lib
+  }
+}
+
+fn rust_r3_external_fixture_pair() -> LeafModelFixturePair {
+  LeafModelFixturePair {
+    claim_id: leaf_model_claim_rust_r3_external_symbol_projection,
+    surface_spelling_fact: ^rust_atom_realization_symbol,
+    coercion_spelling_fact: ^rust_atom_realization_symbol,
+    happy: rust_r3_external_happy_fixture(),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelFalsificationCase {
+      fixture: rust_r3_external_falsification_fixture(),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: ^target_diagnostic_e0423_expected_value_found_type
+      }
+    }
+  }
+}
+
+fn rust_r3_external_fixture() -> LeafModelFixturePair {
+  rust_r3_external_fixture_pair()
+}
+
+data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
+  source_carrier: symbol_kernel_type_node(),
+  target_model: rust_target_model_staging(),
+  type_form: rust_target_atom_type_form(spelling: ^rust_r3_internal_mutated_type_spelling),
+  value_form: target_value_template_for_kind(kind: ValueSymbolIdentityPassthrough),
+  constructor_form: optional_absent(),
+  display_name: ^symbol_kernel_type_atom
+}
+
+fn rust_r3_internal_value_emit_kind_label(row: TargetAtomRealization) -> Symbol {
+  let probe = source_atom_symbol(identity: ^rust_r3_internal_probe_symbol_identity)
+  match target_atom_value_expression(row: row, value: probe) {
+    Accepted { value: expr } => discriminant(v: expr.kind)
+    Rejected { diagnostics: _ } => ^rust_r3_internal_emit_kind_rejected
+  }
+}
+
+data rust_r3_internal_baseline_type_emit: Symbol = target_atom_type_spelling(row: rust_target_atom_realization_symbol)
+
+data rust_r3_internal_mutated_type_emit: Symbol = target_atom_type_spelling(row: rust_r3_internal_mutated_row)
+
+data rust_r3_internal_baseline_value_emit_kind: Symbol = rust_r3_internal_value_emit_kind_label(row: rust_target_atom_realization_symbol)
+
+data rust_r3_internal_mutated_value_emit_kind: Symbol = rust_r3_internal_value_emit_kind_label(row: rust_r3_internal_mutated_row)
+
+fn rust_r3_internal_emit_coupling_both_projections_changed(receipt: LeafModelEmitCouplingReceipt) -> Bool {
+  receipt.baseline_type_emit != receipt.mutated_type_emit
+  && receipt.baseline_value_emit_kind != receipt.mutated_value_emit_kind
+}
+
+fn rust_r3_internal_emit_coupling_receipt() -> LeafModelEmitCouplingReceipt {
+  LeafModelEmitCouplingReceipt {
+    claim_id: leaf_model_claim_rust_r3_internal_symbol_coupling,
+    atom_realization_fact: ^rust_atom_realization_symbol,
+    baseline_type_emit: rust_r3_internal_baseline_type_emit,
+    mutated_type_emit: rust_r3_internal_mutated_type_emit,
+    baseline_value_emit_kind: rust_r3_internal_baseline_value_emit_kind,
+    mutated_value_emit_kind: rust_r3_internal_mutated_value_emit_kind
+  }
+}
+
+fn rust_r3_internal_fixture() -> LeafModelEmitCouplingReceipt {
+  rust_r3_internal_emit_coupling_receipt()
+}
+
+data go_r1_happy_fixture_source: String = "package leafmodel\n\nfunc r1() int { return 0 }\n"
+
+data go_r1_falsification_fixture_source: String = "package leafmodel\n\nfunc r1() i32 { return 0 }\n"
+
+fn go_build_fixture(source: String) -> LeafModelGoBuildFixture {
+  LeafModelGoBuildFixture { source: source }
+}
+
+fn go_run_fixture(source: String) -> LeafModelGoRunFixture {
+  LeafModelGoRunFixture { source: source }
+}
+
+fn go_leaf_model_fact_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn go_r2a_algebra_inhabitance_fact_node() -> Node {
+  let decl = go_integer_algebra_inhabitance(facts: go_facts_int)
+  algebra_inhabitance_node(algebra: decl.algebra, inhabitant: decl.inhabitant)
+}
+
+fn go_r1_fixture_pair() -> LeafModelGoCompileFixturePair {
+  LeafModelGoCompileFixturePair {
+    claim_id: leaf_model_claim_go_r1_int_surface_spelling,
+    fact_anchor: go_leaf_model_fact_atom(id: ^go_surface_spelling_int),
+    happy: go_build_fixture(source: go_r1_happy_fixture_source),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoCompileFalsificationCase {
+      fixture: go_build_fixture(source: go_r1_falsification_fixture_source),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: ^target_diagnostic_go_undefined_type
+      }
+    }
+  }
+}
+
+fn go_r1_fixture() -> LeafModelGoCompileFixturePair {
+  go_r1_fixture_pair()
+}
+
+data go_r2a_claim_algebra_inhabitance_fact: Node = go_r2a_algebra_inhabitance_fact_node()
+
+data go_r2a_happy_fixture_source: String = "package leafmodel\n\nfunc r2a(a int, b int) (int, bool) { return a + b, a < b }\n"
+
+data go_r2a_falsification_fixture_source: String = "package leafmodel\n\nfunc r2a(a int) int { return a.log2_exact() }\n"
+
+fn go_r2a_fixture_pair() -> LeafModelGoCompileFixturePair {
+  LeafModelGoCompileFixturePair {
+    claim_id: leaf_model_claim_go_r2a_int_algebra_operations,
+    fact_anchor: go_r2a_claim_algebra_inhabitance_fact,
+    happy: go_build_fixture(source: go_r2a_happy_fixture_source),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoCompileFalsificationCase {
+      fixture: go_build_fixture(source: go_r2a_falsification_fixture_source),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: ^target_diagnostic_go_undefined_method
+      }
+    }
+  }
+}
+
+fn go_r2a_fixture() -> LeafModelGoCompileFixturePair {
+  go_r2a_fixture_pair()
+}
+
+data go_r2b_claim_overflow_fact: Node = go_integer_facts_node(facts: go_facts_int64)
+
+data go_r2b_happy_fixture_source: String = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(math.MinInt64)\n    if got != want {\n        panic(\"silent signed wrap: expected MinInt64\")\n    }\n}\n"
+
+data go_r2b_falsification_fixture_source: String = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(0)\n    if got != want {\n        panic(\"deliberately wrong expected wrap value\")\n    }\n}\n"
+
+fn go_r2b_fixture_pair() -> LeafModelGoRuntimeFixturePair {
+  LeafModelGoRuntimeFixturePair {
+    claim_id: leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
+    fact_anchor: go_r2b_claim_overflow_fact,
+    happy: go_run_fixture(source: go_r2b_happy_fixture_source),
+    expected_happy_verdict: TargetRuntimeExerciseAccepted,
+    falsification: LeafModelGoRuntimeFalsificationCase {
+      fixture: go_run_fixture(source: go_r2b_falsification_fixture_source),
+      expected_verdict: TargetRuntimeExerciseRejected {
+        diagnostic_code: ^target_diagnostic_go_runtime_panic
+      }
+    }
+  }
+}
+
+fn go_r2b_fixture() -> LeafModelGoRuntimeFixturePair {
+  go_r2b_fixture_pair()
+}
+
+data go_r3_external_happy_fixture_source: String = "package leafmodel\n\nfunc r3() string { return \"x\" }\n"
+
+data go_r3_external_falsification_fixture_source: String = "package leafmodel\n\nfunc r3() string { return string(\"x\", \"y\") }\n"
+
+fn go_r3_external_fixture_pair() -> LeafModelGoCompileFixturePair {
+  LeafModelGoCompileFixturePair {
+    claim_id: leaf_model_claim_go_r3_external_symbol_projection,
+    fact_anchor: go_leaf_model_fact_atom(id: ^go_atom_realization_symbol),
+    happy: go_build_fixture(source: go_r3_external_happy_fixture_source),
+    expected_happy_verdict: TargetCompileAccepted,
+    falsification: LeafModelGoCompileFalsificationCase {
+      fixture: go_build_fixture(source: go_r3_external_falsification_fixture_source),
+      expected_verdict: TargetCompileRejected {
+        diagnostic_code: ^target_diagnostic_go_invalid_conversion_arity
+      }
+    }
+  }
+}
+
+fn go_r3_external_fixture() -> LeafModelGoCompileFixturePair {
+  go_r3_external_fixture_pair()
+}
+
+data python_l1_static_happy_fixture_source: String = "def l1_test() -> int:\n    return 0\n"
+data python_l1_static_falsification_fixture_source: String = "def l1_test() -> int:\n    return \"not an int\"\n"
+
+fn python_l1_static_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_return_type,
+    surface_spelling_fact: ^python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
+      tool_profile_ref: ^pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
+      tool_profile_ref: ^pyright_profile_l1_id,
+      tool_id: ^pyright_tool_id,
+      diagnostic_code: ^pyright_diag_report_return_type
+    }
+  }
+}
+
+fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
+  python_l1_static_fixture_pair()
+}
+
+data python_l1_static_undefined_variable_happy_fixture_source: String = "def l1_undefined_variable() -> int:\n    bound = 0\n    return bound\n"
+data python_l1_static_undefined_variable_falsification_fixture_source: String = "def l1_undefined_variable() -> int:\n    return undefined_symbol\n"
+
+data python_l1_static_missing_import_happy_fixture_source: String = "def l1_missing_import() -> int:\n    import math\n    return int(math.floor(1.0))\n"
+data python_l1_static_missing_import_falsification_fixture_source: String = "def l1_missing_import() -> int:\n    import totally_not_a_real_module_xyz\n    return totally_not_a_real_module_xyz.value\n"
+
+fn python_l1_static_undefined_variable_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_undefined_variable,
+    surface_spelling_fact: ^python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_happy_fixture_source },
+      tool_profile_ref: ^pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_undefined_variable_falsification_fixture_source },
+      tool_profile_ref: ^pyright_profile_l1_id,
+      tool_id: ^pyright_tool_id,
+      diagnostic_code: ^pyright_diag_report_undefined_variable
+    }
+  }
+}
+
+fn python_l1_static_missing_import_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_missing_import,
+    surface_spelling_fact: ^python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_missing_import_happy_fixture_source },
+      tool_profile_ref: ^pyright_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_missing_import_falsification_fixture_source },
+      tool_profile_ref: ^pyright_profile_l1_id,
+      tool_id: ^pyright_tool_id,
+      diagnostic_code: ^pyright_diag_report_missing_imports
+    }
+  }
+}
+
+fn python_l1_static_fixture_roster() -> List<LeafModelPythonStaticFixturePair> {
+  [
+    python_l1_static_fixture_pair(),
+    python_l1_static_undefined_variable_fixture_pair(),
+    python_l1_static_missing_import_fixture_pair()
+  ]
+}
+
+fn python_l1_static_mypy_fixture_pair() -> LeafModelPythonStaticFixturePair {
+  LeafModelPythonStaticFixturePair {
+    claim_id: leaf_model_claim_python_l1_static_return_type,
+    surface_spelling_fact: ^python_surface_spelling_int,
+    happy: LeafModelPythonStaticHappyCase {
+      artifact: TargetArtifact { source_text: python_l1_static_happy_fixture_source },
+      tool_profile_ref: ^mypy_profile_l1_id
+    },
+    falsification: LeafModelPythonStaticFalsificationCase {
+      artifact: TargetArtifact { source_text: python_l1_static_falsification_fixture_source },
+      tool_profile_ref: ^mypy_profile_l1_id,
+      tool_id: ^mypy_tool_id,
+      diagnostic_code: ^mypy_diag_return_value
+    }
+  }
+}
+
+fn python_l1_static_mypy_fixture() -> LeafModelPythonStaticFixturePair {
+  python_l1_static_mypy_fixture_pair()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

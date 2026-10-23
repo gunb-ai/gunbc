@@ -1,0 +1,107 @@
+module extdeps.apt
+
+import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.resources { Network }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/testing/apt/apt.8.en.html"
+  }
+}
+
+data apt_bin_dir: FilePath = "/usr/bin"
+data apt_local_bin_dir: FilePath = "/usr/local/bin"
+data apt_sbin_dir: FilePath = "/usr/sbin"
+
+// An apt package's binary path is the directory its SourceApt row declares (apt_bin_dir for most,
+// apt_sbin_dir for administrative tools such as nfct) plus the binary name. The directory is a
+// parameter because it is a fact about the package, not a constant of apt.
+fn apt_installed_bin_path(bin_dir: FilePath, binary: NonEmptyStr) -> FilePath {
+  concat(bin_dir as String, concat("/", binary as String)) as FilePath
+}
+
+data package_coreutils: NonEmptyStr = "coreutils"     
+data package_grep: NonEmptyStr = "grep"               
+data package_diffutils: NonEmptyStr = "diffutils"     
+data package_cargo: NonEmptyStr = "cargo"
+data package_rustc: NonEmptyStr = "rustc"
+
+data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
+data package_tailscale: NonEmptyStr = "tailscale"
+data package_nodejs: NonEmptyStr = "nodejs"
+data package_npm: NonEmptyStr = "npm"
+data package_tmux: NonEmptyStr = "tmux"
+data package_curl: NonEmptyStr = "curl"
+data package_nbdkit: NonEmptyStr = "nbdkit"
+data package_socat: NonEmptyStr = "socat"
+data package_sshpass: NonEmptyStr = "sshpass"
+data package_unzip: NonEmptyStr = "unzip"
+data package_xz_utils: NonEmptyStr = "xz-utils"
+data package_openssl: NonEmptyStr = "openssl"
+data package_gh: NonEmptyStr = "gh"
+data package_mosquitto_clients: NonEmptyStr = "mosquitto-clients"
+data package_websocat: NonEmptyStr = "websocat"
+data package_xorriso: NonEmptyStr = "xorriso"
+data package_google_cloud_cli: NonEmptyStr = "google-cloud-cli"
+data package_busybox: NonEmptyStr = "busybox-static"
+data package_gcc_arm_linux_gnueabi: NonEmptyStr = "gcc-arm-linux-gnueabi"
+
+data package_jq: NonEmptyStr = "jq"
+data package_nfct: NonEmptyStr = "nfct"
+data package_conntrack: NonEmptyStr = "conntrack"
+data package_iptables: NonEmptyStr = "iptables"
+data package_nftables: NonEmptyStr = "nftables"
+
+data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
+
+data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
+
+// apt_install_argv was DELETED here for the reason dpkg.dag's Status row states: it was this
+// Install row's argv authored a second time, and its last consumer now binds `package` against
+// this declaration instead. InstallExactNonRemoving follows SimulateInstall's selection and
+// removal policy and keeps needrestart in list-only mode during supervised host maintenance.
+service apt.PackageManager {
+  operation ShowExact {
+    input { selection: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    readonly
+    transport shell { argv: ["apt-cache", "show", "--no-all-versions", "{selection}"] }
+    exit { 0 => Unit nonzero => String "apt-cache could not read the selected version" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no package metadata supplied" } "no fabricated package candidate" }
+  }
+  operation SimulateInstall {
+    input { selection: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    readonly
+    transport shell { argv: ["env", "LC_ALL=C", "apt-get", "--simulate", "--no-install-recommends", "--no-remove", "install", "{selection}"] }
+    exit { 0 => Unit nonzero => String "apt-get simulation refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no package plan supplied" } "no fabricated install simulation" }
+  }
+  operation Install {
+    requires Network
+    input { package: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["apt-get", "install", "--yes", "{package}"] }
+    exit {
+      0 => Unit
+      100 => String "apt-get install failed (lock held, fetch error, or unmet dependency)"
+      nonzero => String "apt-get install failed"
+    }
+  }
+  operation InstallExactNonRemoving {
+    requires Network
+    input { selection: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    transport shell { argv: ["env", "LC_ALL=C", "DEBIAN_FRONTEND=noninteractive", "NEEDRESTART_MODE=l", "apt-get", "--yes", "--no-install-recommends", "--no-remove", "install", "{selection}"] }
+    exit { 0 => Unit nonzero => String "apt-get exact non-removing install refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no installation supplied" } "no fabricated package installation" }
+  }
+}

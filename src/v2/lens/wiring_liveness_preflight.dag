@@ -1,0 +1,112 @@
+module v2.lens.wiring_liveness_preflight
+
+import std.types { List }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.lens.affected_set {
+  ChangedSubgraphFrontier,
+  FailClosed,
+  FailClosedReason,
+  FrontierDependency,
+  ReExecFrontier,
+  ReasonDiagnostics
+}
+import v2.lens.common.graph_invariant {
+  GraphReachProjection,
+  graph_invariant_reaches,
+  graph_reach_unreachable_diagnostic
+}
+import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import std.algebra { list_snoc_item }
+import v2.std.dependency { DependencyView }
+import v2.std.diagnostic { diagnostics_singleton }
+import v2.std.node { Node, Symbol }
+
+type FrontierWiringObligation {
+  output: Node
+  declared_input: Node
+}
+
+fn frontier_slice_dependence(dependencies: List<FrontierDependency>) -> List<DependencyView> {
+  fold(dependencies, init: [], f: fn(acc, fd) {
+    list_snoc_item(xs: acc, item: fd.dependency)
+  })
+}
+
+fn obligation_projection(
+  dependence: List<DependencyView>,
+  obligation: FrontierWiringObligation
+) -> GraphReachProjection {
+  GraphReachProjection {
+    edges: dependence,
+    roots: [obligation.output]
+  }
+}
+
+fn obligation_is_wired(dependence: List<DependencyView>, obligation: FrontierWiringObligation) -> Bool {
+  perturbation_consistent(
+    reading: BackwardDiffInDiffOut,
+    output_responded: graph_invariant_reaches(
+      projection: obligation_projection(dependence: dependence, obligation: obligation),
+      target: obligation.declared_input
+    )
+  )
+}
+
+fn first_dead_wire(
+  dependence: List<DependencyView>,
+  obligations: List<FrontierWiringObligation>
+) -> Optional<FrontierWiringObligation> {
+  fold(obligations, init: optional_absent(), f: fn(acc, obligation) {
+    match acc {
+      Present { value: v } => optional_present(value: v)
+      Absent =>
+        if obligation_is_wired(dependence: dependence, obligation: obligation) {
+          optional_absent()
+        } else {
+          optional_present(value: obligation)
+        }
+    }
+  })
+}
+
+fn dead_wire_reason(obligation: FrontierWiringObligation, dependence: List<DependencyView>) -> FailClosedReason {
+  ReasonDiagnostics {
+    diagnostics: diagnostics_singleton(
+      d: graph_reach_unreachable_diagnostic(
+        reason: ^wiring_liveness_dead_wire,
+        root: obligation.output,
+        unreachable: obligation.declared_input,
+        projection: obligation_projection(dependence: dependence, obligation: obligation)
+      )
+    )
+  }
+}
+
+fn preflight_reexec_frontier(
+  frontier: ReExecFrontier,
+  dependencies: List<FrontierDependency>,
+  obligations: List<FrontierWiringObligation>
+) -> ReExecFrontier {
+  let dependence = frontier_slice_dependence(dependencies: dependencies)
+  match frontier {
+    FailClosed { reason: reason } => FailClosed { reason: reason }
+    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
+      match first_dead_wire(dependence: dependence, obligations: obligations) {
+        Absent => frontier
+        Present { value: dead } =>
+          FailClosed { reason: dead_wire_reason(obligation: dead, dependence: dependence) }
+      }
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

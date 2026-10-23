@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.fixture_compile_retained_on_the_process_shared_index
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fixture_compile_retained_on_the_process_shared_index: RecurringFailureMode = RecurringFailureMode {
+  identity: "fixture_compile_retained_on_the_process_shared_index" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a nested fixture compile (`compile_dag_diagnostic_census`, `compile_dag_rust_emit_check`) extends its module closure through the required floor's process-shared MultiEntryIndex. The walk writes parse rows, bare-reference admission, both_closure_edges, and typed-module cache entries for every module the fixture's both-closure reaches, and those rows outlive the compile: they sit in the same index the claim fold consults until the thread ends. HARM: planning a compile-census witness whose probe imports a wide production stack (test.claim.megarac_managed_host_forged_probe_witness, then extend_sources_to_both_closure_fixpoint) makes that stack's both-closure resident for the rest of the floor. Re-derive from gunbc.cli_run.required_floor_runner: a floor that plans those census claims sat on memory.high from the claim fold until the lane cap with no verdict; the same floor without those claims did not. The witness stays enrolled; the loader must not retain its closure on the shared slot.",
+
+    "RECOGNITION RULE. Ask which index a fixture-closure extension mutates. If it is the run's process-shared MultiEntryIndex (try_index_for_run_or_owned_pool over witness_layer_roots), the compile's working set has been smuggled into the fold's resident set. The closure authority itself (extend_sources_to_both_closure_fixpoint) is not the defect -- an import-only walk is the sibling class import_only_walker_standing_in_for_the_closure_authority. The defect is RETENTION of that authority's writes on a slot whose lifetime is the process, not the compile. Raising memory.high, sharding the lane, excluding the witness, or a debt row is the absorbing fallback this class forbids.",
+
+    "DISTINGUISHING FACT: this is not 'the census compile is large'. One compile of the MegaRAC probe against its both-closure is the work the seven claims demand; memoizing CompileDiagnosticCensus already collapses N questions about one source to one compile. What must collapse is resident MULTIPLICITY of the closure's index rows: they belong on a scratch shell that shares the pool's source_files map and is dropped when the loader returns. Nor is it typed_snapshot_serializes_shared_structure_by_value (a copy-by-value at a serialize boundary); here the live Rc caches are the ones that grow.",
+
+    "STRUCTURAL PREDICTION (DESIGN section 6b, stated before the confirming run): fixture-closure index writes on the process-shared slot must go to zero; N planned compile-census claims over one source must not retain N typed graphs; the union recorder may intern source bytes once. A contradicting instrument is fixture_closure_extension_does_not_populate_the_process_shared_index: after resolve_virtual_source_with_imports of the enrolled syllogism specimen, the shared typed-cache length, both_closure_edges cardinality, and bare-admission cardinality are unchanged.",
+
+    "RUNG FOUND AT: silent wrongness on the floor (no typed refusal; the lane timed out). RUNG NOW: mechanically preventable -- resolve_virtual_source_with_imports extends over a scratch MultiEntryIndex and the unit control reds a regression that writes the shared slot. THE SCRATCH LOADER IS THE TERMINAL RETENTION SHAPE, not a scaffold: fixture-closure writes live on a shell that shares the pool's source_files and is dropped when the loader returns. extend_fixture_imports_on_process_shared_index is the pre-fix route, test-only, so the red control can still name the shared slot. CEILING: structurally guaranteed once a fixture compile cannot name the process-shared index as its extension target. NEXT-RUNG TRIGGER: fixture-closure extension is typed so that the shared MultiEntryIndex is not in the function's reachable parameter set; the unit control remains enrolled.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Production consumer: v1_compiler.cli_run resolve_virtual_source_with_imports. GREEN: v1_compiler.cli_run.emit_host fixture_closure_extension_does_not_populate_the_process_shared_index. RED (pre-fix route): v1_compiler.cli_run.emit_host fixture_closure_extension_via_shared_index_grows_both_closure_edges.",
+  ],
+
+  evidence: [],
+}

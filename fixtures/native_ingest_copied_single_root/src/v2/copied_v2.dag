@@ -1,0 +1,3 @@
+module fixture.native_ingest.copied_v2
+
+data native_ingest_copied_v2_value: Int = 2

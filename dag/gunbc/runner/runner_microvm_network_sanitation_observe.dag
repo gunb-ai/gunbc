@@ -1,0 +1,83 @@
+module gunbc.runner_microvm_network_sanitation_observe
+
+import std.types { String, NonEmptyStr, Bool }
+import std.algebra { trim }
+import std.resources { Filesystem }
+import std.content_hash { sha256_hex_digest }
+import extdeps.linux.tun_fdinfo { tun_descriptor_census_observe, tun_census_refusal_text, TunDescriptorCensus, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable, TunAttachedQueueRequirement, tun_attached_queue_requirement }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent }
+import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.runner_microvm_network {
+  SlotNetworkSanitationSubject, SlotNetworkReadings,
+  TapHolderObservation, TapPresentUnheld, TapHeld, TapMissing, TapHoldersUnreadable,
+  TapIpv6Standing, TapIpv6Disabled, TapIpv6Enabled, TapIpv6Unread,
+  ResidueObservation, ResidueAbsent, ResiduePresent, ResidueUnreadable,
+  RulesetObservation, RulesetListed, RulesetUnreadable,
+  TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
+  runner_slot_network, runner_slot_ipv6_disabled_proc_path,
+  runner_slot_guest_originated_conntrack_list_command, runner_slot_guest_destined_conntrack_list_command,
+  runner_slot_guest_neighbour_show_command, runner_host_expectation_list_command, runner_microvm_nft_list_command,
+}
+
+// The selected sanitation reader owns its environmental demand. Commissioning consumes this
+// same requirement; host policy chooses a provider only if this operation is unsupported.
+fn slot_network_tun_queue_requirement(slot: RunnerSlotIdentity) -> TunAttachedQueueRequirement {
+  tun_attached_queue_requirement(name: runner_slot_network(slot: slot).tap_device)
+}
+
+fn observe_tap_holders(tap: NonEmptyStr) -> TapHolderObservation {
+  tap_holders_reading(census: tun_descriptor_census_observe(name: tap as String))
+}
+
+fn tap_holders_reading(census: TunDescriptorCensus) -> TapHolderObservation {
+  match census {
+    TunDescriptorCount { count: n, exited: _ } => if n == 0 { TapPresentUnheld } else { TapHeld { holders: n } }
+    TunInterfaceMissing => TapMissing
+    TunDescriptorUnreadable { cause } => TapHoldersUnreadable { reason: tun_census_refusal_text(cause: cause) as NonEmptyStr }
+  }
+}
+
+fn observe_network_residue(command: ArgvCommand) -> ResidueObservation {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: body } => if trim(s: body) == "" { ResidueAbsent }
+      else { ResiduePresent { entries: length(filter(split(s: body, delimiter: "\n"), line => trim(s: line) != "")) } }
+    ProcessOutputAbsent => ResidueAbsent
+    other => ResidueUnreadable { reason: "network residue listing failed" as NonEmptyStr }
+  }
+}
+
+fn observe_network_ruleset() -> RulesetObservation {
+  match run_shell_command_capture(command: runner_microvm_nft_list_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: body } => match sha256sum_stdin_digest_via_shell(content: body) {
+      Sha256FileDigest { digest: hashed } => match sha256_hex_digest(hex: hashed.hex as String) {
+        Present { value: actual_digest } => RulesetListed { digest: actual_digest }
+        Absent => RulesetUnreadable { reason: "listed ruleset digest malformed" as NonEmptyStr }
+      }
+      other => RulesetUnreadable { reason: "listed ruleset digest unavailable" as NonEmptyStr }
+    }
+    other => RulesetUnreadable { reason: "converged nft table could not be listed" as NonEmptyStr }
+  }
+}
+
+// Actual host reads, joined by the existing subject and converge receipt. A missing tool or
+// denied kernel read is unreadable; no exited process or no-carrier state substitutes for these.
+fn observe_slot_network_readings(subject: SlotNetworkSanitationSubject) -> SlotNetworkReadings {
+  let net = runner_slot_network(slot: subject.subject.slot)
+  let ipv6 = Filesystem.Read(path: runner_slot_ipv6_disabled_proc_path(net: net))
+  let ipv6_standing = if !ipv6.success { TapIpv6Unread { reason: "tap IPv6 policy unreadable" as NonEmptyStr } }
+    else if trim(s: ipv6.content) == "1" { TapIpv6Disabled }
+    else if trim(s: ipv6.content) == "0" { TapIpv6Enabled }
+    else { TapIpv6Unread { reason: "tap IPv6 policy malformed" as NonEmptyStr } }
+  SlotNetworkReadings {
+    tap: TapReading { subject: subject.subject, observation: observe_tap_holders(tap: slot_network_tun_queue_requirement(slot: subject.subject.slot).interface) },
+    tap_ipv6: TapIpv6Reading { subject: subject.subject, observation: ipv6_standing },
+    guest_originated_conntrack: SlotResidueReading { subject: subject.subject, observation: observe_network_residue(command: runner_slot_guest_originated_conntrack_list_command(net: net)) },
+    guest_destined_conntrack: SlotResidueReading { subject: subject.subject, observation: observe_network_residue(command: runner_slot_guest_destined_conntrack_list_command(net: net)) },
+    guest_neighbour: SlotResidueReading { subject: subject.subject, observation: observe_network_residue(command: runner_slot_guest_neighbour_show_command(net: net)) },
+    expectations: HostResidueReading { host: subject.converged.host, generation: subject.converged.generation, observation: observe_network_residue(command: runner_host_expectation_list_command()) },
+    ruleset: RulesetReading { host: subject.converged.host, generation: subject.converged.generation, observation: observe_network_ruleset() },
+  }
+}

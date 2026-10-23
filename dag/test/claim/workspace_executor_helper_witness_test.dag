@@ -1,0 +1,44 @@
+module test.claim.workspace_executor_helper_witness
+
+import std.types { String, Bool }
+import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_matches }
+import gunbc.workspace_commissioning_start_observe { WorkspaceCommissioningStartSnapshot }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+
+data executor_test_invocation: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data executor_test_cgroup: String = "/gunbc-controller.slice/gunbc-workspace-commissioning@srv1-13.service"
+
+fn executor_actor_fixture(active: String, pid: String) -> WorkspaceCommissioningStartSnapshot {
+  WorkspaceCommissioningStartSnapshot { unit: workspace_executor_unit_instance_name(slot: "srv1-13"),
+    invocation: executor_test_invocation, load: "loaded", active: active, main_pid: pid, job: "" }
+}
+
+test fn executor_child_membership_is_not_a_main_pid_equality_test() -> Bool {
+  workspace_executor_actor_matches(snapshot: executor_actor_fixture(active: "active", pid: "123"),
+    expected_unit: workspace_executor_unit_instance_name(slot: "srv1-13"), invocation: executor_test_invocation,
+    own_cgroup: executor_test_cgroup, managed_cgroup: executor_test_cgroup)
+}
+
+test fn copied_invocation_environment_outside_executor_is_refused() -> Bool {
+  !workspace_executor_actor_matches(snapshot: executor_actor_fixture(active: "active", pid: "123"),
+    expected_unit: workspace_executor_unit_instance_name(slot: "srv1-13"), invocation: executor_test_invocation,
+    own_cgroup: "/user.slice/session.scope", managed_cgroup: executor_test_cgroup)
+}
+
+test fn inactive_actor_cannot_bind_from_a_stale_environment() -> Bool {
+  !workspace_executor_actor_matches(snapshot: executor_actor_fixture(active: "inactive", pid: "0"),
+    expected_unit: workspace_executor_unit_instance_name(slot: "srv1-13"), invocation: executor_test_invocation,
+    own_cgroup: executor_test_cgroup, managed_cgroup: executor_test_cgroup)
+}
+
+test fn another_executor_invocation_does_not_inherit_submission() -> Bool {
+  !workspace_executor_actor_matches(snapshot: executor_actor_fixture(active: "active", pid: "123"),
+    expected_unit: workspace_executor_unit_instance_name(slot: "srv1-13"), invocation: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    own_cgroup: executor_test_cgroup, managed_cgroup: executor_test_cgroup)
+}
+
+test fn root_cgroup_is_not_an_executor_membership() -> Bool {
+  !workspace_executor_actor_matches(snapshot: executor_actor_fixture(active: "active", pid: "123"),
+    expected_unit: workspace_executor_unit_instance_name(slot: "srv1-13"), invocation: executor_test_invocation,
+    own_cgroup: "/", managed_cgroup: "/")
+}

@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.a_pool_fallback_provider_shadows_a_builtin
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_pool_fallback_provider_shadows_a_builtin: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_pool_fallback_provider_shadows_a_builtin" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a bare reference that names a BUILTIN is resolved by the bare-reference loader to an ordinary pool function that happens to share the name, pulling an unrelated module into the closure. HARM: silent wrong resolution -- the closure depends on a module the author never referenced, so that module's refusals, cost and edits reach a file they do not concern, and nothing reports it.",
+    "SPECIMEN: dag/test/claim/builtin_get_resolver_test.dag (module test.claim.builtin_get_resolver) calls the builtin get(xs:, index:); the loader's whole-pool fallback in cli_run visit_bare_reference_providers resolved 'get' to fn get in v2.test.manual.fn_as_value (src/v2/test/claim/manual/fn_as_value_test.dag), another source tree. Found by the live fallback census on the resolver-cost lane (bold-bat-516, 2026-09-30): of 624 import-less pool files, 466 demanded the whole-pool fallback census and 13 resolutions in 5 files depended on it; this was the one that was wrong.",
+    "DISTINGUISHING FACTS: the name is in v1.compiler.infer_method builtin_signature; the file's own source tree does not declare it; some other tree does. The fallback asked the whole pool for the superset instead of asking which kind of name this is -- DESIGN section 5's absorbing fallback, whose answer here was a wrong provider rather than a missing one.",
+    "RUNG FOUND AT: silent (outside the ladder). RUNG NOW: mechanically preventable -- the whole-pool fallback is deleted; a name the file's tree does not provide is a builtin (no provider), provided only by another tree (typed CrossTreeBareReference refusal naming the qualified spelling to write), or provided nowhere (no provider; the typecheck refuses an undefined name). Receipts: cli_run entry_resolve cross_tree_bare_reference_tests (a_builtin_named_like_another_trees_function_admits, an_unimported_cross_tree_bare_name_refuses) and the live cross_tree_bare_census. CEILING: structurally guaranteed -- a bare reference resolves only within its own source tree or through a written import, so no pool-wide lookup exists to shadow a builtin. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: bare-reference resolution in the v2 demand engine keyed by the reference's own scope (docs/plans/demand-engine-program.md), so the loader route and the typecheck bind a bare name through one authority.",
+  ],
+
+  evidence: [],
+}

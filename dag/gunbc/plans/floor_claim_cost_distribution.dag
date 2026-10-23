@@ -1,0 +1,92 @@
+module gunbc.plans.floor_claim_cost_distribution
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
+
+fn floor_claim_cost_distribution_body() -> List<MarkdownBlock> {
+  [
+    BlockquoteBlock { blocks: [
+      p(text: "**Status: measurement note (2026-09-04).** No code lands from this note. It records what six floor runs say about the per-claim cost distribution the 500ms budget is applied to, and which hypotheses about that distribution DIED. It is not a failure-mode filing: the class it began as is `right_censored_cost_read_as_exact`, already rostered, and the analysis below is what remained once that class was removed from it."),
+      p(text: "Every figure here is one arithmetic step from three columns of the `required-floor-claim-cost` artifact — `cpu_ms`, `eval_steps` and the outcome — read per identity from the runs named beside it. Re-derive rather than trust: `gh run download <run> -D <dir>`, join on column 1, and use identical `eval_steps` as the control that licenses reading a cpu delta as timing rather than as different work."),
+    ] },
+
+    h2(text: "1. What the budget is applied to"),
+    p(text: "The floor refuses a claim whose cpu exceeds 500ms. That threshold is compared against ONE SAMPLE, drawn once per run, of a quantity that varies — while `eval_steps` proves the underlying work does not. Across one refusing pair and four green runs, `eval_steps` is bit-stable on **3,592 of 3,595** planned identities; the three that move do so by 5 to 9 steps on counts of 4,931, 6,127 and 10,090. So no cpu delta anywhere in this corpus is a work delta, and the gate cannot distinguish a cost DEBT from a cost SAMPLE."),
+    p(text: "Pooling every completing row against its own five-run median — 10,454 observations over 2,098 identities — the per-row excursion distribution is p50 1.00, p90 1.17, p99 2.00, max 3.00. A 2x excursion is an ordinary hundredth-percentile event rather than an anomaly, so the budget is reachable from any median above 250ms. **76 identities sit above that line.**"),
+
+    h2(text: "2. Three readings of the same specimens, and why the first two failed"),
+    p(text: "The sequence matters more than the answer, because each reading was produced by a correct procedure over an insufficient sample, and the sample grew each time."),
+    TableBlock {
+      header: row(cells: [cell(text: "Reading"), cell(text: "Sample"), cell(text: "Claim"), cell(text: "Status")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "One"),
+          cell(text: "one night's refusals"),
+          cell(text: "the emit family sits at the top of the distribution with 16-29% headroom, so insufficient headroom is the deficit"),
+          cell(text: "**partly retracted** — the intuition survives, the mechanism does not"),
+        ]),
+        row(cells: [
+          cell(text: "Two"),
+          cell(text: "four runs"),
+          cell(text: "exactly one identity has a four-run max above 500ms; the ten highest medians CANNOT reach the line, so spread beats proximity"),
+          cell(text: "**falsified** — two of those rows crossed on the fifth run"),
+        ]),
+        row(cells: [
+          cell(text: "Three"),
+          cell(text: "five runs plus a controlled pair"),
+          cell(text: "proximity and inflation compound; the ranking statistic is P(cpu > budget) and no small sample bounds it"),
+          cell(text: "current"),
+        ]),
+      ],
+    },
+    p(text: "**Reading two's error is nameable and is the rostered class one level up: a maximum over four draws was treated as a bound.** `max across four runs` supports only *no sample above X in four draws*, which licenses no claim about what cannot happen. The same arithmetic that makes an interrupt point a lower bound rather than a cost makes a small-sample maximum a lower bound on the excursion rather than a ceiling on it — both censored observations read as exact ones, one level apart."),
+
+    h2(text: "3. The controlled pair"),
+    p(text: "Two floor runs on heads ONE COMMENT-ONLY COMMIT APART — identical executing witness sets, opposite verdicts, runs 33818376576 passing and 33824873607 refusing. That isolates run-to-run variance from every content hypothesis at once, which no number of independent runs can do. Over the 2,069 completing rows whose `eval_steps` are identical in both:"),
+    ul(items: [
+      li(text: "corpus ratio p50 1.02, p75 1.13, p90 1.29; 22% of rows above 1.15"),
+      li(text: "stratified by baseline cost, the cheapest deciles sit at a median ratio of 1.00 and the most expensive decile (143-425ms) at **1.11** with a p90 of 1.37"),
+      li(text: "`v2.test.emit` and `v2.test.execution` rows carry a median 1.07 against 1.00 for everything else"),
+    ]),
+    p(text: "So inflation is small but COST-DEPENDENT, and proximity and inflation **compound**: an expensive row is both closer to the budget and inflated more on a bad run, so its crossing probability rises faster than proximity alone predicts. That is why the top of the ranking crosses first — on the refusing run the three highest medians in the corpus crossed, in rank order, and the fourth missed by 5ms."),
+    p(text: "It is nowhere near large enough to be the cause on its own: 1.11 on a 420ms row reaches 466ms, and the observed crossings were 1.31 to 1.53. **The bulk of any single crossing is still unexplained per-row excursion.** The pair also carries its own limits — one pair, ratios against a single baseline observation rather than a median, and a 1ms-granularity cost field that makes the cheap deciles mostly rounding. It excludes *the corpus is flat and every crossing is idiosyncratic*; it does not size the systematic term."),
+
+    h2(text: "4. Hypotheses that died"),
+    p(text: "Recorded because an analysis that names which candidate died is worth more than one reporting only what survived."),
+    ol(items: [
+      li(text: "**Corpus-wide inflation.** Refuted twice. New-run cpu against the median of four baselines is p50 1.00, p75 1.08, p90 1.18 over 2,120 shared identities, and the earlier refusing pair sat at a median 1.04. The corpus does not move when a row crosses."),
+      li(text: "**A family is tipped as a family.** Refuted: three of the four original specimens PASSED at 388, 391 and 399ms on the very run that interrupted the other two."),
+      li(text: "**Added witnesses tip the run.** Refuted by the controlled pair: the previous head carried the same executing rows and passed, one comment-only commit apart."),
+      li(text: "**Concurrency-dependent inflation.** Proposed with its killing arm stated first — the refusing runs should be the busy ones. Counting repository runs in flight at each floor job's start: concurrency 42, 44, 38, 26, 23 against cpu 440, 401, 389, 441, 524 on one row and 459, 393, 392, 389, 504 on the other. **The refusing run was the QUIETEST of the five and the slowest**, and the correlation is negative on both rows (-0.76 and -0.39). Refuted in sign, so this form of load is excluded rather than merely unsupported. Five points and a proxy counting repository runs rather than co-resident work are why this kills a candidate and does not establish its negation."),
+    ]),
+    p(text: "**What is left unexplained is WHEN.** Proximity plus the compounding term predicts WHICH rows are exposed. Nothing measured here predicts which run tips them."),
+
+    h2(text: "5. Instrument findings from the same investigation"),
+    p(text: "Each of these produced a confident wrong reading before it was caught, and every one failed toward the dramatic or the reassuring answer rather than toward a refusal."),
+    ul(items: [
+      li(text: "**A run's `startedAt` tracks the LATEST ATTEMPT, not the measurement.** On the refusing run it reads 39 minutes after the floor job that produced the artifacts had finished, because the data came from attempt 1. Regressing on it regresses on the wrong instant; the floor JOB's `started_at` for the attempt that produced the artifact is the only correct clock."),
+      li(text: "**Concurrency computed from a listing window is RIGHT-CENSORED at the window's edge.** The newest run has almost no visible peers because peers start after it, so its concurrency is biased toward zero by construction. The first pass returned exactly 0 for the run of interest and a correlation of -0.88, which would have read as a dramatic result."),
+      li(text: "**A queued run creates ZERO check-runs.** `gh pr checks`, the check-runs API and the combined-status API are all identical to *the workflow never triggered*; only `gh run list --commit <sha>` distinguishes them. A watcher whose green arm is `all(bucket != pending)` or a three-way `if pending / elif fail / else green` therefore fires on an EMPTY measurement and reports success. Require a POSITIVE COUNT before the green arm is reachable."),
+      li(text: "**A review dashboard's `stale` field is computed against the head the dashboard believes is current.** Measured on this investigation's own PR: dashboard head `c8b69dc749` with approvals 1, **stale 0**, checks passing, while GitHub's `headRefOid` was `39af0bf8b1` with all six checks pending. The field whose entire job is catching a stale approval is computed from the stale head and therefore REASSURES — not incomplete but actively misdirected, and misdirected by the field a careful reader consults precisely because they were being careful. Compare the dashboard's `head_sha` to GitHub's `headRefOid` FIRST and treat any mismatch as *no approval yet*."),
+    ]),
+
+    h2(text: "6. What this note does not claim"),
+    ul(items: [
+      li(text: "No mechanism for the per-row excursion. Three candidates are excluded above; the residue is unexplained and stated as such."),
+      li(text: "No threshold recommendation. Moving the budget moves which 76 rows are exposed; it does not repair an estimator that takes one sample of a variable quantity."),
+      li(text: "No claim that six runs bound anything. Reading two died of exactly that assumption and reading three is not privileged against it."),
+    ]),
+  ]
+}
+
+data floor_claim_cost_distribution_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
+  slug: "floor-claim-cost-distribution",
+  title: "The floor's per-claim cost distribution — six runs, three readings, and four dead hypotheses",
+  body: floor_claim_cost_distribution_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this note when the floor's per-claim admission consumes a DISTRIBUTION rather than one sample -- a declared per-identity cost envelope with a stated quantile, admitted or refused against repeated observations rather than against the single cpu figure of the run in hand -- at which point the readings, the excluded hypotheses and the 76-row exposed population are all restated by the carrier that owns the envelope, and this note has no subject left.")
+  }
+}

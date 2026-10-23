@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_wrong_check_skipped_on_a_dev_branch_instead_of_corrected
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_wrong_check_skipped_on_a_dev_branch_instead_of_corrected: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_wrong_check_skipped_on_a_dev_branch_instead_of_corrected" as NonEmptyStr,
+
+  receipts: [
+    "a wrong check skipped on a dev branch instead of corrected: a preflight refuses hosts that can in fact do the work, because it tests a MECHANISM the fleet does not use rather than the capability the effect needs. The lane that hits it disables the check on its own branch to get moving, marks the commit never-merge, and the correction never reaches main -- so main keeps a wall no host can pass, the dev branch keeps no wall at all, and the next lane re-discovers the refusal from scratch with no record that it was already understood.",
+
+    "SPECIMEN, found 2026-10-04. gunbc.spark.native_serving_apply spark_native_gpu_runtime_check required `docker info .Runtimes` to list a runtime named nvidia whenever the create spec asks for --gpus all. Every Spark runs Docker 29 with the NVIDIA Container Toolkit's CDI spec and registers no such runtime: the live Group B arm runs under runc with a gpu device request the daemon satisfies from the discovered CDI device nvidia.com/gpu=all. Read on srv6, spark-0c75 and spark-b66c: runtimes = runc only, no daemon.json, and `docker run --gpus all ... nvidia-smi` prints the GB10. Commit 38287c7b61 (2026-09-30, DEV-ONLY, never merge) turned the check into `if false && ...` on the V4.1 deploy branches, so V4.1's launch passed on 2026-10-02 while fleet-converge run 37171223963 -- the GLM Group A staircase, from a branch without that commit -- refused all four hosts with PREFLIGHT-REFUSED-no-nvidia-runtime. The operator remembered the issue from Group B and could not say whether it had been solved; it had not, and nothing in the corpus said so.",
+
+    "THE HARM IS TIME, PAID TWICE, AND A WALL THAT LIES IN BOTH DIRECTIONS. On main the check refuses every correct host, so it will be bypassed again; on the dev branch it is absent, so a host with NO GPU device would have been restarted into a failed engine after its incumbent was stopped -- the exact outcome the preflight exists to get in front of. A skip is section 5's escape hatch: its only effect is to proceed as if the refusal had not fired.",
+
+    "THE REPAIR IS TO CORRECT THE CHECK WHERE IT LIVES, in the same change that discovers it is wrong: ask the daemon for the thing the effect binds (the discovered CDI device), not for one realization of it. The lesson learned on a host becomes a declaration on main, with the reading that grounds it beside it, or it is lost.",
+
+    "RECOGNITION RULE: a commit whose message says dev-only, never merge, skip or temporarily disable over a check; a guard rewritten to `if false && ...`; a refusal on every member of a population that is demonstrably serving; an operator saying 'I think we hit this before'. Any of them means a modeled fact is wrong and the correction is owed on main, not on the branch.",
+
+    "RUNG FOUND AT: mitigatable -- the wrong wall was noticed only when it refused a real launch. ATTAINABLE CEILING: mechanically preventable. NEXT-RUNG TRIGGER: a gate that refuses a branch dispatched to the fleet when it carries a change to a preflight or admission check that main does not, unless that change is itself a pull request -- so a skip cannot actuate hosts without also being proposed as the correction.",
+  ],
+
+  evidence: [],
+}

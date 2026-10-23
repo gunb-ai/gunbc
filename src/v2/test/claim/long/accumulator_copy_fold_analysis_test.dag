@@ -1,0 +1,529 @@
+module v2.test.long.accumulator_copy_fold_analysis
+
+import v2.std.live_tree { LiveTreeDisposition }
+
+import v2.std.node { Authored, StructuralLabel, Positional, Edge, Node, ComputationNode, TypeNode, Transform, Atom }
+
+import v2.std.algebra { Cons, Empty }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+
+data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: Cons { head: r, tail: Empty }, right: acc)\n    } else {\n      acc\n    }\n  })\n}\n"
+
+data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: x, right: grown)\n  })\n}\n"
+
+data nested_call_snippet: String = "module nested\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: reverse(acc)) })\n}\n"
+
+data unregistered_combiner_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { mystery_op(a: acc, b: x) })\n}\n"
+
+data compound_copied_port_snippet: String = "module compound\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: x + acc) })\n}\n"
+
+data out_of_iteration_snippet: String = "module once\n\nfn f(xs: List<Int>, ys: List<Int>) -> Int {\n  list_append(left: xs, right: ys)\n}\n"
+
+data named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
+
+// THE POSITION SPECIMENS, one per body position the source admits a fold in. Each is the
+// quadratic_snippet's planted copy (fold / list_append with the carrier on the copied port) moved
+// to a different position of an fn body and nothing else changed, so what a witness over one of
+// them answers is about POSITION and not about spelling or about the combiner. Measured on the
+// tokenize / parse_module / normalize route (gunbc.recurring_failure_mode
+// fold_shape_visible_to_no_lens, receipts of 2026-09-13): the sole-body fold lowers to the seam
+// Loop the lens enumerates; the same fold after a `let`, in a `match` arm or in an `if` branch
+// reaches normalize's output with its arguments erased, so no Loop, no surface fold call and no
+// site -- the class gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, seen
+// from the lens's side. A fold NESTED inside a sole-body fold's step keeps its surface form
+// inside the retained Loop body and IS seen, which is the control that shows the surface arm of
+// count_fold_sites is reachable and not permanently green.
+data let_prefixed_planted_snippet: String = "module letplanted\n\nfn f(xs: List<Int>) -> Int {\n  let seed = 0\n  fold(xs, init: seed, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+
+data match_arm_planted_snippet: String = "module matchplanted\n\nfn f(xs: List<Int>, b: Bool) -> Int {\n  match b {\n    true => fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n    false => 0\n  }\n}\n"
+
+data nested_planted_snippet: String = "module nestedplanted\n\nfn f(xs: List<List<Int>>) -> Int {\n  fold(xs, init: 0, f: fn(acc, ys) { fold(ys, init: acc, f: fn(a2, y) { list_append(left: y, right: a2) }) })\n}\n"
+
+// THE BY-NAME CAPABILITY SPECIMEN: the step is DECLARED in the same module and carries the planted
+// copy in its own body, so the accumulator flow the class names is authored and readable -- the
+// step's Arrow member sits in the normalized root with `acc` as its first domain binding
+// (v2.std.node_query arrow_domain_named_param_bindings reads it). What is missing is the SITE: the
+// call `fold(xs, init: 0, f: step)` is erased before any lens runs.
+data declared_named_step_planted_snippet: String = "module declstep\n\nfn step(acc: Int, x: Int) -> Int {\n  list_append(left: x, right: acc)\n}\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
+
+// THE STEP-SLOT DISCRIMINATOR IN THE OTHER DIRECTION (review 65763 on gunbc#11315). The step is
+// BY NAME and a two-binder lambda sits in the NON-step argument. Before v2.compiler.fold_lowering
+// read the step at the callee-declared slot, fold_call_step_form found that lambda by whole-subtree
+// first match and minted a seam Loop whose carrier was `a` -- measured on 42e5937 (folds_seen 1,
+// carriers_bound 1, loop yes). At the slot read (a5f5585 and after) the call yields no Loop: the
+// step slot carries no inline form, which is StepByName and the honest no-Loop state. Its twin
+// puts the planted copy IN the slot beside the same decoy and must still lower and be caught.
+data by_name_step_with_lambda_in_other_argument_snippet: String = "module decoylambda\n\nfn f(xs: List<Int>) -> Int {\n  fold(map(xs, f: (a, b) => list_append(left: b, right: a)), init: 0, f: step)\n}\n"
+
+data inline_step_beside_lambda_in_other_argument_snippet: String = "module decoylambdactrl\n\nfn f(xs: List<Int>) -> Int {\n  fold(map(xs, f: (a, b) => a), init: 0, f: (acc, x) => list_append(left: x, right: acc))\n}\n"
+
+data let_unknown_alias_snippet: String = "module unknownalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = mystery\n    list_append(left: x, right: grown)\n  })\n}\n"
+
+data let_fresh_snippet: String = "module freshlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let seed = 0\n    list_append(left: x, right: seed)\n  })\n}\n"
+
+data let_transitive_alias_snippet: String = "module transalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let g = acc\n    let h = g\n    list_append(left: x, right: h)\n  })\n}\n"
+
+data carrier_in_computed_arg_snippet: String = "module hiddencarrier\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery(box: Wrapped { inner: acc })\n  })\n}\n"
+
+data item_in_computed_arg_snippet: String = "module hiddenitem\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery(box: Wrapped { inner: x })\n  })\n}\n"
+
+data computed_let_mention_snippet: String = "module hiddenlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let boxed = Wrapped { inner: acc }\n    mystery(box: boxed)\n  })\n}\n"
+
+data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    helper.step(a: acc, b: x)\n  })\n}\n"
+
+data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
+
+fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
+  let lm = v2.extdeps.languages.dag.dag_language_model()
+  match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match v2.compiler.parse.parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: normalized, diagnostics: _ } => Present { value: normalized.root }
+          }
+      }
+  }
+}
+
+fn findings_of(source_text: String, file: Symbol) -> Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
+  match ingest(source_text: source_text, file: file) {
+    Absent => Absent
+    Present { value: tree } => Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree) }
+  }
+}
+
+fn is_empty_findings(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+  match fs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+test fn quadratic_fold_has_suspect() -> Bool {
+  match findings_of(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+test fn real_branch_body_quadratic_is_caught() -> Bool {
+  match findings_of(source_text: real_branch_body_snippet, file: ^rs_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+test fn noncarrier_name_in_copied_port_refuses_not_clean() -> Bool {
+  match findings_of(source_text: noncarrier_name_snippet, file: ^lin_file) {
+    Absent => false
+    Present { value: fs } =>
+      if v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs) {
+        false
+      } else {
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      }
+  }
+}
+
+test fn let_alias_is_proven_suspect() -> Bool {
+  match findings_of(source_text: let_alias_snippet, file: ^alias_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+      && !v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn let_transitive_alias_is_proven_suspect() -> Bool {
+  match findings_of(source_text: let_transitive_alias_snippet, file: ^transalias_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+      && !v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+  }
+}
+
+test fn let_fresh_binding_is_provably_clean() -> Bool {
+  match findings_of(source_text: let_fresh_snippet, file: ^freshlet_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn let_unknown_alias_still_refuses_may_alias() -> Bool {
+  match findings_of(source_text: let_unknown_alias_snippet, file: ^unknownalias_file) {
+    Absent => false
+    Present { value: fs } =>
+      if v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs) {
+        false
+      } else {
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+      }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE ARGUMENT-VALUE CENSUS, carried by the witness that already owns
+// this subject rather than by a new identity. Both cells assert the same law -- a copied port
+// holding a COMPUTED expression must not read as a bare name -- and the second is the one no
+// fixture in this suite could express before: a compound value, `seed + acc`, where a FRESH binder
+// and the CARRIER share one port.
+//
+// WHY THE SECOND CELL IS NOT REDUNDANT WITH THE FIRST, AND WHY IT ASSERTS BOTH A PRESENCE AND AN
+// ABSENCE. Under the search-based census this repair replaced -- first-match
+// `^dag_surface_primary_expr`, which stops at the leftmost operand because dag_surface_binary_expr
+// sits ABOVE primary_expr -- `right: x + acc` censuses as ONE identifier and the bare-name arm
+// fires on `x`, which is not a carrier, so the port refuses ^copied_port_name_may_alias. Under the
+// spine walk it censuses BOTH operands and refuses ^copied_port_computed_argument. The two readings
+// therefore disagree on WHICH CAUSE, not on whether anything refuses, which is why asserting the
+// presence alone would not discriminate: measured, the first draft of this cell used a `let seed =
+// 0` binder and PASSED UNDER BOTH READINGS, because another site in that snippet contributes
+// ^copied_port_computed_argument anyway and the assertion could not see the port it was about
+// (review 64460 asked for the red; the mutation control is what showed the first attempt was
+// decoration). Every other fixture here is a single-identifier or single-call value -- the shapes
+// where search and the spine walk AGREE -- so without this cell, reverting arg_value_mentions to
+// search leaves this whole file green and the silent fail-open restored.
+test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
+  match findings_of(source_text: nested_call_snippet, file: ^nested_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_computed_argument)
+  }
+    && match findings_of(source_text: compound_copied_port_snippet, file: ^compound_file) {
+      Absent => false
+      Present { value: fs } =>
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_computed_argument)
+        && !v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+    }
+}
+
+test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
+  match findings_of(source_text: unregistered_combiner_snippet, file: ^unreg_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn carrier_inside_computed_argument_to_unregistered_combiner_refuses() -> Bool {
+  match findings_of(source_text: carrier_in_computed_arg_snippet, file: ^hiddencarrier_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn item_inside_computed_argument_stays_clean() -> Bool {
+  match findings_of(source_text: item_in_computed_arg_snippet, file: ^hiddenitem_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool {
+  match findings_of(source_text: computed_let_mention_snippet, file: ^hiddenlet_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+fn edge_list_prepend(item: Edge, xs: List<Edge>) -> List<Edge> {
+  Cons { head: item, tail: xs }
+}
+
+fn no_edges() -> List<Edge> {
+  std.algebra.Empty
+}
+
+fn opaque_head_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn edge_target_is_mystery(e: Edge) -> Bool {
+  match v2.std.grammar.node_atom_identity_optional(node: e.target) {
+    Present { value: id } => id == ^mystery_op
+    Absent => false
+  }
+}
+
+fn edge_is_seq_left(e: Edge) -> Bool {
+  match e.label {
+    StructuralLabel { label: _ } => false
+    Authored { name: nm } => nm == ^grammar_sequence_left_node_projection
+    Positional => false
+  }
+}
+
+// THE HEAD POSITION ON EITHER ROUTE: the surface call's sequence-left projection, and the lowered
+// call's operator -- a Positional edge (v2.compiler.body_lowering_fold body_lower_call_arg_edge puts
+// every NAMED actual on an Authored edge, so in this specimen `mystery_op` is the only positional atom).
+// The sole-body fold lowers to a seam Loop, so the surface form never reaches the lens and a mutation
+// keyed on sequence-left alone rewrote nothing: the witness read the intact head and was red for the
+// fixture, not for the lens.
+fn edge_is_head_slot(e: Edge) -> Bool {
+  match e.label {
+    Positional => true
+    StructuralLabel { label: _ } => false
+    Authored { name: _ } => edge_is_seq_left(e: e)
+  }
+}
+
+fn rebuilt_edge(e: Edge) -> Edge {
+  if edge_is_head_slot(e: e) {
+    if edge_target_is_mystery(e: e) {
+      Edge { label: e.label, target: opaque_head_node() }
+    } else {
+      Edge { label: e.label, target: break_mystery_head(n: e.target) }
+    }
+  } else {
+    Edge { label: e.label, target: break_mystery_head(n: e.target) }
+  }
+}
+
+fn break_mystery_head(n: Node) -> Node {
+  Node {
+    kind: n.kind,
+    children: v2.std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
+      edge_list_prepend(item: rebuilt_edge(e: e), xs: acc)
+    })),
+    occurrence_id: n.occurrence_id
+  }
+}
+
+test fn unreadable_call_head_with_carrier_port_refuses() -> Bool {
+  match ingest(source_text: unregistered_combiner_snippet, file: ^brokenhead_file) {
+    Absent => false
+    Present { value: tree } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(
+        fs: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: break_mystery_head(n: tree)),
+        cause: ^call_head_unreadable
+      )
+  }
+}
+
+test fn named_step_fold_refuses_accumulator_unread() -> Bool {
+  match findings_of(source_text: named_step_snippet, file: ^namedstep_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^fold_accumulator_unread)
+  }
+}
+
+// REGRESSION CONTROL (was a rostered RED): the planted copy after a `let`. Body lowering now carries
+// the fold site at this position, so the planted copy reaches the lens and mints a suspect.
+test fn let_prefixed_fold_copy_is_caught() -> Bool {
+  match findings_of(source_text: let_prefixed_planted_snippet, file: ^letplanted_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+// REGRESSION CONTROL (was a rostered RED): the same planted copy in a match arm.
+test fn match_arm_fold_copy_is_caught() -> Bool {
+  match findings_of(source_text: match_arm_planted_snippet, file: ^matchplanted_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+// RED, rostered at gunbc.explicit_witness_admission: the by-name step's accumulator flow. This is
+// the CAPABILITY witness for the by-name half of fold_shape_visible_to_no_lens, stronger than
+// named_step_fold_refuses_accumulator_unread: a declared step with a planted copy must mint a
+// suspect, not merely a refusal, once the site is visible and the step is resolved.
+test fn declared_named_step_fold_copy_is_caught() -> Bool {
+  match findings_of(source_text: declared_named_step_planted_snippet, file: ^declstep_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
+}
+
+// POSITIVE CONTROL, green today: both folds of the nested specimen are counted and the inner
+// planted copy is caught -- the inner fold survives as a SURFACE call inside the outer seam Loop's
+// retained body, so count_fold_sites's surface arm fires here. A change that makes this go red
+// has narrowed the lens's domain.
+//
+// A PLAIN fn RATHER THAN A test fn, on the standing v2.test.claim.complexity
+// accumulator_copy_corpus_path_test records for its own ingest-reaching predicates: this control
+// reaches the interpreted ingest, which measures several times
+// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms (1732ms CPU on run
+// 34786156711 against a 500ms line), and a NEWLY ENROLLED identity over that line is refused at
+// enrolment margin -- the unchanged test fns of this file sit outside per-PR discovery and are
+// not re-measured, which is why they are not refused and why this cannot simply join them. It
+// passes by execution under claim_batch beside the three RED probes above and is enrolled in
+// nothing; it dissolves into a test fn on the same trigger as its corpus-path siblings.
+fn nested_fold_inside_a_sole_body_fold_is_visible() -> Bool {
+  match ingest(source_text: nested_planted_snippet, file: ^nestedplanted_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.folds_seen == 2) && (r.carriers_bound == 2)
+        && v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: r.findings)
+  }
+}
+
+// PLAIN fns, on the same standing as nested_fold_inside_a_sole_body_fold_is_visible below: both
+// reach the interpreted ingest. They pass by execution under claim_batch.
+//
+// RED CONTROL for the step-slot read: a lambda in a non-step argument must not become the step.
+// Went from loop=yes to loop=no between 42e5937 and a5f5585; a reading that searches the whole
+// call for a lambda makes this go red again.
+fn a_lambda_in_a_non_step_argument_mints_no_carrier() -> Bool {
+  match ingest(source_text: by_name_step_with_lambda_in_other_argument_snippet, file: ^decoylambda_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.carriers_bound == 0)
+        && !v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
+  }
+}
+
+// POSITIVE CONTROL: the same decoy beside a real inline step still lowers and the planted copy on
+// the real carrier is caught. Without this the red control is satisfiable by refusing every fold.
+fn an_inline_step_beside_a_decoy_lambda_is_still_caught() -> Bool {
+  match ingest(source_text: inline_step_beside_lambda_in_other_argument_snippet, file: ^decoylambdactrl_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.folds_seen == 1) && (r.carriers_bound == 1)
+        && v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: r.findings)
+  }
+}
+
+test fn multiline_unregistered_combiner_refuses() -> Bool {
+  match findings_of(source_text: multiline_unregistered_snippet, file: ^unreg_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn projection_call_carrier_is_classified() -> Bool {
+  match findings_of(source_text: projection_call_carrier_snippet, file: ^projcar_file) {
+    Absent => false
+    Present { value: fs } =>
+      if is_empty_findings(fs: fs) {
+        false
+      } else {
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+      }
+  }
+}
+
+test fn quadratic_ingest_has_lowered_loop() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } => v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
+  }
+}
+
+test fn quadratic_ingest_has_no_surface_fold_call() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } => !v2.lens.complexity_accumulator_copy.analyze.tree_contains_surface_fold_call(root: tree)
+  }
+}
+
+test fn identity_fold_has_no_finding() -> Bool {
+  match findings_of(source_text: identity_snippet, file: ^ident_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn out_of_iteration_append_is_out_of_domain() -> Bool {
+  match findings_of(source_text: out_of_iteration_snippet, file: ^once_file) {
+    Absent => false
+    Present { value: fs } => is_empty_findings(fs: fs)
+  }
+}
+
+test fn report_counters_state_the_domain() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } =>
+      let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+      (r.folds_seen == 1) && (r.carriers_bound == 1)
+  }
+    && match ingest(source_text: named_step_snippet, file: ^namedstep_file) {
+      Absent => false
+      Present { value: tree } =>
+        let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
+        (r.folds_seen == 1) && (r.carriers_bound == 0)
+    }
+}
+
+// THE QUALIFIED-CALLEE IDENTITY CLAIMS (review on gunbc#13337), over a SUPPLIED lowered call (DESIGN
+// section 3: a witness discriminates at one interface). The subject is the lens's reading of a lowered
+// call's dotted head, so each claim constructs that call -- operator, then the named actuals -- and hands
+// it to analyze with `acc` as a bound carrier; no ingest is paid per claim. The INHABITANCE of the shape
+// is the enrolled real-route claim projection_call_carrier_is_classified: it ingests `helper.step(..)` and
+// reaches ^combiner_unregistered_carrier_reaches only if the real producer's dotted head is read by the
+// same lowered_transform_combiner_optional path branch these claims exercise.
+fn supplied_lowered_call(head: Node, left: Symbol, right: Symbol) -> Node {
+  v2.std.node.node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: head },
+      Edge { label: Authored { name: ^left }, target: supplied_atom(identity: left) },
+      Edge { label: Authored { name: ^right }, target: supplied_atom(identity: right) }
+    ]
+  )
+}
+
+fn supplied_atom(identity: Symbol) -> Node {
+  v2.std.node.node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+fn supplied_dotted_head(dotted: String) -> Node {
+  v2.std.qualified_name.qualified_name_spine_node(
+    qn: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: dotted),
+    occurrence_id: OccurrenceSynthetic
+  )
+}
+
+fn supplied_findings(call: Node) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  v2.lens.complexity_accumulator_copy.analyze.analyze(node: call, carriers: [^acc], bindings: Empty, iterating: true)
+}
+
+fn refuses_unregistered_without_suspect(fs: List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
+  !v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+    && v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+}
+
+// RED before the identity fix, measured: matched by leaf, `foreign.list_append(left: acc, right: x)`
+// reads as std.algebra list_append with the carrier on its uncopied port, so no finding was minted.
+test fn same_leaf_foreign_qualifier_does_not_borrow_the_cited_contract() -> Bool {
+  refuses_unregistered_without_suspect(fs: supplied_findings(call: supplied_lowered_call(head: supplied_dotted_head(dotted: "foreign.list_append"), left: ^acc, right: ^x)))
+}
+
+// The same identity read through the RESOLVED form of the head: a declaration reference to
+// foreign.list_append is not the cited declaration either.
+test fn same_leaf_foreign_declaration_reference_does_not_borrow_the_cited_contract() -> Bool {
+  refuses_unregistered_without_suspect(fs: supplied_findings(call: supplied_lowered_call(
+    head: v2.std.qualified_name.declaration_reference_node(qn: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "foreign.list_append"), occurrence_id: OccurrenceSynthetic),
+    left: ^acc,
+    right: ^x
+  )))
+}
+
+test fn unrelated_leaf_foreign_qualifier_refuses_unregistered() -> Bool {
+  refuses_unregistered_without_suspect(fs: supplied_findings(call: supplied_lowered_call(head: supplied_dotted_head(dotted: "foreign.grow"), left: ^acc, right: ^x)))
+}
+
+test fn cited_qualified_callee_reaches_its_contract() -> Bool {
+  v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(
+    fs: supplied_findings(call: supplied_lowered_call(head: supplied_dotted_head(dotted: "std.algebra.list_append"), left: ^x, right: ^acc))
+  )
+}

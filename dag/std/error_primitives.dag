@@ -1,0 +1,5 @@
+module std.error_primitives
+
+type Result<ok, err> = Ok { value: ok } | Err { value: err }
+
+type DivError = DivideByZero | Overflow

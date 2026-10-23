@@ -1,0 +1,57 @@
+module test.claim.required_floor_growth_budget_witness_test
+
+import std.types { Bool }
+import v2.std.algebra { Cons, Empty }
+import v2.workflow.required_floor {
+  RequiredFloorGrowthBudgetBound,
+  NoMeasuredMarginAtRunnerLimiter,
+  RequiredFloorMarginMeasured,
+  CountAndSelectedLiveTreePopulationConfounded,
+  RequiredCiWitnessesLane,
+  MoreRunnerMemory,
+  BoundedTerminalResultRetention,
+  GrowthStagedAgainstMeasuredHeadroom,
+  required_floor_growth_budget_standing,
+}
+
+// This witness pins the typed admission constraint, not a measurement copied from one run.
+// The exact three-arm list is load-bearing: adding roster identities has no default payment,
+// and none of the candidate payments is selected merely by appearing in the carrier. The
+// measured-margin arm is deliberately RED until a dated instrument changes the standing.
+test fn required_floor_growth_is_budget_bound_without_choosing_a_payment() -> Bool {
+  match required_floor_growth_budget_standing {
+    RequiredFloorGrowthBudgetBound {
+      limiter: NoMeasuredMarginAtRunnerLimiter,
+      attribution: CountAndSelectedLiveTreePopulationConfounded,
+      candidate_payments: Cons {
+        head: MoreRunnerMemory,
+        tail: Cons {
+          head: BoundedTerminalResultRetention,
+          tail: Cons {
+            head: GrowthStagedAgainstMeasuredHeadroom,
+            tail: Empty
+          }
+        }
+      },
+      instrument: RequiredCiWitnessesLane { workflow_run, invocation },
+      dissolution: _
+    } =>
+      string_contains(s: workflow_run, pattern: "33026738418")
+        && string_contains(s: invocation, pattern: "--required-ci")
+        && string_contains(s: invocation, pattern: "--required-lane witnesses")
+    RequiredFloorGrowthBudgetBound {
+      limiter: RequiredFloorMarginMeasured { instrument: _ },
+      attribution: _,
+      candidate_payments: _,
+      instrument: _,
+      dissolution: _
+    } => false
+    RequiredFloorGrowthBudgetBound {
+      limiter: _,
+      attribution: _,
+      candidate_payments: _,
+      instrument: _,
+      dissolution: _
+    } => false
+  }
+}

@@ -1,0 +1,74 @@
+module v2.lens.extdeps_shape_transport_policy.module_refs
+
+
+data extdeps_cargo_build_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons { head: ^cargo_build, tail: Empty }
+}
+
+data extdeps_git_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons { head: ^git, tail: Empty }
+}
+
+data extdeps_gcp_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons {
+    head: ^cloud,
+    tail: Cons { head: ^gcp, tail: Cons { head: ^gcp, tail: Empty } }
+  }
+}
+
+data extdeps_github_gists_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons { head: ^github, tail: Cons { head: ^gists, tail: Empty } }
+}
+
+data extdeps_runtime_local_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons { head: ^runtime, tail: Cons { head: ^local, tail: Empty } }
+}
+
+data bogus_extdeps_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons { head: ^bogus_unknown_module_xyz, tail: Empty }
+}
+
+data coverage_domain_equivalence_module: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons {
+    head: ^test,
+    tail: Cons {
+      head: ^extdeps_shape_transport_policy,
+      tail: Cons { head: ^coverage_domain_equivalence, tail: Empty }
+    }
+  }
+}
+
+data module_source_nickname_literal_green_module: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons {
+    head: ^test,
+    tail: Cons {
+      head: ^extdeps_shape_transport_policy,
+      tail: Cons {
+        head: ^lens_unit,
+        tail: Cons { head: ^module_source_nickname_literal_green, tail: Empty }
+      }
+    }
+  }
+}
+
+data module_source_nickname_literal_local_red_module: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons {
+    head: ^test,
+    tail: Cons {
+      head: ^extdeps_shape_transport_policy,
+      tail: Cons {
+        head: ^lens_unit,
+        tail: Cons { head: ^module_source_nickname_literal_local_red, tail: Empty }
+      }
+    }
+  }
+}

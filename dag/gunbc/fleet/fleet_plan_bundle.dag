@@ -1,0 +1,29 @@
+module gunbc.fleet_plan_bundle
+
+import std.types { String, NonEmptyStr }
+import std.content_hash {
+  Fnv1a64Structural, Fnv1a64, Sha256Hash, Sha1Hash, Sha512Hash, content_hash_of_value, content_hash_combine_structural,
+}
+
+// Shared reviewed artifact identity. Runtime adapters can verify the exact same two byte
+// streams without importing the complete fleet planner or constructing a new plan.
+fn fleet_plan_component_hash(text: String) -> Fnv1a64Structural? {
+  match content_hash_of_value(value: text as NonEmptyStr) {
+    Fnv1a64(structural) => Present { value: structural }
+    Sha256Hash(_) => Absent
+    Sha1Hash(_) => Absent
+    Sha512Hash(_) => Absent
+  }
+}
+
+fn fleet_plan_bundle_hash(plan_body: String, apply_shell: String) -> Fnv1a64Structural? {
+  match fleet_plan_component_hash(text: plan_body) {
+    Present { value: plan_struct } => match fleet_plan_component_hash(text: apply_shell) {
+      Present { value: shell_struct } => Present {
+        value: content_hash_combine_structural(left: plan_struct, right: shell_struct),
+      }
+      Absent => Absent
+    }
+    Absent => Absent
+  }
+}

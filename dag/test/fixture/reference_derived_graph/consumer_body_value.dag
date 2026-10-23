@@ -1,0 +1,7 @@
+module test.fixture.reference_derived_graph.consumer_body_value
+
+import std.types { Int }
+
+fn uses() -> Int {
+  test.fixture.reference_derived_graph.provider.provided_value
+}

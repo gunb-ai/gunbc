@@ -1,0 +1,55 @@
+module v2.lens.visibility
+
+
+type ModuleVisibilityFact {
+  module: QualifiedName
+  public: Bool
+  imports: List<QualifiedName>
+}
+
+type VisibilityLeak {
+  importer: QualifiedName
+  imported: QualifiedName
+}
+
+data no_visibility_leaks: List<VisibilityLeak> = []
+
+fn module_is_public(facts: List<ModuleVisibilityFact>, qn: QualifiedName) -> Bool {
+  fold(facts, init: false, f: fn(acc, fct) {
+    if acc { true }
+    else {
+      if fct.module == qn { fct.public } else { false }
+    }
+  })
+}
+
+fn scan_module_imports(fct: ModuleVisibilityFact, all_facts: List<ModuleVisibilityFact>) -> List<VisibilityLeak> {
+  if fct.public {
+    fold(fct.imports, init: no_visibility_leaks, f: fn(acc, imp) {
+      if module_is_public(facts: all_facts, qn: imp) { acc }
+      else { list_snoc_item(xs: acc, item: VisibilityLeak { importer: fct.module, imported: imp }) }
+    })
+  } else {
+    no_visibility_leaks
+  }
+}
+
+fn scan_visibility_leaks(facts: List<ModuleVisibilityFact>) -> List<VisibilityLeak> {
+  fold(facts, init: no_visibility_leaks, f: fn(acc, fct) {
+    fold(scan_module_imports(fct: fct, all_facts: facts), init: acc, f: fn(a2, leak) {
+      list_snoc_item(xs: a2, item: leak)
+    })
+  })
+}
+
+fn visibility_leak_count(facts: List<ModuleVisibilityFact>) -> Int {
+  length(xs: scan_visibility_leaks(facts: facts))
+}
+
+fn visibility_clean(facts: List<ModuleVisibilityFact>) -> Bool {
+  visibility_leak_count(facts: facts) == 0
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

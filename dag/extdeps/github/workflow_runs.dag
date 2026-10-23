@@ -1,0 +1,498 @@
+module extdeps.github.workflow_runs
+
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
+import std.credentials { EnvVar }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import extdeps.github.workflow_runs_contracts {
+  workflow_run_status_wire_contract,
+  workflow_run_conclusion_wire_contract
+}
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+import std.algebra { Cons, Empty }
+import std.resources { Network }
+import std.serialization { Text }
+import extdeps.transports.rest { RestResult }
+
+// WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
+// settle observed architecture and provider. run_attempt is modeled here and copied onto
+// BaselineAdmitted; a production fold that distinguishes attempts is a declared census
+// frontier, not this module's claim.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflow-runs"
+  }
+}
+
+type WorkflowRunStatus
+  = Queued
+  | InProgress
+  | Completed
+  | Waiting
+  | Requested
+  | Pending
+
+type WorkflowRunConclusion
+  = Success
+  | Failure
+  | Cancelled
+  | Neutral
+  | Skipped
+  | TimedOut
+  | ActionRequired
+  | StartupFailure
+
+data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),
+    reason: "WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.checks) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today",
+    dissolution: unbound_dissolution(description: "GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.actions_runs", decl_name: "RunConclusion"),
+    reason: "UNLIKE THE ROW ABOVE, THIS IS NOT TWO APIS SHARING VARIANTS -- IT IS ONE API WITH TWO AUTHORITIES IN THIS TREE. extdeps.github.actions_runs and extdeps.github.workflow_runs both declare extdeps_external_authority_anchor with the locator docs.github.com/en/rest/actions/workflow-runs, character for character, and each then models that upstream independently. The conclusion vocabulary is forked (RunConclusion carries RunStale and a RunConclusionUnknown { spelling } fail-closed arm; WorkflowRunConclusion has neither and handles an unknown spelling as an optional parse), and so is the record (WorkflowRunRecord holds status and conclusion as String with epoch Ints; WorkflowRun holds WorkflowRunStatus, WorkflowRunConclusion?, CommitSha and Timestamp). By DESIGN section 3 that is a meaning fork over one cited spec rather than two shapes, and by section 2's deep direction the stringly record is the anemic side. This row DECLARES the fork so it is countable; it does not consolidate it, and consolidating it is a change against this upstream's authority with its own review",
+    dissolution: unbound_dissolution(description: "one of the two modules stops answering for the workflow-runs REST API: its run-conclusion vocabulary and run record are deleted and every consumer resolves through the surviving module, so a reader asking what a workflow run IS reaches exactly one authority"),
+  )
+]
+
+// THE DEPLOYED PULL REQUEST EMBEDDING. GitHub's workflow runs API embeds a pull_requests array
+// when the run was triggered by a pull_request event; each element carries the PR number and
+// head repository. Only the number is modeled here because that is what every consumer in this tree
+// asks of it — adding head_repo/full_name and url would be modeling fields no consumer reads,
+// which is a maintenance burden without a consumer, and the DESIGN §3 authority rule forbids
+// modeling an upstream field that no code asks a question of (it is either dead code or a future
+// question waiting to be answered with no one to falsify it).
+type WorkflowRunPullRequest {
+  number: Int
+}
+
+// FIVE FIELDS THE RESPONSE CARRIES THAT NO CONSUMER COULD READ. actor, triggering_actor,
+// event, head_branch and run_attempt are all in GitHub's workflow-run response and were absent
+// from this projection, so a .dag consumer asking "which actor triggered this, on what event,
+// and which attempt am I looking at" had to leave the provider model entirely -- gh api, raw
+// JSON, or a status word copied out of the UI.
+//
+// THE RUN_ATTEMPT FIELD IS THE LOAD-BEARING ONE. A run object reports created_at from attempt 1
+// and run_started_at from the LATEST attempt, naming neither, so a consumer that does not know
+// which attempt it holds can compute a start delay that never happened. Without run_attempt the
+// object cannot even say which attempt it describes.
+//
+// ACTOR AND TRIGGERING_ACTOR ARE TWO FACTS. The first is who the run is attributed to; the
+// second is who caused this particular attempt. They diverge exactly when a human releases a
+// withheld run: the actor stays the bot that pushed, and the triggering actor becomes the
+// person who approved. A model carrying only one of them cannot distinguish an ordinary
+// execution from a released one.
+type WorkflowRun {
+  id: Int
+  name: String?
+  display_title: String?
+  path: String?
+  head_sha: CommitSha
+  head_branch: String?
+  event: String
+  status: WorkflowRunStatus
+  conclusion: WorkflowRunConclusion?
+  workflow_id: Int
+  run_number: Int
+  run_attempt: Int
+  actor: GitHubUser?
+  triggering_actor: GitHubUser?
+  html_url: NonEmptyStr
+  created_at: Timestamp
+  updated_at: Timestamp
+  pull_requests: List<WorkflowRunPullRequest>
+}
+
+type WorkflowRunList {
+  total_count: Int
+  workflow_runs: List<WorkflowRun>
+}
+
+// THE JOB-RUN RESOURCE, separate from the job SYNTAX (type Job in extdeps.github.actions).
+// The API returns a list of job runs — each is one execution of a workflow job against a
+// specific commit — with timestamps and conclusion. The `steps` field is excluded because
+// no census consumer reads individual step data; if a future consumer needs it, adding it
+// here is a backward-compatible extension (the field is optional in the API response and
+// would become an optional field here).
+// WHY THE TWO ADDED FIELDS ARE NOT OPTIONAL RICHNESS.
+//
+// labels is THE OBSERVED RUNNER LABEL, and it is a different fact from the label the workflow
+// file declared. A `runs-on` written as an expression resolves at dispatch, so the YAML can
+// establish an architecture while leaving the provider open - that is a real row in this
+// fleet's workload census, where a job whose workflow offers a Ubicloud alternative was observed
+// running on GitHub-hosted ubuntu-24.04-arm. Only the job resource settles it, and a consumer
+// with no field to put it in has to treat the declaration as the observation.
+//
+// run_attempt is what makes a job identity re-findable. A re-run reuses run_id and mints new job
+// ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
+// duration compared across attempts is comparing a cold run to a warm one.
+//
+// THE JOBS FILTER IS A CLOSED UPSTREAM VOCABULARY AND WAS MODELLED AS A FREE STRING. GitHub
+// documents `filter` for this endpoint as exactly latest | all, so a String input made "Latest",
+// "all " and "" all representable and sent every one of them to the wire, where a rejected or
+// silently ignored filter changes which attempts a capacity census counts -- the consumer this
+// operation's own annotation names. DESIGN section 4b rung 4 is the standard the neighbours in this
+// tree already meet: extdeps.google.drive models DrivePermissionRole as a coproduct with a wire fold
+// so "Content manager" cannot be written where the wire needs fileOrganizer, extdeps.google.sheets
+// carries SheetsValueRenderOption the same way, and extdeps.github.pulls already defaults a typed
+// input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
+// unwritable rather than validated.
+//
+// THE FOLD BELOW IS REQUIRED AND AN EARLIER REVISION OF THIS ANNOTATION DENIED IT. That revision
+// said a CoproductWireContract carried the spelling so no hand-written fold had to exist. It does
+// not, and believing it REGRESSED this operation: the interpreter builds a REST query with
+// format!("{}", value) and consults no contract, and Display for a nullary variant writes the
+// AUTHORED name, so the request went out as filter=AttemptsLatest where the base had correctly sent
+// filter=latest. A contract is read on the response-decode path, and `filter` never appears in a
+// response. Every other coproduct-valued query in this tree folds explicitly -- drive.Permissions
+// passes drive_permission_role_wire, sheets.Spreadsheets passes sheets_value_render_option_wire --
+// and this one now does too.
+//
+// The variants carry an Attempts prefix because bare Latest and All are two of the most collidable
+// names in a tree that resolves bare references. `latest` stays the default because it is the
+// upstream's, and it is the right answer for a caller asking what the current state is; a census of
+// consumed capacity wants AttemptsAll, because a re-run mutates a job's record in place and the
+// attempts `latest` drops are execution that really happened and really occupied a runner.
+type WorkflowJobAttemptFilter
+  = AttemptsLatest
+  | AttemptsAll
+
+fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
+  match f {
+    AttemptsLatest => "latest"
+    AttemptsAll => "all"
+  }
+}
+
+// A THIRD FIELD WAS DELETED HERE AND STAYS DELETED, and this annotation is the second attempt to
+// settle it. An earlier lane added runner_name because the vendor machine name is corroborating --
+// the Biome baseline job reports "depot-1mw2k81zm2" -- found nothing read it, and deleted it on the
+// ground that interesting is not a consumer. This change put it back claiming a consumer had
+// arrived, in prose, while the diff carried no import and no call site; it is deleted again on the
+// original ground, which was right both times. DESIGN section 4c is the rule: an annotation is
+// never evidence that a machine claim holds.
+//
+// The example survives the deletion because it is the part that was worth keeping.
+// "depot-1mw2k81zm2" is neither GitHub-hosted nor self-hosted but a third party's fleet, so any
+// provenance reading with two arms folds a paying provider customer in with a team running its own
+// hardware. The trigger that brings the field back is a fold that IMPORTS this module and reads
+// the field, landing in the same change as the field -- and that fold now has a further obligation
+// this lane learned the hard way: a runs-on LABEL already has an authority in
+// gunbc.runner.runner_label_resolution, backed by the per-provider catalogs
+// gunbc.runner.runner_provider_survey enrolls, so a consumer may not re-answer the label question
+// with a fresh prefix roster. A runner NAME is a different vocabulary with no such authority, which
+// is the one thing this field would genuinely add.
+//
+// `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
+// (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
+// `name` as a required string and does not publish a workflow YAML job key or a matrix object.
+// GitHub's UI and the Jobs API therefore identify a matrix combination only through that
+// rendered name. The parenthetical of combination VALUES in axis order is the rendering this
+// tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
+// GitHub's Jobs docs state that encoding.
+// runner_id AND runner_name ARE WHICH RUNNER TOOK THE JOB, a third fact beside the declared runs-on
+// and the observed labels: two runners can carry identical labels. runner_id is the exact identity
+// GitHub returned when the JIT registration was minted (gunbc.runner.runner_qualification_dispatch
+// job_ran_on joins on it); runner_name is corroboration, since one name can resolve to several ids.
+// Upstream publishes both as nullable -- null until a runner takes the job -- and every record in
+// this tree written before the fields existed carries none rather than a guessed value.
+type WorkflowJobRun {
+  id: Int
+  run_id: Int
+  run_attempt: Int
+  name: String
+  status: WorkflowRunStatus
+  conclusion: WorkflowRunConclusion?
+  labels: List<String>
+  runner_id: Int?
+  runner_name: String?
+  created_at: Timestamp?
+  started_at: Timestamp?
+  completed_at: Timestamp?
+}
+
+type WorkflowJobRunList {
+  total_count: Int
+  jobs: List<WorkflowJobRun>
+}
+
+data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "docs.github.com/en/rest/actions/workflow-jobs (X-GitHub-Api-Version 2026-03-10) publishes Job.name as a string and does not document a matrix object or that a combination is encoded as a parenthetical of the combination values in axis order; jobs.<job_id>.name in workflow-syntax-for-github-actions likewise does not state that encoding. The parenthetical is the rendering observed on Job.name in this tree, not a deduced REST field",
+}
+
+fn workflow_job_name_matrix_value_parenthetical(values: List<NonEmptyStr>) -> String {
+  concat(" (", concat(join(map(values, v => v as String), ", "), ")"))
+}
+
+fn parse_workflow_run_status(raw: String) -> WorkflowRunStatus? {
+  match raw {
+    "queued" => Present { value: Queued }
+    "in_progress" => Present { value: InProgress }
+    "completed" => Present { value: Completed }
+    "waiting" => Present { value: Waiting }
+    "requested" => Present { value: Requested }
+    "pending" => Present { value: Pending }
+    _ => none
+  }
+}
+
+fn workflow_run_status_wire_label(status: WorkflowRunStatus) -> String {
+  match status {
+    Queued => "queued"
+    InProgress => "in_progress"
+    Completed => "completed"
+    Waiting => "waiting"
+    Requested => "requested"
+    Pending => "pending"
+  }
+}
+
+fn parse_workflow_run_conclusion(raw: String) -> WorkflowRunConclusion? {
+  match raw {
+    "success" => Present { value: Success }
+    "failure" => Present { value: Failure }
+    "cancelled" => Present { value: Cancelled }
+    "neutral" => Present { value: Neutral }
+    "skipped" => Present { value: Skipped }
+    "timed_out" => Present { value: TimedOut }
+    "action_required" => Present { value: ActionRequired }
+    "startup_failure" => Present { value: StartupFailure }
+    _ => none
+  }
+}
+
+fn workflow_run_conclusion_wire_label(conclusion: WorkflowRunConclusion) -> String {
+  match conclusion {
+    Success => "success"
+    Failure => "failure"
+    Cancelled => "cancelled"
+    Neutral => "neutral"
+    Skipped => "skipped"
+    TimedOut => "timed_out"
+    ActionRequired => "action_required"
+    StartupFailure => "startup_failure"
+  }
+}
+
+data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
+  "closure:consolidate_variant_string_mapping|parse_workflow_run_status/workflow_run_status_wire_label and parse_workflow_run_conclusion/workflow_run_conclusion_wire_label hand-roll the SnakeCase mapping already declared in the wire contracts. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
+]
+
+// LISTATTEMPTJOBS EXISTS BECAUSE LISTJOBS PINS filter=latest INTO ITS QUERY, and that default is
+// not a nuance. A withheld run that a human later releases has ZERO jobs on attempt 1 and a full
+// set on attempt 2, so a latest-filtered read reports the release and calls it the original
+// execution. Every question of the form "did this run actually execute when it was created" is a
+// question about ONE attempt, and ListAttemptJobs is the only operation here that can ask it.
+// GitHub documents the attempt-scoped path separately from the run-scoped one because they answer
+// different questions: the attempt number is part of the resource, not a filter.
+//
+// THE ANNOTATION SITS ON THE SERVICE RATHER THAN THE OPERATION because an `operation` lives inside
+// this declaration's body, and section 4c admits annotations only at module-item grain. An
+// operation is not a module item, so per-operation rationale is not expressible; it belongs here
+// or nowhere.
+//
+// DOWNLOADJOBLOGSFORWORKFLOWRUN IS UPSTREAM'S "Download job logs for a workflow run"
+// (actions/download-job-logs-for-workflow-run, docs.github.com/en/rest/actions/workflow-jobs, read
+// 2026-10-04): `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs` answers `302 Found` with a
+// `Location` naming a storage URL that expires after about a minute, and the body there is the job's
+// log as plain text, one line per row behind an RFC 3339 timestamp. The redirect is followed by the
+// bound REST realization (the seed's ureq handler), so the response block names the text at the end
+// of it. A body the handler cannot read -- not UTF-8, or past its read cap -- is RestBodyUndecodable
+// with its status, never a truncated log reported as the whole one.
+//
+// THE FILTER IS A CALLER'S CHOICE AND WAS A LITERAL. "latest" returns only the most recent attempt
+// of each job, which is the right answer for "what is the current state" and the wrong one for any
+// census of consumed capacity: a re-run mutates a job's record in place, so the attempts "latest"
+// drops are execution that really happened and really occupied a runner. A caller measuring
+// occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
+// this operation, so the choice moves to the input with "latest" as the compatible default.
+// THE BEARER IS THE CALLER'S auth_token WHEN ONE IS GIVEN. Every operation already took auth_token,
+// and the service read only GITHUB_TOKEN, so a caller holding an installation token
+// (gunbc.github_effect_perform read_run_with / read_attempt_jobs_with) was silently read under the
+// ambient Actions credential. Declaring auth_input beside auth_source makes a non-empty auth_token the
+// bearer; a caller passing "" (gunbc.pr_base_freshness, gunbc.fleet_desired_admission,
+// gunbc.roadmap_launch_deployment_cli) falls through to GITHUB_TOKEN exactly as before.
+service github.WorkflowRuns {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+
+  operation GetRun {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+    }
+    output {
+      run: WorkflowRun
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}"
+    }
+    response {
+      200 => WorkflowRun
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListForRef {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      head_sha: CommitSha
+      event: String
+      per_page: Int = default_per_page
+    }
+    output {
+      runs: WorkflowRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs",
+      query: { head_sha: head_sha, event: event, per_page: per_page }
+    }
+    response {
+      200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListWorkflowRuns {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      workflow_name: String
+      event: String
+      created_range: String
+      per_page: Int = max_per_page
+      page: Int = 1
+    }
+    output {
+      result: WorkflowRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/workflows/\{workflow_name\}/runs",
+      query: {
+        event: event,
+        per_page: per_page,
+        page: page,
+        created: created_range
+      }
+    }
+    response {
+      200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListAttemptJobs {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      attempt_number: Int
+      per_page: Int = max_per_page
+    }
+    output {
+      result: WorkflowJobRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/attempts/\{attempt_number\}/jobs",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => WorkflowJobRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+  operation DownloadJobLogsForWorkflowRun {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      job_id: String
+    }
+    output {
+      log: String
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/jobs/\{job_id\}/logs",
+      response_format: Text
+    }
+    response {
+      200 => String
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation ListJobs {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      per_page: Int = max_per_page
+      attempt_filter: WorkflowJobAttemptFilter = AttemptsLatest
+    }
+    output {
+      result: WorkflowJobRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/jobs",
+      query: { per_page: per_page, filter: workflow_job_attempt_filter_wire(f: attempt_filter) }
+    }
+    response {
+      200 => WorkflowJobRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+}

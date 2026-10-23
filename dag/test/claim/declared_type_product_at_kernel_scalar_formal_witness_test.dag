@@ -1,0 +1,69 @@
+module test.claim.declared_type_product_at_kernel_scalar_formal_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+
+// gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted: a value of a nominal
+// PRODUCT handed to a formal whose declared type is a kernel scalar, or a where-refinement of one, is
+// Accepted by the seed. The fixture mirrors the specimen that surfaced it without importing it:
+// gunbc.machine_intake_bmc_secure ControllerClockReading (a record carrying `reported_millis:
+// EpochMs`) passed where `read_at_millis: EpochMs` is declared. std.types EpochMs is
+// `Int where range(min: 0)`.
+//
+// Two arms, measured separately because they fail differently. At the EpochMs formal and the EpochMs
+// declared return no arm of v1.compiler.infer declared_type_inhabitance judges the pair and it reaches
+// Inhabits by fallthrough, with no inhabitance diagnostic at all. At a plain Int formal
+// record_at_scalar_needs_identity answers UndecidableProducedIdentityErased, an advisory.
+//
+// The three RED claims assert the REQUIRED refusal and are carried in v2.workflow.floor_expected_red
+// while the seed accepts; when the wall lands they pass, the roster names them for removal, and they
+// stay here as permanent regression controls (DESIGN 4b(4)). The positive control keeps the wall from
+// over-refusing the record's own EpochMs field, and the harness control proves an Int at a Bool
+// argument refuses through this same census route, so a red here is the seam and not the harness.
+
+fn blocking_of_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data reading_at_epoch_argument_source: String = "module probe_reading_at_epoch_argument\nimport std.types { EpochMs, String }\ntype Reading { reported_millis: EpochMs, evidence: String }\nfn take(read_at_millis: EpochMs) -> EpochMs { read_at_millis }\nfn probe(r: Reading) -> EpochMs { take(read_at_millis: r) }\n"
+data reading_at_epoch_return_source: String = "module probe_reading_at_epoch_return\nimport std.types { EpochMs, String }\ntype Reading { reported_millis: EpochMs, evidence: String }\nfn probe(r: Reading) -> EpochMs { r }\n"
+data reading_at_int_argument_source: String = "module probe_reading_at_int_argument\nimport std.types { Int, String }\ntype Reading { reported_millis: Int, evidence: String }\nfn take(read_at_millis: Int) -> Int { read_at_millis }\nfn probe(r: Reading) -> Int { take(read_at_millis: r) }\n"
+data reading_field_at_epoch_argument_source: String = "module probe_reading_field_at_epoch_argument\nimport std.types { EpochMs, String }\ntype Reading { reported_millis: EpochMs, evidence: String }\nfn take(read_at_millis: EpochMs) -> EpochMs { read_at_millis }\nfn probe(r: Reading) -> EpochMs { take(read_at_millis: r.reported_millis) }\n"
+data int_at_bool_argument_source: String = "module probe_int_at_bool_argument\nimport std.types { Int, Bool }\nfn take(b: Bool) -> Bool { b }\nfn probe(i: Int) -> Bool { take(b: i) }\n"
+
+test fn a_record_at_an_epoch_ms_argument_refuses() -> Bool {
+  blocking_of_class(source: reading_at_epoch_argument_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_record_at_an_epoch_ms_declared_return_refuses() -> Bool {
+  blocking_of_class(source: reading_at_epoch_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn a_record_at_an_int_argument_refuses() -> Bool {
+  blocking_of_class(source: reading_at_int_argument_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn the_records_epoch_ms_field_at_an_epoch_ms_argument_is_clean() -> Bool {
+  blocking_total(source: reading_field_at_epoch_argument_source) == 0
+}
+
+test fn the_harness_refuses_an_int_at_a_bool_argument() -> Bool {
+  blocking_of_class(source: int_at_bool_argument_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}

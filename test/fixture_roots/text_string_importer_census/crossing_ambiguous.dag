@@ -1,0 +1,6 @@
+module fixture.text_string_importer_census.crossing_ambiguous
+import v2.std.text { String }
+import fixture.text_string_importer_census.importing_callee { take_ambiguous }
+fn f(s: String) -> Int {
+  take_ambiguous(t: s)
+}

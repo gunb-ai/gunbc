@@ -1,0 +1,187 @@
+module v2.lens.fact_cardinality
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.std.text { string_eq }
+
+
+type FactCardinalityTree
+  = Dag
+  | V2
+
+type FactCardinalityDeclFact {
+  rel_path_decl_key: String
+  tree: FactCardinalityTree
+  content_hash: String
+}
+
+data fact_cardinality_cross_tree_coexistence_baseline: Int = 43
+
+data no_coexistence_keys: FreeMonoid<String> = Empty
+
+fn add_unseen_key(acc: FreeMonoid<String>, key: String) -> FreeMonoid<String> {
+  if contains(xs: acc, item: key, eq: string_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: key)
+  }
+}
+
+fn fact_cardinality_decl_facts_live() -> List<FactCardinalityDeclFact> {
+  fact_cardinality_decl_facts()
+}
+
+fn fact_cardinality_cross_tree_coexistence(
+  left: FactCardinalityDeclFact,
+  right: FactCardinalityDeclFact
+) -> Bool {
+  left.rel_path_decl_key == right.rel_path_decl_key
+    && left.tree != right.tree
+}
+
+fn fact_cardinality_cross_tree_diverged_fork(
+  left: FactCardinalityDeclFact,
+  right: FactCardinalityDeclFact
+) -> Bool {
+  fact_cardinality_cross_tree_coexistence(left: left, right: right)
+    && left.content_hash != right.content_hash
+}
+
+fn any_pair_coexistence_for_key(
+  key: String,
+  facts: List<FactCardinalityDeclFact>
+) -> Bool {
+  fold_list(
+    xs: facts,
+    empty: false,
+    cons: fn(found, left) {
+      if found {
+        true
+      } else {
+        fold_list(
+          xs: facts,
+          empty: false,
+          cons: fn(inner, right) {
+            inner
+              || (
+                left.rel_path_decl_key == key
+                  && right.rel_path_decl_key == key
+                  && fact_cardinality_cross_tree_coexistence(left: left, right: right)
+              )
+          }
+        )
+      }
+    }
+  )
+}
+
+fn any_pair_diverged_fork_for_key(
+  key: String,
+  facts: List<FactCardinalityDeclFact>
+) -> Bool {
+  fold_list(
+    xs: facts,
+    empty: false,
+    cons: fn(found, left) {
+      if found {
+        true
+      } else {
+        fold_list(
+          xs: facts,
+          empty: false,
+          cons: fn(inner, right) {
+            inner
+              || (
+                left.rel_path_decl_key == key
+                  && right.rel_path_decl_key == key
+                  && fact_cardinality_cross_tree_diverged_fork(left: left, right: right)
+              )
+          }
+        )
+      }
+    }
+  )
+}
+
+fn scan_cross_tree_coexistence_keys(
+  facts: List<FactCardinalityDeclFact>
+) -> FreeMonoid<String> {
+  fold_list(
+    xs: facts,
+    empty: no_coexistence_keys,
+    cons: fn(acc, fact) {
+      if any_pair_coexistence_for_key(key: fact.rel_path_decl_key, facts: facts) {
+        add_unseen_key(acc: acc, key: fact.rel_path_decl_key)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn scan_cross_tree_diverged_fork_keys(
+  facts: List<FactCardinalityDeclFact>
+) -> FreeMonoid<String> {
+  fold_list(
+    xs: facts,
+    empty: no_coexistence_keys,
+    cons: fn(acc, fact) {
+      if any_pair_diverged_fork_for_key(key: fact.rel_path_decl_key, facts: facts) {
+        add_unseen_key(acc: acc, key: fact.rel_path_decl_key)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn fact_cardinality_cross_tree_coexistence_count() -> Int {
+  length(xs: scan_cross_tree_coexistence_keys(facts: fact_cardinality_decl_facts_live()))
+}
+
+fn fact_cardinality_cross_tree_diverged_fork_count() -> Int {
+  length(xs: scan_cross_tree_diverged_fork_keys(facts: fact_cardinality_decl_facts_live()))
+}
+
+fn fact_cardinality_cross_tree_is_coexistence(key: String) -> Bool {
+  any_pair_coexistence_for_key(
+    key: key,
+    facts: fact_cardinality_decl_facts_live()
+  )
+}
+
+fn fact_cardinality_cross_tree_is_diverged_fork(key: String) -> Bool {
+  any_pair_diverged_fork_for_key(
+    key: key,
+    facts: fact_cardinality_decl_facts_live()
+  )
+}
+
+fn fact_cardinality_coexistence_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+  live_count <= baseline
+}
+
+fn fact_cardinality_live_cross_tree_coexistence_count() -> Int {
+  fact_cardinality_cross_tree_coexistence_count()
+}
+
+fn fact_cardinality_live_cross_tree_diverged_fork_count() -> Int {
+  fact_cardinality_cross_tree_diverged_fork_count()
+}
+
+fn fact_cardinality_live_cross_tree_is_coexistence(rel_path_decl_key: String) -> Bool {
+  fact_cardinality_cross_tree_is_coexistence(key: rel_path_decl_key)
+}
+
+fn fact_cardinality_live_cross_tree_is_diverged_fork(rel_path_decl_key: String) -> Bool {
+  fact_cardinality_cross_tree_is_diverged_fork(key: rel_path_decl_key)
+}
+
+fn fact_cardinality_live_coexistence_ratchet_holds() -> Bool {
+  fact_cardinality_coexistence_ratchet_holds(
+    live_count: fact_cardinality_live_cross_tree_coexistence_count(),
+    baseline: fact_cardinality_cross_tree_coexistence_baseline
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

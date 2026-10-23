@@ -1,0 +1,70 @@
+module gunbc.regen_digest_spelling_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the regression control behind the seed-executable digest repair. It
+// is homed here, beside the obligation it declares, rather than in gunbc.seed_growth_admission,
+// which owns the roster and the join and would otherwise accumulate every lane's rows in the module
+// that adjudicates them.
+//
+// WHY THIS ROW EXISTS AT ALL, AND WHO ASKED. Nobody's gate asked: seed_growth_admit_change is an
+// obligation rather than an armed lane, so this change was green without it and two reviews said so
+// while raising the receipt as advisory. What produced it is the instrument the SIBLING migration
+// promotes -- tools.rust_item_census_instrument census -- run against this branch, which answered
+// `admission: REFUSED ... unjustified-additions (3)` and named all three items. That is the whole
+// argument of DESIGN section 6's name-the-instrument rule arriving as a result rather than as a
+// principle: a transcribed count would have said "three items added" and stopped; the instrument
+// said the additions were UNJUSTIFIED, which is a different fact and the actionable one.
+//
+// WHAT THE CHANGE IS. run_built_seed_regen compared a stage's output_seed_digest against a digest
+// read back from the same file, and the two sides were produced by different renderers -- one bare
+// via v1_rt::bytes_identity_hash, one carrying bytes_digest's fnv1a64: prefix -- so the comparison
+// could never hold and generation 2 of a convergence round refused with two spellings of one value.
+// The repair routes every producer through bytes_digest and deletes digest_label, a byte-identical
+// second renderer. NET RUST SHRINKS apart from the control: one duplicate function deleted, six call
+// sites repointed.
+//
+// WHY THE ADDITIONS ARE A CONTROL AND NOT CAPABILITY. All three items are test-only. The class is
+// reachable ONLY on generation 2 -- only when a round actually installs drift -- so every no-drift
+// round reported green and the wall stood permanently unexercised; the convergence tests beside it
+// are structurally blind for a second reason, injecting the digest producer as a literal so no real
+// renderer runs in them. A control that reaches the rare arm is therefore the only evidence the
+// repair holds, which is DESIGN section 4b(4): a climb deletes the lower-rung production machinery
+// it obsoletes, and the discriminating RED stays enrolled.
+//
+// current_exe_on_disk is the third item and is not test-only. It is an EXTRACTION rather than new
+// capability: the ` (deleted)` suffix strip it performs was hand-copied into run_built_seed_regen
+// beside current_exe_digest, so the item count rises by one while the number of places that decide
+// how to resolve the running executable falls from two to one. That is the same single-authority
+// move as the digest renderer, one level down.
+//
+// NO NEW UNCITABLE ITEM. All three additions are a free function, a test function and a module --
+// each nameable as a DeclarationRef with WholeDeclaration. No impl block, so none of the
+// impl-method class gunbc.seed_growth_admission reports as seed_growth_uncitable_item_keys.
+
+data regen_digest_spelling_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.required_regen_host",
+      decl_name: "current_exe_on_disk",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.required_regen_host",
+      decl_name: "seed_executable_digest_spelling_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.required_regen_host.seed_executable_digest_spelling_tests",
+      decl_name: "every_seed_executable_digest_producer_renders_one_spelling",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "The seed-executable digest comparison in run_built_seed_regen was written between two renderers rather than downstream of one, so it could never hold and every convergence round that had to INSTALL drift refused and restored its checkpoint. The repair is at the source -- one renderer, both sides -- and its evidence has to execute the real producers, because the arm is reachable only on generation 2 and the convergence tests beside it inject the digest producer as a literal. current_exe_on_disk is an extraction that collapses two hand-copied resolutions of the running executable into one.",
+  owning_dissolution_lane: "v1-zero-hand-maintained-rust" as RoadmapNodeId,
+  trigger: "Delete all three when the seed-executable digest is carried as a TYPE whose construction admits one rendering, so a second spelling has no constructor and a comparison between two renderers cannot be written -- the capability named as the next-rung trigger by gunbc.recurring_failure_mode.one_value_two_renderings_compared_for_equality. At that point the control has no authorable RED and retires as a decoration rather than as coverage. What does NOT dissolve them is cargo test joining the merge path: that would raise the class's RUNG, which is a different fact from removing the need for the control. What does NOT dissolve them either is this defect being fixed -- the fix is what they guard.",
+  current_boundary: "src/v1/stage0/src/required_regen_host.rs current_exe_on_disk; src/v1/stage0/src/required_regen_host.rs seed_executable_digest_spelling_tests; dag/gunbc/regen_digest_spelling_seed_growth.dag"
+}

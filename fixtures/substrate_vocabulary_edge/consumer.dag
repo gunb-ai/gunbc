@@ -1,0 +1,9 @@
+module svk.consumer
+
+type SvkCarrier { text: String }
+
+fn names() -> List<String> { [] }
+
+data kept: SvkRow = SvkRow { tag: 1 }
+
+data note: String = "x"

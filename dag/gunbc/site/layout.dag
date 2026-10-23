@@ -1,0 +1,450 @@
+module gunbc.site.layout
+import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, decl }
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { CustomProperty, FlexDirection, MarginTop, Position, Inset, Height, AlignItems, Background, Border, BorderBottom, BorderRadius, BoxShadow, BoxSizing, Color, Cursor, Display, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginLeft, MarginRight, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextTransform, Transform, Width, RawProperty }
+import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, height_control, control_geometry, CompactChoice, RichIdentity, space_0, space_1, space_2, space_4, space_6, space_8, space_12, space_16, space_24, text_11, text_12, text_13, text_14, text_15, text_18, font_sans, font_mono, radius_surface, radius_999, border_1, border_2, width_status, height_compact_face }
+import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
+
+fn site_layout_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: RawSelector { text: ".site-status" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--text-dim)"),
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Width, value: "fit-content"),
+      decl(prop: Padding, value: "var(--space-2) var(--space-8)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Color, value: "var(--status-ink)"),
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-ink) 12%, var(--surface))"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-status[data-status-tone=\"ready\"]" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--status-ready-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-status[data-status-tone=\"assigned\"]" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--status-assigned-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-status[data-status-tone=\"blocked\"]" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--status-blocked-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: "*" }, decls: [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+      decl(prop: BoxSizing, value: "border-box")
+    ] },
+    StaticRule { selector: RawSelector { text: "body" }, decls: concat([
+      decl(prop: Margin, value: "0"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Color, value: "var(--text)"),
+    ], interface_text_decls(role: InterfaceBody)) },
+    StaticRule { selector: RawSelector { text: "header" }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_24)),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: BorderBottom, value: "var(--border-1) solid var(--border)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-inner" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-16)"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: ".surface-link" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Padding, value: "var(--space-8)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: "h1" }, decls: concat([
+    ], interface_text_decls(role: InterfaceHeading)) },
+    StaticRule { selector: RawSelector { text: "h2" }, decls: concat([
+      decl(prop: Margin, value: scale_triple(a: space_16, b: space_0, c: space_8))
+    ], interface_text_decls(role: InterfaceSectionHeading)) },
+    StaticRule { selector: RawSelector { text: ".chip" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar img" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "0"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "100%"),
+      decl(prop: RawProperty { name: "object-fit" }, value: "cover")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar-default-mark" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: Height, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-utilities" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: "var(--space-4)"),
+      decl(prop: MarginLeft, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-slot" }, decls: [
+      decl(prop: MarginLeft, value: "var(--space-4)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_13))
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-session[hidden], .header-account-signin[hidden]" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-name" }, decls: [
+      decl(prop: FontWeight, value: "500")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-session" }, decls: [
+      decl(prop: Position, value: "relative")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-trigger" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "none"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Cursor, value: "pointer")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".header-account-trigger" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-signin" }, decls: [
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: MinHeight, value: scale_var(t: height_control))
+    ] },
+    ResponseRule { subject: RawSelector { text: ".header-account-signin" }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: TextDecoration, value: "underline")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-signout" }, decls: [
+      decl(prop: Display, value: "contents")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "100% 0 auto auto"),
+      decl(prop: MarginTop, value: scale_var(t: space_4)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Width, value: "max-content"),
+      decl(prop: MinWidth, value: "100%"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Padding, value: scale_var(t: space_4)),
+      decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-menu)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu[hidden]" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu-item" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "none"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      decl(prop: TextAlign, value: "left"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Cursor, value: "pointer")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".header-account-menu-item" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)")
+    ] },
+    StaticRule { selector: RawSelector { text: "code" }, decls: [
+      decl(prop: FontFamily, value: "var(--font-mono)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Border, value: "0"),
+      decl(prop: BorderRadius, value: "var(--space-4)"),
+      decl(prop: Padding, value: "var(--space-1) var(--space-4)"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
+    ] },
+    StaticRule { selector: RawSelector { text: "button" }, decls: [
+      decl(prop: Border, value: "var(--border-1) solid var(--border)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-12)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: FontWeight, value: "inherit"),
+      decl(prop: FontSize, value: "inherit"),
+      decl(prop: LineHeight, value: "inherit"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: "html" }, decls: [
+      decl(prop: Margin, value: "0"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: LineHeight, value: "1.5")
+    ] },
+    StaticRule { selector: RawSelector { text: "*::before" }, decls: [
+      decl(prop: BoxSizing, value: "border-box")
+    ] },
+    StaticRule { selector: RawSelector { text: "*::after" }, decls: [
+      decl(prop: BoxSizing, value: "border-box")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-inner h1" }, decls: [
+      decl(prop: FontSize, value: "var(--text-18)"),
+      decl(prop: Margin, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: "main" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Padding, value: "var(--space-24)")
+    ] },
+    StaticRule { selector: RawSelector { text: "pre" }, decls: [
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Overflow, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: "input::placeholder" }, decls: [
+      decl(prop: Color, value: "var(--text-dim)"),
+      decl(prop: Opacity, value: "1")
+    ] },
+    StaticRule { selector: RawSelector { text: "textarea::placeholder" }, decls: [
+      decl(prop: Color, value: "var(--text-dim)"),
+      decl(prop: Opacity, value: "1")
+    ] },
+    StaticRule { selector: RawSelector { text: "input" }, decls: [
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: "textarea" }, decls: [
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: "select" }, decls: [
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: ".view-table" }, decls: [
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-list" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-menu)"),
+      decl(prop: RawProperty { name: "top" }, value: "100%"),
+      decl(prop: RawProperty { name: "left" }, value: "0"),
+      decl(prop: MinWidth, value: "100%"),
+      decl(prop: Width, value: "max-content"),
+      decl(prop: MaxWidth, value: "min(35ch, 85vw)"),
+      decl(prop: RawProperty { name: "max-height" }, value: "50vh"),
+      decl(prop: RawProperty { name: "overflow-y" }, value: "auto"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Padding, value: "var(--space-4)"),
+    ] },
+    StaticRule { selector: RawSelector { text: "[hidden]" }, decls: [
+      decl(prop: Display, value: "none !important")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-option" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: MinHeight, value: scale_var(t: control_geometry(density: RichIdentity).face)),
+      decl(prop: BorderRadius, value: scale_var(t: control_geometry(density: RichIdentity).corner)),
+      decl(prop: Border, value: "0"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-12)"),
+      decl(prop: TextAlign, value: "left"),
+      decl(prop: Cursor, value: "pointer")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".site-choice-option" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".site-choice-option" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-option[aria-selected=\"true\"]" }, decls: [
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-rich" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-rich .site-choice-option" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "var(--h-compact-face) minmax(0, 1fr)"),
+      decl(prop: RawProperty { name: "column-gap" }, value: "var(--space-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-rich .site-avatar" }, decls: [
+      decl(prop: RawProperty { name: "grid-row" }, value: "span 3"),
+      decl(prop: Width, value: scale_var(t: height_compact_face)),
+      decl(prop: Height, value: scale_var(t: height_compact_face))
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-compact summary, .site-button-compact" }, decls: concat([
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Padding, value: "var(--space-4) var(--space-12)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: Border, value: "0"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Position, value: "relative"),
+      decl(prop: RawProperty { name: "isolation" }, value: "isolate")
+    ], interface_text_decls(role: InterfaceBody)) },
+    StaticRule { selector: RawSelector { text: ".site-choice-compact summary::marker" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\"")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-compact summary::before, .site-button-compact::before" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "var(--space-4) 0 auto"),
+      decl(prop: Height, value: scale_var(t: control_geometry(density: CompactChoice).face)),
+      decl(prop: Border, value: "var(--border-1) solid var(--border)"),
+      decl(prop: BorderRadius, value: scale_var(t: control_geometry(density: CompactChoice).corner)),
+      decl(prop: RawProperty { name: "z-index" }, value: "-1"),
+      decl(prop: Background, value: "var(--surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: "details > summary" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MinHeight, value: "var(--h-control)"),
+      decl(prop: Padding, value: "var(--space-4) var(--space-8)"),
+      decl(prop: Color, value: "var(--text)")
+    ] },
+    StaticRule { selector: RawSelector { text: "details > summary::marker" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\"")
+    ] },
+    StaticRule { selector: RawSelector { text: "details > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: "details > summary::after" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: "var(--space-6)"),
+      decl(prop: Height, value: "var(--space-6)"),
+      decl(prop: RawProperty { name: "flex-shrink" }, value: "0"),
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: MarginRight, value: "var(--space-4)"),
+      decl(prop: RawProperty { name: "border-right" }, value: "var(--border-2) solid currentColor"),
+      decl(prop: BorderBottom, value: "var(--border-2) solid currentColor"),
+      decl(prop: Transform, value: "rotate(-45deg)"),
+      decl(prop: Opacity, value: "0.65")
+    ] },
+    StaticRule { selector: RawSelector { text: "details[open] > summary::after" }, decls: [
+      decl(prop: Transform, value: "rotate(45deg)")
+    ] },
+    ResponseRule { subject: RawSelector { text: "details > summary" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)")
+    ] },
+    ResponseRule { subject: RawSelector { text: "details > summary" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)"),
+      decl(prop: RawProperty { name: "outline-offset" }, value: "var(--space-2)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-brand" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Width, value: "var(--h-control)"),
+      decl(prop: MinHeight, value: "var(--h-control)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Color, value: "var(--text)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-brand-mark" }, decls: [
+      decl(prop: Width, value: "var(--h-compact-face)"),
+      decl(prop: Height, value: "var(--h-compact-face)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".site-brand" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".site-brand" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)"),
+      decl(prop: RawProperty { name: "outline-offset" }, value: "var(--space-2)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Width, value: scale_var(t: space_24)),
+      decl(prop: Height, value: scale_var(t: space_24)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--canvas)"),
+      decl(prop: Background, value: "var(--text-dim)"),
+      decl(prop: Position, value: "relative"),
+      decl(prop: Overflow, value: "hidden")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar-mark" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: scale_var(t: space_16)),
+      decl(prop: Height, value: scale_var(t: space_16))
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar-default" }, decls: [
+      decl(prop: Background, value: "var(--border)"),
+      decl(prop: Color, value: "var(--text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar-unassigned" }, decls: [
+      decl(prop: Background, value: "transparent"),
+      role_decl(prop: Color, r: TextDimRole)
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar-workflow" }, decls: [
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Color, value: "var(--text-dim)")
+    ] }
+  ]
+}

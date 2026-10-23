@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.non_fold_residue_diff_scope_misses_an_untouched_flip
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data non_fold_residue_diff_scope_misses_an_untouched_flip: RecurringFailureMode = RecurringFailureMode {
+  identity: "non_fold_residue_diff_scope_misses_an_untouched_flip" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a wildcard arm whose scrutinee's INFERRED type is a closed coproduct, in a module no pull request's required floor typed, carries no row in gunbc.non_fold_residue non_fold_residue_frontier -- or a row there names a site that no longer carries one -- and every required lane is green. The merge-path check is the required floor's DIFF-SCOPED typed verdict (v1_compiler.cli_run.non_fold_residue non_fold_residue_diff_verdict, run in run_required_floor after strict preparation as phase non-fold-residue-diff, refusing as cause=NonFoldResidueRosterDiverged). It walks the graph that preparation already typed, restricted to the modules the diff touched plus the interface consumers the floor planned, and pays no second compile. A wildcard is added or removed only by editing its own module, so a new site and a newly stale row in a touched module are always judged.",
+
+    "WHAT THE SCOPE DOES NOT SEE: an UNTOUCHED module whose scrutinee flips between closed and open because a type it depends on changed, where the floor's interface-consumer planning (interface_consumer_planning over changed declarations) does not plan that module -- for instance a change reached only through a chain the planner does not follow, or a scrutinee whose type is inferred through a call rather than read from a changed declaration's interface. The flip makes a real residue site appear or an existing row go stale, and no run judges that module until someone edits it.",
+
+    "SEPARATE FROM, AND NOT RESTATED HERE: modules that NO required lane compiles at all are the population of the failure mode module_outside_every_compiled_population_rots_silently (gunbc#12575, a declared frontier until it lands). Measured 2026-09-29 by joining the 2026-09-20 required-lane-resolution-census receipt: 2009 of the 4402 non-test census files, holding 74 of the 189 rostered sites, are in no required lane's graph. This row is only the diff-scope residual INSIDE the floor's prepared subject.",
+
+    "RUNG found at 2, mechanically preventable, for sites in touched and planned modules; at 1, mitigatable, for an untouched flip (found only when the one-time whole-corpus typed census -- the ignored nfr_whole_corpus_typed_census test -- is re-run by an operator). ATTAINABLE CEILING 3, structurally guaranteed: closedness is decidable from the typed program, so a corpus-wide typed reading refuses the state for every module on every run.",
+
+    "NEXT-RUNG TRIGGER, at capability grain: the v2 lens (#5364) reads typed scrutinees corpus-wide -- v2.lens.fallback_arm_census derives scrutinee_closed_total for every match in every module from v2 inference on the merge path, rather than from the v1 checker over one pull request's prepared subject. An artifact that types more modules on one run is not sufficient; the capability is corpus-wide typed coverage on every run, enrolled with a red that flips an untouched module's scrutinee through a changed upstream type.",
+  ],
+
+  evidence: [],
+}

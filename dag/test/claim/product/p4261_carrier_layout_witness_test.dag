@@ -1,0 +1,118 @@
+module test.claim.product.p4261_carrier_layout_witness
+
+import v2.std.algebra { any }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { volt, volt_count, ampere }
+import extdeps.electronic_component.types { ComponentVoltageRating, CapacitorRatedVoltage, FuseInterruptRating }
+import product.p4261_carrier_layout {
+  CarrierLayoutObservation,
+  ObservedComponent,
+  PathMembership,
+  RatingPrintedOnBody,
+  MarkingUnresolved,
+  MainInputPath,
+  AuxiliaryInputPath,
+  OnPathByAdjacency,
+  RatingAcrossInputRail,
+  BoundByRatedParts,
+  NoEstablishedBound,
+  p4261_k1_layout,
+  p4261_main_bus_hypothesis,
+  path_bound,
+  carrier_input_reading,
+}
+
+// THE REAL PATH: every rated part on the K1's main path was placed by adjacency in a photograph, so no
+// part's rating is shown to apply across the input rail and the photographs establish NO input bound.
+// The 75 V fuse rating is carried as an observation and named, never promoted to a ceiling.
+test fn the_photographs_establish_no_input_bound() -> Bool {
+  match path_bound(layout: p4261_k1_layout, path: MainInputPath) {
+    NoEstablishedBound { observed_ratings: rs } =>
+      any(rs, r => (r as String).contains("75 V fuse voltage rating, placed by adjacency only"))
+        && any(rs, r => (r as String).contains("100 V drain-source maximum"))
+    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
+  }
+}
+
+// The auxiliary path's rated-looking parts are the 12 A fuse (no voltage printed) and capacitors whose
+// code is NOT decoded: nothing rated, so nothing observed and nothing bounded.
+test fn undecoded_capacitors_bound_nothing() -> Bool {
+  match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
+    NoEstablishedBound { observed_ratings: rs } => count(rs) == 0
+    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
+  }
+}
+
+fn with_component(c: ObservedComponent) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    labels: p4261_k1_layout.labels,
+    module_receptacles: p4261_k1_layout.module_receptacles,
+    main_input_connectors: p4261_k1_layout.main_input_connectors,
+    auxiliary_connector: p4261_k1_layout.auxiliary_connector,
+    auxiliary_connector_positions: p4261_k1_layout.auxiliary_connector_positions,
+    edge_high_speed_connectors: p4261_k1_layout.edge_high_speed_connectors,
+    management_io_observed: p4261_k1_layout.management_io_observed,
+    power_components: concat(p4261_k1_layout.power_components, [c]),
+    unresolved_parts: p4261_k1_layout.unresolved_parts,
+  }
+}
+
+fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> ObservedComponent {
+  ObservedComponent {
+    designators: [],
+    quantity: 1,
+    role: "supplied part",
+    identification: RatingPrintedOnBody {
+      voltage: Present { value: ComponentVoltageRating { kind: if kind_is_fuse { FuseInterruptRating } else { CapacitorRatedVoltage }, maximum: volt(count: volts) } },
+      current: Absent,
+      marking_read: "supplied",
+    },
+    path: MainInputPath,
+    membership: membership,
+  }
+}
+
+// A BOUND COMES ONLY FROM AN ESTABLISHED RELATION, in both directions. A lower-rated part placed by
+// adjacency -- standing in for a capacitor on a downstream converted rail that shares the region --
+// bounds nothing. The same part with its rating established across the input rail does bound it, and
+// the lowest such rating wins.
+test fn only_a_rating_across_the_input_rail_bounds_it() -> Bool {
+  let adjacent = match path_bound(layout: with_component(c: rated_part(volts: 16, kind_is_fuse: false, membership: OnPathByAdjacency { basis: "supplied: shares the region" })), path: MainInputPath) {
+    NoEstablishedBound { observed_ratings: rs } => any(rs, r => (r as String).contains("16 V capacitor rated voltage, placed by adjacency only"))
+    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
+  }
+  let across = RatingAcrossInputRail { evidence: "supplied: traced from the input terminal block" }
+  let one = with_component(c: rated_part(volts: 75, kind_is_fuse: true, membership: across))
+  let bounded = match path_bound(layout: one, path: MainInputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, relation: r } => volt_count(v: m) == 75 && (r as String).contains("traced from the input terminal block")
+    NoEstablishedBound { observed_ratings: _ } => false
+  }
+  let two = CarrierLayoutObservation {
+    labels: one.labels,
+    module_receptacles: one.module_receptacles,
+    main_input_connectors: one.main_input_connectors,
+    auxiliary_connector: one.auxiliary_connector,
+    auxiliary_connector_positions: one.auxiliary_connector_positions,
+    edge_high_speed_connectors: one.edge_high_speed_connectors,
+    management_io_observed: one.management_io_observed,
+    power_components: concat(one.power_components, [rated_part(volts: 63, kind_is_fuse: false, membership: across)]),
+    unresolved_parts: one.unresolved_parts,
+  }
+  let lowest = match path_bound(layout: two, path: MainInputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 63
+    NoEstablishedBound { observed_ratings: _ } => false
+  }
+  adjacent && bounded && lowest
+}
+
+// The rendered reading states the input contract as unknown and carries the 48-54 V idea as a sourced
+// hypothesis with what would decide it -- never as a derived class.
+test fn the_reading_names_its_limits() -> Bool {
+  let r = carrier_input_reading(layout: p4261_k1_layout)
+  r.contains("no input bound established")
+    && r.contains("hypothesis, not a derivation: the P4261 main input is a 48-54 V-class bus")
+    && r.contains("The input voltage contract is unknown")
+    && !r.contains("at most")
+    && count(p4261_main_bus_hypothesis.sources) == 2
+}

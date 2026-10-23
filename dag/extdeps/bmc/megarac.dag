@@ -1,0 +1,404 @@
+module extdeps.bmc.megarac
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, Int, NonEmptyStr, List, Unit }
+import std.credentials { FactoryLogin }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseIdentity,
+  bmc_firmware_release_identity_eq,
+  bmc_firmware_release_identity_of_wire,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ami { ami }
+import std.resources { Network }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com/megarac/"
+  }
+}
+
+// AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK - subject authority:
+// extdeps.firmware.megarac.subject. SCOPE DISCIPLINE, PER GRAIN: rows in this module answer at the
+// FAMILY grain and each states its basis - a published vendor default, or the
+// guaranteed-across-builds floor. Anything observed on one shipping build only (Redfish absence,
+// firmware revision, service roster) is a BUILD-scoped fact and lives with the build binding
+// (extdeps.ampere.mt_collins_product_brief.bmc for the Foxconn Mt. Collins build), never promoted
+// here. The REST operation rows below are the SP-X interface shape as executed on that build - the
+// one place a single-build execution grounds a family-grain row - and carry that provenance
+// explicitly.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.megarac",
+      decl_name: "megarac_api_operations",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data megarac_vendor: Vendor<Hardware> = ami
+
+
+// The family answer is the PUBLISHED default - which is what FactoryLogin's
+// published_password field means - admin/admin being AMI's widely published MegaRAC
+// default; the Foxconn Mt. Collins build observation (its bmc binding module) is
+// corroboration, not the basis.
+//
+// THIS IS THE ONE CREDENTIAL A WORKFLOW TESTS, NOT THE FIRST OF SEVERAL
+// (NO-FALLBACK-0). It used to read "the first credential to TRY", which describes an
+// ordered search: try this, and on refusal try the next. There is no next. An ODM
+// build may ship differently, and a refusal here is a TERMINAL, typed fact about
+// this unit - the build shipped other credentials, or they have already been rotated
+// - which ends the attempt and is carried by a workflow-layer intake receipt. It is
+// neither an error to force past nor a cue to guess again: a second credential
+// attempted after the first is refused is exactly the fallback this model exists to
+// refuse, and it is also how a fleet locks itself out.
+data megarac_factory_login: FactoryLogin = FactoryLogin {
+  username: "admin",
+  published_password: "admin",
+}
+
+// The family FLOOR: protocols guaranteed across MegaRAC builds. IPMI v2 lanplus
+// (chassis, sensors, SEL, FRU, SOL, bootdev) is universal to the product line; Redfish
+// is advertised by AMI but shipped per ODM build, so its presence is a BUILD-scoped
+// observation carried on the build's binding module, never asserted or denied here.
+// A Redfish-assuming workflow must read the build row or probe.
+data megarac_supported_protocols_floor: List<BmcProtocol> = [Ipmi]
+
+// ---------------------------------------------------------------------------------------------
+// THE PROPRIETARY REST SURFACE (SP-X style), as executed. Session auth: POST /api/session
+// with form-encoded username/password; the JSON reply carries CSRFToken, and every
+// subsequent request presents the session cookie plus header X-CSRFTOKEN.
+// ---------------------------------------------------------------------------------------------
+type MegaRacApiOperation {
+  http_method: NonEmptyStr
+  path: NonEmptyStr
+  contract_note: NonEmptyStr
+}
+
+data megarac_op_session_login: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/session",
+  contract_note: "form-encoded username/password; reply JSON carries CSRFToken and privilege; subsequent calls send the session cookie and X-CSRFTOKEN header",
+}
+
+data megarac_op_media_config: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "PUT",
+  path: "/api/settings/media/general",
+  contract_note: "JSON body (GET answers the same object; member spellings as served by the Foxconn Mt. Collins build 0.32, 2026-09-27): remote_media_support:1, cd_remote_server_address, cd_remote_source_path, cd_remote_share_type nfs|cifs, mount_cd:1, plus cd_image_name, cd_error_code, rmedia_retry_count, rmedia_retry_interval and the hd_* counterparts; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
+}
+
+data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/remote/images",
+  contract_note: "lists image files visible on the mounted share; 'Could not mount the remote path' here means the rmedia daemon has not (yet) mounted - poll after the retry interval before concluding failure",
+}
+
+data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/settings/media/remote/start-media",
+  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes (the executed sequence above always carries it). Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status started or connecting via megarac_redirection_status_of_wire, session_index bound)",
+}
+
+data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/settings/media/remote/stop-media",
+  contract_note: "counterpart of start-media, same body shape; stopping a presented image re-enumerates the share, so a file published to the export after the mount is offered by /remote/images within one retry interval of the stop (Foxconn Mt. Collins build, 2026-09-27, host off; PUT media/general with mount_cd 0 then 1 was refused with code 16425 and changed nothing); a stop is established only by the configurations listing no longer presenting the image (this build has answered HTTP 500 code 1411 to a stop that took effect)",
+}
+
+data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/remote/configurations",
+  contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
+}
+
+// THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
+// ISO directory over NFS to the BMC address; PUT media config; wait for the daemon's own retry
+// interval while the images listing goes from refusing to listing the image; POST start-media WITH
+// image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts
+// available without any screen: the NFS server's read counter (bulk reads then quiet = image
+// loaded), the configurations row (redirection_status/session_index), and the boot CPU's power
+// rails rising while the second socket idles.
+//
+// THE WAIT IS AN ASYNCHRONOUS PENDING STATE, NOT PERMISSION TO POLL UNTIL GREEN
+// (NO-FALLBACK-1). Read as prose, "wait for the listing to change" and "keep asking until it
+// agrees" are the same sentence, and only one of them is admissible. The bound, the terminal
+// exits and the rule that no later observation overwrites a terminal one are modelled in
+// gunbc.machine_intake_mount_establishment, which is where they belong: what our polling saw is
+// a receipt of OUR attempt, never a fact this vendor module owns.
+data megarac_api_operations: List<MegaRacApiOperation> = [
+  megarac_op_session_login,
+  megarac_op_media_config,
+  megarac_op_media_images,
+  megarac_op_media_start,
+  megarac_op_media_stop,
+  megarac_op_media_status,
+]
+
+// THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
+// says the body MUST carry image_redirection:1 or the firmware refuses with opaque codes;
+// a profile for a MegaRAC build therefore carries this as a typed route fact, and a
+// remote-media binding can only be constructed from the Enabled arm
+// (extdeps.bmc.virtual_media MegaRacRemoteMediaParams.image_redirection).
+type MegaRacImageRedirection
+  = MegaRacImageRedirectionEnabled
+  | MegaRacImageRedirectionUnset
+
+type MegaRacImageRedirectionRequired
+  = | MegaRacImageRedirectionOn
+
+fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmptyStr {
+  match r {
+    MegaRacImageRedirectionOn => "1"
+  }
+}
+
+// FIRMWARE IDENTITY 0.32: the Foxconn Mt. Collins build these rows were executed against. Status-code
+// meanings are cited on megarac_redirection_status_of_wire.
+data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
+  family: AmiMegaRac,
+  wire: "0.32",
+)
+
+// THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
+// share type; the host sees a virtual CD. PXE is not a term of this route. The required
+// image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
+// REDIRECTION_STATUS. The codes that this
+// decoder names are the ones committed observations actually returned on firmware 0.32:
+// 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started
+// and 100 connecting (gunbc.machine_intake_mtcollins1_diskless_boot_receipt
+// mtcollins1_diskless_boot_artifact_path, and
+// gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
+// Connecting is presenting: the same unit booted GRUB from a session that still read 100.
+// Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial.
+// A firmware identity this row
+// does not catalog refuses rather than inheriting 0.32's numbers.
+type MegaRacRedirectionStatus
+  = RedirectionStopped
+  | RedirectionStartedConnectionAccepted
+  | RedirectionConnecting
+  | RedirectionWireUncatalogued { wire: Int }
+
+type MegaRacRedirectionStatusLookup
+  = RedirectionStatusKnown { firmware: BmcFirmwareReleaseIdentity, status: MegaRacRedirectionStatus }
+  | RedirectionStatusFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+
+fn megarac_redirection_status_of_wire(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+) -> MegaRacRedirectionStatusLookup {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    let status = if wire == 0 {
+      RedirectionStopped
+    } else if wire == 1 {
+      RedirectionStartedConnectionAccepted
+    } else if wire == 100 {
+      RedirectionConnecting
+    } else {
+      RedirectionWireUncatalogued { wire: wire }
+    }
+    RedirectionStatusKnown { firmware: firmware, status: status }
+  } else {
+    RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
+  }
+}
+
+// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped is known not
+// presenting. Uncatalogued firmware and uncatalogued wire are not "not presenting": they are
+// unread, and a Bool false here would license StartMedia.
+type MegaRacRedirectionPresentationStanding
+  = RedirectionPresenting
+  | RedirectionKnownStopped
+  | RedirectionPresentationUnknown
+
+fn megarac_redirection_presentation_standing(
+  lookup: MegaRacRedirectionStatusLookup,
+) -> MegaRacRedirectionPresentationStanding {
+  match lookup {
+    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => RedirectionPresentationUnknown
+    RedirectionStatusKnown { firmware: _, status: status } =>
+      match status {
+        RedirectionStartedConnectionAccepted => RedirectionPresenting
+        RedirectionConnecting => RedirectionPresenting
+        RedirectionStopped => RedirectionKnownStopped
+        RedirectionWireUncatalogued { wire: _ } => RedirectionPresentationUnknown
+      }
+  }
+}
+
+// EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
+// template are manufacturer bytes; they have no Sender constructor. Ampere's published producer
+// layout for those manufacturer bytes is extdeps.ampere.oem_sel.
+//
+// §3c frontier: megarac_web_event_log_layout and megarac_ipmi_sel_layout. Consumer: the PreOs
+// OEM-decode / SEL axis in gunbc.machine_intake_pre_os_observation_capabilities on gunbc#11110
+// (this PR does not mint that file). Until that lands, a web-log empty SelData row cannot be
+// refused as a preserved IPMI payload, and the two layouts remain unjoined to a decoder.
+type MegaRacEventLogLayout
+  = MegaRacWebEventLogOemEmptySelData
+  | MegaRacIpmiSelPayloadPreserved
+
+data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
+
+data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
+
+// THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
+// paths and contract notes and carries no transport, so nothing in this repository could invoke the
+// MegaRAC media surface — the first attach against a Mt. Collins unit was therefore driven by a
+// hand-written shell script, which is exactly the unmodeled realization DESIGN §6 names. These rows
+// make that surface reachable from a workflow.
+//
+// SESSION AUTH IS COOKIE-AND-HEADER, NOT netrc, which is why these cannot reuse the redfish.Http
+// shape beside them. POST /api/session returns a CSRFToken in its body and sets a session cookie;
+// every subsequent request must present BOTH the cookie jar and an X-CSRFTOKEN header.
+//
+// THE JAR PATH BEING A PARAMETER DOES NOT MAKE AN ATTEMPT OWN ITS JAR, and an earlier revision of
+// this note claimed it did. A parameter permits a per-attempt path; it does not require one, and
+// the first production caller passed a fixed literal — so two concurrent attempts shared one bearer
+// file, which is the opposite of what the note asserted. Ownership is a property of the CALLER's
+// allocation, and the caller is where it has to be established.
+//
+// A SESSION THAT IS NEVER CLOSED IS A LEAKED REMOTE RESOURCE. CloseSession exists because the
+// controller's session table is finite and this lane exhausted a service's sessions by opening one
+// per probe and closing none. Every operation sequence that opens a session owes a close on every
+// exit, including refusals — an operation that failed still allocated the session that carried it.
+//
+// EVERY CALL IS BOUNDED BY ITS CALLER'S max_time, WRITES INCLUDED (side-chat review 5331991982). A
+// write that runs out of time has an UNCERTAIN effect -- the controller may have applied it -- so the
+// writes also return curl's exit code as a typed value (22: --fail-with-body received a complete HTTP
+// error response; 28: timed out; others: transport) and its stderr, and the caller keeps that answer
+// rather than reading a missing HTTP answer as a refusal.
+//
+// THE CREDENTIAL IS READ FROM A CALLER FILE ON OpenSession AND NOWHERE ELSE. curl --data-urlencode
+// password@FILE keeps the secret out of argv; every later call carries only the cookie. THE FILE IS
+// THE PASSWORD BYTES EXACTLY: curl(1) documents name@file as URL-encoding the file's content
+// INCLUDING any newline, so a file ending in \n posts password=...%0A and the controller refuses the
+// login as a wrong password with no hint (review 68456). The caller's prelude writes the Secret
+// Manager payload bytes verbatim (base64-decoded, no trailer), so the contract lives on the stored
+// payload: it is minted without a trailing newline, and boot 22 (run 35447067113) is the executed
+// positive control that the stored bytes log in.
+//
+// StartMedia's json_body MUST CARRY image_redirection AND ITS ABSENCE IS OPAQUE. The contract note
+// on the operation row above records that omitting it makes the firmware refuse with opaque
+// codes; every executed attach carries it. The body
+// is a caller parameter rather than a baked literal because image_index is resolved by READING the
+// images listing, never assumed, and megarac_image_redirection_wire is the authority for the field
+// itself.
+service megarac.Media {
+
+  operation OpenSession {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cookie_jar: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-c", "{cookie_jar}", "-X", "POST", "--data-urlencode", "username={username}", "--data-urlencode", "password@{password_file}", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session POST failed"
+    }
+  }
+
+  operation ProbeSessionOnMediaRoute {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session probe on the media route failed"
+    }
+  }
+
+  operation GetMediaGeneral {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/general"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac media general GET failed"
+    }
+  }
+
+  operation GetRemoteImages {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/images"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac remote images GET failed"
+    }
+  }
+
+  operation GetRemoteConfigurations {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/settings/media/remote/configurations"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac remote configurations GET failed"
+    }
+  }
+
+  operation StartMedia {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/start-media"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac start-media POST failed"
+    }
+  }
+
+  operation StopMedia {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/settings/media/remote/stop-media"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac stop-media POST failed"
+    }
+  }
+
+  operation CloseSession {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session DELETE failed"
+    }
+  }
+}

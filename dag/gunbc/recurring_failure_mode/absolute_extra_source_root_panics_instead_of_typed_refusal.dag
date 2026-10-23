@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.absolute_extra_source_root_panics_instead_of_typed_refusal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data absolute_extra_source_root_panics_instead_of_typed_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "absolute_extra_source_root_panics_instead_of_typed_refusal" as NonEmptyStr,
+
+  receipts: [
+    "**an absolute extra --source-root panics in repo_relative_path_normalized instead of refusing with a typed cause** (INVALID STATE: `module_index_path_key` documents that files under an out-of-tree absolute root have no workspace-relative spelling and that the absolute path IS the canonical key. A caller that reaches `repo_relative_path_normalized` on that same absolute directory -- `pool_roots_for_module_graph_closure` does, for every absolute `--source-root` -- panics: `path /tmp/ann_priv is not under process workspace root`. DESIGN section 5: a panic is below the floor; the arm is a typed located refusal.",
+
+    "HARM: the only consumers that pass an absolute extra root are composed-root and fixture trees. The crash looks like a host or runner defect. Nobody rediscovers it behind a flag combination the public floor never uses.",
+
+    "RECEIPT (2026-09-10): public SHA 0d6b6653e0f, `gunbc run --source-root dag --source-root src/v2 --source-root /tmp/ann_priv --entry /tmp/ann_priv/probe.dag --function probe_main` panics at `src/v1/stage0/src/cli_run.rs` `repo_relative_path_normalized` with that path. The same bytes under a workspace-relative extra root `_ann_probe` reach ordinary run (ProcessExit wrapping of a Bool, not annotation refusal).",
+
+    "It is not `extra_source_root_outside_workspace_refuses_annotations_as_unattached`: that class completes resolve and lies with UnattachedAtScopeEnd. This class never reaches attachment. A repair that types the panic does not by itself attach annotations, and a repair that attaches annotations under a relative extra root does not stop the absolute-path panic.",
+
+    "RUNG FOUND AT: below the ladder -- process death, no typed cause.",
+
+    "CEILING: structurally guaranteed once every extra source root that is an existing directory, including an absolute one, is keyed by `module_index_path_key` and never by panicking `repo_relative_path_normalized`.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: an absolute extra `--source-root` that names an existing directory is admitted into the module index under its absolute key, or refused with a located typed diagnostic naming that root -- sufficient for `gunbc run --source-root /tmp/overlay` to not panic. `try_repo_relative_path_normalized` already returns None; the defect is the panicking wrapper on a path `module_index_path_key` was written to accept.)",
+  ],
+
+  evidence: [],
+}

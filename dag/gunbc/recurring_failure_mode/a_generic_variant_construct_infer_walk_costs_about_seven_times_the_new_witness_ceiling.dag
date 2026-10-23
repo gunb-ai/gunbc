@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_generic_variant_construct_infer_walk_costs_about_seven_times_the_new_witness_ceiling
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_generic_variant_construct_infer_walk_costs_about_seven_times_the_new_witness_ceiling: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_generic_variant_construct_infer_walk_costs_about_seven_times_the_new_witness_ceiling" as NonEmptyStr,
+
+  receipts: [
+    "COST-SHAPE SUSPICION, not yet a proven defect. An own-frame infer walk over a minimal one-module fixture carrying a GENERIC variant construct costs about seven times the new-witness eval-step ceiling, while the same-size NON-generic fixture's walk fits it. The fixtures (authored text, assembled through v2.compiler.program_assembly assemble_program_from_ingest, walked by infer): `module p / type Out<T> = Acc { value: T, n: Int } | Rej { n: Int } / fn make<T>(t: T) -> Out<T> { Acc { value: t, n: true } }` and the same with the field value `n: 7`. MEASURED, 2026-10-07, session clever-bat-68, floor run 37662723098 (head 583526cd4d), per-claim own-frame measurements printed by the required floor runner: the wrong-field claim 514,872 eval steps, the right-field twin 497,605 eval steps, against the new-witness ceiling of 72,300 (the 100ms-equivalent, v2.workflow.required_floor claim_ceiling_eval_step_budget NewWitnessTier). The refusal and the acceptance cost the same, so the cost is the generic MACHINERY (type-parameter binding, construct instantiation, declared-type walking), not refusal-path exploration.",
+
+    "HARM: any floor claim that honestly exercises generic-variant construct typing cannot be enrolled at the new-witness tier, so the first generic-variant construct controls (silent-deer-637's wrong-field control and its discriminating twin) were authored, measured, and DEFERRED out of #13210 (receipt in the PR body); the surface stays uncontrolled until the cost is explained. The 7x is UNEXPLAINED by inspection: the construct-typing path (v2.compiler.infer infer_record_construct_read through the declaring path) performs keyed reads, and the alias-binding repair's xl2 lesson (same trial) showed the substrate is a HAMT -- so the multiplier is not obviously a rescan, but no comparator has isolated it either.",
+
+    "RUNG FOUND AT: unmeasured comparator. ATTAINABLE CEILING: the A/B that decides it -- two same-shape fixtures differing in ONE line (generic parameter present vs absent), each walked in its own frame, per-claim eval steps compared. If the 7x tracks the generic parameter, the cost shape is in the generic machinery (per-instantiation work in infer's construct/declared-type paths) and is fixed to O(1)/O(log n) per construct before the controls are enrolled; if the non-generic own-frame walk is ALSO far over the ceiling, the gap is the tier's own-frame billing and the enrolment question goes back to the tier owner, not this row. NEXT-RUNG TRIGGER: the deep-instantiation follow-up PR (deep substitution inside v2.compiler.infer infer_frame_instantiated) runs that A/B with the floor's per-claim numbers and either lands the controls with a fixed cost shape or prices the tier question. NOT FIXED IN #13210: the controls are receipted, not enrolled; their fixture texts are recorded here so the follow-up reproduces them byte-identically.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_record_construct_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_frame_instantiated", field: WholeDeclaration },
+  ],
+}

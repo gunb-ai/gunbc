@@ -1,0 +1,8 @@
+module gunbc.native_frontier_roster
+
+import gunbc.native_frontier_debt { NativeFrontierRosterStanding, RosterUnminted }
+
+// The debt contract gunbc.native_frontier_debt describes. This file carries only the standing, so
+// that the minting proposal (gunbc.native_frontier_ratchet native_frontier_proposal_lines) can
+// replace it whole without restating a type. Never hand-edited: it is rewritten from a run.
+data native_frontier_roster: NativeFrontierRosterStanding = RosterUnminted

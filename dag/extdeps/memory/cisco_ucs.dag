@@ -1,0 +1,60 @@
+module extdeps.memory.cisco_ucs
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.memory.types { OemModuleOffering, OemModuleLinkEvidence, OemLinkPhysicalLabelObserved }
+import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
+import extdeps.vendor.cisco { cisco }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.cisco.com/c/en/us/products/servers-unified-computing/ucs-c-series-rack-servers/datasheet-listing.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.cisco_ucs",
+      decl_name: "ucs_mr_1x648ru_a",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// WHY THIS MODULE EXISTS SEPARATELY FROM extdeps.memory.samsung (DESIGN 3).
+// Cisco resells a Samsung module under its own PID and part number, with its own lifecycle and
+// its own published description. That is a second independently governed entity inhabiting the
+// same shape, not a second name for the Samsung row -- so it gets its own module authority and
+// REFERENCES the module rather than restating its organization axes. A second OEM reselling the
+// same part would be another row here and no edit to Samsung at all.
+//
+// CITATION STANDING, STATED HONESTLY BECAUSE IT IS WEAKER THAN THE ANCHOR SUGGESTS.
+// The anchor above is Cisco's C-Series datasheet index, not a document carrying this PID. The
+// per-PID spec sheets under cisco.com/c/dam refuse automated retrieval (HTTP 403, checked
+// 2026-08-22), and the M4-era memory guide that would carry a 2133 TSV-RDIMM was not reachable.
+// What established the description below was agreement across independent distributor listings
+// -- 64 GB, DDR4-2133 / PC4-17000, TSV-RDIMM, octal rank, x4, 1.2 V, CL15 -- corroborated by the
+// operator's physical label. That is a real basis and it is NOT a first-party reading, which is
+// exactly the distinction OemModuleLinkEvidence's two arms exist to keep visible.
+// Dissolve-on: a reachable Cisco memory guide or spec sheet listing this PID, at which point the
+// anchor names that document and this paragraph shrinks to a citation.
+//
+// WHAT THE LABEL SETTLED THAT NOTHING ELSE COULD. The label reads
+// "M393A8G40D40-CRB0Q S", which is what links this Cisco PID to that specific Samsung part
+// number -- no reachable Cisco document names the underlying manufacturer part at all. The link
+// is therefore an observation of the part in hand, recorded as such.
+data ucs_mr_1x648ru_a: OemModuleOffering = OemModuleOffering {
+  oem: cisco,
+  oem_product_id: "UCS-MR-1X648RU-A",
+  oem_part_number: "15-102952-01",
+  underlying_module: m393a8g40d40_crb0q_catalog,
+  link_evidence: OemLinkPhysicalLabelObserved {
+    label_text: "M393A8G40D40-CRB0Q S",
+    observer: "operator, physical label on the module in hand, 2026-08-22",
+  },
+}

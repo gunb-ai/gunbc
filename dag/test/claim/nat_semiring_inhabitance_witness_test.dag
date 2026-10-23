@@ -1,0 +1,84 @@
+module test.claim.nat_semiring_inhabitance_witness_test
+
+import std.types { Bool, String, List }
+import std.algebra {
+  AlgebraProfile, OrderedRingProfile, OrderedSemiringProfile,
+  algebra_templates_for_profile, kernel_algebra_profile
+}
+import std.nat { Nat, Zero, Succ, nat_semiring, nat_additive_commutative_monoid }
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SEMIRING IS SOMETHING Nat INHABITS, NOT WHAT Nat IS (operator ruling A, 2026-09-30). std.nat
+// Nat used to be declared `CommutativeSemiring<Magnitude>`: the algebra was the carrier's body and
+// its operations came from that body. The carrier is now the inductive definition, and the algebra
+// is reached the way Int's is -- through the carrier row in std.algebra algebra_carriers and the
+// profile it names. These rows assert that route, in both directions:
+//
+//   the operations a semiring has DERIVE for Nat (add, zero, mul, one, compare);
+//   an operation that needs structure a semiring lacks does NOT derive (negate: a semiring has no
+//   additive inverse), while the same lookup on Int, an ordered ring, finds it.
+//
+// The second row is what keeps the first from being a decoration: a profile that handed Nat the
+// ring's whole surface would pass the first and fail the second.
+
+fn profile_method_names(profile: AlgebraProfile) -> List<String> {
+  algebra_templates_for_profile(profile: profile) |> map(t => t.name)
+}
+
+fn carrier_method_names(carrier: String) -> List<String> {
+  match kernel_algebra_profile |> get(carrier) {
+    Present { value: p } => profile_method_names(profile: p)
+    Absent => []
+  }
+}
+
+fn names_include(names: List<String>, wanted: String) -> Bool {
+  names |> any(n => n == wanted)
+}
+
+test fn w_nat_has_a_carrier_row_and_it_is_the_ordered_semiring() -> Bool {
+  match kernel_algebra_profile |> get("Nat") {
+    Present { value: p } =>
+      match p {
+        OrderedSemiringProfile => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn w_the_semiring_operations_derive_for_nat() -> Bool {
+  let names = carrier_method_names(carrier: "Nat")
+  names_include(names: names, wanted: "add")
+    && names_include(names: names, wanted: "zero")
+    && names_include(names: names, wanted: "mul")
+    && names_include(names: names, wanted: "one")
+    && names_include(names: names, wanted: "compare")
+}
+
+test fn w_an_additive_inverse_does_not_derive_for_nat() -> Bool {
+  !names_include(names: carrier_method_names(carrier: "Nat"), wanted: "negate")
+}
+
+// THE POSITIVE CONTROL ON THE SAME LOOKUP: Int inhabits the ordered ring, and the ring-only
+// operation is found there. Without it the row above would pass on a lookup that finds nothing.
+test fn w_an_additive_inverse_derives_for_int() -> Bool {
+  names_include(names: carrier_method_names(carrier: "Int"), wanted: "negate")
+}
+
+// THE WITNESS VALUES ARE REAL INHABITANTS. nat_semiring's operations are the ones the profile
+// names, evaluated: on the naturals two and three, add is five and mul is six, zero is the
+// additive identity and one the multiplicative one. The numerals are written with the inductive
+// constructors, so this row also runs the carrier's kernel-integer realization end to end.
+test fn w_the_nat_semiring_witness_computes_as_a_semiring() -> Bool {
+  let two = Succ { prev: Succ { prev: Zero } }
+  let three = Succ { prev: two }
+  nat_semiring.add(two, three) == 5
+    && nat_semiring.mul(two, three) == 6
+    && nat_semiring.add(nat_semiring.zero, three) == three
+    && nat_semiring.mul(nat_semiring.one, three) == three
+    && nat_additive_commutative_monoid.op(two, nat_additive_commutative_monoid.identity) == two
+}

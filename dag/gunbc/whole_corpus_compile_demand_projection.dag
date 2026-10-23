@@ -1,0 +1,91 @@
+module gunbc.whole_corpus_compile_demand_projection
+
+import std.types { Int, String, NonEmptyStr, List }
+import std.measure { byte_size_count }
+import std.decl_ref { declaration_ref_display_key }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_kv,
+  json_int,
+  json_null,
+  json_string,
+  json_array,
+  json_object,
+  serialize_json,
+}
+import gunbc.whole_corpus_compile_admission {
+  WholeCorpusCompileDemand,
+  MeasuredForRoot,
+  UnmeasuredRoot,
+  WholeCorpusCompileSourceBytes,
+  SourceBytesRecorded,
+  SourceBytesNotRecordedByReceipt,
+  whole_corpus_compile_measured_root_demands,
+}
+
+// THE ROWS TRAVEL AS DATA BECAUSE THE DECISION RUNS BEFORE THEY COULD BE RESOLVED. A whole-root
+// compile is admitted before any source is indexed, so the v1 seed cannot read a .dag row; it reads
+// this projection instead, from a location the run is handed. The authority stays the repository's
+// own MeasuredForRoot rows -- this module only renders them -- so a new root is a row in the
+// repository that owns the fact, never a change to the seed, and a private repository's rows never
+// enter the public seed.
+//
+// EVERY ROW CARRIES THE WHOLE IDENTITY KEY (repository, primary root, ordered pools), because the
+// reader JOINS on the identity it observes at run time: a projection handed to the wrong
+// repository's compile must be refusable from its own rows, not trusted from its location.
+//
+// UnmeasuredRoot rows are not projected: an unmeasured root is the ABSENCE of a row, and the reader
+// derives it from absence rather than from an authored negative.
+
+// WHERE THIS REPOSITORY COMMITS ITS PROJECTION: read by the generated-artifact registry that writes
+// it and by the instrument argv that hands it to a compile, so the two cannot name different files.
+data whole_corpus_compile_demand_projection_directory: String = "tools"
+data whole_corpus_compile_demand_projection_name: String = "whole_corpus_compile_measured_root_demands.json"
+
+fn whole_corpus_compile_demand_projection_path() -> String {
+  concat(whole_corpus_compile_demand_projection_directory, concat("/", whole_corpus_compile_demand_projection_name))
+}
+
+data whole_corpus_compile_demand_projection_schema: String = "gunbc.whole_corpus_compile_demand_projection/1"
+
+fn whole_corpus_compile_source_bytes_json(b: WholeCorpusCompileSourceBytes) -> JsonValue {
+  match b {
+    SourceBytesRecorded { bytes: n } => json_int(n: byte_size_count(b: n))
+    SourceBytesNotRecordedByReceipt { read_obligation: _ } => json_null()
+  }
+}
+
+fn whole_corpus_compile_demand_row_json(d: WholeCorpusCompileDemand) -> List<JsonValue> {
+  match d {
+    UnmeasuredRoot { root: _ } => []
+    MeasuredForRoot { root: r, census: c, peak: p, receipt: rc } => [
+      json_object(members: [
+        json_kv(key: "repository", value: json_string(s: r.repository as String)),
+        json_kv(key: "primary_root", value: json_string(s: r.primary_root as String)),
+        json_kv(key: "dependency_pools", value: json_array(elements: r.dependency_pools |> map(pool => json_string(s: pool as String)))),
+        json_kv(key: "peak_bytes", value: json_int(n: byte_size_count(b: p))),
+        json_kv(key: "source_count", value: json_int(n: c.source_count)),
+        json_kv(key: "source_bytes", value: whole_corpus_compile_source_bytes_json(b: c.source_bytes)),
+        json_kv(key: "measured_on", value: json_string(s: rc.measured_on as String)),
+        json_kv(key: "instrument_run", value: json_string(s: rc.instrument_run as String)),
+        json_kv(key: "evidence", value: json_string(s: declaration_ref_display_key(ref: rc.evidence))),
+      ])
+    ]
+  }
+}
+
+// The renderer takes the rows as a parameter so every repository renders its OWN roster through
+// the one emitter; this repository's committed projection binds its own roster below.
+fn whole_corpus_compile_demand_projection_json(demands: List<WholeCorpusCompileDemand>) -> String {
+  concat(
+    serialize_json(v: json_object(members: [
+      json_kv(key: "schema", value: json_string(s: whole_corpus_compile_demand_projection_schema)),
+      json_kv(key: "rows", value: json_array(elements: demands |> flat_map(d => whole_corpus_compile_demand_row_json(d: d)))),
+    ])),
+    "\n"
+  )
+}
+
+fn expected_whole_corpus_compile_measured_root_demands_json() -> String {
+  whole_corpus_compile_demand_projection_json(demands: whole_corpus_compile_measured_root_demands)
+}

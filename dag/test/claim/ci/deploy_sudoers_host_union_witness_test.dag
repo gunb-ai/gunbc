@@ -1,0 +1,39 @@
+module test.claim.ci.deploy_sudoers_host_union_witness_test
+
+import std.types { Bool, String, List }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  ci_deploy_srv1_access,
+  ci_deploy_srv1_operator_access,
+  ci_deploy_srv1_operator_local_access,
+  deploy_accesses_on_host,
+}
+import gunbc.ci_deploy_sudoers { deploy_sudoers_dropin_body, deploy_sudoers_dropin_body_for }
+
+// /etc/sudoers.d/gunbc-deploy IS HOST-SHARED (gunbc.ci_deploy_sudoers deploy_sudoers_dropin_body).
+// The drop-in body is a function of the access alone -- no deployment row reaches it -- so the
+// lab row and the production row render it identically by construction; what these claims pin is
+// that every srv1 access renders the SAME bytes and that those bytes keep the CI runner's grants.
+data ghrunner_systemctl_line: String = "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/systemctl"
+
+test fn every_srv1_access_renders_the_same_dropin_and_it_keeps_the_ci_runner_grants() -> Bool {
+  let local = deploy_sudoers_dropin_body(access: ci_deploy_srv1_operator_local_access)
+  local == deploy_sudoers_dropin_body(access: ci_deploy_srv1_access)
+    && local == deploy_sudoers_dropin_body(access: ci_deploy_srv1_operator_access)
+    && string_contains(s: local, pattern: ghrunner_systemctl_line)
+    && string_contains(s: local, pattern: "briansrls ALL=(ALL) NOPASSWD: /usr/bin/hostnamectl")
+}
+
+fn is_ci_runner_access(a: DeployAccess) -> Bool {
+  (a.principal.posix.name as String) == (ci_deploy_srv1_access.principal.posix.name as String)
+}
+
+// THE DISCRIMINATOR: the same body over the host roster with the CI principal removed loses the
+// runner's lines. This is the drop-in the operator-local apply used to install.
+test fn removing_the_ci_principal_from_the_union_drops_its_grants() -> Bool {
+  let without_ci = filter(
+    xs: deploy_accesses_on_host(host: ci_deploy_srv1_access.host),
+    predicate: a => !is_ci_runner_access(a: a),
+  )
+  !string_contains(s: deploy_sudoers_dropin_body_for(accesses: without_ci), pattern: ghrunner_systemctl_line)
+}

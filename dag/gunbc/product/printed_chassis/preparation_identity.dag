@@ -1,0 +1,75 @@
+module product.printed_chassis.preparation_identity
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonObject}
+import std.types {String,NonEmptyStr,List,Bool}
+import std.content_hash {Sha256Digest,sha256_hex_digest}
+import extdeps.languages.json.emit {JsonValue,JsonArray,JsonString,json_object,json_kv,json_string,json_null}
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field,json_field_string,json_field_string_list,FieldRead,FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.tools.sha256sum {sha256sum_file_digest_via_shell,Sha256FileDigest,Sha256FileDigestUnavailable}
+
+// Exact realization identity: CAD and the sliced project (including process and placement).
+// Comparing different projects is intentionally conservative, not a compatibility proof.
+type PreparedRevision {cad_manifest:Sha256Digest,project:Sha256Digest}
+type PreparedSlot {slot:String,revision:PreparedRevision,attempt:String}
+fn revision_eq(a:PreparedRevision,b:PreparedRevision) -> Bool {a.cad_manifest.hex==b.cad_manifest.hex && a.project.hex==b.project.hex}
+fn revision_valid(r:PreparedRevision) -> Bool {
+ match sha256_hex_digest(hex:r.cad_manifest.hex as String) {Absent=>false Present {value:_}=>match sha256_hex_digest(hex:r.project.hex as String) {Absent=>false Present {value:_}=>true}}
+}
+fn revision_json(r:PreparedRevision) -> JsonValue {
+ json_object(members:[json_kv(key:"cad_manifest_sha256",value:json_string(s:r.cad_manifest.hex as String)),json_kv(key:"project_sha256",value:json_string(s:r.project.hex as String))])
+}
+fn optional_revision_json(r:PreparedRevision?) -> JsonValue {match r {Absent=>json_null() Present {value:bound}=>revision_json(r:bound)}}
+fn read_digest(v:JsonValue,key:String) -> Sha256Digest? {
+ match json_field_string(obj:v,key:key) {FieldRead {value:s}=>sha256_hex_digest(hex:s) FieldAbsent=>none FieldMalformed {cause:_}=>none}
+}
+fn decode_revision(v:JsonValue) -> PreparedRevision? {
+ let cad=match read_digest(v:v,key:"cad_manifest_sha256") {Present {value:d}=>d Absent=>return none}
+ let project=match read_digest(v:v,key:"project_sha256") {Present {value:d}=>d Absent=>return none}
+ Present {value:PreparedRevision {cad_manifest:cad,project:project}}
+}
+fn checked_readback_slots(text:String,cad:Sha256Digest,project:Sha256Digest,attempt:String) -> List<PreparedSlot>? {
+ if attempt=="" {return none}
+ let v=match parse_json_document(s:text) {JsonDocumentParsed {value:j}=>j JsonDocumentUnreadable {gap:_}=>return none}
+ let reported=match read_digest(v:v,key:"project_sha256") {Present {value:d}=>d Absent=>return none}
+ let binding=match json_field(obj:v,key:"cad_binding") {FieldRead {value:b}=>b FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let reported_cad=match read_digest(v:binding,key:"cad_manifest_sha256") {Present {value:d}=>d Absent=>return none}
+ if reported.hex!=project.hex || reported_cad.hex!=cad.hex {return none}
+ let objects=match json_field_string_list(obj:v,key:"objects") {FieldRead {value:ids}=>ids FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let placements=match json_field(obj:binding,key:"placements") {FieldRead {value:JsonArray {elements:p}}=>p FieldRead {value:JsonNull}=>return none FieldRead {value:JsonBool {value:_}}=>return none FieldRead {value:JsonNumber {lexeme:_}}=>return none FieldRead {value:JsonString {value:_}}=>return none FieldRead {value:JsonObject {members:_}}=>return none FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let steps=match json_field(obj:binding,key:"steps") {FieldRead {value:s}=>s FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ if count(objects)==0 || count(placements)!=count(objects) {return none}
+ if any(objects,id=>id=="" || count(filter(objects,other=>other==id))!=1 || count(filter(placements,p=>match json_field_string(obj:p,key:"id") {FieldRead {value:s}=>s==id FieldAbsent=>false FieldMalformed {cause:_}=>false}))!=1 || match read_digest(v:steps,key:id) {Absent=>true Present {value:_}=>false}) {return none}
+ let revision=PreparedRevision {cad_manifest:cad,project:project}
+ Present {value:map(objects,id=>PreparedSlot {slot:id,revision:revision,attempt:attempt})}
+}
+fn digest_file(path:String) -> Sha256Digest? {
+ if !starts_with(s:path,prefix:"/") {return none}
+ match sha256sum_file_digest_via_shell(path:path as NonEmptyStr) {Sha256FileDigest {digest:d}=>sha256_hex_digest(hex:d.hex as String) Sha256FileDigestUnavailable {path:_,reason:_}=>none}
+}
+fn read_prepared_slots(output:String) -> List<PreparedSlot>? {
+ if !starts_with(s:output,prefix:"/") {return none}
+ let cad=match digest_file(path:concat(output,"/cad/assembly.json")) {Present {value:d}=>d Absent=>return none}
+ let read=Filesystem.Read(path:concat(output,"/prepared-queues.json"))
+ if !read.success {return none}
+ let queues=match parse_json_document(s:read.content) {JsonDocumentParsed {value:JsonArray {elements:qs}}=>qs JsonDocumentParsed {value:JsonNull}=>return none JsonDocumentParsed {value:JsonBool {value:_}}=>return none JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>return none JsonDocumentParsed {value:JsonString {value:_}}=>return none JsonDocumentParsed {value:JsonObject {members:_}}=>return none JsonDocumentUnreadable {gap:_}=>return none}
+ let groups=map(queues,q=>match json_field(obj:q,key:"plates") {FieldRead {value:JsonArray {elements:ps}}=>Present {value:ps} FieldRead {value:JsonNull}=>none FieldRead {value:JsonBool {value:_}}=>none FieldRead {value:JsonNumber {lexeme:_}}=>none FieldRead {value:JsonString {value:_}}=>none FieldRead {value:JsonObject {members:_}}=>none FieldAbsent=>none FieldMalformed {cause:_}=>none})
+ if count(groups)==0 || any(groups,g=>match g {Absent=>true Present {value:ps}=>count(ps)==0}) {return none}
+ let plates=flat_map(groups,g=>match g {Present {value:ps}=>ps Absent=>[]})
+ let attempts=map(plates,p=>match json_field_string(obj:p,key:"attempt") {FieldRead {value:a}=>a FieldAbsent=>"" FieldMalformed {cause:_}=>""})
+ if any(attempts,a=>a=="" || count(filter(attempts,b=>b==a))!=1) {return none}
+ let parsed=map(plates,p=>read_prepared_plate(output:output,plate:p,cad:cad))
+ if count(parsed)==0 || any(parsed,p=>match p {Absent=>true Present {value:_}=>false}) {return none}
+ let slots=flat_map(parsed,p=>match p {Present {value:xs}=>xs Absent=>[]})
+ if any(slots,s=>count(filter(slots,other=>other.slot==s.slot))!=1) {return none}
+ Present {value:slots}
+}
+fn read_prepared_plate(output:String,plate:JsonValue,cad:Sha256Digest) -> List<PreparedSlot>? {
+ let path=match json_field_string(obj:plate,key:"path") {FieldRead {value:p}=>p FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ if !starts_with(s:path,prefix:concat(output,"/")) {return none}
+ let attempt=match json_field_string(obj:plate,key:"attempt") {FieldRead {value:a}=>a FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ let expected=match read_digest(v:plate,key:"digest") {Present {value:d}=>d Absent=>return none}
+ let actual=match digest_file(path:path) {Present {value:d}=>d Absent=>return none}
+ if actual.hex!=expected.hex {return none}
+ let read=Filesystem.Read(path:concat(path,".readback.json"))
+ if !read.success {none} else {checked_readback_slots(text:read.content,cad:cad,project:actual,attempt:attempt)}
+}

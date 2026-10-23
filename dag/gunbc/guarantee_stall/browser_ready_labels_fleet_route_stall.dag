@@ -1,0 +1,31 @@
+module gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall
+
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// THE READINESS-LABEL CONVERGE'S PRODUCTION FLEET ROUTE EXECUTES NOWHERE — A PRE-EXISTING STALL,
+// NOT AN EVENT (review round on gunbc#13401; the side chat's ruling: a gap that never held is a
+// GuaranteeStall awaiting one grounding, not a RungDrop, because nothing that held stopped
+// holding). In a real bootstrap the converge's transport is always FleetSsh
+// (browser_toolchain_admin_transport), and BOTH shared host-effect runners -- the argv runner and
+// the argv+stdin runner -- return RunArgvTransportRefused for FleetSsh before any leg runs; the
+// arm's own fail-closed note says admitting that capability "is its own change with its own
+// analysis". So grant, revoke and daemon-reload never execute over fleet, on CI or in a bootstrap,
+// and the route's outcome is always BrowserReadyLabelsFailed there. The deleted shell path was
+// carried by the same posture, so this change newly breaks nothing -- it declares what the route
+// already was. The steps DO execute for real in the changed-witness receipts
+// (test.claim.runner.browser_ready_label_real_path_witness): the production converge over
+// LocalShell, the unprivileged posture, against a mktemp scratch destination, with the unprivileged
+// reload honestly skipped as a typed posture arm.
+data browser_ready_labels_fleet_route_stall: GuaranteeStall = GuaranteeStall {
+  subject: "The runner readiness-label converge over its production fleet route: every decision is typed and the step pairing is executed for real in the LocalRepoWet receipts over LocalShell against a scratch destination, but the production route itself -- whose transport is always FleetSsh -- is refused by both shared host-effect runners before any leg, so the converge executes nowhere over fleet and its outcome there is always BrowserReadyLabelsFailed.",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "the shared host-effect FleetSsh argv and argv+stdin realization, plus a safe daemon-reload realization",
+  },
+  population: BoundedPopulation { members: [
+    "gunbc.runner_browser_toolchain::browser_ready_labels_converge_wet over browser_ready_labels_production_target",
+  ] },
+  next_rung_trigger: climbs_when(capability: "the shared fleet_subsumption route admits FleetSsh argv and argv+stdin, safely realizes reload, and an executing fleet receipt traverses the route."),
+}

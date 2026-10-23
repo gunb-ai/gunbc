@@ -1,0 +1,145 @@
+module extdeps.energy.con_edison
+
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure {
+  MoneyPerKilowattHour,
+  MoneyPerMonth,
+  MoneyOnce,
+  MoneyAmountMicro,
+  Percent,
+  money_amount_micro,
+  money_per_kilowatt_hour_micros,
+  percent,
+}
+import extdeps.currency.currency { Usd }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "coned.com/en/accounts-billing/your-bill/understanding-your-bill"
+  }
+}
+
+// CONSOLIDATED EDISON OF NEW YORK, the delivering utility for New York City. This is a SEPARATE
+// subject from extdeps.energy.nj_electricity and not an extension of it: a different utility on a
+// different filed schedule in a different state, per DESIGN section 3's external decomposition rule
+// (each independently governed upstream gets its own module authority). New Jersey's rows must not
+// grow a New York class, and this module must not restate theirs.
+//
+// THE SOURCE IS A PRIMARY READ, WHICH IS THE UPGRADE OVER THE NJ ROWS. nj_electricity carries
+// EIA-derived class averages read through an aggregator and says so, and its own
+// tariff_structure_obligation records that the figure a real meter pays is the utility's filed
+// schedule, which had NOT been read. For this account that schedule HAS now been read, off an
+// issued bill for a complete billing period, so these rows are line items rather than estimates.
+//
+// NO CUSTOMER IDENTITY IS MODELED HERE, DELIBERATELY. The bill that sourced these rows names a
+// person, a service address and an account number; none of that is a property of the TARIFF, and a
+// public repository is the wrong home for it. The citation identifies the schedule and the period,
+// which is what makes the figures re-derivable, and stops there.
+data el1_bill_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "coned.com/en/rates -- rate EL1 Residential or Religious, issued bill for the billing period 2026-07-13 to 2026-08-11 (29 days, 1049 kWh, actual smart-meter read); line items transcribed below, customer identity deliberately not modeled"
+  }
+}
+
+// A BILL IS NOT ONE NUMBER, AND COLLAPSING IT TO ONE DESTROYS THE ONLY DISTINCTION THAT MATTERS
+// FOR PRICING WORK. The all-in average for this period is total / kWh, but the basic service
+// charge does not vary with consumption: a month in which no job runs still pays it. Charging a
+// job a share of it would price a decision-invariant cost into a decision, which is the same error
+// as amortizing sunk capacity rent into a per-job quote. So the components are carried by KIND --
+// volumetric, fixed, proportional -- and the marginal derivation consumes only the volumetric ones.
+type TariffComponentKind
+  = VolumetricCharge
+  | FixedMonthlyCharge
+  | ProportionalSurcharge
+
+type TariffComponent {
+  label: NonEmptyStr
+  kind: TariffComponentKind
+}
+
+// --- The volumetric components, in hundredths of a cent per kWh expressed as micros of USD.
+// 20.277 cents/kWh = 0.20277 USD/kWh = 202770 micro-USD/kWh.
+
+data el1_delivery_rate: MoneyPerKilowattHour = MoneyPerKilowattHour {
+  amount: money_amount_micro(count: 202770),
+  currency: Usd,
+}
+
+data el1_system_benefit_rate: MoneyPerKilowattHour = MoneyPerKilowattHour {
+  amount: money_amount_micro(count: 8010),
+  currency: Usd,
+}
+
+data el1_supply_rate: MoneyPerKilowattHour = MoneyPerKilowattHour {
+  amount: money_amount_micro(count: 165490),
+  currency: Usd,
+}
+
+// --- The fixed component. Present in every billing period regardless of consumption, so it is
+// excluded from marginal cost by construction rather than by a caller remembering to exclude it.
+
+data el1_basic_service_charge: MoneyPerMonth = MoneyPerMonth {
+  amount: money_amount_micro(count: 22100000),
+  currency: Usd,
+}
+
+// --- The proportional component. Sales tax is a stated rate; GRT and the merchant function charge
+// are period totals on this bill rather than published rates, so they are NOT modeled as rates
+// here -- inventing a percentage from one period's totals would be a fabricated figure wearing a
+// rate's type. They are named in the obligation below instead.
+
+data el1_sales_tax: Percent = percent(count: 4)
+
+data el1_sales_tax_note: NonEmptyStr = "The stated sales tax on this bill is 4.5 percent. std.measure Percent is Nat-denominated, so a half point is not representable and this row carries 4 -- an UNDERSTATEMENT of the true rate. Any marginal figure derived through it is therefore a lower bound on tax, never an overstatement, and the direction is stated because a silently-rounded tax reads as exact. Dissolve-on: a rational or basis-point percentage carrier in std.measure, at which point 4.5 is expressible and this note retires with the rounding."
+
+data el1_unmodeled_charges_obligation: NonEmptyStr = "Three charges on the sourced bill are NOT modeled as rates because the bill states them only as period totals, not as published rates: GRT and other tax surcharges on the delivery side, the same on the supply side, and the Merchant Function Charge. Deriving a percentage by dividing one period's total by that period's consumption would mint a rate the utility never published and would drift silently as the underlying schedule changes. They are together a single-digit percentage of the bill; a marginal figure derived from the volumetric rows alone therefore UNDERSTATES the true marginal cost slightly, and that direction is carried rather than a guessed magnitude. Dissolve-on: the filed PSC schedule for EL1 is read and its surcharge rates modeled as rates."
+
+// THE MARGINAL RATE -- the only figure that may price an incremental unit of work. It sums exactly
+// the volumetric components and deliberately excludes the fixed charge. Tax is applied by the
+// consumer, not folded in here, so the untaxed sum stays inspectable.
+fn el1_marginal_volumetric_rate() -> MoneyPerKilowattHour {
+  let delivery = money_per_kilowatt_hour_micros(q: el1_delivery_rate)
+  let system_benefit = money_per_kilowatt_hour_micros(q: el1_system_benefit_rate)
+  let supply = money_per_kilowatt_hour_micros(q: el1_supply_rate)
+  MoneyPerKilowattHour {
+    amount: money_amount_micro(count: delivery + system_benefit + supply),
+    currency: Usd,
+  }
+}
+
+// The components, declared so a reader can see which ones the marginal derivation consumes and
+// which it must not.
+data el1_components: List<TariffComponent> = [
+  TariffComponent { label: "delivery", kind: VolumetricCharge },
+  TariffComponent { label: "system benefit charge", kind: VolumetricCharge },
+  TariffComponent { label: "supply", kind: VolumetricCharge },
+  TariffComponent { label: "basic service charge", kind: FixedMonthlyCharge },
+  TariffComponent { label: "merchant function charge", kind: FixedMonthlyCharge },
+  TariffComponent { label: "GRT and other tax surcharges", kind: ProportionalSurcharge },
+  TariffComponent { label: "sales tax", kind: ProportionalSurcharge },
+]
+
+fn tariff_component_is_marginal(c: TariffComponent) -> Bool {
+  match c.kind {
+    VolumetricCharge => true
+    FixedMonthlyCharge => false
+    ProportionalSurcharge => false
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.energy.con_edison",
+      decl_name: "el1_marginal_volumetric_rate",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.energy.con_edison.extdeps_external_authority_anchor,
+  further_citations: [extdeps.energy.con_edison.el1_bill_citation],
+}

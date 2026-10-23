@@ -1,0 +1,93 @@
+module extdeps.gnu.libc
+
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE GNU C LIBRARY, cited because it is a real upstream dependency of every artifact this repository links dynamically, and because the alternative to citing it was proven wrong by execution rather than argued.
+//
+// THE MEASUREMENT THAT PRODUCED THIS MODULE (2026-08-09, DEVBOOT-0 proof stage): a build service produced an artifact on a host running glibc 2.39 and delivered it to a caller running glibc 2.36. Both hosts are aarch64-unknown-linux-gnu. The Rust target triple was therefore IDENTICAL on both sides, the exact-subject comparison passed, the content digest verified independently at both ends, and the twenty-four megabytes that arrived failed at the dynamic linker with `version GLIBC_2.39 not found`. Every check in the system agreed on an answer that could not run. That is the displaced cost this module exists to remove: the triple names the ABI family and says nothing about the version of the C library an artifact was linked against, so a build environment is not identified by its triple.
+//
+// WHAT UPSTREAM ACTUALLY PUBLISHES. The library reports its own version through ldd, whose first output line ends with the version string on both the Debian and Ubuntu spellings -- the vendor text between them differs, which is why a consumer reads the trailing field positionally rather than matching a distribution's phrasing. The version is upstream's own numbering (2.36, 2.39); it is kept verbatim as the string the library reports rather than being re-encoded into an internal ordering, because a re-encoding would be a second naming scheme for a fact upstream already names.
+//
+// WHY A COPRODUCT AND NOT A BARE STRING. An unobserved C library and a C library observed to be absent are different states with different remedies, and the state that must never exist is a build environment silently identified without one. LibcUnobserved is representable so that a consumer must handle it explicitly; it is never the same value as any observed version, so an environment carrying it can never collide with one that was actually measured.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "sourceware.org/glibc/wiki/Glibc%20Timeline"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gnu.libc",
+      decl_name: "PlatformCLibrary",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type PlatformCLibrary
+  = GnuLibc { version: NonEmptyStr }
+  | LibcUnobserved
+
+fn render_platform_c_library(library: PlatformCLibrary) -> String {
+  match library {
+    GnuLibc { version } => concat("glibc-", version as String)
+    LibcUnobserved => "<unobserved>"
+  }
+}
+
+fn platform_c_library_identity_tag(library: PlatformCLibrary) -> NonEmptyStr {
+  match library {
+    GnuLibc { version } => concat("gnu.libc.v1.", version as String) as NonEmptyStr
+    LibcUnobserved => "gnu.libc.v1.unobserved" as NonEmptyStr
+  }
+}
+
+// THE ORDERING CARRIER, BESIDE THE OBSERVATION CARRIER, AND WHY THAT IS NOT TWO AUTHORITIES.
+//
+// PlatformCLibrary above carries upstream's own spelling verbatim, on the stated ground that
+// re-encoding it would be a second naming scheme. That reasoning is about NAMING and it still
+// holds. It does not answer an ORDERING question, and one is now load-bearing: a published binary
+// declares a MINIMUM glibc through its symbol versions, and whether a host can execute it is
+// decided by comparing two versions, not by matching two strings.
+//
+// So the ordering is authored as structure. The direction matters and is what keeps this to one
+// authority: a consumer needing upstream's spelling projects it FROM the structured value, never the
+// reverse. Authoring the string and parsing it back would be the second scheme this module already
+// refused -- and std carries no string splitter or numeric parser, so a parser written here would
+// additionally be a general-purpose facility minted to serve one comparison.
+//
+// NO PROJECTION IS DECLARED YET, because nothing consumes one. A renderer was written here first and
+// had no caller: review caught it as dead, and an unused projection is worse than a missing one
+// because it reads as a bridge that something is crossing.
+type GlibcVersion sole_constructor {
+  major: Nat
+  minor: Nat
+}
+
+fn glibc_version(major: Nat, minor: Nat) -> GlibcVersion {
+  GlibcVersion { major: major, minor: minor }
+}
+
+// LEXICOGRAPHIC ON (major, minor), WRITTEN AS COMPARISONS RATHER THAN AS ARITHMETIC ON A COMBINED
+// NUMBER. A packed encoding -- major * 1000 + minor -- would answer correctly today and silently
+// wrongly the first time a minor version exceeded the multiplier, which is a wrong answer with no
+// diagnostic. DESIGN section 5 prefers the loud shape.
+fn glibc_version_at_least(provided: GlibcVersion, required: GlibcVersion) -> Bool {
+  if provided.major > required.major {
+    true
+  } else {
+    if provided.major < required.major {
+      false
+    } else {
+      provided.minor >= required.minor
+    }
+  }
+}

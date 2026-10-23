@@ -1,0 +1,86 @@
+module extdeps.github.gists
+
+import extdeps.github.github { GitHubUser, default_api_base }
+import std.types { Timestamp, GistId, NonEmptyStr, AuthScheme }
+import extdeps.github.errors { GitHubErrorShape }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
+import extdeps.transports.rest { RestResult }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/gists/gists"
+  }
+}
+
+// Reading: docs.github.com's gists REST reference owns the gist payload's fields; type Gist and its GistFile facets transcribe the documented fields, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.github.gists", decl_name: "Gist", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type GistFile {
+  filename: String
+  content: String
+  language: String?
+  size: Int
+}
+
+type Gist {
+  id: String
+  description: String?
+  public: Bool
+  files: Map<String, GistFile>
+  owner: GitHubUser
+  created_at: Timestamp
+  updated_at: Timestamp
+  html_url: NonEmptyStr
+}
+
+service github.Gist {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation Create {
+    requires Network
+    input {
+      description: String
+      filename: String
+      content: String
+      public: Bool = false
+      auth_token: Secret
+    }
+    output {
+      id: GistId
+      html_url: NonEmptyStr
+    }
+    transport rest {
+      method: POST,
+      path: "/gists",
+      body: {
+        description: description,
+        public: public,
+        files: { "\{filename\}": { content: content } }
+      }
+    }
+    response {
+      201 => Gist
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}

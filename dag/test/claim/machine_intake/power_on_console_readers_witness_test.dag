@@ -1,0 +1,189 @@
+module test.claim.machine_intake.power_on_console_readers_witness_test
+
+import v2.std.algebra { any, filter }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest }
+import gunbc.machine_intake_ampere_checkpoint_console_observation {
+  AmpereCheckpointConsoleObservation, AmpereCheckpointSpan, AmpereCheckpointReference, AmpereCheckpointRelation,
+  ReferenceContinues, NotInReference,
+  ampere_checkpoint_console_observation, ampere_checkpoint_relation, ampere_checkpoint_last_token,
+}
+import gunbc.machine_intake_linux_boot_console_observation {
+  InitrdFailureNotPrinted, InitrdLoadFailed, EfiLoadError, KernelPanicNotPrinted, KernelPanicked,
+  linux_boot_console_observation,
+}
+import gunbc.machine_intake_mtcollins1_console_milestone_observation {
+  mtcollins1_console_milestones, UefiConsolePromptObserved, DramFirmwareBannerObserved, GrubBannerObserved, EfiStubLineObserved, KernelBannerObserved,
+}
+import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED FIXTURES: EXACT BYTES of real mtcollins1 SOL captures, escaped only as .dag string
+// syntax requires. Each names its source file, the file's sha256, the line range and the excerpt's
+// sha256.
+// branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
+// (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205: the
+// loop's last two cycles and the cut seventh banner; excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
+data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
+
+// artifacts/bmc/mtcollins1-hw-census-sol.log (sha256
+// 1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8), lines 344-356: the two-socket
+// census boot's checkpoints around 00001a0a -- the slice the relation's claim is about, supplied
+// rather than parsing the whole capture (DESIGN section 3, a witness discriminates at one interface;
+// the whole-capture route is the bundle's route claim); excerpt sha256 8e8025982c3d95ee7c24436a5eaf05d9de50aa547cfbb06dcccb02a4c68c8cb4.
+data reference_good_boot_checkpoints: String = "CP: 17f01a07\r\nCP: 17001a09\r\nCP: 04101a09\r\nCP: 01101a09\r\nCP: 07101a09\r\nCP: 17101a09\r\nCP: 00001a0a\r\nCP: 14001a0a\r\nCP: 05101a09\r\nCP: 13001a0a\r\nCP: 10001a0a\r\nCP: 12101a09\r\nCP: 03001a0a\r\n"
+
+// run 37069907299, artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture (sha256
+// bfddc9ff3856bbdba500ee6b03571634a5b080588796c18c1b007ecc16361bf9), lines 426-431; excerpt
+// sha256 12111d44b87cc877e42bf58be0f0dcf3671a5c1a1081c1a3cf86abbc03c37adc.
+data run_37069907299_stub_and_banner: String = "EFI stub: WARNING: Working around broken SetVirtualAddressMap()\r\nEFI stub: ERROR: Failed to load initrd: 0x8000000000000001\r\nEFI stub: Generating empty DTB\r\nEFI stub: Exiting boot services...\r\n[    0.000000] Booting Linux on physical CPU 0x0000120000 [0x413fd0c1]\r\n[    0.000000] Linux version 6.8.0-71-generic (buildd@bos03-arm64-036) (aarch64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #71-Ubuntu SMP PREEMPT_DYNAMIC Tue Jul 22 16:44:45 UTC 2025 (Ubuntu 6.8.0-71.71-generic 6.8.12)\r\n"
+
+// the same file, line 1879; excerpt sha256 a602607e3bd95133ca09a71f3d24f3227cf4fd92e33bd108be22bf11b3848e51.
+data run_37069907299_panic: String = "[    9.962666] Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)\r\n"
+
+// the same file, line 1899, the panic's end marker; excerpt sha256 b54cbc78545d7e4d0bc4ad452d7f63d92af9b5742cc43613f829522cb3136ef1.
+data run_37069907299_panic_end: String = "[   10.055713] ---[ end Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0) ]---\r\n"
+
+// artifacts/bmc/mtcollins1-first-own-image-boot.log (sha256
+// 19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3), lines 849-854: a stub that
+// loaded its initrd; excerpt sha256 a109b1b2cc1770667eb891bd42472e7cc3358e3976e4d97aac632fc05b8d8498.
+data own_image_stub_and_banner: String = "EFI stub: Booting Linux Kernel...\nEFI stub: WARNING: Working around broken SetVirtualAddressMap()\nEFI stub: Generating empty DTB\nEFI stub: Exiting boot services...\n[    0.000000] Booting Linux on physical CPU 0x0000120000 [0x413fd0c1]\n[    0.000000] Linux version 6.12.108 (briansrls@srv2) (gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #3 SMP PREEMPT Sun Sep  6 19:47:30 UTC 2026\n"
+
+// run 37069907299, the same file, lines 399-402: the AMI Aptio setup prompt after a screen clear;
+// excerpt sha256 7e5a8749b10b643ca9d0b6a4f0fa950b8c1a8a3237839bf60b7708acd39e5e3f.
+data run_37069907299_setup_prompt: String = "\x1b[2J\x1b[1;1H\x1b[2J\x1b[1;1H\x1b[2;1H\r\nPress <DEL> or <ESC> to Entering the Setup.\r\nPress <F11> to Entering the Boot Menu.\r\nPress <F12> to PXE Boot.Checkpoint 98\r\n"
+
+fn lines_of(text: String) -> List<String> {
+  host_capture_lines(capture: HostCaptureLiveStream { text: text })
+}
+
+fn last_span(text: String) -> AmpereCheckpointSpan? {
+  ampere_checkpoint_console_observation(lines: lines_of(text: text)).spans.last()
+}
+
+fn last_token_digits(text: String) -> String {
+  match last_span(text: text) {
+    Absent => ""
+    Present { value: s } => match ampere_checkpoint_last_token(s: s) { Absent => "" Present { value: t } => t.digits as String }
+  }
+}
+
+fn without_line(text: String, line: String) -> String {
+  join(filter(split(s: text, delimiter: "\n"), l => l != line), "\n")
+}
+
+// The reference as the bundle names it: the committed census capture, its sha256 (the file's, as
+// above), and the scope it was taken under.
+fn census_reference() -> AmpereCheckpointReference {
+  AmpereCheckpointReference {
+    path: "artifacts/bmc/mtcollins1-hw-census-sol.log",
+    digest: Sha256FileDigest { digest: sha256_digest(hex: "1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8") },
+    firmware_scope: "the vendor firmware set installed before the 2026-10-02 update",
+    configuration_scope: "two sockets, sixteen DIMMs",
+    observation: ampere_checkpoint_console_observation(lines: lines_of(text: reference_good_boot_checkpoints)),
+  }
+}
+
+data step1_digest: Sha256FileDigest = Sha256FileDigest { digest: sha256_digest(hex: "6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1") }
+
+test fn the_step1_loop_prints_two_banner_spans_and_the_last_ends_at_00001a0a() -> Bool {
+  let o = ampere_checkpoint_console_observation(lines: lines_of(text: step1_last_two_cycles))
+  count(o.spans) == 2 && all(o.spans, s => s.opened_by_banner && count(s.malformed) == 0)
+    && (match o.spans.last() { Present { value: s } => count(s.tokens) == 27 Absent => false })
+    && last_token_digits(text: step1_last_two_cycles) == "00001a0a"
+}
+
+test fn dropping_the_last_token_moves_the_stop_to_00001a09() -> Bool {
+  last_token_digits(text: without_line(text: step1_last_two_cycles, line: "CP: 00001a0a\r")) == "00001a09"
+}
+
+// R2: the relation names the capture, the reference, its digest and its scope, and nothing more.
+test fn the_relation_says_the_reference_continued_and_under_what_scope() -> Bool {
+  match last_span(text: step1_last_two_cycles) {
+    Absent => false
+    Present { value: s } => match ampere_checkpoint_relation(span: s, capture: step1_digest, reference: census_reference()) {
+      Absent => false
+      Present { value: r } => (r.last.digits as String) == "00001a0a" && (r.reference_path as String) == "artifacts/bmc/mtcollins1-hw-census-sol.log"
+        && contains(r.reference_configuration as String, "two sockets")
+        && (match r.continuation { ReferenceContinues { next: n, remaining: k, occurrences: o } => (n.digits as String) == "14001a0a" && k == 6 && o == 1 _ => false })
+    }
+  }
+}
+
+test fn a_token_the_reference_never_printed_is_not_placed_in_it() -> Bool {
+  match ampere_checkpoint_console_observation(lines: ["CP: deadbeef"]).spans.first() {
+    Absent => false
+    Present { value: s } => match ampere_checkpoint_relation(span: s, capture: step1_digest, reference: census_reference()) {
+      Present { value: r } => (match r.continuation { NotInReference => true _ => false })
+      Absent => false
+    }
+  }
+}
+
+test fn a_short_word_is_kept_as_malformed_not_dropped() -> Bool {
+  match ampere_checkpoint_console_observation(lines: ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "CP: 1a0a"]).spans.first() {
+    Present { value: s } => s.opened_by_banner && count(s.tokens) == 1 && s.malformed == ["CP: 1a0a"]
+    Absent => false
+  }
+}
+
+// Tokens before the first banner are their own span, which no banner opened; the banner then opens span 1.
+test fn tokens_before_the_first_banner_are_a_span_no_banner_opened() -> Bool {
+  let o = ampere_checkpoint_console_observation(lines: ["CP: 04001a0a", "NOTICE:  DRAM FW version 220414", "CP: 0ff00900"])
+  count(o.spans) == 2
+    && (match o.spans.first() { Present { value: s } => !s.opened_by_banner && s.index == 0 Absent => false })
+    && (match o.spans.last() { Present { value: s } => s.opened_by_banner && s.index == 1 Absent => false })
+}
+
+test fn a_console_without_checkpoints_or_banners_has_no_span_and_no_relation() -> Bool {
+  count(ampere_checkpoint_console_observation(lines: lines_of(text: run_37069907299_panic)).spans) == 0
+}
+
+test fn run_37069907299_states_an_initrd_efi_load_error_and_a_panic() -> Bool {
+  let o = linux_boot_console_observation(lines: concat(lines_of(text: run_37069907299_stub_and_banner), concat(lines_of(text: run_37069907299_panic), lines_of(text: run_37069907299_panic_end))))
+  o.stub_lines == 4 && o.kernel_banner_printed
+    && (match o.initrd { InitrdLoadFailed { status: s, line: _ } => (match s { EfiLoadError => true _ => false }) _ => false })
+    && (match o.panic { KernelPanicked { reason: r } => (r as String) == "VFS: Unable to mount root fs on unknown-block(0,0)" KernelPanicNotPrinted => false })
+}
+
+test fn the_panic_end_marker_alone_is_not_a_panic() -> Bool {
+  match linux_boot_console_observation(lines: lines_of(text: run_37069907299_panic_end)).panic { KernelPanicNotPrinted => true KernelPanicked { reason: _ } => false }
+}
+
+test fn a_stub_that_loaded_its_initrd_states_no_failure() -> Bool {
+  let o = linux_boot_console_observation(lines: lines_of(text: own_image_stub_and_banner))
+  o.stub_lines == 4 && o.kernel_banner_printed
+    && (match o.initrd { InitrdFailureNotPrinted => true _ => false })
+    && (match o.panic { KernelPanicNotPrinted => true _ => false })
+}
+
+// ── CONSOLE MILESTONES (ruling Q1) ────────────────────────────────────────────────────────────
+
+test fn the_ami_setup_prompt_is_a_uefi_console_prompt_milestone_with_its_line() -> Bool {
+  match mtcollins1_console_milestones(lines: lines_of(text: run_37069907299_setup_prompt)).sightings.first() {
+    Present { value: m } => (match m.milestone { UefiConsolePromptObserved => true _ => false }) && contains(m.line as String, "Press <DEL> or <ESC>") && m.line_index == 1
+    Absent => false
+  }
+}
+
+test fn grub_stub_and_kernel_lines_are_their_components_milestones() -> Bool {
+  let ms = mtcollins1_console_milestones(lines: lines_of(text: run_37069907299_stub_and_banner)).sightings
+  any(ms, m => match m.milestone { EfiStubLineObserved => true _ => false })
+    && any(ms, m => match m.milestone { KernelBannerObserved => true _ => false })
+}
+
+// A milestone's span is the checkpoint reader's span for the same line, by construction.
+test fn a_milestone_falls_in_the_checkpoint_readers_span() -> Bool {
+  let lines = lines_of(text: step1_last_two_cycles)
+  let banners = filter(mtcollins1_console_milestones(lines: lines).sightings, m => match m.milestone { DramFirmwareBannerObserved => true _ => false })
+  let spans = ampere_checkpoint_console_observation(lines: lines).spans
+  count(banners) == 2 && map(banners, m => m.span) == map(spans, s => s.index)
+}
+
+// RED: a line that only mentions UEFI is not a milestone.
+test fn a_line_mentioning_uefi_is_not_a_milestone() -> Bool {
+  count(mtcollins1_console_milestones(lines: ["the UEFI firmware is booting", "Shell> "]).sightings) == 0
+}

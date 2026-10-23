@@ -1,0 +1,98 @@
+module gunbc.host_command_model
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { second }
+import v2.std.operation_argv { OperationRef, InputText, InputTextList }
+import v2.std.operation_realization {
+  OperationBinding, OperationCall, OperationStep, OperationObserved, OperationHarnessFault,
+  ShellObserved,
+}
+import extdeps.transports.shell { ShellExchangeObservation }
+import extdeps.exec.command { ArgvCommand, argv_words }
+
+// AN OPERATION THAT CARRIES A WHOLE COMMAND AS ITS INPUT, AND WHAT THE FAR SIDE ANSWERS. Some
+// operations are one identity for every command they run: extdeps.shell.exec shell.Exec.RunArgv
+// starts any local program, and extdeps.ssh.session ssh.Session.ExecPortableWords runs any remote
+// command. Binding such an operation by identity alone would answer every command the same way, and
+// answering by the program's NAME would be the executable-name binding the #12423 design decision
+// refuses. So the binding is an EXACT-INVOCATION table, the keying REST replay already uses for its
+// fixtures: a scenario lists the complete word sequences it models -- OBTAINED FROM THE PRODUCTION
+// BUILDERS the code under test calls, never hand-spelled -- and a dispatched invocation is answered
+// only when the concatenation of its named inputs equals one listed sequence. An unlisted invocation,
+// or one matching two entries, is a harness fault, never a guessed answer. The answer is a function
+// of the scenario state, so the far side's reply can depend on the world.
+type ModeledInvocation<S> {
+  words: List<String>
+  answer: fn(S) -> ShellExchangeObservation
+}
+
+data shell_exec_run_argv_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/shell/exec.dag",
+  service: "shell.Exec",
+  operation: "RunArgv",
+}
+
+data ssh_session_exec_portable_words_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/ssh/session.dag",
+  service: "ssh.Session",
+  operation: "ExecPortableWords",
+}
+
+// The words a LOCAL ArgvCommand dispatches as: its program then its arguments, exactly what
+// command_over_transport builds for LocalExec and RunArgv receives.
+fn local_command_words(command: ArgvCommand) -> List<String> {
+  argv_words(command: command)
+}
+
+fn dispatched_words(bindings: List<v2.std.operation_argv.OperationInputBinding>, name: String) -> List<String>? {
+  fold(bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if b.name == name {
+        match b.value {
+          InputTextList { items: xs } => Present { value: xs }
+          InputText { text: t } => Present { value: [t] }
+        }
+      } else { none }
+    }
+  })
+}
+
+fn invocation_words(bindings: List<v2.std.operation_argv.OperationInputBinding>, inputs: List<String>) -> List<String>? {
+  fold(inputs, init: Present { value: [] }, f: fn(acc, name) {
+    match acc {
+      Absent => none
+      Present { value: so_far } => match dispatched_words(bindings: bindings, name: name) {
+        Absent => none
+        Present { value: ws } => Present { value: concat(so_far, ws) }
+      }
+    }
+  })
+}
+
+fn exact_invocation_binding<S>(at: OperationRef, inputs: List<String>, table: List<ModeledInvocation<S>>) -> OperationBinding<S> {
+  OperationBinding {
+    at: at,
+    handler: fn(state, call) {
+      match invocation_words(bindings: call.invocation.bindings, inputs: inputs) {
+        Absent => OperationHarnessFault { reason: join(["the invocation lacks one of its declared inputs: ", join(inputs, ", ")], "") as NonEmptyStr }
+        Present { value: words } => {
+          let matching = filter(table, m => m.words == words)
+          if count(matching) == 1 {
+            match matching.first() {
+              Present { value: m } => {
+                let answer = m.answer
+                OperationObserved { observation: ShellObserved { observation: answer(state) }, state: state, elapsed: second(count: 0) }
+              }
+              Absent => OperationHarnessFault { reason: "a matched invocation vanished" as NonEmptyStr }
+            }
+          } else if count(matching) == 0 {
+            OperationHarnessFault { reason: join(["no modeled invocation is exactly `", join(words, " "), "`"], "") as NonEmptyStr }
+          } else {
+            OperationHarnessFault { reason: join(["two modeled invocations are exactly `", join(words, " "), "`"], "") as NonEmptyStr }
+          }
+        }
+      }
+    },
+  }
+}

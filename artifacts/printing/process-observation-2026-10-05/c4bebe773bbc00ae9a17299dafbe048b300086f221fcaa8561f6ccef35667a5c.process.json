@@ -1,0 +1,5203 @@
+{
+  "schema": "gunbc.archived-print-process.v1",
+  "project_sha256": "c4bebe773bbc00ae9a17299dafbe048b300086f221fcaa8561f6ccef35667a5c",
+  "reader_program_sha256": "2ebd4653ee51f916dfc3e79ecf13f39fa514c18d4b07b3ccf2f888b9d811fe3a",
+  "standing": "retrospective observation only; does not authorize a print",
+  "sliced_project_settings": {
+    "accel_to_decel_enable": "1",
+    "accel_to_decel_factor": "50%",
+    "activate_air_filtration": [
+      "0"
+    ],
+    "activate_air_filtration_during_print": [
+      "1"
+    ],
+    "activate_air_filtration_on_completion": [
+      "1"
+    ],
+    "activate_chamber_temp_control": [
+      "0"
+    ],
+    "adaptive_bed_mesh_margin": "0",
+    "adaptive_pressure_advance": [
+      "0"
+    ],
+    "adaptive_pressure_advance_bridges": [
+      "0"
+    ],
+    "adaptive_pressure_advance_model": [
+      "0,0,0\n0,0,0"
+    ],
+    "adaptive_pressure_advance_overhangs": [
+      "0"
+    ],
+    "additional_cooling_fan_speed": [
+      "70"
+    ],
+    "additional_fan_full_speed_layer": [
+      "0"
+    ],
+    "align_infill_direction_to_model": "0",
+    "alternate_extra_wall": "0",
+    "auxiliary_fan": "0",
+    "bbl_calib_mark_logo": "1",
+    "bed_custom_model": "",
+    "bed_custom_texture": "",
+    "bed_exclude_area": [],
+    "bed_mesh_max": "99999,99999",
+    "bed_mesh_min": "-99999,-99999",
+    "bed_mesh_probe_distance": "50,50",
+    "bed_temperature_formula": "by_first_filament",
+    "before_layer_change_gcode": "",
+    "best_object_pos": "0.7,0.5",
+    "bottom_shell_layers": "5",
+    "bottom_shell_thickness": "0",
+    "bottom_solid_infill_flow_ratio": "1",
+    "bottom_surface_density": "100%",
+    "bottom_surface_filament_id": "0",
+    "bottom_surface_pattern": "monotonic",
+    "bridge_acceleration": "50%",
+    "bridge_angle": "0",
+    "bridge_density": "100%",
+    "bridge_flow": "1",
+    "bridge_line_width": "100%",
+    "bridge_no_support": "0",
+    "bridge_speed": "25",
+    "brim_ears_detection_length": "1",
+    "brim_ears_max_angle": "125",
+    "brim_flow_ratio": "1",
+    "brim_object_gap": "0.1",
+    "brim_type": "outer_only",
+    "brim_use_efc_outline": "0",
+    "brim_width": "4",
+    "calib_flowrate_topinfill_special_order": "0",
+    "chamber_minimal_temperature": [
+      "0"
+    ],
+    "chamber_temperature": [
+      "0"
+    ],
+    "change_extrusion_role_gcode": "",
+    "change_filament_gcode": ";===== A1mini 20250822 =====\nG392 S0\nM1007 S0\nM620 S[next_extruder]A\nM204 S9000\nG1 Z{max_layer_z + 3.0} F1200\n\nM400\nM106 P1 S0\nM106 P2 S0\n{if nozzle_temperature[previous_extruder] > 142 && next_extruder < 255}\nM104 S{nozzle_temperature[previous_extruder]}\n{endif}\n\nG1 X180 F18000\n\n{if long_retractions_when_cut[previous_extruder]}\nM620.11 S1 I[previous_extruder] E-{retraction_distances_when_cut[previous_extruder]} F1200\n{else}\nM620.11 S0\n{endif}\nM400\n\nM620.1 E F{flush_volumetric_speeds[previous_extruder]/2.4053*60} T{flush_temperatures[previous_extruder]}\nM620.10 A0 F{flush_volumetric_speeds[previous_extruder]/2.4053*60}\nT[next_extruder]\nM620.1 E F{flush_volumetric_speeds[next_extruder]/2.4053*60} T{flush_temperatures[next_extruder]}\nM620.10 A1 F{flush_volumetric_speeds[next_extruder]/2.4053*60} L[flush_length] H[nozzle_diameter] T{flush_temperatures[next_extruder]}\n\nG1 Y90 F9000\n\n{if next_extruder < 255}\n\n{if long_retractions_when_cut[previous_extruder]}\nM620.11 S1 I[previous_extruder] E{retraction_distances_when_cut[previous_extruder]} F{flush_volumetric_speeds[previous_extruder]/2.4053*60}\nM628 S1\nG92 E0\nG1 E{retraction_distances_when_cut[previous_extruder]} F{flush_volumetric_speeds[previous_extruder]/2.4053*60}\nM400\nM629 S1\n{else}\nM620.11 S0\n{endif}\n\nM400\nG92 E0\nM628 S0\n\n{if flush_length_1 > 1}\n; FLUSH_START\n; always use highest temperature to flush\nM400\nM1002 set_filament_type:UNKNOWN\nM109 S[flush_temperatures[next_extruder]]\nM106 P1 S60\n{if flush_length_1 > 23.7}\nG1 E23.7 F{flush_volumetric_speeds[previous_extruder]/2.4053*60} ; do not need pulsatile flushing for start part\nG1 E{(flush_length_1 - 23.7) * 0.02} F50\nG1 E{(flush_length_1 - 23.7) * 0.23} F{flush_volumetric_speeds[previous_extruder]/2.4053*60}\nG1 E{(flush_length_1 - 23.7) * 0.02} F50\nG1 E{(flush_length_1 - 23.7) * 0.23} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{(flush_length_1 - 23.7) * 0.02} F50\nG1 E{(flush_length_1 - 23.7) * 0.23} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{(flush_length_1 - 23.7) * 0.02} F50\nG1 E{(flush_length_1 - 23.7) * 0.23} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\n{else}\nG1 E{flush_length_1} F{flush_volumetric_speeds[previous_extruder]/2.4053*60}\n{endif}\n; FLUSH_END\nG1 E-[old_retract_length_toolchange] F1800\nG1 E[old_retract_length_toolchange] F300\nM400\nM1002 set_filament_type:{filament_type[next_extruder]}\n{endif}\n\n{if flush_length_1 > 45 && flush_length_2 > 1}\n; WIPE\nM400\nM106 P1 S178\nM400 S3\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nM400\nM106 P1 S0\n{endif}\n\n{if flush_length_2 > 1}\nM106 P1 S60\n; FLUSH_START\nG1 E{flush_length_2 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_2 * 0.02} F50\nG1 E{flush_length_2 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_2 * 0.02} F50\nG1 E{flush_length_2 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_2 * 0.02} F50\nG1 E{flush_length_2 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_2 * 0.02} F50\nG1 E{flush_length_2 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_2 * 0.02} F50\n; FLUSH_END\nG1 E-[new_retract_length_toolchange] F1800\nG1 E[new_retract_length_toolchange] F300\n{endif}\n\n{if flush_length_2 > 45 && flush_length_3 > 1}\n; WIPE\nM400\nM106 P1 S178\nM400 S3\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nM400\nM106 P1 S0\n{endif}\n\n{if flush_length_3 > 1}\nM106 P1 S60\n; FLUSH_START\nG1 E{flush_length_3 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_3 * 0.02} F50\nG1 E{flush_length_3 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_3 * 0.02} F50\nG1 E{flush_length_3 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_3 * 0.02} F50\nG1 E{flush_length_3 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_3 * 0.02} F50\nG1 E{flush_length_3 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_3 * 0.02} F50\n; FLUSH_END\nG1 E-[new_retract_length_toolchange] F1800\nG1 E[new_retract_length_toolchange] F300\n{endif}\n\n{if flush_length_3 > 45 && flush_length_4 > 1}\n; WIPE\nM400\nM106 P1 S178\nM400 S3\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nM400\nM106 P1 S0\n{endif}\n\n{if flush_length_4 > 1}\nM106 P1 S60\n; FLUSH_START\nG1 E{flush_length_4 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_4 * 0.02} F50\nG1 E{flush_length_4 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_4 * 0.02} F50\nG1 E{flush_length_4 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_4 * 0.02} F50\nG1 E{flush_length_4 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_4 * 0.02} F50\nG1 E{flush_length_4 * 0.18} F{flush_volumetric_speeds[next_extruder]/2.4053*60}\nG1 E{flush_length_4 * 0.02} F50\n; FLUSH_END\n{endif}\n\nM629\n\nM400\nM106 P1 S60\nM109 S{nozzle_temperature[next_extruder]}\nG1 E5 F{flush_volumetric_speeds[next_extruder]/2.4053*60} ;Compensate for filament spillage during waiting temperature\nM400\nG92 E0\nG1 E-[new_retract_length_toolchange] F1800\nM400\nM106 P1 S178\nM400 S3\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nG1 X-3.5 F18000\nG1 X-13.5 F3000\nM400\nG1 Z{max_layer_z + 3.0} F3000\nM106 P1 S0\n{if layer_z <= (initial_layer_print_height + 0.001)}\nM204 S[initial_layer_acceleration]\n{else}\nM204 S[default_acceleration]\n{endif}\n{else}\nG1 X[x_after_toolchange] Y[y_after_toolchange] Z[z_after_toolchange] F12000\n{endif}\n\nM622.1 S0\nM9833 F{outer_wall_volumetric_speed/2.4} A0.3 ; cali dynamic extrusion compensation\nM1002 judge_flag filament_need_cali_flag\nM622 J1\n  G92 E0\n  G1 E-[new_retract_length_toolchange] F1800\n  M400\n  \n  M106 P1 S178\n  M400 S7\n  G1 X0 F18000\n  G1 X-13.5 F3000\n  G1 X0 F18000 ;wipe and shake\n  G1 X-13.5 F3000\n  G1 X0 F12000 ;wipe and shake\n  G1 X-13.5 F3000\n  G1 X0 F12000 ;wipe and shake\n  M400\n  M106 P1 S0 \nM623\n\nM621 S[next_extruder]A\nG392 S0\n\nM1007 S1\n",
+    "close_additional_fan_first_x_layers": [
+      "3"
+    ],
+    "close_fan_the_first_x_layers": [
+      "1"
+    ],
+    "combine_brims": "0",
+    "compatible_printers_condition": "",
+    "complete_print_exhaust_fan_speed": [
+      "70"
+    ],
+    "cool_plate_temp": [
+      "35"
+    ],
+    "cool_plate_temp_initial_layer": [
+      "35"
+    ],
+    "cooling_tube_length": "5",
+    "cooling_tube_retraction": "91.5",
+    "counterbore_hole_bridging": "none",
+    "curr_bed_type": "Textured PEI Plate",
+    "default_acceleration": "1000",
+    "default_filament_colour": [
+      ""
+    ],
+    "default_filament_profile": [
+      "Bambu PLA Basic @BBL A1M"
+    ],
+    "default_jerk": "0",
+    "default_junction_deviation": "0",
+    "default_nozzle_volume_type": [
+      "Standard"
+    ],
+    "default_print_profile": "0.20mm Standard @BBL A1M",
+    "deretraction_speed": [
+      "30"
+    ],
+    "detect_narrow_internal_solid_infill": "1",
+    "detect_overhang_wall": "1",
+    "detect_thin_wall": "0",
+    "different_settings_to_system": [
+      "",
+      "",
+      ""
+    ],
+    "disable_m73": "0",
+    "dont_filter_internal_bridges": "disabled",
+    "dont_slow_down_outer_wall": [
+      "0"
+    ],
+    "draft_shield": "disabled",
+    "during_print_exhaust_fan_speed": [
+      "70"
+    ],
+    "elefant_foot_compensation": "0",
+    "elefant_foot_compensation_layers": "1",
+    "elefant_foot_layers_density": "100%",
+    "emit_machine_limits_to_gcode": "1",
+    "enable_arc_fitting": "1",
+    "enable_extra_bridge_layer": "disabled",
+    "enable_filament_ramming": "0",
+    "enable_long_retraction_when_cut": "2",
+    "enable_overhang_bridge_fan": [
+      "1"
+    ],
+    "enable_overhang_speed": "1",
+    "enable_power_loss_recovery": "printer_configuration",
+    "enable_pressure_advance": [
+      "0"
+    ],
+    "enable_prime_tower": "1",
+    "enable_support": "1",
+    "enable_tower_interface_cooldown_during_tower": "0",
+    "enable_tower_interface_features": "0",
+    "enable_wrapping_detection": "0",
+    "enforce_support_layers": "0",
+    "eng_plate_temp": [
+      "0"
+    ],
+    "eng_plate_temp_initial_layer": [
+      "0"
+    ],
+    "ensure_vertical_shell_thickness": "ensure_all",
+    "exclude_object": "0",
+    "extra_loading_move": "-2",
+    "extra_perimeters_on_overhangs": "0",
+    "extra_solid_infills": "",
+    "extruder_ams_count": [],
+    "extruder_clearance_height_to_lid": "180",
+    "extruder_clearance_height_to_rod": "25",
+    "extruder_clearance_radius": "73",
+    "extruder_colour": [
+      "#018001"
+    ],
+    "extruder_offset": [
+      "0x0"
+    ],
+    "extruder_printable_area": [],
+    "extruder_printable_height": [
+      "0"
+    ],
+    "extruder_type": [
+      "Direct Drive"
+    ],
+    "extruder_variant_list": [
+      "Direct Drive Standard"
+    ],
+    "extrusion_rate_smoothing_external_perimeter_only": "0",
+    "fan_cooling_layer_time": [
+      "80"
+    ],
+    "fan_kickstart": "0",
+    "fan_max_speed": [
+      "80"
+    ],
+    "fan_min_speed": [
+      "60"
+    ],
+    "fan_speedup_overhangs": "1",
+    "fan_speedup_time": "0",
+    "filament_adaptive_volumetric_speed": [
+      "0"
+    ],
+    "filament_adhesiveness_category": [
+      "100"
+    ],
+    "filament_change_extrusion_role_gcode": [
+      ""
+    ],
+    "filament_change_length": [
+      "10"
+    ],
+    "filament_colour": [
+      "#F2754E"
+    ],
+    "filament_cooling_before_tower": [
+      "10"
+    ],
+    "filament_cooling_final_speed": [
+      "3.4"
+    ],
+    "filament_cooling_initial_speed": [
+      "2.2"
+    ],
+    "filament_cooling_moves": [
+      "4"
+    ],
+    "filament_cost": [
+      "20"
+    ],
+    "filament_density": [
+      "1.24"
+    ],
+    "filament_deretraction_speed": [
+      "nil"
+    ],
+    "filament_diameter": [
+      "1.75"
+    ],
+    "filament_end_gcode": [
+      "; filament end gcode \n\n"
+    ],
+    "filament_extruder_variant": [
+      "Direct Drive Standard"
+    ],
+    "filament_flow_ratio": [
+      "0.98"
+    ],
+    "filament_flush_temp": [
+      "0"
+    ],
+    "filament_flush_volumetric_speed": [
+      "0"
+    ],
+    "filament_ids": [
+      "GFL99"
+    ],
+    "filament_ironing_flow": [
+      "nil"
+    ],
+    "filament_ironing_inset": [
+      "nil"
+    ],
+    "filament_ironing_spacing": [
+      "nil"
+    ],
+    "filament_ironing_speed": [
+      "nil"
+    ],
+    "filament_is_support": [
+      "0"
+    ],
+    "filament_loading_speed": [
+      "28"
+    ],
+    "filament_loading_speed_start": [
+      "3"
+    ],
+    "filament_long_retractions_when_cut": [
+      "nil"
+    ],
+    "filament_map": [
+      "1"
+    ],
+    "filament_map_mode": "Auto For Flush",
+    "filament_max_volumetric_speed": [
+      "12"
+    ],
+    "filament_minimal_purge_on_wipe_tower": [
+      "15"
+    ],
+    "filament_multitool_ramming": [
+      "0"
+    ],
+    "filament_multitool_ramming_flow": [
+      "10"
+    ],
+    "filament_multitool_ramming_volume": [
+      "10"
+    ],
+    "filament_notes": [
+      ""
+    ],
+    "filament_printable": [
+      "3"
+    ],
+    "filament_ramming_parameters": [
+      "120 100 6.6 6.8 7.2 7.6 7.9 8.2 8.7 9.4 9.9 10.0| 0.05 6.6 0.45 6.8 0.95 7.8 1.45 8.3 1.95 9.7 2.45 10 2.95 7.6 3.45 7.6 3.95 7.6 4.45 7.6 4.95 7.6"
+    ],
+    "filament_retract_before_wipe": [
+      "nil"
+    ],
+    "filament_retract_restart_extra": [
+      "nil"
+    ],
+    "filament_retract_when_changing_layer": [
+      "nil"
+    ],
+    "filament_retraction_distances_when_cut": [
+      "nil"
+    ],
+    "filament_retraction_length": [
+      "nil"
+    ],
+    "filament_retraction_minimum_travel": [
+      "nil"
+    ],
+    "filament_retraction_speed": [
+      "nil"
+    ],
+    "filament_self_index": [
+      "1"
+    ],
+    "filament_settings_id": [
+      "Generic PLA @BBL A1M"
+    ],
+    "filament_shrink": [
+      "100%"
+    ],
+    "filament_shrinkage_compensation_z": [
+      "100%"
+    ],
+    "filament_soluble": [
+      "0"
+    ],
+    "filament_stamping_distance": [
+      "0"
+    ],
+    "filament_stamping_loading_speed": [
+      "0"
+    ],
+    "filament_start_gcode": [
+      "; filament start gcode\n{if  (bed_temperature[current_extruder] >45)||(bed_temperature_initial_layer[current_extruder] >45)}M106 P3 S255\n{elsif(bed_temperature[current_extruder] >35)||(bed_temperature_initial_layer[current_extruder] >35)}M106 P3 S180\n{endif};Prevent PLA from jamming\n\n\n{if activate_air_filtration[current_extruder] && support_air_filtration}\nM106 P3 S{during_print_exhaust_fan_speed_num[current_extruder]} \n{endif}"
+    ],
+    "filament_toolchange_delay": [
+      "0"
+    ],
+    "filament_tower_interface_pre_extrusion_dist": [
+      "10"
+    ],
+    "filament_tower_interface_pre_extrusion_length": [
+      "0"
+    ],
+    "filament_tower_interface_print_temp": [
+      "-1"
+    ],
+    "filament_tower_interface_purge_volume": [
+      "20"
+    ],
+    "filament_tower_ironing_area": [
+      "4"
+    ],
+    "filament_type": [
+      "PLA"
+    ],
+    "filament_unloading_speed": [
+      "90"
+    ],
+    "filament_unloading_speed_start": [
+      "100"
+    ],
+    "filament_vendor": [
+      "Generic"
+    ],
+    "filament_wipe": [
+      "nil"
+    ],
+    "filament_wipe_distance": [
+      "nil"
+    ],
+    "filament_z_hop": [
+      "nil"
+    ],
+    "filament_z_hop_types": [
+      "nil"
+    ],
+    "file_start_gcode": "",
+    "filename_format": "{input_filename_base}_{filament_type[0]}_{print_time}.gcode",
+    "fill_multiline": "1",
+    "filter_out_gap_fill": "0",
+    "first_layer_flow_ratio": "1",
+    "first_layer_print_sequence": [
+      "0"
+    ],
+    "first_x_layer_fan_speed": [
+      "0"
+    ],
+    "flush_into_infill": "0",
+    "flush_into_objects": "0",
+    "flush_into_support": "1",
+    "flush_multiplier": [
+      "0.3"
+    ],
+    "flush_volumes_matrix": [
+      "0",
+      "280",
+      "280",
+      "280",
+      "280",
+      "0",
+      "280",
+      "280",
+      "280",
+      "280",
+      "0",
+      "280",
+      "280",
+      "280",
+      "280",
+      "0"
+    ],
+    "flush_volumes_vector": [
+      "140",
+      "140",
+      "140",
+      "140",
+      "140",
+      "140",
+      "140",
+      "140"
+    ],
+    "from": "project",
+    "full_fan_speed_layer": [
+      "0"
+    ],
+    "fuzzy_skin": "disabled_fuzzy",
+    "fuzzy_skin_first_layer": "0",
+    "fuzzy_skin_layers_between_ripple_offset": "1",
+    "fuzzy_skin_mode": "displacement",
+    "fuzzy_skin_noise_type": "classic",
+    "fuzzy_skin_octaves": "4",
+    "fuzzy_skin_persistence": "0.5",
+    "fuzzy_skin_point_distance": "0.3",
+    "fuzzy_skin_ripple_offset": "50%",
+    "fuzzy_skin_ripples_per_layer": "15",
+    "fuzzy_skin_scale": "1",
+    "fuzzy_skin_thickness": "0.2",
+    "gap_fill_flow_ratio": "1",
+    "gap_fill_target": "nowhere",
+    "gap_infill_speed": "250",
+    "gcode_add_line_number": "0",
+    "gcode_comments": "0",
+    "gcode_flavor": "marlin",
+    "gcode_label_objects": "1",
+    "grab_length": [
+      "17.4"
+    ],
+    "gyroid_optimized": "0",
+    "has_scarf_joint_seam": "0",
+    "head_wrap_detect_zone": [
+      "156x152",
+      "180x152",
+      "180x180",
+      "156x180"
+    ],
+    "high_current_on_filament_swap": "0",
+    "hole_to_polyhole": "0",
+    "hole_to_polyhole_threshold": "0.01",
+    "hole_to_polyhole_twisted": "1",
+    "hot_plate_temp": [
+      "60"
+    ],
+    "hot_plate_temp_initial_layer": [
+      "60"
+    ],
+    "idle_temperature": [
+      "0"
+    ],
+    "independent_support_layer_height": "1",
+    "infill_anchor": "400%",
+    "infill_anchor_max": "20",
+    "infill_combination": "0",
+    "infill_combination_max_layer_height": "100%",
+    "infill_direction": "45",
+    "infill_jerk": "9",
+    "infill_lock_depth": "1",
+    "infill_overhang_angle": "60",
+    "infill_shift_step": "0.4",
+    "infill_wall_overlap": "15%",
+    "inherits_group": [
+      "",
+      "",
+      ""
+    ],
+    "initial_layer_acceleration": "500",
+    "initial_layer_infill_speed": "105",
+    "initial_layer_jerk": "9",
+    "initial_layer_line_width": "0.5",
+    "initial_layer_min_bead_width": "85%",
+    "initial_layer_print_height": "0.2",
+    "initial_layer_speed": "50",
+    "initial_layer_travel_acceleration": "6000",
+    "initial_layer_travel_jerk": "100%",
+    "initial_layer_travel_speed": "100%",
+    "inner_wall_acceleration": "1000",
+    "inner_wall_filament_id": "0",
+    "inner_wall_flow_ratio": "1",
+    "inner_wall_jerk": "9",
+    "inner_wall_line_width": "0.45",
+    "inner_wall_speed": "100",
+    "input_shaping_damp_x": "0.1",
+    "input_shaping_damp_y": "0.1",
+    "input_shaping_emit": "0",
+    "input_shaping_freq_x": "0",
+    "input_shaping_freq_y": "0",
+    "input_shaping_type": "Default",
+    "interface_shells": "0",
+    "interlocking_beam": "0",
+    "interlocking_beam_layer_count": "2",
+    "interlocking_beam_width": "0.8",
+    "interlocking_boundary_avoidance": "2",
+    "interlocking_depth": "2",
+    "interlocking_orientation": "22.5",
+    "internal_bridge_angle": "0",
+    "internal_bridge_density": "100%",
+    "internal_bridge_fan_speed": [
+      "-1"
+    ],
+    "internal_bridge_flow": "1",
+    "internal_bridge_speed": "150%",
+    "internal_solid_filament_id": "0",
+    "internal_solid_infill_acceleration": "100%",
+    "internal_solid_infill_flow_ratio": "1",
+    "internal_solid_infill_line_width": "0.42",
+    "internal_solid_infill_pattern": "monotonic",
+    "internal_solid_infill_speed": "100",
+    "ironing_angle": "0",
+    "ironing_angle_fixed": "0",
+    "ironing_fan_speed": [
+      "-1"
+    ],
+    "ironing_flow": "10%",
+    "ironing_inset": "0.21",
+    "ironing_pattern": "rectilinear",
+    "ironing_spacing": "0.15",
+    "ironing_speed": "30",
+    "ironing_type": "no ironing",
+    "is_infill_first": "0",
+    "lateral_lattice_angle_1": "-45",
+    "lateral_lattice_angle_2": "45",
+    "layer_change_gcode": "; layer num/total_layer_count: {layer_num+1}/[total_layer_count]\n; update layer progress\nM73 L{layer_num+1}\nM991 S0 P{layer_num} ;notify layer change\n",
+    "layer_height": "0.2",
+    "lightning_overhang_angle": "45",
+    "lightning_prune_angle": "45",
+    "lightning_straightening_angle": "45",
+    "line_width": "0.42",
+    "long_retractions_when_cut": [
+      "0"
+    ],
+    "long_retractions_when_ec": [
+      "0"
+    ],
+    "machine_end_gcode": ";===== date: 20231229 =====================\n;turn off nozzle clog detect\nG392 S0\n\nM400 ; wait for buffer to clear\nG92 E0 ; zero the extruder\nG1 E-0.8 F1800 ; retract\nG1 Z{max_layer_z + 0.5} F900 ; lower z a little\nG1 X0 Y{first_layer_center_no_wipe_tower[1]} F18000 ; move to safe pos\nG1 X-13.0 F3000 ; move to safe pos\n{if !spiral_mode && print_sequence != \"by object\"}\nM1002 judge_flag timelapse_record_flag\nM622 J1\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM400 P100\nM971 S11 C11 O0\nM991 S0 P-1 ;end timelapse at safe pos\nM623\n{endif}\n\nM140 S0 ; turn off bed\nM106 S0 ; turn off fan\nM106 P2 S0 ; turn off remote part cooling fan\nM106 P3 S0 ; turn off chamber cooling fan\n\n;G1 X27 F15000 ; wipe\n\n; pull back filament to AMS\nM620 S255\nG1 X181 F12000\nT255\nG1 X0 F18000\nG1 X-13.0 F3000\nG1 X0 F18000 ; wipe\nM621 S255\n\nM104 S0 ; turn off hotend\n\nM400 ; wait all motion done\nM17 S\nM17 Z0.4 ; lower z motor current to reduce impact if there is something in the bottom\n{if (max_layer_z + 100.0) < 180}\n    G1 Z{max_layer_z + 100.0} F600\n    G1 Z{max_layer_z +98.0}\n{else}\n    G1 Z180 F600\n    G1 Z180\n{endif}\nM400 P100\nM17 R ; restore z current\n\nG90\nG1 X-13 Y180 F3600\n\nG91\nG1 Z-1 F600\nG90\nM83\n\nM220 S100  ; Reset feedrate magnitude\nM201.2 K1.0 ; Reset acc magnitude\nM73.2   R1.0 ;Reset left time magnitude\nM1002 set_gcode_claim_speed_level : 0\n\n;=====printer finish  sound=========\nM17\nM400 S1\nM1006 S1\nM1006 A0 B20 L100 C37 D20 M100 E42 F20 N100\nM1006 A0 B10 L100 C44 D10 M100 E44 F10 N100\nM1006 A0 B10 L100 C46 D10 M100 E46 F10 N100\nM1006 A44 B20 L100 C39 D20 M100 E48 F20 N100\nM1006 A0 B10 L100 C44 D10 M100 E44 F10 N100\nM1006 A0 B10 L100 C0 D10 M100 E0 F10 N100\nM1006 A0 B10 L100 C39 D10 M100 E39 F10 N100\nM1006 A0 B10 L100 C0 D10 M100 E0 F10 N100\nM1006 A0 B10 L100 C44 D10 M100 E44 F10 N100\nM1006 A0 B10 L100 C0 D10 M100 E0 F10 N100\nM1006 A0 B10 L100 C39 D10 M100 E39 F10 N100\nM1006 A0 B10 L100 C0 D10 M100 E0 F10 N100\nM1006 A44 B10 L100 C0 D10 M100 E48 F10 N100\nM1006 A0 B10 L100 C0 D10 M100 E0 F10 N100\nM1006 A44 B20 L100 C41 D20 M100 E49 F20 N100\nM1006 A0 B20 L100 C0 D20 M100 E0 F20 N100\nM1006 A0 B20 L100 C37 D20 M100 E37 F20 N100\nM1006 W\n;=====printer finish  sound=========\nM400 S1\nM18 X Y Z\n",
+    "machine_load_filament_time": "28",
+    "machine_max_acceleration_e": [
+      "5000",
+      "5000"
+    ],
+    "machine_max_acceleration_extruding": [
+      "20000",
+      "20000"
+    ],
+    "machine_max_acceleration_retracting": [
+      "5000",
+      "5000"
+    ],
+    "machine_max_acceleration_travel": [
+      "6000",
+      "6000"
+    ],
+    "machine_max_acceleration_x": [
+      "6000",
+      "6000"
+    ],
+    "machine_max_acceleration_y": [
+      "6000",
+      "6000"
+    ],
+    "machine_max_acceleration_z": [
+      "1500",
+      "1500"
+    ],
+    "machine_max_jerk_e": [
+      "3",
+      "3"
+    ],
+    "machine_max_jerk_x": [
+      "9",
+      "9"
+    ],
+    "machine_max_jerk_y": [
+      "9",
+      "9"
+    ],
+    "machine_max_jerk_z": [
+      "5",
+      "5"
+    ],
+    "machine_max_junction_deviation": [
+      "0.01"
+    ],
+    "machine_max_speed_e": [
+      "30",
+      "30"
+    ],
+    "machine_max_speed_x": [
+      "500",
+      "200"
+    ],
+    "machine_max_speed_y": [
+      "500",
+      "200"
+    ],
+    "machine_max_speed_z": [
+      "30",
+      "30"
+    ],
+    "machine_min_extruding_rate": [
+      "0",
+      "0"
+    ],
+    "machine_min_travel_rate": [
+      "0",
+      "0"
+    ],
+    "machine_pause_gcode": "M400 U1",
+    "machine_start_gcode": ";===== machine: A1 mini =========================\n;===== date: 20250822 ==================\n\n;===== start to heat heatbead&hotend==========\nM1002 gcode_claim_action : 2\nM1002 set_filament_type:{filament_type[initial_no_support_extruder]}\nM104 S170\nM140 S[bed_temperature_initial_layer_single]\nG392 S0 ;turn off clog detect\nM9833.2\n;=====start printer sound ===================\nM17\nM400 S1\nM1006 S1\nM1006 A0 B0 L100 C37 D10 M100 E37 F10 N100\nM1006 A0 B0 L100 C41 D10 M100 E41 F10 N100\nM1006 A0 B0 L100 C44 D10 M100 E44 F10 N100\nM1006 A0 B10 L100 C0 D10 M100 E0 F10 N100\nM1006 A43 B10 L100 C39 D10 M100 E46 F10 N100\nM1006 A0 B0 L100 C0 D10 M100 E0 F10 N100\nM1006 A0 B0 L100 C39 D10 M100 E43 F10 N100\nM1006 A0 B0 L100 C0 D10 M100 E0 F10 N100\nM1006 A0 B0 L100 C41 D10 M100 E41 F10 N100\nM1006 A0 B0 L100 C44 D10 M100 E44 F10 N100\nM1006 A0 B0 L100 C49 D10 M100 E49 F10 N100\nM1006 A0 B0 L100 C0 D10 M100 E0 F10 N100\nM1006 A44 B10 L100 C39 D10 M100 E48 F10 N100\nM1006 A0 B0 L100 C0 D10 M100 E0 F10 N100\nM1006 A0 B0 L100 C39 D10 M100 E44 F10 N100\nM1006 A0 B0 L100 C0 D10 M100 E0 F10 N100\nM1006 A43 B10 L100 C39 D10 M100 E46 F10 N100\nM1006 W\nM18\n;=====avoid end stop =================\nG91\nG380 S2 Z30 F1200\nG380 S3 Z-20 F1200\nG1 Z5 F1200\nG90\n\n;===== reset machine status =================\nM204 S6000\n\nM630 S0 P0\nG91\nM17 Z0.3 ; lower the z-motor current\n\nG90\nM17 X0.7 Y0.9 Z0.5 ; reset motor current to default\nM960 S5 P1 ; turn on logo lamp\nG90\nM83\nM220 S100 ;Reset Feedrate\nM221 S100 ;Reset Flowrate\nM73.2   R1.0 ;Reset left time magnitude\n;====== cog noise reduction=================\nM982.2 S1 ; turn on cog noise reduction\n\n;===== prepare print temperature and material ==========\nM400\nM18\nM109 S100 H170\nM104 S170\nM400\nM17\nM400\nG28 X\n\nM211 X0 Y0 Z0 ;turn off soft endstop ; turn off soft endstop to prevent protential logic problem\n\nM975 S1 ; turn on\n\nG1 X0.0 F30000\nG1 X-13.5 F3000\n\nM620 M ;enable remap\nM620 S[initial_no_support_extruder]A   ; switch material if AMS exist\n    G392 S0 ;turn on clog detect\n    M1002 gcode_claim_action : 4\n    M400\n    M1002 set_filament_type:UNKNOWN\n    M109 S[nozzle_temperature_initial_layer]\n    M104 S250\n    M400\n    T[initial_no_support_extruder]\n    G1 X-13.5 F3000\n    M400\n    M620.1 E F{flush_volumetric_speeds[initial_no_support_extruder]/2.4053*60} T{flush_temperatures[initial_no_support_extruder]}\n    M109 S250 ;set nozzle to common flush temp\n    M106 P1 S0\n    G92 E0\n    G1 E50 F200\n    M400\n    M1002 set_filament_type:{filament_type[initial_no_support_extruder]}\n    M104 S{flush_temperatures[initial_no_support_extruder]}\n    G92 E0\n    G1 E50 F{flush_volumetric_speeds[initial_no_support_extruder]/2.4053*60}\n    M400\n    M106 P1 S178\n    G92 E0\n    G1 E5 F{flush_volumetric_speeds[initial_no_support_extruder]/2.4053*60}\n    M109 S{nozzle_temperature_initial_layer[initial_no_support_extruder]-20} ; drop nozzle temp, make filament shink a bit\n    M104 S{nozzle_temperature_initial_layer[initial_no_support_extruder]-40}\n    G92 E0\n    G1 E-0.5 F300\n\n    G1 X0 F30000\n    G1 X-13.5 F3000\n    G1 X0 F30000 ;wipe and shake\n    G1 X-13.5 F3000\n    G1 X0 F12000 ;wipe and shake\n    G1 X0 F30000\n    G1 X-13.5 F3000\n    M109 S{nozzle_temperature_initial_layer[initial_no_support_extruder]-40}\n    G392 S0 ;turn off clog detect\nM621 S[initial_no_support_extruder]A\n\nM400\nM106 P1 S0\n;===== prepare print temperature and material end =====\n\n\n;===== mech mode fast check============================\nM1002 gcode_claim_action : 3\nG0 X25 Y175 F20000 ; find a soft place to home\n;M104 S0\nG28 Z P0 T300; home z with low precision,permit 300deg temperature\nG29.2 S0 ; turn off ABL\nM104 S170\n\n; build plate detect\nM1002 judge_flag build_plate_detect_flag\nM622 S1\n  G39.4\n  M400\nM623\n\nG1 Z5 F3000\nG1 X90 Y-1 F30000\nM400 P200\nM970.3 Q1 A7 K0 O2\nM974 Q1 S2 P0\n\nG1 X90 Y0 Z5 F30000\nM400 P200\nM970 Q0 A10 B50 C90 H15 K0 M20 O3\nM974 Q0 S2 P0\n\nM975 S1\nG1 F30000\nG1 X-1 Y10\nG28 X ; re-home XY\n\n;===== wipe nozzle ===============================\nM1002 gcode_claim_action : 14\nM975 S1\n\nM104 S170 ; set temp down to heatbed acceptable\nM106 S255 ; turn on fan (G28 has turn off fan)\nM211 S; push soft endstop status\nM211 X0 Y0 Z0 ;turn off Z axis endstop\n\nM83\nG1 E-1 F500\nG90\nM83\n\nM109 S170\nM104 S140\nG0 X90 Y-4 F30000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X91 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X92 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X93 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X94 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X95 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X96 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X97 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X98 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X99 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X99 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X99 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X99 F10000\nG380 S3 Z-5 F1200\nG1 Z2 F1200\nG1 X99 F10000\nG380 S3 Z-5 F1200\n\nG1 Z5 F30000\n;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;\nG1 X25 Y175 F30000.1 ;Brush material\nG1 Z0.2 F30000.1\nG1 Y185\nG91\nG1 X-30 F30000\nG1 Y-2\nG1 X27\nG1 Y1.5\nG1 X-28\nG1 Y-2\nG1 X30\nG1 Y1.5\nG1 X-30\nG90\nM83\n\nG1 Z5 F3000\nG0 X50 Y175 F20000 ; find a soft place to home\nG28 Z P0 T300; home z with low precision, permit 300deg temperature\nG29.2 S0 ; turn off ABL\n\nG0 X85 Y185 F10000 ;move to exposed steel surface and stop the nozzle\nG0 Z-1.01 F10000\nG91\n\nG2 I1 J0 X2 Y0 F2000.1\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\nG2 I1 J0 X2\nG2 I-0.75 J0 X-1.5\n\nG90\nG1 Z5 F30000\nG1 X25 Y175 F30000.1 ;Brush material\nG1 Z0.2 F30000.1\nG1 Y185\nG91\nG1 X-30 F30000\nG1 Y-2\nG1 X27\nG1 Y1.5\nG1 X-28\nG1 Y-2\nG1 X30\nG1 Y1.5\nG1 X-30\nG90\nM83\n\nG1 Z5\nG0 X55 Y175 F20000 ; find a soft place to home\nG28 Z P0 T300; home z with low precision, permit 300deg temperature\nG29.2 S0 ; turn off ABL\n\nG1 Z10\nG1 X85 Y185\nG1 Z-1.01\nG1 X95\nG1 X90\n\nM211 R; pop softend status\n\nM106 S0 ; turn off fan , too noisy\n;===== wipe nozzle end ================================\n\n\n;===== wait heatbed  ====================\nM1002 gcode_claim_action : 2\nM104 S0\nM190 S[bed_temperature_initial_layer_single];set bed temp\nM109 S140\n\nG1 Z5 F3000\nG29.2 S1\nG1 X10 Y10 F20000\n\n;===== bed leveling ==================================\n;M1002 set_flag g29_before_print_flag=1\nM1002 judge_flag g29_before_print_flag\nM622 J1\n    M1002 gcode_claim_action : 1\n    G29 A1 X{first_layer_print_min[0]} Y{first_layer_print_min[1]} I{first_layer_print_size[0]} J{first_layer_print_size[1]}\n    M400\n    M500 ; save cali data\nM623\n;===== bed leveling end ================================\n\n;===== home after wipe mouth============================\nM1002 judge_flag g29_before_print_flag\nM622 J0\n\n    M1002 gcode_claim_action : 13\n    G28 T145\n\nM623\n\n;===== home after wipe mouth end =======================\n\nM975 S1 ; turn on vibration supression\n;===== nozzle load line ===============================\nM975 S1\nG90\nM83\nT1000\n\nG1 X-13.5 Y0 Z10 F10000\nG1 E1.2 F500\nM400\nM1002 set_filament_type:UNKNOWN\nM109 S{nozzle_temperature[initial_extruder]}\nM400\n\nM412 S1 ;    ===turn on  filament runout detection===\nM400 P10\n\nG392 S0 ;turn on clog detect\n\nM620.3 W1; === turn on filament tangle detection===\nM400 S2\n\nM1002 set_filament_type:{filament_type[initial_no_support_extruder]}\n;M1002 set_flag extrude_cali_flag=1\nM1002 judge_flag extrude_cali_flag\nM622 J1\n    M1002 gcode_claim_action : 8\n    \n    M400\n    M900 K0.0 L1000.0 M1.0\n    G90\n    M83\n    G0 X68 Y-4 F30000\n    G0 Z0.3 F18000 ;Move to start position\n    M400\n    G0 X88 E10  F{outer_wall_volumetric_speed/(24/20)    * 60}\n    G0 X93 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4     * 60}\n    G0 X98 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)     * 60}\n    G0 X103 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4     * 60}\n    G0 X108 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)     * 60}\n    G0 X113 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4     * 60}\n    G0 Y0 Z0 F20000\n    M400\n    \n    G1 X-13.5 Y0 Z10 F10000\n    M400\n    \n    G1 E10 F{outer_wall_volumetric_speed/2.4*60}\n    M983 F{outer_wall_volumetric_speed/2.4} A0.3 H[nozzle_diameter]; cali dynamic extrusion compensation\n    M106 P1 S178\n    M400 S7\n    G1 X0 F18000\n    G1 X-13.5 F3000\n    G1 X0 F18000 ;wipe and shake\n    G1 X-13.5 F3000\n    G1 X0 F12000 ;wipe and shake\n    G1 X-13.5 F3000\n    M400\n    M106 P1 S0\n\n    M1002 judge_last_extrude_cali_success\n    M622 J0\n        M983 F{outer_wall_volumetric_speed/2.4} A0.3 H[nozzle_diameter]; cali dynamic extrusion compensation\n        M106 P1 S178\n        M400 S7\n        G1 X0 F18000\n        G1 X-13.5 F3000\n        G1 X0 F18000 ;wipe and shake\n        G1 X-13.5 F3000\n        G1 X0 F12000 ;wipe and shake\n        M400\n        M106 P1 S0\n    M623\n    \n    G1 X-13.5 F3000\n    M400\n    M984 A0.1 E1 S1 F{outer_wall_volumetric_speed/2.4} H[nozzle_diameter]\n    M106 P1 S178\n    M400 S7\n    G1 X0 F18000\n    G1 X-13.5 F3000\n    G1 X0 F18000 ;wipe and shake\n    G1 X-13.5 F3000\n    G1 X0 F12000 ;wipe and shake\n    G1 X-13.5 F3000\n    M400\n    M106 P1 S0\n\nM623 ; end of \"draw extrinsic para cali paint\"\n\n;===== extrude cali test ===============================\nM104 S{nozzle_temperature_initial_layer[initial_extruder]}\nG90\nM83\nG0 X68 Y-2.5 F30000\nG0 Z0.3 F18000 ;Move to start position\nG0 X88 E10  F{outer_wall_volumetric_speed/(24/20)    * 60}\nG0 X93 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4     * 60}\nG0 X98 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)     * 60}\nG0 X103 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4     * 60}\nG0 X108 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)     * 60}\nG0 X113 E.3742  F{outer_wall_volumetric_speed/(0.3*0.5)/4     * 60}\nG0 X115 Z0 F20000\nG0 Z5\nM400\n\n;========turn off light and wait extrude temperature =============\nM1002 gcode_claim_action : 0\n\nM400 ; wait all motion done before implement the emprical L parameters\n\n;===== for Textured PEI Plate , lower the nozzle as the nozzle was touching topmost of the texture when homing ==\n;curr_bed_type={curr_bed_type}\n{if curr_bed_type==\"Textured PEI Plate\"}\nG29.1 Z{-0.02} ; for Textured PEI Plate\n{endif}\n\nM960 S1 P0 ; turn off laser\nM960 S2 P0 ; turn off laser\nM106 S0 ; turn off fan\nM106 P2 S0 ; turn off big fan\nM106 P3 S0 ; turn off chamber fan\n\nM975 S1 ; turn on mech mode supression\nG90\nM83\nT1000\n\nM211 X0 Y0 Z0 ;turn off soft endstop\nM1007 S1\n\n\n\n",
+    "machine_tool_change_time": "0",
+    "machine_unload_filament_time": "34",
+    "make_overhang_printable": "0",
+    "make_overhang_printable_angle": "55",
+    "make_overhang_printable_hole_size": "0",
+    "manual_filament_change": "0",
+    "master_extruder_id": "1",
+    "max_bridge_length": "0",
+    "max_layer_height": [
+      "0.28"
+    ],
+    "max_resonance_avoidance_speed": "120",
+    "max_travel_detour_distance": "0",
+    "max_volumetric_extrusion_rate_slope": "0",
+    "max_volumetric_extrusion_rate_slope_segment_length": "3",
+    "min_bead_width": "85%",
+    "min_feature_size": "25%",
+    "min_layer_height": [
+      "0.08"
+    ],
+    "min_length_factor": "0.5",
+    "min_resonance_avoidance_speed": "70",
+    "min_skirt_length": "0",
+    "min_width_top_surface": "300%",
+    "minimum_sparse_infill_area": "15",
+    "mmu_segmented_region_interlocking_depth": "0",
+    "mmu_segmented_region_max_width": "0",
+    "name": "project_settings",
+    "notes": "",
+    "nozzle_diameter": [
+      "0.4"
+    ],
+    "nozzle_flush_dataset": [
+      "0"
+    ],
+    "nozzle_height": "4.76",
+    "nozzle_hrc": "0",
+    "nozzle_temperature": [
+      "220"
+    ],
+    "nozzle_temperature_initial_layer": [
+      "220"
+    ],
+    "nozzle_temperature_range_high": [
+      "240"
+    ],
+    "nozzle_temperature_range_low": [
+      "190"
+    ],
+    "nozzle_type": [
+      "stainless_steel"
+    ],
+    "nozzle_volume": [
+      "92"
+    ],
+    "nozzle_volume_type": [
+      "Standard"
+    ],
+    "only_one_wall_first_layer": "0",
+    "only_one_wall_top": "1",
+    "ooze_prevention": "0",
+    "other_layers_print_sequence": [
+      "0"
+    ],
+    "other_layers_print_sequence_nums": "0",
+    "outer_wall_acceleration": "500",
+    "outer_wall_filament_id": "0",
+    "outer_wall_flow_ratio": "1",
+    "outer_wall_jerk": "9",
+    "outer_wall_line_width": "0.42",
+    "outer_wall_speed": "60",
+    "overhang_1_4_speed": "0",
+    "overhang_2_4_speed": "50",
+    "overhang_3_4_speed": "30",
+    "overhang_4_4_speed": "10",
+    "overhang_fan_speed": [
+      "100"
+    ],
+    "overhang_fan_threshold": [
+      "50%"
+    ],
+    "overhang_flow_ratio": "1",
+    "overhang_reverse": "0",
+    "overhang_reverse_internal_only": "0",
+    "overhang_reverse_threshold": "50%",
+    "parallel_printheads_bed_exclude_areas": [],
+    "parallel_printheads_count": "1",
+    "parking_pos_retraction": "92",
+    "part_cooling_fan_min_pwm": "0",
+    "physical_extruder_map": [
+      "0"
+    ],
+    "post_process": [],
+    "precise_outer_wall": "1",
+    "precise_z_height": "0",
+    "preferred_orientation": "0",
+    "preheat_steps": "1",
+    "preheat_time": "30",
+    "pressure_advance": [
+      "0.02"
+    ],
+    "prime_tower_brim_width": "3",
+    "prime_tower_enable_framework": "0",
+    "prime_tower_flat_ironing": "0",
+    "prime_tower_infill_gap": "150%",
+    "prime_tower_skip_points": "1",
+    "prime_tower_width": "35",
+    "prime_volume": "45",
+    "print_compatible_printers": [
+      "Bambu Lab A1 mini 0.4 nozzle"
+    ],
+    "print_extruder_id": [
+      "1"
+    ],
+    "print_extruder_variant": [
+      "Direct Drive Standard"
+    ],
+    "print_flow_ratio": "1",
+    "print_order": "default",
+    "print_sequence": "by layer",
+    "print_settings_id": "Cassette unpowered prototype 0.20 PLA supported",
+    "printable_area": [
+      "0x0",
+      "180x0",
+      "180x180",
+      "0x180"
+    ],
+    "printable_height": "180",
+    "printer_extruder_id": [
+      "1"
+    ],
+    "printer_extruder_variant": [
+      "Direct Drive Standard"
+    ],
+    "printer_model": "Bambu Lab A1 mini",
+    "printer_notes": "",
+    "printer_settings_id": "Bambu Lab A1 mini 0.4 nozzle",
+    "printer_structure": "i3",
+    "printer_technology": "FFF",
+    "printer_variant": "0.4",
+    "printing_by_object_gcode": "",
+    "process_change_extrusion_role_gcode": "",
+    "purge_in_prime_tower": "0",
+    "raft_contact_distance": "0.1",
+    "raft_expansion": "1.5",
+    "raft_first_layer_density": "90%",
+    "raft_first_layer_expansion": "0",
+    "raft_layers": "0",
+    "reduce_crossing_wall": "0",
+    "reduce_fan_stop_start_freq": [
+      "1"
+    ],
+    "reduce_infill_retraction": "1",
+    "relative_bridge_angle": "0",
+    "required_nozzle_HRC": [
+      "3"
+    ],
+    "resolution": "0.012",
+    "resonance_avoidance": "0",
+    "retract_before_wipe": [
+      "0%"
+    ],
+    "retract_length_toolchange": [
+      "2"
+    ],
+    "retract_lift_above": [
+      "0"
+    ],
+    "retract_lift_below": [
+      "179"
+    ],
+    "retract_lift_enforce": [
+      "All Surfaces"
+    ],
+    "retract_restart_extra": [
+      "0"
+    ],
+    "retract_restart_extra_toolchange": [
+      "0"
+    ],
+    "retract_when_changing_layer": [
+      "1"
+    ],
+    "retraction_distances_when_cut": [
+      "18"
+    ],
+    "retraction_distances_when_ec": [
+      "0"
+    ],
+    "retraction_length": [
+      "0.8"
+    ],
+    "retraction_minimum_travel": [
+      "1"
+    ],
+    "retraction_speed": [
+      "30"
+    ],
+    "role_based_wipe_speed": "1",
+    "scan_first_layer": "0",
+    "scarf_angle_threshold": "155",
+    "scarf_joint_flow_ratio": "1",
+    "scarf_joint_speed": "100%",
+    "scarf_overhang_threshold": "40%",
+    "seam_gap": "10%",
+    "seam_position": "aligned",
+    "seam_slope_conditional": "0",
+    "seam_slope_entire_loop": "0",
+    "seam_slope_inner_walls": "0",
+    "seam_slope_min_length": "10",
+    "seam_slope_start_height": "10%",
+    "seam_slope_steps": "10",
+    "seam_slope_type": "none",
+    "set_other_flow_ratios": "0",
+    "silent_mode": "0",
+    "single_extruder_multi_material": "1",
+    "single_extruder_multi_material_priming": "0",
+    "single_loop_draft_shield": "0",
+    "skeleton_infill_density": "15%",
+    "skeleton_infill_line_width": "0.45",
+    "skin_infill_density": "15%",
+    "skin_infill_depth": "2",
+    "skin_infill_line_width": "0.45",
+    "skirt_distance": "2",
+    "skirt_height": "1",
+    "skirt_loops": "0",
+    "skirt_speed": "50",
+    "skirt_start_angle": "-135",
+    "skirt_type": "combined",
+    "slice_closing_radius": "0.049",
+    "slicing_mode": "regular",
+    "slow_down_for_layer_cooling": [
+      "1"
+    ],
+    "slow_down_layer_time": [
+      "8"
+    ],
+    "slow_down_layers": "0",
+    "slow_down_min_speed": [
+      "20"
+    ],
+    "slowdown_for_curled_perimeters": "0",
+    "small_area_infill_flow_compensation": "0",
+    "small_area_infill_flow_compensation_model": [
+      "0,0",
+      "\n0.2,0.4444",
+      "\n0.4,0.6145",
+      "\n0.6,0.7059",
+      "\n0.8,0.7619",
+      "\n1.5,0.8571",
+      "\n2,0.8889",
+      "\n3,0.9231",
+      "\n5,0.9520",
+      "\n10,1"
+    ],
+    "small_perimeter_speed": "50%",
+    "small_perimeter_threshold": "0",
+    "solid_infill_direction": "45",
+    "solid_infill_rotate_template": "",
+    "sparse_infill_acceleration": "100%",
+    "sparse_infill_density": "20%",
+    "sparse_infill_filament_id": "0",
+    "sparse_infill_flow_ratio": "1",
+    "sparse_infill_line_width": "0.45",
+    "sparse_infill_pattern": "gyroid",
+    "sparse_infill_rotate_template": "",
+    "sparse_infill_speed": "120",
+    "spiral_finishing_flow_ratio": "0",
+    "spiral_mode": "0",
+    "spiral_mode_max_xy_smoothing": "200%",
+    "spiral_mode_smooth": "0",
+    "spiral_starting_flow_ratio": "0",
+    "staggered_inner_seams": "0",
+    "standby_temperature_delta": "-5",
+    "start_end_points": [
+      "30x-3",
+      "54x245"
+    ],
+    "supertack_plate_temp": [
+      "45"
+    ],
+    "supertack_plate_temp_initial_layer": [
+      "45"
+    ],
+    "support_air_filtration": "0",
+    "support_angle": "0",
+    "support_base_pattern": "default",
+    "support_base_pattern_spacing": "2.5",
+    "support_bottom_interface_spacing": "0.5",
+    "support_bottom_z_distance": "0.2",
+    "support_chamber_temp_control": "0",
+    "support_critical_regions_only": "0",
+    "support_expansion": "0",
+    "support_filament": "0",
+    "support_flow_ratio": "1",
+    "support_interface_bottom_layers": "2",
+    "support_interface_filament": "0",
+    "support_interface_flow_ratio": "1",
+    "support_interface_loop_pattern": "0",
+    "support_interface_not_for_body": "1",
+    "support_interface_pattern": "auto",
+    "support_interface_spacing": "0.5",
+    "support_interface_speed": "80",
+    "support_interface_top_layers": "2",
+    "support_ironing": "0",
+    "support_ironing_flow": "10%",
+    "support_ironing_pattern": "rectilinear",
+    "support_ironing_spacing": "0.1",
+    "support_line_width": "0.42",
+    "support_material_interface_fan_speed": [
+      "-1"
+    ],
+    "support_multi_bed_types": "0",
+    "support_object_first_layer_gap": "0.2",
+    "support_object_skip_flush": "0",
+    "support_object_xy_distance": "0.35",
+    "support_on_build_plate_only": "1",
+    "support_parallel_printheads": "0",
+    "support_remove_small_overhang": "1",
+    "support_speed": "150",
+    "support_style": "default",
+    "support_threshold_angle": "30",
+    "support_threshold_overlap": "50%",
+    "support_top_z_distance": "0.2",
+    "support_type": "normal(auto)",
+    "symmetric_infill_y_axis": "0",
+    "temperature_vitrification": [
+      "45"
+    ],
+    "template_custom_gcode": "",
+    "textured_cool_plate_temp": [
+      "40"
+    ],
+    "textured_cool_plate_temp_initial_layer": [
+      "40"
+    ],
+    "textured_plate_temp": [
+      "65"
+    ],
+    "textured_plate_temp_initial_layer": [
+      "65"
+    ],
+    "thick_bridges": "0",
+    "thick_internal_bridges": "1",
+    "thumbnails": "48x48/PNG,300x300/PNG",
+    "time_cost": "0",
+    "time_lapse_gcode": ";===================== date: 20250206 =====================\n{if !spiral_mode && print_sequence != \"by object\"}\n; don't support timelapse gcode in spiral_mode and by object sequence for I3 structure printer\n; SKIPPABLE_START\n; SKIPTYPE: timelapse\nM622.1 S1 ; for prev firmware, default turned on\nM1002 judge_flag timelapse_record_flag\nM622 J1\nG92 E0\nG1 Z{max_layer_z + 0.4}\nG1 X0 Y{first_layer_center_no_wipe_tower[1]} F18000 ; move to safe pos\nG1 X-13.0 F3000 ; move to safe pos\nM400\nM1004 S5 P1  ; external shutter\nM400 P300\nM971 S11 C11 O0\nG92 E0\nG1 X0 F18000\nM623\n\n; SKIPTYPE: head_wrap_detect\nM622.1 S1\nM1002 judge_flag g39_3rd_layer_detect_flag\nM622 J1\n    ; enable nozzle clog detect at 3rd layer\n    {if layer_num == 2}\n      M400\n      G90\n      M83\n      M204 S5000\n      G0 Z2 F4000\n      G0 X187 Y178 F20000\n      G39 S1 X187 Y178\n      G0 Z2 F4000\n    {endif}\n\n\n    M622.1 S1\n    M1002 judge_flag g39_detection_flag\n    M622 J1\n      {if !in_head_wrap_detect_zone}\n        M622.1 S0\n        M1002 judge_flag g39_mass_exceed_flag\n        M622 J1\n        {if layer_num > 2}\n            G392 S0\n            M400\n            G90\n            M83\n            M204 S5000\n            G0 Z{max_layer_z + 0.4} F4000\n            G39.3 S1\n            G0 Z{max_layer_z + 0.4} F4000\n            G392 S0\n          {endif}\n        M623\n    {endif}\n    M623\nM623\n; SKIPPABLE_END\n{endif}\n\n\n",
+    "timelapse_type": "0",
+    "tool_change_on_wipe_tower": "0",
+    "top_bottom_infill_wall_overlap": "25%",
+    "top_shell_layers": "5",
+    "top_shell_thickness": "1",
+    "top_solid_infill_flow_ratio": "1",
+    "top_surface_acceleration": "2000",
+    "top_surface_density": "100%",
+    "top_surface_filament_id": "0",
+    "top_surface_jerk": "9",
+    "top_surface_line_width": "0.42",
+    "top_surface_pattern": "monotonicline",
+    "top_surface_speed": "200",
+    "travel_acceleration": "10000",
+    "travel_jerk": "12",
+    "travel_slope": [
+      "3"
+    ],
+    "travel_speed": "700",
+    "travel_speed_z": "0",
+    "tree_support_angle_slow": "25",
+    "tree_support_auto_brim": "1",
+    "tree_support_branch_angle": "45",
+    "tree_support_branch_angle_organic": "40",
+    "tree_support_branch_diameter": "2",
+    "tree_support_branch_diameter_angle": "5",
+    "tree_support_branch_diameter_organic": "2",
+    "tree_support_branch_distance": "5",
+    "tree_support_branch_distance_organic": "1",
+    "tree_support_brim_width": "3",
+    "tree_support_tip_diameter": "0.8",
+    "tree_support_top_rate": "30%",
+    "tree_support_wall_count": "0",
+    "upward_compatible_machine": [
+      "Bambu Lab P1S 0.4 nozzle",
+      "Bambu Lab P1P 0.4 nozzle",
+      "Bambu Lab X1 0.4 nozzle",
+      "Bambu Lab X1 Carbon 0.4 nozzle",
+      "Bambu Lab X1E 0.4 nozzle",
+      "Bambu Lab A1 0.4 nozzle",
+      "Bambu Lab H2D 0.4 nozzle",
+      "Bambu Lab H2D Pro 0.4 nozzle",
+      "Bambu Lab H2S 0.4 nozzle",
+      "Bambu Lab P2S 0.4 nozzle"
+    ],
+    "use_3mf": "0",
+    "use_firmware_retraction": "0",
+    "use_relative_e_distances": "1",
+    "version": "02.06.00.51",
+    "volumetric_speed_coefficients": [
+      "0 0 0 0 0 0"
+    ],
+    "wall_direction": "ccw",
+    "wall_distribution_count": "1",
+    "wall_generator": "classic",
+    "wall_loops": "4",
+    "wall_maximum_deviation": "0.025",
+    "wall_maximum_resolution": "0.5",
+    "wall_sequence": "inner wall/outer wall",
+    "wall_transition_angle": "10",
+    "wall_transition_filter_deviation": "25%",
+    "wall_transition_length": "100%",
+    "wipe": [
+      "1"
+    ],
+    "wipe_before_external_loop": "0",
+    "wipe_distance": [
+      "2"
+    ],
+    "wipe_on_loops": "0",
+    "wipe_speed": "80%",
+    "wipe_tower_bridging": "10",
+    "wipe_tower_cone_angle": "30",
+    "wipe_tower_extra_flow": "100%",
+    "wipe_tower_extra_rib_length": "0",
+    "wipe_tower_extra_spacing": "100%",
+    "wipe_tower_filament": "0",
+    "wipe_tower_fillet_wall": "1",
+    "wipe_tower_max_purge_speed": "90",
+    "wipe_tower_no_sparse_layers": "0",
+    "wipe_tower_rib_width": "8",
+    "wipe_tower_rotation_angle": "0",
+    "wipe_tower_type": "type2",
+    "wipe_tower_wall_type": "rib",
+    "wipe_tower_x": [
+      "15"
+    ],
+    "wipe_tower_y": [
+      "220"
+    ],
+    "wiping_volumes_extruders": [
+      "70",
+      "70",
+      "70",
+      "70",
+      "70",
+      "70",
+      "70",
+      "70",
+      "70",
+      "70"
+    ],
+    "wrapping_detection_gcode": "",
+    "wrapping_detection_layers": "20",
+    "wrapping_exclude_area": [],
+    "xy_contour_compensation": "0",
+    "xy_hole_compensation": "0",
+    "z_hop": [
+      "0.4"
+    ],
+    "z_hop_types": [
+      "Auto Lift"
+    ],
+    "z_offset": "0",
+    "zaa_dont_alternate_fill_direction": "0",
+    "zaa_enabled": "0",
+    "zaa_min_z": "0.05",
+    "zaa_minimize_perimeter_height": "35"
+  },
+  "object_bounds": {
+    "outside-object": [
+      2.472,
+      10.472,
+      0.2,
+      169.528,
+      169.528,
+      0.2
+    ],
+    "M140": [
+      6.21,
+      14.21,
+      0.2,
+      176.312,
+      165.79,
+      42.0
+    ]
+  },
+  "process_observation": {
+    "schema": "gunbc.print-process-observation.v1",
+    "standing": "commanded toolpath observations; no physical success or stringing verdict",
+    "timing_basis": "path length divided by modal commanded feed; includes deposited arcs; excludes acceleration, firmware limits, dwell, synchronization and temperature waits; unestimated moves counted; not actual layer time",
+    "travel_basis": "nonextruding XY commands including retracting wipes; deposition runs after travel are not geometric islands",
+    "extrusion_basis": "negative-E episodes and positive-E recovery debt across layer/G92 boundaries; firmware G10/G11 counted separately, not resolved",
+    "measured_layer_seconds": null,
+    "slicer_layer_seconds": null,
+    "unrecovered_filament_mm": 0.8,
+    "layers": [
+      {
+        "index": 1,
+        "deposited_z_min_mm": 0.2,
+        "deposited_z_max_mm": 0.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 53,
+        "retraction_episodes": 20,
+        "retracted_filament_mm": 16.00000999999999,
+        "recovered_filament_mm": 16.000010000000003,
+        "negative_e_xy_moves": 39,
+        "nonextruding_xy_moves": 107,
+        "nonextruding_xy_chord_mm": 1770.2528866666087,
+        "deposition_runs_after_travel": 46,
+        "commanded_motion_seconds": 294.7485445855324,
+        "unestimated_motion_moves": 1,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 2,
+        "deposited_z_min_mm": 0.4,
+        "deposited_z_max_mm": 0.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 38,
+        "retraction_episodes": 12,
+        "retracted_filament_mm": 9.6,
+        "recovered_filament_mm": 9.6,
+        "negative_e_xy_moves": 32,
+        "nonextruding_xy_moves": 84,
+        "nonextruding_xy_chord_mm": 1490.2030187532603,
+        "deposition_runs_after_travel": 37,
+        "commanded_motion_seconds": 241.0231551720496,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 3,
+        "deposited_z_min_mm": 0.467,
+        "deposited_z_max_mm": 0.467,
+        "objects": [],
+        "negative_e_moves": 7,
+        "retraction_episodes": 3,
+        "retracted_filament_mm": 2.4,
+        "recovered_filament_mm": 1.6,
+        "negative_e_xy_moves": 4,
+        "nonextruding_xy_moves": 13,
+        "nonextruding_xy_chord_mm": 674.666214328574,
+        "deposition_runs_after_travel": 2,
+        "commanded_motion_seconds": 4.387558164315013,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 4,
+        "deposited_z_min_mm": 0.6,
+        "deposited_z_max_mm": 0.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 30,
+        "retraction_episodes": 10,
+        "retracted_filament_mm": 8.00002,
+        "recovered_filament_mm": 8.800020000000002,
+        "negative_e_xy_moves": 26,
+        "nonextruding_xy_moves": 76,
+        "nonextruding_xy_chord_mm": 1620.5199515542656,
+        "deposition_runs_after_travel": 37,
+        "commanded_motion_seconds": 241.1635319750817,
+        "unestimated_motion_moves": 1,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 5,
+        "deposited_z_min_mm": 0.733,
+        "deposited_z_max_mm": 0.733,
+        "objects": [],
+        "negative_e_moves": 10,
+        "retraction_episodes": 3,
+        "retracted_filament_mm": 2.4,
+        "recovered_filament_mm": 1.6,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 15,
+        "nonextruding_xy_chord_mm": 320.32688608349713,
+        "deposition_runs_after_travel": 2,
+        "commanded_motion_seconds": 3.5393849753674913,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 6,
+        "deposited_z_min_mm": 0.8,
+        "deposited_z_max_mm": 0.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 35,
+        "retraction_episodes": 11,
+        "retracted_filament_mm": 8.799990000000001,
+        "recovered_filament_mm": 9.599990000000002,
+        "negative_e_xy_moves": 30,
+        "nonextruding_xy_moves": 81,
+        "nonextruding_xy_chord_mm": 1519.249923932975,
+        "deposition_runs_after_travel": 37,
+        "commanded_motion_seconds": 241.0392895334319,
+        "unestimated_motion_moves": 1,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 7,
+        "deposited_z_min_mm": 1.0,
+        "deposited_z_max_mm": 1.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 37,
+        "retraction_episodes": 13,
+        "retracted_filament_mm": 10.399999999999995,
+        "recovered_filament_mm": 10.4,
+        "negative_e_xy_moves": 30,
+        "nonextruding_xy_moves": 85,
+        "nonextruding_xy_chord_mm": 1857.5166757998775,
+        "deposition_runs_after_travel": 39,
+        "commanded_motion_seconds": 243.96535433257293,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 8,
+        "deposited_z_min_mm": 1.2,
+        "deposited_z_max_mm": 1.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 43,
+        "retraction_episodes": 11,
+        "retracted_filament_mm": 8.80002,
+        "recovered_filament_mm": 8.80002,
+        "negative_e_xy_moves": 38,
+        "nonextruding_xy_moves": 101,
+        "nonextruding_xy_chord_mm": 1727.583811807914,
+        "deposition_runs_after_travel": 49,
+        "commanded_motion_seconds": 84.89615063283834,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 9,
+        "deposited_z_min_mm": 1.267,
+        "deposited_z_max_mm": 1.267,
+        "objects": [],
+        "negative_e_moves": 12,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 2.4000000000000004,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 18,
+        "nonextruding_xy_chord_mm": 354.6923932791891,
+        "deposition_runs_after_travel": 3,
+        "commanded_motion_seconds": 11.605003816750115,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 10,
+        "deposited_z_min_mm": 1.4,
+        "deposited_z_max_mm": 1.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 44,
+        "retraction_episodes": 12,
+        "retracted_filament_mm": 9.600000000000001,
+        "recovered_filament_mm": 10.4,
+        "negative_e_xy_moves": 38,
+        "nonextruding_xy_moves": 99,
+        "nonextruding_xy_chord_mm": 1556.6173915407942,
+        "deposition_runs_after_travel": 47,
+        "commanded_motion_seconds": 84.61510492314879,
+        "unestimated_motion_moves": 1,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 11,
+        "deposited_z_min_mm": 1.533,
+        "deposited_z_max_mm": 1.533,
+        "objects": [],
+        "negative_e_moves": 12,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 2.4000000000000004,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 18,
+        "nonextruding_xy_chord_mm": 498.402832287422,
+        "deposition_runs_after_travel": 3,
+        "commanded_motion_seconds": 11.810309368384148,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 12,
+        "deposited_z_min_mm": 1.6,
+        "deposited_z_max_mm": 1.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 40,
+        "retraction_episodes": 11,
+        "retracted_filament_mm": 8.79999,
+        "recovered_filament_mm": 9.59999,
+        "negative_e_xy_moves": 35,
+        "nonextruding_xy_moves": 97,
+        "nonextruding_xy_chord_mm": 1591.2847810003939,
+        "deposition_runs_after_travel": 48,
+        "commanded_motion_seconds": 85.4414066615039,
+        "unestimated_motion_moves": 1,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 13,
+        "deposited_z_min_mm": 1.8,
+        "deposited_z_max_mm": 1.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 55,
+        "retraction_episodes": 16,
+        "retracted_filament_mm": 12.800000000000004,
+        "recovered_filament_mm": 12.800000000000002,
+        "negative_e_xy_moves": 45,
+        "nonextruding_xy_moves": 113,
+        "nonextruding_xy_chord_mm": 1781.3534969053842,
+        "deposition_runs_after_travel": 50,
+        "commanded_motion_seconds": 98.05663351327897,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 14,
+        "deposited_z_min_mm": 2.0,
+        "deposited_z_max_mm": 2.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 29,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.40001,
+        "recovered_filament_mm": 6.400009999999999,
+        "negative_e_xy_moves": 27,
+        "nonextruding_xy_moves": 89,
+        "nonextruding_xy_chord_mm": 1678.8579895550845,
+        "deposition_runs_after_travel": 51,
+        "commanded_motion_seconds": 90.42956283363684,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 15,
+        "deposited_z_min_mm": 2.2,
+        "deposited_z_max_mm": 2.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 32,
+        "retraction_episodes": 9,
+        "retracted_filament_mm": 7.19998,
+        "recovered_filament_mm": 7.199979999999999,
+        "negative_e_xy_moves": 30,
+        "nonextruding_xy_moves": 91,
+        "nonextruding_xy_chord_mm": 1668.7517886660846,
+        "deposition_runs_after_travel": 49,
+        "commanded_motion_seconds": 128.71988034482058,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 16,
+        "deposited_z_min_mm": 2.4,
+        "deposited_z_max_mm": 2.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 37,
+        "retraction_episodes": 10,
+        "retracted_filament_mm": 8.0,
+        "recovered_filament_mm": 8.0,
+        "negative_e_xy_moves": 33,
+        "nonextruding_xy_moves": 100,
+        "nonextruding_xy_chord_mm": 1674.3786448298974,
+        "deposition_runs_after_travel": 54,
+        "commanded_motion_seconds": 96.8844095079134,
+        "unestimated_motion_moves": 3,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 17,
+        "deposited_z_min_mm": 2.6,
+        "deposited_z_max_mm": 2.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 44,
+        "retraction_episodes": 12,
+        "retracted_filament_mm": 9.599979999999999,
+        "recovered_filament_mm": 9.599979999999999,
+        "negative_e_xy_moves": 38,
+        "nonextruding_xy_moves": 107,
+        "nonextruding_xy_chord_mm": 1605.0640858137394,
+        "deposition_runs_after_travel": 55,
+        "commanded_motion_seconds": 96.48755254410885,
+        "unestimated_motion_moves": 4,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 18,
+        "deposited_z_min_mm": 2.8,
+        "deposited_z_max_mm": 2.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 44,
+        "retraction_episodes": 13,
+        "retracted_filament_mm": 10.4,
+        "recovered_filament_mm": 10.4,
+        "negative_e_xy_moves": 37,
+        "nonextruding_xy_moves": 112,
+        "nonextruding_xy_chord_mm": 1828.1431849480775,
+        "deposition_runs_after_travel": 59,
+        "commanded_motion_seconds": 96.99537093861274,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 19,
+        "deposited_z_min_mm": 3.0,
+        "deposited_z_max_mm": 3.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 46,
+        "retraction_episodes": 13,
+        "retracted_filament_mm": 10.400019999999998,
+        "recovered_filament_mm": 10.40002,
+        "negative_e_xy_moves": 39,
+        "nonextruding_xy_moves": 124,
+        "nonextruding_xy_chord_mm": 1980.752102136084,
+        "deposition_runs_after_travel": 69,
+        "commanded_motion_seconds": 105.52660446781,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 20,
+        "deposited_z_min_mm": 3.2,
+        "deposited_z_max_mm": 3.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 36,
+        "retraction_episodes": 13,
+        "retracted_filament_mm": 10.39999,
+        "recovered_filament_mm": 10.39999,
+        "negative_e_xy_moves": 33,
+        "nonextruding_xy_moves": 84,
+        "nonextruding_xy_chord_mm": 1568.5147821913606,
+        "deposition_runs_after_travel": 35,
+        "commanded_motion_seconds": 457.7348993071132,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 21,
+        "deposited_z_min_mm": 3.4,
+        "deposited_z_max_mm": 3.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 33,
+        "retraction_episodes": 12,
+        "retracted_filament_mm": 9.600000000000001,
+        "recovered_filament_mm": 9.6,
+        "negative_e_xy_moves": 28,
+        "nonextruding_xy_moves": 86,
+        "nonextruding_xy_chord_mm": 1742.8140031853593,
+        "deposition_runs_after_travel": 43,
+        "commanded_motion_seconds": 239.39201162487308,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 22,
+        "deposited_z_min_mm": 3.6,
+        "deposited_z_max_mm": 3.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 46,
+        "retraction_episodes": 15,
+        "retracted_filament_mm": 12.000009999999993,
+        "recovered_filament_mm": 12.000010000000003,
+        "negative_e_xy_moves": 37,
+        "nonextruding_xy_moves": 94,
+        "nonextruding_xy_chord_mm": 1792.0334011721243,
+        "deposition_runs_after_travel": 40,
+        "commanded_motion_seconds": 239.52128813234583,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 23,
+        "deposited_z_min_mm": 3.8,
+        "deposited_z_max_mm": 3.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 38,
+        "retraction_episodes": 13,
+        "retracted_filament_mm": 10.39998,
+        "recovered_filament_mm": 10.399980000000001,
+        "negative_e_xy_moves": 31,
+        "nonextruding_xy_moves": 89,
+        "nonextruding_xy_chord_mm": 1713.5914645682435,
+        "deposition_runs_after_travel": 42,
+        "commanded_motion_seconds": 239.32380228087382,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 24,
+        "deposited_z_min_mm": 4.0,
+        "deposited_z_max_mm": 4.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 104,
+        "retraction_episodes": 46,
+        "retracted_filament_mm": 36.79997000000003,
+        "recovered_filament_mm": 36.79997,
+        "negative_e_xy_moves": 64,
+        "nonextruding_xy_moves": 1074,
+        "nonextruding_xy_chord_mm": 2183.2597670546675,
+        "deposition_runs_after_travel": 994,
+        "commanded_motion_seconds": 164.45735307754887,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 25,
+        "deposited_z_min_mm": 4.2,
+        "deposited_z_max_mm": 4.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 27,
+        "nonextruding_xy_chord_mm": 771.1476691504107,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 13.727448298796457,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 26,
+        "deposited_z_min_mm": 4.4,
+        "deposited_z_max_mm": 4.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 27,
+        "nonextruding_xy_chord_mm": 700.1834347993527,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 13.724498937820474,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 27,
+        "deposited_z_min_mm": 4.6,
+        "deposited_z_max_mm": 4.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 6,
+        "retracted_filament_mm": 4.8,
+        "recovered_filament_mm": 4.8,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 32,
+        "nonextruding_xy_chord_mm": 687.964000628662,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 14.193860153561571,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 28,
+        "deposited_z_min_mm": 4.8,
+        "deposited_z_max_mm": 4.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 13,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 28,
+        "nonextruding_xy_chord_mm": 683.9262706557564,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 13.86376009357187,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 29,
+        "deposited_z_min_mm": 5.0,
+        "deposited_z_max_mm": 5.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 27,
+        "nonextruding_xy_chord_mm": 689.0819793680124,
+        "deposition_runs_after_travel": 13,
+        "commanded_motion_seconds": 13.739360098874622,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 30,
+        "deposited_z_min_mm": 5.2,
+        "deposited_z_max_mm": 5.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 28,
+        "nonextruding_xy_chord_mm": 680.9428501498849,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 13.588229760420619,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 31,
+        "deposited_z_min_mm": 5.4,
+        "deposited_z_max_mm": 5.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 6,
+        "retracted_filament_mm": 4.8,
+        "recovered_filament_mm": 4.8,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 35,
+        "nonextruding_xy_chord_mm": 692.2823389957128,
+        "deposition_runs_after_travel": 13,
+        "commanded_motion_seconds": 13.86433824343998,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 32,
+        "deposited_z_min_mm": 5.6,
+        "deposited_z_max_mm": 5.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 16,
+        "retraction_episodes": 6,
+        "retracted_filament_mm": 4.799999999999999,
+        "recovered_filament_mm": 4.8,
+        "negative_e_xy_moves": 12,
+        "nonextruding_xy_moves": 33,
+        "nonextruding_xy_chord_mm": 699.8080339424145,
+        "deposition_runs_after_travel": 13,
+        "commanded_motion_seconds": 13.93753483892051,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 33,
+        "deposited_z_min_mm": 5.8,
+        "deposited_z_max_mm": 5.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 18,
+        "retraction_episodes": 6,
+        "retracted_filament_mm": 4.799999999999999,
+        "recovered_filament_mm": 4.8,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 35,
+        "nonextruding_xy_chord_mm": 700.0306011441743,
+        "deposition_runs_after_travel": 13,
+        "commanded_motion_seconds": 14.086483033268939,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 34,
+        "deposited_z_min_mm": 6.0,
+        "deposited_z_max_mm": 6.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 13,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 29,
+        "nonextruding_xy_chord_mm": 696.2261922902625,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 13.856276946885782,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 35,
+        "deposited_z_min_mm": 6.2,
+        "deposited_z_max_mm": 6.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 670.3301283030837,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 13.721609110692427,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 36,
+        "deposited_z_min_mm": 6.4,
+        "deposited_z_max_mm": 6.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 679.4976716831529,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 13.70373746452419,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 37,
+        "deposited_z_min_mm": 6.6,
+        "deposited_z_max_mm": 6.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 16,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 32,
+        "nonextruding_xy_chord_mm": 692.6089390538408,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 13.575232377104406,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 38,
+        "deposited_z_min_mm": 6.8,
+        "deposited_z_max_mm": 6.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 33,
+        "nonextruding_xy_chord_mm": 694.3073629312282,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 13.60565496363995,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 39,
+        "deposited_z_min_mm": 7.0,
+        "deposited_z_max_mm": 7.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 27,
+        "nonextruding_xy_chord_mm": 693.9578490848755,
+        "deposition_runs_after_travel": 14,
+        "commanded_motion_seconds": 14.615936970951802,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 40,
+        "deposited_z_min_mm": 7.2,
+        "deposited_z_max_mm": 7.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 12,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 30,
+        "nonextruding_xy_chord_mm": 690.2755094834307,
+        "deposition_runs_after_travel": 14,
+        "commanded_motion_seconds": 36.29334000327518,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 41,
+        "deposited_z_min_mm": 7.4,
+        "deposited_z_max_mm": 7.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 34,
+        "nonextruding_xy_chord_mm": 673.6132412065158,
+        "deposition_runs_after_travel": 21,
+        "commanded_motion_seconds": 22.290487092633573,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 42,
+        "deposited_z_min_mm": 7.6,
+        "deposited_z_max_mm": 7.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 14,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.200030000000001,
+        "recovered_filament_mm": 3.200030000000001,
+        "negative_e_xy_moves": 12,
+        "nonextruding_xy_moves": 39,
+        "nonextruding_xy_chord_mm": 736.2096746015167,
+        "deposition_runs_after_travel": 21,
+        "commanded_motion_seconds": 22.29820373758005,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 43,
+        "deposited_z_min_mm": 7.8,
+        "deposited_z_max_mm": 7.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 13,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 39,
+        "nonextruding_xy_chord_mm": 710.9879136972182,
+        "deposition_runs_after_travel": 21,
+        "commanded_motion_seconds": 22.031715799163454,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 44,
+        "deposited_z_min_mm": 8.0,
+        "deposited_z_max_mm": 8.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 13,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 4.0,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 139,
+        "nonextruding_xy_chord_mm": 715.0106273853806,
+        "deposition_runs_after_travel": 122,
+        "commanded_motion_seconds": 17.73681450645175,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 45,
+        "deposited_z_min_mm": 8.2,
+        "deposited_z_max_mm": 8.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 654.6423130936718,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.313273387502015,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 46,
+        "deposited_z_min_mm": 8.4,
+        "deposited_z_max_mm": 8.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 654.0624727086009,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.373063163324568,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 47,
+        "deposited_z_min_mm": 8.6,
+        "deposited_z_max_mm": 8.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.1058805709991,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.274948554542318,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 48,
+        "deposited_z_min_mm": 8.8,
+        "deposited_z_max_mm": 8.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 647.3369035183698,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.222136549456284,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 49,
+        "deposited_z_min_mm": 9.0,
+        "deposited_z_max_mm": 9.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.5577800073139,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.21567646066019,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 50,
+        "deposited_z_min_mm": 9.2,
+        "deposited_z_max_mm": 9.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.580779380768,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.219997185577867,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 51,
+        "deposited_z_min_mm": 9.4,
+        "deposited_z_max_mm": 9.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.4021986097887,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.211964641479005,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 52,
+        "deposited_z_min_mm": 9.6,
+        "deposited_z_max_mm": 9.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.4010815478057,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.247520686695994,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 53,
+        "deposited_z_min_mm": 9.8,
+        "deposited_z_max_mm": 9.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.7251381695546,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.321200067151473,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 54,
+        "deposited_z_min_mm": 10.0,
+        "deposited_z_max_mm": 10.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 646.0684802771448,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.355702917102345,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 55,
+        "deposited_z_min_mm": 10.2,
+        "deposited_z_max_mm": 10.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 683.5468743403196,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.365442910196407,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 56,
+        "deposited_z_min_mm": 10.4,
+        "deposited_z_max_mm": 10.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 664.913149954826,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.142970524497798,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 57,
+        "deposited_z_min_mm": 10.6,
+        "deposited_z_max_mm": 10.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 661.4738046964958,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.16260304814256,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 58,
+        "deposited_z_min_mm": 10.8,
+        "deposited_z_max_mm": 10.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 686.4318252216298,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.39848942736936,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 59,
+        "deposited_z_min_mm": 11.0,
+        "deposited_z_max_mm": 11.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 686.178070783416,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.450591273706088,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 60,
+        "deposited_z_min_mm": 11.2,
+        "deposited_z_max_mm": 11.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 12,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 664.6889529251497,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.31920463144142,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 61,
+        "deposited_z_min_mm": 11.4,
+        "deposited_z_max_mm": 11.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 645.1365699816715,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.235387951293113,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 62,
+        "deposited_z_min_mm": 11.6,
+        "deposited_z_max_mm": 11.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 648.7881194739301,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.233746803922964,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 63,
+        "deposited_z_min_mm": 11.8,
+        "deposited_z_max_mm": 11.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 645.1359813880144,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.203226678026,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 64,
+        "deposited_z_min_mm": 12.0,
+        "deposited_z_max_mm": 12.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 644.6362878284674,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.19715733133317,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 65,
+        "deposited_z_min_mm": 12.2,
+        "deposited_z_max_mm": 12.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 646.2512235825695,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.239974844928335,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 66,
+        "deposited_z_min_mm": 12.4,
+        "deposited_z_max_mm": 12.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 645.9886329614881,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.303983846938385,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 67,
+        "deposited_z_min_mm": 12.6,
+        "deposited_z_max_mm": 12.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 645.9929321747868,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.3454794435758,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 68,
+        "deposited_z_min_mm": 12.8,
+        "deposited_z_max_mm": 12.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.9507042907015,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.29978734378536,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 69,
+        "deposited_z_min_mm": 13.0,
+        "deposited_z_max_mm": 13.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 663.3758316809206,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.14540056539175,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 70,
+        "deposited_z_min_mm": 13.2,
+        "deposited_z_max_mm": 13.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 666.5626982063857,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.141483577713018,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 71,
+        "deposited_z_min_mm": 13.4,
+        "deposited_z_max_mm": 13.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 654.8324257550703,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.305411797576626,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 72,
+        "deposited_z_min_mm": 13.6,
+        "deposited_z_max_mm": 13.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 654.1710246655389,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.35545441219678,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 73,
+        "deposited_z_min_mm": 13.8,
+        "deposited_z_max_mm": 13.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.0516501393206,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.300447403159362,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 74,
+        "deposited_z_min_mm": 14.0,
+        "deposited_z_max_mm": 14.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 647.2771898909151,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.228046629127718,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 75,
+        "deposited_z_min_mm": 14.2,
+        "deposited_z_max_mm": 14.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.4890967646818,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.215979140875168,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 76,
+        "deposited_z_min_mm": 14.4,
+        "deposited_z_max_mm": 14.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.7502141818111,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.22509449465847,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 77,
+        "deposited_z_min_mm": 14.6,
+        "deposited_z_max_mm": 14.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.4643906677862,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.211870807548726,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 78,
+        "deposited_z_min_mm": 14.8,
+        "deposited_z_max_mm": 14.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.3460482655606,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.241621964880702,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 79,
+        "deposited_z_min_mm": 15.0,
+        "deposited_z_max_mm": 15.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.6661954163827,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.294446079965795,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 80,
+        "deposited_z_min_mm": 15.2,
+        "deposited_z_max_mm": 15.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 646.046428688467,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.37157081311671,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 81,
+        "deposited_z_min_mm": 15.4,
+        "deposited_z_max_mm": 15.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 683.4168104033295,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.372751388431418,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 82,
+        "deposited_z_min_mm": 15.6,
+        "deposited_z_max_mm": 15.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 643.8891979447959,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.142367843104307,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 83,
+        "deposited_z_min_mm": 15.8,
+        "deposited_z_max_mm": 15.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 693.6746543880038,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.16344002511739,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 84,
+        "deposited_z_min_mm": 16.0,
+        "deposited_z_max_mm": 16.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 666.8563167417897,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.364413420981634,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 85,
+        "deposited_z_min_mm": 16.2,
+        "deposited_z_max_mm": 16.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 686.279859925937,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.436269062100454,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 86,
+        "deposited_z_min_mm": 16.4,
+        "deposited_z_max_mm": 16.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 12,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 664.8583409278604,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.350520930746713,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 87,
+        "deposited_z_min_mm": 16.6,
+        "deposited_z_max_mm": 16.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 645.1834609723498,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.241484901226865,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 88,
+        "deposited_z_min_mm": 16.8,
+        "deposited_z_max_mm": 16.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 648.7644177156471,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.233214627517086,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 89,
+        "deposited_z_min_mm": 17.0,
+        "deposited_z_max_mm": 17.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 648.8407378640543,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.241005533821413,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 90,
+        "deposited_z_min_mm": 17.2,
+        "deposited_z_max_mm": 17.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 644.9835151825203,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.197580591161323,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 91,
+        "deposited_z_min_mm": 17.4,
+        "deposited_z_max_mm": 17.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 646.2719757148053,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.234074313982925,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 92,
+        "deposited_z_min_mm": 17.6,
+        "deposited_z_max_mm": 17.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 646.0440049025797,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.280867024551334,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 93,
+        "deposited_z_min_mm": 17.8,
+        "deposited_z_max_mm": 17.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 646.0525947255015,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.361614840452004,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 94,
+        "deposited_z_min_mm": 18.0,
+        "deposited_z_max_mm": 18.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 649.9671902323288,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.307683296398437,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 95,
+        "deposited_z_min_mm": 18.2,
+        "deposited_z_max_mm": 18.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 650.5805713458863,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.280622475761446,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 96,
+        "deposited_z_min_mm": 18.4,
+        "deposited_z_max_mm": 18.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 666.531558515001,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.141308723698574,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 97,
+        "deposited_z_min_mm": 18.6,
+        "deposited_z_max_mm": 18.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 654.9795561942976,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.299377926103956,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 98,
+        "deposited_z_min_mm": 18.8,
+        "deposited_z_max_mm": 18.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 689.5473434540966,
+        "deposition_runs_after_travel": 14,
+        "commanded_motion_seconds": 8.556995157031627,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 99,
+        "deposited_z_min_mm": 19.0,
+        "deposited_z_max_mm": 19.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 7,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 5,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 676.6059361867398,
+        "deposition_runs_after_travel": 14,
+        "commanded_motion_seconds": 10.923859469499996,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 100,
+        "deposited_z_min_mm": 19.2,
+        "deposited_z_max_mm": 19.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 33,
+        "nonextruding_xy_chord_mm": 671.244871385807,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 9.283354073451738,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 101,
+        "deposited_z_min_mm": 19.4,
+        "deposited_z_max_mm": 19.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 34,
+        "nonextruding_xy_chord_mm": 678.505998477949,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 9.432815474516678,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 102,
+        "deposited_z_min_mm": 19.6,
+        "deposited_z_max_mm": 19.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 33,
+        "nonextruding_xy_chord_mm": 677.4590010030028,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 9.478879636278043,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 103,
+        "deposited_z_min_mm": 19.8,
+        "deposited_z_max_mm": 19.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 14,
+        "retraction_episodes": 6,
+        "retracted_filament_mm": 4.8,
+        "recovered_filament_mm": 4.8,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 67,
+        "nonextruding_xy_chord_mm": 684.5403550040932,
+        "deposition_runs_after_travel": 50,
+        "commanded_motion_seconds": 9.023609478318265,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 104,
+        "deposited_z_min_mm": 20.0,
+        "deposited_z_max_mm": 20.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 18,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 50,
+        "nonextruding_xy_chord_mm": 563.7012774878781,
+        "deposition_runs_after_travel": 28,
+        "commanded_motion_seconds": 9.201730750906743,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 105,
+        "deposited_z_min_mm": 20.2,
+        "deposited_z_max_mm": 20.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 19,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 15,
+        "nonextruding_xy_moves": 47,
+        "nonextruding_xy_chord_mm": 568.7065367032129,
+        "deposition_runs_after_travel": 24,
+        "commanded_motion_seconds": 8.916077204929763,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 106,
+        "deposited_z_min_mm": 20.4,
+        "deposited_z_max_mm": 20.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 48,
+        "nonextruding_xy_chord_mm": 578.1272922478656,
+        "deposition_runs_after_travel": 27,
+        "commanded_motion_seconds": 8.875804856602478,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 107,
+        "deposited_z_min_mm": 20.6,
+        "deposited_z_max_mm": 20.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 19,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 15,
+        "nonextruding_xy_moves": 46,
+        "nonextruding_xy_chord_mm": 695.3625304864197,
+        "deposition_runs_after_travel": 23,
+        "commanded_motion_seconds": 8.586154057632239,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 108,
+        "deposited_z_min_mm": 20.8,
+        "deposited_z_max_mm": 20.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 20,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 16,
+        "nonextruding_xy_moves": 47,
+        "nonextruding_xy_chord_mm": 697.7391708884812,
+        "deposition_runs_after_travel": 23,
+        "commanded_motion_seconds": 8.460714638648907,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 109,
+        "deposited_z_min_mm": 21.0,
+        "deposited_z_max_mm": 21.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 41,
+        "nonextruding_xy_chord_mm": 693.8989537849521,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.297952995044756,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 110,
+        "deposited_z_min_mm": 21.2,
+        "deposited_z_max_mm": 21.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.399999999999999,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 43,
+        "nonextruding_xy_chord_mm": 692.4028138151286,
+        "deposition_runs_after_travel": 22,
+        "commanded_motion_seconds": 8.406635855898534,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 111,
+        "deposited_z_min_mm": 21.4,
+        "deposited_z_max_mm": 21.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 19,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 15,
+        "nonextruding_xy_moves": 45,
+        "nonextruding_xy_chord_mm": 568.9868910497067,
+        "deposition_runs_after_travel": 22,
+        "commanded_motion_seconds": 8.221968219269977,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 112,
+        "deposited_z_min_mm": 21.6,
+        "deposited_z_max_mm": 21.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 18,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 44,
+        "nonextruding_xy_chord_mm": 692.70472416355,
+        "deposition_runs_after_travel": 22,
+        "commanded_motion_seconds": 8.452368264652726,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 113,
+        "deposited_z_min_mm": 21.8,
+        "deposited_z_max_mm": 21.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 19,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 15,
+        "nonextruding_xy_moves": 43,
+        "nonextruding_xy_chord_mm": 689.429509801161,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.266866552672656,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 114,
+        "deposited_z_min_mm": 22.0,
+        "deposited_z_max_mm": 22.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 19,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 15,
+        "nonextruding_xy_moves": 43,
+        "nonextruding_xy_chord_mm": 691.9021635132509,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.251377785479216,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 115,
+        "deposited_z_min_mm": 22.2,
+        "deposited_z_max_mm": 22.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 18,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 42,
+        "nonextruding_xy_chord_mm": 690.4782837913542,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.249173291302384,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 116,
+        "deposited_z_min_mm": 22.4,
+        "deposited_z_max_mm": 22.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 19,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 15,
+        "nonextruding_xy_moves": 43,
+        "nonextruding_xy_chord_mm": 684.8222992911857,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.212839341935693,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 117,
+        "deposited_z_min_mm": 22.6,
+        "deposited_z_max_mm": 22.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 20,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 16,
+        "nonextruding_xy_moves": 44,
+        "nonextruding_xy_chord_mm": 682.4068773672393,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.255362390146397,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 118,
+        "deposited_z_min_mm": 22.8,
+        "deposited_z_max_mm": 22.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 41,
+        "nonextruding_xy_chord_mm": 687.0923930890045,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.329881182208938,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 119,
+        "deposited_z_min_mm": 23.0,
+        "deposited_z_max_mm": 23.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 44,
+        "nonextruding_xy_chord_mm": 566.1660424004826,
+        "deposition_runs_after_travel": 23,
+        "commanded_motion_seconds": 8.269518965223146,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 120,
+        "deposited_z_min_mm": 23.2,
+        "deposited_z_max_mm": 23.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 18,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 45,
+        "nonextruding_xy_chord_mm": 692.315967274584,
+        "deposition_runs_after_travel": 23,
+        "commanded_motion_seconds": 8.413765111502762,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 121,
+        "deposited_z_min_mm": 23.4,
+        "deposited_z_max_mm": 23.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 44,
+        "nonextruding_xy_chord_mm": 687.410176984523,
+        "deposition_runs_after_travel": 23,
+        "commanded_motion_seconds": 8.466751230978028,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 122,
+        "deposited_z_min_mm": 23.6,
+        "deposited_z_max_mm": 23.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 16,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.400009999999999,
+        "recovered_filament_mm": 6.400009999999999,
+        "negative_e_xy_moves": 12,
+        "nonextruding_xy_moves": 41,
+        "nonextruding_xy_chord_mm": 689.2821479574608,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 8.443565810426724,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 123,
+        "deposited_z_min_mm": 23.8,
+        "deposited_z_max_mm": 23.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 47,
+        "nonextruding_xy_chord_mm": 714.887457626245,
+        "deposition_runs_after_travel": 26,
+        "commanded_motion_seconds": 9.104992233363015,
+        "unestimated_motion_moves": 3,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 124,
+        "deposited_z_min_mm": 24.0,
+        "deposited_z_max_mm": 24.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 18,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 14,
+        "nonextruding_xy_moves": 50,
+        "nonextruding_xy_chord_mm": 597.5556005007422,
+        "deposition_runs_after_travel": 28,
+        "commanded_motion_seconds": 9.422660293296833,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 125,
+        "deposited_z_min_mm": 24.2,
+        "deposited_z_max_mm": 24.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 16,
+        "retraction_episodes": 8,
+        "retracted_filament_mm": 6.3999999999999995,
+        "recovered_filament_mm": 6.3999999999999995,
+        "negative_e_xy_moves": 12,
+        "nonextruding_xy_moves": 52,
+        "nonextruding_xy_chord_mm": 589.1777986098523,
+        "deposition_runs_after_travel": 32,
+        "commanded_motion_seconds": 10.158172589946217,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 126,
+        "deposited_z_min_mm": 24.4,
+        "deposited_z_max_mm": 24.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 17,
+        "retraction_episodes": 6,
+        "retracted_filament_mm": 4.800009999999999,
+        "recovered_filament_mm": 4.800009999999999,
+        "negative_e_xy_moves": 13,
+        "nonextruding_xy_moves": 35,
+        "nonextruding_xy_chord_mm": 572.0767887308805,
+        "deposition_runs_after_travel": 14,
+        "commanded_motion_seconds": 14.976217843238457,
+        "unestimated_motion_moves": 4,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 127,
+        "deposited_z_min_mm": 24.6,
+        "deposited_z_max_mm": 24.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 33,
+        "nonextruding_xy_chord_mm": 648.2857275061493,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 9.4224157922742,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 128,
+        "deposited_z_min_mm": 24.8,
+        "deposited_z_max_mm": 24.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 33,
+        "nonextruding_xy_chord_mm": 666.2428165567276,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 9.408103404082821,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 129,
+        "deposited_z_min_mm": 25.0,
+        "deposited_z_max_mm": 25.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.20001,
+        "recovered_filament_mm": 3.20001,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 34,
+        "nonextruding_xy_chord_mm": 659.5499227427368,
+        "deposition_runs_after_travel": 20,
+        "commanded_motion_seconds": 9.217661878275822,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 130,
+        "deposited_z_min_mm": 25.2,
+        "deposited_z_max_mm": 25.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 12,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.20001,
+        "recovered_filament_mm": 3.20001,
+        "negative_e_xy_moves": 10,
+        "nonextruding_xy_moves": 32,
+        "nonextruding_xy_chord_mm": 653.7120893660067,
+        "deposition_runs_after_travel": 16,
+        "commanded_motion_seconds": 8.514719493156905,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 131,
+        "deposited_z_min_mm": 25.4,
+        "deposited_z_max_mm": 25.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.0067293863005,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.241278902073379,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 132,
+        "deposited_z_min_mm": 25.6,
+        "deposited_z_max_mm": 25.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 632.7995050959457,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.388817011060167,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 133,
+        "deposited_z_min_mm": 25.8,
+        "deposited_z_max_mm": 25.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.4272328025148,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.30921292056592,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 134,
+        "deposited_z_min_mm": 26.0,
+        "deposited_z_max_mm": 26.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 636.5084536239759,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.278170839034582,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 135,
+        "deposited_z_min_mm": 26.2,
+        "deposited_z_max_mm": 26.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 7,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 5,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 655.9369053341669,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.086252506916713,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 136,
+        "deposited_z_min_mm": 26.4,
+        "deposited_z_max_mm": 26.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.1999900000000006,
+        "recovered_filament_mm": 3.1999899999999997,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 647.7740086431779,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 8.315082309844678,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 137,
+        "deposited_z_min_mm": 26.6,
+        "deposited_z_max_mm": 26.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 668.5268274029149,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.376607254527146,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 138,
+        "deposited_z_min_mm": 26.8,
+        "deposited_z_max_mm": 26.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 665.32089236508,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.425400002802908,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 139,
+        "deposited_z_min_mm": 27.0,
+        "deposited_z_max_mm": 27.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 648.8283367493481,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.256395480837554,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 140,
+        "deposited_z_min_mm": 27.2,
+        "deposited_z_max_mm": 27.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 630.1218651284249,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.227797980582897,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 141,
+        "deposited_z_min_mm": 27.4,
+        "deposited_z_max_mm": 27.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 632.5400969744823,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.201786587246584,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 142,
+        "deposited_z_min_mm": 27.6,
+        "deposited_z_max_mm": 27.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 634.2014233024016,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.172250443014438,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 143,
+        "deposited_z_min_mm": 27.8,
+        "deposited_z_max_mm": 27.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 633.7643021709914,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.173957753908672,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 144,
+        "deposited_z_min_mm": 28.0,
+        "deposited_z_max_mm": 28.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 635.5697329565182,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.229088373256115,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 145,
+        "deposited_z_min_mm": 28.2,
+        "deposited_z_max_mm": 28.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 636.8338063421269,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.423375777296657,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 146,
+        "deposited_z_min_mm": 28.4,
+        "deposited_z_max_mm": 28.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 635.8884227752033,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.295219929714744,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 147,
+        "deposited_z_min_mm": 28.6,
+        "deposited_z_max_mm": 28.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 636.4449258990721,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.262682192497536,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 148,
+        "deposited_z_min_mm": 28.8,
+        "deposited_z_max_mm": 28.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 633.8821526606712,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.083379539898026,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 149,
+        "deposited_z_min_mm": 29.0,
+        "deposited_z_max_mm": 29.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 633.263093436667,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.247212105663156,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 150,
+        "deposited_z_min_mm": 29.2,
+        "deposited_z_max_mm": 29.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 632.4982667881065,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.278364342706325,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 151,
+        "deposited_z_min_mm": 29.4,
+        "deposited_z_max_mm": 29.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 632.063000436434,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.348265588839842,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 152,
+        "deposited_z_min_mm": 29.6,
+        "deposited_z_max_mm": 29.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 633.2554201781796,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.228309902807348,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 153,
+        "deposited_z_min_mm": 29.8,
+        "deposited_z_max_mm": 29.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 631.7273243679174,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.185525488164423,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 154,
+        "deposited_z_min_mm": 30.0,
+        "deposited_z_max_mm": 30.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 633.1936794776012,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.18249604616784,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 155,
+        "deposited_z_min_mm": 30.2,
+        "deposited_z_max_mm": 30.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.1120979536648,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.194833025144925,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 156,
+        "deposited_z_min_mm": 30.4,
+        "deposited_z_max_mm": 30.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 634.9110275078172,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.19103435985061,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 157,
+        "deposited_z_min_mm": 30.6,
+        "deposited_z_max_mm": 30.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 634.9360299793441,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.231535997698098,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 158,
+        "deposited_z_min_mm": 30.8,
+        "deposited_z_max_mm": 30.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 632.802974307517,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.443358228144136,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 159,
+        "deposited_z_min_mm": 31.0,
+        "deposited_z_max_mm": 31.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.3613933990914,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.319581228869872,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 160,
+        "deposited_z_min_mm": 31.2,
+        "deposited_z_max_mm": 31.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 636.4351975604992,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.282285847099427,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 161,
+        "deposited_z_min_mm": 31.4,
+        "deposited_z_max_mm": 31.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 621.057866354675,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.08536094428201,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 162,
+        "deposited_z_min_mm": 31.6,
+        "deposited_z_max_mm": 31.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 666.7856188386987,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 8.338490713019812,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 163,
+        "deposited_z_min_mm": 31.8,
+        "deposited_z_max_mm": 31.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 668.5481957050264,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.369352358863361,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 164,
+        "deposited_z_min_mm": 32.0,
+        "deposited_z_max_mm": 32.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 668.2510143794472,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.430579990716328,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 165,
+        "deposited_z_min_mm": 32.2,
+        "deposited_z_max_mm": 32.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.1999899999999997,
+        "recovered_filament_mm": 3.1999899999999997,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 648.9010106875113,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.270226202377014,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 166,
+        "deposited_z_min_mm": 32.4,
+        "deposited_z_max_mm": 32.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 629.7922322942513,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.19889329045437,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 167,
+        "deposited_z_min_mm": 32.6,
+        "deposited_z_max_mm": 32.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 632.5164357345196,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.200306285001497,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 168,
+        "deposited_z_min_mm": 32.8,
+        "deposited_z_max_mm": 32.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 634.2112530594842,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.17480205028246,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 169,
+        "deposited_z_min_mm": 33.0,
+        "deposited_z_max_mm": 33.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 633.8248344270902,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.172340121575264,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 170,
+        "deposited_z_min_mm": 33.2,
+        "deposited_z_max_mm": 33.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 635.6057897935002,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.22033887998642,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 171,
+        "deposited_z_min_mm": 33.4,
+        "deposited_z_max_mm": 33.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 635.3853517676937,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.3137609624265,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 172,
+        "deposited_z_min_mm": 33.6,
+        "deposited_z_max_mm": 33.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 632.0148055566003,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.303217635702273,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 173,
+        "deposited_z_min_mm": 33.8,
+        "deposited_z_max_mm": 33.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.8256494798496,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.264059227443093,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 174,
+        "deposited_z_min_mm": 34.0,
+        "deposited_z_max_mm": 34.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 637.0497263735409,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.087918516113465,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 175,
+        "deposited_z_min_mm": 34.2,
+        "deposited_z_max_mm": 34.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 657.8998094008732,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.084352891814918,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 176,
+        "deposited_z_min_mm": 34.4,
+        "deposited_z_max_mm": 34.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 632.5751373822183,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.269865386324739,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 177,
+        "deposited_z_min_mm": 34.6,
+        "deposited_z_max_mm": 34.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 632.1472530305267,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.328666134221473,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 178,
+        "deposited_z_min_mm": 34.8,
+        "deposited_z_max_mm": 34.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 633.1512150020981,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.245183229385779,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 179,
+        "deposited_z_min_mm": 35.0,
+        "deposited_z_max_mm": 35.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 631.5759883610939,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.190469053608572,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 180,
+        "deposited_z_min_mm": 35.2,
+        "deposited_z_max_mm": 35.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 633.1849369450036,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.181951585941198,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 181,
+        "deposited_z_min_mm": 35.4,
+        "deposited_z_max_mm": 35.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 635.1208187119055,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.198492047633444,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 182,
+        "deposited_z_min_mm": 35.6,
+        "deposited_z_max_mm": 35.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 634.937807858001,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.189789856550902,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 183,
+        "deposited_z_min_mm": 35.8,
+        "deposited_z_max_mm": 35.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 634.8796042635612,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.223957365072835,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 184,
+        "deposited_z_min_mm": 36.0,
+        "deposited_z_max_mm": 36.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.1930078555556,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.29601314228714,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 185,
+        "deposited_z_min_mm": 36.2,
+        "deposited_z_max_mm": 36.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.20001,
+        "recovered_filament_mm": 3.20001,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 632.8549519203823,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.328935359209755,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 186,
+        "deposited_z_min_mm": 36.4,
+        "deposited_z_max_mm": 36.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 636.3647773751709,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.289058211125461,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 187,
+        "deposited_z_min_mm": 36.6,
+        "deposited_z_max_mm": 36.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 641.1240550399119,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.085358039690545,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 188,
+        "deposited_z_min_mm": 36.8,
+        "deposited_z_max_mm": 36.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 635.0904595041769,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.105061239231398,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 189,
+        "deposited_z_min_mm": 37.0,
+        "deposited_z_max_mm": 37.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 668.5088077790409,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.361679243574887,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 190,
+        "deposited_z_min_mm": 37.2,
+        "deposited_z_max_mm": 37.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 668.3264419232743,
+        "deposition_runs_after_travel": 11,
+        "commanded_motion_seconds": 8.41214431566277,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 191,
+        "deposited_z_min_mm": 37.4,
+        "deposited_z_max_mm": 37.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.1999899999999997,
+        "recovered_filament_mm": 3.1999899999999997,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 649.0070083282083,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.291447282432976,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 192,
+        "deposited_z_min_mm": 37.6,
+        "deposited_z_max_mm": 37.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 629.7822293866992,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.204225536338523,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 193,
+        "deposited_z_min_mm": 37.8,
+        "deposited_z_max_mm": 37.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 632.4998827970434,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.200270134785137,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 194,
+        "deposited_z_min_mm": 38.0,
+        "deposited_z_max_mm": 38.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 634.2209562533257,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.1780821668701,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 195,
+        "deposited_z_min_mm": 38.2,
+        "deposited_z_max_mm": 38.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 633.8635654352852,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.171596511521768,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 196,
+        "deposited_z_min_mm": 38.4,
+        "deposited_z_max_mm": 38.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 635.6312665550248,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.213661643352435,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 197,
+        "deposited_z_min_mm": 38.6,
+        "deposited_z_max_mm": 38.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 635.4234154617408,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.27446748351824,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 198,
+        "deposited_z_min_mm": 38.8,
+        "deposited_z_max_mm": 38.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 22,
+        "nonextruding_xy_chord_mm": 632.1579805011324,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.316812491914927,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 199,
+        "deposited_z_min_mm": 39.0,
+        "deposited_z_max_mm": 39.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 635.8587646207878,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.270623300853005,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 200,
+        "deposited_z_min_mm": 39.2,
+        "deposited_z_max_mm": 39.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 636.9699819647161,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.087827737406709,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 201,
+        "deposited_z_min_mm": 39.4,
+        "deposited_z_max_mm": 39.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 642.9681186705458,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.083908554979061,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 202,
+        "deposited_z_min_mm": 39.6,
+        "deposited_z_max_mm": 39.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 632.7231311675525,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.262744339610709,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 203,
+        "deposited_z_min_mm": 39.8,
+        "deposited_z_max_mm": 39.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 25,
+        "nonextruding_xy_chord_mm": 632.237952981257,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.311567264403767,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 204,
+        "deposited_z_min_mm": 40.0,
+        "deposited_z_max_mm": 40.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 633.0483019843974,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.272593086807303,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 205,
+        "deposited_z_min_mm": 40.2,
+        "deposited_z_max_mm": 40.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 631.4705584340592,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.196444992448923,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 206,
+        "deposited_z_min_mm": 40.4,
+        "deposited_z_max_mm": 40.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 633.1694805175119,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.182372787353327,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 207,
+        "deposited_z_min_mm": 40.6,
+        "deposited_z_max_mm": 40.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 633.1984948890462,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.19066317730045,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 208,
+        "deposited_z_min_mm": 40.8,
+        "deposited_z_max_mm": 40.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 24,
+        "nonextruding_xy_chord_mm": 635.0227955999584,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 8.189876209420763,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 209,
+        "deposited_z_min_mm": 41.0,
+        "deposited_z_max_mm": 41.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 10,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 8,
+        "nonextruding_xy_moves": 26,
+        "nonextruding_xy_chord_mm": 630.4726721263535,
+        "deposition_runs_after_travel": 12,
+        "commanded_motion_seconds": 8.935930956626244,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 210,
+        "deposited_z_min_mm": 41.2,
+        "deposited_z_max_mm": 41.2,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 7,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 23,
+        "nonextruding_xy_chord_mm": 639.030673492394,
+        "deposition_runs_after_travel": 10,
+        "commanded_motion_seconds": 18.949047119159683,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 211,
+        "deposited_z_min_mm": 41.4,
+        "deposited_z_max_mm": 41.4,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 7,
+        "nonextruding_xy_moves": 29,
+        "nonextruding_xy_chord_mm": 659.1136640943314,
+        "deposition_runs_after_travel": 16,
+        "commanded_motion_seconds": 12.45132639634578,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 212,
+        "deposited_z_min_mm": 41.6,
+        "deposited_z_max_mm": 41.6,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 8,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 28,
+        "nonextruding_xy_chord_mm": 671.3588280081618,
+        "deposition_runs_after_travel": 16,
+        "commanded_motion_seconds": 12.44217709401231,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 213,
+        "deposited_z_min_mm": 41.8,
+        "deposited_z_max_mm": 41.8,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 11,
+        "retraction_episodes": 4,
+        "retracted_filament_mm": 3.2000200000000003,
+        "recovered_filament_mm": 3.2000200000000003,
+        "negative_e_xy_moves": 9,
+        "nonextruding_xy_moves": 31,
+        "nonextruding_xy_chord_mm": 638.2923958310491,
+        "deposition_runs_after_travel": 16,
+        "commanded_motion_seconds": 12.397334815340098,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      },
+      {
+        "index": 214,
+        "deposited_z_min_mm": 42.0,
+        "deposited_z_max_mm": 42.0,
+        "objects": [
+          "M140"
+        ],
+        "negative_e_moves": 9,
+        "retraction_episodes": 5,
+        "retracted_filament_mm": 4.0,
+        "recovered_filament_mm": 3.2,
+        "negative_e_xy_moves": 6,
+        "nonextruding_xy_moves": 125,
+        "nonextruding_xy_chord_mm": 694.4691213498327,
+        "deposition_runs_after_travel": 112,
+        "commanded_motion_seconds": 9.517139195528085,
+        "unestimated_motion_moves": 2,
+        "firmware_retraction_commands": 0
+      }
+    ]
+  }
+}

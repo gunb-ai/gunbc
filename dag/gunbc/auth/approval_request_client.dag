@@ -1,0 +1,139 @@
+module gunbc.auth.approval_request_client
+
+import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
+import std.scoped_authorization { AuthorizationRequest }
+import extdeps.crypto.mac {
+  MacKey, MacSigned, MacKeyMaterialNotHex, HmacSha256, MacKeyId,
+}
+import gunbc.auth.approval_status_wire {
+  FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
+}
+import gunbc.auth.approval_capability { utc_instant_before }
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, request_revision_of, approval_mac_key_id,
+}
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_id, sign_submission,
+}
+import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.auth.approval_writer_authority {
+  approval_writer_authority, approval_writer_process, ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+}
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_loopback_base_url, approval_broker_listen_port, approval_broker_submit_path,
+}
+
+// THE CLIENT DIALS THE WRITER, AND WHICH PROCESS THAT IS IS NOT THIS MODULE'S FACT. It used to read
+// the roadmap instance's listen bind, which was right while the roadmap held the store and silently
+// wrong from the stage-4 posture flip onward: run 37265259209 (gcp_iam_converge, srv1) POSTed to the
+// roadmap's port and was refused with a 503 naming the broker as writer. The origin is now derived
+// from gunbc.auth.approval_writer_authority -- the same row both serving processes consult before a
+// store effect -- so the address a client dials and the process that admits the write cannot
+// disagree; the broker's address and paths come from gunbc.auth.approval_broker_endpoint.
+data approval_request_submit_path: NonEmptyStr = approval_broker_submit_path
+
+fn approval_loopback_origin_for(writer: ApprovalServingProcess) -> NonEmptyStr {
+  match writer {
+    RoadmapProcess => {
+      let instance = srv1_live_dashboard_instance()
+      concat(
+        concat("http://", instance.listen_host as String),
+        concat(":", to_string(instance.listen_port)),
+      ) as NonEmptyStr
+    }
+    BrokerProcess => approval_broker_loopback_base_url(port: approval_broker_listen_port)
+  }
+}
+
+fn approval_loopback_origin() -> NonEmptyStr {
+  approval_loopback_origin_for(writer: approval_writer_process(authority: approval_writer_authority))
+}
+
+fn approval_submit_url() -> NonEmptyStr {
+  concat(approval_loopback_origin() as String, approval_request_submit_path as String) as NonEmptyStr
+}
+
+fn approval_status_url(escalation_id: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    concat(approval_loopback_origin() as String, concat(approval_request_submit_path as String, "/")),
+    escalation_id as String,
+  ) as NonEmptyStr
+}
+
+fn stored_request_from_authorization<Subject>(
+  request: AuthorizationRequest<Subject>,
+  issued_at: Timestamp,
+  expires_at: Timestamp,
+) -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: request.escalation_id,
+    request_revision: request_revision_of(request: request),
+    attempt: request.attempt,
+    requester: fleet_operator_email,
+    purpose: request.purpose,
+    destructive: request.destructive,
+    issued_at: issued_at,
+    expires_at: expires_at,
+    key_id: approval_mac_key_id,
+  }
+}
+
+type SubmissionMac
+  = SubmissionMacReady { tag_hex: NonEmptyStr }
+  | SubmissionMacKeyNotHex { key_id: MacKeyId }
+
+fn sign_stored_request(key_material: String, request: StoredApprovalRequest) -> SubmissionMac {
+  let key = MacKey {
+    id: approval_submission_mac_key_id,
+    suite: HmacSha256,
+    material: key_material as Secret,
+  }
+  match sign_submission(key: key, request: request) {
+    MacKeyMaterialNotHex { key_id: k } => SubmissionMacKeyNotHex { key_id: k }
+    MacSigned { tag: t } => SubmissionMacReady { tag_hex: t.hex }
+  }
+}
+
+type ApprovalPollStanding
+  = PollStillPending
+  | PollApproved {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      execute_by: Timestamp
+    }
+  | PollDenied {
+      revision: NonEmptyStr
+      decided_by: NonEmptyStr
+      decided_at: Timestamp
+      reason: NonEmptyStr
+    }
+  | PollExpired
+  | PollNotFiled
+  | PollUnreadable { detail: NonEmptyStr }
+
+// THE BOUNDARY IS THE CAPABILITY'S: expires_at is the instant a request STOPS being decidable
+// (gunbc.auth.approval_capability admits only observed_at < expires_at), so equality is expired
+// here too -- a client that still called the operator's request pending at the very second the
+// broker can no longer redeem the capability would wait for a decision that cannot land.
+// THE FILED REQUEST'S OWN WINDOW GOVERNS A PENDING STANDING. A pending status carries the
+// expires_at the broker filed (the one the operator was shown); the caller's expires_at is the
+// window it would file under and governs only a request that is NOT filed. A rerun that computes
+// a fresh window may therefore not extend a pending filing past what was filed, and a decision is
+// a decision whenever it is read.
+fn approval_poll_standing(
+  status: FiledApprovalStatus,
+  observed_at: Timestamp,
+  expires_at: Timestamp,
+) -> ApprovalPollStanding {
+  match status {
+    StatusApproved { revision: r, decided_by: by, decided_at: at, execute_by: until } =>
+      PollApproved { revision: r, decided_by: by, decided_at: at, execute_by: until }
+    StatusDenied { revision: r, decided_by: by, decided_at: at, reason: why } =>
+      PollDenied { revision: r, decided_by: by, decided_at: at, reason: why }
+    StatusUnreadable { detail: d } => PollUnreadable { detail: d }
+    StatusPending { expires_at: filed } => if utc_instant_before(a: observed_at, b: filed) { PollStillPending } else { PollExpired }
+    StatusNotFiled => if utc_instant_before(a: observed_at, b: expires_at) { PollNotFiled } else { PollExpired }
+  }
+}

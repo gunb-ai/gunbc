@@ -1,0 +1,118 @@
+module gunbc.site.element.priority_mark
+
+import std.types { List, String }
+import std.markup { Fragment, Attribute, attr }
+import gunbc.site.markup { el_attrs, txt }
+import gunbc.roadmap_priority { RoadmapPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3, roadmap_priority_label }
+import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0 }
+import gunbc.site.element.tokens { radius_element, height_chip, priority_mark_width, priority_mark_border, priority_mark_padding }
+import gunbc.site.element.palette { palette_var, SlotAction, SlotOnAction, SlotTextDim }
+import gunbc.site.element.text { element_text_decls, ElementBody }
+import extdeps.languages.css.selectors { ClassSelector, RawSelector }
+import extdeps.languages.css.properties {
+  AlignItems, Background, Border, BorderColor, BorderRadius, BoxSizing, Color, Display, Height, JustifyContent, MinWidth, Padding,
+}
+
+// PriorityMark: the one drawing of a priority, wherever one is shown. It takes the typed priority
+// (gunbc.roadmap_priority) and prints that module's label, with the caller's explanation of how the
+// priority was derived as its title when the caller has one.
+//
+// Every mark is the same box: the measured width and chip height, the measured border on every
+// side (transparent where the form draws none) and the measured side padding, with the label set
+// at the box's left. So the label's left edge is the same in every row of a column whatever the
+// priority, and a column heading aligns with it by insetting its text by the border and padding.
+// The forms differ only in colour. P1 is the product's ring in the action colour, as measured. P0
+// is this frontend's extension (the product's P0 was not captured): a solid action-coloured mark,
+// stronger than the ring, so the more urgent priority never reads as the same mark as P1. P2 is
+// plain body text and P3 is muted, so the column quietens as the priority falls.
+type PriorityMark {
+  priority: RoadmapPriority
+  explanation: String?
+}
+
+type PriorityMarkForm
+  = PriorityMarkSolid
+  | PriorityMarkRinged
+  | PriorityMarkPlain
+  | PriorityMarkQuiet
+
+data priority_mark_forms: List<PriorityMarkForm> = [PriorityMarkSolid, PriorityMarkRinged, PriorityMarkPlain, PriorityMarkQuiet]
+
+fn priority_mark_form(priority: RoadmapPriority) -> PriorityMarkForm {
+  match priority {
+    PriorityP0 => PriorityMarkSolid
+    PriorityP1 => PriorityMarkRinged
+    PriorityP2 => PriorityMarkPlain
+    PriorityP3 => PriorityMarkQuiet
+  }
+}
+
+fn priority_mark_form_key(form: PriorityMarkForm) -> String {
+  match form {
+    PriorityMarkSolid => "solid"
+    PriorityMarkRinged => "ringed"
+    PriorityMarkPlain => "plain"
+    PriorityMarkQuiet => "quiet"
+  }
+}
+
+// The colours a form changes, and nothing else: the border's colour, the fill and the ink.
+fn priority_mark_form_decls(form: PriorityMarkForm) -> List<CssDecl> {
+  match form {
+    PriorityMarkSolid => [
+      decl(prop: BorderColor, value: palette_var(slot: SlotAction)),
+      decl(prop: Background, value: palette_var(slot: SlotAction)),
+      decl(prop: Color, value: palette_var(slot: SlotOnAction)),
+    ]
+    PriorityMarkRinged => [decl(prop: BorderColor, value: palette_var(slot: SlotAction))]
+    PriorityMarkPlain => []
+    PriorityMarkQuiet => [decl(prop: Color, value: palette_var(slot: SlotTextDim))]
+  }
+}
+
+data priority_mark_class: String = "el-priority-mark"
+data priority_mark_form_attribute: String = "data-priority-form"
+
+fn priority_mark_title(explanation: String?) -> List<Attribute> {
+  match explanation {
+    Present { value: e } => [attr(name: "title", value: e)]
+    Absent => []
+  }
+}
+
+fn priority_mark(input: PriorityMark) -> Fragment {
+  el_attrs("span", concat([
+    attr(name: "class", value: priority_mark_class),
+    attr(name: priority_mark_form_attribute, value: priority_mark_form_key(form: priority_mark_form(priority: input.priority))),
+  ], priority_mark_title(explanation: input.explanation)), [txt(roadmap_priority_label(priority: input.priority))])
+}
+
+// How far a mark's label sits inside its box: the border and the side padding. A heading over a
+// column of marks insets its own text by this much.
+fn priority_mark_label_inset() -> String {
+  join(["calc(", scale_var(t: priority_mark_border), " + ", scale_var(t: priority_mark_padding), ")"], "")
+}
+
+fn priority_mark_form_selector(form: PriorityMarkForm) -> String {
+  join([".", priority_mark_class, "[", priority_mark_form_attribute, "=\"", priority_mark_form_key(form: form), "\"]"], "")
+}
+
+fn priority_mark_rules() -> List<BuildRule> {
+  concat([
+    StaticRule { selector: ClassSelector { name: priority_mark_class }, decls: concat([
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "flex-start"),
+      decl(prop: BoxSizing, value: "border-box"),
+      decl(prop: MinWidth, value: scale_var(t: priority_mark_width)),
+      decl(prop: Height, value: scale_var(t: height_chip)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: priority_mark_padding)),
+      decl(prop: Border, value: scale_border(w: priority_mark_border, color_var: "transparent")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+    ], element_text_decls(role: ElementBody)) },
+  ], flat_map(priority_mark_forms, f => {
+    let decls = priority_mark_form_decls(form: f)
+    if count(decls) == 0 { [] } else { [StaticRule { selector: RawSelector { text: priority_mark_form_selector(form: f) }, decls: decls }] }
+  }))
+}

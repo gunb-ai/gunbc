@@ -1,0 +1,40 @@
+module v2.lens.application_serializer
+
+
+type DagSourcePatch {
+  before: Medium<String>
+  after: Medium<String>
+}
+
+fn serialize_diff_as_source_patch(
+  root: Node,
+  diff: Diff,
+  canonical_source_target: TargetModel
+) -> Outcome<DagSourcePatch> {
+  bind_outcome(
+    o: target_serialize_source_from_model(target: canonical_source_target, emitted: root),
+    f: fn(before) {
+      bind_outcome(
+        o: apply_diff(root: root, d: diff),
+        f: fn(patched) {
+          bind_outcome(
+            o: target_serialize_source_from_model(
+              target: canonical_source_target,
+              emitted: patched
+            ),
+            f: fn(after) {
+              outcome_accepted(value: DagSourcePatch { before: before, after: after })
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow {
+    mechanism: RealizationDispatch,
+    authority: DeclarationRef { module_path: "v2.compiler.target_serialize", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
+  }
+}

@@ -1,0 +1,332 @@
+module v2.std.leaf_model_verification
+
+import std.types { List }
+import v2.std.host_run { ValueDiff }
+import std.nat { Nat }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.verdict { Verdict, verdict_combine }
+
+type LeafModelClaim<M, Subject, Expectation> {
+  model: M
+  fact_id: Node
+  subject: Subject
+  expectation: Expectation
+  falsification_case: FalsificationCase<Subject, Expectation>
+}
+
+type FalsificationCase<Subject, Expectation> {
+  subject_variant: Subject
+  expected_failure_mode: Expectation
+}
+
+type TargetArtifact {
+  source_text: String
+}
+
+type TargetInvocation {
+  toolchain: Symbol
+  edition: Symbol
+  build_profile: Symbol
+  overflow_disposition_field: Symbol
+}
+
+type LeafModelFixture<C> {
+  claim: C
+  artifact: TargetArtifact
+  invocation: TargetInvocation
+  expected_verdict: Verdict<Symbol, Symbol>
+  falsification_artifact: TargetArtifact
+  expected_falsification_verdict: Verdict<Symbol, Symbol>
+}
+
+type LeafModelClaimVerdictRow {
+  claim_id: Symbol
+  verdict: Verdict<Symbol, Symbol>
+  falsification_verdict: Verdict<Symbol, Symbol>
+}
+
+type LeafModelVerificationTotals {
+  proven: std.nat.Nat
+  model_failed: std.nat.Nat
+  falsification_caught: std.nat.Nat
+  falsification_missed: std.nat.Nat
+  not_checked: std.nat.Nat
+}
+
+type LeafModelVerificationReport<M> {
+  model: M
+  claims: List<LeafModelClaimVerdictRow>
+}
+
+type TargetCompileVerdict
+  = TargetCompileAccepted
+  | TargetCompileRejected { diagnostic_code: Symbol }
+
+type TargetPythonExerciseVerdict
+  = TargetPythonExerciseAccepted
+  | TargetPythonCompileRejected { diagnostic_code: Symbol }
+  | TargetPythonExecRejected { diagnostic_code: Symbol }
+
+type TargetRuntimeExerciseVerdict
+  = TargetRuntimeExerciseAccepted
+  | TargetRuntimeExerciseRejected { diagnostic_code: Symbol }
+
+type TargetStaticAnalysisInvocation {
+  tool_profile_ref: Symbol
+  input_artifact: TargetArtifact
+}
+
+type TargetStaticAnalysisVerdict
+  = StaticAnalysisAccepted
+  | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
+
+type TargetTypeScriptCompileVerdict
+  = TargetTypeScriptCompileAccepted
+  | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
+
+type LeafModelClaimId = Symbol
+
+data leaf_model_claim_rust_r1_i32_surface_spelling: LeafModelClaimId = leaf_model_claim_rust_r1_i32_surface_spelling
+data leaf_model_claim_python_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_python_r1_int_surface_spelling
+data leaf_model_claim_python_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_python_r2a_int_algebra_operations
+data leaf_model_claim_python_r2b_int_arbitrary_precision_add: LeafModelClaimId = leaf_model_claim_python_r2b_int_arbitrary_precision_add
+data leaf_model_claim_python_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_python_r3_external_symbol_projection
+data leaf_model_claim_python_l1_static_return_type: LeafModelClaimId = leaf_model_claim_python_l1_static_return_type
+data leaf_model_claim_python_l1_static_undefined_variable: LeafModelClaimId = leaf_model_claim_python_l1_static_undefined_variable
+data leaf_model_claim_python_l1_static_missing_import: LeafModelClaimId = leaf_model_claim_python_l1_static_missing_import
+data leaf_model_claim_rust_r2a_i32_algebra_operations: LeafModelClaimId = leaf_model_claim_rust_r2a_i32_algebra_operations
+data leaf_model_claim_rust_r2b_debug_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_debug_default_overflow
+data leaf_model_claim_rust_r2b_release_default_overflow: LeafModelClaimId = leaf_model_claim_rust_r2b_release_default_overflow
+data leaf_model_claim_rust_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_rust_r3_external_symbol_projection
+data leaf_model_claim_rust_r3_internal_symbol_coupling: LeafModelClaimId = leaf_model_claim_rust_r3_internal_symbol_coupling
+data leaf_model_claim_ts_r2a_number_algebra_operations: LeafModelClaimId = leaf_model_claim_ts_r2a_number_algebra_operations
+data leaf_model_claim_ts_r2b_bigint_beyond_safe_integer: LeafModelClaimId = leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
+data leaf_model_claim_ts_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_ts_r3_external_symbol_projection
+data leaf_model_claim_go_r1_int_surface_spelling: LeafModelClaimId = leaf_model_claim_go_r1_int_surface_spelling
+data leaf_model_claim_go_r2a_int_algebra_operations: LeafModelClaimId = leaf_model_claim_go_r2a_int_algebra_operations
+data leaf_model_claim_go_r2b_int64_silent_overflow_truncates: LeafModelClaimId = leaf_model_claim_go_r2b_int64_silent_overflow_truncates
+data leaf_model_claim_go_r3_external_symbol_projection: LeafModelClaimId = leaf_model_claim_go_r3_external_symbol_projection
+data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelClaimId = leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
+data leaf_model_claim_python_l2_cross_target_parity_r2a_add: LeafModelClaimId = leaf_model_claim_python_l2_cross_target_parity_r2a_add
+data leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection: LeafModelClaimId = leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection
+
+type LeafModelCrossRuntimeDriftProbe {
+  claim_id: LeafModelClaimId
+
+  arbitrary_precision_fact: Symbol
+  fixed_width_rust_fact: Symbol
+  fixed_width_go_fact: Symbol
+  arbitrary_precision_source: String
+  fixed_width_rust_source: String
+  fixed_width_go_source: String
+  expected_divergence: ValueDiff<String>
+}
+
+type LeafModelCrossTargetParityProbe {
+  claim_id: LeafModelClaimId
+
+  python_fact: Symbol
+  rust_fact: Symbol
+  go_fact: Symbol
+  python_source: String
+  rust_source: String
+  go_source: String
+  expected_parity: ValueDiff<String>
+}
+
+type LeafModelRustCrateType = Symbol
+
+data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
+data leaf_model_rust_crate_type_bin: LeafModelRustCrateType = leaf_model_rust_crate_type_bin
+
+type LeafModelRustFixture {
+  source: String
+  crate_type: LeafModelRustCrateType
+}
+
+type LeafModelFalsificationCase {
+  fixture: LeafModelRustFixture
+  expected_verdict: TargetCompileVerdict
+}
+
+type LeafModelFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  coercion_spelling_fact: Symbol
+  happy: LeafModelRustFixture
+  expected_happy_verdict: TargetCompileVerdict
+  falsification: LeafModelFalsificationCase
+}
+
+type LeafModelEmitCouplingReceipt {
+  claim_id: LeafModelClaimId
+  atom_realization_fact: Symbol
+  baseline_type_emit: Symbol
+  mutated_type_emit: Symbol
+  baseline_value_emit_kind: Symbol
+  mutated_value_emit_kind: Symbol
+}
+
+type LeafModelPythonFixture {
+  source: String
+}
+
+type LeafModelPythonFalsificationCase {
+  fixture: LeafModelPythonFixture
+  expected_verdict: TargetPythonExerciseVerdict
+}
+
+type LeafModelPythonFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelPythonFixture
+  expected_happy_verdict: TargetPythonExerciseVerdict
+  falsification: LeafModelPythonFalsificationCase
+}
+
+type LeafModelGoBuildFixture {
+  source: String
+}
+
+type LeafModelGoRunFixture {
+  source: String
+}
+
+type LeafModelGoCompileFalsificationCase {
+  fixture: LeafModelGoBuildFixture
+  expected_verdict: TargetCompileVerdict
+}
+
+type LeafModelGoCompileFixturePair {
+  claim_id: LeafModelClaimId
+  fact_anchor: Node
+  happy: LeafModelGoBuildFixture
+  expected_happy_verdict: TargetCompileVerdict
+  falsification: LeafModelGoCompileFalsificationCase
+}
+
+type LeafModelGoRuntimeFalsificationCase {
+  fixture: LeafModelGoRunFixture
+  expected_verdict: TargetRuntimeExerciseVerdict
+}
+
+type LeafModelGoRuntimeFixturePair {
+  claim_id: LeafModelClaimId
+  fact_anchor: Node
+  happy: LeafModelGoRunFixture
+  expected_happy_verdict: TargetRuntimeExerciseVerdict
+  falsification: LeafModelGoRuntimeFalsificationCase
+}
+
+type LeafModelPythonStaticHappyCase {
+  artifact: TargetArtifact
+  tool_profile_ref: Symbol
+}
+
+type LeafModelPythonStaticFalsificationCase {
+  artifact: TargetArtifact
+  tool_profile_ref: Symbol
+  tool_id: Symbol
+  diagnostic_code: Symbol
+}
+
+type LeafModelPythonStaticFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  happy: LeafModelPythonStaticHappyCase
+  falsification: LeafModelPythonStaticFalsificationCase
+}
+
+fn leaf_model_python_static_happy_invocation(
+  c: LeafModelPythonStaticHappyCase
+) -> TargetStaticAnalysisInvocation {
+  TargetStaticAnalysisInvocation {
+    tool_profile_ref: c.tool_profile_ref,
+    input_artifact: c.artifact,
+  }
+}
+
+fn leaf_model_python_static_falsification_invocation(
+  c: LeafModelPythonStaticFalsificationCase
+) -> TargetStaticAnalysisInvocation {
+  TargetStaticAnalysisInvocation {
+    tool_profile_ref: c.tool_profile_ref,
+    input_artifact: c.artifact,
+  }
+}
+
+fn leaf_model_python_static_happy_verdict(
+  c: LeafModelPythonStaticHappyCase
+) -> TargetStaticAnalysisVerdict {
+  StaticAnalysisAccepted
+}
+
+fn leaf_model_python_static_falsification_verdict(
+  c: LeafModelPythonStaticFalsificationCase
+) -> TargetStaticAnalysisVerdict {
+  StaticAnalysisRejected { tool_id: c.tool_id, diagnostic_code: c.diagnostic_code }
+}
+
+type LeafModelTypeScriptFixture {
+  source: String
+}
+
+type LeafModelTypeScriptFalsificationCase {
+  fixture: LeafModelTypeScriptFixture
+  expected_verdict: TargetTypeScriptCompileVerdict
+}
+
+type LeafModelTypeScriptFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelTypeScriptFixture
+  expected_happy_verdict: TargetTypeScriptCompileVerdict
+  falsification: LeafModelTypeScriptFalsificationCase
+}
+
+type LeafModelTypeScriptRuntimeFixture {
+  source: String
+}
+
+type LeafModelTypeScriptRuntimeFixturePair {
+  claim_id: LeafModelClaimId
+  surface_spelling_fact: Symbol
+  encoding_spelling_fact: Symbol
+  happy: LeafModelTypeScriptRuntimeFixture
+  expected_happy_verdict: TargetRuntimeExerciseVerdict
+  falsification: LeafModelTypeScriptRuntimeFixture
+  expected_falsification_verdict: TargetRuntimeExerciseVerdict
+}
+
+type LeafModelVerificationRunReceipt {
+  claim_id: LeafModelClaimId
+  happy_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+  falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
+}
+
+type LeafModelRuntimeVerificationRunReceipt {
+  claim_id: LeafModelClaimId
+  happy_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+  falsification_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>
+}
+
+fn leaf_model_verification_claim_passes(
+  receipt: LeafModelVerificationRunReceipt
+) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
+  verdict_combine(a: receipt.happy_verdict, b: receipt.falsification_verdict)
+}
+
+fn leaf_model_verification_combine_runs(
+  runs: List<LeafModelVerificationRunReceipt>
+) -> Verdict<LeafModelClaimId, TargetCompileVerdict> {
+  fold(
+    runs,
+    init: Pass,
+    f: fn(acc, r) {
+      verdict_combine(a: acc, b: leaf_model_verification_claim_passes(receipt: r))
+    }
+  )
+}

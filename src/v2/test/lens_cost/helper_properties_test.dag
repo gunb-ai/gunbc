@@ -1,0 +1,174 @@
+module v2.test.lens_cost.helper_properties
+
+import std.nat { Succ, Zero }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.cardinality { NonZeroNat }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile,
+}
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.lens.cost {
+  ConstantCost,
+  LinearCost,
+  LogCost,
+  SizeVariable,
+  SumCost,
+  SymbolicCost,
+  UnknownCost,
+  symbolic_max,
+  symbolic_product,
+  symbolic_sequential,
+  zero_cost,
+}
+
+// ---------------------------------------------------------------------------
+// Property witnesses for the wildcard-total rewrite of src/v2/lens/cost.dag.
+//
+// The one-time differential audit of the rewrite (the full 13 x 13 x 3
+// cross-product against the pre-refactor semantics, 507 pair claims) ran on
+// this branch and passed; its receipt lives in this PR's body and CI logs,
+// and the pre-refactor semantics live in git history, per DESIGN.md 3
+// ("may serve from history as an offline differential oracle") rather than
+// as a committed second copy of the old code. What stays is this: property
+// claims pinning each semantic boundary the rewrite touched, so a future
+// edit to these helpers that silently reorders an arm still goes red at one
+// named interface.
+//
+// Boundaries pinned (each was a distinct arm in the pre-refactor code):
+//   symbolic_sequential: ConstantCost-Zero delegates, Unknown left wins,
+//     everything else sums.
+//   symbolic_product: Zero absorbs both orders, ConstantCost-1 is the
+//     identity, Unknown propagates, everything else multiplies.
+//   symbolic_max: ConstantCost-Zero delegates, equal operands return
+//     themselves, the dominance chain orders the rest.
+// ---------------------------------------------------------------------------
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn prop_synthetic_leaf(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+data prop_leaf: Node = prop_synthetic_leaf(identity: ^prop_size_source)
+
+data prop_variable: SizeVariable = SizeVariable { source: prop_leaf }
+
+data prop_diagnostic: Diagnostic = Diagnostic {
+  reason: ^cost_reason_unmodeled_symbolic_cost,
+  at: Textual { file: ^prop_virtual_file, extent: WholeFile },
+  correction: Unavailable { reason: AmbiguousIntent },
+}
+
+fn rep_zero() -> SymbolicCost {
+  ConstantCost { value: Zero }
+}
+
+fn rep_one() -> SymbolicCost {
+  ConstantCost { value: Succ { prev: Zero } }
+}
+
+fn rep_unknown() -> SymbolicCost {
+  UnknownCost { diagnostic: prop_diagnostic }
+}
+
+fn rep_linear() -> SymbolicCost {
+  LinearCost { variable: prop_variable }
+}
+
+fn rep_log() -> SymbolicCost {
+  LogCost { variable: prop_variable }
+}
+
+fn rep_sum() -> SymbolicCost {
+  SumCost { lhs: rep_linear(), rhs: rep_log() }
+}
+
+// symbolic_sequential: Zero on the left delegates to the right operand.
+test fn sequential_zero_is_left_identity() -> Bool {
+  (symbolic_sequential(zero_cost(), rep_one()) == rep_one())
+    && (symbolic_sequential(zero_cost(), rep_unknown()) == rep_unknown())
+    && (symbolic_sequential(zero_cost(), rep_linear()) == rep_linear())
+}
+
+// symbolic_sequential: Zero on the right is absorbed into the left operand.
+test fn sequential_zero_is_right_identity() -> Bool {
+  (symbolic_sequential(rep_one(), zero_cost()) == rep_one())
+    && (symbolic_sequential(rep_unknown(), zero_cost()) == rep_unknown())
+    && (symbolic_sequential(rep_linear(), zero_cost()) == rep_linear())
+}
+
+// symbolic_sequential: an Unknown left operand wins over any right operand.
+test fn sequential_unknown_left_wins() -> Bool {
+  (symbolic_sequential(rep_unknown(), rep_linear()) == rep_unknown())
+    && (symbolic_sequential(rep_unknown(), zero_cost()) == rep_unknown())
+}
+
+// symbolic_sequential: two non-trivial costs sum, left first.
+test fn sequential_general_case_sums() -> Bool {
+  symbolic_sequential(rep_linear(), rep_log()) == rep_sum()
+}
+
+// symbolic_product: Zero absorbs from the left, even against Unknown.
+test fn product_zero_absorbs_from_left() -> Bool {
+  (symbolic_product(rep_zero(), rep_one()) == rep_zero())
+    && (symbolic_product(rep_zero(), rep_linear()) == rep_zero())
+    && (symbolic_product(rep_zero(), rep_unknown()) == rep_zero())
+}
+
+// symbolic_product: Zero absorbs from the right, even against Unknown.
+test fn product_zero_absorbs_from_right() -> Bool {
+  (symbolic_product(rep_one(), rep_zero()) == rep_zero())
+    && (symbolic_product(rep_linear(), rep_zero()) == rep_zero())
+    && (symbolic_product(rep_unknown(), rep_zero()) == rep_zero())
+}
+
+// symbolic_product: the constant-1 cost is the identity on both sides.
+test fn product_one_is_identity() -> Bool {
+  (symbolic_product(rep_one(), rep_linear()) == rep_linear())
+    && (symbolic_product(rep_linear(), rep_one()) == rep_linear())
+    && (symbolic_product(rep_one(), rep_unknown()) == rep_unknown())
+}
+
+// symbolic_product: Unknown propagates wherever it is not absorbed by Zero.
+test fn product_unknown_propagates() -> Bool {
+  (symbolic_product(rep_unknown(), rep_linear()) == rep_unknown())
+    && (symbolic_product(rep_linear(), rep_unknown()) == rep_unknown())
+}
+
+// symbolic_max: a constant-Zero left operand delegates to the right.
+test fn max_zero_delegates_to_right() -> Bool {
+  (symbolic_max(zero_cost(), rep_one()) == rep_one())
+    && (symbolic_max(zero_cost(), rep_unknown()) == rep_unknown())
+    && (symbolic_max(zero_cost(), rep_linear()) == rep_linear())
+}
+
+// symbolic_max: equal operands return themselves rather than a synthesized sum.
+test fn max_equal_operands_return_themselves() -> Bool {
+  (symbolic_max(rep_linear(), rep_linear()) == rep_linear())
+    && (symbolic_max(rep_unknown(), rep_unknown()) == rep_unknown())
+}
+
+// symbolic_max: the dominance chain orders distinct classes, linear over log.
+test fn max_dominance_orders_linear_over_log() -> Bool {
+  (symbolic_max(rep_linear(), rep_log()) == rep_linear())
+    && (symbolic_max(rep_log(), rep_linear()) == rep_linear())
+}
+
+// Positive control for the whole module: two helpers that the claims above
+// treat as distinct really do disagree, so a collapsed or constant folding
+// of the harness cannot satisfy the conjunction silently.
+test fn control_harness_distinguishes_helpers() -> Bool {
+  (symbolic_product(rep_one(), rep_zero()) == rep_zero())
+    && (symbolic_sequential(rep_one(), rep_zero()) == rep_one())
+    && !(symbolic_product(rep_one(), rep_zero()) == symbolic_sequential(rep_one(), rep_zero()))
+}

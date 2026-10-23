@@ -1,0 +1,85 @@
+module extdeps.tools.sed
+
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { NonEmptyStr, Bool, Int, Unit }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/sed/manual/sed.html"
+  }
+}
+
+data sed_cli_tool: CliTool = CliTool {
+  program: sed_program(),
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+// ScriptsSuppressAutoPrint -- sed -n with its scripts passed as ARGUMENTS: auto-print suppressed, so the only output is what
+// a script's own `p` flag prints. GNU sed manual, Overview / Command-Line Options: -n ('--quiet',
+// '--silent') 'suppress automatic printing of pattern space', and -e ('--expression') 'add the
+// script to the commands to be executed', which is what makes a multi-clause program ONE program
+// rather than a pipeline of them. The scripts are argv entries rather than text spliced into a
+// shell word, which is the whole reason this operation exists as a modeled row: a caller
+// executing a program it received from somewhere else must not have that program re-read by a
+// shell on the way in.
+//
+// `arguments` takes the output of sed_script_arguments below and nothing else. The -e spelling
+// lives there, next to the -i spelling, for the same reason: one place per flag.
+//
+// stdout_lines rather than stdout, because the consumer question is HOW MANY rows the program
+// extracted and WHICH -- and a zero-length stdout and a refusal are indistinguishable as one
+// string, which is the failure this operation's first consumer exists to catch.
+service sed.Sed {
+  operation InPlaceSubstitute {
+    requires opaque
+    input { expression: NonEmptyStr, path: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "sed -i failed"
+    }
+  }
+
+  operation ScriptsSuppressAutoPrint {
+    requires opaque
+    input { arguments: List<String>, path: NonEmptyStr }
+    output {
+      lines: List<String> from "stdout_lines"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["sed", "-n", arguments, "{path}"] }
+  }
+}
+
+// The same in-place substitution the service operation above declares, addressed as an ArgvCommand
+// for the callers that run a sequence of commands rather than one modeled operation. Both spell
+// -i in exactly one place: here.
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+fn sed_program() -> ProgramIdentity = cataloged_program(invocation: "sed")
+
+fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
+  argv_command(program: sed_program(), arguments: ["-i", expression, path])
+}
+
+// The -e flag pairing, spelled once. A caller names the scripts its program is made of; this
+// derives the argv sed reads them from, so a consumer that also RENDERS the program as text can
+// build both from one list of expressions rather than keeping a rendered copy beside an executed
+// one.
+fn sed_script_arguments(expressions: List<String>) -> List<String> {
+  fold(expressions, init: [], f: (acc, e) => append(acc, items: [sed_script_expression_flag, e]))
+}
+
+data sed_script_expression_flag: String = "-e"

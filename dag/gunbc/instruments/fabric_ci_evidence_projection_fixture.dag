@@ -1,0 +1,14 @@
+module tools.fabric_ci_evidence_projection_fixture
+
+import std.types { NonEmptyStr, String }
+
+type FabricCiCalibrationProjection
+  = FabricCiCalibrationAlpha { payload: NonEmptyStr }
+  | FabricCiCalibrationBeta { payload: NonEmptyStr }
+
+fn fabric_ci_calibration_projection_wire(value: FabricCiCalibrationProjection) -> String {
+  match value {
+    FabricCiCalibrationAlpha { payload: payload } => join(["alpha|", payload as String], "")
+    FabricCiCalibrationBeta { payload: payload } => join(["beta|", payload as String], "")
+  }
+}

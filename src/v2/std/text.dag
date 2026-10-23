@@ -1,0 +1,195 @@
+module v2.std.text
+
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
+import std.types { Char }
+type String = FreeMonoid<Char>
+
+type HostStringText {
+  text: String
+}
+
+fn host_string_text(text: String) -> HostStringText {
+  HostStringText { text: text }
+}
+fn host_string_text_value(value: HostStringText) -> String {
+  value.text
+}
+
+type CharResult
+  = CharFound { value: Char }
+  | CharAbsent
+
+fn string_is_empty(s: String) -> Bool {
+  is_empty(xs: s)
+}
+fn string_head(s: String) -> CharResult {
+  match list_head(xs: s) {
+    HeadFound { value: c } => CharFound { value: c }
+    HeadAbsent => CharAbsent
+  }
+}
+fn string_tail(s: String) -> ListTailResult<Char> {
+  list_tail(xs: s)
+}
+
+type SourceFold<R> {
+  init: fn(String) -> R
+  step: fn(R) -> R
+  is_done: fn(R) -> Bool
+}
+
+fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
+  fold_list(
+    xs: src,
+    empty: algebra.init(src),
+    cons: fn(acc, _) {
+      match algebra.is_done(acc) {
+        true => acc
+        false => algebra.step(acc)
+      }
+    }
+  )
+}
+
+// WHY THE DELIMITER IS A FreeSemigroup AND NOT A String: an empty delimiter names no field
+// boundary, so every consumer of a host `split` inherits a degenerate arm whose answer is a
+// convention rather than a grammar. The nonempty carrier has no empty inhabitant, so that arm is
+// unwritable here rather than validated away (DESIGN §4b, structurally impossible).
+type StringSplitState {
+  rest: String
+  field_reversed: String
+  fields_reversed: FreeMonoid<String>
+}
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+// THE AUTHORITY FOR STRING EQUALITY, AND WHAT IT DOES NOT YET REACH. The byte-identical copies
+// this change reaches across v2.lens collapse here. That is the whole of what this change does,
+// and it is NOT one string_eq corpus-wide: byte-identical forks survive elsewhere, several of
+// them under names that do not spell string_eq exactly.
+//
+// THE CENSUS IS THE INSTRUMENT, NOT A LIST. Re-derive the residue rather than reading a count that
+// rots the moment anyone adds or removes a copy. ONE COMMAND (the roster header that used to name
+// its twin is deleted with the wave-admission wall, 2026-09-19, so this is now its only home):
+//   grep -rnE '^fn [a-z_]*string_eq[a-z_]*\(' --include=*.dag dag/ src/v2
+// A LIST OR A NUMBER WRITTEN HERE WOULD BE STALE ON THE NEXT MERGE and would be cited as coverage
+// after it stopped being true, which is why neither appears in this annotation.
+//
+// AN EARLIER WORDING OF THIS NOTE NAMED THE NARROW PATTERN '^fn string_eq' AND CALLED
+// grammar_coverage_string_eq THE renamed exception. BOTH WERE FALSE. The narrow pattern misses
+// every renamed fork, and grammar_coverage was not the only one -- the command above finds
+// several. That clone no longer exists: it was retained here on the ground that its module
+// declared no imports, and the retention was rejected because naming that module's own imports is
+// source work this change can express, which is not a dissolution trigger but a task. So
+// v2.lens.enforcement.grammar_coverage now names its import surface and calls this declaration.
+// EVERY FORK THE COMMAND STILL FINDS IS UNDECLARED RESIDUE: no reason recorded, no retention
+// stated, nothing at its declaration saying why it is still there.
+//
+// TRIGGER, per fork rather than for the set: a fork collapses when a change touches its module,
+// or earlier if that module's import closure already reaches v2.std.text. There is no single event
+// that retires the whole residue, which is why this is a per-fork trigger and not a date.
+//
+// WHAT WILL ENCOUNTER IT: the DESIGN section 3 single-authority reviewer, a standing criterion
+// declared in gunbc.design_argument and derived into reviewers by gunbc.roadmap.roadmap_review_criteria,
+// which asks whether a change gives one concept a second name or a second home. It runs on changes
+// to this repository. This annotation exists so that reviewer meets a DECLARED residue with a
+// working census rather than rediscovering an undeclared one with a command that under-reports it.
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
+  if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
+    StringSplitState {
+      rest: skip(xs: state.rest, n: length(xs: delimiter)),
+      field_reversed: Empty,
+      fields_reversed: Cons {
+        head: list_reverse(xs: state.field_reversed),
+        tail: state.fields_reversed
+      }
+    }
+  } else {
+    match state.rest {
+      Empty => state
+      Cons { head: c, tail: t } => StringSplitState {
+        rest: t,
+        field_reversed: Cons { head: c, tail: state.field_reversed },
+        fields_reversed: state.fields_reversed
+      }
+    }
+  }
+}
+
+fn string_split(source: String, delimiter: FreeSemigroup<Char>) -> FreeMonoid<String> {
+  let delimiter_text = Cons { head: delimiter.head, tail: delimiter.tail }
+  let final_state = fold_source(
+    src: source,
+    algebra: SourceFold {
+      init: fn(src) {
+        StringSplitState { rest: src, field_reversed: Empty, fields_reversed: Empty }
+      },
+      step: fn(state) {
+        string_split_step(state: state, delimiter: delimiter_text)
+      },
+      is_done: fn(state) {
+        string_is_empty(s: state.rest)
+      }
+    }
+  )
+  list_reverse(
+    xs: Cons {
+      head: list_reverse(xs: final_state.field_reversed),
+      tail: final_state.fields_reversed
+    }
+  )
+}
+
+fn string_join(fields: FreeMonoid<String>, separator: String) -> String {
+  match fields {
+    Empty => Empty
+    Cons { head: first, tail: rest } =>
+      fold_list(
+        xs: rest,
+        empty: first,
+        cons: fn(acc, field) {
+          list_append(left: list_append(left: acc, right: separator), right: field)
+        }
+      )
+  }
+}
+
+// Replacement is split-then-join over the same nonempty-needle carrier string_split uses: every
+// occurrence of the needle becomes a cut, and the replacement is interleaved at each cut. Purely
+// structural (list folds only) -- no host string builtin, so the emitted mirror carries it at the
+// same types as every other text fold.
+fn string_replace(source: String, needle: FreeSemigroup<Char>, replacement: String) -> String {
+  string_join(fields: string_split(source: source, delimiter: needle), separator: replacement)
+}
+
+// ALPHABET MEMBERSHIP IS CHARACTER MEMBERSHIP, NOT SUBSTRING SEARCH. Every consumer this replaced
+// asked "is each character of s drawn from this admitted alphabet", and every one of them spelled
+// it as a host `string_contains(s: alphabet, pattern: ch)` -- substring search over a one-character
+// needle -- under a hand-rolled index walk carrying `i` and `n` past `char_at`. Two costs rode on
+// that spelling. The operand of `char_at` is a String, not a Char, so each site had to VALIDATE
+// `string_length(s: ch) == 1` to recover the fact the type should have carried; over the structural
+// carrier the element IS a Char and that state has no constructor (DESIGN section 4b, rung 4).
+// And substring search is the wrong semantic question: it answers containment of a SEQUENCE, so a
+// two-character operand would be admitted by an alphabet that spells it contiguously.
+//
+// The derivation is the list algebra, unchanged: membership is `contains` under char equality,
+// and the scan is `for_all` / `any` over the same carrier. No index, no bound, no second walk.
+fn string_contains_char(s: String, c: Char) -> Bool {
+  contains(xs: s, item: c, eq: char_eq)
+}
+
+fn string_all_chars_in(s: String, alphabet: String) -> Bool {
+  for_all(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+
+fn string_any_char_in(s: String, alphabet: String) -> Bool {
+  any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+

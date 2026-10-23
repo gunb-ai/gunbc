@@ -1,0 +1,234 @@
+module gunbc.verified_archive_install
+
+import std.types { NonEmptyStr, List, FilePath, Bool, Int, list_length }
+import std.algebra { list_append }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.unzip { unzip_extract_command }
+import extdeps.tools.dpkg_deb { dpkg_deb_extract_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import extdeps.npm { npm_decode_integrity, NpmSingleSha512Integrity }
+import gunbc.package_delivery {
+  admit_observed_archive_digest, observe_package_archive_at_path,
+  PackageArchiveDigestMatched, PackageArchiveDigestMismatch, PackageArchiveDigestObservationFailed,
+}
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, LocalExec }
+
+// FETCH, VERIFY, THEN INSTALL -- ONE FOLD FOR EVERY CONVERGE THAT PLACES A DOWNLOADED ARCHIVE ON A
+// HOST. gunbc.runner_microvm_host_ready wrote this sequence inline for the Firecracker release; the
+// browser toolchain (gunbc.runner_browser_toolchain) needs it five times over, and a second inline
+// copy would be two authorities for "an archive whose bytes were not verified is never unpacked"
+// (operator condition on the RunnerBrowserToolchainConverge ruling, 2026-09-28: extract, never
+// copy). Both converges now call this.
+//
+// THE PIN IS TYPED BY WHO PUBLISHED IT, because the two upstream forms verify through different
+// authorities and neither is a rendering of the other: a sha256 hex (a release's SHASUMS file, or a
+// receipt of this repository's own observation) goes through extdeps.tools.sha256sum, and an npm SRI
+// wire goes through extdeps.npm's decoder and gunbc.package_delivery's sha512 admission -- the route
+// the Codex package delivery already uses, so npm integrity has one verifier in this corpus.
+type ArchiveDigestPin
+  = ArchiveSha256 { hex: NonEmptyStr }
+  | ArchiveNpmIntegrity { wire: NonEmptyStr }
+
+// UNVERIFIABLE IS NOT MISMATCH. A broken mktemp, an unreadable file or a pin wire this decoder does
+// not accept establishes nothing about the archive's bytes; reporting it as a mismatch would send an
+// operator to distrust a download that may be fine, and reporting it as a match would be the
+// fabricated arm.
+type ArchiveDigestVerdict
+  = ArchiveDigestMatches
+  | ArchiveDigestMismatch
+  | ArchiveDigestUnverifiable { reason: String }
+
+fn verify_archive_digest(archive: NonEmptyStr, pin: ArchiveDigestPin) -> ArchiveDigestVerdict {
+  match pin {
+    ArchiveSha256 { hex: h } =>
+      match sha256sum_verify_via_shell(path: archive, expected_digest: h) {
+        Sha256Matches => ArchiveDigestMatches
+        Sha256Mismatch => ArchiveDigestMismatch
+        Sha256VerifyInfraFailure { reason: r } => ArchiveDigestUnverifiable { reason: r as String }
+      }
+    ArchiveNpmIntegrity { wire: w } =>
+      match npm_decode_integrity(wire: w as String) {
+        NpmSingleSha512Integrity { digest: expected } =>
+          match admit_observed_archive_digest(
+            expected: expected,
+            observation: observe_package_archive_at_path(locator: archive, path: (archive as String) as FilePath),
+          ) {
+            PackageArchiveDigestMatched { locator: _, digest: _ } => ArchiveDigestMatches
+            PackageArchiveDigestMismatch { locator: _, expected: _, observed: _ } => ArchiveDigestMismatch
+            PackageArchiveDigestObservationFailed { locator: _, cause: c } => ArchiveDigestUnverifiable { reason: c as String }
+          }
+        _ => ArchiveDigestUnverifiable { reason: "the pinned npm integrity wire does not decode to a single sha512 expression, so there is no digest to compare against" }
+      }
+  }
+}
+
+// FOUR REFUSALS, EACH A DIFFERENT PLACE TO LOOK. Only ArchiveInstalled ran the install commands, and
+// the two digest arms are reached having run NONE of them: the install sits in the Matches arm of a
+// match, so it is a branch rather than an argument and cannot be evaluated for an archive that did
+// not verify.
+type VerifiedArchiveInstallOutcome
+  = ArchiveInstalled
+  | ArchiveFetchRefused { archive: NonEmptyStr, reason: String }
+  | ArchiveDigestMismatched { archive: NonEmptyStr }
+  | ArchiveDigestUnverified { archive: NonEmptyStr, reason: String }
+  | ArchiveInstallRefused { archive: NonEmptyStr, reason: String }
+
+fn verified_archive_install(
+  fetch: List<ArgvCommand>,
+  archive: NonEmptyStr,
+  pin: ArchiveDigestPin,
+  install: List<ArgvCommand>,
+) -> VerifiedArchiveInstallOutcome {
+  match run_shell_commands(commands: fetch, transport: LocalExec) {
+    ExitFailure { code: _, reason: r } => ArchiveFetchRefused { archive: archive, reason: r }
+    ExitSuccess =>
+      match verify_archive_digest(archive: archive, pin: pin) {
+        ArchiveDigestMismatch => ArchiveDigestMismatched { archive: archive }
+        ArchiveDigestUnverifiable { reason: r } => ArchiveDigestUnverified { archive: archive, reason: r }
+        ArchiveDigestMatches =>
+          match run_shell_commands(commands: install, transport: LocalExec) {
+            ExitSuccess => ArchiveInstalled
+            ExitFailure { code: _, reason: r } => ArchiveInstallRefused { archive: archive, reason: r }
+          }
+      }
+  }
+}
+
+fn verified_archive_install_holds(outcome: VerifiedArchiveInstallOutcome) -> Bool {
+  match outcome {
+    ArchiveInstalled => true
+    ArchiveFetchRefused { archive: _, reason: _ } => false
+    ArchiveDigestMismatched { archive: _ } => false
+    ArchiveDigestUnverified { archive: _, reason: _ } => false
+    ArchiveInstallRefused { archive: _, reason: _ } => false
+  }
+}
+
+fn verified_archive_install_text(outcome: VerifiedArchiveInstallOutcome) -> String {
+  match outcome {
+    ArchiveInstalled => "installed"
+    ArchiveFetchRefused { archive: a, reason: r } => join(["ArchiveFetchRefused -- fetching ", a as String, " failed (", r, "); nothing was verified or installed"], "")
+    ArchiveDigestMismatched { archive: a } => join(["ArchiveDigestMismatched -- ", a as String, " does not hash to its pinned digest; installing NOTHING"], "")
+    ArchiveDigestUnverified { archive: a, reason: r } => join(["ArchiveDigestUnverified -- the digest of ", a as String, " could not be checked (", r, "); installing NOTHING"], "")
+    ArchiveInstallRefused { archive: a, reason: r } => join(["ArchiveInstallRefused -- ", a as String, " verified but its install commands failed (", r, ")"], "")
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// STAGING A SET OF ARCHIVES INTO ONE TREE, AND PUBLISHING IT
+// ---------------------------------------------------------------------------------------------
+
+// ONE PROCEDURE FOR EVERY CONVERGE THAT BUILDS A TREE FROM PINNED ARCHIVES (gunbc.runner_browser_toolchain
+// and gunbc.runner_qemu_toolchain). What differs between them is DATA -- which
+// archives, how each unpacks -- so it is carried on the record, never forked into a second fold: an
+// archive is kept at <archives dir>/<file_name> (a relative path, so a Debian pool path keeps its
+// directories), and its extraction is one of the arms below. What each caller ADMITS before publishing
+// (a pinned tree digest, or nothing beyond the per-archive pins) stays the caller's.
+type ArchiveExtraction
+  = ExtractTar { strip_components: Int }
+  | ExtractZip
+  | ExtractDebData
+
+type StagedArchive {
+  file_name: NonEmptyStr
+  url: NonEmptyStr
+  pin: ArchiveDigestPin
+  destination_relative: NonEmptyStr
+  extraction: ArchiveExtraction
+}
+
+fn archive_extraction_text(e: ArchiveExtraction) -> String {
+  match e {
+    ExtractTar { strip_components: n } => concat("tar-strip-", to_string(n))
+    ExtractZip => "zip"
+    ExtractDebData => "deb-data"
+  }
+}
+
+fn staged_archive_path(archives_dir: String, a: StagedArchive) -> String {
+  join([archives_dir, "/", a.file_name as String], "")
+}
+
+fn staged_archive_directory(archives_dir: String, a: StagedArchive) -> String {
+  let path = staged_archive_path(archives_dir: archives_dir, a: a)
+  let tail = match last(split(path, "/")) { Present { value: t } => t  Absent => "" }
+  replace(s: path, from: concat("/", tail), to: "")
+}
+
+fn staged_archive_destination_in(tree: String, a: StagedArchive) -> String {
+  join([tree, "/", a.destination_relative as String], "")
+}
+
+fn staged_archive_fetch_commands(archives_dir: String, a: StagedArchive) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: staged_archive_directory(archives_dir: archives_dir, a: a)),
+    curl_download_command(url: a.url as String, destination: staged_archive_path(archives_dir: archives_dir, a: a)),
+  ]
+}
+
+fn staged_archive_install_commands(archives_dir: String, tree: String, a: StagedArchive) -> List<ArgvCommand> {
+  let dest = staged_archive_destination_in(tree: tree, a: a)
+  let archive = staged_archive_path(archives_dir: archives_dir, a: a)
+  [
+    mkdir_parents_command(path: dest),
+    match a.extraction {
+      ExtractTar { strip_components: n } => tar_extract_command(archive: archive, into_directory: dest, strip_components: n)
+      ExtractZip => unzip_extract_command(archive: archive, into_directory: dest)
+      ExtractDebData => dpkg_deb_extract_command(archive: archive, into_directory: dest)
+    },
+  ]
+}
+
+type ArchivePlacement {
+  archive: NonEmptyStr
+  outcome: VerifiedArchiveInstallOutcome
+}
+
+fn archive_placement_holds(p: ArchivePlacement) -> Bool {
+  verified_archive_install_holds(outcome: p.outcome)
+}
+
+fn archive_placements_text(ps: List<ArchivePlacement>) -> String {
+  join(map(ps, a => join([a.archive as String, "=", verified_archive_install_text(outcome: a.outcome)], "")), " ")
+}
+
+// A RETAINED ARCHIVE WHOSE BYTES STILL VERIFY IS NOT RE-FETCHED: the same fold runs with no fetch leg.
+fn stage_archive_wet(archives_dir: String, staging: String, a: StagedArchive) -> ArchivePlacement {
+  let path = staged_archive_path(archives_dir: archives_dir, a: a)
+  let retained = match verify_archive_digest(archive: path as NonEmptyStr, pin: a.pin) { ArchiveDigestMatches => true  _ => false }
+  ArchivePlacement {
+    archive: a.file_name,
+    outcome: verified_archive_install(
+      fetch: if retained { [] } else { staged_archive_fetch_commands(archives_dir: archives_dir, a: a) },
+      archive: path as NonEmptyStr,
+      pin: a.pin,
+      install: staged_archive_install_commands(archives_dir: archives_dir, tree: staging, a: a),
+    ),
+  }
+}
+
+// IN ORDER, AND THE FIRST REFUSAL STOPS THE REST.
+fn stage_archives_wet(archives_dir: String, staging: String, archives: List<StagedArchive>) -> List<ArchivePlacement> {
+  fold(archives, init: [], f: (acc, a) =>
+    if fold(acc, init: true, f: (ok, p) => ok && archive_placement_holds(p: p)) {
+      list_append(left: acc, right: [stage_archive_wet(archives_dir: archives_dir, staging: staging, a: a)])
+    } else {
+      acc
+    })
+}
+
+fn archives_all_staged(ps: List<ArchivePlacement>, archives: List<StagedArchive>) -> Bool {
+  list_length(ps) == list_length(archives) && fold(ps, init: true, f: (ok, p) => ok && archive_placement_holds(p: p))
+}
+
+// PUBLICATION ONLY EVER FILLS AN ABSENT PATH: `mv -T <stage> <root>` fails if anything occupies
+// <root> by then (a competing converge that published first), and the caller's readback judges it.
+fn publish_staged_tree_wet(staging: String, root: String) -> Bool {
+  process_outcome_admitted(outcome: run_shell_command_capture(command: mv_exact_destination_command(source: staging, destination: root), transport: LocalExec))
+}

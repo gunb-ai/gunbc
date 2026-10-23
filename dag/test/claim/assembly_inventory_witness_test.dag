@@ -1,0 +1,129 @@
+module test.claim.assembly_inventory_witness
+import product.printed_chassis.assembly_inventory { ReserveParts, PartReservation, InspectPart, transition_inventory, InventoryTransitionRefused, InventoryTransitionPrepared, StaleInventoryBaseline, ReservationUnavailable, InspectionAttemptMismatch }
+import product.printed_chassis.assembly_inventory_store { capture_at_generation }
+import std.durable_compare_and_set { cas_generation_first, cas_generation_successor, CasSuccessorGeneration }
+import product.printed_chassis.residential_review { residential_assembly, ResidentialAssemblyReady, ResidentialAssemblyRefused }
+import product.printed_chassis.assembly_inventory { required_printed_parts }
+import std.types { Bool, List, String }
+import std.content_hash {Sha256Digest}
+import product.printed_chassis.preparation_identity {PreparedRevision,PreparedSlot,checked_readback_slots}
+import product.printed_chassis.assembly_inventory {inventory_read_result,inventory_json,InvalidMutation}
+import extdeps.languages.json.emit {serialize_json,json_object,json_kv,json_string,json_array}
+import product.printed_chassis.assembly_inventory { InspectionEvidence, RequiredPart, InventoryEntry, InventoryCaptured, InventoryUnread, PartAccepted, PartRejected, PartReserved, PartAwaitingInspection, assess_inventory, DuplicateObservedSlot, PhysicalItemReused }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import product.printed_chassis.assembly_inventory { decode_inventory }
+import std.goal_assessment { ObservationRefused }
+
+fn revision() -> PreparedRevision {PreparedRevision {cad_manifest:Sha256Digest {hex:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},project:Sha256Digest {hex:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}}
+fn changed_project() -> PreparedRevision {PreparedRevision {cad_manifest:revision().cad_manifest,project:Sha256Digest {hex:"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}}
+
+fn desired() -> List<RequiredPart> { [RequiredPart {slot:"M140",revision:Present {value:revision()}},RequiredPart {slot:"G140",revision:Present {value:revision()}}] }
+fn accepted() -> InventoryEntry { InventoryEntry {slot:"M140",revision:revision(),state:PartAccepted {physical_item:"physical-M",attempt:"attempt-1",evidence:InspectionEvidence {reference:"inspection-1",observed_at:"2026-10-05T20:00:00Z"}}} }
+
+test fn uncovered_is_not_absent() -> Bool {
+ let unread = match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"partial-capture",covered_slots:[],entries:[]}) { GoalIndeterminate {known_deviations:d,unknowns:_} => count(d)==0 _=>false }
+ let absent = match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-1",covered_slots:["M140","G140"],entries:[]}) { GoalDiverged {deviations:_}=>true _=>false }
+ unread && absent
+}
+test fn partial_acceptance_preserves_the_good_sibling() -> Bool {
+ match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-2",covered_slots:["M140","G140"],entries:[accepted(),InventoryEntry {slot:"G140",revision:revision(),state:PartReserved {attempt:"attempt-2"}}]}) { GoalIndeterminate {known_deviations:d,unknowns:_}=>count(d)==0 _=>false }
+}
+test fn finish_does_not_satisfy_inventory() -> Bool {
+ match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-3",covered_slots:["M140","G140"],entries:[accepted(),InventoryEntry {slot:"G140",revision:revision(),state:PartAwaitingInspection {physical_item:"physical-G",attempt:"attempt-2"}}]}) { GoalIndeterminate {known_deviations:d,unknowns:_}=>count(d)==0 _=>false }
+}
+test fn only_compatible_accepted_parts_satisfy() -> Bool {
+ let good=InventoryEntry {slot:"G140",revision:revision(),state:PartAccepted {physical_item:"physical-G",attempt:"attempt-2",evidence:InspectionEvidence {reference:"inspection-2",observed_at:"2026-10-05T20:00:00Z"}}}
+ let old=InventoryEntry {slot:"G140",revision:changed_project(),state:good.state}
+ let satisfied=match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-4",covered_slots:["M140","G140"],entries:[accepted(),good]}) {GoalSatisfied {evidence:_}=>true _=>false}
+ let mismatch=match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-5",covered_slots:["M140","G140"],entries:[accepted(),old]}) {GoalIndeterminate {known_deviations:_,unknowns:_}=>true _=>false}
+ satisfied && mismatch
+}
+test fn duplicate_slots_refuse() -> Bool {
+ match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-6",covered_slots:["M140","G140"],entries:[accepted(),accepted()]}) {GoalAssessmentRefused {cause:DuplicateObservedSlot}=>true _=>false}
+}
+test fn one_physical_part_cannot_fill_two_slots() -> Bool {
+ match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"capture-7",covered_slots:["M140","G140"],entries:[accepted(),InventoryEntry {slot:"G140",revision:revision(),state:accepted().state}]}) {GoalAssessmentRefused {cause:PhysicalItemReused}=>true _=>false}
+}
+
+
+test fn malformed_capture_cannot_become_empty_inventory() -> Bool {
+ let bad=match decode_inventory(text:"{\"snapshot\":\"s\",\"covered_slots\":[\"M140\"],\"entries\":[{\"slot\":\"M140\",\"status\":\"accepted\"}]}") {Absent=>true Present {value:_}=>false}
+ let good=match decode_inventory(text:serialize_json(v:inventory_json(observed:InventoryCaptured {snapshot:"s",covered_slots:["M140"],entries:[],retired_rejections:[]}))) {Present {value:_}=>true Absent=>false}
+ bad && good
+}
+test fn failed_capture_read_is_observation_refusal() -> Bool {
+ match inventory_read_result(success:false,text:"") {ObservationRefused {cause:_}=>true _=>false}
+}
+test fn rejection_does_not_erase_missing_coverage() -> Bool {
+ match assess_inventory(desired:desired(),observed:InventoryCaptured {retired_rejections:[],snapshot:"partial",covered_slots:["G140"],entries:[InventoryEntry {slot:"G140",revision:revision(),state:PartRejected {physical_item:"failed-G",attempt:"failed-attempt",evidence:InspectionEvidence {reference:"photo-receipt",observed_at:"2026-10-05T20:00:00Z"}}}]}) {GoalIndeterminate {known_deviations:d,unknowns:_}=>count(d)==1 _=>false}
+}
+
+test fn reservations_are_atomic_and_stale_requests_refuse() -> Bool {
+ let initial=InventoryCaptured {retired_rejections:[],snapshot:"b0",covered_slots:["M140","G140"],entries:[]}
+ let request=ReserveParts {baseline:"b0",next_snapshot:"b1",reservations:map(desired(),p=>PartReservation {part:p,attempt:"batch-1"})}
+ match transition_inventory(observed:initial,mutation:request) {
+ InventoryTransitionRefused {cause:_}=>false
+ InventoryTransitionPrepared {next:n}=>{
+ let held=match assess_inventory(desired:desired(),observed:n) {GoalIndeterminate {known_deviations:d,unknowns:_}=>count(d)==0 _=>false}
+ let stale=match transition_inventory(observed:n,mutation:request) {InventoryTransitionRefused {cause:StaleInventoryBaseline}=>true _=>false}
+ held && stale
+ }
+ }
+}
+test fn uncovered_sibling_refuses_whole_reservation() -> Bool {
+ match transition_inventory(observed:InventoryCaptured {retired_rejections:[],snapshot:"b0",covered_slots:["M140"],entries:[]},mutation:ReserveParts {baseline:"b0",next_snapshot:"b1",reservations:map(desired(),p=>PartReservation {part:p,attempt:"batch-1"})}) {InventoryTransitionRefused {cause:ReservationUnavailable}=>true _=>false}
+}
+test fn inspection_binds_attempt_and_preserves_siblings() -> Bool {
+ let reserved=InventoryCaptured {retired_rejections:[],snapshot:"b1",covered_slots:["M140","G140"],entries:[InventoryEntry {slot:"M140",revision:revision(),state:PartReserved {attempt:"batch-1"}},InventoryEntry {slot:"G140",revision:revision(),state:PartReserved {attempt:"batch-1"}}]}
+ let wrong=match transition_inventory(observed:reserved,mutation:InspectPart {baseline:"b1",next_snapshot:"inspection-wrong",part:RequiredPart {slot:"M140",revision:Present {value:revision()}},attempt:"other-attempt",physical_item:"physical-M",evidence:InspectionEvidence {reference:"photo",observed_at:"2026-10-05T20:00:00Z"},accepted:true}) {InventoryTransitionRefused {cause:InspectionAttemptMismatch}=>true _=>false}
+ let right=match transition_inventory(observed:reserved,mutation:InspectPart {baseline:"b1",next_snapshot:"inspection-right",part:RequiredPart {slot:"M140",revision:Present {value:revision()}},attempt:"batch-1",physical_item:"physical-M",evidence:InspectionEvidence {reference:"photo",observed_at:"2026-10-05T20:00:00Z"},accepted:true}) {InventoryTransitionPrepared {next:n}=>match assess_inventory(desired:desired(),observed:n) {GoalIndeterminate {known_deviations:d,unknowns:_}=>count(d)==0 _=>false} _=>false}
+ wrong && right
+}
+
+test fn store_generation_prevents_receipt_label_aba() -> Bool {
+ let body=InventoryCaptured {retired_rejections:[],snapshot:"reused-receipt-label",covered_slots:["M140","G140"],entries:[]}
+ let first=capture_at_generation(capture:body,generation:cas_generation_first())
+ let second=match cas_generation_successor(g:cas_generation_first()) {CasSuccessorGeneration {generation:g}=>capture_at_generation(capture:body,generation:g) _=>return false}
+ let before=match first {InventoryCaptured {retired_rejections:_,snapshot:s,covered_slots:_,entries:_}=>s}
+ match transition_inventory(observed:second,mutation:ReserveParts {baseline:before,next_snapshot:"new-reservation",reservations:map(desired(),p=>PartReservation {part:p,attempt:"attempt"})}) {InventoryTransitionRefused {cause:StaleInventoryBaseline}=>true _=>false}
+}
+
+test fn satisfaction_carries_inspection_evidence() -> Bool {
+ match assess_inventory(desired:[RequiredPart {slot:"M140",revision:Present {value:revision()}}],observed:InventoryCaptured {retired_rejections:[],snapshot:"read",covered_slots:["M140"],entries:[accepted()]}) {
+ GoalSatisfied {evidence:rows}=>count(rows)==1 && any(rows,row=>match row.state {PartAccepted {physical_item:p,attempt:a,evidence:e}=>p=="physical-M" && a=="attempt-1" && e.reference=="inspection-1" && e.observed_at!="" _=>false})
+ _=>false
+ }
+}
+
+test fn residential_producer_without_preparation_requests_preparation() -> Bool {
+ match residential_assembly() {
+ ResidentialAssemblyRefused {reason:_}=>false
+ ResidentialAssemblyReady {parts:parts,joints:_,pitch:_,cooling:_}=>{
+ let required=required_printed_parts(parts:parts,bindings:[])
+ let membership=any(required,p=>p.slot=="M140") && any(required,p=>p.slot=="G140") && !any(required,p=>p.slot=="BOARD")
+ membership && match assess_inventory(desired:required,observed:InventoryCaptured {retired_rejections:[],snapshot:"independent-empty-coverage",covered_slots:[],entries:[]}) {GoalIndeterminate {known_deviations:d,unknowns:u}=>count(d)==0 && count(u.tail)+1==count(required) _=>false}
+ }
+ }
+}
+
+test fn rejected_identity_survives_replacement_reservation_and_roundtrip() -> Bool {
+ let initial=InventoryCaptured {snapshot:"r0",covered_slots:["M140","G140"],entries:[InventoryEntry {slot:"G140",revision:revision(),state:PartRejected {physical_item:"bad-grille",attempt:"old",evidence:InspectionEvidence {reference:"failure-photo",observed_at:"2026-10-05T20:00:00Z"}}}],retired_rejections:[]}
+ let reserved=match transition_inventory(observed:initial,mutation:ReserveParts {baseline:"r0",next_snapshot:"r1",reservations:map(desired(),p=>PartReservation {part:p,attempt:"replacement"})}) {InventoryTransitionPrepared {next:n}=>n _=>return false}
+ let reread=match decode_inventory(text:serialize_json(v:inventory_json(observed:reserved))) {Present {value:n}=>n Absent=>return false}
+ let retained=match reread {InventoryCaptured {snapshot:_,covered_slots:_,entries:_,retired_rejections:rs}=>count(rs)==1 && any(rs,r=>r.physical_item=="bad-grille" && r.evidence.reference=="failure-photo")}
+ let reuse=transition_inventory(observed:reread,mutation:InspectPart {baseline:"r1",next_snapshot:"r2",part:RequiredPart {slot:"M140",revision:Present {value:revision()}},attempt:"replacement",physical_item:"bad-grille",evidence:InspectionEvidence {reference:"different-photo",observed_at:"2026-10-05T21:00:00Z"},accepted:true})
+ retained && match reuse {InventoryTransitionRefused {cause:InvalidMutation}=>true _=>false}
+}
+fn bound_readback() -> String {
+ serialize_json(v:json_object(members:[json_kv(key:"project_sha256",value:json_string(s:revision().project.hex as String)),json_kv(key:"objects",value:json_array(elements:[json_string(s:"M140")])),json_kv(key:"cad_binding",value:json_object(members:[json_kv(key:"cad_manifest_sha256",value:json_string(s:revision().cad_manifest.hex as String)),json_kv(key:"steps",value:json_object(members:[json_kv(key:"M140",value:json_string(s:revision().cad_manifest.hex as String))])),json_kv(key:"placements",value:json_array(elements:[json_object(members:[json_kv(key:"id",value:json_string(s:"M140"))])]))]))]))
+}
+test fn changed_cad_or_project_refuses_preparation_binding() -> Bool {
+ let text=bound_readback()
+ let good=match checked_readback_slots(text:text,cad:revision().cad_manifest,project:revision().project,attempt:"prepared-attempt") {Present {value:s}=>count(s)==1 && any(s,b=>b.slot=="M140" && b.attempt=="prepared-attempt") _=>false}
+ let changed_process=match checked_readback_slots(text:text,cad:revision().cad_manifest,project:changed_project().project,attempt:"prepared-attempt") {Absent=>true _=>false}
+ let changed_cad=match checked_readback_slots(text:text,cad:changed_project().project,project:revision().project,attempt:"prepared-attempt") {Absent=>true _=>false}
+ good && changed_process && changed_cad
+}
+test fn unprepared_slot_cannot_be_reserved() -> Bool {
+ match transition_inventory(observed:InventoryCaptured {snapshot:"r0",covered_slots:["M140"],entries:[],retired_rejections:[]},mutation:ReserveParts {baseline:"r0",next_snapshot:"r1",reservations:[PartReservation {part:RequiredPart {slot:"M140",revision:none},attempt:"attempt"}]}) {InventoryTransitionRefused {cause:ReservationUnavailable}=>true _=>false}
+}

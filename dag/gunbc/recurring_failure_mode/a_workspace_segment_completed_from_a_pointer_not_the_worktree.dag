@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_workspace_segment_completed_from_a_pointer_not_the_worktree
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_workspace_segment_completed_from_a_pointer_not_the_worktree: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_workspace_segment_completed_from_a_pointer_not_the_worktree" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a dispatched attempt whose worktree does not exist reads its Workspace segment COMPLETE. The segment (gunbc.roadmap_workflow_progress, WorkspaceWorkflowSegment) was decided from modeled_state_present -- the attempt's current-key pointer -- and launch took `git worktree add` exiting zero as the worktree's existence. Observed on srv2 2026-10-02 (dogfood G5 brief): an attempt with no worktree reported Workspace complete. HARM: every later stage (commit, verify, publish) addresses a path that is not there and refuses far from the cause, while the progress view says the workspace stage succeeded.",
+
+    "FIX AT THE CHANGE THAT FILES THIS ROW: the worktree is OBSERVED -- the attempt's directory listed under the instance worktree root and holding a readable `.git` (gunbc.roadmap_belt_actuate belt_attempt_worktree_observe, folded by gunbc.roadmap_workflow_progress attempt_worktree_observation_of). Launch refuses with step worktree-establish when it is absent or unobservable after `git worktree add`, and the Workspace segment completes only on AttemptWorktreePresent; absence is established from a successful listing, never inferred from a failed one.",
+
+    "RUNG FOUND AT: silent (outside the ladder). RUNG AFTER THE FIX: mechanically preventable on the belt route -- the observation runs at launch and on every progress fold, and test.claim.roadmap.roadmap_workflow_progress_witness_test a_missing_worktree_refuses_the_workspace_segment is the discriminating red. A worktree deleted between ticks is caught at the next fold, not prevented.",
+
+    "CEILING: mitigatable-to-preventable; a worktree is external filesystem state, outside the modeled guarantee (DESIGN 4b), so it is observed at a boundary rather than constructed. NEXT-RUNG TRIGGER: none beyond observation -- this class sits at its ceiling once every consumer of the worktree path reads the observation rather than the pointer.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode roster includes this declaration; the fix's two functions cite the srv2 observation at their own grain.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.roadmap_workflow_progress", decl_name: "attempt_worktree_observation_of"),
+    decl_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_attempt_worktree_observe"),
+  ],
+}

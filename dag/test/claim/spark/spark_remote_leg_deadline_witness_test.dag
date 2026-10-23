@@ -1,0 +1,125 @@
+module test.claim.spark.spark_remote_leg_deadline_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { second, second_count }
+import extdeps.ssh.client_options { serialize_ssh_client_options }
+import gunbc.spark.remote_leg_began { remote_leg_began_word }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshLegDeadline,
+  fleet_ssh_leg_deadline,
+  fleet_ssh_leg_deadline_options,
+  fleet_ssh_password_client_options,
+}
+import gunbc.spark.model_snapshot_materialize {
+  SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  LegNotAttempted, LegBeginUnobserved,
+  spark_remote_run_of_session, spark_argv_run_of_unreachable,
+}
+
+// THE DEADLINE THE SPARK LEGS CARRY, asserted as exact argv. Fleet-converge run 37156689444 sat ~1h
+// inside one ssh leg on 2026-10-03 because the shapers bounded the connect and nothing after it.
+
+test fn w_fleet_deadline_serializes_connect_and_liveness_words() -> Bool {
+  serialize_ssh_client_options(options: fleet_ssh_leg_deadline_options(deadline: fleet_ssh_leg_deadline)) == [
+    "-o", "ConnectTimeout=10",
+    "-o", "ServerAliveInterval=15",
+    "-o", "ServerAliveCountMax=4",
+  ]
+}
+
+// THE ROUTE, not only the row: the password session spark_remote_run reaches through
+// gunbc.fleet_bootstrap_principal_session derives its client options here, so deleting the deadline
+// from the shaper reds this claim even while the row above still serializes.
+test fn w_password_session_options_carry_the_liveness_bound() -> Bool {
+  let line = join(serialize_ssh_client_options(options: fleet_ssh_password_client_options(trust: [], principal: "briansrls" as NonEmptyStr)), " ")
+  contains(line, "-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=4")
+}
+
+// ssh_config(5): ServerAliveInterval 0 is "never send", so a zeroed interval or count is the
+// deadline-less leg in disguise. The live row must bound a dark session in finite time; the red
+// control below asserts the zeroed shape is recognized as unbounded.
+fn deadline_bounds_a_dark_session(d: FleetSshLegDeadline) -> Bool {
+  second_count(s: d.connect) > 0 && second_count(s: d.alive_interval) > 0 && d.alive_count_max > 0
+}
+
+test fn w_live_deadline_bounds_a_dark_session() -> Bool {
+  deadline_bounds_a_dark_session(d: fleet_ssh_leg_deadline)
+}
+
+test fn red_control_zeroed_keepalive_is_not_a_bound() -> Bool {
+  !deadline_bounds_a_dark_session(d: FleetSshLegDeadline { connect: second(count: 10), alive_interval: second(count: 0), alive_count_max: 4 })
+}
+
+// THE CLASSIFIER, over supplied session results (DESIGN §3: the claim is about the reading, not the
+// transport). 255 with no began-line received is the only begin-unobserved reading.
+
+fn is_begin_unobserved(r: SparkRemoteRun) -> Bool {
+  match r {
+    RemoteUnreachable { cause: _, reach: LegBeginUnobserved { endpoint: _, stderr: _ } } => true
+    RemoteUnreachable { cause: _, reach: LegNotAttempted { cause: _ } } => false
+    RemoteRan { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+test fn w_dark_connect_reads_as_begin_unobserved_not_as_a_command_exit() -> Bool {
+  is_begin_unobserved(r: spark_remote_run_of_session(
+    endpoint: "192.168.1.232",
+    exit_code: 255,
+    stdout: "",
+    stderr: "ssh: connect to host 192.168.1.232 port 22: Connection timed out",
+  ))
+}
+
+// The cause text names the undecided pair and that the command may have run -- never "host down"
+// alone and never "did not run" (DESIGN §4d).
+test fn w_begin_unobserved_text_says_may_have_run_and_dark_or_down_undecided() -> Bool {
+  match spark_remote_run_of_session(endpoint: "192.168.1.232", exit_code: 255, stdout: "", stderr: "Timeout, server 192.168.1.232 not responding.") {
+    RemoteUnreachable { cause: c, reach: _ } => contains(c, "the command MAY HAVE RUN") && contains(c, "LAN leg dark or host down, UNDECIDED") && contains(c, "fabric-rail address")
+    RemoteRan { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+// A session lost AFTER the began-line ran to an unknown point: it stays a ran result with ssh's 255,
+// never an unreached one a caller could retry as if nothing happened.
+test fn w_session_lost_after_begin_stays_ran() -> Bool {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 255, stdout: join([remote_leg_began_word, "partial"], "\n"), stderr: "Timeout, server h not responding.") {
+    RemoteRan { exit_code: c, stdout: o, stderr: _ } => c == 255 && o == "partial"
+    RemoteUnreachable { cause: _, reach: _ } => false
+  }
+}
+
+// The began-line is stripped, so every consumer reads exactly the command's stdout.
+test fn w_began_line_never_reaches_a_consumer() -> Bool {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 0, stdout: join([remote_leg_began_word, "active"], "\n"), stderr: "") {
+    RemoteRan { exit_code: c, stdout: o, stderr: _ } => c == 0 && o == "active"
+    RemoteUnreachable { cause: _, reach: _ } => false
+  }
+}
+
+// THE PROJECTION THE REVIEW OF gunbc#13204 REQUIRED. A begin-unobserved leg may have run, so it
+// projects to ArgvLegMayHaveRun; only a leg that sent nothing is ArgvLegDidNotRun. Reverting the
+// projection to "every unreachable did not run" reds the first claim.
+fn is_may_have_run(r: ArgvRun) -> Bool {
+  match r {
+    ArgvLegMayHaveRun { cause: _ } => true
+    ArgvLegDidNotRun { cause: _ } => false
+    ArgvRan { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+fn is_did_not_run(r: ArgvRun) -> Bool {
+  match r {
+    ArgvLegDidNotRun { cause: _ } => true
+    ArgvLegMayHaveRun { cause: _ } => false
+    ArgvRan { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+test fn w_begin_unobserved_projects_to_may_have_run_never_did_not_run() -> Bool {
+  is_may_have_run(r: spark_argv_run_of_unreachable(cause: "c", reach: LegBeginUnobserved { endpoint: "h", stderr: "Timeout, server h not responding." }))
+}
+
+test fn w_not_attempted_projects_to_did_not_run() -> Bool {
+  is_did_not_run(r: spark_argv_run_of_unreachable(cause: "no endpoint", reach: LegNotAttempted { cause: "no endpoint" }))
+}

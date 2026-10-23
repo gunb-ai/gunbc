@@ -1,0 +1,66 @@
+module test.claim.gate_closure_decline_census_witness
+
+import std.types { Bool, Int, String }
+import std.optional { Present, Absent }
+import gunbc.gate_closure_decline_census {
+  DispositionRosterRead,
+  DispositionRosterRows,
+  DispositionRosterRefused,
+  ModuleDeclineCount,
+  gate_closure_declined_identities,
+  gate_closure_decline_by_module
+}
+
+// THE FLOOR'S ROSTER SHAPE, SUPPLIED (DESIGN section 3, a witness discriminates at one interface):
+// a `#` summary line, the header, then identity/disposition/matched_prefix/outcome rows. The rows
+// cover every clause the selection has: two declined identities in one module, one in another, a
+// declined v2.test.parse.* identity the census must exclude, and a planned row it must not count.
+data census_fixture_lines: List<String> = [
+  "# summary\ttotal=5",
+  "identity\tdisposition\tmatched_prefix\toutcome",
+  "a.b.f1\tdeclined_outside_gate_closure\t\t",
+  "a.b.f2\tdeclined_outside_gate_closure\t\t",
+  "v2.test.parse.x.g\tdeclined_outside_gate_closure\t\t",
+  "c.d.h\tplanned\t\tpass",
+  "e.f.k\tdeclined_outside_gate_closure\t\t",
+  ""
+]
+
+test fn the_census_selects_declined_identities_and_excludes_the_grammar_lane_and_planned_rows() -> Bool {
+  match gate_closure_declined_identities(lines: census_fixture_lines) {
+    DispositionRosterRows { identities } => identities == ["a.b.f1", "a.b.f2", "e.f.k"]
+    DispositionRosterRefused { line_number: _, line: _, cause: _ } => false
+  }
+}
+
+fn module_claims(counts: List<ModuleDeclineCount>, module: String) -> Int {
+  fold(counts, init: 0, f: fn(acc, c) { if c.module == module { acc + c.claims } else { acc } })
+}
+
+test fn the_census_tallies_claims_per_declaring_module() -> Bool {
+  let counts = gate_closure_decline_by_module(identities: ["a.b.f1", "a.b.f2", "e.f.k"])
+  length(counts) == 2 && module_claims(counts: counts, module: "a.b") == 2 && module_claims(counts: counts, module: "e.f") == 1
+}
+
+test fn a_row_with_one_column_refuses_at_its_line_rather_than_being_dropped() -> Bool {
+  match gate_closure_declined_identities(lines: ["identity\tdisposition\tmatched_prefix\toutcome", "a.b.f1\tdeclined_outside_gate_closure", "a.b.f2"]) {
+    DispositionRosterRows { identities: _ } => false
+    DispositionRosterRefused { line_number, line, cause: _ } => line_number == 3 && line == "a.b.f2"
+  }
+}
+
+test fn a_disposition_outside_the_floors_vocabulary_refuses_rather_than_being_dropped() -> Bool {
+  match gate_closure_declined_identities(lines: ["a.b.f1\tdeclined_outside_the_gate\t\t"]) {
+    DispositionRosterRows { identities: _ } => false
+    DispositionRosterRefused { line_number, line: _, cause: _ } => line_number == 1
+  }
+}
+
+// THE CONTROL THAT KEEPS THE TWO ABOVE HONEST: a roster with no declined row is a valid, empty
+// census, not a refusal, so the refusal arms cannot be satisfied by refusing everything.
+test fn a_roster_with_no_declined_row_reads_as_an_empty_census_not_a_refusal() -> Bool {
+  match gate_closure_declined_identities(lines: ["# summary\ttotal=1", "identity\tdisposition\tmatched_prefix\toutcome", "c.d.h\tplanned\t\tpass"]) {
+    DispositionRosterRows { identities } => length(identities) == 0
+    DispositionRosterRefused { line_number: _, line: _, cause: _ } => false
+  }
+}

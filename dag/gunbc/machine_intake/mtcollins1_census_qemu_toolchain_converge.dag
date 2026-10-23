@@ -1,0 +1,41 @@
+module gunbc.machine_intake_mtcollins1_census_qemu_toolchain_converge
+
+import std.types { NonEmptyStr, String }
+import std.process { ProcessExit, exit_failure }
+import std.optional { Present, Absent }
+import gunbc.hostname_read { HostnameShortCaptured }
+import gunbc.runner_microvm_host_ready {
+  MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_wet, microvm_host_binding_refusal_text, executor_home_wet,
+}
+import gunbc.runner_qemu_toolchain {
+  qemu_toolchain_location, qemu_toolchain_archives, place_qemu_toolchain_wet, qemu_toolchain_placement_text,
+}
+import gunbc.runner_qemu_host_standing { observe_qemu_host_standing_wet }
+import gunbc.machine_intake_mtcollins1_census_qemu_host_observe { census_qemu_install_dir, census_qemu_host_verdict_wet }
+
+// THE MtCollins1CensusQemuToolchainConverge MODE: place the pinned QEMU toolchain under the job
+// user's root on the executor the dispatch selected, then read it back through the SAME executor-host
+// reading the read-only mode runs -- kvm, the binary's digest and exact banner, ldd under the declared
+// environment, both AAVMF images -- and refuse unless it reads ready. The host binding is sealed
+// first (gunbc.runner_microvm_host_ready microvm_host_binding_wet): a run on a machine other than the
+// one selected fetches and writes nothing, and the readback is KEYED BY THAT BOUND HOST, not by a
+// second read of the machine's name. No administrator, no apt, nothing under /usr.
+fn mtcollins1_census_qemu_toolchain_converge_wet() -> ProcessExit {
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["mtcollins1_census_qemu_toolchain_converge: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: _, host: bound } =>
+      match executor_home_wet() {
+        Absent => exit_failure(reason: "mtcollins1_census_qemu_toolchain_converge: HOME is unset, so the job user's install root cannot be named")
+        Present { value: home } => {
+          let location = qemu_toolchain_location(home: home, install_dir: census_qemu_install_dir)
+          let placement = place_qemu_toolchain_wet(location: location, archives: qemu_toolchain_archives())
+          census_qemu_host_verdict_wet(
+            entry: "mtcollins1_census_qemu_toolchain_converge",
+            preamble: concat(qemu_toolchain_placement_text(p: placement), "\n"),
+            standing: observe_qemu_host_standing_wet(host: HostnameShortCaptured { value: bound as String }, root: location.root as String),
+          )
+        }
+      }
+  }
+}

@@ -1,0 +1,78 @@
+module gunbc.generated_artifact_producer_coverage
+
+import std.types { String, List, Bool }
+import std.decl_ref { declaration_ref_display_key }
+import v2.std.decl_ref_resolution {
+  DeclarationRefResolution,
+  declaration_ref_resolution_is_resolved, declaration_ref_resolution_arm_key,
+  resolve_declaration_ref_live
+}
+import gunbc.generated_artifact { GeneratedArtifactProducerRow }
+import gunbc.generated_artifact_registry { generated_artifact_producer_rows }
+
+// A CHECK OVER gunbc.generated_artifact, NOT A FACT OF IT. Resolving each producer against the live
+// tree reaches v2.lens.module_graph and the compiler's program assembly; while it lived in the
+// registry module, every consumer of an artifact PATH -- the fleet revision acceptance fold, and
+// through it the approval broker -- compiled the v2 pipeline to read a string it never resolves.
+
+// THE COVERAGE VERDICT, ONE PER ROW, AND THE REFUSAL IS THE RESOLVER'S OWN ARM. The producer is
+// resolved by v2.std.decl_ref_resolution -- module absent, declaration absent, field absent,
+// ambiguous, or resolved -- against the live tree by key, so a producer that has been renamed,
+// moved to another module or deleted refuses with the arm that says which, and the artifact path it
+// leaves uncovered is carried beside it. Nothing here scans the artifact's bytes: the question is
+// whether the declaration join REACHES this artifact, not what the artifact contains.
+type GeneratedArtifactProducerCoverage
+  = GeneratedArtifactProducerCovered { row: GeneratedArtifactProducerRow }
+  | GeneratedArtifactProducerUncovered { row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution }
+
+fn generated_artifact_producer_coverage_of(row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution) -> GeneratedArtifactProducerCoverage {
+  if declaration_ref_resolution_is_resolved(resolution: resolution) {
+    GeneratedArtifactProducerCovered { row: row }
+  } else {
+    GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
+  }
+}
+
+fn generated_artifact_producer_coverage_row(row: GeneratedArtifactProducerRow, pool_roots: List<String>) -> GeneratedArtifactProducerCoverage {
+  generated_artifact_producer_coverage_of(
+    row: row,
+    resolution: resolve_declaration_ref_live(ref: row.producer, pool_roots: pool_roots)
+  )
+}
+
+fn generated_artifact_producer_coverage_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
+  map(rows, r => generated_artifact_producer_coverage_row(row: r, pool_roots: pool_roots))
+}
+
+fn generated_artifact_producer_coverage_is_refused(c: GeneratedArtifactProducerCoverage) -> Bool {
+  match c {
+    GeneratedArtifactProducerCovered { row: _ } => false
+    GeneratedArtifactProducerUncovered { row: _, resolution: _ } => true
+  }
+}
+
+// THE REFUSAL SET over a supplied row population. generated_artifact_producer_refusals below hands it the real rows (gunbc.generated_artifact_registry generated_artifact_producer_rows); a
+// witness hands it a planted row whose producer names no declaration, which is the only way an
+// uncovered artifact can be authored while GeneratedArtifact stays closed and every rostered
+// producer resolves.
+fn generated_artifact_producer_refusals_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
+  filter(generated_artifact_producer_coverage_over(rows: rows, pool_roots: pool_roots), c => generated_artifact_producer_coverage_is_refused(c: c))
+}
+
+fn generated_artifact_producer_refusals(pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
+  generated_artifact_producer_refusals_over(rows: generated_artifact_producer_rows(), pool_roots: pool_roots)
+}
+
+fn every_generated_artifact_producer_covered(pool_roots: List<String>) -> Bool {
+  count(generated_artifact_producer_refusals(pool_roots: pool_roots)) == 0
+}
+
+// LOCATED: the artifact path, the producer it claims, and the resolver arm that refused it.
+fn generated_artifact_producer_coverage_rendered(c: GeneratedArtifactProducerCoverage) -> String {
+  match c {
+    GeneratedArtifactProducerCovered { row } =>
+      concat(concat(concat("generated artifact ", row.artifact_path), " covered by producer "), declaration_ref_display_key(ref: row.producer))
+    GeneratedArtifactProducerUncovered { row, resolution } =>
+      concat(concat(concat(concat(concat("generated artifact ", row.artifact_path), " UNCOVERED: producer "), declaration_ref_display_key(ref: row.producer)), " "), declaration_ref_resolution_arm_key(resolution: resolution))
+  }
+}

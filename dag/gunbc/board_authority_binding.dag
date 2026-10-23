@@ -1,0 +1,137 @@
+module gunbc.board_authority_binding
+
+import std.types { String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { Sha256Digest }
+import extdeps.board_authority {
+  BoardAuthorityBinding, BoardAuthorityLookup, BoardFruIdentity, BoardFruObservation, BoardFruRead, BoardFruNotRead,
+  BoardAreaAbsent, BoardAreaFieldsUnreadable, BoardFruReceipt,
+  BoundByNameOnly, BoundByObservedEvidence, board_authority_for
+}
+import gunbc.ipmitool_fru_text { FruCaptureGap, FruCaptureUnreadable, FruCaptureDigestAgrees, FruCaptureDigestDiffers, fru_capture_digest_check, FruFieldValue, FruFieldGap, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty, fru_field }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
+import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
+
+// THE CONSUMER-LAYER BINDING TABLE (DESIGN section 3, External upstream decomposition). A generic
+// hub may not enumerate concrete products or dispatch among their authorities, so the rows that
+// join a FRU's names to a per-board authority live here, in the workflow layer. Adding a board is
+// one per-board module plus one row here; no enum is edited.
+//
+// MT. COLLINS (FOXCONN, "Mt. Collins"): evidence-bound. The FRU names agree AND the host's own
+// physical receipts match the Getting Started Guide's figure (the 32-DIMM bring-up and the
+// physical-orientation anchors), so board FACTS may be read off this authority.
+data mtcollins1_fru_receipt: BoardFruReceipt = BoardFruReceipt {
+  artifact_path: "artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt",
+  sha256: Sha256Digest { hex: "dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c" },
+}
+
+data mt_collins_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
+  manufacturer: "FOXCONN",
+  product: "Mt. Collins",
+  authority: mt_collins_board_authority,
+  standing: BoundByObservedEvidence {
+    first: DeclarationRef {
+      module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation",
+      decl_name: "mtcollins1_dram_training_capture",
+      field: WholeDeclaration
+    },
+    further: [DeclarationRef {
+      module_path: "gunbc.machine_intake_mtcollins1_physical_orientation",
+      decl_name: "mtcollins1_three_stick_anchor",
+      field: WholeDeclaration
+    }]
+  },
+  fru_receipt: mtcollins1_fru_receipt,
+}
+
+// MT. JADE (WIWYNN, "Mt.Jade Motherboard", part B81.03010.0041): name-only. The FRU's names agree
+// with the OCP Mt. Jade reference platform's name and nothing else does yet, so this is an
+// inference from a name (DESIGN 4d), typed as a bet with the discriminator that would settle it.
+// Identity-grade uses accept it; uses that import board facts refuse it.
+data mtjade1_fru_receipt: BoardFruReceipt = BoardFruReceipt {
+  artifact_path: "artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt",
+  sha256: Sha256Digest { hex: "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b" },
+}
+
+data mt_jade_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
+  manufacturer: "WIWYNN",
+  product: "Mt.Jade Motherboard",
+  authority: mt_jade_board_authority,
+  standing: BoundByNameOnly {
+    discriminator_obligation: "a measured reading on the host (DIMM population or SMBIOS slot map) agreeing with a CITED public Mt. Jade source, not the FRU name"
+  },
+  fru_receipt: mtjade1_fru_receipt,
+}
+
+data board_authority_bindings: List<BoardAuthorityBinding> = [mt_collins_board_binding, mt_jade_board_binding]
+
+fn observed_board_authority(observation: BoardFruObservation) -> BoardAuthorityLookup {
+  board_authority_for(observation: observation, bindings: board_authority_bindings)
+}
+
+// THE BOARD AREA OF `ipmitool fru print` TEXT, read into the observation the lookup consumes: Board
+// Mfg and Board Product are required (exact text, one line each); Board Part Number is carried when
+// present. Never defaulted: no board area is BoardAreaAbsent, a present area with an empty or
+// repeated required field is BoardAreaFieldsUnreadable.
+fn board_fru_observation_of_text(content: String) -> BoardFruObservation {
+  match fru_field(content: content, field: "Board Mfg") {
+    FruFieldGap { gap: mg } =>
+      match fru_field(content: content, field: "Board Product") {
+        FruFieldGap { gap: pg } =>
+          match mg {
+            FruFieldAbsent { field: _ } => match pg {
+              FruFieldAbsent { field: _ } => BoardFruNotRead { cause: BoardAreaAbsent }
+              FruFieldRepeated { field: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+              FruFieldEmpty { field: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+            }
+            FruFieldRepeated { field: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+            FruFieldEmpty { field: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+          }
+        FruFieldValue { value: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+      }
+    FruFieldValue { value: mfg } =>
+      match fru_field(content: content, field: "Board Product") {
+        FruFieldGap { gap: _ } => BoardFruNotRead { cause: BoardAreaFieldsUnreadable }
+        FruFieldValue { value: product } =>
+          BoardFruRead { fru: BoardFruIdentity {
+            manufacturer: mfg,
+            product: product,
+            part_number: match fru_field(content: content, field: "Board Part Number") {
+              FruFieldValue { value: pn } => Present { value: pn }
+              FruFieldGap { gap: _ } => none
+            },
+          } }
+      }
+  }
+}
+
+fn receipt_sha256_hex(receipt: BoardFruReceipt) -> String {
+  receipt.sha256.hex as String
+}
+
+// A COMMITTED CAPTURE EITHER YIELDS A BOARD OBSERVATION OR A CAPTURE-LEVEL GAP. The gap is the one
+// gunbc.ipmitool_fru_text FruCaptureGap (unreadable file, digest mismatch) the Mt. Jade identity read
+// also uses, with the one digest check fru_capture_digest_check; the board hub carries only what the
+// FRU Board Area itself can fail to say.
+type BoardCaptureRead
+  = BoardCaptureObserved { observation: BoardFruObservation }
+  | BoardCaptureRefused { gap: FruCaptureGap }
+
+// THE DIGEST-CHECKED READ of a committed FRU capture: content whose sha256 differs from the receipt
+// the binding row was authored from is a refusal, never decoded.
+fn board_fru_observation_of_capture(content: String, receipt: BoardFruReceipt) -> BoardCaptureRead {
+  match fru_capture_digest_check(content: content, expected_sha256: receipt_sha256_hex(receipt: receipt) as NonEmptyStr) {
+    FruCaptureDigestDiffers { gap: g } => BoardCaptureRefused { gap: g }
+    FruCaptureDigestAgrees => BoardCaptureObserved { observation: board_fru_observation_of_text(content: content) }
+  }
+}
+
+fn read_board_fru_observation(receipt: BoardFruReceipt) -> BoardCaptureRead uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: receipt.artifact_path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => BoardCaptureRefused { gap: FruCaptureUnreadable { error: e } }
+    FilesystemReadSucceeded { content: text } => board_fru_observation_of_capture(content: text, receipt: receipt)
+  }
+}

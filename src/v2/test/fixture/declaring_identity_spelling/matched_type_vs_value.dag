@@ -1,0 +1,8 @@
+module v2.test.fixture.declaring_identity_spelling.matched_type_vs_value
+
+
+type type_only {}
+
+data value_only: Int = 0
+
+fn go(x: type_only, flag: Bool) -> Int { value_only }

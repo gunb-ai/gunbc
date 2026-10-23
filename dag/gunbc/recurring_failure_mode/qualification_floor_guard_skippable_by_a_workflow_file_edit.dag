@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.qualification_floor_guard_skippable_by_a_workflow_file_edit
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data qualification_floor_guard_skippable_by_a_workflow_file_edit: RecurringFailureMode = RecurringFailureMode {
+  identity: "qualification_floor_guard_skippable_by_a_workflow_file_edit" as NonEmptyStr,
+
+  receipts: [
+    "**the qualification floor's revision guard is skippable by an edit to the workflow file on the qualification branch** (declared with sha-checkout, decision eager-gull-22 2026-10-04).",
+
+    "INVALID STATE: a qualification run whose floor job executes code other than the pinned revision while the run reports the pinned head. The dispatch names the per-attempt branch refs/heads/qualification/<attempt>; GitHub runs that branch's copy of the workflow file, and the guard that checks out inputs.qualification_revision and refuses on a mismatch is a step INSIDE that file (gunbc.runner.runner_qualification_dispatch qualification_floor_revision_guard_step). An actor who rewrites the workflow file on that branch -- deleting the guard, or adding steps before it -- runs other code on the attempt's runner.",
+
+    "HARM: a qualification receipt measured on code that is not the pinned workload, on the dedicated host. Bounded by who can cause it: writing the branch's workflow file needs repository push (contents write), an actor already trusted to change any code in the repository, and the per-attempt branch is created by the route at the pinned revision immediately before dispatch.",
+
+    "DISTINGUISHING FACTS: the guard's absence is caught by the floor contract only for the MODEL the subject mint reads (qualification_floor_admission refuses a floor job whose first step is not the guard, or whose later steps run past a failure); it is not caught for the file GitHub actually executes from the branch. The post-run check RunRevisionNotPinned (gunbc.runner.runner_qualification_dispatch decide_qualification_run) refuses a run whose head_sha is not the pinned revision, but an edit committed on the branch moves head_sha too, so that check catches a moved branch and not a rewritten file at the same head.",
+
+    "RUNG: 2 for a moved branch (the guard and RunRevisionNotPinned each refuse, before any step and after the run). 1 for a rewritten workflow file at the branch head: contained by repository-push trust, not refused. CEILING: 3 needs the executed workflow file to be an identity the route admits rather than whatever the branch holds -- e.g. a reusable workflow selected by full SHA in the dedicated group (GitHub admits a SHA pin only for REUSABLE workflows), with the guard inside it. NEXT TRIGGER: the qualification mode lands in gunbc.fleet_converge_workflow (the dispatch leg's wiring_owed); deciding there whether the floor job is a SHA-selected reusable workflow is what would climb this row.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_floor_revision_guard_step"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_floor_admission"),
+  ],
+}

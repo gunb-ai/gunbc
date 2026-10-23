@@ -1,0 +1,12 @@
+module extdeps.cooling.noctua_ampere
+import std.types {NonEmptyStr}
+import std.measure {Micrometer,micrometer,Gram,gram}
+import std.decl_ref {DeclarationRef,WholeDeclaration}
+import extdeps.external_authority {ExternalAuthority,ExternalModelScope,ExternalSubjectRef}
+import extdeps.uri {Uri,Https}
+data extdeps_external_authority_anchor:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"www.noctua.at/en/products/nh-u14s-amp-4926/specifications"}}
+type DualFanCoolerEnvelope {model:NonEmptyStr,height:Micrometer,width:Micrometer,depth:Micrometer,mass:Gram}
+// Includes BOTH supplied fans. Not shipping weight or heatsink-only dimensions.
+// Vendor lists 5U compatibility and discontinued standing; no 4U fit assertion.
+data nh_u14s_amp_4926:DualFanCoolerEnvelope=DualFanCoolerEnvelope {model:"NH-U14S AMP-4926",height:micrometer(count:165000),width:micrometer(count:150000),depth:micrometer(count:111000),mass:gram(count:1136)}
+data extdeps_model_scope:ExternalModelScope=ExternalModelScope {subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.cooling.noctua_ampere",decl_name:"nh_u14s_amp_4926",field:WholeDeclaration}},first_citation:extdeps_external_authority_anchor,further_citations:[]}

@@ -1,0 +1,13 @@
+module fixtures.builtin_shadow.free_call_shadow_specimen
+
+// A function-valued PARAMETER whose name collides with a runtime free-call builtin (`lookup`).
+// Interpreted and emitted realizations must both apply the parameter. Before the
+// FunctionValueCallSemantics gate the emitter rendered `v1_rt::lookup(&x)`; that one errored
+// (E0061, arity 2 vs 1) only because the arities disagreed.
+fn apply_twice(lookup: fn(Int) -> Int, x: Int) -> Int {
+  lookup(lookup(x))
+}
+
+fn shadowed_free_call_result() -> Int {
+  apply_twice(lookup: n => n + 1, x: 1)
+}

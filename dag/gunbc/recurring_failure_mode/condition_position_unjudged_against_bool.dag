@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.condition_position_unjudged_against_bool
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data condition_position_unjudged_against_bool: RecurringFailureMode = RecurringFailureMode {
+  identity: "condition_position_unjudged_against_bool" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an if condition or a match-arm guard whose value is not a Bool. `v1.compiler.infer` inferred both with `expected: none` and built no declared-type obligation for them, so `match n { x if 5 => 1  _ => 2 }` and `if 1 { .. }` were Accepted with zero diagnostics: the grammar declares the position Bool and nothing judged the value against it.",
+
+    "HARM: silent wrongness below the DESIGN section 4b floor (values inhabit declared types). On the interpretation path a non-Bool guard is refused only at run time by `InterpError::MatchGuardNotBool` (gunbc#12814, recorded on gunbc.recurring_failure_mode.interpreter_ignores_match_arm_guards as that row's adjacent gap); on the emission path it is a rustc refusal after acceptance -- the wrong compiler, in the wrong phase.",
+
+    "WHY IT IS NOT gunbc.recurring_failure_mode.numeral_admitted_at_every_kernel_declared_type: that row is a relation answering Inhabits wrongly; this one is a position the relation was never asked about. The two were reported as one (`x if 5`) and only separate on reading the producer: repairing the relation alone left the guard green, because no obligation reached it.",
+
+    "REPAIR (DESIGN section 6b): the earliest unjustified boundary is the missing obligation producer, not the relation. `condition_obligation_diags` builds the same `DeclaredTypeObligation` every other position builds, at `PositionCondition` with declared `Bool`, and it is decided by `declared_type_obligation_diags`, the whole relation -- no condition-specific test. Both guard sites (first-pass and unified-arm re-inference) and the if condition consume it.",
+
+    "RUNG FOUND AT: outside the ladder (silent) at acceptance; mitigatable on the interpretation path for guards only. RUNG NOW: 3, structurally guaranteed at the if condition and the match-arm guard, evidenced by `test.claim.numeral_at_non_numeric_kernel_witness_test`: an Int literal guard, a non-literal Int guard (`x if x + 1`), a String guard (`x if (s)` -- the one RED no numeral arm reaches, so it isolates the wiring), and an Int literal if condition, all refusing, with a Bool guard and a Bool if condition in the shared positive control. The two non-literal guard REDs are bright-owl-402's, from the superseded gunbc#12829.",
+
+    "ATTAINABLE CEILING: 3. The interpreter's `MatchGuardNotBool` arm becomes unreachable from an Accepted program; it stays as the runtime refusal for unaccepted input, not as the wall."
+  ],
+
+  evidence: [],
+}

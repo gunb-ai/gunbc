@@ -1,0 +1,712 @@
+module test.claim.site_build_meter_witness_test
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.markup { Fragment }
+import v2.std.algebra { filter }
+import extdeps.languages.html { serialize_html_source }
+import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState, ProviderNotStarted, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderFailed,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentRefused, WorkflowSegmentFailed, WorkflowSegmentStopped,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
+  VerificationWorkflowSegment, PublicationWorkflowSegment,
+}
+import gunbc.roadmap.roadmap_submission {
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffBlockedOnPublication, HandoffPublished, HandoffVerificationFailed,
+}
+import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view, compact_work_revision, BuildMeterToolCount, BuildMeterRoundOperations }
+import gunbc.harness.harness_tool { RunCommandTool, ReadFileTool, WriteFileTool }
+import gunbc.site.specimen { specimen_tool_heavy_view, specimen_single_tool_view }
+import gunbc.site.element.build_meter {
+  CompactWorkSummary, BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterRead,
+  BuildMeterTypedOperation, BuildMeterToolCallCount, BuildMeterChangedPathCountRise,
+  BuildMeterCoverage, BuildMeterNoRoundYet, BuildMeterRoundsRecorded, BuildMeterRoundsNotRecorded,
+  BuildMeterPose, BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
+  FailureDigest, FailureRefused, FailureVerificationFailed, FailureBudgetSpent,
+  FailureTarget, FailureExactEvent, FailureRoundOperation, FailureStageGroup, failure_target_key, failure_target_round, failure_target_anchor,
+  build_meter, build_meter_rules, build_meter_class, build_meter_kind_key, build_meter_evidence_key, build_meter_pose_key,
+  build_meter_coverage_key, failure_kind_key, build_meter_visible_rounds, build_meter_blink_class, build_meter_name_class,
+  build_meter_digest_class, build_meter_naps,
+  build_meter_scene_attribute, build_meter_settle_attribute, build_meter_stance_attribute, build_meter_worker_x_attribute,
+  build_meter_figure_class, build_meter_cues, build_meter_change_ms, build_meter_part_class, build_meter_side_key,
+  BuildMeterCue, BuildMeterSide, BuildMeterLeaving, BuildMeterArriving,
+  BuildMeterPart, BuildMeterStripPart, BuildMeterFigurePart, BuildMeterSnoozePart, BuildMeterFinishPart,
+  BuildMeterEdgePart, BuildMeterFaultPart,
+  BuildMeterChange, BuildMeterAnyChange, BuildMeterFromSitting, BuildMeterRising, BuildMeterCrossfade,
+  BuildMeterMotion, BuildMeterHide, BuildMeterKeep, BuildMeterFadeIn, BuildMeterFadeOut, BuildMeterAppear, BuildMeterVanish,
+  BuildMeterWalkOut, BuildMeterWalkIn, BuildMeterBob, BuildMeterWipeUp, BuildMeterWipeRight,
+}
+import gunbc.workflow_reconcile { WorkflowFactKey }
+import gunbc.site.build_meter_client { build_meter_bind_statements, build_meter_fresh_event, build_meter_dwell_ms }
+import extdeps.languages.typescript.program { serialize_ts_stmts_indented }
+import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_antenna_path, robot_mark_body_transform }
+import gunbc.site.element.styles { element_styles }
+import gunbc.roadmap_surface_style { roadmap_surface_rules }
+import gunbc.design.material { BuildRule, StaticRule, reduced_motion_block, serialize_rules, decl }
+import gunbc.design.theme_transition { rule_selector }
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { Color }
+
+// GUARDS FOR THE COMPACT WORK SUMMARY. Each claim reads one interface with supplied values: the
+// derivation takes a planted ledger, stage list, provider state, handoff and staleness; the
+// element takes a planted summary. None renders a page and none runs the progress projection. The
+// claims that the real rail and the real Work tab carry the real projection's summary and its
+// target are with the page's witnesses (test.claim.long.roadmap_page_witness_test).
+
+fn has(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
+fn occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+fn after(s: String, pattern: String) -> String {
+  match split(s: s, delimiter: pattern).skip(n: 1).first() { Present { value: rest } => rest  Absent => "" }
+}
+
+fn fx_round(step: Int, tool_calls: Int?, files_changed: Int?) -> RoundObservation {
+  RoundObservation { step: step, input_tokens: 1000, output_tokens: 300, epoch_ms: 1790694000000 + step * 1000, files_changed: files_changed, tool_calls: tool_calls }
+}
+
+fn fx_stages(states: List<WorkflowSegmentState>, details: List<String>) -> List<WorkflowSegment> {
+  map(enumerate([EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment]), pair =>
+    WorkflowSegment {
+      kind: pair.second,
+      state: match states.skip(n: pair.first).first() { Present { value: st } => st  Absent => WorkflowSegmentPending },
+      detail: match details.skip(n: pair.first).first() { Present { value: d } => d  Absent => "" },
+    })
+}
+
+fn fx_agent_active() -> List<WorkflowSegment> {
+  fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
+}
+
+fn fx_view(rounds: HarnessRoundLedger, provider: ProviderExecutionState, handoff: CandidateHandoffState, segments: List<WorkflowSegment>) -> BuildMeterView {
+  build_meter_view_of(node_id: "node", attempt_key: "0cfc18886a3d3b10", segments: segments, rounds: rounds, provider: provider, handoff: handoff, stale: false)
+}
+
+fn fx_running() -> ProviderExecutionState {
+  ProviderRunning { activity: "Agent working" }
+}
+
+fn fx_legacy_view() -> BuildMeterView {
+  fx_view(
+    rounds: RoundsUnobserved { reason: "the attempt predates round capture, so its rounds were not recorded" as NonEmptyStr },
+    provider: ProviderCompleted { activity: "Agent complete" },
+    handoff: HandoffAwaitingWorker,
+    segments: fx_stages(states: [WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentPending, WorkflowSegmentRefused], details: ["environment admission receipt unavailable"]))
+}
+
+fn mark_words(view: BuildMeterView) -> List<String> {
+  map(build_meter_rounds_of(coverage: view.coverage), r => join(map(r.marks, m => join([build_meter_kind_key(kind: m.kind), to_string(m.count), "/", build_meter_evidence_key(evidence: m.evidence)], "")), "+"))
+}
+
+fn build_meter_rounds_of(coverage: BuildMeterCoverage) -> List<BuildMeterRound> {
+  match coverage {
+    BuildMeterRoundsRecorded { rounds, last_recorded_at: _ } => rounds
+    BuildMeterNoRoundYet => []
+    BuildMeterRoundsNotRecorded { reason: _ } => []
+  }
+}
+
+fn failure_words(view: BuildMeterView) -> String {
+  match view.failure {
+    Absent => "(none)"
+    Present { value: d } => join([
+      failure_kind_key(kind: d.kind), d.primary_event.workflow_id, d.primary_event.obligation_id, to_string(d.event_count),
+      failure_target_key(target: d.target), match failure_target_round(target: d.target) { Present { value: n } => to_string(n)  Absent => "-" }, failure_target_anchor(target: d.target),
+    ], " ")
+  }
+}
+
+// The view derivation.
+
+// A changed-path mark is how far the worktree's changed-path count ROSE over the last measured
+// value, labelled as that evidence, not the count itself. The ledger below reads 2, 2, 5, unread,
+// 4, 6: round 1 rises from a fresh tree, round 2 does not rise, round 3 rises by three, round 4
+// was not read, round 5 fell (a commit), round 6 rises by two over round 5. A level test would
+// mark every round after the first.
+test fn a_changed_path_mark_is_the_rise_of_the_changed_path_count() -> Bool {
+  let view = fx_view(rounds: RoundsObserved { rounds: [
+    fx_round(step: 1, tool_calls: none, files_changed: Present { value: 2 }),
+    fx_round(step: 2, tool_calls: none, files_changed: Present { value: 2 }),
+    fx_round(step: 3, tool_calls: none, files_changed: Present { value: 5 }),
+    fx_round(step: 4, tool_calls: none, files_changed: none),
+    fx_round(step: 5, tool_calls: none, files_changed: Present { value: 4 }),
+    fx_round(step: 6, tool_calls: none, files_changed: Present { value: 6 }),
+  ] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  mark_words(view: view) == ["write2/changed-paths", "", "write3/changed-paths", "", "", "write2/changed-paths"]
+}
+
+// A tool call mark is the round's recorded tool call count, labelled as calls of unrecorded kind:
+// absent and zero draw nothing, and no typed kind is produced from the ledger.
+test fn a_tool_call_mark_is_the_recorded_count_and_no_kind_is_invented() -> Bool {
+  let view = fx_view(rounds: RoundsObserved { rounds: [
+    fx_round(step: 1, tool_calls: Present { value: 3 }, files_changed: Present { value: 0 }),
+    fx_round(step: 2, tool_calls: Present { value: 0 }, files_changed: Present { value: 0 }),
+    fx_round(step: 3, tool_calls: none, files_changed: Present { value: 1 }),
+    fx_round(step: 4, tool_calls: Present { value: 1 }, files_changed: Present { value: 4 }),
+  ] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  mark_words(view: view) == ["run3/tool-calls", "", "write1/changed-paths", "run1/tool-calls+write3/changed-paths"]
+}
+
+fn coverage_and_outcome(view: BuildMeterView) -> String {
+  join([build_meter_coverage_key(coverage: view.coverage), match view.failure { Present { value: d } => failure_kind_key(kind: d.kind)  Absent => "none" }, build_meter_pose_key(pose: view.pose)], "/")
+}
+
+// COVERAGE IS SEPARATE FROM OUTCOME. A read ledger with no round and a refusal is an attempt that
+// stopped before its first round; an unobserved ledger and a refusal is the legacy case, both
+// stated; recorded rounds and a failed verification failed after work; a read ledger with no round
+// and a running provider is no round yet, working. No arm is read off the other.
+test fn coverage_and_outcome_are_separate_facts() -> Bool {
+  let refused_env = fx_stages(states: [WorkflowSegmentRefused], details: ["no seat class admits this work"])
+  coverage_and_outcome(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, segments: refused_env)) == "none-yet/refused/stopped"
+    && coverage_and_outcome(view: fx_legacy_view()) == "not-recorded/refused/stopped"
+    && coverage_and_outcome(view: fx_view(rounds: RoundsObserved { rounds: [fx_round(step: 1, tool_calls: Present { value: 1 }, files_changed: Present { value: 1 })] }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "abc", verdict_key: "failed" },
+        segments: fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: []))) == "recorded/verification-failed/stopped"
+    && coverage_and_outcome(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())) == "none-yet/none/working"
+}
+
+// The digest names the first failure event by its workflow obligation identity, counts every
+// event, ties it to no round (no authority ties a stage failure to one), and targets the Work tab
+// anchor of that event through the issue's one route family.
+test fn the_failure_digest_names_the_first_event_counts_all_and_targets_it() -> Bool {
+  failure_words(view: fx_legacy_view()) == "refused node:0cfc18886a3d3b10 environment 5 stage-group - /issue/node#work-node:0cfc18886a3d3b10-environment"
+    && fx_legacy_view().destination == "/issue/node#work-node:0cfc18886a3d3b10-environment"
+    && fx_view(rounds: RoundsObserved { rounds: [] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active()).destination == "/issue/node#work"
+}
+
+fn kind_of(view: BuildMeterView) -> String {
+  match view.failure { Present { value: d } => join([failure_kind_key(kind: d.kind), d.primary_event.obligation_id], "@")  Absent => "none" }
+}
+
+// A failure's kind is decided by its stage and state, and a stop no stage records is the
+// provider's (agent) or the handoff's (submission) own event.
+test fn a_failure_kind_is_decided_by_stage_and_state() -> Bool {
+  let none_halted = fx_agent_active()
+  kind_of(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderCompleted { activity: "" }, handoff: HandoffAwaitingWorker,
+      segments: fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: []))) == "budget-spent@agent"
+    && kind_of(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderCompleted { activity: "" }, handoff: HandoffAwaitingWorker,
+      segments: fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: []))) == "handoff-blocked@publish"
+    && kind_of(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderFailed { activity: "Agent failed", detail: "exit 3" }, handoff: HandoffAwaitingWorker, segments: none_halted)) == "failed@agent"
+    && kind_of(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderCompleted { activity: "" }, handoff: HandoffBlockedOnPublication { head_sha: "abc", cause: "no token" }, segments: none_halted)) == "handoff-blocked@submission"
+    && kind_of(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: none_halted)) == "none"
+}
+
+// The pose follows observed activity and the outcome, not the recorded work; staleness is its own
+// fact and changes neither.
+test fn the_pose_follows_activity_and_staleness_is_its_own_fact() -> Bool {
+  let rounds = RoundsObserved { rounds: [fx_round(step: 1, tool_calls: Present { value: 2 }, files_changed: Present { value: 1 })] }
+  let pose = fn(provider) { build_meter_pose_key(pose: fx_view(rounds: rounds, provider: provider, handoff: HandoffAwaitingWorker, segments: fx_agent_active()).pose) }
+  let stale = build_meter_view_of(node_id: "node", attempt_key: "k", segments: fx_agent_active(), rounds: rounds, provider: fx_running(), handoff: HandoffAwaitingWorker, stale: true)
+  pose(fx_running()) == "working"
+    && pose(ProviderAwaitingSeat { detail: "group B is full" }) == "waiting"
+    && pose(ProviderNotStarted) == "idle"
+    && pose(ProviderCompleted { activity: "Agent complete" }) == "idle"
+    && build_meter_pose_key(pose: stale.pose) == "working" && stale.stale
+    && coverage_and_outcome(view: stale) == "recorded/none/working"
+}
+
+// The element.
+
+fn fx_summary(view: BuildMeterView) -> CompactWorkSummary {
+  compact_work_summary_of_view(subject: "node", view: view)
+}
+
+fn fx_html(view: BuildMeterView) -> String {
+  serialize_html_source(node: build_meter(summary: fx_summary(view: view), link_attributes: []))
+}
+
+fn fx_drawn_round(step: Int, marks: List<BuildMeterMark>) -> BuildMeterRound {
+  BuildMeterRound { step: step, marks: marks, input_tokens: 100, output_tokens: 100 }
+}
+
+fn fx_drawn_view(coverage: BuildMeterCoverage, pose: BuildMeterPose, failure: FailureDigest?, handoff: CandidateHandoffState, stale: Bool) -> BuildMeterView {
+  BuildMeterView {
+    attempt_key: "fixture-attempt", attempt_label: "fixture-…", stage: Present { value: AgentWorkflowSegment }, stage_state: Present { value: WorkflowSegmentActive },
+    coverage: coverage, pose: pose, stale: stale, failure: failure, handoff: handoff, destination: match failure { Present { value: d } => failure_target_anchor(target: d.target)  Absent => "/issue/node#work" },
+  }
+}
+
+fn fx_recorded(n_tens: List<Int>) -> BuildMeterCoverage {
+  BuildMeterRoundsRecorded { rounds: flat_map(n_tens, t => map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], i => fx_drawn_round(step: t * 10 + i, marks: [BuildMeterMark { kind: BuildMeterRun, count: 1, evidence: BuildMeterToolCallCount }]))), last_recorded_at: "2026-09-29T15:00:02Z" }
+}
+
+fn fx_digest(kind_refused: Bool, n: Int) -> FailureDigest {
+  fx_digest_at(kind_refused: kind_refused, n: n, target: FailureStageGroup { stage: if kind_refused { EnvironmentWorkflowSegment } else { VerificationWorkflowSegment }, anchor: "/issue/node#work-node:k-environment" })
+}
+
+fn fx_digest_at(kind_refused: Bool, n: Int, target: FailureTarget) -> FailureDigest {
+  FailureDigest {
+    kind: if kind_refused { FailureRefused } else { FailureVerificationFailed },
+    primary_event: WorkflowFactKey { workflow_id: "node:k", obligation_id: if kind_refused { "environment" } else { "verify" } },
+    event_count: n, stage: if kind_refused { EnvironmentWorkflowSegment } else { VerificationWorkflowSegment },
+    target: target,
+  }
+}
+
+// THE RAIL SHOWS NO PROSE. After the drawing's canvas, the body holds at most the ×N badge, then
+// the visually hidden name and the hover digest, and nothing else; the drawing itself holds no text
+// element. The name class is visually hidden and the digest is transparent until hover or focus.
+test fn the_meter_shows_no_prose_beyond_the_count_badge() -> Bool {
+  let h = fx_html(view: fx_legacy_view())
+  let tail = after(s: h, pattern: "</svg>")
+  let css = serialize_rules(rules: build_meter_rules())
+  !has(s: h, pattern: "<text")
+    && tail == "</span><span class=\"el-build-meter-badge\" aria-hidden=\"true\">×5</span><span class=\"el-build-meter-name\">Environment refused. 5 failure events. Rounds not recorded for this attempt. Attempt 0cfc1888…: open the Environment stage failures.</span><span class=\"el-build-meter-digest\" aria-hidden=\"true\">Environment refused · 5 events; open the Environment stage failures</span></span></a>"
+    && has(s: css, pattern: ".el-build-meter-name { position: absolute; width: var(--space-1); height: var(--space-1)")
+    && has(s: css, pattern: "opacity: 0; pointer-events: none }")
+    && has(s: h, pattern: "<a class=\"el-build-meter\" href=\"/issue/node#work-node:0cfc18886a3d3b10-environment\" data-build-meter=\"node\">")
+}
+
+// One event draws no badge, and a meter with no failure says where it goes and what it records.
+test fn the_accessible_name_of_one_failure_names_it_and_draws_no_badge() -> Bool {
+  let one = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
+  !has(s: one, pattern: "el-build-meter-badge")
+    && has(s: one, pattern: ">Verification failed. One failure event. 10 rounds recorded, the last at 2026-09-29T15:00:02Z. Attempt fixture-…: open the Verification stage failures.</span>")
+}
+
+test fn the_accessible_name_of_a_published_attempt_carries_every_fact() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: true))
+  has(s: published, pattern: ">Agent active. 20 rounds recorded, the last at 2026-09-29T15:00:02Z. Published for review, pull request 7. Launched on an earlier revision. Open attempt fixture-… work.</span>")
+}
+
+// One mark is drawn per recorded kind per round, with its evidence, and one base per round. A
+// typed kind the ledger never produces is drawn like any other when a view supplies it.
+test fn the_marks_drawn_are_the_views_marks() -> Bool {
+  let h = fx_html(view: fx_drawn_view(coverage: BuildMeterRoundsRecorded { rounds: [
+    fx_drawn_round(step: 1, marks: [BuildMeterMark { kind: BuildMeterRun, count: 2, evidence: BuildMeterToolCallCount }, BuildMeterMark { kind: BuildMeterWrite, count: 1, evidence: BuildMeterChangedPathCountRise }]),
+    fx_drawn_round(step: 2, marks: []),
+    fx_drawn_round(step: 3, marks: [BuildMeterMark { kind: BuildMeterRead, count: 4, evidence: BuildMeterTypedOperation }]),
+  ], last_recorded_at: "t" }, pose: BuildMeterWorking, failure: none, handoff: HandoffAwaitingWorker, stale: false))
+  occurrences(s: h, pattern: "data-round=") == 3
+    && occurrences(s: h, pattern: "data-kind=") == 3
+    && has(s: h, pattern: "data-kind=\"run\" data-evidence=\"tool-calls\"")
+    && has(s: h, pattern: "data-kind=\"write\" data-evidence=\"changed-paths\"")
+    && has(s: h, pattern: "data-kind=\"read\" data-evidence=\"typed\"")
+    && has(s: h, pattern: "<title>Round 1: 2 tool calls (proxy: tool-call count), 1 more changed path (proxy: changed-path count rise); tokens 100 in, 100 out</title>")
+    && occurrences(s: h, pattern: "data-paint=\"base\"") == 3
+}
+
+// A long run draws the most recent rounds: of 30, rounds 7 to 30; the name counts all 30.
+test fn a_long_run_draws_the_recent_rounds_and_names_them_all() -> Bool {
+  let h = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1, 2]), pose: BuildMeterWorking, failure: none, handoff: HandoffAwaitingWorker, stale: false))
+  build_meter_visible_rounds == 24
+    && occurrences(s: h, pattern: "data-round=") == 24
+    && has(s: h, pattern: "data-round=\"7\"")
+    && !has(s: h, pattern: "data-round=\"6\"")
+    && has(s: h, pattern: "data-round=\"30\"")
+    && has(s: h, pattern: "30 rounds recorded")
+}
+
+// EACH STATE HAS ITS OWN MARK, and none borrows another's: a stage refusal with no round is a stop
+// cap; a failed verification is a seal; a spent budget is a neutral bracket with no error paint;
+// unrecorded rounds are a hollow frame and draw no round; no round yet is a dotted start; a stale
+// attempt is an outlined worker with no error paint; a published attempt has the finish rule.
+test fn a_stage_refused_before_any_round_is_a_stop_cap() -> Bool {
+  let refused = fx_html(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, segments: fx_stages(states: [WorkflowSegmentRefused], details: [])))
+  has(s: refused, pattern: "data-edge=\"stop-cap\"") && has(s: refused, pattern: "data-history=\"none-yet\"")
+}
+
+test fn a_failed_verification_is_a_seal() -> Bool {
+  let sealed = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
+  has(s: sealed, pattern: "data-edge=\"seal\"") && !has(s: sealed, pattern: "stop-cap")
+}
+
+test fn a_spent_budget_is_a_neutral_bracket() -> Bool {
+  let budget = fx_html(view: fx_view(rounds: RoundsObserved { rounds: [fx_round(step: 1, tool_calls: Present { value: 1 }, files_changed: none)] }, provider: ProviderCompleted { activity: "" }, handoff: HandoffAwaitingWorker, segments: fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: [])))
+  has(s: budget, pattern: "data-edge=\"budget\"") && !has(s: budget, pattern: "data-paint=\"stop\"")
+}
+
+test fn a_stale_attempt_is_an_outlined_worker_with_no_error_paint() -> Bool {
+  let stale = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterWorking, failure: none, handoff: HandoffAwaitingWorker, stale: true))
+  has(s: stale, pattern: "data-worker=\"outline\"") && !has(s: stale, pattern: "data-paint=\"stop\"") && occurrences(s: stale, pattern: "data-round=") == 10
+}
+
+test fn a_published_attempt_has_the_finish_rule_and_no_nap() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  has(s: published, pattern: "data-paint=\"finish\"") && !has(s: published, pattern: "el-build-meter-z")
+}
+
+test fn unrecorded_rounds_are_a_hollow_frame_and_draw_no_round() -> Bool {
+  let legacy = fx_html(view: fx_legacy_view())
+  has(s: legacy, pattern: "data-history=\"not-recorded\"") && !has(s: legacy, pattern: "data-round=") && has(s: legacy, pattern: "data-edge=\"stop-cap\"")
+}
+
+// No state yields a percentage, a progress value or a claim of stalling, and the drawing is
+// hidden from assistive technology.
+test fn the_meter_states_no_percentage_and_invents_no_progress_value() -> Bool {
+  let h = join(map([BuildMeterWorking, BuildMeterStopped, BuildMeterDone, BuildMeterIdle], p => fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: p, failure: none, handoff: HandoffAwaitingWorker, stale: false))), "")
+  !has(s: h, pattern: "%")
+    && !has(s: h, pattern: "aria-valuenow")
+    && !has(s: h, pattern: "progressbar")
+    && !has(s: h, pattern: "stalled")
+    && occurrences(s: h, pattern: "<svg class=\"el-build-meter-art\" aria-hidden=\"true\"") == 4
+}
+
+// THE REVISION COVERS THE WHOLE PROJECTION. Against one base view, a view that differs only in the
+// rounds drawn, the last round's time, the pose, the staleness, the failure count, the failure's
+// target, the destination, the attempt, the handoff outcome or the subject each has a different
+// revision; the same view has the same one.
+test fn the_revision_changes_with_every_value_the_summary_shows() -> Bool {
+  let base = fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: true, n: 2) }, handoff: HandoffAwaitingWorker, stale: false)
+  let r = fn(v) { compact_work_revision(subject: "node", view: v) }
+  let b = r(base)
+  let variants = [
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: fx_recorded(n_tens: [0, 1]), pose: base.pose, stale: base.stale, failure: base.failure, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: BuildMeterRoundsRecorded { rounds: build_meter_rounds_of(coverage: base.coverage), last_recorded_at: "2026-09-29T15:00:03Z" }, pose: base.pose, stale: base.stale, failure: base.failure, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: BuildMeterIdle, stale: base.stale, failure: base.failure, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: base.pose, stale: true, failure: base.failure, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: base.pose, stale: base.stale, failure: Present { value: fx_digest(kind_refused: true, n: 3) }, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: base.pose, stale: base.stale, failure: Present { value: FailureDigest { kind: FailureRefused, primary_event: WorkflowFactKey { workflow_id: "node:k", obligation_id: "workspace" }, event_count: 2, stage: WorkspaceWorkflowSegment, target: FailureStageGroup { stage: WorkspaceWorkflowSegment, anchor: "/issue/node#work-node:k-workspace" } } }, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: base.pose, stale: base.stale, failure: base.failure, handoff: base.handoff, destination: "/issue/node#work-other" },
+    BuildMeterView { attempt_key: "another-attempt", attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: base.pose, stale: base.stale, failure: base.failure, handoff: base.handoff, destination: base.destination },
+    BuildMeterView { attempt_key: base.attempt_key, attempt_label: base.attempt_label, stage: base.stage, stage_state: base.stage_state, coverage: base.coverage, pose: base.pose, stale: base.stale, failure: base.failure, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, destination: base.destination },
+  ]
+  let revisions = map(variants, v => r(v))
+  b == r(base)
+    && count(revisions) == 9
+    && all(revisions, x => x != b)
+    && compact_work_revision(subject: "other-node", view: base) != b
+}
+
+// Rules and ownership.
+
+fn selector_names_class(selector: String, class_name: String) -> Bool {
+  has(s: selector, pattern: join([".", class_name], ""))
+}
+
+fn page_reaches_into_the_meter(rules: List<BuildRule>) -> Bool {
+  any(rules, r => selector_names_class(selector: rule_selector(rule: r), class_name: build_meter_class))
+}
+
+// The meter is a registered element, every one of its rules names its own class, and the issue
+// page's surface rules style nothing inside it. A page rule that reached in is reported.
+test fn the_build_meter_is_registered_and_the_issue_page_styles_none_of_it() -> Bool {
+  let reach = StaticRule { selector: RawSelector { text: ".issue-rail .el-build-meter-digest" }, decls: [decl(prop: Color, value: "inherit")] }
+  any(element_styles(), s => s.class_name == build_meter_class)
+    && all(build_meter_rules(), r => selector_names_class(selector: rule_selector(rule: r), class_name: build_meter_class))
+    && !page_reaches_into_the_meter(rules: roadmap_surface_rules())
+    && page_reaches_into_the_meter(rules: concat(roadmap_surface_rules(), [reach]))
+}
+
+// Every ambient cycle and transition of the meter is stilled under reduced motion by the shared
+// rule.
+test fn the_meters_motion_is_removed_under_reduced_motion() -> Bool {
+  let block = reduced_motion_block(rules: build_meter_rules())
+  has(s: block, pattern: "@media (prefers-reduced-motion: reduce)")
+    && has(s: block, pattern: join([".", build_meter_class, " .", build_meter_blink_class, " { animation: none }"], ""))
+    && has(s: block, pattern: "transition: none")
+}
+
+// THE WORKER IS THE ROBOT MARK. The mark's numbers derive its paths byte for byte as the frontend's
+// #stoic-robot symbol spells them (the copy below is that symbol's, the external referent), and
+// every pose of the meter's worker, solid or outlined, draws the robot variant from the same
+// numbers: square eyes three units wide, a ball-topped antenna above the body, a flat mouth, and
+// no round eye anywhere. A worker waiting for a seat and a published worker both sit and sleep
+// with both lid rows, leaving a flat line on the eyes' lowest row.
+fn worker_html(pose: BuildMeterPose, stale: Bool) -> String {
+  fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale))
+}
+
+fn draws_the_robot(h: String) -> Bool {
+  !has(s: h, pattern: "<circle")
+    && has(s: h, pattern: "x=\"9\" y=\"-1\" width=\"2\" height=\"1\"")
+    && has(s: h, pattern: "x=\"8\" y=\"-2\" width=\"4\" height=\"1\"")
+    && has(s: h, pattern: "x=\"7\" y=\"-4\" width=\"6\" height=\"2\"")
+    && has(s: h, pattern: "x=\"8\" y=\"-5\" width=\"4\" height=\"1\"")
+}
+
+fn draws_the_solid_robot(h: String) -> Bool {
+  draws_the_robot(h: h)
+    && has(s: h, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
+    && has(s: h, pattern: "x=\"13\" y=\"4\" width=\"3\" height=\"3\"")
+    && has(s: h, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\"")
+}
+
+test fn the_robot_mark_paths_are_the_symbols_spelling() -> Bool {
+  robot_mark_body_path == "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
+    && robot_mark_antenna_path == "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
+    && robot_mark_body_transform == "translate(-12 -12) scale(1.2)"
+}
+
+test fn the_working_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterWorking, stale: false)) }
+test fn the_stopped_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterStopped, stale: false)) }
+test fn the_idle_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterIdle, stale: false)) }
+
+test fn the_waiting_worker_is_the_robot_with_its_eyes_shut() -> Bool {
+  let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
+  draws_the_solid_robot(h: waiting)
+    && has(s: waiting, pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"4\" width=\"3\" height=\"1\"")
+    && has(s: waiting, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
+}
+
+test fn the_done_worker_stands_with_open_eyes() -> Bool {
+  let done = worker_html(pose: BuildMeterDone, stale: false)
+  draws_the_solid_robot(h: done)
+    && has(s: done, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"off\"")
+}
+
+test fn the_paused_worker_is_the_outlined_robot() -> Bool {
+  let outline = worker_html(pose: BuildMeterWorking, stale: true)
+  draws_the_robot(h: outline)
+    && has(s: outline, pattern: "x=\"4\" y=\"6\" width=\"3\" height=\"1\"")
+    && has(s: outline, pattern: "x=\"13\" y=\"6\" width=\"3\" height=\"1\"")
+}
+
+// ONE ORIGIN PER MARK, TYPED PREFERRED. Round 2 rose the changed-path count by three and recorded
+// two tool calls, and its dispatcher also recorded one typed write and one typed run: it draws the
+// typed marks alone (one write, one run, both typed), not the proxies beside them. Round 3 has no
+// typed record and keeps its proxies. The hover text says each mark's origin.
+test fn typed_operations_replace_the_proxies_for_their_round() -> Bool {
+  let rounds = RoundsObserved { rounds: [
+    fx_round(step: 1, tool_calls: none, files_changed: Present { value: 1 }),
+    fx_round(step: 2, tool_calls: Present { value: 2 }, files_changed: Present { value: 4 }),
+    fx_round(step: 3, tool_calls: Present { value: 1 }, files_changed: Present { value: 5 }),
+  ] }
+  let typed = [BuildMeterRoundOperations { step: 2, operations: [BuildMeterToolCount { tool: WriteFileTool, count: 1 }, BuildMeterToolCount { tool: RunCommandTool, count: 1 }, BuildMeterToolCount { tool: ReadFileTool, count: 0 }] }]
+  let view = build_meter_view_of(node_id: "node", attempt_key: "0cfc18886a3d3b10", segments: fx_agent_active(), rounds: rounds, provider: fx_running(), handoff: HandoffAwaitingWorker, stale: false, typed: typed)
+  let h = fx_html(view: view)
+  mark_words(view: view) == ["write1/changed-paths", "write1/typed+run1/typed", "run1/tool-calls+write1/changed-paths"]
+    && has(s: h, pattern: "<title>Round 2: write 1 (typed), run 1 (typed); tokens 1000 in, 300 out</title>")
+    && has(s: h, pattern: "<title>Round 3: 1 tool call (proxy: tool-call count), 1 more changed path (proxy: changed-path count rise); tokens 1000 in, 300 out</title>")
+}
+
+// THE TOOL SPECIMENS ARE THE PRODUCER'S OUTPUT. Both are built by build_meter_view_of from a ledger
+// and typed operations, so every mark is typed and of a tool the harness has (run, read, write,
+// edit): no reasoning, search or report mark is invented. The mixed run is skewed as authored,
+// running in more rounds than writing; the single-tool run is forty typed runs and nothing else.
+fn kinds_drawn(view: BuildMeterView) -> List<String> {
+  flat_map(build_meter_rounds_of(coverage: view.coverage), r => map(r.marks, m => join([build_meter_kind_key(kind: m.kind), "/", build_meter_evidence_key(evidence: m.evidence)], "")))
+}
+
+fn rounds_with(view: BuildMeterView, word: String) -> Int {
+  count(filter(build_meter_rounds_of(coverage: view.coverage), r => any(r.marks, m => join([build_meter_kind_key(kind: m.kind), "/", build_meter_evidence_key(evidence: m.evidence)], "") == word)))
+}
+
+test fn the_tool_specimens_are_typed_producer_output() -> Bool {
+  let mixed = specimen_tool_heavy_view()
+  let single = specimen_single_tool_view()
+  all(kinds_drawn(view: mixed), k => any(["run/typed", "read/typed", "write/typed", "edit/typed"], a => a == k))
+    && rounds_with(view: mixed, word: "run/typed") > rounds_with(view: mixed, word: "write/typed")
+    && rounds_with(view: mixed, word: "write/typed") > 0 && rounds_with(view: mixed, word: "edit/typed") > 0
+    && count(kinds_drawn(view: single)) == 40
+    && all(kinds_drawn(view: single), k => k == "run/typed")
+}
+
+// A FAILURE LINK SAYS HOW PRECISE IT IS. The producer's only arm today is the stage group (the
+// legacy projection's digest above is one), and its words open "the Environment stage failures",
+// never "the event". The element states the finer arms when a producer supplies them: a round
+// operation names its round and operation and draws its seal in that round's column, and an exact
+// event is the only arm whose words say "the event".
+test fn a_stage_group_failure_says_it_opens_the_stage_failures() -> Bool {
+  let legacy = fx_html(view: fx_legacy_view())
+  failure_words(view: fx_legacy_view()) == "refused node:0cfc18886a3d3b10 environment 5 stage-group - /issue/node#work-node:0cfc18886a3d3b10-environment"
+    && !has(s: legacy, pattern: "the event")
+}
+
+test fn a_round_operation_failure_names_its_round_and_seals_its_column() -> Bool {
+  let round = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1]), pose: BuildMeterStopped, failure: Present { value: fx_digest_at(kind_refused: false, n: 1, target: FailureRoundOperation { round: 18, kind: BuildMeterRun, anchor: "/issue/node#work-round-18" }) }, handoff: HandoffAwaitingWorker, stale: false))
+  has(s: round, pattern: ">Verification failed in round 18. One failure event.")
+    && has(s: round, pattern: "Attempt fixture-…: open the run in round 18.</span>")
+    && has(s: round, pattern: ">Verification failed in round 18 · 1 event; open the run in round 18</span>")
+    && has(s: round, pattern: "data-edge=\"seal\"")
+}
+
+test fn only_an_exact_event_says_it_opens_the_event() -> Bool {
+  let exact = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest_at(kind_refused: true, n: 2, target: FailureExactEvent { event_id: "e1", anchor: "/issue/node#work-e1" }) }, handoff: HandoffAwaitingWorker, stale: false))
+  has(s: exact, pattern: "Attempt fixture-…: open the event.</span>")
+    && has(s: exact, pattern: "href=\"/issue/node#work-e1\"")
+}
+
+// THE NAP IS WAITING'S, AND THE FACE FOLLOWS THE OUTCOME. Only a worker waiting for a serving seat
+// naps: it sits on the floor with the one z drawing, and draws no finish rule. A working, stopped,
+// idle or published worker, and a paused (stale) one in any pose, does not nap. The z cycle is one
+// the shared reduced-motion rule stills, which leaves both glyphs showing.
+fn quiet_view(pose: BuildMeterPose, stale: Bool) -> BuildMeterView {
+  fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale)
+}
+
+test fn the_waiting_worker_naps_on_the_floor() -> Bool {
+  let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
+  occurrences(s: waiting, pattern: "<g class=\"el-build-meter-z\"") == 2
+    && !has(s: waiting, pattern: "data-paint=\"finish\"")
+    && !has(s: waiting, pattern: "data-prop=")
+}
+
+test fn the_published_worker_does_not_nap() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  !has(s: published, pattern: "el-build-meter-z") && has(s: published, pattern: "data-paint=\"finish\"")
+}
+
+test fn an_awake_or_paused_worker_does_not_nap() -> Bool {
+  let drawn_quiet = [worker_html(pose: BuildMeterWorking, stale: false), worker_html(pose: BuildMeterWaitingForSeat, stale: true)]
+  let decided_quiet = concat(map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle, BuildMeterDone], p => quiet_view(pose: p, stale: false)), [quiet_view(pose: BuildMeterWaitingForSeat, stale: true)])
+  all(drawn_quiet, h => !has(s: h, pattern: "el-build-meter-z"))
+    && all(decided_quiet, v => !build_meter_naps(view: v))
+    && build_meter_naps(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false))
+}
+
+test fn the_nap_is_stilled_under_reduced_motion() -> Bool {
+  has(s: reduced_motion_block(rules: build_meter_rules()), pattern: ".el-build-meter .el-build-meter-z { animation: none }")
+}
+
+// A PUBLISHED WORKER IS CONTENT AND A FAILED ONE SAD. Published: eyes closed in two arcs, a smile
+// bent up at its ends, the antenna ball green, on its feet beside the finish rule.
+// Failed verification: square eyes under drooped lids, a frown bent down, the antenna ball red. A run that stopped at its
+// step budget did not fail, so its worker stays deadpan, as does a working one.
+test fn the_face_follows_the_outcome() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  let failed = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
+  let working = worker_html(pose: BuildMeterWorking, stale: false)
+  has(s: published, pattern: "<g data-paint=\"feature\"><rect x=\"5\" y=\"4\" width=\"1\" height=\"1\"></rect><rect x=\"4\" y=\"5\" width=\"1\" height=\"1\"></rect><rect x=\"6\" y=\"5\" width=\"1\" height=\"1\"></rect>")
+    && has(s: published, pattern: "<rect x=\"8\" y=\"6\" width=\"1\" height=\"1\"></rect><rect x=\"9\" y=\"7\" width=\"2\" height=\"1\"></rect><rect x=\"11\" y=\"6\" width=\"1\" height=\"1\"></rect>")
+    && has(s: published, pattern: "<g data-paint=\"success\"><rect x=\"8\" y=\"-2\" width=\"4\" height=\"1\">")
+    && !has(s: published, pattern: "el-build-meter-z") && !has(s: published, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
+    && has(s: failed, pattern: "<rect x=\"8\" y=\"8\" width=\"1\" height=\"1\"></rect><rect x=\"9\" y=\"7\" width=\"2\" height=\"1\"></rect><rect x=\"11\" y=\"8\" width=\"1\" height=\"1\"></rect>")
+    && has(s: failed, pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"")
+    && has(s: working, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\"") && !has(s: working, pattern: "<g data-paint=\"success\"><rect x=\"8\" y=\"-2\"") && has(s: failed, pattern: "<g data-paint=\"stop\"><rect x=\"8\" y=\"-2\" width=\"4\" height=\"1\">")
+}
+
+// A DRAWING STATES WHAT A CHANGE NEEDS, from the match that draws it: its scene, when a client
+// draws a new one, how the worker rests and where it stands. A stopped or published attempt is
+// drawn at once and any other scene waits out the dwell; a stale attempt is paused, outlined and
+// waits. The worker's stated place is the figure's own.
+fn drawing_says(h: String, attribute: String, value: String) -> Bool {
+  has(s: h, pattern: join([attribute, "=\"", value, "\""], ""))
+}
+
+fn drawing_value(h: String, attribute: String) -> String {
+  match split(s: after(s: h, pattern: join([attribute, "=\""], "")), delimiter: "\"").first() { Present { value: v } => v  Absent => "" }
+}
+
+fn drawing_states(h: String, scene: String, settle: String, stance: String) -> Bool {
+  let x = drawing_value(h: h, attribute: build_meter_worker_x_attribute)
+  drawing_says(h: h, attribute: build_meter_scene_attribute, value: scene)
+    && drawing_says(h: h, attribute: build_meter_settle_attribute, value: settle)
+    && drawing_says(h: h, attribute: build_meter_stance_attribute, value: stance)
+    && x != ""
+    && has(s: h, pattern: join(["<g class=\"", build_meter_figure_class, "\" transform=\"translate(", x, " "], ""))
+}
+
+test fn a_drawing_states_its_scene_and_when_it_is_drawn() -> Bool {
+  drawing_states(h: worker_html(pose: BuildMeterWorking, stale: false), scene: "working", settle: "after-dwell", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterIdle, stale: false), scene: "idle", settle: "after-dwell", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterWaitingForSeat, stale: false), scene: "waiting", settle: "after-dwell", stance: "sitting")
+    && drawing_states(h: worker_html(pose: BuildMeterStopped, stale: false), scene: "stopped", settle: "at-once", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterDone, stale: false), scene: "done", settle: "at-once", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterDone, stale: true), scene: "paused", settle: "after-dwell", stance: "outline")
+}
+
+// A CHANGE OF SCENE IS UNDER A SECOND AND LEAVES NOTHING OF THE LEAVING DRAWING. Every row ends
+// within the change. For any change, each part of the leaving drawing has a row that removes it
+// (strip, z's, finish rule, marks and worker) and each part of the arriving drawing a row
+// that brings it in; every narrower row for either worker still removes the leaving one and brings
+// in the arriving one. A table without the leaving worker's exit is refused.
+fn motion_removes(m: BuildMeterMotion) -> Bool {
+  match m {
+    BuildMeterHide => true
+    BuildMeterFadeOut => true
+    BuildMeterVanish => true
+    BuildMeterKeep => false
+    BuildMeterFadeIn => false
+    BuildMeterAppear => false
+    BuildMeterWalkOut => false
+    BuildMeterWalkIn => false
+    BuildMeterBob => false
+    BuildMeterWipeUp => false
+    BuildMeterWipeRight => false
+  }
+}
+
+fn motion_enters(m: BuildMeterMotion) -> Bool {
+  match m {
+    BuildMeterFadeIn => true
+    BuildMeterAppear => true
+    BuildMeterWipeUp => true
+    BuildMeterWipeRight => true
+    BuildMeterHide => false
+    BuildMeterKeep => false
+    BuildMeterFadeOut => false
+    BuildMeterVanish => false
+    BuildMeterWalkOut => false
+    BuildMeterWalkIn => false
+    BuildMeterBob => false
+  }
+}
+
+fn change_is_any(change: BuildMeterChange) -> Bool {
+  match change {
+    BuildMeterAnyChange => true
+    BuildMeterFromSitting => false
+    BuildMeterRising => false
+    BuildMeterCrossfade => false
+  }
+}
+
+fn cue_on(c: BuildMeterCue, side: BuildMeterSide, part: BuildMeterPart) -> Bool {
+  build_meter_side_key(side: c.side) == build_meter_side_key(side: side) && build_meter_part_class(part: c.part) == build_meter_part_class(part: part)
+}
+
+fn leaving_parts_leave(cues: List<BuildMeterCue>) -> Bool {
+  all([BuildMeterStripPart, BuildMeterSnoozePart, BuildMeterFinishPart, BuildMeterEdgePart, BuildMeterFigurePart], p =>
+    any(cues, c => change_is_any(change: c.change) && cue_on(c: c, side: BuildMeterLeaving, part: p) && motion_removes(m: c.motion)))
+    && all(filter(cues, c => cue_on(c: c, side: BuildMeterLeaving, part: BuildMeterFigurePart)), c => motion_removes(m: c.motion))
+}
+
+fn arriving_parts_arrive(cues: List<BuildMeterCue>) -> Bool {
+  all([BuildMeterFinishPart, BuildMeterEdgePart, BuildMeterFaultPart, BuildMeterFigurePart, BuildMeterSnoozePart], p =>
+    any(cues, c => change_is_any(change: c.change) && cue_on(c: c, side: BuildMeterArriving, part: p) && motion_enters(m: c.motion)))
+    && all(filter(cues, c => cue_on(c: c, side: BuildMeterArriving, part: BuildMeterFigurePart)), c => motion_enters(m: c.motion))
+}
+
+test fn a_change_of_scene_is_under_a_second_and_leaves_nothing_behind() -> Bool {
+  build_meter_change_ms < 1000
+    && all(build_meter_cues, c => c.start_ms + c.duration_ms <= build_meter_change_ms)
+    && leaving_parts_leave(cues: build_meter_cues)
+    && arriving_parts_arrive(cues: build_meter_cues)
+    && !leaving_parts_leave(cues: filter(build_meter_cues, c => !(change_is_any(change: c.change) && cue_on(c: c, side: BuildMeterLeaving, part: BuildMeterFigurePart))))
+}
+
+// THE CHOREOGRAPHY RUNS ONLY WHILE THE CANVAS CHANGES. Every cue's selector starts at the canvas
+// with the changing class, so a drawing at rest never moves; the walk reads the client's distance
+// and steps; getting up matches both stances; a paused worker on either side matches either arm;
+// and the shared reduced-motion rule stills every cue.
+test fn the_choreography_runs_only_while_the_canvas_changes() -> Bool {
+  let css = serialize_rules(rules: build_meter_rules())
+  let still = reduced_motion_block(rules: build_meter_rules())
+  let canvas = ".el-build-meter-canvas.el-build-meter-changing"
+  has(s: css, pattern: "@keyframes meter-walk-out { 0% { transform: translate(0, 0) } 100% { transform: translate(var(--meter-walk), 0) } }")
+    && has(s: css, pattern: join([canvas, "[data-meter-from=\"sitting\"][data-meter-to=\"standing\"] .el-build-meter-art[data-meter-side=\"arriving\"] .el-build-meter-gait { animation: meter-walk-in 320ms steps(var(--meter-walk-steps), jump-end) 1 both }"], ""))
+    && has(s: css, pattern: join([canvas, "[data-meter-from=\"outline\"] .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-figure, ", canvas, "[data-meter-to=\"outline\"] .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-figure { animation: meter-fade-out 560ms"], ""))
+    && has(s: css, pattern: join([canvas, " .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-figure { animation-delay: 560ms }"], ""))
+    && has(s: still, pattern: join([canvas, " .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-gait { animation: none }"], ""))
+}
+
+// THE METER SETTLES ON A SCENE BEFORE IT DRAWS IT. Its client takes a newer rendering by one event
+// and every fact at once; it redraws the scene already drawn at once; it holds a new scene for the
+// dwell from when that scene was first seen, or not at all when the drawing settles at once; a
+// rendering that arrives during a change waits for it; the change lasts exactly the rows' length;
+// and under reduced motion the drawing is replaced without the change.
+fn before(s: String, pattern: String) -> String {
+  match split(s: s, delimiter: pattern).first() { Present { value: head } => head  Absent => "" }
+}
+
+test fn the_meter_holds_a_new_scene_for_the_dwell() -> Bool {
+  let js = serialize_ts_stmts_indented(stmts: build_meter_bind_statements(), indent: "")
+  let change = before(s: after(s: js, pattern: "const change = "), pattern: "changing = true")
+  has(s: js, pattern: join(["meter.addEventListener('", build_meter_fresh_event, "', (event) =>"], ""))
+    && has(s: js, pattern: "body.setAttribute(name, freshBody.getAttribute(name))")
+    && has(s: js, pattern: "meter.setAttribute('href', fresh.getAttribute('href'))")
+    && has(s: js, pattern: "art.getAttribute('data-meter-scene') === drawn.getAttribute('data-meter-scene')")
+    && has(s: js, pattern: "held.getAttribute('data-meter-scene') !== art.getAttribute('data-meter-scene')")
+    && has(s: js, pattern: join(["art.getAttribute('data-meter-settle') === 'at-once' ? 0 : Math.max(0, heldSince + ", to_string(build_meter_dwell_ms), " - Date.now())"], ""))
+    && has(s: js, pattern: "queued = art")
+    && has(s: js, pattern: join(["}, ", to_string(build_meter_change_ms), ")"], ""))
+    && has(s: change, pattern: "window.matchMedia('(prefers-reduced-motion: reduce)').matches")
+    && has(s: change, pattern: "canvas.replaceChild(art, drawn)")
+}

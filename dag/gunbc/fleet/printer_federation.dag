@@ -1,0 +1,39 @@
+module gunbc.fleet.printer_federation
+
+import gunbc.fleet_intent_network {operator_host_srv1}
+import std.types { String, NonEmptyStr, List, Map }
+import std.optional { Present }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+
+data printer_environment: NonEmptyStr = "printer-lan"
+data printer_wif_pool_id: NonEmptyStr = "github-printer-lan"
+data printer_wif_provider_id: NonEmptyStr = "github-printer-lan-oidc"
+data printer_service_account: ServiceAccountEmail = "printer-lan@gunbai-secrets.iam.gserviceaccount.com"
+data printer_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+fn printer_claim_pins() -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: printer_environment)
+}
+fn printer_attribute_condition() -> String {
+  claim_pins_attribute_condition(pins: printer_claim_pins())
+}
+fn printer_principal_set() -> String {
+  join(["principalSet://iam.googleapis.com/", wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: printer_wif_pool_id as String), "/*"], "")
+}
+fn printer_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: WifProvider {
+    name: printer_wif_provider_id, pool: printer_wif_pool_id,
+    issuer_uri: github_wif_issuer_uri,
+    attribute_mapping: Present { value: printer_attribute_mapping },
+    attribute_condition: Present { value: printer_attribute_condition() },
+  })
+}
+
+// Placement of the printer LAN worker, independent of approval-broker placement.
+fn printer_lan_host_identity() -> NonEmptyStr {operator_host_srv1 as NonEmptyStr}

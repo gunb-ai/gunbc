@@ -1,0 +1,278 @@
+module gunbc.frontend_eval.task
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, json_kv, json_string, json_int, json_array, json_object, serialize_json,
+}
+
+// DEMO 0 OF THE .DAG FRONTEND EVAL: A MEASURED LOOP, NOT A TUNE. The question the roster answers is
+// whether an agent can take an accepted std module that one controlled mutation has made the real
+// frontend refuse, and return it to accepted with a bounded patch -- and at what reasoning cost.
+// Every row is a mutation of accepted source, so the reference repair is the unmutated text and the
+// acceptance oracle is the entry's own executing test fns; the roster carries neither answers nor
+// the refusal text, because both are re-derived by running the compiler on the mutated workspace.
+//
+// FOUR STABLE FRONTEND CLASSES AND ONE SENTINEL, scored apart. The four classes are properties of
+// the language: expression nesting, labeled-position shape, coproduct identity, match coverage. The
+// sentinel (a name misspelled into another module's declaration) is a property of repository
+// topology: it tests whether the agent consults the workspace for who declares a name rather than
+// recalling it, so its score is evidence about tool routing and never about whether language facts
+// belong in weights. The sentinel was first authored as a dropped import member and the control run
+// PASSED all four: this frontend resolves a name whether or not its module imported it, so that
+// mutation has no authorable RED (DESIGN section 4b) and was replaced rather than kept as a
+// decoration -- which is why the class is named for what its live specimens are, not for imports.
+//
+// SCOPE OF THE NESTING CLASS, stated so the table is not over-read: its four specimens are
+// delimiter and `else` structure at parse level. They do not exercise a valid-but-subtle
+// composition such as a `d == Failed && match ...` arm, which is the idiom the operator's trace
+// litigated; a contrast set whose answer turns on composition or precedence is a separate roster
+// and a precondition for concluding anything about a language-prior tune from these rows.
+type FrontendMutationClass
+  = ExpressionNesting
+  | LabeledPositionShape
+  | CoproductIdentity
+  | MatchArmCoverage
+  | CrossModuleNameSentinel
+
+fn mutation_class_scored_separately(class: FrontendMutationClass) -> Bool {
+  match class {
+    ExpressionNesting => false
+    LabeledPositionShape => false
+    CoproductIdentity => false
+    MatchArmCoverage => false
+    CrossModuleNameSentinel => true
+  }
+}
+
+fn mutation_class_key(class: FrontendMutationClass) -> String {
+  match class {
+    ExpressionNesting => "expression_nesting"
+    LabeledPositionShape => "labeled_position_shape"
+    CoproductIdentity => "coproduct_identity"
+    MatchArmCoverage => "match_arm_coverage"
+    CrossModuleNameSentinel => "cross_module_name_sentinel"
+  }
+}
+
+// THE STAGE THE REFUSAL IS EXPECTED FROM. A nesting mutation is refused by the parser; every other
+// class parses and is refused by resolution. Recording the stage keeps a task honest about which
+// wall it exercises, and lets the control run refuse a specimen that fails at the wrong stage.
+type EvalFrontendStage = RefusedAtParse | RefusedAtResolve
+
+fn frontend_stage_key(stage: EvalFrontendStage) -> String {
+  match stage {
+    RefusedAtParse => "parse"
+    RefusedAtResolve => "resolve"
+  }
+}
+
+// A TEXT MUTATION NAMES ITS SITE BY CONTENT, NOT POSITION (DESIGN section 3: cite the symbol). The
+// `old` text must occur exactly once in the subject module's source; a realization applying it
+// refuses on zero or several occurrences rather than picking one, the same rule the harness's edit
+// tool carries. `new` is what the mutated workspace holds; the reference repair is `old`.
+type TextMutation {
+  old: String
+  new: String
+}
+
+type EvalTask {
+  id: NonEmptyStr
+  class: FrontendMutationClass
+  subject: DeclarationRef
+  subject_path: String
+  entry_path: String
+  mutation: TextMutation
+  expected_stage: EvalFrontendStage
+  expected_lexeme: String
+}
+
+data pareto_path: String = "dag/std/pareto.dag"
+data pareto_entry: String = "dag/test/claim/pareto_selection_witness_test.dag"
+data frame_boundary_path: String = "dag/std/frame_boundary.dag"
+data frame_boundary_entry: String = "dag/test/claim/frame_boundary_witness_test.dag"
+data evaluation_budget_path: String = "dag/std/evaluation_budget.dag"
+data evaluation_budget_entry: String = "dag/test/claim/evaluation_budget_witness_test.dag"
+data goal_assessment_path: String = "dag/std/goal_assessment.dag"
+data goal_assessment_entry: String = "dag/test/claim/goal_assessment_witness_test.dag"
+
+data frontend_eval_tasks: List<EvalTask> = [
+  EvalTask {
+    id: "pareto.nesting" as NonEmptyStr, class: ExpressionNesting,
+    subject: decl_ref(module_path: "std.pareto", decl_name: "oriented_ordering"),
+    subject_path: pareto_path, entry_path: pareto_entry,
+    mutation: TextMutation { old: "      Less => Greater\n    }\n  }\n}", new: "      Less => Greater\n  }\n}" },
+    expected_stage: RefusedAtParse, expected_lexeme: "",
+  },
+  EvalTask {
+    id: "pareto.labeled" as NonEmptyStr, class: LabeledPositionShape,
+    subject: decl_ref(module_path: "std.pareto", decl_name: "tally_verdict"),
+    subject_path: pareto_path, entry_path: pareto_entry,
+    mutation: TextMutation { old: "saw_better: true, saw_worse: acc.saw_worse", new: "saw_better: true, saw_worst: acc.saw_worse" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "saw_worst",
+  },
+  EvalTask {
+    id: "pareto.coproduct" as NonEmptyStr, class: CoproductIdentity,
+    subject: decl_ref(module_path: "std.pareto", decl_name: "oriented_ordering"),
+    subject_path: pareto_path, entry_path: pareto_entry,
+    mutation: TextMutation { old: "      Equal => Equal\n", new: "      Equals => Equal\n" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "Equals",
+  },
+  EvalTask {
+    id: "pareto.arm" as NonEmptyStr, class: MatchArmCoverage,
+    subject: decl_ref(module_path: "std.pareto", decl_name: "oriented_ordering"),
+    subject_path: pareto_path, entry_path: pareto_entry,
+    mutation: TextMutation { old: "      Equal => Equal\n      Less => Greater", new: "      Less => Greater" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "Equal",
+  },
+  EvalTask {
+    id: "pareto.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
+    subject: decl_ref(module_path: "std.pareto", decl_name: "intervals_are_equal_points"),
+    subject_path: pareto_path, entry_path: pareto_entry,
+    mutation: TextMutation { old: "interval_low(interval: a) == interval_high(interval: a)\n", new: "interval_lower(interval: a) == interval_high(interval: a)\n" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "interval_lower",
+  },
+  EvalTask {
+    id: "frame_boundary.nesting" as NonEmptyStr, class: ExpressionNesting,
+    subject: decl_ref(module_path: "std.frame_boundary", decl_name: "tree_coverage"),
+    subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
+    mutation: TextMutation { old: "        } else {\n          Uncovered\n        }", new: "        }\n          Uncovered\n" },
+    expected_stage: RefusedAtParse, expected_lexeme: "",
+  },
+  EvalTask {
+    id: "frame_boundary.labeled" as NonEmptyStr, class: LabeledPositionShape,
+    subject: decl_ref(module_path: "std.frame_boundary", decl_name: "boundary_admits"),
+    subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
+    mutation: TextMutation { old: "boundary_admit_tree(acc: acc, tree: tree, provided: provided)", new: "boundary_admit_tree(acc: acc, tree: tree, closures: provided)" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "closures",
+  },
+  EvalTask {
+    id: "frame_boundary.coproduct" as NonEmptyStr, class: CoproductIdentity,
+    subject: decl_ref(module_path: "std.frame_boundary", decl_name: "boundary_admit_tree"),
+    subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
+    mutation: TextMutation { old: "        Covered { grade: gc } =>", new: "        Covered { level: gc } =>" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "level",
+  },
+  EvalTask {
+    id: "frame_boundary.arm" as NonEmptyStr, class: MatchArmCoverage,
+    subject: decl_ref(module_path: "std.frame_boundary", decl_name: "boundary_grade_meet"),
+    subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
+    mutation: TextMutation { old: "    LifecycleByConvention => LifecycleByConvention\n", new: "" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "LifecycleByConvention",
+  },
+  EvalTask {
+    id: "frame_boundary.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
+    subject: decl_ref(module_path: "std.frame_boundary", decl_name: "tree_coverage"),
+    subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
+    mutation: TextMutation { old: "namespace_tree_eq(a: c.tree, b: tree)", new: "namespace_tree_equal(a: c.tree, b: tree)" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "namespace_tree_equal",
+  },
+  EvalTask {
+    id: "evaluation_budget.nesting" as NonEmptyStr, class: ExpressionNesting,
+    subject: decl_ref(module_path: "std.evaluation_budget", decl_name: "evaluation_budget_assess"),
+    subject_path: evaluation_budget_path, entry_path: evaluation_budget_entry,
+    mutation: TextMutation { old: "        }\n      } else {\n        EvaluationWithinBudget {", new: "        }\n      } else\n        EvaluationWithinBudget {" },
+    expected_stage: RefusedAtParse, expected_lexeme: "",
+  },
+  EvalTask {
+    id: "evaluation_budget.labeled" as NonEmptyStr, class: LabeledPositionShape,
+    subject: decl_ref(module_path: "std.evaluation_budget", decl_name: "evaluation_budget_assess"),
+    subject_path: evaluation_budget_path, entry_path: evaluation_budget_entry,
+    mutation: TextMutation { old: "NoFloorOnClock { contract: policy.contract, clock: observation.clock }", new: "NoFloorOnClock { contract: policy.contract, clock_kind: observation.clock }" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "clock_kind",
+  },
+  EvalTask {
+    id: "evaluation_budget.coproduct" as NonEmptyStr, class: CoproductIdentity,
+    subject: decl_ref(module_path: "std.evaluation_budget", decl_name: "evaluation_clock_key"),
+    subject_path: evaluation_budget_path, entry_path: evaluation_budget_entry,
+    mutation: TextMutation { old: "    ThreadCpu => \"thread_cpu\" as NonEmptyStr", new: "    ThreadCPU => \"thread_cpu\" as NonEmptyStr" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "ThreadCPU",
+  },
+  EvalTask {
+    id: "evaluation_budget.arm" as NonEmptyStr, class: MatchArmCoverage,
+    subject: decl_ref(module_path: "std.evaluation_budget", decl_name: "evaluation_policy_limit_for_clock"),
+    subject_path: evaluation_budget_path, entry_path: evaluation_budget_entry,
+    mutation: TextMutation { old: "    MonotonicWall => policy.wall_limit\n", new: "" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "MonotonicWall",
+  },
+  EvalTask {
+    id: "evaluation_budget.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
+    subject: decl_ref(module_path: "std.evaluation_budget", decl_name: "evaluation_limit_nanos"),
+    subject_path: evaluation_budget_path, entry_path: evaluation_budget_entry,
+    mutation: TextMutation { old: "positive_millisecond_count(m: limit)", new: "positive_milliseconds(m: limit)" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "positive_milliseconds",
+  },
+  EvalTask {
+    id: "goal_assessment.nesting" as NonEmptyStr, class: ExpressionNesting,
+    subject: decl_ref(module_path: "std.goal_assessment", decl_name: "assess_by_deviations"),
+    subject_path: goal_assessment_path, entry_path: goal_assessment_entry,
+    mutation: TextMutation { old: "      deviations: FreeSemigroup { head: first, tail: rest },\n    }\n  }\n}", new: "      deviations: FreeSemigroup { head: first, tail: rest },\n  }\n}" },
+    expected_stage: RefusedAtParse, expected_lexeme: "",
+  },
+  EvalTask {
+    id: "goal_assessment.labeled" as NonEmptyStr, class: LabeledPositionShape,
+    subject: decl_ref(module_path: "std.goal_assessment", decl_name: "assess_by_deviations_and_unknowns"),
+    subject_path: goal_assessment_path, entry_path: goal_assessment_entry,
+    mutation: TextMutation { old: "assess_by_deviations(evidence: evidence, deviations: deviations)", new: "assess_by_deviations(evidence: evidence, deviation_list: deviations)" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "deviation_list",
+  },
+  EvalTask {
+    id: "goal_assessment.coproduct" as NonEmptyStr, class: CoproductIdentity,
+    subject: decl_ref(module_path: "std.goal_assessment", decl_name: "inspect_goal"),
+    subject_path: goal_assessment_path, entry_path: goal_assessment_entry,
+    mutation: TextMutation { old: "    ObservationRefused { cause: cause } => GoalObservationRefused {", new: "    ObservationDeclined { cause: cause } => GoalObservationRefused {" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "ObservationDeclined",
+  },
+  EvalTask {
+    id: "goal_assessment.arm" as NonEmptyStr, class: MatchArmCoverage,
+    subject: decl_ref(module_path: "std.goal_assessment", decl_name: "assess_by_deviations"),
+    subject_path: goal_assessment_path, entry_path: goal_assessment_entry,
+    mutation: TextMutation { old: "    Empty => GoalSatisfied { evidence: evidence }\n", new: "" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "Empty",
+  },
+  EvalTask {
+    id: "goal_assessment.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
+    subject: decl_ref(module_path: "std.goal_assessment", decl_name: "assess_by_deviations"),
+    subject_path: goal_assessment_path, entry_path: goal_assessment_entry,
+    mutation: TextMutation { old: "    Cons { head: first, tail: rest } => GoalDiverged {\n      deviations: FreeSemigroup {", new: "    Cons { head: first, tail: rest } => GoalDiverged {\n      deviations: FreeSemigroupOf {" },
+    expected_stage: RefusedAtResolve, expected_lexeme: "FreeSemigroupOf",
+  },
+]
+
+// TWO PROJECTIONS, BECAUSE THE DRIVER IS ALSO THE BOUNDARY THAT DECIDES WHAT THE MODEL SEES. The
+// model-visible task names the subject and the entry and nothing else; the judge specification
+// carries the reference repair (`old`), the mutation, the expected stage and lexeme, and is read
+// only by the judge and the control. One projection carrying both would leave nothing to establish
+// that the answer stayed on the judge's side of the boundary.
+fn model_task_json(task: EvalTask) -> JsonValue {
+  json_object([
+    json_kv(key: "id", value: json_string(s: task.id as String)),
+    json_kv(key: "class", value: json_string(s: mutation_class_key(class: task.class))),
+    json_kv(key: "subject_module", value: json_string(s: task.subject.module_path as String)),
+    json_kv(key: "subject_decl", value: json_string(s: task.subject.decl_name as String)),
+    json_kv(key: "subject_path", value: json_string(s: task.subject_path)),
+    json_kv(key: "entry_path", value: json_string(s: task.entry_path)),
+  ])
+}
+
+fn judge_spec_json(task: EvalTask) -> JsonValue {
+  json_object([
+    json_kv(key: "id", value: json_string(s: task.id as String)),
+    json_kv(key: "old", value: json_string(s: task.mutation.old)),
+    json_kv(key: "new", value: json_string(s: task.mutation.new)),
+    json_kv(key: "expected_stage", value: json_string(s: frontend_stage_key(stage: task.expected_stage))),
+    json_kv(key: "expected_lexeme", value: json_string(s: task.expected_lexeme)),
+  ])
+}
+
+fn frontend_eval_model_tasks_json() -> String {
+  serialize_json(v: json_array(elements: frontend_eval_tasks |> map(t => model_task_json(task: t))))
+}
+
+fn frontend_eval_judge_spec_json() -> String {
+  serialize_json(v: json_array(elements: frontend_eval_tasks |> map(t => judge_spec_json(task: t))))
+}
+
+fn frontend_eval_task_count() -> Int {
+  count(frontend_eval_tasks)
+}

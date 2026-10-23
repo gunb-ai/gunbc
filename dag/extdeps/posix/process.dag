@@ -1,0 +1,104 @@
+module extdeps.posix.process
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/posix_spawn.html"
+  }
+}
+
+// Reap's authority: wait and waitpid share one POSIX page -- pid-specific nonblocking reaping
+// (WNOHANG), exit-status decomposition (WIFEXITED / WIFSIGNALED), and ECHILD for a pid that is
+// not a child of the caller. StartDetached and Reap are ONE lifecycle, but the two halves have
+// different POSIX pages, so the scope cites both.
+data extdeps_external_authority_anchor_wait: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.process",
+      decl_name: "posix.Process",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps_external_authority_anchor_wait]
+}
+
+// PROCESS LIFECYCLE, typed at the spawn boundary. `tools.emit_host_transport` (the node-http
+// serve smoke) ran a server through a retained_foreign bash heredoc whose `&` / `$!` / `trap`
+// plumbing was the LAST untyped process lifecycle in the gunbc substrate; this service replaces
+// that plumbing with modeled operations whose upstream is the POSIX spawn family:
+//
+//   StartDetached  -- posix_spawn(3) with POSIX_SPAWN_SETPGROUP (pgid 0) and stdio file actions;
+//                     the child is its own process group and is NOT waited: the caller holds a
+//                     pid, the same fact `&` / `$!` carried in shell, now a typed value.
+//   Reap           -- waitpid(3) (pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html)
+//                     in its WNOHANG form, answerable only about a process the caller started.
+//   TerminateProcess lives in extdeps.posix.signal (kill(2) SIGTERM) and is the third arm of the
+//   lifecycle; liveness between start and kill is observed with http.Client.Probe, not with a
+//   second spawn-family call, because the smoke's readiness question is an application question.
+//
+// The child is detached into its own process group ON PURPOSE, for the same reason the heredoc's
+// trap could kill exactly one pid: a wall-deadline group-kill aimed at a later transport call
+// must never take the server down with it, and a kill must be able to name one process. A
+// detached child that outlives this process is reparented to init; every caller here starts,
+// probes, and reaps within one execution, so nothing is left behind by these operations.
+//
+// Refusals: StartDetached answers SpawnRefused as a VALUE (missing binary, permissions -- the
+// spawn refused, so there is no pid and no exit status to report); Reap answers ReapRefused as a
+// VALUE when the pid was never a child of this process (waitpid's ECHILD) or was already reaped
+// -- the caller asked about a pid it does not own, and "still running" would be a fabricated
+// plausible answer. Death by SIGNAL is reported as Signaled { signal }, distinct from Exited
+// { code }: SIGTERM is not an exit 143.
+//
+// TRANSPORT-LESS BY CONTRACT, not by omission: no argv can spawn a process that survives its own
+// transport call while the calling process holds the pid -- that edge is exactly what the retired
+// heredoc carried in `&` / `$!`, and it has no host-shell realization. The seed's native handler
+// realizes StartDetached the way it realizes shell.Env.Get: this model is the authority (POSIX
+// spawn with POSIX_SPAWN_SETPGROUP and stdio file actions), the seed only realizes it. Hermetic
+// floors refuse both operations (no mock_response: nothing started, nothing replayed).
+
+type ProcessSpawnOutcome
+  = Spawned { pid: Int }
+  | SpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }
+
+// The closed lifecycle of one waitpid observation (POSIX waitpid(2) / wait(2)): WNOHANG returning
+// 0 is StillRunning; WIFEXITED is Exited with the raw exit code; WIFSIGNALED is Signaled with the
+// fatal signal number — a killed child is NOT an exit, and folding 15 into 143 would make SIGTERM
+// indistinguishable from a normal exit 143; ECHILD (or any waitpid error) is ReapRefused, a typed
+// answer, not a fabricated "still running".
+type ProcessReapOutcome
+  = StillRunning
+  | Exited { code: Int }
+  | Signaled { signal: Int }
+  | ReapRefused { cause: NonEmptyStr }
+
+service posix.Process {
+  operation StartDetached {
+    requires opaque
+    input {
+      program: NonEmptyStr
+      arguments: List<String>
+      stdout_file: NonEmptyStr
+      stderr_file: NonEmptyStr
+    }
+    output { spawn: ProcessSpawnOutcome }
+  }
+
+  operation Reap {
+    requires none
+    input { pid: Int }
+    output { reaped: ProcessReapOutcome }
+  }
+}

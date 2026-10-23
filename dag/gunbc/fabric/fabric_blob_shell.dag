@@ -1,0 +1,353 @@
+module gunbc.fabric.fabric_blob_shell
+
+import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.node { Node }
+import std.optional { Present, Absent }
+import v2.std.diagnostic { Outcome }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_pipe,
+  bash_build_assign, bash_build_command_with_words, bash_build_command_from_lits,
+  bash_build_if, bash_build_test_bracket, bash_build_stmt_list_from_nodes,
+  bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
+}
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloudflare.r2 { R2S3Endpoint, r2_s3_endpoint_host, r2_s3_endpoint_url, r2_s3_sigv4_region }
+import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, ReportStatus }
+import extdeps.object_storage { PutIfAbsent }
+import extdeps.exec.command { argv_words }
+import std.types { FilePath }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
+  R2OriginAllocated, R2OriginUnallocated,
+  OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
+  FabricCacheBlobs, bucket_purpose_origin_standing,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_object_bound }
+import std.measure { measure_count, second_count }
+import gunbc.ci_spec { gunbc_ci_sm_max_time }
+
+// THE FABRIC BLOB PLANE FOR A RUN THAT HAS NOT BUILT gunbc YET. std.fabric_blob's two operations --
+// an exact-key GET into a directory this script minted, and a create-only PUT -- rendered as workflow
+// shell through the bash grammar fold, because the job that needs a cached gunbc is the job that has
+// none. It realizes the same plans gunbc.fabric.fabric_blob_r2 realizes in process and respells none
+// of their facts: the object key is gunbc.fabric.fabric_blob_placement's prefix over the address hex;
+// the bucket, endpoint and credential come from gunbc.cloudflare.r2_origin's FabricCacheBlobs standing;
+// the curl invocations are extdeps.tools.curl's SigV4 builders, rendered word for word; the verdict
+// partition is gunbc.cloudflare.r2_staged_transfer's (2xx stored, 412 occupied, other 4xx refused,
+// 5xx or no status unknown; 200 staged, 404 absent, anything else refused).
+//
+// THE CREDENTIAL NEVER REACHES ARGV OR A LOG. The token value is read from Secret Manager with the
+// run's workload-identity access token into a 0600 file in a 0700 directory this script minted; the
+// SigV4 secret is the SHA-256 of that value (extdeps.cloudflare.r2 R2S3AccessPair), the value file is
+// removed before the netrc is written, and the whole directory is removed on every way out through an
+// EXIT trap. A credential that is not PINNED (an exact Secret Manager version) emits no transfer at
+// all: fabric_blob_shell_target refuses at generation, and the workflow then emits no cache steps.
+//
+// ADDRESS. The shell reads the address as the lower hex of the key from FABRIC_BLOB_KEY_HEX (the
+// producing step's own derived key), refuses anything that is not 64 lower-hex characters, and names
+// the object fabric_cache_blob_prefix + hex -- the key gunbc.fabric.fabric_blob_placement
+// fabric_cache_blob_key derives for the same address.
+
+data fabric_blob_key_env: String = "FABRIC_BLOB_KEY_HEX"
+data fabric_blob_access_token_env: String = "WIF_ACCESS_TOKEN"
+data fabric_blob_work_dir: String = "fabric-blob"
+
+// WHAT GENERATION KNOWS BEFORE ANY RUN: the endpoint, the bucket and the two credentials, or why the
+// cache cannot be reached. A cache that cannot be reached is not emitted; the consumer builds.
+type FabricBlobShellTarget
+  = FabricBlobShellReady {
+      endpoint: R2S3Endpoint
+      bucket: NonEmptyStr
+      read_key_id: NonEmptyStr
+      read_token: SecretRef
+      write_key_id: NonEmptyStr
+      write_token: SecretRef
+    }
+  | FabricBlobShellUnreachable { cause: NonEmptyStr }
+
+fn standing_cause(direction: String, c: OriginCredentialStanding) -> NonEmptyStr {
+  match c {
+    OriginCredentialPinned { access_key_id: _, token_value: _ } => concat("the cache ", direction) as NonEmptyStr
+    OriginCredentialUnminted { mint_entry: e } =>
+      join(["THE FABRIC CACHE ", direction, " CREDENTIAL IS NOT MINTED: run ", e.module_path as String, " ", e.decl_name as String, " and pin the stored version"], "") as NonEmptyStr
+    OriginCredentialMintEntryUnbuilt { secret_id: s } =>
+      join(["THE FABRIC CACHE ", direction, " CREDENTIAL HAS NO MINT ENTRY: nothing mints ", s as String], "") as NonEmptyStr
+  }
+}
+
+fn fabric_blob_shell_target() -> FabricBlobShellTarget {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: i } =>
+      FabricBlobShellUnreachable { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", i.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}) {
+        R2OriginUnallocated { purpose: _ } => FabricBlobShellUnreachable { cause: "NO BUCKET ALLOCATED FOR THE FABRIC CACHE" }
+        R2OriginAllocated { bucket: b } =>
+          match b.read_credential {
+            OriginCredentialPinned { access_key_id: rk, token_value: rt } =>
+              match b.write_credential {
+                OriginCredentialPinned { access_key_id: wk, token_value: wt } =>
+                  FabricBlobShellReady {
+                    endpoint: R2S3Endpoint { account_id: account_id as String, jurisdiction: b.jurisdiction },
+                    bucket: b.bucket_name,
+                    read_key_id: rk, read_token: rt,
+                    write_key_id: wk, write_token: wt,
+                  }
+                OriginCredentialUnminted { mint_entry: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
+                OriginCredentialMintEntryUnbuilt { secret_id: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
+              }
+            OriginCredentialUnminted { mint_entry: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
+            OriginCredentialMintEntryUnbuilt { secret_id: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
+          }
+      }
+  }
+}
+
+// ── SHELL VOCABULARY ────────────────────────────────────────────────────────────────────────────
+
+fn lit(t: String) -> Node { bash_build_word_lit(text: t) }
+fn var(n: String) -> Node { bash_build_word_var(name: n) }
+fn words(ws: List<Node>) -> Node { bash_build_word_concat_from_nodes(parts: ws) }
+fn cmd(ws: List<Node>) -> Node { bash_build_command_with_words(words: ws) }
+fn work(file: String) -> Node { words(ws: [var(n: "FABRIC_BLOB_DIR"), lit(t: join(["/", file], ""))]) }
+
+fn refuse(name: String, message: String) -> Node {
+  bash_build_subshell_from_stmts(stmts: [
+    cmd(ws: [lit(t: "echo"), lit(t: join(["::error title=fabric-blob ", name, "::", message], ""))]),
+    bash_build_exit(code: "1"),
+  ])
+}
+
+fn or_refuse(check: Node, name: String, message: String) -> Node {
+  bash_build_or_else(left: check, right: refuse(name: name, message: message))
+}
+
+fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+
+// A command substitution is always ASSIGNED and read back as "$var" (the fold renders a substitution
+// argument unquoted), as gunbc.fleet_release_bins_key does.
+fn assign_sub(name: String, body: Node) -> Node {
+  bash_build_assign(name: name, value: bash_build_word_cmdsubst(body: body))
+}
+
+// A value matches an extended regex: printf the value into grep, a real pipe.
+fn value_matches(value: Node, pattern: String) -> Node {
+  bash_build_pipe(
+    left: cmd(ws: [lit(t: "printf"), lit(t: "%s"), value]),
+    right: cmd(ws: [lit(t: "grep"), lit(t: "-qxE"), lit(t: pattern)]),
+  )
+}
+
+// The argv words of an extdeps.tools.curl builder, rendered as literal words except the ones that
+// stand for run-time values, which the builder was given as placeholders and are swapped back here.
+fn argv_node(argv: List<String>, holes: List<FabricBlobHole>) -> Node {
+  cmd(ws: map(argv, w => hole_or_lit(word: w, holes: holes)))
+}
+
+type FabricBlobHole {
+  placeholder: String
+  value: Node
+}
+
+fn hole_or_lit(word: String, holes: List<FabricBlobHole>) -> Node {
+  match first(filter(holes, h => h.placeholder == word)) {
+    Present { value: h } => h.value
+    Absent => lit(t: word)
+  }
+}
+
+data url_hole: String = "@FABRIC_BLOB_URL@"
+data path_hole: String = "@FABRIC_BLOB_PATH@"
+data netrc_hole: String = "@FABRIC_BLOB_NETRC@"
+
+fn object_url_node(target: FabricBlobShellTarget) -> Node {
+  match target {
+    FabricBlobShellReady { endpoint: e, bucket: b, read_key_id: _, read_token: _, write_key_id: _, write_token: _ } =>
+      words(ws: [lit(t: join([r2_s3_endpoint_url(endpoint: e), "/", b as String, "/", fabric_cache_blob_prefix as String], "")), var(n: fabric_blob_key_env)])
+    FabricBlobShellUnreachable { cause: _ } => lit(t: "")
+  }
+}
+
+// ── THE CREDENTIAL BRACKET ──────────────────────────────────────────────────────────────────────
+
+fn secret_access_url(ref: SecretRef) -> String {
+  join(["https://secretmanager.googleapis.com/v1/projects/", ref.project as String, "/secrets/", ref.secret as String, "/versions/", ref.version as String, ":access"], "")
+}
+
+// Reads one pinned token into the netrc at netrc_file. Every failure refuses by name; the value file
+// is removed before the netrc exists, and the EXIT trap removes the directory on every way out.
+fn credential_statements(netrc_file: String, host: String, key_id: NonEmptyStr, token: SecretRef) -> List<Node> {
+  [
+    bash_build_with_redir_to_file(
+      inner: cmd(ws: [lit(t: "printf"), lit(t: "Authorization: Bearer %s\\n"), var(n: fabric_blob_access_token_env)]),
+      path: work(file: "auth-header"),
+    ),
+    assign_sub(name: "SM_CODE", body: bash_build_subshell_from_stmts(stmts: [cmd(ws: [lit(t: "curl"), lit(t: "-sS"), lit(t: "--max-time"), lit(t: to_string(second_count(s: gunbc_ci_sm_max_time))), lit(t: "-o"), work(file: "sm.json"), lit(t: "-w"), lit(t: "%\{http_code\}"), lit(t: "-H"), words(ws: [lit(t: "@"), work(file: "auth-header")]), lit(t: secret_access_url(ref: token))]),
+    ])),
+    or_refuse(check: test_words(ws: [var(n: "SM_CODE"), lit(t: "="), lit(t: "200")]), name: "CredentialUnreadable", message: join(["Secret Manager did not return ", token.secret as String, " version ", token.version as String, "; nothing was transferred"], "")),
+    bash_build_with_redir_to_file(
+      inner: cmd(ws: [lit(t: "jq"), lit(t: "-er"), lit(t: ".payload.data"), work(file: "sm.json")]),
+      path: work(file: "token.b64"),
+    ),
+    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: "base64"), lit(t: "-d"), work(file: "token.b64")]), path: work(file: "token")),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), work(file: "sm.json"), work(file: "token.b64"), work(file: "auth-header")]),
+    or_refuse(check: test_words(ws: [lit(t: "-s"), work(file: "token")]), name: "CredentialEmpty", message: "the token payload was empty; nothing was transferred"),
+    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: "sha256sum"), work(file: "token")]), path: work(file: "token.sha")),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), work(file: "token")]),
+    assign_sub(name: "S3_SECRET", body: cmd(ws: [lit(t: "cut"), lit(t: "-d"), lit(t: " "), lit(t: "-f"), lit(t: "1"), work(file: "token.sha")])),
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), work(file: "token.sha")]),
+    bash_build_with_redir_to_file(
+      inner: cmd(ws: [lit(t: "printf"), lit(t: "machine %s login %s password %s\\n"), lit(t: host), lit(t: key_id as String), var(n: "S3_SECRET")]),
+      path: work(file: netrc_file),
+    ),
+    bash_build_assign(name: "S3_SECRET", value: lit(t: "")),
+  ]
+}
+
+fn bracket_open() -> List<Node> {
+  [
+    bash_build_command_from_lits(lits: ["umask", "077"]),
+    or_refuse(
+      check: value_matches(value: var(n: fabric_blob_key_env), pattern: "[0-9a-f]{64}"),
+      name: "AddressMalformed", message: "the blob address is not 64 lower-hex characters; nothing was transferred",
+    ),
+    assign_sub(name: "FABRIC_BLOB_DIR", body: bash_build_subshell_from_stmts(stmts: [bash_build_command_from_lits(lits: ["mktemp", "-d"])])),
+    cmd(ws: [lit(t: "trap"), words(ws: [lit(t: "rm -rf -- \""), var(n: "FABRIC_BLOB_DIR"), lit(t: "\"")]), lit(t: "EXIT")]),
+  ]
+}
+
+// ── GET ─────────────────────────────────────────────────────────────────────────────────────────
+
+// Fetches the object at the address into $FABRIC_BLOB_OUT (a path the caller names OUTSIDE the
+// bracket directory) and writes `standing=present` or `standing=absent` to $GITHUB_OUTPUT. Any other
+// answer refuses: an unreachable or refusing store is never a miss.
+fn fabric_blob_get_statements(target: FabricBlobShellTarget) -> List<Node> {
+  match target {
+    FabricBlobShellUnreachable { cause: c } => [refuse(name: "CacheUnreachable", message: c as String)]
+    FabricBlobShellReady { endpoint: e, bucket: _, read_key_id: rk, read_token: rt, write_key_id: _, write_token: _ } => {
+      let download = argv_words(command: curl_sigv4_s3_download_command(url: url_hole, destination: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, report: ReportStatus))
+      concat(concat(bracket_open(), credential_statements(netrc_file: "read.netrc", host: r2_s3_endpoint_host(endpoint: e), key_id: rk, token: rt)), [
+        assign_sub(name: "GET_CODE", body: bash_build_subshell_from_stmts(stmts: [bash_build_or_else(
+            left: argv_node(argv: download, holes: [
+              FabricBlobHole { placeholder: url_hole, value: object_url_node(target: target) },
+              FabricBlobHole { placeholder: path_hole, value: var(n: "FABRIC_BLOB_OUT") },
+              FabricBlobHole { placeholder: netrc_hole, value: work(file: "read.netrc") },
+            ]),
+            right: bash_build_command_from_lits(lits: ["true"]),
+          ),
+        ])),
+        bash_build_if(
+          cond: test_words(ws: [var(n: "GET_CODE"), lit(t: "="), lit(t: "200")]),
+          body: bash_build_stmt_list_from_nodes(stmts: [append_output(line: "standing=present")]),
+        ),
+        bash_build_if(
+          cond: test_words(ws: [var(n: "GET_CODE"), lit(t: "="), lit(t: "404")]),
+          body: bash_build_stmt_list_from_nodes(stmts: [append_output(line: "standing=absent")]),
+        ),
+        or_refuse(
+          check: bash_build_or_else(
+            left: test_words(ws: [var(n: "GET_CODE"), lit(t: "="), lit(t: "200")]),
+            right: test_words(ws: [var(n: "GET_CODE"), lit(t: "="), lit(t: "404")]),
+          ),
+          name: "CacheReadRefused", message: "the cache answered neither 200 nor 404 (or nothing at all); an unreachable or refusing store is not a miss",
+        ),
+      ])
+    }
+  }
+}
+
+// The fold has no append redirect, so an output line reaches $GITHUB_OUTPUT through tee -a.
+fn append_output(line: String) -> Node {
+  bash_build_with_redir_to_file(
+    inner: bash_build_pipe(
+      left: cmd(ws: [lit(t: "echo"), lit(t: line)]),
+      right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_OUTPUT")]),
+    ),
+    path: lit(t: "/dev/null"),
+  )
+}
+
+// ── PUT ─────────────────────────────────────────────────────────────────────────────────────────
+
+// Publishes $FABRIC_BLOB_IN (the verified pack object) create-only at the address. A 2xx is stored.
+// A 412 means an object already holds the address: it is fetched and must equal the offered bytes
+// (converged on a prior publication), or the run refuses -- two productions of one key disagreeing is
+// a determinism defect, never overwritten. 5xx or no status is reconciled the same way, by reading,
+// never by putting again. Other 4xx refuse. Too large refuses before any byte moves.
+fn fabric_blob_put_statements(target: FabricBlobShellTarget) -> List<Node> {
+  match target {
+    FabricBlobShellUnreachable { cause: c } => [refuse(name: "CacheUnreachable", message: c as String)]
+    FabricBlobShellReady { endpoint: e, bucket: _, read_key_id: rk, read_token: rt, write_key_id: wk, write_token: wt } => {
+      let upload = argv_words(command: curl_sigv4_s3_upload_command(url: url_hole, local_path: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, precondition: PutIfAbsent, report: ReportStatus))
+      let download = argv_words(command: curl_sigv4_s3_download_command(url: url_hole, destination: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, report: ReportStatus))
+      let host = r2_s3_endpoint_host(endpoint: e)
+      concat(concat(concat(bracket_open(), [
+        assign_sub(name: "OFFERED_SIZE", body: bash_build_subshell_from_stmts(stmts: [cmd(ws: [lit(t: "stat"), lit(t: "-c"), lit(t: "%s"), lit(t: "--"), var(n: "FABRIC_BLOB_IN")])])),
+        or_refuse(
+          check: test_words(ws: [var(n: "OFFERED_SIZE"), lit(t: "-le"), lit(t: to_string(measure_count(m: fabric_cache_object_bound())))]),
+          name: "ObjectTooLarge", message: "the pack exceeds the cache placement's whole-object bound; nothing was uploaded",
+        ),
+      ]), concat(
+        credential_statements(netrc_file: "write.netrc", host: host, key_id: wk, token: wt),
+        credential_statements(netrc_file: "read.netrc", host: host, key_id: rk, token: rt),
+      )), [
+        assign_sub(name: "PUT_CODE", body: bash_build_subshell_from_stmts(stmts: [bash_build_or_else(
+            left: argv_node(argv: upload, holes: [
+              FabricBlobHole { placeholder: url_hole, value: object_url_node(target: target) },
+              FabricBlobHole { placeholder: path_hole, value: var(n: "FABRIC_BLOB_IN") },
+              FabricBlobHole { placeholder: netrc_hole, value: work(file: "write.netrc") },
+            ]),
+            right: bash_build_command_from_lits(lits: ["true"]),
+          ),
+        ])),
+        bash_build_if(
+          cond: test_words(ws: [var(n: "PUT_CODE"), lit(t: "="), lit(t: "200")]),
+          body: bash_build_stmt_list_from_nodes(stmts: [append_output(line: "publication=stored")]),
+        ),
+        bash_build_if(
+          cond: test_words(ws: [var(n: "PUT_CODE"), lit(t: "!="), lit(t: "200")]),
+          body: bash_build_stmt_list_from_nodes(stmts: [
+            or_refuse(
+              check: value_matches(value: var(n: "PUT_CODE"), pattern: "412|5[0-9][0-9]|000"),
+              name: "CachePublishRefused", message: "the cache refused the create-only PUT before committing; nothing was published",
+            ),
+            assign_sub(name: "READ_CODE", body: bash_build_subshell_from_stmts(stmts: [bash_build_or_else(
+                left: argv_node(argv: download, holes: [
+                  FabricBlobHole { placeholder: url_hole, value: object_url_node(target: target) },
+                  FabricBlobHole { placeholder: path_hole, value: work(file: "occupant") },
+                  FabricBlobHole { placeholder: netrc_hole, value: work(file: "read.netrc") },
+                ]),
+                right: bash_build_command_from_lits(lits: ["true"]),
+              ),
+            ])),
+            or_refuse(
+              check: test_words(ws: [var(n: "READ_CODE"), lit(t: "="), lit(t: "200")]),
+              name: "CachePublishUnreconciled", message: "the PUT did not report stored and the address could not be read back; the publication is unknown, not done",
+            ),
+            or_refuse(
+              check: cmd(ws: [lit(t: "cmp"), lit(t: "-s"), work(file: "occupant"), var(n: "FABRIC_BLOB_IN")]),
+              name: "CacheOccupiedByDifferentBytes", message: "another object already holds this key with different bytes; two productions of one key disagree, and nothing is overwritten",
+            ),
+            append_output(line: "publication=converged"),
+          ]),
+        ),
+      ])
+    }
+  }
+}
+
+fn fabric_blob_get_script() -> Outcome<String> {
+  bash_emit_stmts(statements: fabric_blob_get_statements(target: fabric_blob_shell_target()), set_e: true)
+}
+
+fn fabric_blob_put_script() -> Outcome<String> {
+  bash_emit_stmts(statements: fabric_blob_put_statements(target: fabric_blob_shell_target()), set_e: true)
+}
+
+fn fabric_blob_shell_emittable() -> Bool {
+  match fabric_blob_shell_target() {
+    FabricBlobShellReady { endpoint: _, bucket: _, read_key_id: _, read_token: _, write_key_id: _, write_token: _ } => true
+    FabricBlobShellUnreachable { cause: _ } => false
+  }
+}

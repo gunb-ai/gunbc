@@ -1,0 +1,89 @@
+module test.claim.host_width_facts_witness
+
+import std.types { Bool, Int, List, String }
+import std.measure { byte_size, byte_size_count }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.ci_fleet { srv3_offer }
+import gunbc.runner_slot_allocation {
+  HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width,
+  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
+}
+import gunbc.host_memory_observation { HostUsableRam, HostUsableRamMeasured, HostUsableRamUnmeasured }
+import gunbc.ci_runner_placement {
+  HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  HostRunnerDeploymentRefusal, UsableRamUnavailable, host_deployment_standing, host_deployment_standing_given,
+}
+import gunbc.fabric_control_plane_charge { fabric_control_plane_placement }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn width_or_minus_one(r: RunnerWidthResolution) -> Int {
+  match r {
+    RunnerWidthDerived { slots: n } => n
+    RunnerWidthUnresolved { cause: _ } => 0 - 1
+  }
+}
+
+fn facts_with_usable_ram(f: HostWidthFacts, ram: HostUsableRam) -> HostWidthFacts {
+  HostWidthFacts {
+    host: f.host,
+    cpu: f.cpu,
+    usable_ram: ram,
+    fixed_overhead: f.fixed_overhead,
+    session: f.session,
+    control_plane: f.control_plane,
+    served_deployment: f.served_deployment,
+    disk: f.disk,
+    carries_shakedown_slot: f.carries_shakedown_slot,
+  }
+}
+
+fn derived_count(s: HostRunnerDeploymentStanding) -> Int {
+  match s {
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count
+    HostRunnerDeploymentRefused { refusal: _ } => 0 - 1
+  }
+}
+
+// THE RECORD IS THE CHAIN'S WHOLE INPUT: supplying srv3's own facts reproduces the keyed answer on
+// both the width and the placement standing, so the production route and the supplied route are
+// one computation (this executes the real producer, host_width_facts, for every enrolled host).
+test fn host_width_facts_supplied_record_reproduces_the_keyed_route() -> Bool {
+  all([operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4], h =>
+      width_or_minus_one(r: committed_width_of(f: host_width_facts(host: h)))
+        == width_or_minus_one(r: gunbc_runner_committed_width(host: h)))
+    && derived_count(s: host_deployment_standing_given(offer: srv3_offer, facts: host_width_facts(host: operator_host_srv3), control_plane_placement: fabric_control_plane_placement))
+      == derived_count(s: host_deployment_standing(offer: srv3_offer, control_plane_placement: fabric_control_plane_placement))
+}
+
+// THE DISCRIMINATING RED: A SUPPLIED FACT REACHES THE DECISION. The same srv3 offer with its usable
+// RAM supplied as unmeasured refuses on that axis, and with half its measured RAM derives a strictly
+// smaller width -- neither is reachable through the keyed tables, which is the point of the record.
+test fn host_width_facts_RED_supplied_usable_ram_moves_the_standing() -> Bool {
+  let real = host_width_facts(host: operator_host_srv3)
+  let full = derived_count(s: host_deployment_standing_given(offer: srv3_offer, facts: real, control_plane_placement: fabric_control_plane_placement))
+  let halved_bytes = match real.usable_ram {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => byte_size_count(b: b) / 2
+    _ => 0
+  }
+  let halved = facts_with_usable_ram(f: real, ram: HostUsableRamMeasured { bytes: byte_size(halved_bytes), provenance: "designed: half of srv3's measured MemTotal" })
+  let unmeasured_refuses = match host_deployment_standing_given(offer: srv3_offer, facts: facts_with_usable_ram(f: real, ram: HostUsableRamUnmeasured), control_plane_placement: fabric_control_plane_placement) {
+    HostRunnerDeploymentDerived { deployment: _ } => false
+    HostRunnerDeploymentRefused { refusal: r } => match r.cause {
+      UsableRamUnavailable { cause: _ } => true
+      _ => false
+    }
+  }
+  full > 0
+    && halved_bytes > 0
+    && width_or_minus_one(r: committed_width_of(f: halved)) < width_or_minus_one(r: committed_width_of(f: real))
+    && unmeasured_refuses
+}
+
+// A/B PROBE: the committed width of every enrolled host, rendered, for comparison against main.
+fn host_width_facts_probe_widths() -> String {
+  join(map([operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4], h =>
+    concat(h as String, "=", to_string(width_or_minus_one(r: gunbc_runner_committed_width(host: h))))), " ")
+}

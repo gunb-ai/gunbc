@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.exit_status_read_through_a_pipe_reports_the_last_stage
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data exit_status_read_through_a_pipe_reports_the_last_stage: RecurringFailureMode = RecurringFailureMode {
+  identity: "exit_status_read_through_a_pipe_reports_the_last_stage" as NonEmptyStr,
+
+  receipts: [
+    "**exit status read through a pipe reports the last stage** (an instrument runs its subject as `subject ... | tail -n 40` or `| grep ...` and then reads `$?`, or lets the pipeline's status be the step's; without `set -o pipefail` a POSIX pipeline's status is the LAST stage's, so a subject that refused with exit 1 or 2 is reported as exit 0 whenever `tail` or `grep` exits 0 -- the instrument fails toward green on the one defect it was run to detect.",
+
+    "INVALID STATE: a shell driver whose verdict is a pipeline status while its subject is not the last stage. HARM: a refusal is read as a pass, so a session posts an exact-head APPROVE, a PR body cites a green receipt, or a lane reports SUCCESS over a subject that refused -- the silent-wrongness column DESIGN section 5 forbids, produced by the evidence instrument itself.",
+
+    "DISCRIMINATOR: the driver's status read (`$?`, `if cmd | filter; then`, a step whose last command is a pipeline) sits AFTER a `|` whose left side is the subject, and no `set -o pipefail` or `PIPESTATUS` read is in scope. The control that must be run before citing such a driver: replace the subject with `false` (or `sh -c 'exit 2'`) and confirm the driver goes red; a driver that stays green over `false | tail` is reading tail's status.",
+
+    "RECEIPT (2026-09-20, dashboard node adhoc-3bc1b8e0-982): one of two session evidence instruments that reported green over gunbc.site_pxe_edge_converge not resolving read its `claim_batch` exit status through `| tail`; the head carried four approvals and reached position 1 in the merge queue on that evidence. The drivers were session-authored shell, not in-tree: a grep of `.githooks`, `tools`, `.github/workflows` and every emitted `run:` line found no in-tree driver reading a subject's status through a filter -- the emitted floor steps set `set -o pipefail` before `| tee` (gunbc.ci_failure_class wrap_command_with_floor_attempt_receipt), and gunbc.live_deploy.intent live_deploy_unit_status_tail_command, the one in-tree `| tail` over a diagnostic subject, is already a marked scaffold whose dissolution trigger names exactly this class (exit code recorded as data, never masked by `| tail`).",
+
+    "REPAIR SHAPE: the subject's status is data, not a side effect of the pipeline -- `set -o pipefail` at minimum; better, run the subject to a file and read its status directly, as the floor wrapper does. A rendered filter that is kept for readability (`tail -40`) is applied to the captured output afterwards, never between the subject and the status read.",
+
+    "Rung: mitigatable -- the class is caught by the red control above when someone runs it. Ceiling: structurally impossible for drivers this repository EMITS, once every emitted step script is rendered from a typed carrier that records the subject's status as data (gunbc.systemctl_status_read is the shape; the floor wrapper is the executing instance). Session-authored shell is outside the modeled guarantee and stays at the red-control rung: the obligation on a manual receipt is that its driver was run against `false` once.",
+
+    "Next-rung trigger: the manual-receipt obligation on `gunbc.rung_drop` `required_gate_bankruptcy` names the rc-red control as a required part of the receipt, so a receipt without it is not a receipt; and the emitted-step carrier gunbc.live_deploy.intent live_deploy_unit_diagnosis_dissolution_trigger names retires the last in-tree instance.",
+  ],
+
+  evidence: [],
+}

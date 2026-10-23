@@ -1,0 +1,83 @@
+module test.claim.closing.test_reference_discipline_remainder_closing_contract_witness_test
+
+// CLOSING CONTRACT for roadmap node test-reference-discipline-remainder: the test-to-test
+// reference debt is discharged to zero and the discriminating reds that enforce the rule execute
+// where merges are decided. The bar's five clauses, and where each stands -- deliberately precise
+// about rungs (DESIGN 4b: a rung claimed above what executes is the failure this node exists to
+// end; reviews 74160 and 74167 on the discharging PR caught exactly that overstatement here):
+//
+//   (1) test-calling-test refuses on the required lane and not only locally
+//       -> PROVEN HERE: the wall witness test.claim.test_reference_wall_witness is enrolled on the
+//          required gate's authored-module roster, at exact module grain (no prefix family admits
+//          it), so its refusal arms execute on every required run. This claim is placement, not
+//          re-execution: re-running the wall's census probes here would be identical call+input
+//          duplication (DESIGN 2).
+//   (2) a real source with a test-fn reference reaches v2 name resolution through a required
+//       corpus route and refuses there
+//       -> TRANSFERRED BY NAME to v1-verification-ledger, the node that owns the native route:
+//          its dated update records that what executes today is the v2 native route
+//          (claim_executor --v2-native-route --source-root dag --source-root src/v2), and the
+//          v2 wall over a real source is that route's admission. This node does not report the
+//          obligation done.
+//   (3) deleting a reference without its ledger row refuses
+//       -> OWNED BY NAME by the enrolled wall's arms (test.claim.test_reference_wall_witness:
+//          TestCodeReferenced for the unledgered direction, TestCodeReferenceBudgetMismatch for
+//          the paid-down direction; the budget is equality in both directions, so
+//          deletion-without-row is the same arm). Not duplicated here (DESIGN 2).
+//   (4) a ledger row whose module is gone refuses when the census is loaded
+//       -> DECLARED GAP in a typed 4b(2) carrier: gunbc.guarantee_stall.
+//          test_reference_ledger_typed_census_stall. The census-loaded path executes against the
+//          real ledger on every floor compile, but the PLANTED discriminating red has no
+//          reachable execution point on the closed roster -- the census probe compiles one
+//          supplied source with CorpusUnknown (CensusAbsent), so TestCodeReferenceRowOrphaned can
+//          never fire there, and no lane that can import v1.compiler.compile exists (adding one
+//          is a job-roster change, closed for this node's brief). The stall names the grounding
+//          and the trigger; the closing contract machine-checks that the carrier is rostered and
+//          below its ceiling, so the gap is data rather than prose.
+//   (5) at close test_reference_debt contains zero CorpusDebtRow entries while FixtureControlRow
+//       remains
+//       -> MITIGATED, NOT PROVEN by execution. The typed half -- the control row standing with
+//          occurrences 1 and admitting nothing -- executes on the gate via (1). The zero-count
+//          half is the same stall as (4): no open lane can import the v1 seed, so no claim on an
+//          open lane can fold the ledger's actual rows. A substring audit of the seed's source
+//          briefly stood in for the count; the required floor demonstrated it measured prose
+//          rather than the ledger (it red on the test_reference_row helper's own declaration
+//          while the ledger was empty), so it was removed instead of repaired -- a .contains()
+//          grep is not a consumer (DESIGN 5). Proof by execution waits on the stall's trigger.
+
+import gunbc.guarantee_stall { stall_is_below_ceiling }
+import gunbc.guarantee_stall.test_reference_ledger_typed_census_stall { test_reference_ledger_typed_census_stall }
+import gunbc.guarantee_stall.roster { all_guarantee_stalls }
+import v2.workflow.required_floor { required_gate_authored_modules, required_gate_prefixes }
+
+data wall_module: String = "test.claim.test_reference_wall_witness"
+
+fn test_reference_closing_roster_contains(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+// CLAUSE 1: enrolled on the required gate, and by the roster whose rule fits a single module --
+// the authored-module roster admits at named-module grain, while the prefix roster admits every
+// suffix neighbour of a row. A future sibling planted under test.claim.test_reference_wall_*
+// stays OUTSIDE the gate unless it is deliberately enrolled, which is what exact grain buys.
+// starts_with is the std runtime primitive (src/v1/runtime_rust.dag): this module deliberately
+// declares no bare helper under that name -- bare names resolve by global uniqueness, and a
+// local declaration under a common name re-binds other witnesses' bare uses through the flat
+// bare channel, dragging them into this module's reach.
+fn gate_enrollment_holds() -> Bool {
+  test_reference_closing_roster_contains(xs: required_gate_authored_modules(), needle: wall_module)
+    && !any(required_gate_prefixes(), p => starts_with(s: wall_module, prefix: p))
+}
+
+// CLAUSES 4 AND 5, GAP HALF: the census gap is declared in the typed stall carrier, rostered
+// where the trigger-naming folds police it, and below its ceiling -- machine-checked here, not
+// asserted in prose. If the route is ever grounded and the claims authored, the stall is
+// restored and this conjunct follows it.
+fn ledger_census_gap_is_declared() -> Bool {
+  stall_is_below_ceiling(s: test_reference_ledger_typed_census_stall)
+    && any(all_guarantee_stalls, s => s.subject == test_reference_ledger_typed_census_stall.subject)
+}
+
+test fn test_reference_discipline_remainder_closing_contract_holds() -> Bool {
+  gate_enrollment_holds() && ledger_census_gap_is_declared()
+}

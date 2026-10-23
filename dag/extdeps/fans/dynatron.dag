@@ -1,0 +1,71 @@
+module extdeps.fans.dynatron
+
+import std.types { List }
+import std.measure { millimeter, percent, rpm }
+import extdeps.units.iec_61672 { tenths_dba }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.fans.types {
+  DoubleBallBearing,
+  FanCatalogRow,
+  FanPublishedOperatingPoint,
+  FanSpeedRangeUnpublished,
+  FanStopBehaviorUnpublished,
+}
+import extdeps.vendor.dynatron { dynatron }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dynatron.co/product-page/w1"
+  }
+}
+
+// The three points Dynatron prints for the W1's fan. All three carry a level, which is why this
+// fan reaches FanAcousticLawFittable while the Noctua does not.
+//
+// NO MEASUREMENT DISTANCE OR STANDARD IS PUBLISHED for these dBA figures. That is recorded here
+// rather than silently ignored, because it bounds what the numbers can be used for: they compare
+// this fan against itself across speeds, and they do not establish an absolute level at any
+// listening position.
+data dynatron_df126025bu_pwmh_published_points: List<FanPublishedOperatingPoint> = [
+  FanPublishedOperatingPoint {
+    duty: percent(20),
+    speed: rpm(2300),
+    sound_pressure: Present { value: tenths_dba(258) },
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(50),
+    speed: rpm(5400),
+    sound_pressure: Present { value: tenths_dba(444) },
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(100),
+    speed: rpm(11000),
+    sound_pressure: Present { value: tenths_dba(598) },
+  },
+]
+
+data dynatron_df126025bu_pwmh_catalog: FanCatalogRow = FanCatalogRow {
+  model: "DF126025BU-PWMH",
+  manufacturer: dynatron,
+  frame_size: millimeter(60),
+  bearing: DoubleBallBearing,
+  pwm_controlled: true,
+  published_points: dynatron_df126025bu_pwmh_published_points,
+  published_speed_range: FanSpeedRangeUnpublished,
+  published_stop_behavior: FanStopBehaviorUnpublished,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.dynatron",
+      decl_name: "dynatron_df126025bu_pwmh_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

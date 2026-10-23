@@ -1,0 +1,45 @@
+module extdeps.apple.xcode
+
+import std.types { Int, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// Xcode releases, as Apple's release notes name them. A release is major.minor; a project records
+// the release it was last upgraded by (LastUpgradeCheck), and Xcode offers "Update to recommended
+// settings" whenever that record is older than itself.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/xcode-release-notes"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.apple.xcode",
+      decl_name: "XcodeRelease",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type XcodeRelease {
+  major: Int
+  minor: Int
+  release_notes: Uri
+}
+
+fn xcode_release_text(r: XcodeRelease) -> String {
+  join([to_string(r.major), ".", to_string(r.minor)], "")
+}
+
+// Xcode 26.6: the release the operator builds the Approve app with (2026-09-24).
+data xcode_26_6: XcodeRelease = XcodeRelease {
+  major: 26,
+  minor: 6,
+  release_notes: Uri { scheme: Https, locator: "developer.apple.com/documentation/xcode-release-notes/xcode-26_6-release-notes" },
+}

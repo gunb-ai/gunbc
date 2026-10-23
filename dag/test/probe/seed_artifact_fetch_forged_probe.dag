@@ -1,0 +1,34 @@
+module test.probe.seed_artifact_fetch_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the
+// seeded-media remaster would otherwise write a seed artifact somewhere its admission never
+// checked: replaying an admitted artifact into a seed directory of its choosing (where its name
+// might collide with a text seed the admission never saw, or point outside the seed), or minting
+// an admitted artifact without the admission. The witness
+// test.claim.seed_artifact_fetch_forged_probe_witness hands this source to the compiler and requires
+// each refusal at its subject by name. dag/test/probe/ sits under the whole-tree strict-resolve
+// exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.host_command_binding { CommandHost }
+import extdeps.provisioning.ubuntu_seeded_install_media { AdmittedSeedArtifact, SeedArtifactBasename }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_fetch_artifact, install_media_remaster_fetch_artifacts }
+
+// (a) ONE ADMITTED ARTIFACT, REBOUND TO ANOTHER SEED DIRECTORY. Refuses at install_media_remaster_fetch_artifact.
+fn rebound_one(host: CommandHost, artifact: AdmittedSeedArtifact) -> String? {
+  install_media_remaster_fetch_artifact(host: host, nocloud_dir: "/tmp/work/gunbc-runner" as NonEmptyStr, artifact: artifact)
+}
+
+// (b) THE ADMITTED POPULATION, REBOUND. Refuses at install_media_remaster_fetch_artifacts.
+fn rebound_all(host: CommandHost, artifacts: List<AdmittedSeedArtifact>) -> String? {
+  install_media_remaster_fetch_artifacts(host: host, nocloud_dir: "/tmp/work/../../boot" as NonEmptyStr, artifacts: artifacts)
+}
+
+// (c) AN ADMISSION NOBODY RAN. Refuses at SeedArtifactBasename and AdmittedSeedArtifact.
+fn forged() -> AdmittedSeedArtifact {
+  AdmittedSeedArtifact {
+    basename: SeedArtifactBasename { value: "runner-host-up.sh" },
+    source_url: "https://example.invalid/x",
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
+  }
+}

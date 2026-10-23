@@ -1,0 +1,14 @@
+module test.claim.self_host_target_carriers_behavioral_witness
+
+import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
+
+// Wet self-host behavioral receipt (07_target_carriers): the row's contract is the .dag function
+// v2.test.claim.self_host_contract.target_carriers_emitted_contract target_carriers_emitted_contract_holds, emitted
+// into the same crate as its subject and called by a driver the harness renders from the roster
+// row; the receipt also runs that contract interpreted, and holds only when both realizations do.
+// The fault run passes inject_fault: true, which a correct module does not hold. It replaced a
+// hand-written Rust driver that no per-change path compiled (gunbc.recurring_failure_mode
+// hand_shim_shadows_an_emitted_module).
+test fn self_host_target_carriers_behavioral_receipt_holds() -> Bool {
+  compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/07_target_carriers.dag")
+}

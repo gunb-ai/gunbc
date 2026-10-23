@@ -1,0 +1,231 @@
+module test.claim.approval_enrolment_handshake_witness_test
+
+import std.decl_ref { decl_ref }
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp }
+import extdeps.apple.app_attest { AppAttestProduction, AttestationVerification, attestation_verification_from_implementation }
+import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
+import gunbc.auth.approval_device_redemption { EnrolmentChallenge }
+import gunbc.auth.approval_device_wire { MobileIos, enrolment_transcript, enrollment_id_for_code }
+import gunbc.auth.approval_decision_store { approval_operator_login }
+import gunbc.auth.approval_enrolment_handshake {
+  EnrolmentPending, EnrolmentActive, EnrolmentSlot, SlotAbsent, SlotIssued, SlotPending, SlotActive, SlotRevoked, SlotUnreadable,
+  EnrolmentStatus, StatusCodeNotIssued, StatusCodeExpired, StatusNeverSubmitted, StatusPending, StatusLapsed,
+  StatusActive, StatusRevoked, StatusUnreadable, enrolment_status_at,
+  EnrolmentSubmission, SubmitAdmission, SubmitWritesPending, SubmitReplaysPending, SubmitRefused,
+  SubmitCodeAlreadyUsed, SubmitCodeExpired, SubmitCodeNotIssued, submit_admission,
+  ConfirmAdmission, ConfirmWritesActive, ConfirmReplaysActive, ConfirmRefused,
+  ConfirmLapsed, ConfirmSignatureRefused, ConfirmNothingPending, confirm_admission,
+  deciding_enrollment,
+}
+
+// ── THE RED PER LEG: one claim per lost answer in docs/plans/approval-enrolment-handshake.md ──
+// Each claim supplies the slot a lost leg leaves behind and asserts the typed exit the phone takes.
+// The folds are pure, so supplying the slot IS the whole mechanism (DESIGN §3, a witness
+// discriminates at one interface). The route-level inhabitance claims that run the real store live
+// with the routes.
+
+data fx_code: NonEmptyStr = "7f3a9c"
+data fx_issued_at: Timestamp = "2026-09-30T14:00:00Z"
+data fx_code_expires: Timestamp = "2026-09-30T14:10:00Z"
+data fx_submit_at: Timestamp = "2026-09-30T14:02:00Z"
+data fx_deadline: Timestamp = "2026-09-30T14:12:00Z"
+data fx_before_deadline: Timestamp = "2026-09-30T14:05:00Z"
+data fx_after_deadline: Timestamp = "2026-09-30T14:12:00Z"
+data fx_after_code_expiry: Timestamp = "2026-09-30T14:10:00Z"
+data fx_nonce: NonEmptyStr = "n0nce-1"
+data fx_other_nonce: NonEmptyStr = "n0nce-2"
+
+data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
+data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
+
+fn fx_challenge() -> EnrolmentChallenge {
+  EnrolmentChallenge { code: fx_code, issued_to_login: approval_operator_login, issued_at: fx_issued_at, expires_at: fx_code_expires }
+}
+
+fn fx_issued() -> EnrolmentSlot { SlotIssued { challenge: fx_challenge() } }
+
+// Evidence-returning fixtures are caller-sealed to the claims that use them, as in
+// test.claim.approval_device_redemption_witness_test.
+fn fx_attestation(key: VerifyingKey, attest_key_id: NonEmptyStr) -> AttestationVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness_test", decl_name: "fx_submission"),
+  ]
+{
+  attestation_verification_from_implementation(key_id: attest_key_id, public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: enrolment_transcript(code: fx_code, decision_key: key, platform: MobileIos), refusal: none)
+}
+
+fn fx_submission(key: VerifyingKey, attest_key_id: NonEmptyStr) -> EnrolmentSubmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness_test", decl_name: "fx_pending"),
+    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness_test", decl_name: "r2_a_repeated_identical_syn_replays_the_same_pending"),
+    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness_test", decl_name: "r3_a_syn_with_another_key_is_refused_as_code_already_used"),
+    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness_test", decl_name: "r9_an_expired_unspent_code_refuses_the_syn"),
+  ]
+{
+  EnrolmentSubmission { code: fx_code, platform: MobileIos, decision_key: key, attestation: fx_attestation(key: key, attest_key_id: attest_key_id) }
+}
+
+// The pending record the one real SYN writes -- produced by submit_admission, never hand-built.
+fn fx_pending() -> EnrolmentPending? {
+  match submit_admission(slot: fx_issued(), s: fx_submission(key: key_a, attest_key_id: "attest-a"), observed_at: fx_submit_at, pending_deadline: fx_deadline, confirm_nonce: fx_nonce) {
+    SubmitWritesPending { pending: p } => Present { value: p }
+    SubmitReplaysPending { pending: _ } => none
+    SubmitRefused { cause: _ } => none
+  }
+}
+
+// R1: the SYN never arrived. The slot is still generation 1 and live, and the phone learns it may
+// SYN again. THE RED: STATUS on a live issued code answering anything else strands the phone.
+test fn r1_a_lost_syn_reads_never_submitted() -> Bool {
+  match enrolment_status_at(slot: fx_issued(), presented_key: key_a, observed_at: fx_submit_at) {
+    StatusNeverSubmitted { expires_at: x } => x == fx_code_expires
+    _ => false
+  }
+}
+
+// R2: the SYN-ACK was lost. Resending the identical SYN answers the SAME pending record and asks
+// for no write. THE RED: a replay that mints a new nonce, or asks to write, splits the phone's view
+// from the server's.
+test fn r2_a_repeated_identical_syn_replays_the_same_pending() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } =>
+      match submit_admission(slot: SlotPending { pending: p }, s: fx_submission(key: key_a, attest_key_id: "attest-a"), observed_at: fx_before_deadline, pending_deadline: "2026-09-30T14:15:00Z", confirm_nonce: fx_other_nonce) {
+        SubmitReplaysPending { pending: q } => q.confirm_nonce == fx_nonce && q.pending_deadline == fx_deadline && q.enrollment_id == enrollment_id_for_code(code: fx_code)
+        SubmitWritesPending { pending: _ } => false
+        SubmitRefused { cause: _ } => false
+      }
+  }
+}
+
+// R3: a different key under a spent code refuses, and it is the only way a spent code refuses.
+test fn r3_a_syn_with_another_key_is_refused_as_code_already_used() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } =>
+      match submit_admission(slot: SlotPending { pending: p }, s: fx_submission(key: key_b, attest_key_id: "attest-b"), observed_at: fx_before_deadline, pending_deadline: fx_deadline, confirm_nonce: fx_other_nonce) {
+        SubmitRefused { cause: SubmitCodeAlreadyUsed } => true
+        _ => false
+      }
+  }
+}
+
+// R4: the ACK never arrived. PENDING reads Pending with the same challenge, and PENDING decides
+// nothing. THE RED: deciding_enrollment answering a pending record is the invariant broken.
+test fn r4_a_pending_enrolment_reads_pending_and_cannot_decide() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } =>
+      deciding_enrollment(slot: SlotPending { pending: p }) == none
+        && match enrolment_status_at(slot: SlotPending { pending: p }, presented_key: key_a, observed_at: fx_before_deadline) {
+          StatusPending { enrollment_id: _, confirm_nonce: n, pending_deadline: d } => n == fx_nonce && d == fx_deadline
+          _ => false
+        }
+  }
+}
+
+// R5: the ACK's answer was lost. STATUS answers Active and whether the PRESENTED key is the active
+// one. THE RED: matching a foreign key would let a code holder adopt someone else's enrolment.
+test fn r5_a_lost_ack_answer_reads_active_only_for_the_confirming_key() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } => {
+      let active = SlotActive { active: EnrolmentActive { pending: p, confirmed_at: fx_before_deadline } }
+      let mine = match enrolment_status_at(slot: active, presented_key: key_a, observed_at: fx_after_deadline) {
+        StatusActive { enrollment_id: _, decision_key_matches: m } => m
+        _ => false
+      }
+      let theirs = match enrolment_status_at(slot: active, presented_key: key_b, observed_at: fx_after_deadline) {
+        StatusActive { enrollment_id: _, decision_key_matches: m } => !m
+        _ => false
+      }
+      mine && theirs && deciding_enrollment(slot: active) != none
+    }
+  }
+}
+
+// R6: an ACK after the deadline refuses, even with the right signature.
+test fn r6_an_ack_after_the_deadline_is_refused_as_lapsed() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } =>
+      match confirm_admission(slot: SlotPending { pending: p }, enrollment_id: p.enrollment_id, signature_by_pending_key: true, observed_at: fx_after_deadline) {
+        ConfirmRefused { cause: ConfirmLapsed { pending_deadline: d } } => d == fx_deadline
+        _ => false
+      }
+  }
+}
+
+// R7: the phone walked away (Cancel is a local discard). With no writer, the pending record reads
+// Lapsed at its deadline. THE RED: a lapsed pending that still reads Pending would invite a
+// confirm nobody can make and hold the operator in a state no action ends.
+test fn r7_an_abandoned_pending_reads_lapsed_at_its_deadline() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } =>
+      match enrolment_status_at(slot: SlotPending { pending: p }, presented_key: key_a, observed_at: fx_after_deadline) {
+        StatusLapsed { enrollment_id: _, pending_deadline: d } => d == fx_deadline
+        _ => false
+      }
+  }
+}
+
+// R8: two ACKs (a retry after a lost answer). The first writes, and the repeat against the active
+// record replays without writing.
+test fn r8_a_repeated_ack_replays_active_without_a_second_write() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } => {
+      let first = match confirm_admission(slot: SlotPending { pending: p }, enrollment_id: p.enrollment_id, signature_by_pending_key: true, observed_at: fx_before_deadline) {
+        ConfirmWritesActive { active: _ } => true
+        _ => false
+      }
+      let active = SlotActive { active: EnrolmentActive { pending: p, confirmed_at: fx_before_deadline } }
+      let second = match confirm_admission(slot: active, enrollment_id: p.enrollment_id, signature_by_pending_key: true, observed_at: fx_after_deadline) {
+        ConfirmReplaysActive { active: _ } => true
+        _ => false
+      }
+      first && second
+    }
+  }
+}
+
+// R9: a code that expired unspent reads CodeExpired, and a SYN against it refuses with the same
+// fact, so the phone discards rather than waiting.
+test fn r9_an_expired_unspent_code_refuses_the_syn() -> Bool {
+  let read = match enrolment_status_at(slot: fx_issued(), presented_key: key_a, observed_at: fx_after_code_expiry) {
+    StatusCodeExpired { expires_at: x } => x == fx_code_expires
+    _ => false
+  }
+  let syn = match submit_admission(slot: fx_issued(), s: fx_submission(key: key_a, attest_key_id: "attest-a"), observed_at: fx_after_code_expiry, pending_deadline: fx_deadline, confirm_nonce: fx_nonce) {
+    SubmitRefused { cause: SubmitCodeExpired { expires_at: x } } => x == fx_code_expires
+    _ => false
+  }
+  read && syn
+}
+
+// R10: an ACK whose signature is not by the pending decision key refuses.
+test fn r10_an_ack_by_another_key_is_refused() -> Bool {
+  match fx_pending() {
+    Absent => false
+    Present { value: p } =>
+      match confirm_admission(slot: SlotPending { pending: p }, enrollment_id: p.enrollment_id, signature_by_pending_key: false, observed_at: fx_before_deadline) {
+        ConfirmRefused { cause: ConfirmSignatureRefused } => true
+        _ => false
+      }
+  }
+}
+
+// A code never issued reads CodeNotIssued, and confirming against it has nothing pending.
+test fn a_code_never_issued_reads_not_issued() -> Bool {
+  let read = match enrolment_status_at(slot: SlotAbsent, presented_key: key_a, observed_at: fx_submit_at) {
+    StatusCodeNotIssued => true
+    _ => false
+  }
+  let ack = match confirm_admission(slot: SlotAbsent, enrollment_id: enrollment_id_for_code(code: fx_code), signature_by_pending_key: true, observed_at: fx_submit_at) {
+    ConfirmRefused { cause: ConfirmNothingPending } => true
+    _ => false
+  }
+  read && ack
+}

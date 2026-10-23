@@ -1,0 +1,66 @@
+module test.claim.std_fabric_blob
+
+import std.types { String, NonEmptyStr, Bool }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.measure { byte_size, measure_count }
+import std.content_hash { sha256_hex_digest }
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob,
+  fabric_blob_reading_size, fabric_blob_reading_digest, fabric_blob_object_name,
+  FabricBlobPutAdmitted, FabricBlobPutTooLarge, fabric_blob_put_plan, fabric_blob_address_eq, fabric_blob_fits,
+}
+
+// READS THE LIVE TREE: FabricBlobReading is sole_constructor, so the reading arms are taken through
+// read_staged_fabric_blob over a committed fixture. Under the hermetic route its two handlers replay
+// their mocks -- sha256sum's empty-input digest and stat's zero size -- so the fixture is the empty
+// file; this establishes the mint's wiring (digest and size from the handlers into one reading), not
+// the hashing, which extdeps.crypto.hash's own witnesses own.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data fixture_blob_path: NonEmptyStr = "dag/test/fixture/fabric_blob/empty.bin"
+data empty_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data key_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
+
+// A MISTYPED FIXTURE DIGEST FAILS THE CLAIM, never substitutes another digest: the address is
+// optional, and every claim that uses it answers false on Absent.
+fn witness_address() -> FabricBlobAddress? {
+  match sha256_hex_digest(hex: key_hex) {
+    Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+    Absent => none
+  }
+}
+
+test fn reading_carries_the_handlers_digest_and_size() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobRead { reading: r } =>
+      (fabric_blob_reading_digest(reading: r).hex as String) == empty_sha256_hex
+        && measure_count(m: fabric_blob_reading_size(reading: r)) == 0
+    FabricBlobReadRefused { fault: _ } => false
+  }
+}
+
+test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: r } => {
+      let within = match witness_address() {
+        Absent => false
+        Present { value: addr } =>
+          match fabric_blob_put_plan(address: addr, reading: r, bound: byte_size(count: 1)) {
+            FabricBlobPutAdmitted { address: a, reading: _ } => fabric_blob_address_eq(a: a, b: addr)
+            FabricBlobPutTooLarge { address: _, size: _, bound: _ } => false
+          }
+      }
+      within && fabric_blob_fits(size: byte_size(count: 0), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 1), bound: byte_size(count: 0))
+    }
+  }
+}
+
+test fn the_object_name_is_the_key_hex() -> Bool {
+  match witness_address() {
+    Present { value: addr } => (fabric_blob_object_name(address: addr) as String) == key_hex
+    Absent => false
+  }
+}

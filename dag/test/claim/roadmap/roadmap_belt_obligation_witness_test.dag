@@ -1,0 +1,117 @@
+module test.claim.roadmap.roadmap_belt_obligation_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
+  SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
+}
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed }
+import gunbc.roadmap.roadmap_belt_obligation {
+  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+  belt_attempt_outstanding, belt_attempt_next_after, belt_attempt_obligation_kind_key,
+  belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name,
+  ServedObservationObligation, LaunchObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key,
+}
+import gunbc.roadmap_belt_actuate {
+  belt_obligation_hold_decision, BeltObligationMayStart, BeltObligationIsHeld, BeltObligationHoldUnread,
+}
+import gunbc.roadmap_dispatch_actuator { AttemptUnitActive, AttemptUnitAbsent, AttemptUnitFinished, AttemptUnitUnreadable }
+import gunbc.live_deploy.emit { live_deploy_belt_exit_path_unit_file, live_deploy_belt_exit_drain_service_unit_file }
+import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name, deployment_owned_steps, DeploymentArtifactStep }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.host_layout { attempt_exit_inbox_dir }
+import extdeps.systemd.unit_file { systemd_unit_file_lines }
+
+// THE OBLIGATION MODEL'S DECISIONS over supplied evidence (DESIGN section 3: a witness discriminates at
+// one interface, so the attempt's segments are supplied, not produced by running a worker). The
+// production route that consumes them -- gunbc.roadmap_belt_actuate belt_attempt_obligations_run and
+// belt_discover_for_instance -- reads the same derivation; the wet witness beside this file runs the
+// exit drain over a real spool.
+
+fn seg(kind: WorkflowSegmentKind, state: WorkflowSegmentState) -> WorkflowSegment {
+  WorkflowSegment { kind: kind, state: state, detail: "" }
+}
+
+fn keys(kinds: List<BeltAttemptObligationKind>) -> String {
+  join(kinds |> map(k => belt_attempt_obligation_kind_key(kind: k)), ",")
+}
+
+fn segments(submission: WorkflowSegmentState, verification: WorkflowSegmentState, review: WorkflowSegmentState, audit: WorkflowSegmentState, publication: WorkflowSegmentState) -> List<WorkflowSegment> {
+  [
+    seg(kind: SubmissionWorkflowSegment, state: submission),
+    seg(kind: VerificationWorkflowSegment, state: verification),
+    seg(kind: ReviewWorkflowSegment, state: review),
+    seg(kind: GoalAuditWorkflowSegment, state: audit),
+    seg(kind: PublicationWorkflowSegment, state: publication),
+  ]
+}
+
+// Each kind is owed exactly when its predecessor's evidence is complete and its own is unsettled.
+test fn each_obligation_is_owed_only_on_its_predecessors_evidence() -> Bool {
+  let running = keys(kinds: belt_attempt_outstanding(provider: ProviderRunning { activity: "turn 3" }, segments: segments(submission: WorkflowSegmentPending, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  let exited = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentPending, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  let captured = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  let verified = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentActive, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  let reviewed = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentPending)))
+  let settled = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentComplete)))
+  running == "" && exited == "capture" && captured == "verify" && verified == "review,audit" && reviewed == "publish" && settled == ""
+}
+
+// A FAILED STAGE STOPS THE LINE FOR ITS ATTEMPT: it is not owed again, so nothing retries it without
+// the operator (2026-10-03 manual-resume ruling). A failed worker still owes its capture.
+test fn a_failed_stage_is_not_owed_and_a_failed_worker_still_owes_capture() -> Bool {
+  let failed_verify = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentFailed, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  let failed_worker = keys(kinds: belt_attempt_outstanding(provider: ProviderFailed { activity: "turn 2", detail: "exit 1" }, segments: segments(submission: WorkflowSegmentPending, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  failed_verify == "" && failed_worker == "capture"
+}
+
+// THE CHAIN NEVER LOOPS: after a kind runs, only what lies strictly downstream is next, so a capture
+// that left its submission unsettled is not run again by its own chain.
+test fn after_a_kind_runs_only_strictly_downstream_kinds_are_next() -> Bool {
+  let all = [CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation]
+  keys(kinds: belt_attempt_next_after(ran: CaptureObligation, outstanding: all)) == "verify,review,audit,publish"
+    && keys(kinds: belt_attempt_next_after(ran: ReviewObligation, outstanding: all)) == "publish"
+    && keys(kinds: belt_attempt_next_after(ran: AuditObligation, outstanding: [ReviewObligation, PublishObligation])) == "publish"
+    && keys(kinds: belt_attempt_next_after(ran: PublishObligation, outstanding: all)) == ""
+}
+
+// RED FIRST, DOGFOOD #6: A VERIFY THAT RUNS LONG DOES NOT DELAY PUBLISH OF AN UNRELATED ATTEMPT, NOR
+// THE SERVED OBSERVATION. Attempt A is mid-verify -- its unit is loaded and running for as long as the
+// verify takes. Attempt B is reviewed and owes its publish. The only thing the two could share is a
+// unit, so the claim is that they do not: B's unit and the observation's unit are different names from
+// A's, and the hold decision -- the one gate between an owed obligation and its unit starting -- holds
+// A and lets B and the observation start, reading nothing of A when it decides B. Before this change
+// the claim was false by construction: B's publish and the observation ran inside the same process as
+// A's verify, after it.
+test fn a_long_verify_does_not_delay_another_attempts_publish_or_the_observation() -> Bool {
+  let a_unit = belt_attempt_obligation_unit_name(node_id: "node-a", attempt_key: "aaaa")
+  let b_unit = belt_attempt_obligation_unit_name(node_id: "node-b", attempt_key: "bbbb")
+  let observe_unit = belt_instance_obligation_unit_name(instance_id: "srv2-deploy", kind: ServedObservationObligation)
+  let b_owes_publish = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentPending))) == "publish"
+  let a_mid_verify = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentActive, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending))) == "verify"
+  let a_held = match belt_obligation_hold_decision(observation: AttemptUnitActive) { BeltObligationIsHeld => true _ => false }
+  let b_starts = match belt_obligation_hold_decision(observation: AttemptUnitAbsent) { BeltObligationMayStart => true _ => false }
+  let observe_starts = match belt_obligation_hold_decision(observation: AttemptUnitFinished { exit_status: "0" }) { BeltObligationMayStart => true _ => false }
+  let unread_refuses = match belt_obligation_hold_decision(observation: AttemptUnitUnreadable { reason: "bus" }) { BeltObligationHoldUnread { reason: _ } => true _ => false }
+  (a_unit as String) != (b_unit as String) && (a_unit as String) != (observe_unit as String) && (b_unit as String) != (observe_unit as String)
+    && b_owes_publish && a_mid_verify && a_held && b_starts && observe_starts && unread_refuses
+    && any(belt_record_moved_obligation_kinds, k => belt_instance_obligation_kind_key(kind: k) == "observe")
+}
+
+// RED FIRST, DOGFOOD #4 (the deployment half): WITH NO TIMER INSTALLED, a worker exit reaches its
+// capture. The deployment installs no belt timer -- none of its owned steps is a timer member -- and
+// what it installs instead watches the instance's exit inbox and starts the drain, which hands the exit
+// to its attempt (the wet witness runs that hand-off over a real spool; the confinement witness shows
+// the worker unit writes the record).
+test fn the_deployment_wakes_the_drain_on_an_exit_and_installs_no_belt_timer() -> Bool {
+  let spec = deployment_spec_srv1()
+  let lines = systemd_unit_file_lines(file: live_deploy_belt_exit_path_unit_file(spec: spec))
+  let inbox = attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String)
+  let steps = deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names)
+  any(lines, l => l == join(["DirectoryNotEmpty=", inbox], ""))
+    && any(lines, l => l == join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
+    && !any(steps, st => string_contains(s: st.path as String, pattern: "-belt.timer"))
+    && any(systemd_unit_file_lines(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)), l => string_contains(s: l, pattern: "--function belt_exit_drain_cli"))
+}

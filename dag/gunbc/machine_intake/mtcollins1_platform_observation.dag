@@ -1,0 +1,225 @@
+module gunbc.machine_intake_mtcollins1_platform_observation
+
+import std.types { Bool, NonEmptyStr, String }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.measure { rpm, watt }
+import gunbc.machine_intake_power_supply { PowerSupplyStanding, both_supplies_have_ac }
+import gunbc.machine_intake_ethernet {
+  AttachmentUnobserved,
+  BaseboardOnboard,
+  BmcDedicated,
+  ConfiguredLink,
+  EthernetPortUnit,
+  FunctionUnobserved,
+  ObservedEthernetLan,
+  EthernetFunctionBinding,
+  PhysicalEthernetPort,
+  PortOnUnit,
+  PortUnitUnobserved,
+  ethernet_ports_are_distinct,
+  observed_lans_have_distinct_addresses,
+}
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.machine_intake_subject { UnitKeyBound, UnitKeyRefused }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.network.mac { mac_address }
+
+// PLATFORM FACTS OBSERVED WHILE DOING SOMETHING ELSE, which is why they are recorded here rather
+// than left in a session transcript. None of these was the object of a measurement; each surfaced
+// while driving the controller for the netboot lane, and each has an owner outside that lane.
+//
+// THE REDUNDANCY LOSS IS THE ONE THAT MATTERS AND IT IS CURRENT, not historical. PSU2_Status (0xeb)
+// asserts BOTH [Presence detected] AND [Power Supply AC lost] right now, not merely in the event
+// log: the supply is installed and has no AC input. The corroborating sensors agree —
+//
+//   PSU1_POUT      160 Watts        PSU2_POUT      0 Watts
+//   PSU1_FAN_SPEED 5000 RPM         PSU2_FAN_SPEED 0 RPM
+//
+// so one supply is carrying the entire load while the other is inert. The SEL carries the assertion
+// twice, on 09/04 and 09/05 controller time, meaning this predates the netboot work rather than
+// being caused by it.
+//
+// THE OPERATOR HAS ACCEPTED THIS STATE, and the row records the acceptance so the finding does not
+// decay into noise. Left as a bare observation it reads as an unaddressed defect and the next
+// reader re-raises it; recorded as accepted, with its consequence named, it stays useful.
+//
+// WHAT WAS ACCEPTED, precisely: the unit runs on ONE AC path. That is not an electrical problem —
+// PSU1 carries 160 W and these supplies are rated far above it, so nothing is stressed. What is
+// given up is redundancy: a failure anywhere in that single path, supply or cord or breaker or PDU
+// outlet, powers the host off immediately rather than degrading. For a machine being developed
+// against, that is a reasonable trade and the operator made it deliberately on 2026-09-06.
+//
+// THE CONDITION UNDER WHICH IT SHOULD BE REVISITED IS NOT A DATE BUT A ROLE CHANGE. This lane is
+// making Mt. Collins bootable out of band; if it becomes a boot dependency for other machines, its
+// availability becomes theirs, and a single-corded dependency is a different proposition from a
+// single-corded development target. That is the trigger — the machine acquiring dependents — and it
+// is stated here rather than left to be re-derived.
+//
+// AND A SECOND CORD IS NOT AUTOMATICALLY THE REMEDY. If both inlets land on one PDU or one breaker,
+// connecting the second removes the supply as a single point of failure while keeping the feed, so
+// the redundancy gained is smaller than it appears. Independent A/B feeds are where it actually
+// lives.
+type AcceptedPowerRisk {
+  accepted_at: NonEmptyStr
+  accepted_condition: NonEmptyStr
+  revisit_trigger: NonEmptyStr
+}
+
+data mtcollins1_single_ac_path_accepted: AcceptedPowerRisk = AcceptedPowerRisk {
+  accepted_at: "2026-09-06",
+  accepted_condition: "the unit runs on one AC path; PSU2 is installed with no AC input (uncabled, operator report 2026-09-24) and contributes nothing",
+  revisit_trigger: "this unit acquiring dependents — becoming a boot or serving dependency for other machines, at which point its availability becomes theirs",
+}
+
+data mtcollins1_psu1_standing: PowerSupplyStanding = PowerSupplyStanding {
+  sensor_name: "PSU1_Status",
+  present: true,
+  ac_input_present: true,
+  output: watt(count: 160),
+  fan_speed: rpm(count: 5000),
+}
+
+data mtcollins1_psu2_standing: PowerSupplyStanding = PowerSupplyStanding {
+  sensor_name: "PSU2_Status",
+  present: true,
+  ac_input_present: false,
+  output: watt(count: 0),
+  fan_speed: rpm(count: 0),
+}
+
+// WHY PSU2 HAS NO AC IS NOW REPORTED, NOT INFERRED. On 2026-09-24 the operator stated that only PSU1
+// is connected: PSU2 is installed and uncabled. That explains the recurring "PSU2_Status | Power
+// Supply AC lost | Asserted" SEL entries (a supply present at every controller boot with no cord
+// asserts exactly that), so they are expected and not a new power fault. The standing is an
+// operator report, typed as such (DESIGN §4d): nothing here observed the cord, and a reader who
+// needs the cabling as a measured fact has a discriminator to take, a physical inspection or PSU2
+// reporting AC after a cord is attached. Absent that report the SEL entry is unexplained, which is
+// its own arm rather than a guess.
+type SupplyAcLossCause
+  = SupplyUncabledOperatorReported { reported_at: NonEmptyStr, statement: NonEmptyStr }
+  | SupplyAcLossUnexplained
+
+data mtcollins1_psu2_ac_loss_cause: SupplyAcLossCause = SupplyUncabledOperatorReported {
+  reported_at: "2026-09-24",
+  statement: "only PSU1 is connected; PSU2 is installed without an AC cord",
+}
+
+fn supply_ac_loss_cause_text(cause: SupplyAcLossCause) -> NonEmptyStr {
+  match cause {
+    SupplyUncabledOperatorReported { reported_at: at, statement: st } =>
+      join(["operator report ", at as String, ": ", st as String], "") as NonEmptyStr
+    SupplyAcLossUnexplained => "no report explains the AC loss"
+  }
+}
+
+data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
+
+// A SUPPLY THAT IS PRESENT BUT UNPOWERED IS THE INTERESTING CASE, and it is why presence and AC
+// input are separate fields rather than one health flag. An absent supply is a visible gap in a
+// chassis; a present one with no cord looks correct from the front and reports itself as installed.
+// Redundancy is a property of the POWERED supplies, not the installed ones.
+// The fold lives in gunbc.machine_intake_power_supply so a second dual-PSU platform does not
+// re-author it.
+
+// THE CONTROLLER HAS TWO NETWORK INTERFACES AND ONLY ONE IS THE ONE WE USE. 192.168.1.228 is the
+// dedicated management port; 192.168.1.231 is a second interface on the SAME controller, which is
+// established rather than assumed — `mc info` at both addresses reports Device ID 32 and firmware
+// 0.32, and the second answers DHCP with vendor class "udhcp 1.21.1", the BusyBox client the
+// controller's own Linux runs.
+//
+// IT IS RECORDED BECAUSE IT WAS ONCE MISREAD AS THE HOST. A DHCP capture from that address was
+// initially taken for the host PXE-booting; it was not. The host NIC is a third address entirely
+// (28:c1:3c:8a:d6:4a), and the discriminator is the vendor class rather than the MAC's proximity —
+// a PXE client identifies itself as PXEClient:Arch:NNNNN and asks for a boot file, while a Linux
+// DHCP client does neither. A second management address that answers to the same credentials is
+// also a second reachable surface, which is a fact an access policy should know about the unit.
+// Bindings inhabit gunbc.machine_intake_ethernet so a second platform does not re-author a Bool.
+// Redundancy is a property of independent power paths, not of this fold. This fold
+// only answers whether two distinct sensor rows both report AC.
+
+fn mtcollins1_observed_port_unit() -> EthernetPortUnit {
+  match mtcollins1_unit_key_standing {
+    UnitKeyBound { key: k } => PortOnUnit { key: k }
+    UnitKeyRefused { cause: _ } =>
+      PortUnitUnobserved {
+        discriminator: "mtcollins1 unit key refused; BMC ports cannot share a fabricated unit",
+      }
+  }
+}
+
+data mtcollins1_dedicated_mgmt_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: mtcollins1_observed_port_unit(),
+  panel_label: "dedicated BMC management RJ45",
+  connector_label: "RJ45",
+  attachment: BaseboardOnboard,
+}
+
+data mtcollins1_second_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: mtcollins1_observed_port_unit(),
+  panel_label: "second BMC controller interface",
+  connector_label: "RJ45",
+  attachment: AttachmentUnobserved {
+    discriminator: "Second BMC IP on the same controller. NCSI versus a second PHY is unobserved; it is not the host PXE NIC.",
+  },
+}
+
+data mtcollins1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding {
+    port: mtcollins1_dedicated_mgmt_port,
+    function: BmcDedicated,
+  },
+  network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228),
+  link: ConfiguredLink {
+    configured: mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 76),
+  },
+}
+
+data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
+  binding: EthernetFunctionBinding {
+    port: mtcollins1_second_bmc_port,
+    function: FunctionUnobserved {
+      discriminator: "Second BMC IP on the same controller. Not classified as dedicated management. NCSI versus a second PHY is unobserved.",
+    },
+  },
+  network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231),
+  link: ConfiguredLink {
+    configured: mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 77),
+  },
+}
+
+fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
+  ethernet_ports_are_distinct(
+    a: mtcollins1_dedicated_bmc_lan.binding.port,
+    b: mtcollins1_second_bmc_lan.binding.port,
+  )
+    && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
+    && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
+    && match mtcollins1_second_bmc_lan.binding.function {
+      FunctionUnobserved { discriminator: _ } => true
+      BmcDedicated => false
+      BmcNcsi => false
+      HostData => false
+      PrebootNetwork => false
+    }
+}
+
+// THE FOLD IS EXERCISED AGAINST THE MEASURED ROWS AND AGAINST A CORRECTED PAIR. The second is what
+// makes the first mean something: a redundancy check that answered "not redundant" unconditionally
+// would pass the live case for the wrong reason, and this unit's live case is the unhappy one.
+data mtcollins1_psu2_if_corded: PowerSupplyStanding = PowerSupplyStanding {
+  sensor_name: "PSU2_Status",
+  present: true,
+  ac_input_present: true,
+  output: watt(count: 80),
+  fan_speed: rpm(count: 4800),
+}
+
+fn mtcollins1_power_redundancy_probe() -> ProcessExit {
+  if both_supplies_have_ac(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_standing) {
+    return exit_failure(reason: concat("both-AC probe: the measured rows were reported as both having AC, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM (", supply_ac_loss_cause_text(cause: mtcollins1_psu2_ac_loss_cause) as String, ")"))
+  }
+  if both_supplies_have_ac(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_if_corded) == false {
+    return exit_failure(reason: "both-AC probe: two present, powered supplies were NOT reported as both having AC, so the check cannot distinguish the corded case and its verdict on the live rows carries no information")
+  }
+  return ExitSuccess
+}

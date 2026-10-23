@@ -1,0 +1,59 @@
+module gunbc.rung_drop.type_reference_location_fallback_keys_production_realization
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, OutsideTheLadder }
+
+// THE DECLARED DROP FOR THE REFERENCE-SITE IDENTITY KEY THAT REALIZATION IS DECIDED ON (DESIGN 4b(3)).
+//
+// WHAT IS DROPPED. v1.compiler.emit_rust checkpoint_table_bypasses_identity_note reports
+// declaration-keyed realization as MECHANICALLY PREVENTABLE. That rung assumes the key names the
+// DECLARING module. It does not: v1.std.core type_reference_provenance falls back to the node's own
+// span whenever no Resolved node is bound, so a reference whose declaration was not recovered is
+// keyed on the file the REFERENCE sits in. v1.compiler.coercion type_realization_decision then
+// answers that location with total confidence. That is silent wrongness, which is outside the
+// ladder, and the reported rung was never held on this path.
+//
+// WHY IT IS DECLARED RATHER THAN REPAIRED IN THE SAME CHANGE. std.coercion TypeReferenceIdentity and
+// v1.std.core type_reference_identity split the collapsed arm and refuse where the key is a
+// location. Pointing production at them is not a key edit. Mapping the refusal onto the existing
+// DeclarationIdentityAbsent does not refuse: type_realization_decision answers that arm from the
+// bare-name table. It also flips provenance_realizes_natively, which changes literal elaboration in
+// v1.compiler.infer and String gating in v1.compiler.emit_rust. That is the renderer reroute, and
+// docs/plans/carrier-realization-arbiter-repair-design.md forbids taking it before it is measured.
+// So the query lands as an instrument and production keeps its answer. This row stops that answer
+// being silent.
+//
+// THE POPULATION IS NAMED BY ITS INSTRUMENT, NOT TRANSCRIBED. It is every occurrence
+// v1.tests.claim.carrier_realization_census reports with legacy key FALLBACK or resolved and a
+// split identity of ReferenceIdentityUnavailable, re-derived by running that census's binary over
+// a closure. Two causes carry it: record and coproduct FIELD type expressions, which
+// v1.compiler.infer_resolve resolve_item_types resolves and then discards, and the Resolved node of an
+// APPLIED reference, which resolve builds on the reference's own span.
+//
+// THE TRIGGER NAMES A CAPABILITY. Every production reader of a type reference's declaration asks
+// type_reference_identity (or an identity authority keyed on the declaration node or env binding)
+// and gives the refusal arm a typed, located behaviour rather than a location key. Deleting the
+// fallback arm of type_reference_provenance is the observable retirement. Routing only the six
+// text-carrier renderers does not discharge this row: v1.compiler.infer and the numeric realization
+// gate read the same key.
+data type_reference_location_fallback_keys_production_realization: RungDrop = RungDrop {
+  identity: "type_reference_location_fallback_keys_production_realization" as NonEmptyStr,
+
+  subject: "the declaration identity key production realization decides on at a type reference (v1.std.core type_reference_provenance feeding v1.compiler.coercion type_realization_decision): a location stands in where no declaration was recovered",
+
+  declared: "2026-09-17",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "v1.std.core type_reference_identity over std.coercion TypeReferenceIdentity, which refuses where the key would be a location; consumed today by v1.tests.claim.carrier_realization_census and v1.compiler.compiler_tests_rust ct_type_reference_identity_split_test only" },
+    population: [
+      "type-reference occurrences for which v1.tests.claim.carrier_realization_census reports split identity ReferenceIdentityUnavailable while production still answers a CorpusDeclared key: record and coproduct field type expressions (v1.compiler.infer_resolve resolve_item_types discards the resolved type)",
+      "applied type references whose Resolved node v1.compiler.infer_resolve builds on the reference's own span (split cause ResolvedNodeIsNotADeclaration)",
+    ],
+    restoration_trigger: "every production reader of a type reference's declaration identity -- v1.compiler.coercion type_reference_realization, the v1.compiler.infer native-numeric sites and the v1.compiler.emit_rust readers of type_reference_provenance -- asks type_reference_identity or a declaration-node or env-binding keyed authority and gives its refusal arm typed behaviour, so the own-span fallback arm of type_reference_provenance is deleted",
+  }
+}

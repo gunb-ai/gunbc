@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.probe_keys_a_diagnostic_class_its_fixture_shape_does_not_emit
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data probe_keys_a_diagnostic_class_its_fixture_shape_does_not_emit: RecurringFailureMode = RecurringFailureMode {
+  identity: "probe_keys_a_diagnostic_class_its_fixture_shape_does_not_emit" as NonEmptyStr,
+  receipts: [
+    "**a census probe keys its expected red on a diagnostic class the compiler does not emit for the fixture's shape, so a refused subject reads as unrefused** (INVALID STATE: one defect, a value that does not inhabit the declared type it crosses into, is reported under different classes by position and by the kind of the value. A mismatch at a return position, or a primitive actual at a call argument, reports `TypeMismatch`. A Product actual at a call argument reports `DeclaredTypeNotInhabited`. A probe counting `TypeMismatch` for the Product-argument shape reads 0 while the compile refuses.)",
+    "HARM. The miss was read as a PATH defect: 'the census fixture path reaches less than `gunbc compile`'. That reading blocked enrolment of a real wall, gunbc#12375's obligated-tree bypass, as 'unauthorable on the fixture path' (DESIGN §4b), and dispatched a root-cause lane at the wrong boundary. The same key mismatch in the other direction is a vacuous green: an ExpectZeroDiagnostics-style assertion scoped to the wrong class passes over a refused source.",
+    "DISTINGUISHING FACTS. Measured on an 8-probe matrix: return position and call argument, each with imported and locally declared Products, each as a red/green pair. Both paths refused every red and passed every green. Return reds reported TypeMismatch on both. Argument reds reported DeclaredTypeNotInhabited on both, and the compile path's 'value does not inhabit its declared type at the direct call argument' IS that class. So the census and compile paths agree, and the disagreement was between the probe's key and the fixture's shape. The four ExpectBlockingRefusal { TypeMismatch } rows enrolled in gunbc.guarantee_probe_corpus (conformance_scalar_red, both direct_call_arg_type reds, floor_generic_instantiation_monomorphic_control) all use primitive String-at-Int sources, the shape that does emit TypeMismatch, so none is vacuous. The Product-argument shape is not enrolled there at all.",
+    "A SECOND, REAL census-vs-compile divergence surfaced beside it and is not this class: every fixture whose closure reached v2.std.cardinality and v2.std.integer carried 7 blocking UnresolvedType v2.std.nat.Nat rows on the census path only (2 from cardinality, 5 from integer). Both modules imported `v2.std.nat { Nat }` but spelled type positions fully qualified, as `v2.std.nat.Nat`. Production reports each such use as advisory UnlistedImportUse. The census-only N1a arm (v1.compiler.infer_resolve resolve_node_bounded under type_ref_hit_ne_bind_measure_active) turns the same finding blocking, by design, so the census was the STRICTER path. The corpus defect was repaired at its source: both modules now spell the bound names.",
+    "INSTRUMENT (DESIGN §6, figures not transcribed): gunbc.compile_diagnostic_census rows per class over each red/green pair, beside `gunbc compile --entry <file> --target dag --dry-run` over the same file. The claim is the SHAPE: a class-scoped count agrees across both paths once the class matches the shape.",
+    "RUNG FOUND AT: mitigatable -- review caught it only after a lane had been dispatched on the wrong reading.",
+    "CEILING: structurally guaranteed. The admissible end state is that one inhabitance defect has one class authority (DESIGN §3: two classes for one fact is a meaning fork), so a probe cannot key the other spelling of the same refusal.",
+    "NEXT-RUNG TRIGGER: consolidating the argument-position and return-position inhabitance refusals under one diagnostic class in v1.compiler.infer, sufficient that a TypeMismatch-keyed and a DeclaredTypeNotInhabited-keyed probe over the same defect cannot disagree. Until then, a probe over an inhabitance defect must enrol the class its fixture shape emits, and must confirm it with a red census row, not a zero.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.guarantee_probe_corpus", decl_name: "guarantee_probe_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.compile_diagnostic_census", decl_name: "census_blocking_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_resolve", decl_name: "resolve_node_bounded", field: WholeDeclaration },
+  ],
+}

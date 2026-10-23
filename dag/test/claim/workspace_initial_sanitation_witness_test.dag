@@ -1,0 +1,93 @@
+module test.claim.workspace_initial_sanitation_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import gunbc.workspace_initial_sanitation {
+  WorkspaceInitialSanitationReadings, workspace_initial_sanitation_observations,
+  workspace_initial_storage_reading, workspace_initial_mount_reading,
+}
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceAbsent, ResourcePresent, ResourceUnreadable,
+}
+import gunbc.runner_microvm_network { SlotNetworkConfirmed, SlotNetworkUnobservable, TapUnheldFact }
+import product.fabric.sanitation { CellId, SlotScopedNetwork, cell_readiness_from_observations, CellReady, CellQuarantined }
+
+fn clean_initial_readings() -> WorkspaceInitialSanitationReadings {
+  WorkspaceInitialSanitationReadings { cgroup_before: CgroupSubtreeEmpty, cgroup_after: CgroupSubtreeEmpty,
+    mounts: ResourceAbsent, storage: ResourceAbsent, network: SlotNetworkConfirmed }
+}
+
+fn initial_readings_ready(readings: WorkspaceInitialSanitationReadings) -> Bool {
+  match cell_readiness_from_observations(cell: "srv1-13" as CellId, network_scope: SlotScopedNetwork,
+    observations: workspace_initial_sanitation_observations(readings: readings)) {
+    CellReady { cell: _ } => true
+    CellQuarantined { cell: _, unproven: _ } => false
+  }
+}
+
+test fn initial_sanitation_requires_every_existing_lifecycle_fact() -> Bool {
+  initial_readings_ready(readings: clean_initial_readings())
+}
+
+test fn an_empty_final_cgroup_does_not_erase_prior_survivors() -> Bool {
+  !initial_readings_ready(readings: WorkspaceInitialSanitationReadings {
+    cgroup_before: CgroupSubtreePopulated { pids: [99], cgroups: ["cell" as NonEmptyStr] }, cgroup_after: CgroupSubtreeEmpty,
+    mounts: ResourceAbsent, storage: ResourceAbsent, network: SlotNetworkConfirmed })
+}
+
+test fn unreadable_cgroup_cannot_become_clean_after_retry() -> Bool {
+  !initial_readings_ready(readings: WorkspaceInitialSanitationReadings {
+    cgroup_before: CgroupSubtreeReadFailed { reason: "denied" }, cgroup_after: CgroupSubtreeEmpty,
+    mounts: ResourceAbsent, storage: ResourceAbsent, network: SlotNetworkConfirmed })
+}
+
+test fn missing_storage_is_not_an_empty_slot() -> Bool {
+  match workspace_initial_storage_reading(root_success: false, root_entries: "", attempts_success: false, attempts_entries: "") {
+    ResourceUnreadable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn a_legacy_credential_beside_attempts_is_residue() -> Bool {
+  match workspace_initial_storage_reading(root_success: true, root_entries: "attempts\nold-credential.img", attempts_success: true, attempts_entries: "") {
+    ResourcePresent { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn an_empty_installed_attempt_directory_is_clean_storage() -> Bool {
+  match workspace_initial_storage_reading(root_success: true, root_entries: "attempts", attempts_success: true, attempts_entries: "") {
+    ResourceAbsent => true
+    _ => false
+  }
+}
+
+test fn unreadable_mount_table_does_not_confirm_mount_removal() -> Bool {
+  match workspace_initial_mount_reading(root: "/opt/fabric-cells/srv1-13", success: false, content: "") {
+    ResourceUnreadable { reason: _ } => true
+    _ => false
+  }
+}
+
+
+test fn a_process_appearing_during_observation_refuses_readiness() -> Bool {
+  !initial_readings_ready(readings: WorkspaceInitialSanitationReadings {
+    cgroup_before: CgroupSubtreeEmpty,
+    cgroup_after: CgroupSubtreePopulated { pids: [99], cgroups: ["cell" as NonEmptyStr] },
+    mounts: ResourceAbsent, storage: ResourceAbsent, network: SlotNetworkConfirmed })
+}
+
+test fn unreadable_tap_ownership_cannot_publish_readiness() -> Bool {
+  !initial_readings_ready(readings: WorkspaceInitialSanitationReadings {
+    cgroup_before: CgroupSubtreeEmpty, cgroup_after: CgroupSubtreeEmpty,
+    mounts: ResourceAbsent, storage: ResourceAbsent,
+    network: SlotNetworkUnobservable { fact: TapUnheldFact, reason: "fd census denied" as NonEmptyStr } })
+}
+
+test fn a_mount_inside_an_old_attempt_is_initial_residue() -> Bool {
+  match workspace_initial_mount_reading(root: "/opt/fabric-cells/srv1-13", success: true,
+    content: "40 22 0:34 / /opt/fabric-cells/srv1-13/attempts/old/jail/root/dev rw - devtmpfs udev rw\n") {
+    ResourcePresent { detail: _ } => true
+    _ => false
+  }
+}

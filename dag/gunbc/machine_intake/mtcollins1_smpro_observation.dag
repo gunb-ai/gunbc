@@ -1,0 +1,32 @@
+module gunbc.machine_intake_mtcollins1_smpro_observation
+
+import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_ampere_smpro_observation { SmproSiteStanding, SmproTarget, SiteFromOperatorBrief, smpro_site_admit }
+
+// WHERE mtcollins1's SMpros SIT, and only that: the pass that reads them, the outcome vocabulary, the
+// stage and record joins and the dossier are the Ampere Altra observation model in
+// gunbc.machine_intake_ampere_smpro_observation, which admits this site and reads it through the
+// managed host's subject (gunbc.managed_host). A second Altra board authors its own site; it does not
+// edit this one.
+//
+// Bus 2, socket 0 at 0x4F as the control and socket 1 at 0x4E, behind mtcollins1's controller. These
+// come from the operator's brief (eager-owl-205, msg_adb16d8a), not from a board document this corpus
+// holds, and the bus TYPE is not stated there at all: private is this row's bet, because the SMpros
+// are not IPMB devices. The manufacturer-ID control is what tests the bet: a NAK or bus error on the
+// control says the bus or address is wrong, and the dossier says so rather than trying others.
+fn mtcollins1_smpro_site() -> SmproSiteStanding {
+  smpro_site_admit(
+    endpoint: mtcollins1_endpoint,
+    bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus },
+    targets: [
+      SmproTarget { socket: 0, seven_bit_address: 79 },
+      SmproTarget { socket: 1, seven_bit_address: 78 },
+    ],
+    control_socket: 0,
+    evidence: SiteFromOperatorBrief {
+      relay: "eager-owl-205 msg_adb16d8a-90bd-443f-9440-cad493921cfd: 'IPMI Master Write-Read (netfn 0x06 cmd 0x52, bus 2), socket 0 at 0x4F first as the transport control, then socket 1 at 0x4E'",
+      private_bus_is_a_bet: true,
+    },
+  )
+}

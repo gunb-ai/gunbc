@@ -1,0 +1,567 @@
+module gunbc.crate_partition
+
+import std.types { Bool, Int, List, NonEmptyStr, String, brand }
+import std.optional { Absent, Optional, Present, optional_present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.graph {
+  CallGraph,
+  GraphEdge,
+  graph_has_multi_node_scc,
+  graph_reverse_reachable_members,
+  graph_strongly_connected_components
+}
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedEdgeProvenance,
+  EmittedModuleTarget,
+  EmittedCrateRootTarget
+}
+
+// THE PARTITION OF A MODULE GRAPH INTO COMPILATION UNITS, OVER ITS MODULES AND EDGES ALONE.
+//
+// This is the one home of the assignment rules: the emitted-edge merge and its reverse-edge refusal,
+// the balanced policy, the admissibility verdict (no divided SCC, no unit cycle) and the unit
+// dependency edges an assignment induces. It reads a module graph as names and edges, because that
+// is all any of these rules reads. v2.std.compilers.compilation_unit's ModuleDag adds the modules'
+// interface Nodes for the partition FOLD, and v2.workflow.rust_crate_partition adapts a ModuleDag to
+// these functions; both import the ids and edges declared here, so there is one ModuleId and one
+// partition, not a v2 one and a seed one.
+//
+// It lives under dag/ because the seed calls it compiled: v1.compiler.emitted_workspace lays out
+// every emitted Rust workspace through gunbc.emitted_crate_workspace, which builds on this, and the
+// seed's compile roots are src/v1 and dag/ only (operator ruling 2026-10-08, gunbc#13597).
+
+type ModuleId = NonEmptyStr where brand("ModuleId")
+type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
+
+type ModuleDagEdge {
+  from: ModuleId
+  to: ModuleId
+}
+
+type PartitionProvenance
+  = HandExplicit
+  | PolicyDerived { policy: DeclarationRef }
+
+fn partition_provenance_hand_explicit() -> PartitionProvenance {
+  HandExplicit
+}
+
+fn partition_provenance_policy_derived(policy: DeclarationRef) -> PartitionProvenance {
+  PolicyDerived { policy: policy }
+}
+
+type PartitionFoldRefusalCause
+  = InterfaceClosureUnreachedFixpoint { unit_id: CompilationUnitId }
+  | ModuleDagExportsLookupRejected { module: ModuleId }
+  | ModuleDagTypeDefinitionsLookupRejected { module: ModuleId }
+  | ModuleAssignmentLookupRejected { module: ModuleId }
+
+type PartitionR4ValidityCause
+  = SccSplit { detail: String }
+  | UnitGraphCycle { detail: String }
+  | LinkageCycle { detail: String }
+  | ByValueTypeCycle { detail: String }
+  | PartitionInputRejected { cause: PartitionFoldRefusalCause }
+
+type PartitionR4ValidityVerdict
+  = PartitionR4Valid
+  | PartitionR4Refused { cause: PartitionR4ValidityCause }
+
+fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUnitId> {
+  items
+    |> sort_by(id => id)
+    |> fold(init: [], f: (unique, item) => match unique |> last {
+      Present { value: prior } => if prior == item { unique } else { unique |> list_push(item) }
+      Absent => [item]
+    })
+}
+
+type PartitionPolicy {
+  target_crate_count: Int
+}
+
+// The declared core target the balanced policy partitions a closure into: the stage0 seed's
+// module-bearing units plus its runtime, and the default for every emitted Rust workspace. A closure
+// with fewer modules packs into fewer crates; one module is one crate.
+data crate_partition_declared_core_target: Int = 7
+
+type ExplicitPartition {
+  assignment: Map<ModuleId, CompilationUnitId>
+}
+
+type PartitionParameter
+  = ExplicitPartitionParam { partition: ExplicitPartition }
+  | PolicyPartitionParam { policy: PartitionPolicy }
+
+// AN EMITTED EDGE IS A REALIZATION EDGE WITH ITS PROVENANCE, AND THE PARTITION ADMITS IT OR REFUSES
+// IT BY NAME. A source-acyclic closure can be emitted into a crate graph that does not compile when
+// the emitter writes a path the source never declared, so the partition must decide over every
+// module edge the emitted code carries. An emitted edge whose target already reaches its source
+// through the source edges would close a cycle the source does not have: that is an emitter
+// defect, refused as EmitterReverseEdge with the provenance that produced it, never merged into a
+// graph whose R4 verdict would then report an anonymous UnitGraphCycle. An endpoint the graph does
+// not declare is refused rather than dropped, because dropping it answers for a smaller graph.
+type EmittedEdgeRefusal
+  = EmitterReverseEdge { from: ModuleId, to: ModuleId, provenance: EmittedEdgeProvenance }
+  | EmittedEdgeEndpointOutsideDag { from: String, to: String }
+
+// Every refusal names the module or the Rust rule it is about. An assignment is admitted only when
+// every module of the graph has exactly one owner (the Map gives uniqueness; coverage and the
+// absence of strangers are checked here) and the R4 verdict is valid -- on BOTH arms, because a
+// partition an author supplied is no more trusted than one the policy derived.
+type ResolvePartitionRefusalCause
+  = PolicyTargetCountNotPositive { policy: PartitionPolicy }
+  | AssignmentOmitsModule { module_id: ModuleId }
+  | AssignmentNamesModuleOutsideDag { module_id: ModuleId }
+  | PartitionRustAdmissibilityRefused { cause: PartitionR4ValidityCause }
+  | PartitionEmittedEdgeRefused { cause: EmittedEdgeRefusal }
+
+type ResolvePartitionOutcome
+  = ResolvePartitionOk {
+      assignment: Map<ModuleId, CompilationUnitId>
+      provenance: PartitionProvenance
+    }
+  | ResolvePartitionRefused { cause: ResolvePartitionRefusalCause }
+
+type Stage0PartitionCrateKind
+  = Stage0FoundationCrate
+  | Stage0LayeredCoreCrate
+  | Stage0EmitCoreCrate
+
+type Stage0PartitionCrateRow {
+  unit_id: CompilationUnitId
+  package_name: String
+  crate_dir: String
+  kind: Stage0PartitionCrateKind
+  modules: List<String>
+  reexport_packages: List<String>
+  carries_non_empty_wrappers: Bool
+}
+
+fn stage0_module_id(basename: String) -> ModuleId {
+  basename as NonEmptyStr
+}
+
+// ── THE EMITTED-EDGE MERGE ─────────────────────────────────────────────────────────────────────
+
+type EmittedEdgesMerge
+  = EmittedEdgesMerged { edges: List<ModuleDagEdge> }
+  | EmittedEdgesRefused { cause: EmittedEdgeRefusal }
+
+type EmittedEdgeMergeFold {
+  edges: List<ModuleDagEdge>
+  present: Map<String, Bool>
+  refusal: Optional<EmittedEdgeRefusal>
+}
+
+fn module_dag_edge_key(from: String, to: String) -> String {
+  concat(from, concat(" -> ", to))
+}
+
+fn string_member(set: Map<String, Bool>, key: String) -> Bool {
+  match map_get(set, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn reached_set(names: List<String>, graph: CallGraph, start: String) -> Map<String, Bool> {
+  graph_reverse_reachable_members(names: names, graph: graph, start: start)
+    |> fold(init: empty_map(), f: (reached, member) => map_insert(reached, member, true))
+}
+
+// What each distinct emitted target reaches along the SOURCE edges, one walk per target rather
+// than one per edge: every emitted module shares the runtime target.
+fn emitted_target_reach(modules: List<ModuleId>, edges: List<ModuleDagEdge>, emitted: List<EmittedEdge>) -> Map<String, Map<String, Bool>> {
+  let names = modules |> map(module_id => module_id as String)
+  let forward_as_reverse = CallGraph {
+    edges: edges |> map(edge => GraphEdge { caller: edge.to as String, callee: edge.from as String })
+  }
+  emitted |> fold(init: empty_map(), f: (acc, edge) =>
+    match edge.to {
+      EmittedCrateRootTarget => acc
+      EmittedModuleTarget { module: target } =>
+        match map_get(acc, target) {
+          Present { value: _ } => acc
+          Absent => map_insert(acc, target, reached_set(names: names, graph: forward_as_reverse, start: target))
+        }
+    }
+  )
+}
+
+fn emitted_edge_merge_step(
+  acc: EmittedEdgeMergeFold,
+  edge: EmittedEdge,
+  module_set: Map<String, Bool>,
+  reach: Map<String, Map<String, Bool>>
+) -> EmittedEdgeMergeFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match edge.to {
+        EmittedCrateRootTarget => acc
+        EmittedModuleTarget { module: target } =>
+          if edge.from == target {
+            acc
+          } else if !string_member(set: module_set, key: edge.from) || !string_member(set: module_set, key: target) {
+            EmittedEdgeMergeFold {
+              edges: acc.edges,
+              present: acc.present,
+              refusal: optional_present(value: EmittedEdgeEndpointOutsideDag { from: edge.from, to: target })
+            }
+          } else {
+            let target_reaches_source = match map_get(reach, target) {
+              Present { value: reached } => string_member(set: reached, key: edge.from)
+              Absent => false
+            }
+            if target_reaches_source {
+              EmittedEdgeMergeFold {
+                edges: acc.edges,
+                present: acc.present,
+                refusal: optional_present(value: EmitterReverseEdge {
+                  from: stage0_module_id(basename: edge.from),
+                  to: stage0_module_id(basename: target),
+                  provenance: edge.provenance
+                })
+              }
+            } else if string_member(set: acc.present, key: module_dag_edge_key(from: edge.from, to: target)) {
+              acc
+            } else {
+              EmittedEdgeMergeFold {
+                edges: acc.edges |> list_push(ModuleDagEdge {
+                  from: stage0_module_id(basename: edge.from),
+                  to: stage0_module_id(basename: target)
+                }),
+                present: map_insert(acc.present, module_dag_edge_key(from: edge.from, to: target), true),
+                refusal: Absent
+              }
+            }
+          }
+      }
+  }
+}
+
+fn merge_emitted_edges(modules: List<ModuleId>, edges: List<ModuleDagEdge>, emitted: List<EmittedEdge>) -> EmittedEdgesMerge {
+  let module_set = modules |> fold(init: empty_map(), f: (acc, module_id) => map_insert(acc, module_id as String, true))
+  let present = edges |> fold(init: empty_map(), f: (acc, edge) =>
+    map_insert(acc, module_dag_edge_key(from: edge.from as String, to: edge.to as String), true))
+  let reach = emitted_target_reach(modules: modules, edges: edges, emitted: emitted)
+  let folded = emitted |> fold(init: EmittedEdgeMergeFold { edges: edges, present: present, refusal: Absent }, f: (acc, edge) =>
+    emitted_edge_merge_step(acc: acc, edge: edge, module_set: module_set, reach: reach))
+  match folded.refusal {
+    Present { value: cause } => EmittedEdgesRefused { cause: cause }
+    Absent => EmittedEdgesMerged { edges: folded.edges }
+  }
+}
+
+// ── THE RESOLVE ────────────────────────────────────────────────────────────────────────────────
+
+// ONE COMPONENTS PASS PER RESOLVE: the policy lays out the graph's components and the R4 verdict
+// reads SCC membership from the same list, so both are handed the value rather than each
+// re-deriving it.
+fn resolve_partition_over(
+  parameter: PartitionParameter,
+  modules: List<ModuleId>,
+  edges: List<ModuleDagEdge>
+) -> ResolvePartitionOutcome {
+  let components = partition_components_dependencies_first(modules: modules, edges: edges)
+  match parameter {
+    ExplicitPartitionParam { partition: explicit } =>
+      admit_partition_assignment(
+        modules: modules,
+        edges: edges,
+        components: components,
+        assignment: explicit.assignment,
+        provenance: partition_provenance_hand_explicit()
+      )
+    PolicyPartitionParam { policy: policy } =>
+      if policy.target_crate_count < 1 {
+        ResolvePartitionRefused { cause: PolicyTargetCountNotPositive { policy: policy } }
+      } else {
+        admit_partition_assignment(
+          modules: modules,
+          edges: edges,
+          components: components,
+          assignment: policy_partition_assignment_over(modules: modules, components: components, policy: policy),
+          provenance: partition_provenance_policy_derived(policy: policy_partition_resolver_ref())
+        )
+      }
+  }
+}
+
+fn policy_partition_resolver_ref() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.crate_partition" as NonEmptyStr,
+    decl_name: "policy_partition_assignment_over" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn partition_call_graph(edges: List<ModuleDagEdge>) -> CallGraph {
+  CallGraph {
+    edges: edges |> map(edge => GraphEdge { caller: edge.from as String, callee: edge.to as String })
+  }
+}
+
+// The strongly connected components of the module graph, dependencies first. Kosaraju yields them
+// importers first (std.graph graph_strongly_connected_components), so this reverses once.
+fn partition_components_dependencies_first(modules: List<ModuleId>, edges: List<ModuleDagEdge>) -> List<List<String>> {
+  graph_strongly_connected_components(
+    names: modules |> map(module_id => module_id as String),
+    graph: partition_call_graph(edges: edges)
+  ) |> reverse
+}
+
+type PolicyPartitionFill {
+  assignment: Map<ModuleId, CompilationUnitId>
+  unit_index: Int
+  filled: Int
+}
+
+fn policy_partition_unit_id(unit_index: Int) -> CompilationUnitId {
+  concat("policy-unit-", to_string(value: unit_index)) as CompilationUnitId
+}
+
+// THE BALANCED POLICY, AND WHY IT CANNOT PRODUCE AN INADMISSIBLE PARTITION. Components are laid out
+// dependencies first and cut into contiguous runs of about ceil(modules / target) members, so:
+// a component is never divided (no SccSplit), and every module edge runs from a later run to an
+// earlier or the same one, so the unit graph points strictly backwards (no UnitGraphCycle). The R4
+// verdict is still asked of the result in admit_partition_assignment -- the argument above is why
+// the policy should pass, and the verdict is what establishes that it did.
+fn policy_partition_assignment_over(
+  modules: List<ModuleId>,
+  components: List<List<String>>,
+  policy: PartitionPolicy
+) -> Map<ModuleId, CompilationUnitId> {
+  let quota = ((modules |> count) + policy.target_crate_count - 1) / policy.target_crate_count
+  let filled = components
+    |> fold(init: PolicyPartitionFill { assignment: empty_map(), unit_index: 0, filled: 0 }, f: (acc, component) =>
+      let opens_next_unit = (acc.filled >= quota) && (acc.unit_index + 1 < policy.target_crate_count)
+      let unit_index = if opens_next_unit { acc.unit_index + 1 } else { acc.unit_index }
+      let already = if opens_next_unit { 0 } else { acc.filled }
+      let unit_id = policy_partition_unit_id(unit_index: unit_index)
+      PolicyPartitionFill {
+        assignment: component |> fold(init: acc.assignment, f: (inner, member) => map_insert(inner, member as ModuleId, unit_id)),
+        unit_index: unit_index,
+        filled: already + (component |> count)
+      }
+    )
+  filled.assignment
+}
+
+fn assignment_owner(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  module_id: ModuleId
+) -> Optional<CompilationUnitId> {
+  map_get(assignment, module_id)
+}
+
+fn assignment_first_omitted_module(
+  modules: List<ModuleId>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Optional<ModuleId> {
+  modules |> fold(init: Absent, f: (acc, module_id) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match assignment_owner(assignment: assignment, module_id: module_id) {
+          Present { value: _ } => Absent
+          Absent => Present { value: module_id }
+        }
+    }
+  )
+}
+
+fn assignment_first_stranger(
+  modules: List<ModuleId>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Optional<ModuleId> {
+  let known = modules |> fold(init: empty_map(), f: (acc, module_id) => map_insert(acc, module_id, true))
+  sorted_map_keys(assignment) |> fold(init: Absent, f: (acc, module_id) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(known, module_id) {
+          Present { value: _ } => Absent
+          Absent => Present { value: module_id }
+        }
+    }
+  )
+}
+
+fn admit_partition_assignment(
+  modules: List<ModuleId>,
+  edges: List<ModuleDagEdge>,
+  components: List<List<String>>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  provenance: PartitionProvenance
+) -> ResolvePartitionOutcome {
+  match assignment_first_omitted_module(modules: modules, assignment: assignment) {
+    Present { value: module_id } =>
+      ResolvePartitionRefused { cause: AssignmentOmitsModule { module_id: module_id } }
+    Absent =>
+      match assignment_first_stranger(modules: modules, assignment: assignment) {
+        Present { value: module_id } =>
+          ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: module_id } }
+        Absent =>
+          match validate_partition_r4_over(edges: edges, components: components, assignment: assignment) {
+            PartitionR4Refused { cause: cause } =>
+              ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: cause } }
+            PartitionR4Valid =>
+              ResolvePartitionOk { assignment: assignment, provenance: provenance }
+          }
+      }
+  }
+}
+
+// SCC membership is read from the components, not re-derived per pair: the pairwise reachability
+// walk this replaces had no visited set, so on a cyclic graph it did not terminate, and it paid a
+// walk per ordered pair besides.
+fn assignment_has_scc_split(
+  components: List<List<String>>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Bool {
+  components
+    |> any(component => {
+      let owners = component |> fold(init: [], f: (acc, member) =>
+        match assignment_owner(assignment: assignment, module_id: member as ModuleId) {
+          Present { value: owner } => if acc |> any(seen => seen == owner) { acc } else { acc |> list_push(owner) }
+          Absent => acc
+        }
+      )
+      (owners |> count) > 1
+    })
+}
+
+// The unit graph is the module edges projected through the assignment -- the same fact
+// partition_fold_outcome derives as CompilationUnit.deps, read here without asking for interfaces.
+// The projection is assignment_unit_dep_edges_over and is not repeated here.
+fn assignment_unit_graph_has_cycle(
+  edges: List<ModuleDagEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Bool {
+  let unit_edges = assignment_unit_dep_edges_over(edges: edges, assignment: assignment)
+    |> map(e => GraphEdge { caller: e.from as String, callee: e.to as String })
+  graph_has_multi_node_scc(
+    names: map_values(assignment) |> fold(init: [], f: (acc, unit) =>
+      if acc |> any(seen => seen == (unit as String)) { acc } else { acc |> list_push(unit as String) }),
+    graph: CallGraph { edges: unit_edges }
+  )
+}
+
+fn validate_partition_r4_over(
+  edges: List<ModuleDagEdge>,
+  components: List<List<String>>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> PartitionR4ValidityVerdict {
+  if assignment_has_scc_split(components: components, assignment: assignment) {
+    PartitionR4Refused {
+      cause: SccSplit { detail: "Rust R4: mutually dependent modules assigned to different compilation units" }
+    }
+  } else if assignment_unit_graph_has_cycle(edges: edges, assignment: assignment) {
+    PartitionR4Refused {
+      cause: UnitGraphCycle { detail: "Rust R4: compilation-unit dependency graph is cyclic" }
+    }
+  } else {
+    PartitionR4Valid
+  }
+}
+
+// ── THE UNIT DEPENDENCIES AN ASSIGNMENT INDUCES ───────────────────────────────────────────────
+
+type UnitDepEdge {
+  from: CompilationUnitId
+  to: CompilationUnitId
+}
+
+fn assignment_unit_dep_edges_over(
+  edges: List<ModuleDagEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> List<UnitDepEdge> {
+  edges |> fold(init: [], f: (acc, edge) =>
+    match assignment_owner(assignment: assignment, module_id: edge.from) {
+      Absent => acc
+      Present { value: from_unit } =>
+        match assignment_owner(assignment: assignment, module_id: edge.to) {
+          Absent => acc
+          Present { value: to_unit } =>
+            if from_unit == to_unit { acc }
+            else if acc |> any(e => (e.from == from_unit) && (e.to == to_unit)) { acc }
+            else { acc |> list_push(UnitDepEdge { from: from_unit, to: to_unit }) }
+        }
+    }
+  )
+}
+
+fn unit_direct_deps(edges: List<UnitDepEdge>, unit_id: CompilationUnitId) -> List<CompilationUnitId> {
+  edges |> fold(init: [], f: (acc, e) =>
+    if (e.from == unit_id) && !(acc |> any(seen => seen == e.to)) { acc |> list_push(e.to) } else { acc })
+}
+
+fn unit_dep_closure_step(
+  edges: List<UnitDepEdge>,
+  acc: List<CompilationUnitId>
+) -> List<CompilationUnitId> {
+  acc |> fold(init: acc, f: (outer, uid) =>
+    unit_direct_deps(edges: edges, unit_id: uid) |> fold(init: outer, f: (inner, dep) =>
+      if inner |> any(seen => seen == dep) { inner } else { inner |> list_push(dep) }))
+}
+
+// Fuel bounds the rounds: each round adds at least one unit or the closure is complete, so the
+// edge count is an upper bound rather than a guess (DESIGN section 4: bounded and forward).
+fn unit_dep_closure(
+  edges: List<UnitDepEdge>,
+  acc: List<CompilationUnitId>,
+  fuel: Int
+) -> List<CompilationUnitId> {
+  if fuel <= 0 {
+    acc
+  } else {
+    let grown = unit_dep_closure_step(edges: edges, acc: acc)
+    if (grown |> count) == (acc |> count) { acc } else {
+      unit_dep_closure(edges: edges, acc: grown, fuel: fuel - 1)
+    }
+  }
+}
+
+fn unit_package_name(rows: List<Stage0PartitionCrateRow>, unit_id: CompilationUnitId) -> Optional<String> {
+  rows |> fold(init: Absent, f: (acc, row) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if row.unit_id == unit_id { optional_present(value: row.package_name) } else { Absent }
+    }
+  )
+}
+
+// A DEP EDGE WHOSE DESTINATION HAS NO PACKAGE ROW IS NOT A DEP THAT CONTRIBUTES NOTHING. Answering
+// Absent => acc would drop the edge, and for a FOUNDATION row whose authored reexport_packages is
+// itself [] a dropped edge leaves derived [] against authored [], so a detector over this would
+// CERTIFY AGREEMENT FROM AN INCOMPLETE PROJECTION. This is exposed over supplied inputs and
+// survives as a permanent control, so what matters is what its signature PERMITS, not what the
+// current rows reach.
+type DerivedDepPackages
+  = DerivedDepPackagesOk { packages: List<String> }
+  | DerivedDepPackagesUnitHasNoRow { unit_id: CompilationUnitId }
+
+fn derived_dep_packages(
+  edges: List<UnitDepEdge>,
+  rows: List<Stage0PartitionCrateRow>,
+  row: Stage0PartitionCrateRow
+) -> DerivedDepPackages {
+  unit_dep_closure(
+    edges: edges,
+    acc: unit_direct_deps(edges: edges, unit_id: row.unit_id),
+    fuel: (edges |> count) + 1
+  )
+    |> fold(init: DerivedDepPackagesOk { packages: [] }, f: (acc, dep) =>
+      match acc {
+        DerivedDepPackagesUnitHasNoRow { unit_id: unit_id } => DerivedDepPackagesUnitHasNoRow { unit_id: unit_id }
+        DerivedDepPackagesOk { packages: packages } =>
+          match unit_package_name(rows: rows, unit_id: dep) {
+            Present { value: pkg } => DerivedDepPackagesOk { packages: packages |> list_push(pkg) }
+            Absent => DerivedDepPackagesUnitHasNoRow { unit_id: dep }
+          }
+      }
+    )
+}

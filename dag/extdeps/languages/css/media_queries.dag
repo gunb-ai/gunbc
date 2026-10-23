@@ -1,0 +1,92 @@
+module extdeps.languages.css.media_queries
+
+import std.types { String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.css.values { CssLength, css_length_wire }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/mediaqueries-4"
+  }
+}
+
+data css_media_queries_5_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion"
+  }
+}
+
+data css_conditional_rules_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-conditional-3/#at-media"
+  }
+}
+
+// Cited upstream: W3C Media Queries Level 4 (the `pointer` interaction feature, #pointer, and the
+// `width` range feature in its `max-` prefixed form, #width and #mq-min-max) and Media Queries
+// Level 5 (`prefers-reduced-motion`, which Level 4 does not define). The `@media` at-rule that
+// wraps a block under a condition is CSS Conditional Rules Level 3 (#at-media). Anchors verified
+// live 2026-10-05 by fetching each document and finding the cited ids.
+//
+// THE BOUNDED GRAIN: a MediaCondition here is ONE parenthesized <media-feature> -- the
+// `<media-in-parens>` production of the spec's <media-condition> grammar. The `not` / `and` / `or`
+// combinators and media types (`screen`, `print`) are the named next grammar, added when a
+// consumer needs one; they are not representable today, so no raw query text can stand in for
+// them. A feature's value is a closed set from the spec (pointer: none | coarse | fine;
+// prefers-reduced-motion: no-preference | reduce) or a typed <length> (max-width), never a string.
+//
+// WHY max-width TAKES A CssLength AND NOT A var(): a custom property is not substituted inside a
+// media query (var() is defined for property values, not for the media query grammar), so the
+// length must serialize as a literal. A caller holding a scale token passes that token's typed
+// length; the literal is derived, not authored.
+
+type PointerAccuracy
+  = PointerNone
+  | PointerCoarse
+  | PointerFine
+
+fn pointer_accuracy_token(a: PointerAccuracy) -> String {
+  match a {
+    PointerNone => "none"
+    PointerCoarse => "coarse"
+    PointerFine => "fine"
+  }
+}
+
+type ReducedMotionPreference
+  = ReducedMotionNoPreference
+  | ReducedMotionReduce
+
+fn reduced_motion_preference_token(p: ReducedMotionPreference) -> String {
+  match p {
+    ReducedMotionNoPreference => "no-preference"
+    ReducedMotionReduce => "reduce"
+  }
+}
+
+type MediaCondition
+  = MediaPointer { accuracy: PointerAccuracy }
+  | MediaMaxWidth { max: CssLength }
+  | MediaPrefersReducedMotion { preference: ReducedMotionPreference }
+
+fn media_condition_wire(c: MediaCondition) -> String {
+  match c {
+    MediaPointer { accuracy } => join(["(pointer: ", pointer_accuracy_token(a: accuracy), ")"], "")
+    MediaMaxWidth { max } => join(["(max-width: ", css_length_wire(l: max), ")"], "")
+    MediaPrefersReducedMotion { preference } =>
+      join(["(prefers-reduced-motion: ", reduced_motion_preference_token(p: preference), ")"], "")
+  }
+}
+
+// The one serializer of the `@media` at-rule: a condition and the already-serialized block list it
+// governs. Every `@media` the typed register emits for a modeled condition goes through here.
+fn css_media_rule_wire(condition: MediaCondition, body: String) -> String {
+  join(["@media ", media_condition_wire(c: condition), " { ", body, " }"], "")
+}
+
+data coarse_pointer: MediaCondition = MediaPointer { accuracy: PointerCoarse }
+data reduced_motion: MediaCondition = MediaPrefersReducedMotion { preference: ReducedMotionReduce }

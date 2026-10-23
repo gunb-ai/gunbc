@@ -1,0 +1,170 @@
+module gunbc.emitted_record_deserialize_gap
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// A RECORD THAT EMBEDS A sole_constructor-BEARING COPRODUCT DOES NOT COMPILE IN THE SEED. MEASURED.
+//
+// The Rust emitter derives Deserialize on an emitted record. It emits a sole_constructor type as a
+// Serialize-only struct with a PRIVATE field, which is correct and is the whole point of that
+// wall -- an unforgeable carrier must not be reconstructible from wire bytes and must not expose
+// its field. The two rules are individually right and compose into a shape the author cannot write:
+// the moment an ordinary record embeds a coproduct one of whose variants carries such a type, the
+// record's derived Deserialize has an unsatisfiable bound and the seed stops compiling.
+//
+// WHY THIS IS A FINDING AND NOT A COMPLAINT ABOUT sole_constructor: the refusal arrives as two rustc
+// codes in the EMITTED tree, not as a typed located diagnostic from our own compiler. The .dag is
+// well-formed and accepted; nothing in the ordinary compile path says the shape is unsupported. So
+// the author learns it from a Rust build failure in generated code they did not write, which is the
+// furthest possible position from the source construct that caused it.
+// A .dag record embedding a coproduct whose variant carries a sole_constructor type emits a Rust
+// record deriving Deserialize over a Serialize-only private-field struct. The seed then fails to
+// compile with E0277, and reading the carried field fails with E0616. The .dag is accepted; the
+// refusal appears only in emitted Rust.
+
+type EmittedRecordDeserializeEvidence
+  = RustcRefusal {
+      code: NonEmptyStr
+      what_it_lands_on: NonEmptyStr
+      why: NonEmptyStr
+    }
+  | AuthoredShape {
+      outer_record_field_type: DeclarationRef
+      unforgeable_carrier: DeclarationRef
+      why_unrepresentable: NonEmptyStr
+    }
+  | WorkaroundInUse {
+      producer: DeclarationRef
+      shape: NonEmptyStr
+      what_it_costs: NonEmptyStr
+    }
+
+// MEASUREMENT ONE AND TWO. Both codes were produced by building the seed after installing the
+// regen candidate for a producer exporting ONE row type of the shape below; neither is recalled
+// from a message. They are separate observations rather than one, because they land on different
+// constructs and either can appear without the other: E0277 is the derive, E0616 is a read.
+data e0277_on_the_outer_record: EmittedRecordDeserializeEvidence = RustcRefusal {
+  code: "E0277",
+  what_it_lands_on: "the emitted outer record's derived Deserialize",
+  why: "the embedded coproduct does not implement Deserialize, because the sole_constructor type inside one of its variants is emitted Serialize-only",
+}
+
+data e0616_on_the_carried_field: EmittedRecordDeserializeEvidence = RustcRefusal {
+  code: "E0616",
+  what_it_lands_on: "a read of the sole_constructor type's carried field from outside its emitted module",
+  why: "the field is emitted private, which is the wall behaving correctly; the accessor is the sanctioned route and a struct-field read is not",
+}
+
+// THE MINIMAL SHAPE. Named at declaration grain so the next author can check whether their own row
+// is this shape before building it, rather than recognising it from a rustc code after the fact.
+data minimal_reproducing_shape: EmittedRecordDeserializeEvidence = AuthoredShape {
+  outer_record_field_type: decl_ref(
+    module_path: "gunbc.namespace_reference_derived_closure_admission",
+    decl_name: "ReferenceDerivedClosureAdmission",
+  ),
+  unforgeable_carrier: decl_ref(
+    module_path: "gunbc.namespace_reference_derived_closure_admission",
+    decl_name: "ReferenceDerivedClosureAcceptanceReceipt",
+  ),
+  why_unrepresentable: "an ordinary record with a field of the coproduct type -- for example { compiled_module: String, admission: ReferenceDerivedClosureAdmission } -- is accepted as .dag and refuses in emitted Rust",
+}
+
+// WHAT IT COSTS TODAY, stated so the gap is priced rather than merely described. The obvious single
+// row is unavailable, so the producer exports the two halves separately. That is sound here for a
+// reason specific to this producer and NOT general: both exports are pure functions of the same
+// argument pair, so a caller cannot pair one subject's module path with another subject's
+// admissions. A producer whose halves were not both functions of one key would have no such
+// argument available and would be splitting a row that must not be split.
+// WHY THIS CITATION NAMES THE EXPORT IT DOES, AND NOT THE OTHER HALF OF THE SPLIT.
+//
+// The sibling export that returns the compiled module path does not exist on main; it lands with
+// gunbc#9554. A DeclarationRef naming it would be a forward reference, and the declaration index
+// resolves every authored citation on every required run, so it would refuse -- correctly. The
+// cited export is real in both trees and is the half the split was taken FROM, so the citation
+// resolves today and stays true after that PR lands. The sibling is named in prose above, where
+// nothing can mistake a description for a resolvable symbol.
+data workaround_in_this_repository: EmittedRecordDeserializeEvidence = WorkaroundInUse {
+  producer: decl_ref(
+    module_path: "v1.gunbc.namespace_reference_derived_closure_production_observations",
+    decl_name: "namespace_structural_binding_observations_a_through_d",
+  ),
+  shape: "the cited export is split from a sibling that returns the compiled module path -- two exports, each a pure function of the same (file, source) pair, joined by the caller, where the obvious single row would have carried both",
+  what_it_costs: "the pairing is an argument-identity argument rather than a type-level one; a producer without a shared key has no equivalent and is blocked",
+}
+
+data emitted_record_deserialize_gap_evidence: List<EmittedRecordDeserializeEvidence> = [
+  e0277_on_the_outer_record,
+  e0616_on_the_carried_field,
+  minimal_reproducing_shape,
+  workaround_in_this_repository,
+]
+
+// RUNG: MITIGATABLE, AND THE PATH DECOMPOSITION IS WHY -- review 57088 read an earlier revision of
+// this comment as claiming a working gate, and that reading was fair because the sentence it read
+// was false.
+//
+// DESIGN 4b(1) sets a class's rung at the MINIMUM across its in-scope paths, so the question is not
+// whether SOME path refuses the shape but whether EVERY path does. Measured on this branch, over the
+// 4234 modules indexed under src/v1 + dag + src/v2: the seed closure is 134 modules and the
+// emit-compile roster's closures add 5 more, for 139 covered. THE REMAINING 4095 CAN CARRY THIS
+// SHAPE WITH NOTHING REFUSING IT -- no required phase emits them, so the .dag is accepted, the bad
+// state is written, and no build ever fails. That is the path that sets the rung.
+//
+// On the 139 covered modules the seed build does refuse, and mechanically preventable is still the
+// wrong reading of it: 4b reserves that rung for a mechanism that EXPOSES AND BLOCKS the invalid
+// state, and a build break at a distance from its cause, in generated code the author did not write,
+// with no typed located diagnostic naming the source construct, is containment after failure rather
+// than prevention of it. The invalid state remains writable on every path, including that one.
+//
+// NO EXECUTING RED IS ENROLLED, AND THE REASON FOLLOWS FROM THE SAME SPLIT rather than from the
+// seed-closure claim an earlier revision made here -- that claim was false and is deleted, not
+// softened. On the 4095 uncovered modules authoring the shape produces NO SIGNAL AT ALL, so there is
+// nothing for a probe to observe. On the 139 covered ones it stops the required build for every
+// subject at once, so the probe cannot go red on its own; it goes red by breaking the tree. Neither
+// half yields an enrollable red, which is exactly the capability the trigger below names.
+data emitted_record_deserialize_gap_rung: String = "mitigatable"
+
+// Measured 2026-08-28 on this branch over 4234 modules indexed under src/v1 + dag + src/v2: seed
+// closure 134, emit-compile roster closures add 5, 139 covered, 4095 uncovered. On the uncovered
+// majority the shape is accepted and nothing refuses it, which is the path that sets the rung under
+// DESIGN 4b(1) minimum-across-paths.
+
+// THE PREMISE BEHIND THE TRIGGER WAS MEASURED, AFTER AN EARLIER REVISION ASSERTED IT.
+//
+// That revision refused the artifact form on the ground that "every rostered emit-compile entry is
+// a seed-closure entry", so adding one could never carry a module the seed does not import. THAT
+// PREMISE IS FALSE, and it was false when written. Computing the transitive IMPORT closure from
+// every module under src/v1 over src/v1 + dag -- the most generous seeding available, so an OUTSIDE
+// answer is robust -- three of the eight rostered entries are OUTSIDE it: gunbc.ci_layer_roots,
+// gunbc.scm.load_standing and std.abi. A second and independent instrument agrees exactly: those
+// three are the three with no committed mirror under src/v1/stage0/src, while extdeps.uri and
+// std.logic are inside and have one.
+//
+// So the phase ALREADY compiles modules the seed does not import, and isolation from the seed is
+// not the missing capability. An over-strong refusal is not the safe direction to err in: it is the
+// mirror of the DESIGN 4b(3) failure -- a trigger that cannot be satisfied while the capability is
+// alive, failing as quietly as one satisfied while it is dead, because a row that never retires
+// reads as diligence.
+// Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci_layer_roots
+// required_emit_compile_entries, three -- gunbc.ci_layer_roots, gunbc.scm.load_standing, std.abi --
+// are outside the transitive import closure from src/v1 over src/v1 + dag, corroborated by their
+// having no committed mirror under src/v1/stage0/src. The emit-compile phase therefore compiles
+// non-seed modules already.
+
+// THE CAPABILITY: a route that compiles a module WHICH MUST FAIL TO COMPILE and asserts the failure
+// -- an expected-red arm for emitted-crate compilation. Isolation from the seed is NOT the missing
+// piece and this trigger no longer claims it is: the emit-compile phase already compiles three
+// rostered entries the seed does not import. What is missing is that every route we have treats a
+// compile failure as a line stop, so authoring this shape anywhere reachable makes a gate
+// permanently red rather than producing an enrolled red. Adding a rostered entry is therefore still
+// NOT sufficient -- not because the entry would be a seed module, but because a rostered entry
+// carrying the shape breaks the required build instead of asserting it. When an expected-red
+// compile arm exists, this row's minimal shape is enrolled as its discriminating red and the class
+// becomes mechanically preventable.
+
+// The predicate is deliberately narrow: it says the finding is carried with its codes and its
+// shape, never that the gap is closed. A row asserting closure would be satisfied by editing this
+// file, which is the validation-standing-where-construction-was-available tell.
+fn emitted_record_deserialize_gap_is_recorded() -> Bool {
+  count(emitted_record_deserialize_gap_evidence) == 4
+}

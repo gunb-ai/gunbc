@@ -1,0 +1,80 @@
+module test.claim.types_arch_collapse
+
+import extdeps.filesystem.filesystem_io
+import extdeps.container.oci.types {
+  Aarch64,
+  Armv7,
+  ImageConfigGoarchKnown,
+  ImageConfigGoarchUnknown,
+  ImageConfigGoarchUnrepresentable,
+  ImageConfigGoarchWireLabel,
+  image_config_goarch_label,
+  parse_image_config_goarch,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data std_types_path: String = "dag/std/types.dag"
+data cpu_types_path: String = "dag/extdeps/cpu/types.dag"
+data oci_types_path: String = "dag/extdeps/container/oci/types.dag"
+data toolchain_types_path: String = "dag/extdeps/toolchain/types.dag"
+
+test fn witness_fork_target_architecture_gone() -> Bool {
+  let result = filesystem_read(path: std_types_path)
+  !string_contains(s: result.content, pattern: "type TargetArchitecture")
+}
+
+test fn witness_fork_cpu_architecture_gone() -> Bool {
+  let result = filesystem_read(path: cpu_types_path)
+  !string_contains(s: result.content, pattern: "type CpuArchitecture")
+}
+
+test fn witness_fork_image_config_architecture_gone() -> Bool {
+  let result = filesystem_read(path: oci_types_path)
+  !string_contains(s: result.content, pattern: "type ImageConfigArchitecture")
+}
+
+test fn witness_single_architecture_authority_present() -> Bool {
+  let result = filesystem_read(path: toolchain_types_path)
+  string_contains(s: result.content, pattern: "type Architecture =")
+}
+
+test fn witness_goarch_parses_arm64_wire() -> Bool {
+  match parse_image_config_goarch("arm64") {
+    ImageConfigGoarchKnown { value: Aarch64 } => true
+    ImageConfigGoarchUnknown { wire: _ } => false
+    ImageConfigGoarchKnown { value: X86_64 } => false
+    ImageConfigGoarchKnown { value: X86 } => false
+    ImageConfigGoarchKnown { value: Arm } => false
+    ImageConfigGoarchKnown { value: Armv7 } => false
+    ImageConfigGoarchKnown { value: Mips } => false
+    ImageConfigGoarchKnown { value: Mipsel } => false
+    ImageConfigGoarchKnown { value: Mips64 } => false
+    ImageConfigGoarchKnown { value: Mips64el } => false
+    ImageConfigGoarchKnown { value: Riscv64 } => false
+    ImageConfigGoarchKnown { value: Wasm32 } => false
+  }
+}
+
+test fn witness_goarch_rejects_unknown_wire() -> Bool {
+  match parse_image_config_goarch("plan9") {
+    ImageConfigGoarchUnknown { wire: _ } => true
+    ImageConfigGoarchKnown { value: _ } => false
+  }
+}
+
+test fn witness_goarch_label_roundtrips_known() -> Bool {
+  match image_config_goarch_label(Aarch64) {
+    ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
+    ImageConfigGoarchUnrepresentable => false
+  }
+}
+
+test fn witness_goarch_label_unrepresentable_armv7() -> Bool {
+  match image_config_goarch_label(Armv7) {
+    ImageConfigGoarchUnrepresentable => true
+    ImageConfigGoarchWireLabel { wire: _ } => false
+  }
+}
+

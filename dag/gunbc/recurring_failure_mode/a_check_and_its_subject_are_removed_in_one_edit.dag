@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.a_check_and_its_subject_are_removed_in_one_edit
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_check_and_its_subject_are_removed_in_one_edit: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_check_and_its_subject_are_removed_in_one_edit" as NonEmptyStr,
+
+  receipts: [
+    "**a check and the thing it checked are removed in ONE edit, so nothing remains to object** (INVALID STATE: a change removes a field, a declaration or an arm, and the SAME change removes the assertion that read it -- because the assertion no longer compiles without it. No artifact survives that is false, and no execution survives that can be inspected. The removal PRESENTS as the removal of the subject, which is what appears in the diff and what the change is described as; the wall that read the subject leaves with it and appears nowhere as a loss. HARM: a population that was guarded becomes unguarded, and every downstream reading of the change is correct -- the fact is still carried, the type still compiles, the witness still passes -- because the only thing that would have complained went with the subject. A conjunction cannot object to its own deletion.",
+
+    "WHY IT SURVIVES REVIEW, AND THE REASON IS THAT THE RIGHT QUESTION IS ASKED. A reviewer seeing a field removed asks whether the FACT is still carried somewhere. That is the correct question and in the specimen below it was asked and correctly answered. Nobody asks the second question -- was anything ASSERTING this field, and does that assertion survive -- because a removed check is not visible in the diff AS a removed check: it is visible as a conjunct that no longer compiles, or as nothing at all when it sat inside a larger expression. **A field can be redundant as DATA and load-bearing as a SUBJECT, and the two are answered by different questions.**",
+
+    "RECOGNITION RULE, mechanical and diff-grain: for any change that removes a field, a declaration or an arm, read the DELETED lines of the same change for a predicate over the removed name -- an equality, a declaration_ref_eq, a conjunct that mentions it. If the deleted lines contain an assertion over the deleted subject, a wall left with it, and the change is not complete until that claim is re-made at whatever carrier the fact moved to. Asking only whether the fact survives answers the data question and leaves the subject question unasked.",
+
+    "THE REPAIR IS NOT RESTORATION, AND THAT IS THE USEFUL HALF: re-adding the old conjunct would assert the presence of a field that no longer exists. Re-make the CLAIM at the carrier the fact moved to, which is frequently stronger than what was deleted -- a citation says where to look, while a hash input makes the two unable to disagree.",
+
+    "SPECIMEN (quick-owl-739 and snappy-pike-154, 2026-09-13, gunbc-private#102 and public gunbc#11194). A public coproduct arm landed WITHOUT a `basis` field that a private consumer constructed it with, so the private entry stopped resolving. The ruling to drop the field was reasoned correctly on the data question: the grounding survives because the ruling is an INPUT to posture_revision_hash, so the enumeration cannot drift from the ruling that authorised it without the revision changing -- structurally stronger than the citation being removed. What that reasoning did not ask is whether anything ASSERTED the field. population_is_the_clearance_roster ended with declaration_ref_eq over that basis against m2_posture_ruling, so dropping the field dropped a check, and the sentence `dropping basis loses nothing` would have been the justification for deleting a wall.",
+
+    "THREE READERS ASKED THE FACT QUESTION AND NONE ASKED THE SUBJECT QUESTION, which is why this is a class and not an oversight: the author of the ruling, the lane that verified the hash binding, and the session holding the branch. The loss was found while re-making the claim rather than while reviewing the removal.",
+
+    "THE CLAIM WAS RE-MADE WIDER THAN THE ONE DELETED, and the measurement is the receipt: a_ruling_change_changes_the_revision varies the ruling's quotation and requires the revision to move, which tests the BINDING rather than the presence of a citation field. With the existing clearance conjunct it now covers BOTH inputs to posture_revision_hash where the deleted assertion covered one. Its red is measured rather than argued -- give the varied ruling the SAME quotation and it fails, naming itself.",
+
+    "RUNG FOUND AT: 1, mitigatable, and honestly so. Nothing in the corpus detects it; it was caught by a human re-reading the deleted expression while re-making the claim, and it is silent wherever nobody re-reads. A review habit that reads a field removal for data redundancy will not see it, which is the specimen's own evidence.",
+
+    "CEILING: 2, mechanically preventable, and DERIVED rather than aspirational. Whether a change's deleted lines contain an assertion over a name that the same change removes is DECIDABLE from the diff alone -- both halves are present in one artifact, and no external fact is needed. It does not reach 3 or 4: the substrate does not tie an assertion to its subject, so nothing prevents AUTHORING the removal; the invalid state stays writable and the wall is a census rather than a construction.",
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY AND NOT AS AN ARTIFACT: a diff-grain census that enumerates, for every declaration, field or arm a change removes, the removed expressions that referenced it, and refuses a change in which an assertion over the removed subject disappears without a replacement naming the carrier the fact moved to. The pairing is the whole trigger -- the enumeration alone reports, and only the refusal makes the state unwritable in review. Authoring one such census by hand for one subject discharges nothing and is the artifact-for-capability substitution DESIGN section 4b(3) forbids.",
+
+    "**BOUNDED AGAINST ITS NEIGHBOURS, checked by reading their invalid states before this row was filed rather than by name.** [[executed_conjunct_discriminates_nothing]] is the case where the conjunct EXISTS, executes, is gated on, and cannot be made false by any fixture the corpus constructs -- its own words are that it `deletes cleanly: remove it and every witness stays green`. There is an execution to inspect and a mutation that exposes it, and one authored fixture retires it. Here there is no conjunct at all: nothing to mutate, nothing to gate, and no fixture can retire what does not exist. The two are also found differently -- that one by a mutation over a live check, this one by noticing an absence in a diff.",
+
+    "[[dissolution_trigger_cites_a_mechanism_that_is_later_deleted]] is the INVERSE, and the inversion is exact: there the citation SURVIVES its referent and becomes a false artifact that still reads as tracked, so something stale exists to be found. Here the citation and the referent die together in one edit, so nothing false is left behind -- which is why no census over surviving text can reach it and why the recognition rule has to look at the DELETED lines.",
+
+    "[[a_positive_control_certifies_the_defect_it_exists_to_catch]] is a control that is present and inverted; this is a control that is absent. [[unbacked_execution_claim]] is prose asserting a relation no authority backs, where the claim survives and its referent never existed; this is an assertion that existed, was true, and was removed with what it read. Filing this instance into any of the four would have put a REMOVED check under a row whose subject is a PRESENT one.",
+  ],
+
+  evidence: [],
+}

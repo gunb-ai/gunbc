@@ -1,0 +1,56 @@
+module extdeps.physics.dry_air
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure {
+  Celsius, celsius,
+  GramPerCubicMetre, gram_per_cubic_metre,
+  JoulePerKilogramKelvin, joule_per_kilogram_kelvin,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// DRY AIR AT ONE ATMOSPHERE: the two figures an exhaust-temperature-rise derivation needs, at the
+// reference temperature the table states. Density falls about 3 percent from 20 C to 30 C and cp
+// is flat to a tenth of a percent over the whole chassis range, so one row at 20 C serves a
+// derivation whose other inputs are far coarser; a consumer wanting the 35 C row reads it from the
+// cited table rather than scaling this one.
+//
+// Relayed on 2026-10-04 through search summaries of the Penn State ME 420 properties table
+// (density 1.204 kg/m3, cp 1007 J/kg K at 20 C) and standard references stating cp 1005 J/kg K at
+// 25 C. The row carries 1005 and names the 1007 reading in its obligation.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.me.psu.edu/cimbala/me420/Links/Table_A_9_CC_Properties_of_Air.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.physics.dry_air",
+      decl_name: "dry_air_at_20c",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type DryAirProperties {
+  reference_temperature: Celsius
+  density: GramPerCubicMetre
+  specific_heat_cp: JoulePerKilogramKelvin
+  standing: CitedFigureStanding
+}
+
+data dry_air_at_20c: DryAirProperties = DryAirProperties {
+  reference_temperature: celsius(count: 20),
+  density: gram_per_cubic_metre(count: 1204),
+  specific_heat_cp: joule_per_kilogram_kelvin(count: 1005),
+  standing: TranscribedUncited {
+    read_obligation: "Open Table A-9 (properties of air at 1 atm) and confirm 1.204 kg/m3 and cp at 20 C; the table reads 1007 J/kg K where this row carries 1005, a 0.2 percent difference below every other input's grain.",
+  },
+}

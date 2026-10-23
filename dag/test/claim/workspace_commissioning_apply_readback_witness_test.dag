@@ -1,0 +1,75 @@
+module test.claim.workspace_commissioning_apply_readback_witness
+
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import std.types { Bool, String, NonEmptyStr }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotFree, HoldSlotAbsent, HoldSlotUndecodable, DurableHoldReleaseRef }
+import gunbc.workspace_slot_mutation {
+  workspace_commissioning_mutation_owner, workspace_mutation_recovery_standing,
+  WorkspaceMutationRecoveryHeld, WorkspaceMutationRecoveryReleased, WorkspaceMutationRecoveryRefused,
+}
+import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_terminal_succeeded, workspace_commissioning_initial_ready }
+import gunbc.runner_microvm_slot_start { SlotStartCompleted, UnitPropertyRead, UnitPropertyUnread, ControllerReceiptRead }
+import gunbc.runner_microvm_slot_controller { outcome_text, SlotControllerCommissioned }
+import test.claim.workspace_commissioning_transaction_witness { transaction_fixture_provenance, transaction_fixture_ready }
+
+data expected_invocation: NonEmptyStr = "fixture-invocation" as NonEmptyStr
+
+fn observed_terminal(text: String, status: String, invocation: NonEmptyStr) -> Bool {
+  workspace_commissioning_terminal_succeeded(instance: runner_slot_instance_name(slot: transaction_fixture_provenance().slot) as String, invocation: expected_invocation,
+    result: SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr,
+      invocation_id: invocation, exec_main_status: UnitPropertyRead { value: status },
+      controller_receipt: ControllerReceiptRead { path: "fixture-receipt", text: text } })
+}
+
+test fn readable_refusal_is_not_successful_commissioning() -> Bool {
+  !observed_terminal(text: "refused: CellNotBound x", status: "0", invocation: expected_invocation)
+    && observed_terminal(text: outcome_text(o: SlotControllerCommissioned), status: "0", invocation: expected_invocation)
+}
+
+test fn failed_or_other_invocation_cannot_complete_commissioning() -> Bool {
+  !observed_terminal(text: outcome_text(o: SlotControllerCommissioned), status: "1", invocation: expected_invocation)
+    && !observed_terminal(text: outcome_text(o: SlotControllerCommissioned), status: "0", invocation: "other-invocation" as NonEmptyStr)
+}
+
+test fn unreadable_exit_status_cannot_complete_commissioning() -> Bool {
+  !workspace_commissioning_terminal_succeeded(instance: runner_slot_instance_name(slot: transaction_fixture_provenance().slot) as String, invocation: expected_invocation,
+    result: SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr,
+      invocation_id: expected_invocation, exec_main_status: UnitPropertyUnread { property: "ExecMainStatus" as NonEmptyStr, detail: "unreadable" },
+      controller_receipt: ControllerReceiptRead { path: "fixture-receipt", text: outcome_text(o: SlotControllerCommissioned) } })
+}
+
+test fn advanced_readiness_is_not_initial_commissioning_readback() -> Bool {
+  workspace_commissioning_initial_ready(slot: transaction_fixture_provenance().slot, reading: transaction_fixture_ready(generation: 0))
+    && !workspace_commissioning_initial_ready(slot: transaction_fixture_provenance().slot, reading: transaction_fixture_ready(generation: 1))
+}
+
+test fn recovery_retains_only_the_recorded_guard_incarnation() -> Bool {
+  let owner = workspace_commissioning_mutation_owner(plan_hash: "reviewed-plan")
+  workspace_mutation_recovery_standing(observed: HoldSlotHeld { generation: 3, owner: owner },
+    owner: owner, acquired: 3) == WorkspaceMutationRecoveryHeld
+    && workspace_mutation_recovery_standing(observed: HoldSlotHeld { generation: 5, owner: owner },
+      owner: owner, acquired: 3) == WorkspaceMutationRecoveryRefused
+    && workspace_mutation_recovery_standing(observed: HoldSlotHeld { generation: 3,
+      owner: workspace_commissioning_mutation_owner(plan_hash: "other-plan") },
+      owner: owner, acquired: 3) == WorkspaceMutationRecoveryRefused
+}
+
+test fn lost_release_response_recovers_only_the_exact_successor() -> Bool {
+  let owner = workspace_commissioning_mutation_owner(plan_hash: "reviewed-plan")
+  let released = "mutation-completed:workspace-commissioning:reviewed-plan" as DurableHoldReleaseRef
+  workspace_mutation_recovery_standing(observed: HoldSlotFree { generation: 4, released_by: released },
+    owner: owner, acquired: 3) == WorkspaceMutationRecoveryReleased
+    && workspace_mutation_recovery_standing(observed: HoldSlotFree { generation: 6, released_by: released },
+      owner: owner, acquired: 3) == WorkspaceMutationRecoveryRefused
+    && workspace_mutation_recovery_standing(observed: HoldSlotFree { generation: 4,
+      released_by: "other-release" as DurableHoldReleaseRef },
+      owner: owner, acquired: 3) == WorkspaceMutationRecoveryRefused
+}
+
+test fn missing_or_undecodable_guard_does_not_mean_released() -> Bool {
+  let owner = workspace_commissioning_mutation_owner(plan_hash: "reviewed-plan")
+  workspace_mutation_recovery_standing(observed: HoldSlotAbsent,
+    owner: owner, acquired: 3) == WorkspaceMutationRecoveryRefused
+    && workspace_mutation_recovery_standing(observed: HoldSlotUndecodable { generation: 3, detail: "bad record" },
+      owner: owner, acquired: 3) == WorkspaceMutationRecoveryRefused
+}

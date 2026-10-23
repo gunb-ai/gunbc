@@ -1,0 +1,26 @@
+{
+  "observed_at_utc": "2026-10-05T00:50:44Z",
+  "printer": "printer-02",
+  "project_sha256": "6c7fbb7afd5e6c9aaecc252c693df416e0cd170e8523e667e3a2cd49d0c9a5d1",
+  "remote_name": "gunbc-6c7fbb7afd5e6c9aaecc252c693df416e0cd170e8523e667e3a2cd49d0c9a5d1.3mf",
+  "members": [
+    "M140",
+    "G140",
+    "CU-1-1",
+    "CU-11",
+    "CU1-1",
+    "CU11",
+    "CP-1-1",
+    "CP-11",
+    "CP1-1",
+    "CP11"
+  ],
+  "standing": "running-confirmed",
+  "publisher": "acknowledgement-timeout",
+  "reconciliation": "first read-only observation matched exact file and RUNNING",
+  "remaining_minutes": 935,
+  "print_error": 0,
+  "start_republished": false,
+  "operator_token_deleted": true,
+  "inspection": "pending-completion-and-physical-inspection"
+}

@@ -1,0 +1,280 @@
+module v2.test.provenance.image_occurrence_projection
+
+import std.types { Bool, Int }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.occurrence_identity {
+  NodeOccurrenceIdentity,
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ScopedOccurrenceAllocator,
+  scoped_occurrence_allocator,
+  scoped_occurrence_ref_in_scope,
+}
+import v2.std.collection { Absent, Map, Present, empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.node {
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  TypeNode,
+  allocate_pending_occurrences,
+  close_lowered_image,
+  node_with_occurrence_id,
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import std.algebra { Empty }
+
+// Fixture: the graph allocator has handed out [0, 10), so the first allocated member gets 10, the
+// next 11, and so on, in pre-order. The lowered source is authored occurrence 5.
+fn iop_scope() -> Fnv1a64Structural {
+  structural_content_hash(digest: "aaaaaaaaaaaaaaaa")
+}
+
+fn iop_allocator() -> ScopedOccurrenceAllocator {
+  scoped_occurrence_allocator(alloc: OccurrenceIdAllocator { next_id: 10 }, scope: iop_scope())
+}
+
+fn iop_minted(id: Int) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: OccurrenceId { value: id } }
+}
+
+fn iop_node(occurrence: NodeOccurrenceIdentity, children: List<Node>) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: map(children, c => Edge { label: Positional, target: c }),
+    occurrence_id: occurrence,
+  )
+}
+
+// An absent child reads as minted -1, which no assertion here accepts, so a missing position fails
+// every check instead of passing a negative one.
+fn iop_child(n: Node, i: Int) -> Node {
+  match list_at_optional(xs: n.children, index: i) {
+    Present { value: e } => e.target
+    Absent => iop_node(occurrence: iop_minted(id: -1), children: [])
+  }
+}
+
+fn iop_is_projected(n: Node, id: Int, source: Int) -> Bool {
+  match n.occurrence_id {
+    OccurrenceProjected { id: got, caused_by: cause } =>
+      got.value == id
+        && cause.occurrence.value == source
+        && scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: iop_scope())
+    OccurrenceMinted { id: _ } => false
+    OccurrencePending { caused_by: _ } => false
+    OccurrenceSynthetic => false
+  }
+}
+
+fn iop_is_pending(n: Node, source: Int) -> Bool {
+  match n.occurrence_id {
+    OccurrencePending { caused_by: cause } => cause.value == source
+    OccurrenceMinted { id: _ } => false
+    OccurrenceProjected { id: _, caused_by: _ } => false
+    OccurrenceSynthetic => false
+  }
+}
+
+fn iop_is_minted(n: Node, id: Int) -> Bool {
+  match n.occurrence_id {
+    OccurrenceMinted { id: got } => got.value == id
+    OccurrencePending { caused_by: _ } => false
+    OccurrenceProjected { id: _, caused_by: _ } => false
+    OccurrenceSynthetic => false
+  }
+}
+
+// A builder's output before it closes: the root and three members all stamped with source 5, one of
+// them under a synthetic node.
+fn iop_unclosed_image() -> Node {
+  iop_node(occurrence: iop_minted(id: 5), children: [
+    iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+    iop_node(occurrence: OccurrenceSynthetic, children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+  ])
+}
+
+// CLOSING IS PURE AND NAMES THE ROOT. The root the builder returns keeps OccurrenceMinted; every other
+// member becomes OccurrencePending with the source as its cause. Nothing is allocated yet.
+test fn image_close_marks_members_pending_and_keeps_the_root_minted_holds() -> Bool {
+  let r = close_lowered_image(root: iop_unclosed_image())
+  iop_is_minted(n: r, id: 5)
+    && iop_is_pending(n: iop_child(n: r, i: 0), source: 5)
+    && iop_is_pending(n: iop_child(n: iop_child(n: r, i: 0), i: 0), source: 5)
+    && iop_is_pending(n: iop_child(n: iop_child(n: r, i: 1), i: 0), source: 5)
+}
+
+// THE DISCRIMINATING CONTROL. After closing and the one allocation pass, three members hold three
+// distinct allocated ids in pre-order, each projected with the source as its cause, and the
+// allocator comes back advanced past them. A builder that stamped the source and did not close --
+// the rule this program retires -- leaves them minted with id 5 and goes red.
+test fn image_allocation_gives_three_members_distinct_caused_ids_holds() -> Bool {
+  let allocated = allocate_pending_occurrences(root: close_lowered_image(root: iop_unclosed_image()), allocator: iop_allocator())
+  let r = allocated.root
+  iop_is_minted(n: r, id: 5)
+    && iop_is_projected(n: iop_child(n: r, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 11, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 1), i: 0), id: 12, source: 5)
+    && allocated.allocator.alloc.next_id == 13
+}
+
+// THE ALLOCATION PASS IS IDEMPOTENT: a second run over an allocated tree allocates nothing.
+test fn image_allocation_is_idempotent_holds() -> Bool {
+  let once = allocate_pending_occurrences(root: close_lowered_image(root: iop_unclosed_image()), allocator: iop_allocator())
+  let twice = allocate_pending_occurrences(root: once.root, allocator: once.allocator)
+  twice.allocator.alloc.next_id == once.allocator.alloc.next_id
+    && iop_is_projected(n: iop_child(n: twice.root, i: 0), id: 10, source: 5)
+}
+
+// THE ALLOCATION PASS NEVER MINTS AND NEVER REPAIRS. A tree nobody closed has no pending member, so the
+// pass allocates nothing and leaves every duplicated minted id where it is -- for the wall to refuse.
+test fn image_allocation_leaves_an_unclosed_image_minted_holds() -> Bool {
+  let allocated = allocate_pending_occurrences(root: iop_unclosed_image(), allocator: iop_allocator())
+  allocated.allocator.alloc.next_id == 10
+    && iop_is_minted(n: iop_child(n: allocated.root, i: 0), id: 5)
+}
+
+// NESTED SAME-SOURCE. An inner builder closed its image of source 5; the outer builder wraps it with
+// another source-5 root and closes again. The inner root becomes a member, the inner pending member
+// stays pending once, and allocation gives every member a distinct id.
+test fn image_nested_same_source_allocates_distinct_ids_holds() -> Bool {
+  let inner = close_lowered_image(root: iop_node(occurrence: iop_minted(id: 5), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]))
+  let outer = close_lowered_image(root: iop_node(occurrence: iop_minted(id: 5), children: [inner]))
+  let r = allocate_pending_occurrences(root: outer, allocator: iop_allocator()).root
+  iop_is_minted(n: r, id: 5)
+    && iop_is_projected(n: iop_child(n: r, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 11, source: 5)
+}
+
+// CLOSING STOPS AT ANOTHER SOURCE. A subtree lowered for source 7 is that source's image to close, so
+// it is not entered: a source-5 node hidden beneath it stays minted, and the wall refuses it.
+test fn image_close_does_not_enter_another_sources_subtree_holds() -> Bool {
+  let r = close_lowered_image(root: iop_node(occurrence: iop_minted(id: 5), children: [
+    iop_node(occurrence: iop_minted(id: 7), children: [iop_node(occurrence: iop_minted(id: 5), children: [])]),
+  ]))
+  iop_is_minted(n: iop_child(n: r, i: 0), id: 7)
+    && iop_is_minted(n: iop_child(n: iop_child(n: r, i: 0), i: 0), id: 5)
+}
+
+// DETERMINISM. Two allocations of one input from one allocator state give identical ids.
+test fn image_allocation_is_deterministic_holds() -> Bool {
+  let closed = close_lowered_image(root: iop_unclosed_image())
+  let first = allocate_pending_occurrences(root: closed, allocator: iop_allocator()).root
+  let second = allocate_pending_occurrences(root: closed, allocator: iop_allocator()).root
+  iop_is_projected(n: iop_child(n: first, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: second, i: 0), id: 10, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: first, i: 1), i: 0), id: 12, source: 5)
+    && iop_is_projected(n: iop_child(n: iop_child(n: second, i: 1), i: 0), id: 12, source: 5)
+}
+
+fn iop_admit(root: Node) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(root: root, test_markers: test_marker_channel_empty(), import_bindings: Empty, type_declaration_kinds: Empty, type_declaration_modifiers: Empty, diagnostics: None)
+}
+
+fn iop_refused_for(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE WALL, RED: A BUILDER THAT SKIPS CLOSING. Its image reaches admission with the source's minted id on
+// several nodes, and admission refuses it as a duplicated minted occurrence.
+test fn occurrence_wall_refuses_an_unclosed_image_holds() -> Bool {
+  iop_refused_for(o: iop_admit(root: iop_unclosed_image()), reason: ^normalize_reason_minted_occurrence_duplicated)
+}
+
+// THE WALL, RED: A PENDING OCCURRENCE PLANTED PAST NORMALIZATION. Admission refuses it rather than
+// admitting a node with a cause and no id.
+test fn occurrence_wall_refuses_a_surviving_pending_occurrence_holds() -> Bool {
+  iop_refused_for(o: iop_admit(root: close_lowered_image(root: iop_unclosed_image())), reason: ^normalize_reason_pending_occurrence_survived)
+}
+
+// THE WALL, GREEN: the same image closed and allocated is admitted.
+test fn occurrence_wall_admits_a_closed_allocated_image_holds() -> Bool {
+  match iop_admit(root: allocate_pending_occurrences(root: close_lowered_image(root: iop_unclosed_image()), allocator: iop_allocator()).root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE REAL PATH. One where-refined type -- whose where clause lowers to an image of an outer Conj (the
+// root) with a production, an identity atom and a predicate atom -- through the real parse and
+// normalize. It is the cheapest authored input with a multi-member image: a function declaration
+// has one too, but its body lowering alone put this claim over its eval-step budget. The token stream
+// is SUPPLIED (tokenize is not this claim's subject); the next claim pairs that supply with the real
+// tokenizer, so supplying it removes no execution of the real path (DESIGN section 3).
+data iop_real_text: String = "module m\ntype P = Int where non_empty\n"
+
+fn iop_real_tokens() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^image_occurrence_real_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^image_occurrence_real_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^image_occurrence_real_probe, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^image_occurrence_real_probe, start: 14, end: 15 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^image_occurrence_real_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^image_occurrence_real_probe, start: 18, end: 21 },
+    Token { class: ^dag_token_kw_where, lexeme: "where", file: ^image_occurrence_real_probe, start: 22, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "non_empty", file: ^image_occurrence_real_probe, start: 28, end: 37 }
+  ])
+}
+
+fn iop_real_normalized() -> Outcome<NormalizedTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: iop_real_tokens()), f: fn(tree) { normalize(parse_tree: tree) })
+}
+
+test fn image_real_tokens_are_what_the_tokenizer_emits_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: iop_real_text, file: ^image_occurrence_real_probe, supplied: iop_real_tokens())
+}
+
+fn iop_projected_count(n: Node) -> Int {
+  let here = match n.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: _ } => 1
+    OccurrenceMinted { id: _ } => 0
+    OccurrencePending { caused_by: _ } => 0
+    OccurrenceSynthetic => 0
+  }
+  fold(n.children, init: here, f: (acc, e) => acc + iop_projected_count(n: e.target))
+}
+
+fn iop_minted_ids(n: Node, acc: Map<Int, Bool>) -> Map<Int, Bool> {
+  let here = match n.occurrence_id {
+    OccurrenceMinted { id: id } => map_insert(m: acc, key: id.value, value: true)
+    OccurrenceProjected { id: _, caused_by: _ } => acc
+    OccurrencePending { caused_by: _ } => acc
+    OccurrenceSynthetic => acc
+  }
+  fold(n.children, init: here, f: (inner, e) => iop_minted_ids(n: e.target, acc: inner))
+}
+
+fn iop_causes_are_minted(n: Node, minted: Map<Int, Bool>) -> Bool {
+  let here = match n.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: cause } =>
+      match map_lookup(m: minted, key: cause.occurrence.value) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    OccurrenceMinted { id: _ } => true
+    OccurrencePending { caused_by: _ } => false
+    OccurrenceSynthetic => true
+  }
+  fold(n.children, init: here, f: (acc, e) => acc && iop_causes_are_minted(n: e.target, minted: minted))
+}
+
+test fn image_real_module_normalizes_with_distinct_occurrences_holds() -> Bool {
+  match iop_real_normalized() {
+    Accepted { value: t, diagnostics: _ } =>
+      iop_projected_count(n: t.root) >= 3
+        && iop_causes_are_minted(n: t.root, minted: iop_minted_ids(n: t.root, acc: empty_map()))
+    Rejected { diagnostics: _ } => false
+  }
+}

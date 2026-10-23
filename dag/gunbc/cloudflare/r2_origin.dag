@@ -1,0 +1,660 @@
+module gunbc.cloudflare.r2_origin
+
+import std.types { String, NonEmptyStr, List, brand }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.allocation_roster { allocated_value }
+import extdeps.securities { Securities }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.cloudflare { cloudflare }
+import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault, R2BucketLocation, r2_location_enam }
+import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule, R2DeleteObjectsAfterAge, R2AbortMultipartUploadsAfterAge, R2BucketWide, R2Prefix }
+import std.measure { second_count }
+import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent, PutUnconditional }
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  NoDischargeSiteModeled,
+}
+
+// WHOSE ACCOUNT, WHICH BUCKET, AND UNDER WHOSE CREDENTIAL -- DECLARED, BECAUSE A CALL SITE THAT
+// SUPPLIES THEM IS A SECOND AUTHORITY FOR THE SAME FACTS. extdeps.cloudflare.r2 owns the SHAPE of an
+// R2 bucket resource name and gunbc.cloudflare.r2_token_mint owns the mint POLICY; neither may know
+// which account this fleet has or which bucket is its durable origin, because those are workflow
+// facts (DESIGN section 3: interface, realization and policy are three facts). Until this module
+// existed they were parameters supplied by nobody, which is why every mint declaration sat on the
+// frontier.
+//
+// NO SECRET BYTES LIVE HERE. Custody is gunbc.secret_provision's, and this module carries only the
+// SecretRef naming where a credential lives -- a locus, not a value. A held Secret here would be the
+// second custody path r2_token_mint's own annotation forbids.
+
+// THE ACCOUNT ID IS UPSTREAM'S TO ISSUE, SO IT IS A STANDING RATHER THAN A LITERAL. Cloudflare
+// assigns the 32-hex account id when the account is created; this repository cannot derive it, guess
+// it, or default it, and a placeholder literal would be a fabricated upstream fact flowing straight
+// into a token policy's resource name. The unallocated arm is therefore not scaffolding to be
+// deleted once the id arrives: it is the state every future fleet account starts in, and it is what
+// makes an unallocated account refuse rather than address a guessed one.
+//
+// THIS IS THE SHAPE gunbc.spark.bootstrap_provision ALREADY USES for an unallocated cloud principal
+// (fleet_cloud_principal_standing / CloudPrincipalUnallocated), and reusing it is the point: one
+// model of "a principal this fleet will have and does not yet" rather than a second one per vendor.
+type CloudflareAccountId = NonEmptyStr where brand("CloudflareAccountId")
+
+type FleetCloudflareAccountStanding
+  = CloudflareAccountAllocated {
+      company: Vendor<Securities>
+      account_id: CloudflareAccountId
+    }
+  | CloudflareAccountUnallocated {
+      company: Vendor<Securities>
+      intervention: HumanIntervention
+    }
+
+data cloudflare_account_allocation_intervention_identity: String = "cloudflare-account-allocation"
+
+fn cloudflare_account_allocation_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: cloudflare_account_allocation_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "the fleet's Cloudflare account" as NonEmptyStr,
+    instruction: "Create the Cloudflare account that will own this fleet's R2 storage, billed to the LLC, then record its 32-hex account id as the CloudflareAccountAllocated arm of fleet_cloudflare_account_standing. The id is issued by Cloudflare and cannot be derived here; until it is recorded every mint refuses rather than addressing a guessed account." as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+// ALLOCATED, ON THE OPERATOR'S SUPPLIED VALUE. This is CONFIG and not a secret -- an account id
+// appears in every R2 endpoint host and in every IAM resource name the token policies carry -- so it
+// belongs in a declaration rather than in custody or in an environment variable. The token VALUE for
+// that account is a different fact and lives only in gunbc.secret_provision, per
+// cloudflare_account_token_bootstrap_intervention's own instruction.
+data fleet_cloudflare_account_id: NonEmptyStr = "5f71db675ad3e94c16a3d5c159d16298"
+
+fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
+  CloudflareAccountAllocated {
+    company: cloudflare,
+    account_id: fleet_cloudflare_account_id as CloudflareAccountId
+  }
+}
+
+// WHAT IS ADMITTED TO THE ORIGIN IS A DECLARED POPULATION, NOT "whatever a caller uploads". The
+// durable origin is the byte-owning half of gunbc.fabric_m0_commit's readback distinction: a commit
+// manifest read back from a disposable cache establishes nothing, so the origin has to be a named
+// place with a stated admission. Widening it later is a change to this row, which is exactly the
+// visibility a bucket that quietly became a general dumping ground would not have.
+type OriginAdmission
+  = FabricCommitManifestsAndContentAddressedOutputs {}
+  | DigestKeyedBootArtifacts {}
+  | KeyAddressedCacheBlobs {}
+  | ContentAddressedWorkspaceHistory {}
+
+// A CREDENTIAL FOR THE ORIGIN IS TWO FACTS AND A STANDING. The S3 access key id IS the Cloudflare
+// token id (extdeps.cloudflare.r2 R2S3AccessPair, cited) and is not a secret: it is what the
+// account's own token listing shows, and it is a data row here for the same reason the secret
+// VERSION is -- a fetch that could not name which token it holds could not sign a request. The
+// token VALUE stays in custody and is named only by its SecretRef locus. And a credential this
+// fleet has not minted yet is an ARM, not a placeholder pair: the read token was minted
+// (gunbc#10947) and the write token is minted by gunbc.cloudflare.r2_token_mint_run run_object_write,
+// so until that entry has executed and its stored version is pinned here, every PUT refuses at this
+// declaration -- typed and before any fetch -- rather than addressing a secret nobody wrote.
+//
+// ONE STANDING FOR BOTH DIRECTIONS. An earlier revision carried the read locus as a bare SecretRef
+// and would have grown a differently shaped write field beside it; two shapes for one concept is the
+// fork DESIGN section 3 forbids, so both directions inhabit OriginCredentialStanding and the field
+// names carry the direction.
+//
+// OriginCredentialMintEntryUnbuilt: no mint entry exists for this credential yet; secret_id is where
+// its token will be stored once one does. Distinct from OriginCredentialUnminted so mint_entry keeps
+// one meaning: an entry to run.
+//
+// EVERY ARM NAMES ITS CUSTODY SECRET, because the mint derives where it stores a token FROM THIS
+// STANDING (gunbc.cloudflare.r2_token_mint_run, per BucketPurpose). An Unminted arm that named only
+// its entry would force the mint to keep a second roster of secret ids beside the one declared here.
+type OriginCredentialStanding
+  = OriginCredentialPinned {
+      access_key_id: NonEmptyStr
+      token_value: SecretRef
+    }
+  | OriginCredentialUnminted {
+      mint_entry: DeclarationRef
+      secret_id: NonEmptyStr
+    }
+  | OriginCredentialMintEntryUnbuilt {
+      secret_id: NonEmptyStr
+    }
+
+type R2OriginBucket {
+  bucket_name: NonEmptyStr
+  jurisdiction: R2Jurisdiction
+  location_hint: R2BucketLocation?
+  purpose: BucketPurpose
+  read_credential: OriginCredentialStanding
+  write_credential: OriginCredentialStanding
+}
+
+// THE BUCKET NAME IS OURS TO CHOOSE AND THE ACCOUNT ID IS NOT, which is why one is allocated here
+// and the other is answered upstream. A bucket name is a request this fleet makes of R2; an account
+// id is an answer R2 gives.
+//
+// AND AN ALLOCATION IS A ROSTER, NEVER A DERIVATION. The tempting shape is a template -- take the
+// purpose, lowercase it, prefix the fleet -- and gunbc.hostname_allocation already rules that move
+// out for exactly the reason it would be wrong here: deriving the name by PARSING the purpose makes
+// the bucket a coincidence of how the purpose happens to be spelled, so a purpose that is not a
+// legal bucket name silently has no bucket and one that is silently claims a bucket nobody
+// allocated. The mapping is explicit and the lookup fails closed: an unallocated purpose yields
+// Absent, never a name reconstructed from the purpose.
+//
+// INJECTIVE IN BOTH DIRECTIONS, for the reason the hostname roster states. A bucket name is a JOIN
+// KEY -- it appears in the IAM resource name a token policy scopes to, in the S3 endpoint path, and
+// in every manifest locator -- so two purposes claiming one bucket is two workloads sharing a
+// credential scope, and one purpose allocated twice is an ambiguous desired state. Both refuse.
+//
+// RUNG: structurally guaranteed at the carrier, because std.allocation_roster's roster has no
+// constructor that admits a repeated key on either axis. The authored list below remains a fallible
+// ingress that refuses loudly; that residual, and its own next-rung trigger, are stated once in
+// std.allocation_roster rather than restated here.
+// THE BOOT ORIGIN IS A SECOND PURPOSE, NOT A WIDENING OF THE FIRST. The durable origin is private and byte-owning for commit readback; the
+// boot origin is read by machines over a public custom domain. Admitting boot bytes into the durable
+// bucket would make it public, and the durable origin's read token would become a boot reader's.
+//
+// THE CACHE-BLOB PLACEMENT IS A THIRD PURPOSE, NOT A THIRD STORE. It holds the fabric blob plane's
+// cache population (std.fabric_blob, laid out by gunbc.fabric.fabric_blob_placement): whole-object
+// blobs under exact keys, released by age. It is a separate bucket because it is the one purpose
+// whose objects EXPIRE -- a lifecycle rule on a shared bucket would be one prefix typo away from
+// expiring durable history -- and because its writer (the canonical publisher) is a different
+// principal from the durable origin's committer.
+//
+// THE WORKSPACE PLACEMENT IS A FOURTH PURPOSE, NOT A WIDENING OF THE DURABLE ORIGIN OR THE CACHE. It
+// holds durable workspace history (std.fabric_storage): content-addressed chunks and revision
+// objects, write-once and create-only, plus the workspace heads that gunbc.fabric_storage_r2_head
+// writes under If-Match. It is not the cache bucket because the cache's lifecycle rule releases its
+// objects at seven days and workspace history is released never; it is not the durable origin
+// because that bucket's admission is commit manifests and their outputs, and its write token is the
+// committer's -- admitting workspace heads there would hand every workspace writer the power to
+// overwrite commit history, and widen the one admission that row exists to keep narrow.
+type BucketPurpose
+  = FabricDurableOrigin {}
+  | FabricBootOrigin {}
+  | FabricCacheBlobs {}
+  | FabricWorkspace {}
+
+// THE LOCATION HINT IS A REQUEST THIS FLEET MAKES OF R2 AT CREATE, NEVER AN OBSERVATION. It is the
+// Create Bucket locationHint (extdeps.cloudflare.r2 r2_create_bucket_location_hint_reading), so it
+// is ours to allocate beside the name -- and it is optional because a purpose whose bucket already
+// exists was created without one, and declaring one now would claim a placement nobody requested.
+// Where a bucket actually runs is the Get's reported location, which stays unread until observed
+// (gunbc.product.supplier.cloudflare_r2 cloudflare_r2_region_unread_obligation); no consumer may
+// read this field as the answer to that question.
+type R2BucketAllocation {
+  purpose: BucketPurpose
+  bucket_name: NonEmptyStr
+  location_hint: R2BucketLocation?
+}
+
+fn bucket_purpose_key(purpose: BucketPurpose) -> String {
+  match purpose {
+    FabricDurableOrigin {} => "fabric-durable-origin"
+    FabricBootOrigin {} => "fabric-boot-origin"
+    FabricCacheBlobs {} => "fabric-cache-blobs"
+    FabricWorkspace {} => "fabric-workspace"
+  }
+}
+
+// WHAT A BUCKET ADMITS IS DERIVED FROM ITS PURPOSE, never carried beside it, so a durable bucket
+// with boot admission (or the reverse) has no constructor.
+fn bucket_purpose_admission(purpose: BucketPurpose) -> OriginAdmission {
+  match purpose {
+    FabricDurableOrigin {} => FabricCommitManifestsAndContentAddressedOutputs {}
+    FabricBootOrigin {} => DigestKeyedBootArtifacts {}
+    FabricCacheBlobs {} => KeyAddressedCacheBlobs {}
+    FabricWorkspace {} => ContentAddressedWorkspaceHistory {}
+  }
+}
+
+// THE ADMISSION AS THE PUT'S PRECONDITION (extdeps.object_storage ObjectPutPrecondition): create-only
+// is If-None-Match: *. A compare-and-set population would derive PutIfMatch from the tag it last read,
+// not from its admission, so it does not route through here.
+fn origin_admission_put_precondition(admission: OriginAdmission) -> ObjectPutPrecondition {
+  if origin_admission_is_create_only(admission: admission) { PutIfAbsent } else { PutUnconditional }
+}
+
+// EVERY ADMITTED POPULATION IS WRITE-ONCE, so the PUT is create-only for each: a content-addressed
+// object or a manifest slot is never legitimately overwritten, and a digest-keyed boot artifact is
+// its digest. A future population that may be replaced must say so here, not at the call site.
+//
+// THE WORKSPACE'S ONE EXCEPTION IS ITS HEADS, AND THEY DO NOT ROUTE THROUGH HERE. Chunks and revision
+// objects are content-addressed and create-only like every other admitted population; a workspace
+// head is replaced, but gunbc.fabric_storage_r2_head writes it under If-Match on the tag it last read
+// -- a precondition derived from that tag, not from this admission -- so the admission's answer
+// stays true for every object that consults it.
+fn origin_admission_is_create_only(admission: OriginAdmission) -> Bool {
+  match admission {
+    FabricCommitManifestsAndContentAddressedOutputs {} => true
+    DigestKeyedBootArtifacts {} => true
+    KeyAddressedCacheBlobs {} => true
+    ContentAddressedWorkspaceHistory {} => true
+  }
+}
+
+// PUBLIC READ IS A PROPERTY OF THE PURPOSE, decided by an exhaustive match so a new purpose must
+// state it. Only the boot origin is ever attached to a custom domain.
+fn bucket_purpose_admits_public_read(purpose: BucketPurpose) -> Bool {
+  match purpose {
+    FabricDurableOrigin {} => false
+    FabricBootOrigin {} => true
+    FabricCacheBlobs {} => false
+    FabricWorkspace {} => false
+  }
+}
+
+// THE ALGEBRA IS CONSUMED, NOT RESTATED. std.allocation_roster owns the two-axis injective roster:
+// a carrier in which a duplicate on either axis has no constructor, one fallible ingress that
+// refuses a colliding authored list, and a lookup that needs no consistency guard because an
+// inconsistent roster is not a value. An earlier revision of this module reproduced that algebra
+// line for line beside gunbc.hostname_allocation's copy, which is the section 2 re-invention the
+// design forbids; both now consume the one authority.
+//
+// WHAT REMAINS HERE IS WHAT IS ACTUALLY PER-DOMAIN: which rows exist, what the two axes MEAN, and
+// what a collision would cost. A bucket name is a JOIN KEY -- it appears in the IAM resource name a
+// token policy scopes to, in the S3 endpoint path, and in every manifest locator -- so two purposes
+// claiming one bucket is two workloads sharing a credential scope, and one purpose allocated twice
+// is an ambiguous desired state.
+data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
+  R2BucketAllocation {
+    purpose: FabricDurableOrigin {},
+    bucket_name: "gunbai-fabric-origin",
+    location_hint: none,
+  },
+  R2BucketAllocation {
+    purpose: FabricBootOrigin {},
+    bucket_name: "gunbai-fabric-boot",
+    location_hint: none,
+  },
+  R2BucketAllocation {
+    purpose: FabricCacheBlobs {},
+    bucket_name: "gunbai-fabric-cache",
+    location_hint: none,
+  },
+  R2BucketAllocation {
+    purpose: FabricWorkspace {},
+    bucket_name: "gunbai-fabric-workspace",
+    location_hint: Present { value: r2_location_enam },
+  },
+]
+
+fn allocated_bucket(purpose: BucketPurpose) -> R2BucketAllocation? {
+  allocated_value(
+    rows: gunbc_fleet_r2_bucket_allocations,
+    wanted: bucket_purpose_key(purpose: purpose),
+    primary: row => bucket_purpose_key(purpose: row.purpose),
+    secondary: row => row.bucket_name as String,
+    value: row => row,
+  )
+}
+
+fn allocated_bucket_name(purpose: BucketPurpose) -> NonEmptyStr? {
+  match allocated_bucket(purpose: purpose) {
+    Absent => none
+    Present { value: row } => Present { value: row.bucket_name }
+  }
+}
+
+data fabric_durable_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-origin-read-token"
+
+data fabric_durable_origin_read_secret_version: NonEmptyStr = "1"
+
+// THE STORED READ MINT'S TOKEN ID, which gunbc.cloudflare.r2_token_mint_run's annotation names as
+// the third Create and the mint receipt reported. It is the S3 access key id for the read
+// credential. It is a pin like the version above: the instrument that re-derives it is the
+// account's token listing (gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile),
+// and a rotation changes this row and the version together.
+data fabric_durable_origin_read_access_key_id: NonEmptyStr = "3f43e1c7f8fbcfc97139cb5d9dc4e984"
+
+// THE WRITE CREDENTIAL'S CUSTODY LOCUS, named before it was minted so the mint entry stores into the
+// container this declaration reads from, and so that the two cannot be spelled differently.
+data fabric_durable_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-origin-write-token"
+
+// THE STORED WRITE MINT, pinned from what run_object_write's receipt reported when it executed
+// (2026-09-19). Like the read pins above, the instrument that re-derives the token id is the
+// account's token listing (gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile),
+// and a rotation changes both rows together.
+data fabric_durable_origin_write_secret_version: NonEmptyStr = "1"
+
+data fabric_durable_origin_write_access_key_id: NonEmptyStr = "f70d656b5e9d20044c3c16ff4d75736e"
+
+// AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
+// name at this seam is the derivation the roster exists to forbid, and returning an empty one would
+// address the account's root instead of a bucket.
+// THE CUSTODY SECRET A CREDENTIAL STANDING NAMES, total over its arms. A pinned credential names it
+// through its locus; the other two carry it. This is the only place the mint learns where a
+// purpose's token lives.
+fn origin_credential_secret_id(credential: OriginCredentialStanding) -> NonEmptyStr {
+  match credential {
+    OriginCredentialPinned { access_key_id: _, token_value: locus } => locus.secret
+    OriginCredentialUnminted { mint_entry: _, secret_id: secret_id } => secret_id
+    OriginCredentialMintEntryUnbuilt { secret_id: secret_id } => secret_id
+  }
+}
+
+type R2OriginStanding
+  = R2OriginAllocated { bucket: R2OriginBucket }
+  | R2OriginUnallocated { purpose: BucketPurpose }
+
+// DEFAULT JURISDICTION, STATED RATHER THAN DEFAULTED. Eu, Us, Fedramp, and FedrampHigh are
+// data-residency commitments this fleet has not made and cannot honour, and picking one would assert
+// a compliance boundary nothing enforces.
+fn fabric_durable_origin_standing() -> R2OriginStanding {
+  match allocated_bucket(purpose: FabricDurableOrigin {}) {
+    Absent => R2OriginUnallocated { purpose: FabricDurableOrigin {} }
+    Present { value: row } =>
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
+          bucket_name: row.bucket_name,
+          jurisdiction: R2JurisdictionDefault,
+          location_hint: row.location_hint,
+          purpose: FabricDurableOrigin {},
+          read_credential: OriginCredentialPinned {
+            access_key_id: fabric_durable_origin_read_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+              version: fabric_durable_origin_read_secret_version,
+            ),
+          },
+          write_credential: OriginCredentialPinned {
+            access_key_id: fabric_durable_origin_write_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_durable_origin_write_secret_id),
+              version: fabric_durable_origin_write_secret_version,
+            ),
+          },
+        }
+      }
+  }
+}
+
+// READ AND WRITE ARE TWO CREDENTIALS, NOT ONE TOKEN WITH TWO GRANTS, and the fields say which is
+// which. The read token is what every confirming readback signs with, and it is held by whoever
+// reads back; the write token is spent only at commit. A single read-and-write token would hand
+// every reader the power to overwrite the origin it is confirming, which is the laundering
+// gunbc.fabric_m0_origin_readback exists to make unwritable. The write grant's id is an
+// OBSERVATION (gunbc.cloudflare.r2_permission_group_observe) inhabiting extdeps.cloudflare.r2's
+// r2_object_write_grant shape; it is not authored here either.
+
+// THE BOOTSTRAP CUSTODY LOCUS IS ALSO A STANDING, AND THIS IS WHERE THE FAIL-CLOSED ORDERING COMES
+// FROM. gunbc.auth.secret_ref_credential fetches an EXACT version and refuses when the resolved
+// identity disagrees with the request, so a locus is only usable once its version is pinned -- and
+// nothing can pin a version for a secret that has never been provisioned. Modeling the locus as a
+// bare SecretRef with a placeholder version would hand the fetch a request it must refuse, and the
+// refusal would arrive wearing the wrong words: "the response named a different version" for a
+// credential that simply does not exist. So absence is its own arm, decided BEFORE any network call.
+type BootstrapCustodyStanding
+  = BootstrapCustodyPinned { locus: SecretRef }
+  | BootstrapCustodyUnrecorded { intervention: HumanIntervention }
+
+data cloudflare_bootstrap_custody_secret_id: NonEmptyStr = "cloudflare-account-api-token-bootstrap"
+
+data cloudflare_bootstrap_custody_intervention_identity: String = "cloudflare-bootstrap-token-custody"
+
+fn cloudflare_bootstrap_custody_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: cloudflare_bootstrap_custody_intervention_identity as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: join(
+      ["custody of the Cloudflare bootstrap token at ", cloudflare_bootstrap_custody_secret_id as String],
+      ""
+    ) as NonEmptyStr,
+    instruction: join(
+      [
+        "Provision the dashboard-acquired bootstrap token into the fleet secrets project as ",
+        cloudflare_bootstrap_custody_secret_id as String,
+        ", then record the exact version it landed at as the BootstrapCustodyPinned arm of fleet_cloudflare_bootstrap_custody. The version is pinned rather than read as latest because Secret Manager is strongly consistent for exactly one sequence -- add a version, then access THAT version -- and latest is a moving target the fetch cannot verify it was answered about."
+      ],
+      ""
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled
+  }
+}
+
+// PINNED, ON THE OPERATOR'S PROVISIONED VERSION. The bootstrap token was placed at version 1 of this
+// secret in the fleet secrets project, so the standing records THAT version rather than "latest".
+//
+// THE PIN IS THE POINT AND NOT A FORMALITY. gunbc.auth.secret_ref_credential requests an exact
+// version and REFUSES when the resolved identity disagrees with the request, and Secret Manager is
+// strongly consistent for exactly one sequence -- add a version, then access that version. "latest"
+// satisfies neither: it is a moving target between two calls, and a fetch addressed to it cannot
+// verify it was answered about the version it meant. A floating reference also makes the receipt
+// meaningless, because the whole content of "which bytes were used" is the version number.
+//
+// THE UNRECORDED ARM DID NOT BECOME DEAD CODE WHEN THIS WAS PINNED. Every future fleet credential
+// starts there, and it is what makes an unprovisioned secret refuse before any network call rather
+// than send a request whose refusal would arrive wearing the wrong words -- "the response named a
+// different version" for a credential that simply does not exist.
+data cloudflare_bootstrap_custody_version: NonEmptyStr = "1"
+
+fn fleet_cloudflare_bootstrap_custody() -> BootstrapCustodyStanding {
+  BootstrapCustodyPinned {
+    locus: SecretRef {
+      project: fleet_secrets_gcp_project,
+      secret: cloudflare_bootstrap_custody_secret_id,
+      version: cloudflare_bootstrap_custody_version,
+      hash_state: HashPending,
+    }
+  }
+}
+
+// THE BOOT ORIGIN'S TWO CUSTODY LOCI, disjoint from the durable origin's and from each other. The
+// read token is held by whatever verifies publication; the write token only by the publisher. Neither
+// is minted yet: gunbc.cloudflare.r2_token_mint_run run_boot_object_read / run_boot_object_write mint
+// them (the mint is parameterized by BucketPurpose), so both arms are Unminted naming those entries
+// and every boot PUT refuses at the standing, before any network call, until a run's stored version
+// is pinned here by a reviewed row change. Accessor rows in
+// gunbc.auth.fleet_secret_accessor_roster land with the minted versions, never before: a row whose
+// secret does not exist would stop that roster's fold for every other lane.
+data fabric_boot_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-read-token"
+
+data fabric_boot_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-write-token"
+
+fn fabric_boot_origin_standing() -> R2OriginStanding {
+  match allocated_bucket(purpose: FabricBootOrigin {}) {
+    Absent => R2OriginUnallocated { purpose: FabricBootOrigin {} }
+    Present { value: row } =>
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
+          bucket_name: row.bucket_name,
+          jurisdiction: R2JurisdictionDefault,
+          location_hint: row.location_hint,
+          purpose: FabricBootOrigin {},
+          read_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_boot_object_read"),
+            secret_id: fabric_boot_origin_read_secret_id,
+          },
+          write_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_boot_object_write"),
+            secret_id: fabric_boot_origin_write_secret_id,
+          },
+        }
+      }
+  }
+}
+
+// ONE STANDING PER PURPOSE, SELECTED BY AN EXHAUSTIVE MATCH, so a third purpose cannot be allocated
+// without stating its standing -- and every consumer that walks the allocation roster (the bucket
+// converge in gunbc.cloudflare.r2_bucket_ensure) reaches each purpose's declared jurisdiction here
+// rather than defaulting it at the call site.
+fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
+  match purpose {
+    FabricDurableOrigin {} => fabric_durable_origin_standing()
+    FabricBootOrigin {} => fabric_boot_origin_standing()
+    FabricCacheBlobs {} => fabric_cache_blobs_standing()
+    FabricWorkspace {} => fabric_workspace_standing()
+  }
+}
+
+// THE RULE CLOUDFLARE INSTALLED ON OUR NEW BUCKET, an OBSERVATION and so homed here rather than in
+// extdeps.cloudflare.r2_lifecycle (DESIGN 3: a receipt belongs to the observing layer), as the live GET answered it for gunbai-fabric-cache
+// (fleet-converge r2_bucket_ensure run 37361093408, 2026-10-05): incomplete multipart uploads are
+// aborted after seven days, bucket-wide. A PUT replaces the whole rule set, so a purpose that keeps
+// this default names it in its desired set rather than deleting it as a side effect.
+fn r2_default_multipart_abort_rule() -> R2LifecycleRule {
+  R2LifecycleRule {
+    id: "Default Multipart Abort Rule",
+    enabled: true,
+    scope: R2BucketWide,
+    transition: R2AbortMultipartUploadsAfterAge { max_age_seconds: 604800 },
+  }
+}
+
+// WHICH OBJECTS A PURPOSE'S BUCKET RELEASES BY AGE, DERIVED FROM THE PLACEMENT THAT OWNS THE
+// INTERVAL rather than restated: the cache's release rule is gunbc.fabric.fabric_blob_placement's
+// release over its blob prefix, and it keeps Cloudflare's default multipart-abort rule beside it,
+// because a PUT replaces the whole set and leaving the default out would delete it. The durable origin, the boot origin and the workspace declare no
+// lifecycle rule, and an empty list here is that declaration -- their objects are released never.
+// The workspace's empty list is load-bearing: its history must never inherit the cache's rule.
+fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRule> {
+  match purpose {
+    FabricDurableOrigin {} => []
+    FabricBootOrigin {} => []
+    FabricWorkspace {} => []
+    FabricCacheBlobs {} => [
+      R2LifecycleRule {
+        id: "fabric-cache-blobs-release",
+        enabled: true,
+        scope: R2Prefix { prefix: fabric_cache_blob_prefix as NonEmptyStr },
+        transition: R2DeleteObjectsAfterAge { max_age_seconds: second_count(s: fabric_cache_release()) },
+      },
+      r2_default_multipart_abort_rule(),
+    ]
+  }
+}
+
+// THE CACHE'S READER AND ITS PUBLISHER HOLD DIFFERENT TOKENS. The read token is held by every
+// consumer that serves from the cache (hw boot, fleet, heal); the write token only by the canonical
+// publisher, and it is create-only by admission. Both are minted by
+// gunbc.cloudflare.r2_token_mint_run run_cache_object_read / run_cache_object_write and pinned below
+// from those runs' receipts, so a cache transfer now reaches the credential step.
+data fabric_cache_blobs_read_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-read-token"
+
+data fabric_cache_blobs_write_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-write-token"
+
+// PINNED FROM THE MINT RUNS' RECEIPT ARTIFACTS (2026-10-07): read mint run 37687544709 and write mint
+// run 37691247413 each reported version_resource .../versions/1 and a token id, which is the S3
+// access key id. Re-derived by gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile;
+// a rotation changes the id and the version together.
+data fabric_cache_blobs_read_secret_version: NonEmptyStr = "1"
+
+data fabric_cache_blobs_read_access_key_id: NonEmptyStr = "93e354504deedd9ea78d2346027bd912"
+
+data fabric_cache_blobs_write_secret_version: NonEmptyStr = "1"
+
+data fabric_cache_blobs_write_access_key_id: NonEmptyStr = "69d7b8f9a0748ee85dc0908bd84f76a6"
+
+fn fabric_cache_blobs_standing() -> R2OriginStanding {
+  match allocated_bucket(purpose: FabricCacheBlobs {}) {
+    Absent => R2OriginUnallocated { purpose: FabricCacheBlobs {} }
+    Present { value: row } =>
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
+          bucket_name: row.bucket_name,
+          jurisdiction: R2JurisdictionDefault,
+          location_hint: row.location_hint,
+          purpose: FabricCacheBlobs {},
+          read_credential: OriginCredentialPinned {
+            access_key_id: fabric_cache_blobs_read_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_cache_blobs_read_secret_id),
+              version: fabric_cache_blobs_read_secret_version,
+            ),
+          },
+          write_credential: OriginCredentialPinned {
+            access_key_id: fabric_cache_blobs_write_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_cache_blobs_write_secret_id),
+              version: fabric_cache_blobs_write_secret_version,
+            ),
+          },
+        }
+      }
+  }
+}
+
+// THE WORKSPACE'S READER AND WRITER HOLD DIFFERENT TOKENS, for the reason the durable origin's do: a
+// reader that confirms a workspace revision must not be able to overwrite the head it is confirming.
+// Neither is minted yet: gunbc.cloudflare.r2_token_mint_run run_workspace_object_read /
+// run_workspace_object_write mint them (fleet-converge modes r2_workspace_object_read_mint /
+// r2_workspace_object_write_mint), so both are Unminted naming those entries and every workspace
+// transfer refuses at this standing, typed and before any network call, until a run's stored version
+// is pinned here by a reviewed row change.
+data fabric_workspace_read_secret_id: NonEmptyStr = "cloudflare-r2-workspace-read-token"
+
+data fabric_workspace_write_secret_id: NonEmptyStr = "cloudflare-r2-workspace-write-token"
+
+// THE STORED WORKSPACE MINTS, pinned from what run_workspace_object_read and run_workspace_object_write
+// reported when they executed through the federated fleet-converge modes (2026-10-05: runs 37291106411
+// and 37292959180, receipts r2-workspace-object-{read,write}-mint-receipt). Each token id is the S3
+// access key id (r2_s3_access_key_is_created_token_id_citation). As for the durable origin's pins, the
+// instrument that re-derives the token ids is the account's token listing
+// (gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile), and a rotation changes a
+// credential's version and key id together.
+data fabric_workspace_read_secret_version: NonEmptyStr = "1"
+
+data fabric_workspace_read_access_key_id: NonEmptyStr = "e20cbd2a4ea865923de90edae08e4625"
+
+data fabric_workspace_write_secret_version: NonEmptyStr = "1"
+
+data fabric_workspace_write_access_key_id: NonEmptyStr = "6a9344d903c39cb7be832c930fa2c6a2"
+
+fn fabric_workspace_standing() -> R2OriginStanding {
+  match allocated_bucket(purpose: FabricWorkspace {}) {
+    Absent => R2OriginUnallocated { purpose: FabricWorkspace {} }
+    Present { value: row } =>
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
+          bucket_name: row.bucket_name,
+          jurisdiction: R2JurisdictionDefault,
+          location_hint: row.location_hint,
+          purpose: FabricWorkspace {},
+          read_credential: OriginCredentialPinned {
+            access_key_id: fabric_workspace_read_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_workspace_read_secret_id),
+              version: fabric_workspace_read_secret_version,
+            ),
+          },
+          write_credential: OriginCredentialPinned {
+            access_key_id: fabric_workspace_write_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_workspace_write_secret_id),
+              version: fabric_workspace_write_secret_version,
+            ),
+          },
+        }
+      }
+  }
+}
+
+// THE BUCKET-ADMIN CREDENTIAL IS THE FLEET'S, NOT A BUCKET'S. It is account-scoped (bucket creation is
+// an account operation) and is spent only by gunbc.cloudflare.r2_bucket_ensure, so it hangs off no
+// R2OriginBucket; it inhabits the same OriginCredentialStanding, and its custody locus is disjoint
+// from the bootstrap's so the bucket converge never holds the key that mints.
+data cloudflare_r2_bucket_admin_secret_id: NonEmptyStr = "cloudflare-r2-bucket-admin-token"
+
+// PINNED ON THE EXECUTED MINT (2026-09-19): run_bucket_admin created this container, minted the token
+// and stored its value at version 1, verified by exact-version readback; the receipt is on gunbc#11721.
+// The token id is the S3 access key id and is not a secret; a rotation changes both rows together.
+data cloudflare_r2_bucket_admin_secret_version: NonEmptyStr = "1"
+
+data cloudflare_r2_bucket_admin_access_key_id: NonEmptyStr = "6f287fdeeffcfd409f7a8f2450fa2d4f"
+
+fn fleet_r2_bucket_admin_credential() -> OriginCredentialStanding {
+  OriginCredentialPinned {
+    access_key_id: cloudflare_r2_bucket_admin_access_key_id,
+    token_value: secret_ref_pin_version(
+      ref: fleet_secret_ref(secret_id: cloudflare_r2_bucket_admin_secret_id),
+      version: cloudflare_r2_bucket_admin_secret_version,
+    ),
+  }
+}

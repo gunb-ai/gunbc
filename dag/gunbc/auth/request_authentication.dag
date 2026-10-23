@@ -1,0 +1,692 @@
+module gunbc.auth.request_authentication
+
+import std.types { NonEmptyStr, String, Bool, List, Timestamp, Int }
+import std.access {
+  AccessRequest, AccessContext, AccessEvidence, AccessDecision, Permit, Deny,
+  AccessRefusal, AccessRefusalCause, AccessRefusalLocation,
+  AccessEvidenceAbsent, AccessEvidenceRejected, AccessSubjectNotRecognized,
+  AccessActionNotGranted, AccessContextAbsent, AccessPolicyRefused,
+  decision_meet,
+}
+import extdeps.http.server { RequestSecurityContext }
+import extdeps.network.address { IpV4, ip_address_is_loopback }
+import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
+import extdeps.tailscale.serve {
+  TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable, TailscaleServeRouteKey,
+  tailscale_serve_unix_proxy_peer,
+}
+import extdeps.tailscale.acl { TailscaleAclPolicy }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.tailscale_acl_emit { tailscale_acl_policy_json }
+import gunbc.auth.session {
+  AuthenticatedSession, CsrfAdmitted, CsrfRefused, CsrfRefusalCause, CsrfTokenAbsent,
+  CsrfTokenMismatch, csrf_decision, session_not_expired,
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
+  SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed, session_cookie_standing_reason,
+}
+import gunbc.principal_projection {
+  PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
+}
+
+// THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
+// as its AccessPath type argument. It moved from that module because which front doors this
+// deployment routes through is a fact about this deployment, not about HTTP, and enumerating it
+// there made every HTTP program import the Tailscale modules (DESIGN section 3).
+//
+// THE TAILNET PATH IS MODELED THROUGH THE EXISTING AUTHORITIES, not as ambient reachability:
+// the arm carries the tailscale serve route key and the ACL policy revision the modeling was
+// computed under (the versioned readback), so a deployment that stops routing through the
+// proxy, or whose ACL drifts, changes the modeled path rather than silently widening it.
+type TailnetRouteReadback
+  = TailnetRouteReadbackObserved { acl_revision: ContentHash, serve_route: TailscaleServeRouteKey }
+  | TailnetRouteReadbackUnobserved { reason: String }
+
+// WHY A TAILNET HEADER WAS NOT VOUCHED FOR, one arm per cause, so a host that cannot read its
+// own serve status is told apart from a route that is not installed. The command arms carry what
+// the command reported: a permission refusal arrives as TailnetReadbackCommandFailed with the
+// exit status and the text the client printed.
+type TailnetServeReadbackGap
+  = TailnetReadbackNotDemanded
+  | TailnetReadbackClockUnreadable
+  | TailnetReadbackNotSpawned { cause: String }
+  | TailnetReadbackCommandFailed { exit_code: Int, stderr: String }
+
+type TailnetRouteGap
+  = TailnetIngressUnattested
+  | TailnetIngressNotTheProxy { peer_user: String }
+  | TailnetRouteBackendNotASocket
+  | TailnetRouteUndeclared
+  | TailnetReadbackUntaken { gap: TailnetServeReadbackGap }
+  | TailnetReadbackStale
+  | TailnetStatusUnreadable
+  | TailnetRouteNotProxied
+  | TailnetRouteProxiesElsewhere { targets: List<String> }
+
+// HOW THIS CONNECTION REACHED THE BACKEND, as the serving host attests it. Serve status is a fact
+// about the node's configuration; it says nothing about one connection. A TCP listener attests no
+// peer, so a local process dialing it with a self-written Tailscale-User-Login header is the same
+// request as a proxied one. A unix-socket listener hands the handler the kernel-attested account
+// of the peer (`gunbc serve --unix-socket`, peer_user), and tailscaled is the peer of every
+// connection Serve proxies (extdeps.tailscale.serve tailscale_serve_unix_proxy_peer).
+type RequestIngress
+  = IngressUnattested
+  | IngressAttestedPeer { peer_user: String }
+
+// What the access-path fold consumes: the declared route observed proxying this backend, or the
+// cause it was not.
+type TailnetRouteStanding
+  = TailnetRouteObserved { serve_route: TailscaleServeRouteKey }
+  | TailnetRouteUnobserved { gap: TailnetRouteGap }
+
+fn tailnet_serve_readback_gap_sentence(gap: TailnetServeReadbackGap) -> String {
+  match gap {
+    TailnetReadbackNotDemanded => "no serve-status reading was taken for this request"
+    TailnetReadbackClockUnreadable => "the clock reading refused, so the serve-status reading could not be dated"
+    TailnetReadbackNotSpawned { cause: why } => concat("tailscale serve status could not be run on this host: ", why)
+    TailnetReadbackCommandFailed { exit_code: code, stderr: text } =>
+      join(["tailscale serve status exited ", to_string(code), " for the serving principal: ", text], "")
+  }
+}
+
+fn tailnet_route_gap_sentence(gap: TailnetRouteGap) -> String {
+  match gap {
+    TailnetIngressUnattested => "this connection arrived on a listener that attests no peer, so it cannot be told apart from a local request carrying the same header"
+    TailnetIngressNotTheProxy { peer_user: who } => concat("this connection's attested peer is not the tailscale proxy: ", who)
+    TailnetRouteBackendNotASocket => "this instance's declared tailscale serve route proxies to a TCP port, which any local process can also reach"
+    TailnetRouteUndeclared => "this instance has no declared tailscale serve route"
+    TailnetReadbackUntaken { gap: g } => tailnet_serve_readback_gap_sentence(gap: g)
+    TailnetReadbackStale => "the serve-status reading is stale or undated at decision time"
+    TailnetStatusUnreadable => "tailscale serve status printed a document that could not be read"
+    TailnetRouteNotProxied => "tailscale serve status shows no proxy at this instance's declared route"
+    TailnetRouteProxiesElsewhere { targets: ts } =>
+      concat("tailscale serve status shows the declared route proxying another backend: ", join(ts, ", "))
+  }
+}
+
+// The stable label of each cause, for a wire that reports it.
+fn tailnet_route_gap_label(gap: TailnetRouteGap) -> NonEmptyStr {
+  match gap {
+    TailnetIngressUnattested => "ingress-unattested"
+    TailnetIngressNotTheProxy { peer_user: _ } => "ingress-not-the-proxy"
+    TailnetRouteBackendNotASocket => "route-backend-not-a-socket"
+    TailnetRouteUndeclared => "route-undeclared"
+    TailnetReadbackUntaken { gap: g } =>
+      match g {
+        TailnetReadbackNotDemanded => "readback-not-demanded"
+        TailnetReadbackClockUnreadable => "readback-clock-unreadable"
+        TailnetReadbackNotSpawned { cause: _ } => "readback-not-spawned"
+        TailnetReadbackCommandFailed { exit_code: _, stderr: _ } => "readback-command-failed"
+      }
+    TailnetReadbackStale => "readback-stale"
+    TailnetStatusUnreadable => "status-unreadable"
+    TailnetRouteNotProxied => "route-not-proxied"
+    TailnetRouteProxiesElsewhere { targets: _ } => "route-proxies-elsewhere"
+  }
+}
+
+// AccessPathTailnetUnobserved is a loopback request that carried a tailnet header no reading
+// vouched for. It grants what AccessPathLocalDev grants -- no observation, no principal -- and
+// differs only in naming the cause, which the path refusal reports.
+type RequestAccessPath
+  = AccessPathDirectHttps
+  | AccessPathTailnetProxy { transport_observation: TailnetIdentity, route_readback: TailnetRouteReadback }
+  | AccessPathTailnetUnobserved { gap: TailnetRouteGap }
+  | AccessPathLocalDev
+
+// THE REQUEST-SECURITY LAW (owner directive 2026-09-25, lane A3). This module owns the two facts
+// every consequential route decides over, SEPARATELY, and the write law that joins them:
+//
+//   ACCESS PATH (RequestAccessPath, below)      -- how the request arrived,
+//     modeled through the tailnet ACL and serve-route authorities with a versioned readback,
+//     never as ambient reachability.
+//   AUTHENTICATION EVIDENCE (RequestAuthenticationEvidence)  -- what the request presents: a
+//     Google OIDC session (a human), Fabric's own service evidence (a service writer), or
+//     nothing.
+//
+// THE LAWS AS CONSTRUCTION, not comments -- every conjunction is std.access.decision_meet, so a
+// Deny on ANY axis is the answer (fail-closed by the kernel, not by diligence):
+//
+//   NO FALLBACK PERMITS A WRITE. Google success alone authorizes nothing; tailnet success alone
+//   authorizes nothing; the conjunction of authentication AND action authorization (AND the CSRF
+//   proof AND the deployment path policy) is the only Permit.
+//   HUMAN WRITES = Google authentication + action authorization. assign/comment admit any
+//   authenticated gunb.ai human; approve admits only the exact stable-principal roster -- and
+//   the exact scoped capability remains std.scoped_authorization plus the signed approval
+//     capability: login identifies the operator, never substitutes for the approval (A7 joins
+//     the capability axis; the broker lane owns it).
+//   SERVICE WRITES = Fabric's own service evidence. A human Google session is not workload
+//     identity; a service writer cannot present one, because the evidence arms are different
+//     constructors and service_write_authentication_decision admits only the service arm.
+//   APPROVAL DECISIONS = the three proofs (ruling): authenticated principal + CSRF + the exact
+//     capability. The capability proof lives in the approvals lane; this module's approve arm is
+//     the principal-axis gate so the conjunction has all of its pieces.
+
+// ── Authentication evidence ────────────────────────────────────────────────────────────────────
+
+type RequestAuthenticationEvidence
+  = GoogleOidcSession { session: AuthenticatedSession }
+  | FabricServiceEvidence { kind: FabricServiceEvidenceKind, authenticated_at: Timestamp }
+  | SessionStandingInvalid { standing: SessionCookieStanding }
+  | AuthAbsent
+
+// A COOKIE THAT DID NOT RESOLVE TO A LIVE SESSION IS EVIDENCE TO REFUSE WITH, never silently
+// the same as absence: the standing carries WHICH non-valid arm arrived (a forged cookie, an
+// expired session, an unreadable store), and the authentication decision below refuses with
+// that arm's own remedy rather than collapsing all of them into "no session". AuthAbsent stays
+// the answer to an ABSENT cookie header only — the seam (gunbc.roadmap_serve) parses the wire
+// cookie, resolves it through the session store, and seats exactly one of these constructors.
+fn request_authentication_evidence_of_standing(standing: SessionCookieStanding) -> RequestAuthenticationEvidence {
+  match standing {
+    SessionCookieValid { session } => GoogleOidcSession { session }
+    SessionCookieExpired { session: _, observed_at: _ } => SessionStandingInvalid { standing }
+    SessionCookieAbsent => SessionStandingInvalid { standing }
+    SessionCookieUnknown { session_id: _ } => SessionStandingInvalid { standing }
+    SessionCookieUnread { detail: _ } => SessionStandingInvalid { standing }
+    SessionCookieMalformed { detail: _ } => SessionStandingInvalid { standing }
+  }
+}
+
+// FABRIC'S OWN SERVICE EVIDENCE, one arm per service mechanism. Today: the submission MAC the
+// /approvals filing route verifies (gunbc.auth.approval_request_submission) -- the filing run
+// authenticates by the enrolled MAC over the canonical request, and the evidence names the
+// mechanism so a second mechanism widens this coproduct, never a string.
+type FabricServiceEvidenceKind
+  = | FabricServiceEvidenceSubmissionMac
+
+// THE SERVICE EVIDENCE NAMES THE ONE WORKFLOW PRINCIPAL. There is no principal parameter on the
+// evidence constructor and no other row here: a service write acts as
+// principal:gunbc/workflows/fabric or not at all.
+fn fabric_service_principal() -> PrincipalRef {
+  fabric_workflow_principal
+}
+
+// ── Access-path modeling: tailnet through the ACL and serve authorities ────────────────────────
+
+// THE DEPLOYMENT'S PATH POLICY. A deployment MAY require the tailnet path for writes; the data
+// row records this deployment's posture, and the write law reads it as one conjunct.
+type DeploymentAccessPolicy {
+  tailnet_path_required: Bool
+}
+
+data roadmap_deployment_access_policy: DeploymentAccessPolicy = DeploymentAccessPolicy {
+  tailnet_path_required: false,
+}
+
+// THE ACL REVISION, the versioned half of the readback: the content identity of the ACL policy
+// the access-path modeling was computed under. The policy drifts, the revision moves with it,
+// and a readback recorded under an old revision is a different fact than the same route under a
+// new one.
+fn tailnet_acl_revision(acl_policy: TailscaleAclPolicy) -> ContentHash {
+  content_hash_of_value(value: serialize_json(v: tailscale_acl_policy_json(policy: acl_policy)))
+}
+
+// THE ACCESS-PATH FOLD. The tailnet arm needs THREE things and the header is none of them: a
+// loopback bind, a connection whose attested peer is the tailscale proxy, and a route standing
+// that observed this backend proxied at its declared route. It then carries the ACL revision and
+// the serve-route key it was computed under. A header without all three is unattributed -- any
+// co-located process can write it (extdeps.tailscale.identity's deployment-property note) -- so
+// the fold drops it: AccessPathTailnetUnobserved naming the cause, no observation, NO principal,
+// no authority. The ingress is judged first, because a healthy route says nothing about who
+// dialed this connection. No header at all is AccessPathLocalDev. A non-loopback bind is direct
+// reachability regardless of any header: AccessPathDirectHttps.
+fn request_access_path_of_standing(
+  listen_host: NonEmptyStr,
+  tailscale_header: String,
+  ingress: RequestIngress,
+  standing: TailnetRouteStanding,
+  acl_policy: TailscaleAclPolicy,
+) -> RequestAccessPath {
+  match parse_ipv4_address(text: listen_host as String) {
+    Ipv4ParseFailed { error: _ } => AccessPathDirectHttps
+    Ipv4Parsed { address: a } =>
+      if !ip_address_is_loopback(addr: IpV4 { v4: a }) {
+        AccessPathDirectHttps
+      } else if tailscale_header == "" {
+        AccessPathLocalDev
+      } else {
+        match ingress {
+          IngressUnattested => AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+          IngressAttestedPeer { peer_user: who } =>
+            if who != (tailscale_serve_unix_proxy_peer as String) {
+              AccessPathTailnetUnobserved { gap: TailnetIngressNotTheProxy { peer_user: who } }
+            } else {
+              match standing {
+                TailnetRouteUnobserved { gap: g } => AccessPathTailnetUnobserved { gap: g }
+                TailnetRouteObserved { serve_route: route } =>
+                  AccessPathTailnetProxy {
+                    transport_observation: tailnet_identity_of(header_value: tailscale_header),
+                    route_readback: tailnet_route_readback_observed(
+                      acl_revision: tailnet_acl_revision(acl_policy: acl_policy),
+                      serve_route: route,
+                    ),
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn request_ingress_is_the_proxy(ingress: RequestIngress) -> Bool {
+  match ingress {
+    IngressUnattested => false
+    IngressAttestedPeer { peer_user: who } => who == (tailscale_serve_unix_proxy_peer as String)
+  }
+}
+
+// The standing a caller's own status projection and route key amount to.
+fn tailnet_route_standing_of_projection(serve_status: TailscaleServeStatusProjection, serve_route: TailscaleServeRouteKey?) -> TailnetRouteStanding {
+  match serve_status {
+    ServeStatusUnreadable => TailnetRouteUnobserved { gap: TailnetStatusUnreadable }
+    ServeStatusProxies { targets } =>
+      if count(targets) == 0 {
+        TailnetRouteUnobserved { gap: TailnetRouteNotProxied }
+      } else {
+        match serve_route {
+          Present { value: route } => TailnetRouteObserved { serve_route: route }
+          Absent => TailnetRouteUnobserved { gap: TailnetRouteUndeclared }
+        }
+      }
+  }
+}
+
+fn request_access_path_of(
+  listen_host: NonEmptyStr,
+  tailscale_header: String,
+  ingress: RequestIngress,
+  serve_status: TailscaleServeStatusProjection,
+  serve_route: TailscaleServeRouteKey?,
+  acl_policy: TailscaleAclPolicy,
+) -> RequestAccessPath {
+  request_access_path_of_standing(
+    listen_host: listen_host,
+    tailscale_header: tailscale_header,
+    ingress: ingress,
+    standing: tailnet_route_standing_of_projection(serve_status: serve_status, serve_route: serve_route),
+    acl_policy: acl_policy,
+  )
+}
+
+// THE OBSERVED READBACK ARM, projected here because extdeps.http.server owns the carrier: the
+// ACL revision and the serve-route key, recorded at modeling time.
+fn tailnet_route_readback_observed(acl_revision: ContentHash, serve_route: TailscaleServeRouteKey) -> TailnetRouteReadback {
+  TailnetRouteReadbackObserved { acl_revision: acl_revision, serve_route: serve_route }
+}
+
+// ── The consequential-route action vocabulary ──────────────────────────────────────────────────
+
+// EVERY CONSEQUENTIAL ROUTE projects into std.access under one of these actions. The belt
+// actuation routes (dispatch/stop/publish/cleanup) are workflow operations governed by the
+// launch-admission authority today; they join this vocabulary when their lane cuts them over,
+// and until then the write law below governs exactly the routes the ruling names: assign,
+// comment, approve.
+type ServeRouteAction
+  = ServeActionAssignIssue
+  | ServeActionCommentIssue
+  | ServeActionSaveOwnView
+  | ServeActionApproveDecision
+  | ServeActionCreateAllocation
+  | ServeActionReleaseAllocation
+
+fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
+  match action {
+    ServeActionAssignIssue => "assign-issue" as NonEmptyStr
+    ServeActionCommentIssue => "comment-issue" as NonEmptyStr
+    ServeActionSaveOwnView => "save-own-issue-view" as NonEmptyStr
+    ServeActionApproveDecision => "approve-decision" as NonEmptyStr
+    ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
+    ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
+  }
+}
+
+// Allocation writes are never admitted by this generic human gate: their authority is
+// gunbc.workspace_allocation_admission, which binds the request to a resource grant.
+// THE ACTION-AUTHORIZATION POLICY. assign/comment: any authenticated gunb.ai human -- the hd
+// gate already ran inside the verdict, so the principal arriving here IS a Workspace human.
+// approve: the exact stable-principal roster (the ruling's first production cut; hd alone is
+// org membership, never approval authority). The roster begins EMPTY -- refuse-all is the
+// fail-closed default until the first approver's principal is enrolled as a deployment row.
+type ServeWriteAuthorizationPolicy {
+  approve_roster: List<PrincipalRef>
+}
+
+data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
+  approve_roster: [],
+}
+
+// ── The human-write law, projected into std.access ─────────────────────────────────────────────
+
+// THE ONE ENTRY POINT a human-write handler consults. The answer is the std.access conjunction
+// of four independent decisions; each is computed over the projected AccessRequest so every
+// refusal carries structured coordinates (profile, subject, action, object).
+fn human_write_admission(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  authorization_policy: ServeWriteAuthorizationPolicy,
+  deployment_policy: DeploymentAccessPolicy,
+  csrf_presented: String,
+  observed_at: Timestamp,
+) -> AccessDecision {
+  decision_meet(
+    human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
+    decision_meet(
+      human_action_authorization_decision(route_path: route_path, action: action, security: security, policy: authorization_policy),
+      decision_meet(
+        csrf_write_decision(route_path: route_path, action: action, security: security, csrf_presented: csrf_presented),
+        deployment_path_decision(route_path: route_path, action: action, security: security, policy: deployment_policy),
+      ),
+    ),
+  )
+}
+
+// AUTHENTICATION IS SESSION-EVIDENCE ONLY. A Google OIDC session that is present and unexpired
+// permits; absence, an invalid cookie standing (forged, expired, malformed, or unread — each its
+// own refusal cause), and service evidence on a human route all refuse with distinct causes --
+// no arm delegates to the access path, and no arm defaults.
+fn human_authentication_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  observed_at: Timestamp,
+) -> AccessDecision {
+  match security.authentication {
+    AuthAbsent =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "google-oidc-session: the request presented no authenticated session; tailnet transport is not authentication" },
+      )
+    SessionStandingInvalid { standing } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "google-oidc-session", reason: session_cookie_standing_reason(standing: standing) },
+      )
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "fabric-service-evidence", reason: "service evidence authorizes service writes, never human writes" },
+      )
+    GoogleOidcSession { session } =>
+      if session_not_expired(session: session, observed_at: observed_at) {
+        Permit
+      } else {
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessPolicyRefused { reason: "the authenticated session is expired; the operator must log in again" },
+        )
+      }
+  }
+}
+
+// ACTION AUTHORIZATION IS PER-ROUTE. assign/comment admit the authenticated Workspace human;
+// approve admits exactly the principals on the exact roster -- and the exact scoped capability
+// remains the approvals lane's authority: this decision is the principal axis only.
+fn human_action_authorization_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  policy: ServeWriteAuthorizationPolicy,
+) -> AccessDecision {
+  match security.authentication {
+    GoogleOidcSession { session } =>
+      match action {
+        ServeActionAssignIssue => Permit
+        ServeActionCommentIssue => Permit
+        ServeActionSaveOwnView => Permit
+        ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
+        ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
+        ServeActionApproveDecision =>
+          if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
+            Permit
+          } else {
+            write_refused(
+              route_path: route_path,
+              action: action,
+              security: security,
+              cause: AccessActionNotGranted { action: serve_route_action_label(action: action) as String },
+            )
+          }
+      }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessSubjectNotRecognized { subject: "no authenticated human principal presented" },
+      )
+    SessionStandingInvalid { standing: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessSubjectNotRecognized { subject: "no authenticated human principal presented" },
+      )
+    AuthAbsent =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessSubjectNotRecognized { subject: "no authenticated human principal presented" },
+      )
+  }
+}
+
+// CSRF IS A SEPARATE PROOF, never implied by the cookie. A mutation without the session's token
+// refuses even with a valid session -- login state != CSRF token -- and the service arm refuses
+// here because service writes present service evidence, not browser CSRF.
+fn csrf_write_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  csrf_presented: String,
+) -> AccessDecision {
+  match security.authentication {
+    GoogleOidcSession { session } =>
+      match csrf_decision(session: session, presented_wire: csrf_presented) {
+        CsrfAdmitted => Permit
+        CsrfRefused { cause: c } =>
+          write_refused(
+            route_path: route_path,
+            action: action,
+            security: security,
+            cause: AccessEvidenceRejected { evidence: "csrf-token", reason: csrf_refusal_reason(c: c) },
+          )
+      }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "csrf-token: no authenticated session, so no CSRF proof can be presented" },
+      )
+    SessionStandingInvalid { standing: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "csrf-token: no authenticated session, so no CSRF proof can be presented" },
+      )
+    AuthAbsent =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "csrf-token: no authenticated session, so no CSRF proof can be presented" },
+      )
+  }
+}
+
+// THE DEPLOYMENT PATH POLICY IS THE FOURTH CONJUNCT: a deployment that requires the tailnet
+// path refuses a write arriving any other way. Reachability changes never silently widen what a
+// write requires.
+fn deployment_path_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  policy: DeploymentAccessPolicy,
+) -> AccessDecision {
+  if !policy.tailnet_path_required {
+    Permit
+  } else {
+    match security.access_path {
+      AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => Permit
+      AccessPathDirectHttps =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
+        )
+      AccessPathTailnetUnobserved { gap: g } =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: concat("this deployment requires the tailnet access path for writes: ", tailnet_route_gap_sentence(gap: g)) },
+        )
+      AccessPathLocalDev =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
+        )
+    }
+  }
+}
+
+// ── The service-write law ──────────────────────────────────────────────────────────────────────
+
+// SERVICE WRITES ADMIT SERVICE EVIDENCE, AND ONLY IT. The dual of the human law: a Google
+// session presented at a service write refuses (a human session is not workload identity), and
+// absence refuses. The wiring that MINTS this evidence from the filing MAC lives at the
+// /approvals submission route (the approvals lane's seam); the law it must satisfy is here.
+fn service_write_authentication_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> AccessDecision {
+  match security.authentication {
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => Permit
+    GoogleOidcSession { session: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "google-oidc-session", reason: "a human Google session is not Fabric service evidence and authorizes no service write" },
+      )
+    SessionStandingInvalid { standing: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "google-oidc-session", reason: "a human session standing, valid or not, is not Fabric service evidence and authorizes no service write" },
+      )
+    AuthAbsent =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "fabric-service-evidence" },
+      )
+  }
+}
+
+// ── Shared projections ─────────────────────────────────────────────────────────────────────────
+
+fn principal_in_approve_roster(principal: PrincipalRef, roster: List<PrincipalRef>) -> Bool {
+  fold(
+    roster,
+    init: false,
+    f: (acc, p) => acc || principal_ref_eq(a: p, b: principal),
+  )
+}
+
+fn csrf_refusal_reason(c: CsrfRefusalCause) -> String {
+  match c {
+    CsrfTokenAbsent => "the mutation presents no CSRF token"
+    CsrfTokenMismatch { presented: _, expected: _ } => "the presented CSRF token does not match the session's token"
+  }
+}
+
+// THE PROJECTED REQUEST, the carrier every decision above refuses in the vocabulary of: the
+// subject is what presented itself (a principal label for a session, the evidence spelling
+// otherwise), the action is the route's consequential verb, the object is the route path, the
+// context is the access path, and the evidence is the authentication evidence. One projection,
+// so no decision folds its own spelling of the coordinates.
+fn human_write_access_request(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> AccessRequest<String, ServeRouteAction, NonEmptyStr, RequestAccessPath, RequestAuthenticationEvidence> {
+  AccessRequest {
+    subject: evidence_subject_label(security.authentication),
+    action: action,
+    object: route_path,
+    context: AccessContext { value: security.access_path },
+    evidence: AccessEvidence { value: security.authentication },
+  }
+}
+
+fn evidence_subject_label(evidence: RequestAuthenticationEvidence) -> String {
+  match evidence {
+    GoogleOidcSession { session } => principal_ref_label(p: session.principal)
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => "fabric-service-evidence" as String
+    SessionStandingInvalid { standing: _ } => "session-standing-invalid" as String
+    AuthAbsent => "auth-absent" as String
+  }
+}
+
+fn write_refused(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  cause: AccessRefusalCause,
+) -> AccessDecision {
+  let request = human_write_access_request(route_path: route_path, action: action, security: security)
+  Deny {
+    refusal: AccessRefusal {
+      cause: cause,
+      location: AccessRefusalLocation {
+        profile: "gunbc.auth.request_authentication" as String,
+        subject: request.subject,
+        action: serve_route_action_label(action: action) as String,
+        object: request.object as String,
+      },
+    }
+  }
+}
+
+// THE VIEWER LABEL a read route renders: the authenticated principal's label today, the profile
+// display name when the A9 directory lane lands. A read never consults it for authorization,
+// and an absent authentication renders as nobody -- the same spelling the pre-login page shows.
+fn authenticated_viewer_label(evidence: RequestAuthenticationEvidence) -> String {
+  match evidence {
+    GoogleOidcSession { session } => principal_ref_label(p: session.principal)
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => fabric_display_alias as String
+    SessionStandingInvalid { standing: _ } => ""
+    AuthAbsent => ""
+  }
+}
+
+// THE TAILNET OBSERVATION a transport-consuming route (the approval broker's attribution seam)
+// reads off the access path: the proxy-attributed login when the tailnet path was modeled with
+// its readback, absent otherwise. It is audit metadata, never authentication evidence.
+fn tailnet_transport_observation(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> TailnetIdentity {
+  match security.access_path {
+    AccessPathTailnetProxy { transport_observation: obs, route_readback: _ } => obs
+    AccessPathDirectHttps => TailnetIdentityAbsent
+    AccessPathTailnetUnobserved { gap: _ } => TailnetIdentityAbsent
+    AccessPathLocalDev => TailnetIdentityAbsent
+  }
+}

@@ -1,0 +1,267 @@
+module gunbc.evaluation_store_address_census
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.materialization_provider_targets {
+  evaluation_store_address_production_consumers,
+  evaluation_store_address_persist_callers_expected,
+  evaluation_store_address_admitted_consumers_expected,
+  evaluation_store_address_missing_expected,
+  evaluation_store_address_unresolved
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+type ResolvedCallEdge {
+  caller_module: NonEmptyStr
+  caller_decl: NonEmptyStr
+  callee_module: NonEmptyStr
+  callee_decl: NonEmptyStr
+}
+
+type ResolvedCallEdgeCensus
+  = ResolvedCallEdgeCensusRefused { cause: NonEmptyStr }
+  | ResolvedCallEdgeCensusObserved { edges: List<ResolvedCallEdge> }
+
+type EvaluationStoreAddressProductionCoverage
+  = ProductionCoverageQualified {
+      exact_resolved_roots: List<String>
+      zero_candidate_roots: List<String>
+    }
+  | ProductionCoverageRefused {
+      root: String
+      path: String
+      cause: String
+    }
+  | CandidateOutsideExactResolution {
+      root: String
+      path: String
+      target_leaf: String
+    }
+
+type EvaluationStoreAddressExactHeadStanding
+  = ExactHeadHeld
+  | ExactHeadDidNotHold { cause: NonEmptyStr }
+  | ExactHeadRefused { cause: NonEmptyStr }
+
+data evaluation_store_address_home_modules: List<String> = [
+  "std.materialization_provider",
+  "std.materialization_object",
+  "extdeps.realization.materialization_store_local"
+]
+
+data evaluation_store_address_production_exclude: List<String> = ["/test/"]
+
+data evaluation_store_address_caller_horizon_roots: List<String> = [
+  "dag"
+]
+
+data evaluation_store_address_zero_candidate_guard_roots: List<String> = [
+  "src/v2"
+]
+
+data evaluation_store_address_fixture_home_modules: List<String> = [
+  "test.fixture.evaluation_store_address_alias.home"
+]
+
+data evaluation_store_address_fixture_roots: List<String> = [
+  "dag/test/fixture/evaluation_store_address_alias"
+]
+
+data evaluation_store_address_zero_candidate_plant_roots: List<String> = [
+  "dag/test/fixture/evaluation_store_address_zero_candidate_plant"
+]
+
+data evaluation_store_address_zero_candidate_plant_absent_roots: List<String> = [
+  "dag/test/fixture/evaluation_store_address_zero_candidate_plant_absent"
+]
+
+data evaluation_store_address_production_leaves: List<String> = [
+  "evaluation_store_address",
+  "persist_evaluation_store_address",
+  "evaluation_store_address_digest"
+]
+
+data evaluation_store_address_fixture_leaves: List<String> = [
+  "evaluation_store_address"
+]
+
+data evaluation_store_address_alias_discovery_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v2.std.namespace_alias resolution/normalize consumes AliasBindingRow as ordinary binding nodes (the follow-on consumer named on that module), AND this census requalifies alias/re-export discovery with an authorable RED: alias Provider = home-module; alias Address = Provider.evaluation_store_address; a third source calling Address(...) containing neither the leaf nor the original path; import-only misses that caller; callsite census observes its ResolvedCallee. Until that consumer lands, alias-chain discovery is inadmissible and this census does not claim it — a reverse-alias walk with no ResolvedCallee discriminator is not coverage.")
+
+data evaluation_store_address_production_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: option A — the floor exposes its accepted live-tree resolution/index product (or an equivalent exact query interface) and this census derives resolver-produced call edges over the complete production roots (dag ∪ src/v2) without building another corpus index per witness; then delete the partition and restore one exact join.")
+
+fn evaluation_store_address_mutation_census() -> ResolvedCallEdgeCensus {
+  evaluation_store_address_fixture_callsite_census()
+}
+
+// O(corpus) producer for the exact-head join instrument (not a per-PR floor witness).
+fn evaluation_store_address_production_census() -> ResolvedCallEdgeCensus {
+  compile_dag_callsite_resolved_call_edges(
+    evaluation_store_address_home_modules,
+    evaluation_store_address_production_exclude,
+    evaluation_store_address_caller_horizon_roots,
+    evaluation_store_address_production_leaves
+  )
+}
+
+fn evaluation_store_address_production_coverage() -> EvaluationStoreAddressProductionCoverage {
+  compile_dag_call_form_leaf_guard(
+    evaluation_store_address_production_exclude,
+    evaluation_store_address_zero_candidate_guard_roots,
+    evaluation_store_address_production_leaves,
+    evaluation_store_address_caller_horizon_roots
+  )
+}
+
+fn evaluation_store_address_zero_candidate_plant_coverage() -> EvaluationStoreAddressProductionCoverage {
+  compile_dag_call_form_leaf_guard(
+    [],
+    evaluation_store_address_zero_candidate_plant_roots,
+    evaluation_store_address_production_leaves,
+    evaluation_store_address_caller_horizon_roots
+  )
+}
+
+fn evaluation_store_address_zero_candidate_plant_absent_coverage() -> EvaluationStoreAddressProductionCoverage {
+  compile_dag_call_form_leaf_guard(
+    [],
+    evaluation_store_address_zero_candidate_plant_absent_roots,
+    evaluation_store_address_production_leaves,
+    evaluation_store_address_caller_horizon_roots
+  )
+}
+
+fn evaluation_store_address_src_v2_zero_candidate_root(
+  zero_candidate_roots: List<String>
+) -> Bool {
+  ((zero_candidate_roots |> count()) == 1)
+    && (zero_candidate_roots |> fold(init: false, f: (acc, r) => acc || r == "src/v2"))
+}
+
+fn evaluation_store_address_join_observed(edges: List<ResolvedCallEdge>) -> Bool {
+  let direct_obs = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "std.materialization_provider",
+    callee_decl: "evaluation_store_address"
+  )
+  let persist_obs = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "std.materialization_provider",
+    callee_decl: "persist_evaluation_store_address"
+  )
+  let admitted_obs = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "std.materialization_provider",
+    callee_decl: "evaluation_store_address_digest"
+  )
+  ((evaluation_store_address_missing_expected(
+    expected: evaluation_store_address_production_consumers,
+    observed: direct_obs
+  ) |> count()) == 0)
+    && ((evaluation_store_address_unresolved(
+      expected: evaluation_store_address_production_consumers,
+      observed: direct_obs
+    ) |> count()) == 0)
+    && ((evaluation_store_address_missing_expected(
+      expected: evaluation_store_address_persist_callers_expected,
+      observed: persist_obs
+    ) |> count()) == 0)
+    && ((evaluation_store_address_unresolved(
+      expected: evaluation_store_address_persist_callers_expected,
+      observed: persist_obs
+    ) |> count()) == 0)
+    && ((evaluation_store_address_missing_expected(
+      expected: evaluation_store_address_admitted_consumers_expected,
+      observed: admitted_obs
+    ) |> count()) == 0)
+    && ((evaluation_store_address_unresolved(
+      expected: evaluation_store_address_admitted_consumers_expected,
+      observed: admitted_obs
+    ) |> count()) == 0)
+}
+
+// Enrolled body of //gunbc/instruments:evaluation-store-address-exact-head (not a floor test fn).
+// Three arms stay distinct through the host: Held=0, DidNotHold=1, Refused=2.
+fn evaluation_store_address_census_joins_exact_head_declaration_graph() -> EvaluationStoreAddressExactHeadStanding {
+  match evaluation_store_address_production_census() {
+    ResolvedCallEdgeCensusRefused { cause } => ExactHeadRefused { cause: cause }
+    ResolvedCallEdgeCensusObserved { edges } =>
+      if evaluation_store_address_join_observed(edges: edges) {
+        match evaluation_store_address_production_coverage() {
+          ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
+            if evaluation_store_address_src_v2_zero_candidate_root(
+              zero_candidate_roots: zero_candidate_roots
+            ) {
+              ExactHeadHeld
+            } else {
+              ExactHeadDidNotHold {
+                cause: "src/v2 did not uniquely qualify as the zero-candidate root"
+              }
+            }
+          ProductionCoverageRefused { root: _, path: _, cause } =>
+            ExactHeadRefused { cause: cause as NonEmptyStr }
+          CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } =>
+            ExactHeadDidNotHold {
+              cause: "a scanned entry sits outside exact resolution"
+            }
+        }
+      } else {
+        ExactHeadDidNotHold {
+          cause: "observed callers do not join the closed roster"
+        }
+      }
+  }
+}
+
+fn evaluation_store_address_fixture_import_only_census() -> ResolvedCallEdgeCensus {
+  compile_dag_importer_resolved_call_edges(
+    evaluation_store_address_fixture_home_modules,
+    [],
+    evaluation_store_address_fixture_roots,
+    evaluation_store_address_fixture_leaves
+  )
+}
+
+fn evaluation_store_address_fixture_callsite_census() -> ResolvedCallEdgeCensus {
+  compile_dag_callsite_resolved_call_edges(
+    evaluation_store_address_fixture_home_modules,
+    [],
+    evaluation_store_address_fixture_roots,
+    evaluation_store_address_fixture_leaves
+  )
+}
+
+fn bound_callers_of_edges(
+  edges: List<ResolvedCallEdge>,
+  callee_module: String,
+  callee_decl: String
+) -> List<DeclarationRef> {
+  edges |> fold(
+    init: [],
+    f: (acc, edge) =>
+      if (edge.callee_module as String) == callee_module
+        && (edge.callee_decl as String) == callee_decl {
+        concat(acc, [DeclarationRef {
+          module_path: edge.caller_module,
+          decl_name: edge.caller_decl,
+          field: WholeDeclaration
+        }])
+      } else {
+        acc
+      }
+  )
+}
+
+fn evaluation_store_address_ref_in_module(
+  module_path: String,
+  name: String,
+  xs: List<DeclarationRef>
+) -> Bool {
+  xs |> fold(
+    init: false,
+    f: (acc, r) =>
+      acc || ((r.module_path as String) == module_path && (r.decl_name as String) == name)
+  )
+}

@@ -1,0 +1,483 @@
+module v1.compiler.emit_core_support
+
+import v1.std.core {
+  Node, ErrorNode, TextFile, NewlineIndex,
+  authored_name_at, field_init_node_name_at,
+  make_error_node, ModuleFilenameCollision, EmittedSymbolCollision,
+  Connective, NoConnective,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
+  ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem
+}
+
+import v1.compiler.artifact { RenderTarget }
+import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
+import gunbc.rust_emitted_crate { EmittedRustCrate }
+
+import v1.compiler.infer_items { ResolvedGraph, TypedModule, leaf_owner_modules_from_registry }
+
+import v1.compiler.infer_service { UniqueAccum }
+
+import v1.compiler.infer_types { resolved_type, emit_map_has }
+
+import v1.compiler.infer_env { TypeEnv }
+
+import v1.compiler.languages {
+  LanguageSpec, SnakeCaseTestNames, PascalCaseTestNames,
+  language_spec_for_target, test_conventions_for_target
+}
+
+// emitted_edges are the Rust realization edges (gunbc.rust_emitted_edge) of the published modules;
+// every other target, and every refused emission, carries none.
+type EmitResult {
+  files: List<TextFile>
+  diagnostics: List<ErrorNode>
+  emitted_edges: List<EmittedEdge>
+  rust_crates: List<EmittedRustCrate>
+}
+
+type TestProjection {
+  module_name: String
+  service_name: String
+  operation_name: String
+  inferred: Node
+  params: List<Node>
+  mock_field_inits: List<Node>
+  source_indices: Map<String, NewlineIndex>
+  type_env: TypeEnv
+}
+
+fn escape_json_string(s: String) -> String {
+  s |> split(delimiter: "\\") |> join(separator: "\\\\")
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
+
+type ModuleFilenameOwners {
+  owners: Map<String, String>
+  diagnostics: List<ErrorNode>
+}
+
+// module_to_filename maps '.' to '_', which is MANY-TO-ONE: `a.b_c` and `a_b.c` both render
+// `a_b_c`. Every target emits one file per module at that path, so two colliding modules write
+// the same path and the second silently overwrites the first -- a wrong artifact with no
+// diagnostic. The mapping cannot be made injective without changing every emitted path and
+// every cross-module reference derived from it, so the residue is refused rather than absorbed
+// (DESIGN.md section 5: a failure arm refuses, never widens). Every target emitter calls this
+// over the whole module population before it emits, since the collision is a fact about the
+// module set and not about any one target's rendering.
+fn module_filename_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
+  let result = typed.modules |> fold(init: ModuleFilenameOwners { owners: empty_map(), diagnostics: [] }, f: fn(acc, tm) {
+    let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
+    let filename = module_to_filename(name: module_name)
+    match map_get(acc.owners, filename) {
+      Present { value: owner } =>
+        if owner == module_name {
+          acc
+        } else {
+          ModuleFilenameOwners {
+            owners: acc.owners,
+            diagnostics: list_push(acc.diagnostics, make_error_node(
+              diagnostic: ModuleFilenameCollision { filename: filename, modules: [owner, module_name], span: tm.module.span },
+              module_name: module_name))
+          }
+        }
+      Absent => ModuleFilenameOwners { owners: map_insert(acc.owners, filename, module_name), diagnostics: acc.diagnostics }
+    }
+  })
+  result.diagnostics
+}
+
+fn make_indent(level: Int) -> String {
+  if level <= 0 {
+    ""
+  } else {
+    concat("    ", make_indent(level: level - 1))
+  }
+}
+
+fn unique_strings(items: List<String>) -> List<String> {
+  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
+    if emit_map_has(m: acc.seen, key: item) { acc }
+    else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
+  })
+  result.result
+}
+
+fn to_string(value: Int) -> String {
+  if value < 0 {
+    concat("-", to_string(value: 0 - value))
+  } else if value == 0 {
+    "0"
+  } else {
+    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    to_string_helper(value: value, acc: []) |> join(separator: "")
+  }
+}
+
+fn to_string_helper(value: Int, acc: List<String>) -> List<String> {
+  if value == 0 {
+    acc
+  } else {
+    let rest = value / 10
+    let digit = value - (rest * 10)
+    let digit_chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    let ch = match digit_chars |> enumerate |> filter(p => p.first == digit) |> first {
+      Present { value: p } => p.second
+      Absent => "?"
+    }
+    to_string_helper(value: rest, acc: concat([ch], acc))
+  }
+}
+
+fn to_snake(name: String) -> String {
+  let chars_list = name |> chars
+  let result = chars_list |> enumerate |> map(pair =>
+    let idx = pair.first
+    let ch = pair.second
+    if is_upper(ch: ch) {
+      if idx == 0 {
+        to_lower_char(ch: ch)
+      } else {
+        concat("_", to_lower_char(ch: ch))
+      }
+    } else {
+      from_code_point(cp: ch)
+    }
+  )
+  result |> join(separator: "")
+}
+
+fn to_screaming_snake(name: String) -> String {
+  let snake = to_snake(name: name)
+  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
+}
+
+fn is_upper(ch: Int) -> Bool {
+  ch >= 65 && ch <= 90
+}
+
+fn to_lower_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 65 && cp <= 90 {
+    let lower_cp = cp + 32
+    from_code_point(cp: lower_cp)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn to_upper_char(ch: Int) -> String {
+  let cp = ch
+  if cp >= 97 && cp <= 122 {
+    let upper_cp = cp - 32
+    from_code_point(cp: upper_cp)
+  } else {
+    from_code_point(cp: ch)
+  }
+}
+
+fn sanitize_service_name(name: String) -> String {
+  let parts = name |> split(delimiter: ".")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "__")
+}
+
+// THE SEGMENT BOUNDARY SURVIVES THE PROJECTION. A dotted service's segments are joined with `__`,
+// so every dotted service symbol carries a `__` -- an element no authored type name in the corpus
+// carries -- and `type GitWorktree` beside `service git.Worktree` emits `GitWorktree` and
+// `Git__Worktree`, two symbols. Joining with nothing erased the boundary, which is what made the
+// projection many-to-one against the type namespace
+// (gunbc.recurring_failure_mode.shared_symbol_projection_is_not_injective).
+//
+// WHAT REMAINS NON-INJECTIVE IS AUTHORED, NOT PROJECTED, AND IS REFUSED RATHER THAN RENAMED.
+// Type names range over the whole identifier alphabet, so no spelling can be injective against
+// every POSSIBLE type name. The residue: an undotted service with a type's exact name, a type
+// authored with a `__` into the dotted-service space, two dotted services differing only in a
+// segment's first-letter case, or a segment beginning or ending with `_` (`a_.b` and `a._b` both
+// render `A___B`). Every one reaches emitted_symbol_collision_diagnostics, which refuses it typed
+// and located, called from every target emitter. The emitted crate root admits the `__` spelling
+// through its `non_camel_case_types` allowance.
+
+fn capitalize_first(s: String) -> String {
+  let chars_list = s |> chars
+  if chars_list |> count == 0 {
+    ""
+  } else {
+    chars_list |> enumerate |> map(pair =>
+      if pair.first == 0 {
+        to_upper_char(ch: pair.second)
+      } else {
+        from_code_point(cp: pair.second)
+      }
+    ) |> join(separator: "")
+  }
+}
+
+// THE PARAMETER NAME KEEPS THE BOUNDARY-FREE SPELLING. `to_snake` of `Git__Worktree` is
+// `git___worktree`, which rustc's `non_snake_case` refuses under `-D warnings` at every function
+// that takes the service. A parameter lives in a function's own scope, beside other parameters
+// and never beside a type, so the type-namespace collision the struct symbol had cannot reach it.
+// Its residue -- one function demanding two services whose boundary-free spellings coincide -- is
+// rustc's duplicate-parameter refusal, loud and located at the function, not a silent overwrite.
+fn service_var_name(service_name: String) -> String {
+  to_snake(name: sanitize_service_name(name: service_name) |> split(delimiter: "__") |> join(separator: ""))
+}
+
+fn to_pascal(name: String) -> String {
+  let snake = to_snake(name: name)
+  let parts = snake |> split(delimiter: "_")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "")
+}
+
+fn test_function_name(projection: TestProjection, target: RenderTarget) -> String {
+  let conventions = test_conventions_for_target(target: target)
+  let formatted = match conventions.name_style {
+    SnakeCaseTestNames => concat(
+      to_snake(name: sanitize_service_name(name: projection.service_name)),
+      "_",
+      to_snake(name: projection.operation_name)
+    )
+    PascalCaseTestNames => concat(
+      to_pascal(name: sanitize_service_name(name: projection.service_name)),
+      to_pascal(name: projection.operation_name)
+    )
+  }
+  concat(conventions.function_prefix, formatted)
+}
+
+fn apply_type_template1(template: String, arg0: String) -> String {
+  template |> split(delimiter: "{0}") |> join(separator: arg0)
+}
+
+fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
+  let parts = template |> split(delimiter: "{0}")
+  let replaced = parts |> map(p => p |> split(delimiter: "{1}") |> join(separator: arg1))
+  replaced |> join(separator: arg0)
+}
+
+fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
+  let parts0 = template |> split(delimiter: "{0}")
+  let replaced = parts0 |> map(p0 =>
+    let parts1 = p0 |> split(delimiter: "{1}")
+    let inner = parts1 |> map(p1 => p1 |> split(delimiter: "{2}") |> join(separator: arg2))
+    inner |> join(separator: arg1)
+  )
+  replaced |> join(separator: arg0)
+}
+
+fn apply_named_template(template: String, bindings: Map<String, String>) -> String {
+  apply_named_template_nested(template: template, bindings: bindings, keys: map_keys(bindings))
+}
+
+fn apply_named_template_nested(template: String, bindings: Map<String, String>, keys: List<String>) -> String {
+  match keys |> first {
+    Absent => template
+    Present { value: key } =>
+      let rest = keys |> skip(1)
+      let placeholder = concat("{", key, "}")
+      match map_get(bindings, key) {
+        Present { value: val } =>
+          let parts = template |> split(delimiter: placeholder)
+          let processed = parts |> map(part => apply_named_template_nested(template: part, bindings: bindings, keys: rest))
+          processed |> join(separator: val)
+        Absent =>
+          concat("TEMPLATE_ERROR_MISSING_BINDING_", key)
+      }
+  }
+}
+
+fn language_spec(target: RenderTarget) -> LanguageSpec {
+  language_spec_for_target(target: target)
+}
+
+// TWO defects, one in each half of the CR step. The DELIMITER used to be "\r", but this language's
+// tokenizer has no \r escape (its table is \" \\ \n \t \{ \} and \xHH), so that delimiter was the
+// two characters backslash and r, not a carriage return: carriage returns have passed through
+// unescaped into every emitted target for as long as the function has existed, dead in practice
+// only because no corpus string carried one. The first that did turned it into a hard emit failure.
+// The REPLACEMENT was then briefly \r and \0, which is a second, subtler version of the same
+// mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go
+// and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one
+// of the four projections, and \r emitted into a Dag literal reproduces the exact backslash-r bug
+// the delimiter half just fixed (review 2026-07-30). The spelling is therefore \x0d and \x00, the
+// hex form all four target grammars accept, and the acceptance is a round trip through every target
+// rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than
+// quietly respelled because the class is the point: a target-specific escape inside a
+// target-independent function is invisible until a projection other than the one under test carries
+// the character.
+
+fn escape_string_literal_body(s: String) -> String {
+  let escaped_backslash = s
+    |> split(delimiter: "\\") |> join(separator: "\\\\")
+  let escaped_quote = escaped_backslash
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+  let escaped_newline = escaped_quote
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+  let escaped_return = escaped_newline
+    |> split(delimiter: "\x0d") |> join(separator: "\\x0d")
+  let escaped_nul = escaped_return
+    |> split(delimiter: "\x00") |> join(separator: "\\x00")
+  escaped_nul
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
+
+fn has_mock_prefix(name: String) -> Bool {
+  if string_length(s: name) < 5 { false }
+  else { substring(s: name, start: 0, end: 5) == "mock_" }
+}
+
+fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
+  typed.modules |> flat_map(tm =>
+    tm.items
+      |> filter(item => item.module_item_kind == ModuleItemService)
+      |> flat_map(item =>
+        item.children
+          |> filter(c => c.properties |> any(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))))
+          |> map(c => TestProjection {
+            module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
+            service_name: authored_name_at(source_indices: tm.type_env.source_indices, node: item),
+            operation_name: authored_name_at(source_indices: tm.type_env.source_indices, node: c),
+            inferred: resolved_type(n: c),
+            params: c.params,
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
+            source_indices: tm.type_env.source_indices,
+            type_env: tm.type_env
+          })
+      )
+  )
+}
+
+fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: n) != "Unit"
+}
+
+// THE ITEM-KIND PREDICATES THAT STOOD HERE ARE GONE, NOT REWRITTEN. Five of them --
+// is_service_item, is_service_def_item (byte-identical to it, a section 3 nickname with two
+// exports and two consumer sets), is_function_item, is_data_def_item and is_resource_def_item --
+// decided WHICH KIND OF ITEM a node was by which of its optional fields happened to be absent.
+// That question now has a single authority: v1.std.core Node carries module_item_kind, stamped by
+// the parse constructor that already knew the answer, so a consumer asking the question compares
+// against the coproduct and no longer re-derives it. is_resource_def_item's second disjunct --
+// children == 0 && properties > 0 && body == none -- was the resource-exclusion validator family
+// that made this a section 5 finding: exclusion by name repairs each KNOWN collision and can never
+// become a positive authority. Its live defect is the evidence for the climb and stays enrolled:
+// `resource Network` and `resource AuthContext` in std.resources declare no capabilities and no
+// properties, satisfied NEITHER disjunct, and reached is_type_alias_item first in every emitter's
+// if-chain -- so all three targets emitted them AS TYPES.
+//
+// WHAT SURVIVES IS THE TYPE-STRUCTURE AXIS, WHICH IS NOT THE KIND AXIS. The four predicates below
+// all range over ONE kind -- ModuleItemTypeDeclaration -- and split it by the type's own structure:
+// Conj/Disj children versus a leaf, then a leaf by whether its resolved right-hand side is Unit.
+// Folding that into the kind coproduct would put two orthogonal axes in one enum. What the kind
+// removes from them is their FALSE POSITIVES ON NON-TYPE ITEMS, not their content, so each gains a
+// kind conjunct and loses the `transport == none` conjunct the kind now makes dead.
+//
+// is_bare_leaf_item was RENAMED to is_leaf_type_item in the same motion, because "bare leaf item"
+// is precisely the shape-not-kind name that let two capability-less resources through it.
+fn is_type_def_item(item: Node) -> Bool {
+  item.module_item_kind == ModuleItemTypeDeclaration && item.connective != NoConnective
+}
+
+fn is_leaf_type_item(item: Node) -> Bool {
+  item.module_item_kind == ModuleItemTypeDeclaration
+    && item.connective == NoConnective && item.body == none
+    && item.params |> count == 0 && item.children |> count == 0
+}
+
+// THE EXCLUSION THAT STOOD BETWEEN THESE TWO PREDICATES IS GONE, AND THIS NOTE RECORDS WHY IT WAS
+// RIGHT AND STILL NOT THE FIX. gunbc#10350 repaired the same defect the other way: it derived a
+// resource exclusion here from v1.compiler.parse parsed_item_carries_resource_entries, so that
+// "what a resource item is" had ONE definition and these predicates were two consumers of it
+// rather than a second place to keep in sync. That was the correct move available at the time, and
+// codex review 60254 named its limit in the same breath: an exclusion is a VALIDATOR, it grows one
+// conjunct per collision discovered, and it can never become a positive authority -- DESIGN
+// section 5, validation standing where construction was available. The row it filed
+// (gunbc.recurring_failure_mode dispatch_correctness_resting_on_arm_order) named the trigger as a
+// positive item kind carried on the emit side. That is what module_item_kind is, so both the
+// exclusion and the authority it derived from are deleted rather than kept beside it.
+//
+// WHAT THE EXCLUSION WAS COMPENSATING FOR, kept because it is the specimen: `resource Network` and
+// `resource AuthContext` in std.resources declare no capabilities, so they carry no children, no
+// body, no params and no connective, and the SHAPE test claimed them while the parser correctly
+// read them as resources. That disagreement is what made
+// gunbc.type_reference_decl_file_occurrence_census refuse with
+// CensusUnavailable { cause: DeclarationDomainDisagrees }. Both readers previously AGREED they were
+// types, which is why the population looked clean before the parse arm existed.
+//
+// The 2026-09-04 note above also explains why the exclusion was NOT placed inside the leaf-shape
+// predicate: that predicate is a statement about SHAPE, a capability-less resource genuinely IS a
+// bare leaf, and it has consumers outside these two arms whose meaning depends on its params-count
+// reading. The kind conjunct is not subject to that objection, because it does not narrow the
+// shape question -- it asks a different one.
+fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  is_leaf_type_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
+}
+
+fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  (is_leaf_type_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
+  || (item.module_item_kind == ModuleItemTypeDeclaration
+      && item.params |> count > 0 && item.body == none && item.children |> count == 0)
+}
+
+type EmittedSymbolBinding {
+  symbol: String
+  identity: String
+}
+
+type EmittedSymbolOwners {
+  owners: Map<String, String>
+  diagnostics: List<ErrorNode>
+}
+
+fn emitted_symbol_bindings_for_item(item: Node, source_indices: Map<String, NewlineIndex>) -> List<EmittedSymbolBinding> {
+  let name = authored_name_at(source_indices: source_indices, node: item)
+  if item.module_item_kind == ModuleItemService {
+    [EmittedSymbolBinding { symbol: sanitize_service_name(name: name), identity: concat("service ", name) }]
+  } else if is_type_def_item(item: item)
+    || is_type_alias_item(item: item, source_indices: source_indices)
+    || is_type_decl_item(item: item, source_indices: source_indices) {
+    [EmittedSymbolBinding { symbol: name, identity: concat("type ", name) }]
+  } else {
+    []
+  }
+}
+
+// sanitize_service_name is MANY-TO-ONE across kinds: `type GitWorktree` and `service git.Worktree`
+// both render the emitted type `GitWorktree`. DuplicateDeclaration does not fire — the authored
+// names differ — so rustc reports E0428 after a silent emit. The mapping cannot be made injective
+// without renaming every emitted service, so the residue is refused (DESIGN.md section 5). Every
+// target emitter calls this over the module population before it emits.
+fn emitted_symbol_collision_diagnostics(typed: ResolvedGraph) -> List<ErrorNode> {
+  typed.modules |> flat_map(tm => {
+    let source_indices = tm.type_env.source_indices
+    let module_name = authored_name_at(source_indices: source_indices, node: tm.module)
+    let result = tm.items |> fold(init: EmittedSymbolOwners { owners: empty_map(), diagnostics: [] }, f: fn(acc, item) {
+      emitted_symbol_bindings_for_item(item: item, source_indices: source_indices) |> fold(init: acc, f: fn(inner, binding) {
+        match map_get(inner.owners, binding.symbol) {
+          Present { value: owner } =>
+            if owner == binding.identity {
+              inner
+            } else {
+              EmittedSymbolOwners {
+                owners: inner.owners,
+                diagnostics: list_push(inner.diagnostics, make_error_node(
+                  diagnostic: EmittedSymbolCollision {
+                    symbol: binding.symbol,
+                    identities: [owner, binding.identity],
+                    span: item.span
+                  },
+                  module_name: module_name))
+              }
+            }
+          Absent => EmittedSymbolOwners {
+            owners: map_insert(inner.owners, binding.symbol, binding.identity),
+            diagnostics: inner.diagnostics
+          }
+        }
+      })
+    })
+    result.diagnostics
+  })
+}

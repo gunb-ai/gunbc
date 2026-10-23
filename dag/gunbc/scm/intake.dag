@@ -1,0 +1,298 @@
+module gunbc.scm.intake
+
+// WHAT A COMMIT TOOK IN FROM OUTSIDE THIS REPOSITORY, AS A TYPED MEMBER OF THE COMMIT.
+//
+// A repository whose history starts from another system's tree -- the belt seeds a project repository
+// from the git revision a dispatch branched from -- has to say WHICH revision each intake froze. Until
+// gunbc#13111's follow-up that fact lived in the commit MESSAGE ('project base: <sha>'), a string the
+// belt wrote and three belt sites compared by string equality: an untyped carrier for the one fact a
+// capture's correctness depends on (gunbc.recurring_failure_mode
+// a_worktree_delta_against_one_base_applied_onto_another). It is a member now, beside `integration`,
+// and for the same reason `integration` is a member: it records what producing this commit CONSUMED,
+// which `ancestry` does not say.
+//
+// THREE MINTABLE ARMS AND ONE DECODED ONE. `IntakeNone` is an ordinary commit: its root was authored
+// here. `IntakeBase` froze an external revision's tree as a root commit. `IntakeAdvance` moved a line
+// from one external revision to the next: its root is its parent's root re-bound over exactly the
+// external change between the two, so "which base did this line assume" is answered by the nearest
+// intake commit on the line, never by a string. `IntakeUnrecordedByFormat` is what a document written
+// before the member existed (format v8 and older) says about intake: nothing. It is NOT IntakeNone --
+// the v8 belt wrote base commits whose message names a revision, so reading that format's silence as
+// "no intake" would assert a fact the document does not carry. Only the decoder produces it, and the
+// intake admission in gunbc.scm.repository_envelope refuses it as a mint argument.
+//
+// `IntakeStaleCapture` is the typed reading of a pre-intake commit whose content was computed against
+// an external revision OTHER than the one its line stands at: srv2's candidates captured from
+// attempts on b7f9070 and d7005ab into a line based at d012e00. It does not move the line; it records
+// that this commit's tree is not its line's base plus its work. Only the legacy conversion
+// (gunbc.scm.repository_envelope record_legacy_intakes) writes it -- a fresh capture cannot be stale,
+// because it descends from the intake commit of the revision it was computed against.
+
+import std.types { String, List, Bool, NonEmptyStr }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import gunbc.merge_admission_subject { render_git_object_id_wire, parse_git_object_id_wire }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_string, json_object, json_kv }
+import gunbc.scm.json_member {
+  MemberReadRefusal, MemberReadWrongShape,
+  MemberRead, MemberString, MemberArray, MemberObject, MemberFailed,
+  read_string_member, unexpected_member_key,
+}
+
+// AN EXTERNAL REVISION, ONE ARM PER UPSTREAM SYSTEM. Git is the only one a producer intakes from
+// today; its object id is extdeps.git's authority, carried whole (family and digest) rather than as
+// hex text, so a sha1 and a sha256 id can never compare equal on spelling.
+type IntakeRevision
+  = GitIntakeRevision { id: GitObjectId }
+
+type CommitIntake
+  = IntakeNone
+  | IntakeBase { revision: IntakeRevision }
+  | IntakeAdvance { from: IntakeRevision, to: IntakeRevision }
+  | IntakeStaleCapture { captured_against: IntakeRevision }
+  | IntakeUnrecordedByFormat
+
+fn intake_revision_eq(left: IntakeRevision, right: IntakeRevision) -> Bool {
+  match left {
+    GitIntakeRevision { id: l } =>
+      match right {
+        GitIntakeRevision { id: r } => git_object_id_eq(left: l, right: r)
+      }
+  }
+}
+
+// THE REVISION'S OWN WIRE SPELLING IS THE FAMILY-PREFIXED ONE (sha1:<hex>), the repository's rule for
+// git ids it writes itself; untagged hex is admitted only for text git itself printed.
+fn intake_revision_wire(revision: IntakeRevision) -> String {
+  match revision {
+    GitIntakeRevision { id } => render_git_object_id_wire(oid: id)
+  }
+}
+
+fn intake_revision_of_wire(text: String) -> IntakeRevision? {
+  match parse_git_object_id_wire(raw: text) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+// THE REVISION A COMMIT LEAVES ITS LINE AT, if it is an intake commit: a base leaves the line at the
+// revision it froze, an advance at the revision it moved to. An ordinary commit leaves the line where
+// its parent left it, and an unrecorded one cannot say -- the two are kept apart by the caller.
+type IntakeLineMark
+  = LineMarkedAt { revision: IntakeRevision }
+  | LineNotMarked
+  | LineMarkUnrecorded
+
+fn intake_line_mark(intake: CommitIntake) -> IntakeLineMark {
+  match intake {
+    IntakeNone => LineNotMarked
+    IntakeBase { revision } => LineMarkedAt { revision: revision }
+    IntakeAdvance { from: _, to } => LineMarkedAt { revision: to }
+    IntakeStaleCapture { captured_against: _ } => LineNotMarked
+    IntakeUnrecordedByFormat => LineMarkUnrecorded
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Wire (format v9 commit member `intake`)
+// ------------------------------------------------------------------------------------------------
+//
+// JsonNull is the unrecorded arm -- the only spelling a v9 writer has for a commit it carried forward
+// from an older document -- and every recorded arm is an object with a closed member set, so damage
+// cannot silently become "no intake".
+
+fn encode_commit_intake(intake: CommitIntake) -> JsonValue {
+  match intake {
+    IntakeUnrecordedByFormat => JsonNull
+    IntakeNone => json_object(members: [json_kv(key: "kind", value: json_string(s: "none"))])
+    IntakeBase { revision } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "base")),
+        json_kv(key: "revision", value: json_string(s: intake_revision_wire(revision: revision))),
+      ])
+    IntakeAdvance { from, to } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "advance")),
+        json_kv(key: "from", value: json_string(s: intake_revision_wire(revision: from))),
+        json_kv(key: "to", value: json_string(s: intake_revision_wire(revision: to))),
+      ])
+    IntakeStaleCapture { captured_against } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "stale_capture")),
+        json_kv(key: "captured_against", value: json_string(s: intake_revision_wire(revision: captured_against))),
+      ])
+  }
+}
+
+type CommitIntakeDecode
+  = CommitIntakeDecoded { intake: CommitIntake }
+  | CommitIntakeRefused { cause: MemberReadRefusal }
+
+fn decode_commit_intake(value: JsonValue) -> CommitIntakeDecode {
+  match value {
+    JsonNull => CommitIntakeDecoded { intake: IntakeUnrecordedByFormat }
+    JsonObject { members: _ } => decode_commit_intake_object(value: value)
+    JsonBool { value: _ } => CommitIntakeRefused { cause: MemberReadWrongShape { key: "intake" } }
+    JsonNumber { lexeme: _ } => CommitIntakeRefused { cause: MemberReadWrongShape { key: "intake" } }
+    JsonString { value: _ } => CommitIntakeRefused { cause: MemberReadWrongShape { key: "intake" } }
+    JsonArray { elements: _ } => CommitIntakeRefused { cause: MemberReadWrongShape { key: "intake" } }
+  }
+}
+
+fn decode_commit_intake_object(value: JsonValue) -> CommitIntakeDecode {
+  match read_string_member(v: value, key: "kind") {
+    MemberFailed { cause } => CommitIntakeRefused { cause: cause }
+    MemberArray { elements: _ } => CommitIntakeRefused { cause: MemberReadWrongShape { key: "kind" } }
+    MemberObject { value: _ } => CommitIntakeRefused { cause: MemberReadWrongShape { key: "kind" } }
+    MemberString { value: kind } =>
+      if kind == "none" {
+        intake_members_closed(value: value, allowed: ["kind"], intake: IntakeNone)
+      } else if kind == "base" {
+        match decode_intake_revision_member(value: value, key: "revision") {
+          IntakeRevisionMemberRefused { cause } => CommitIntakeRefused { cause: cause }
+          IntakeRevisionMemberRead { revision } =>
+            intake_members_closed(value: value, allowed: ["kind", "revision"], intake: IntakeBase { revision: revision })
+        }
+      } else if kind == "advance" {
+        match decode_intake_revision_member(value: value, key: "from") {
+          IntakeRevisionMemberRefused { cause } => CommitIntakeRefused { cause: cause }
+          IntakeRevisionMemberRead { revision: from } =>
+            match decode_intake_revision_member(value: value, key: "to") {
+              IntakeRevisionMemberRefused { cause } => CommitIntakeRefused { cause: cause }
+              IntakeRevisionMemberRead { revision: to } =>
+                intake_members_closed(value: value, allowed: ["kind", "from", "to"], intake: IntakeAdvance { from: from, to: to })
+            }
+        }
+      } else if kind == "stale_capture" {
+        match decode_intake_revision_member(value: value, key: "captured_against") {
+          IntakeRevisionMemberRefused { cause } => CommitIntakeRefused { cause: cause }
+          IntakeRevisionMemberRead { revision } =>
+            intake_members_closed(value: value, allowed: ["kind", "captured_against"], intake: IntakeStaleCapture { captured_against: revision })
+        }
+      } else {
+        CommitIntakeRefused { cause: MemberReadWrongShape { key: "kind" } }
+      }
+  }
+}
+
+fn intake_members_closed(value: JsonValue, allowed: List<String>, intake: CommitIntake) -> CommitIntakeDecode {
+  match unexpected_member_key(v: value, allowed: allowed) {
+    Present { value: key } => CommitIntakeRefused { cause: MemberReadWrongShape { key: join(["intake.", key], "") } }
+    Absent => CommitIntakeDecoded { intake: intake }
+  }
+}
+
+type IntakeRevisionMemberRead
+  = IntakeRevisionMemberRead { revision: IntakeRevision }
+  | IntakeRevisionMemberRefused { cause: MemberReadRefusal }
+
+fn decode_intake_revision_member(value: JsonValue, key: String) -> IntakeRevisionMemberRead {
+  match read_string_member(v: value, key: key) {
+    MemberFailed { cause } => IntakeRevisionMemberRefused { cause: cause }
+    MemberArray { elements: _ } => IntakeRevisionMemberRefused { cause: MemberReadWrongShape { key: key } }
+    MemberObject { value: _ } => IntakeRevisionMemberRefused { cause: MemberReadWrongShape { key: key } }
+    MemberString { value: text } =>
+      match intake_revision_of_wire(text: text) {
+        Absent => IntakeRevisionMemberRefused { cause: MemberReadWrongShape { key: key } }
+        Present { value: revision } => IntakeRevisionMemberRead { revision: revision }
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The work a commit captured (format v9 commit member `work`)
+// ------------------------------------------------------------------------------------------------
+//
+// WHICH UNIT OF WORK A CAPTURE FROZE, AS A TYPED MEMBER, so a correction can be bound to the exact
+// work it recaptures (the NO-LAND ruling on gunbc#13402, blocker 1). Before this, the only record of
+// a candidate's work was its message, so a corrective supersession could name ANY fresh commit as
+// the "recapture" of a stale one and the stale integration would leave standing with its work never
+// reconstructed. `WorkUnrecordedByFormat` is what a document older than the member says (v8 and
+// older), never `NoWork`, for the reason `IntakeUnrecordedByFormat` is never `IntakeNone`.
+//
+// THE IDENTITY IS A RECORD OF TWO MEMBERS, NOT A RENDERED LABEL (the second NO-LAND ruling on
+// gunbc#13402). It was one string the belt spelled as `<node> a<attempt>`, and that spelling is not
+// injective: (n, "x ay") and ("n ax", y) both render "n ax ay", so a capture of one unit of work could
+// pass as the recapture of another. Now the unit of work and the attempt that captured it travel as
+// separate members on the wire and compare field by field, so two identities are equal exactly when
+// both members are. The SCM does not import the roadmap's node and attempt types -- the roadmap
+// imports this module, and the import graph is acyclic -- so the members are the two non-empty
+// strings those types brand, decoded and refused empty here.
+type CaptureWork {
+  unit: NonEmptyStr
+  attempt: NonEmptyStr
+}
+
+type CommitWork
+  = NoWork
+  | WorkCapture { work: CaptureWork }
+  | WorkUnrecordedByFormat
+
+fn capture_work_eq(left: CaptureWork, right: CaptureWork) -> Bool {
+  (left.unit as String) == (right.unit as String) && (left.attempt as String) == (right.attempt as String)
+}
+
+fn encode_commit_work(work: CommitWork) -> JsonValue {
+  match work {
+    WorkUnrecordedByFormat => JsonNull
+    NoWork => json_object(members: [json_kv(key: "kind", value: json_string(s: "none"))])
+    WorkCapture { work: w } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "capture")),
+        json_kv(key: "unit", value: json_string(s: w.unit as String)),
+        json_kv(key: "attempt", value: json_string(s: w.attempt as String)),
+      ])
+  }
+}
+
+type CommitWorkDecode
+  = CommitWorkDecoded { work: CommitWork }
+  | CommitWorkRefused { cause: MemberReadRefusal }
+
+fn decode_commit_work(value: JsonValue) -> CommitWorkDecode {
+  match value {
+    JsonNull => CommitWorkDecoded { work: WorkUnrecordedByFormat }
+    JsonObject { members: _ } =>
+      match read_string_member(v: value, key: "kind") {
+        MemberFailed { cause } => CommitWorkRefused { cause: cause }
+        MemberArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.kind" } }
+        MemberObject { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.kind" } }
+        MemberString { value: kind } =>
+          if kind == "none" {
+            match unexpected_member_key(v: value, allowed: ["kind"]) {
+              Present { value: key } => CommitWorkRefused { cause: MemberReadWrongShape { key: join(["work.", key], "") } }
+              Absent => CommitWorkDecoded { work: NoWork }
+            }
+          } else if kind == "capture" {
+            match unexpected_member_key(v: value, allowed: ["kind", "unit", "attempt"]) {
+              Present { value: key } => CommitWorkRefused { cause: MemberReadWrongShape { key: join(["work.", key], "") } }
+              Absent =>
+                match decode_work_member(value: value, key: "unit") {
+                  Absent => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.unit" } }
+                  Present { value: unit } =>
+                    match decode_work_member(value: value, key: "attempt") {
+                      Absent => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.attempt" } }
+                      Present { value: attempt } => CommitWorkDecoded { work: WorkCapture { work: CaptureWork { unit: unit, attempt: attempt } } }
+                    }
+                }
+            }
+          } else {
+            CommitWorkRefused { cause: MemberReadWrongShape { key: "work.kind" } }
+          }
+      }
+    JsonBool { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+    JsonNumber { lexeme: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+    JsonString { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+    JsonArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+  }
+}
+
+// ONE NON-EMPTY STRING MEMBER OF A WORK IDENTITY: absent, wrong-shaped and empty are each "not a member".
+fn decode_work_member(value: JsonValue, key: String) -> NonEmptyStr? {
+  match read_string_member(v: value, key: key) {
+    MemberString { value: text } => if text == "" { none } else { Present { value: text as NonEmptyStr } }
+    MemberFailed { cause: _ } => none
+    MemberArray { elements: _ } => none
+    MemberObject { value: _ } => none
+  }
+}

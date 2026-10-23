@@ -1,0 +1,83 @@
+module gunbc.workspace_money_codec
+import std.types { String, NonEmptyStr, Int, List }
+import std.measure { Currency, Micro, money_amount_micro, money_amount_micro_count }
+import extdeps.currency.currency { Usd, Eur, currency_alphabetic_code }
+import product.fabric.budget { MoneyAccount, MoneyLease }
+import product.fabric.execution { ReservationRef }
+import product.fabric.demand { BudgetAccountId }
+import extdeps.accounting.encumbrance { Encumbrance, EncumbranceLedger, Held, Expended, Released }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject, json_object, json_kv, json_string, json_int, json_array }
+import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
+fn workspace_money_string(v: JsonValue, key: String) -> String? {
+  json_field_value(r: json_field_string(obj: v, key: key))
+}
+fn workspace_money_int(v: JsonValue, key: String) -> Int? {
+  json_field_value(r: json_field_int(obj: v, key: key))
+}
+fn workspace_money_array(v: JsonValue, key: String) -> List<JsonValue>? {
+  match json_field_value(r: json_field(obj: v, key: key)) {
+    Absent => none
+    Present { value: member } => match member {
+      JsonArray { elements: elements } => Present { value: elements }
+      JsonNull => none
+      JsonBool { value: _ } => none
+      JsonNumber { lexeme: _ } => none
+      JsonString { value: _ } => none
+      JsonObject { members: _ } => none
+    }
+  }
+}
+fn workspace_money_entries_json(e: Encumbrance<Currency, Micro>) -> JsonValue {
+  let fields = [json_kv(key: "reference", value: json_string(s: e.reference as String))]
+  json_object(members: fields + match e.state {
+    Held { maximum_liability: n } => [json_kv(key: "state", value: json_string(s: "held")), json_kv(key: "amount", value: json_int(n: money_amount_micro_count(m: n)))]
+    Expended { actual: n, settled_at: t } => [json_kv(key: "state", value: json_string(s: "expended")), json_kv(key: "amount", value: json_int(n: money_amount_micro_count(m: n))), json_kv(key: "at", value: json_string(s: t))]
+    Released { reason: r, released_at: t } => [json_kv(key: "state", value: json_string(s: "released")), json_kv(key: "reason", value: json_string(s: r as String)), json_kv(key: "at", value: json_string(s: t))]
+  })
+}
+fn workspace_money_json(account: MoneyAccount) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "account", value: json_string(s: account.account as String)),
+    json_kv(key: "currency", value: json_string(s: currency_alphabetic_code(c: account.currency))),
+    json_kv(key: "ceiling", value: json_int(n: money_amount_micro_count(m: account.ledger.appropriation.ceiling))),
+    json_kv(key: "entries", value: json_array(elements: map(account.ledger.entries, e => workspace_money_entries_json(e: e)))),
+    json_kv(key: "leases", value: json_array(elements: map(account.leases, l => json_object(members: [json_kv(key: "reference", value: json_string(s: l.reference as String)), json_kv(key: "generation", value: json_int(n: l.generation))])))),
+  ])
+}
+fn workspace_money_entry_decode(v: JsonValue) -> Encumbrance<Currency, Micro>? {
+  match workspace_money_string(v: v, key: "reference") { Absent => none Present { value: reference } =>
+  if reference == "" { none } else {
+    match workspace_money_string(v: v, key: "state") { Absent => none Present { value: state } =>
+      if state == "held" || state == "expended" {
+        match workspace_money_int(v: v, key: "amount") { Absent => none Present { value: n } =>
+          if n < 0 { none } else if state == "held" { Present { value: Encumbrance { reference: reference as NonEmptyStr, state: Held { maximum_liability: money_amount_micro(count: n) } } } }
+          else { match workspace_money_string(v: v, key: "at") { Absent => none Present { value: at } => Present { value: Encumbrance { reference: reference as NonEmptyStr, state: Expended { actual: money_amount_micro(count: n), settled_at: at } } } } }
+        }
+      } else if state == "released" {
+        match workspace_money_string(v: v, key: "reason") { Absent => none Present { value: reason } => if reason == "" { none } else {
+          match workspace_money_string(v: v, key: "at") { Absent => none Present { value: at } => Present { value: Encumbrance { reference: reference as NonEmptyStr, state: Released { reason: reason as NonEmptyStr, released_at: at } } } }
+        } }
+      } else { none }
+    }
+  } }
+}
+fn workspace_money_lease_decode(v: JsonValue) -> MoneyLease? {
+  match workspace_money_string(v: v, key: "reference") { Absent => none Present { value: reference } =>
+    match workspace_money_int(v: v, key: "generation") { Absent => none Present { value: generation } =>
+      if reference == "" || generation < 0 { none } else { Present { value: MoneyLease { reference: reference as ReservationRef, generation: generation } } }
+    }
+  }
+}
+fn workspace_money_from_json(value: JsonValue) -> MoneyAccount? {
+  match workspace_money_string(v: value, key: "account") { Absent => none Present { value: account } =>
+  match workspace_money_string(v: value, key: "currency") { Absent => none Present { value: currency } =>
+  match workspace_money_int(v: value, key: "ceiling") { Absent => none Present { value: ceiling } =>
+  match workspace_money_array(v: value, key: "entries") { Absent => none Present { value: entries } =>
+  match workspace_money_array(v: value, key: "leases") { Absent => none Present { value: leases } => {
+    let es = fold(entries, init: [], f: (acc, e) => match workspace_money_entry_decode(v: e) { Absent => acc Present { value: parsed } => acc + [parsed] })
+    let ls = fold(leases, init: [], f: (acc, l) => match workspace_money_lease_decode(v: l) { Absent => acc Present { value: parsed } => acc + [parsed] })
+    if account == "" || ceiling < 0 || (currency != "USD" && currency != "EUR") || es.count() != entries.count() || ls.count() != leases.count() { none }
+    else { Present { value: MoneyAccount { account: account as BudgetAccountId, currency: if currency == "USD" { Usd } else { Eur }, ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: money_amount_micro(count: ceiling) }, entries: es }, leases: ls } } }
+  } } } } } }
+}

@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.truncated_local_diagnostics_indistinguishable_from_the_complete_set
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data truncated_local_diagnostics_indistinguishable_from_the_complete_set: RecurringFailureMode = RecurringFailureMode {
+  identity: "truncated_local_diagnostics_indistinguishable_from_the_complete_set" as NonEmptyStr,
+
+  receipts: [
+    "**a stack-capped local oracle dies mid-measure and its printed diagnostics read as the complete set** (a run of the required floor's own command on a workstation aborts partway through the measuring phases -- main-thread stack exhaustion -- after printing a real but PARTIAL set of diagnostics. Everything printed before the abort is true, so a reader who takes the printed set as the verdict holds a prefix of the tree's defects with nothing on the surface saying so; and the abort line itself has the shape of a defect in the tree rather than a ceiling of the machine.)",
+
+    "INVALID STATE: an oracle whose death is indistinguishable from its verdict. The same stdout carries both 'here is what I found so far' and 'here is everything there is to find', the abort does not annotate which was meant, and the standing measurement receipt a completed run publishes is exactly what an aborted run does not leave -- so the artifact cannot distinguish a finished refusal from a truncated run except by an operator's familiarity with abort lines.",
+
+    "HARM, TWO DIRECTIONS. The truncated set sends the author back with a SUBSET of the defects: the tree is refused again on the tail they never saw, and a full review round is paid per missing diagnostic. And the death invites a false suspect -- 'stack overflow' in a run over a changed tree reads as 'my change recursed', a forensic pass spent on the tree when the ceiling is in the environment.",
+
+    "WHY IT SURVIVES REVIEW: every diagnostic the truncated run printed is correct, and the fix derived from it works. Nothing in the diff, the log, or the review can see the missing tail, because incompleteness is a property of the RUN, not of any line in it.",
+
+    "SPECIMEN (gunbc#11342, 2026-09-14, first push fb2390003e7, session gentle-gull-238). The local floor run -- claim_executor --required-ci over dag and src/v2, the exact command the required-witnesses-floor lane runs -- printed the five parse refusals at floor_terminal_ledger_wire.dag:787:3-791:3, entered strict-preparation, and at 28 minutes aborted: 'thread main has overflowed its stack / fatal runtime error: stack overflow'. CI's floor, the same bytes, a larger stack, ALSO reported the resolve-phase refusal naming the unbound Failed at floor_terminal_ledger_wire_test.dag:520:38 -- a defect the local run never reached. Two oracles, one tree, different-size answers.",
+
+    "WHAT DISCRIMINATED IT WAS OUT OF BAND. The abort line names its own cause ('has overflowed its stack'), the progress beats stop mid-phase, the standing receipt is absent where a completed run publishes one, and ulimit -s reads 8192 on the machine that died while CI's runner carries a larger limit. None of these are on the oracle's own surface; all are one shell away, which is the same containment-by-expertise the long-phase silence row records.",
+
+    "THE WORKAROUND IS NOT A FIX. ulimit -s unlimited let the identical run pass the death point and continue measuring, verified on the same bytes the same day. But it is an environment mutation the run neither requests nor records: a green local run cannot say whether it measured under the ceiling or over it, so the truncation risk is silent exactly when the run succeeds.",
+
+    "RUNG: found at 1, mitigatable. The ambiguity is contained by an operator who reads abort lines and checks for the standing receipt -- expertise, not anything the program does.",
+
+    "CEILING 2, mechanically preventable: the oracle can bound itself. A run that knows the recursion depth its phases reach can pre-flight its stack headroom, or run the deep phases on a thread with a declared stack, and either complete under a declared ceiling or refuse typed ('local ceiling below required depth'). A refusal carries a standing receipt, and a standing receipt cannot be read as a verdict prefix.",
+
+    "NEXT-RUNG TRIGGER (a CAPABILITY, not an artifact): the required-ci runner pre-flighting or pinning the stack its phases need, so every local floor run completes under a declared ceiling or refuses typed. Raising ulimit on one laptop fixes this specimen and leaves every other stack-capped oracle in the corpus with the same surface -- the artifact-for-capability substitution DESIGN section 4b(3) forbids in a restoration trigger.",
+
+    "REVIEW TELL: an oracle run whose output ends in a low-level runtime abort ('overflowed its stack', 'aborting') instead of a standing receipt. Ask whether the diagnostics above the abort are the complete set or a prefix, and what in the artifact would have told you.",
+  ],
+
+  evidence: [],
+}

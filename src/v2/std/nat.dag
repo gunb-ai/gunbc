@@ -1,0 +1,48 @@
+module v2.std.nat
+import std.types { List }
+import v2.std.node { Symbol }
+
+// THE NODE-BOUND LAW ROSTER OF THE NATURALS, AND NOTHING ELSE. This module used to declare a second
+// Nat -- the Peano coproduct -- beside std.nat's semiring alias. There is one Nat now, declared in
+// std.nat with the inductive body and its operations (operator ruling A, 2026-09-30); what stays
+// here is the part that needs v2.std.node's Symbol, which std.nat does not import.
+type NatAlgebraLawObligation {
+  algebra: Symbol
+  inhabitant: Symbol
+  law: Symbol
+}
+
+fn nat_declared_algebra_law_obligations() -> List<NatAlgebraLawObligation> {
+  [
+    NatAlgebraLawObligation {
+      algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_add_left_identity,
+    },
+    NatAlgebraLawObligation {
+      algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_add_right_identity,
+    },
+    NatAlgebraLawObligation {
+      algebra: ^nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_add_associativity,
+    },
+    NatAlgebraLawObligation {
+      algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_mul_left_identity,
+    },
+    NatAlgebraLawObligation {
+      algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_mul_annihilator,
+    },
+    NatAlgebraLawObligation {
+      algebra: ^nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: ^law_nat_mul_associativity,
+    },
+  ]
+}

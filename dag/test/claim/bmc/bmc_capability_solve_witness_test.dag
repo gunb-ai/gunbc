@@ -1,0 +1,131 @@
+module test.claim.bmc_capability_solve
+
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareIntentMismatch,
+  BmcFirmwareIntentSatisfied,
+  BmcFirmwareObservation,
+  BmcFirmwareTrackRequired,
+  BmcFirmwareTrack,
+  BmcFirmwareVersion,
+  BmcFirmwareVersionParsed,
+  BmcFirmwareVersionRefused,
+  CurrentEvidenceUnclaimed,
+  CapabilityAccountManagement,
+  CapabilityBiosAttributeConfig,
+  CapabilityBootSourceOverride,
+  CapabilityFirmwareUpdate,
+  CapabilityNbdProxyVirtualMedia,
+  CapabilityPowerControl,
+  CapabilityVirtualMedia,
+  catalog_has_vm_capable_firmware,
+  bmc_firmware_observation_intent_verdict,
+  bmc_firmware_version_from_wire,
+  bmc_firmware_version_matches_track,
+  firmware_has_capability,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
+  asrock_altrad8ud_openbmc_3_06_00_capabilities,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
+}
+import gunbc.os_install_mechanism { srv3_firmware_catalog }
+import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
+import std.types { Bool, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.firmware.types { firmware_semantic_version }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn firmware_wire_version_is_parsed_before_track_matching() -> Bool {
+  match bmc_firmware_version_from_wire(wire: "3.anything") {
+    BmcFirmwareVersionRefused { wire: _ } =>
+      match bmc_firmware_version_from_wire(wire: "3.22.0") {
+        BmcFirmwareVersionParsed { version: parsed } =>
+          bmc_firmware_version_matches_track(
+            firmware: BmcFirmwareVersion {
+              family: OpenBmc,
+              version: parsed,
+            },
+            track: BmcFirmwareTrack {
+              family: OpenBmc,
+              major_version: 3,
+            },
+          )
+        BmcFirmwareVersionRefused { wire: _ } => false
+      }
+    BmcFirmwareVersionParsed { version: _ } => false
+  }
+}
+
+test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
+  let observation = BmcFirmwareObservation {
+    endpoint: BmcEndpoint {
+      host: "192.0.2.1",
+      protocol: Redfish,
+    },
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: firmware_semantic_version(
+        major: 3,
+        minor: 22,
+        patch: 0,
+      ),
+    },
+    evidence_scope: CurrentEvidenceUnclaimed,
+    observed_at: 1,
+  }
+  match bmc_firmware_observation_intent_verdict(
+    intent: BmcFirmwareTrackRequired {
+      track: BmcFirmwareTrack {
+        family: OpenBmc,
+        major_version: 3,
+      },
+    },
+    observation: observation,
+  ) {
+    BmcFirmwareIntentSatisfied =>
+      match bmc_firmware_observation_intent_verdict(
+        intent: BmcFirmwareTrackRequired {
+          track: BmcFirmwareTrack {
+            family: OpenBmc,
+            major_version: 2,
+          },
+        },
+        observation: observation,
+      ) {
+        BmcFirmwareIntentMismatch { required: required, observed: observed } =>
+          required.major_version == 2
+            && observed.version.major == 3
+        BmcFirmwareIntentSatisfied => false
+      }
+    BmcFirmwareIntentMismatch { required: _, observed: _ } => false
+  }
+}
+
+test fn srv3_capabilities_are_grounded() -> Bool {
+  firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
+}
+
+test fn altrad8ud_firmware_catalog_is_board_grounded() -> Bool {
+  list_length(items: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == 3
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_22_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_22_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_22_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
+    && catalog_has_vm_capable_firmware(catalog: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == false
+}
+
+test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
+  catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
+}

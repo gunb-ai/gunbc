@@ -1,0 +1,64 @@
+module test.claim.machine_intake.pre_os_sol_crlf_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.goal_assessment { ObservationEstablished }
+import extdeps.posix.termios { termios_onlcr_output_lines }
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake_pre_os_observer {
+  pre_os_has_banner, pre_os_terminal_from_console, pre_os_host_userspace_boot, pre_os_host_population_statement,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
+import gunbc.host_memory_qualification { BootReachedOperatingSystem }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED INPUT, CR NL BYTES: the SOL console as its ONLCR discipline writes it. The banner and the
+// DDR statement are the lines the committed socket0-only DDR-init archive carries with that CR; the
+// userspace block is the first-own-image-boot capture's, re-terminated as the tty would.
+data pre_os_sol_crlf_lines: List<String> = [
+  "[SOL Session operational.  Use ~? for help]\r\n",
+  "ERROR:   DDR initialization failure. STOP!\r\n",
+  "[    0.000000] Linux version 6.12.108\r\n",
+  "[    5.817433] DMI: Memory slots populated: 16/32\r\n",
+  "[    6.000000] Run /init as init process\r\n",
+  "marker=gunbc-runner-host-boot\r\n",
+  "machine=aarch64\r\n",
+  "kernel=6.12.108\r\n",
+  "iface=eth0 mac=28:c1:3c:8a:d6:4a\r\n",
+  "marker-end=gunbc-runner-host-boot\r\n",
+]
+
+fn pre_os_sol_crlf() -> String { join(pre_os_sol_crlf_lines, "") }
+
+// THE FRAMING: the channel's CR belongs to the terminator; no framed line carries it, and content
+// whitespace (the kernel timestamp's leading spaces) is untouched.
+test fn w_sol_crlf_framed_lines_carry_no_mapped_cr() -> Bool {
+  let lines = termios_onlcr_output_lines(text: pre_os_sol_crlf())
+  !any(lines, line => ends_with(s: line, suffix: "\r"))
+    && any(lines, line => line == "[    5.817433] DMI: Memory slots populated: 16/32")
+}
+
+// THE ROUTE: every pre_os reader, fed the CR NL bytes with no trim of its own, reaches its verdict.
+test fn w_sol_crlf_banner_is_seen() -> Bool { pre_os_has_banner(text: pre_os_sol_crlf()) }
+
+test fn w_sol_crlf_ddr_statement_has_no_cr() -> Bool {
+  match pre_os_terminal_from_console(text: pre_os_sol_crlf()) {
+    ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => statement as String == "ERROR:   DDR initialization failure. STOP!"
+    _ => false
+  }
+}
+
+test fn w_sol_crlf_userspace_boot_is_established() -> Bool {
+  match pre_os_host_userspace_boot(text: pre_os_sol_crlf(), host_mac: mtcollins1_host_nic_mac) {
+    ObservationEstablished { observed: BootReachedOperatingSystem } => true
+    _ => false
+  }
+}
+
+test fn w_sol_crlf_population_statement_has_no_cr() -> Bool {
+  match pre_os_host_population_statement(text: pre_os_sol_crlf()) {
+    ObservationEstablished { observed: row } => row as String == "[    5.817433] DMI: Memory slots populated: 16/32"
+    _ => false
+  }
+}

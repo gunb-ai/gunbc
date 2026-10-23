@@ -1,0 +1,135 @@
+module test.claim.fabric.fabric_writer_roster_witness
+
+import std.types { Bool, NonEmptyStr, String, List, Int }
+import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
+import extdeps.access.posix { PosixUser, LoginShellUnobserved, FilePermissions }
+import std.fabric_storage { FabricStoreUnreachable }
+import product.host_identity { HostIdentity }
+import gunbc.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, DoorProxied, DoorLocalPeer, DoorUnattested }
+import gunbc.fabric_writer_identity_observe { FabricWriterIdentityReceipt }
+import gunbc.fabric_writer_roster {
+  FabricWriterIdentityObservation, fabric_served_writer_roster_of, fabric_served_writer_roster,
+  fabric_door_writer_admission_over, fabric_door_principal_of, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused,
+}
+import gunbc.fabric_storage_placement { fabric_storage_directory, fabric_storage_store_root, fabric_storage_door_directory }
+import gunbc.managed_directory { ManagedDirectory, managed_directory_permissions, dependent_class_of, OwnerClass, GroupClass, OtherClass }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user, fleet_posix_ci_runner_user }
+
+// ── THE SERVED ROSTER IS DERIVED FROM READINGS OF THE DOOR ───────────────────────────────────
+// Supplied receipts, one per ground arm: a presented login enters the roster, and an absent login,
+// an unproxied (placed-host) reading and an unread door contribute nothing. A login observed on two
+// hosts is one principal (the user grain), rostered once.
+fn receipt(host: String, read: gunbc.fabric_storage_wire.FabricIdentityRead) -> FabricWriterIdentityObservation {
+  FabricWriterIdentityObservation {
+    run: "fixture" as NonEmptyStr,
+    receipt: FabricWriterIdentityReceipt {
+      host: host as HostIdentity,
+      binding: FabricStorageServed { endpoint: "https://srv1.example.ts.net:10000/fabric-storage" as NonEmptyStr },
+      read: read,
+      observed_at: "2026-09-27T00:00:00Z" as NonEmptyStr,
+    },
+  }
+}
+
+fn supplied_observations() -> List<FabricWriterIdentityObservation> {
+  [
+    receipt(host: "srv2", read: FabricIdentityPresented { identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr } }),
+    receipt(host: "srv3", read: FabricIdentityPresented { identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr } }),
+    receipt(host: "srv4", read: FabricIdentityPresented { identity: TailnetIdentityAbsent }),
+    receipt(host: "srv1", read: FabricIdentityUnproxied),
+    receipt(host: "srv5", read: FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: "fixture" as NonEmptyStr } }),
+  ]
+}
+
+test fn the_served_roster_holds_exactly_the_observed_logins_once() -> Bool {
+  let roster = fabric_served_writer_roster_of(observations: supplied_observations())
+  length(roster) == 1 && match first(roster) { Present { value: l } => (l as String) == "writer@example.ts.net"  Absent => false }
+}
+
+fn admitted(a: gunbc.fabric_writer_roster.FabricDoorWriterAdmission) -> Bool {
+  match a { FabricDoorWriterAdmitted { principal: _ } => true  FabricDoorWriterRefused { refusal: _ } => false }
+}
+
+test fn the_admission_admits_a_rostered_login_and_refuses_an_outsider_and_an_absent_login() -> Bool {
+  let logins = ["writer@example.ts.net" as NonEmptyStr]
+  let locals = ["ghrunner" as NonEmptyStr]
+  admitted(a: fabric_door_writer_admission_over(logins: logins, locals: locals, principal: DoorProxied { identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr } }))
+    && admitted(a: fabric_door_writer_admission_over(logins: logins, locals: locals, principal: DoorProxied { identity: TailnetUser { login: "Writer@example.ts.net" as NonEmptyStr } })) == false
+    && admitted(a: fabric_door_writer_admission_over(logins: logins, locals: locals, principal: DoorProxied { identity: TailnetIdentityAbsent })) == false
+}
+
+test fn the_admission_admits_a_rostered_local_peer_and_refuses_an_outsider_and_an_unattested_peer() -> Bool {
+  let logins = ["writer@example.ts.net" as NonEmptyStr]
+  let locals = ["ghrunner" as NonEmptyStr]
+  admitted(a: fabric_door_writer_admission_over(logins: logins, locals: locals, principal: DoorLocalPeer { user: "ghrunner" as NonEmptyStr }))
+    && admitted(a: fabric_door_writer_admission_over(logins: logins, locals: locals, principal: DoorLocalPeer { user: "writer@example.ts.net" as NonEmptyStr })) == false
+    && admitted(a: fabric_door_writer_admission_over(logins: logins, locals: locals, principal: DoorUnattested)) == false
+}
+
+// THE HEADER IS BELIEVED ONLY FROM THE PROXY PEER: the same header from root is a login, from any
+// other account it is ignored and the account is the principal, and with no attested peer it is
+// nothing at all.
+test fn the_door_reads_the_login_header_only_from_the_proxy_peer() -> Bool {
+  let proxied = match fabric_door_principal_of(tailscale_identity: "writer@example.ts.net", peer_user: "root") { DoorProxied { identity: i } => match i { TailnetUser { login: l } => (l as String) == "writer@example.ts.net"  TailnetIdentityAbsent => false }  _ => false }
+  let local = match fabric_door_principal_of(tailscale_identity: "writer@example.ts.net", peer_user: "ghrunner") { DoorLocalPeer { user: u } => (u as String) == "ghrunner"  _ => false }
+  let unattested = match fabric_door_principal_of(tailscale_identity: "writer@example.ts.net", peer_user: "") { DoorUnattested => true  _ => false }
+  proxied && local && unattested
+}
+
+// THE PRODUCTION ROSTER ADMITS NO LOGIN IT WAS NOT OBSERVED PRESENTING. With every recorded
+// reading unread or unproxied (gunbc.fabric_writer_roster fabric_writer_identity_observations), the
+// served door refuses every login -- including one that looks like an operator's -- rather than
+// guessing which hosts are user-owned.
+test fn the_production_served_door_refuses_a_login_no_reading_observed() -> Bool {
+  admitted(a: fabric_door_writer_admission_over(logins: fabric_served_writer_roster(), locals: fabric_door_local_roster(), principal: DoorProxied { identity: TailnetUser { login: "unobserved@example.ts.net" as NonEmptyStr } })) == false
+}
+
+// ── THE LOCAL ROSTER IS THE DOOR DIRECTORY'S DEPENDENTS ───────────────────────────────────
+// One declaration read twice: the kernel lets a local account reach the socket only through the
+// class the door directory's derived permissions give it, and the handler admits a local peer only
+// if it is one of that directory's dependents. The operator (owner) and the CI runner (group) can
+// traverse; an account outside both lands in OTHER, which can neither traverse nor is rostered. And
+// the store's own areas admit no writer but the service: nobody writes the files except through the
+// door.
+fn class_traverses(d: ManagedDirectory, who: PosixUser) -> Bool {
+  let p = managed_directory_permissions(d: d)
+  match dependent_class_of(owner: d.owner, group_gid: p.ownership.gid, who: who) {
+    OwnerClass => p.mode.owner.execute
+    GroupClass => p.mode.group.execute
+    OtherClass => p.mode.other.execute
+  }
+}
+
+fn outsider() -> PosixUser {
+  PosixUser { name: "fabric-outsider", uid: 4242, gid: 4242, shell: LoginShellUnobserved }
+}
+
+fn class_writes(d: ManagedDirectory, who: PosixUser) -> Bool {
+  let p = managed_directory_permissions(d: d)
+  match dependent_class_of(owner: d.owner, group_gid: p.ownership.gid, who: who) {
+    OwnerClass => p.mode.owner.write
+    GroupClass => p.mode.group.write
+    OtherClass => p.mode.other.write
+  }
+}
+
+test fn the_door_admits_the_operator_and_the_ci_runner_locally_and_no_one_else() -> Bool {
+  let door = fabric_storage_door_directory()
+  let roster = fabric_door_local_roster()
+  class_traverses(d: door, who: fleet_posix_operator_user) && class_traverses(d: door, who: fleet_posix_ci_runner_user)
+    && class_traverses(d: door, who: outsider()) == false
+    && length(roster) == 2
+    && any(roster, n => (n as String) == (fleet_posix_operator_user.name as String))
+    && any(roster, n => (n as String) == (fleet_posix_ci_runner_user.name as String))
+}
+
+test fn the_placed_store_areas_admit_no_writer_but_the_service() -> Bool {
+  let areas = fabric_storage_file_root(root: fabric_storage_store_root())
+  let objects = fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)
+  let heads = fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)
+  class_writes(d: objects, who: fleet_posix_operator_user) && class_writes(d: heads, who: fleet_posix_operator_user)
+    && class_writes(d: objects, who: fleet_posix_ci_runner_user) == false && class_writes(d: heads, who: fleet_posix_ci_runner_user) == false
+    && class_writes(d: objects, who: outsider()) == false && class_writes(d: heads, who: outsider()) == false
+}

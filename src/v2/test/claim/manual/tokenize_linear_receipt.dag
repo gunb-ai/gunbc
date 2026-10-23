@@ -1,0 +1,57 @@
+module v2.test.manual.tokenize_linear_receipt
+
+
+data tlr_path: String = "src/v1/01_tokenize.dag"
+data tlr_anchor: Symbol = ^tlr_anchor
+
+data tlr_trunc_eighth_path: String = "src/v2/test/fixture/census_path_trunc/eighth.txt"
+data tlr_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/quarter.txt"
+data tlr_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
+data tlr_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
+
+fn tlr_tokenize_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  let lm = dag_language_model()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tlr_trunc_eighth_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_eighth_path)
+}
+
+fn tlr_trunc_quarter_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_quarter_path)
+}
+
+fn tlr_trunc_half_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_half_path)
+}
+
+fn tlr_trunc_full_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_full_path)
+}
+
+fn tlr_full_tokenize_accepts() -> Bool {
+  let source = filesystem_read(path: tlr_path).content
+  let lm = dag_language_model()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tlr_ingest_stage_tokenize_or_parse_rejects() -> Bool {
+  let source = filesystem_read(path: tlr_path).content
+  let lm = dag_language_model()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}

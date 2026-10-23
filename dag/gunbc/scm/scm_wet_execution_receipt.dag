@@ -1,0 +1,165 @@
+module gunbc.scm.scm_wet_execution_receipt
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.types { CommitSha, Int, NonEmptyStr, Timestamp }
+import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
+
+// THE WET EXECUTION OF tools.scm_acceptance, AS EVIDENCE UNDER A NODE THAT STAYS OPEN.
+//
+// gunbc.open_node_partial_evidence carries what every such subject shares. This module carries what
+// only a WET HOST EXECUTION has, and the split is not tidiness: the native-witness inhabitant cites
+// a witness symbol and has no machine to describe, so an optional provenance block on the shared
+// carrier would advertise an axis one of its two inhabitants cannot populate -- the uninhabited
+// generality its own trigger refused. Composition instead: the shared receipt is a FIELD here.
+//
+// WHY A HOST DESCRIPTION IS LOAD-BEARING HERE AND NOWHERE ELSE. This instrument BUILDS THE BINARY IT
+// SPENDS, so build and run must share an architecture, and every earlier attempt failed because the
+// authoring sessions dispatched builds to amd64 from arm64. The PATH-resolved cargo is therefore not
+// environment trivia but the discriminator between a real attempt and a reproduction of the known
+// failure wearing a fresh run's clothes: PATH cargo in a session container is
+// /usr/local/ctrl-build-shims/cargo, a shim that dispatches REMOTE, and an unforced run would build
+// an amd64 binary, fail to execute it, and look like a new data point.
+//
+// THE LAUNCHER DIGEST IS OBSERVED AT BOTH ENDS, AND THE PAIR CLAIMS EXACTLY TWO OBSERVATIONS.
+// CARGO_TARGET_DIR is shared across every worktree on a session host, so a sibling session's build
+// replaces the binary in place. A first run of this instrument was rendered unattestable exactly
+// that way: the executable it invoked had been overwritten ninety minutes later, and nothing about
+// the run looked wrong.
+//
+// THE DIGESTS NAME A FILE, AND THE FIELD SAYING WHICH ONE IS NOT OPTIONAL. canonical_command records
+// a PATH LOOKUP; it does not say which executable the lookup found, so two digests beside it would
+// describe bytes with no stated subject. resolved_launcher is that subject, and for this inhabitant
+// it is a target directory deliberately ISOLATED from the shared CARGO_TARGET_DIR -- which is why
+// the file is still there, still carrying the recorded digest, when the shared one had been
+// overwritten within the hour. Raised by external review, which also ruled that a path reconstructed
+// from the environment after the fact would be a post-hoc attribution rather than a receipt; this
+// one is re-observed at the path, not inferred from it.
+//
+// WHAT THE PAIR DOES NOT ESTABLISH, stated because an earlier revision of this module claimed it and
+// was wrong in the same way as the fold it replaced. Equal endpoints say the path held these bytes at
+// the START and at the END. They do NOT say the path was never replaced between: a build landing and
+// being rebuilt back -- A then B then A across sixty-one minutes -- reads as equal endpoints while
+// child processes in the middle may have spent B. Absence of mid-run replacement is not recoverable
+// from two samples, so no arm here names it. The continuity that IS established for the CHILD binary
+// lives in the instrument: tools.scm_acceptance retains an attempt-owned copy and re-observes its
+// digest through scm_acceptance_binary_standing before scenarios are spent, which is the authority
+// for that question and must not be shadowed by a weaker one here. Found by external review.
+//
+// WHAT IS DELIBERATELY ABSENT. No child-process count, no per-step durations, no rendered verdict
+// string. The instrument re-derives all of it, and a transcribed count is stale the moment the step
+// list changes -- the same refusal gunbc.native_witness_transition_receipt makes against storing a
+// pass count, and DESIGN section 6's rule to name the instrument rather than transcribe its output.
+// executed_evidence on the shared receipt cites the producer; a reader who wants the step trace runs
+// it.
+type WorktreeState
+  = WorktreeClean
+  | WorktreeCarriedChanges { changed_paths: Int }
+
+// THE SUBJECT IS A COMMIT AND main IS A MOVING HANDLE, so the relation between them is a DATED
+// OBSERVATION rather than a property of the receipt's subject. It is recorded at both ends for the
+// same reason the digest is: main advanced ten commits during one of these executions, so a single
+// reading cannot say whether it moved. Arms are named for the SUBJECT's position rather than for a
+// deployment role, because gunbc.live_deploy.revision DeployRevisionRelation spells its arms
+// DeployedIsAncestor and CandidateIsAncestor -- roles this receipt has neither of, and reusing the
+// spelling here would give one name two meanings across layers (DESIGN section 3).
+type SubjectMainRelation
+  = SubjectIsMainTip
+  | SubjectPrecedesMainTip
+  | SubjectOutsideMainHistory
+  | SubjectMainRelationUnobserved { cause: NonEmptyStr }
+
+type MainRefObservation {
+  observed_tip: CommitSha
+  relation: SubjectMainRelation
+}
+
+// SUCCESS CARRIES NO CODE AND REFUSAL DOES. A stored "exit 0" invites a reader to compare integers
+// with some other operation's exit table; the accepting state is one arm with nothing to compare.
+type ScmWetExecutionOutcome
+  = ScmWetExecutionAccepted
+  | ScmWetExecutionRefused { exit_code: Int }
+
+type ScmWetExecutionProvenance {
+  host: NonEmptyStr
+  kernel: NonEmptyStr
+  architecture: NonEmptyStr
+  resolved_cargo: NonEmptyStr
+  cargo_version: NonEmptyStr
+  rustc_version: NonEmptyStr
+  canonical_command: NonEmptyStr
+  resolved_launcher: NonEmptyStr
+  launcher_digest_before: NonEmptyStr
+  launcher_digest_after: NonEmptyStr
+  worktree_before: WorktreeState
+  worktree_after: WorktreeState
+  started_at: Timestamp
+  ended_at: Timestamp
+  outcome: ScmWetExecutionOutcome
+}
+
+type ScmWetExecutionReceipt {
+  partial_evidence: OpenNodePartialEvidenceReceipt
+  provenance: ScmWetExecutionProvenance
+  main_before: MainRefObservation
+  main_after: MainRefObservation
+}
+
+// THE ONE INHABITANT, AND WHAT IT DOES NOT CLAIM. The subject is the durable node identity
+// rn_ZYH1W8YWXYMSGA8SMYYWHWHMP2 rather than the slug 2-scm-native-write-spine-acceptance, so a slug
+// rename cannot orphan the evidence. The landed change is gunbc#10729, which committed the driver
+// and the write spine; the evidence executed at e4209456be8, the merge of gunbc#11386, two merges
+// LATER. Those two commits differ and the shared carrier says only that -- the direction is stated
+// here, in prose, because it is observed rather than derived, and the fold that used to answer it
+// from inequality alone is deleted.
+//
+// WHAT EXIT 0 ESTABLISHES, AT ITS ACTUAL STRENGTH. scm_acceptance returns ProcessExit, and
+// scm_acceptance_exit maps ONLY ScmAcceptancePassed to ExitSuccess while every refusal arm carries a
+// located scenario and step through exit_failure. The run host maps that return to the process
+// status totally, and ExitFailure cannot yield zero. So the accepted arm below means the instrument
+// reached ScmAcceptancePassed, not merely that evaluation finished -- a distinction worth stating
+// because gunbc's own run path once printed ExitFailure and exited 0, and the log of a passing run
+// carries no verdict line to tell the two apart by eye.
+//
+// AND WHAT IT DOES NOT: this is the committed driver's OWN three scenarios. The corrupt-generation
+// and probe-bound scenarios are NOT migrated into it, and the section 9 evidence
+// docs/plans/scm-merge-design.md owes is not delivered. Both remain open on the node.
+fn scm_acceptance_wet_execution_receipt() -> ScmWetExecutionReceipt {
+  ScmWetExecutionReceipt {
+    partial_evidence: OpenNodePartialEvidenceReceipt {
+      node: "rn_ZYH1W8YWXYMSGA8SMYYWHWHMP2" as RoadmapNodeIdentity,
+      landed_pull_request: 10729,
+      landed_merge_commit: "c48dc494dbc16dbf05a0766cb34a3a45040247fe",
+      evaluated_head: "e4209456be8b470335b6438683617e526aa88a71",
+      executed_evidence: decl_ref(
+        module_path: "tools.scm_acceptance",
+        decl_name: "scm_acceptance",
+      ),
+    },
+    provenance: ScmWetExecutionProvenance {
+      host: "6dac1715275b" as NonEmptyStr,
+      kernel: "Linux 6.8.0-138-generic aarch64" as NonEmptyStr,
+      architecture: "aarch64" as NonEmptyStr,
+      resolved_cargo: "/opt/cargo/bin/cargo" as NonEmptyStr,
+      cargo_version: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_version: "rustc 1.93.0 (254b59607 2026-01-19)" as NonEmptyStr,
+      canonical_command: "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/scm_acceptance.dag --function scm_acceptance" as NonEmptyStr,
+      resolved_launcher: "/tmp/claude-1000/-home-briansrls--worktrees-gunbc-deep-carp-676/825827b7-c94b-4de8-8cc4-4616121fbc8b/scratchpad/acc-target/release/gunbc" as NonEmptyStr,
+      launcher_digest_before: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
+      launcher_digest_after: "105d1dcaec427faa3c22daae001bf4385d2eaf1168c3c5a5a60a874158e8cc67" as NonEmptyStr,
+      worktree_before: WorktreeClean,
+      worktree_after: WorktreeClean,
+      started_at: "2026-09-15T23:25:14Z" as Timestamp,
+      ended_at: "2026-09-16T00:26:01Z" as Timestamp,
+      outcome: ScmWetExecutionAccepted,
+    },
+    main_before: MainRefObservation {
+      observed_tip: "e6688ddb8e50c3e80579a62f434d6c23e020df6f",
+      relation: SubjectPrecedesMainTip,
+    },
+    main_after: MainRefObservation {
+      observed_tip: "e6688ddb8e50c3e80579a62f434d6c23e020df6f",
+      relation: SubjectPrecedesMainTip,
+    },
+  }
+}

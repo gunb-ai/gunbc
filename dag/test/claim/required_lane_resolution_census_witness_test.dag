@@ -1,0 +1,107 @@
+module test.claim.required_lane_resolution_census_witness
+
+import std.types { String, Bool, List, Int }
+import gunbc.required_lane_resolution_census {
+  ModuleIdentityPopulation, ModuleIdentityPopulationObserved, ModuleIdentityPopulationRefused,
+  LaneResolutionSubject, FloorNominalPreparedSubject, RunEntryClosure, ResolvesNoDagModule,
+  LaneResolvedPopulation, ResolutionCensusInputs, ResolutionCensus,
+  ResolutionCensusStanding, ResolutionCensusHeld, ResolutionCensusDidNotHold,
+  resolution_census, resolution_census_standing, census_receipt_lines,
+}
+
+// THE FOLD DISCRIMINATES AT ONE INTERFACE (DESIGN section 3): admitted and resolved populations
+// are SUPPLIED here, so every claim is about the join and nothing else. The pairing obligation --
+// that the real producers emit these shapes -- is discharged by the two claims at the bottom,
+// which call the compiler queries on a two-module fixture root and on the live workflow's roster.
+
+fn floor_lane(modules: List<String>) -> LaneResolvedPopulation {
+  LaneResolvedPopulation { job_id: "floor", subject: FloorNominalPreparedSubject {}, modules: modules }
+}
+
+fn gate_lane(modules: List<String>) -> LaneResolvedPopulation {
+  LaneResolvedPopulation { job_id: "floor", subject: RunEntryClosure { entry_path: "dag/x.dag" }, modules: modules }
+}
+
+fn cargo_lane() -> LaneResolvedPopulation {
+  LaneResolvedPopulation { job_id: "compiler", subject: ResolvesNoDagModule { reason: "cargo build" }, modules: [] }
+}
+
+fn census_of(admitted: List<String>, resolved: List<LaneResolvedPopulation>) -> ResolutionCensus {
+  resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved })
+}
+
+fn same_list(a: List<String>, b: List<String>) -> Bool {
+  a == b
+}
+
+// An identity resolved by any lane is reached; the rest are unreached, in admitted order.
+test fn unreached_is_the_admitted_complement_of_the_lane_union() -> Bool {
+  let c = census_of(admitted: ["a", "b", "c", "d"], resolved: [floor_lane(modules: ["a", "b"]), gate_lane(modules: ["b", "c"]), cargo_lane()])
+  same_list(a: c.reached, b: ["a", "b", "c"]) && same_list(a: c.unreached, b: ["d"])
+}
+
+test fn every_admitted_module_resolved_by_some_lane_holds() -> Bool {
+  let c = census_of(admitted: ["a", "b"], resolved: [floor_lane(modules: ["a"]), gate_lane(modules: ["b"])])
+  match resolution_census_standing(c: c) {
+    ResolutionCensusHeld => count(c.unreached) == 0
+    ResolutionCensusDidNotHold { unreached: _ } => false
+  }
+}
+
+// THE RED: lanes that resolve nothing leave every admitted module unreached, and the standing
+// carries the population rather than a count.
+test fn lanes_resolving_nothing_leave_every_admitted_module_unreached() -> Bool {
+  let c = census_of(admitted: ["a", "b", "c"], resolved: [floor_lane(modules: []), cargo_lane()])
+  match resolution_census_standing(c: c) {
+    ResolutionCensusHeld => false
+    ResolutionCensusDidNotHold { unreached: u } => same_list(a: u, b: ["a", "b", "c"])
+  }
+}
+
+// The denominator is the ingestion's: a resolved identity the ingestion does not admit is
+// neither reached nor unreached, and cannot inflate the reached count.
+test fn a_resolved_identity_outside_the_admitted_population_is_not_counted() -> Bool {
+  let c = census_of(admitted: ["a"], resolved: [floor_lane(modules: ["a", "ghost"])])
+  same_list(a: c.reached, b: ["a"]) && count(c.unreached) == 0
+}
+
+// One summary line, one line per lane row, one line per unreached identity -- so the receipt
+// carries the population, not only its size.
+test fn the_receipt_prints_one_line_per_unreached_identity() -> Bool {
+  let c = census_of(admitted: ["a", "b", "c"], resolved: [floor_lane(modules: ["a"]), cargo_lane()])
+  let lines = census_receipt_lines(c: c)
+  count(lines) == 1 + 2 + 2
+    && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"b\"") }) |> count) == 1
+    && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"c\"") }) |> count) == 1
+    && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"a\"") }) |> count) == 0
+    && (lines |> filter(fn(l) { contains(l, "\"kind\":\"summary\"") && contains(l, "\"unreached\":2") }) |> count) == 1
+}
+
+// PAIRING: the entry-closure query on the real producer, over a two-module fixture root whose
+// importer reaches its decoy through an import edge. The closure is exactly those two identities.
+test fn w_entry_closure_query_reaches_the_fixture_importer_and_its_import() -> Bool {
+  match entry_closure_module_identities(["dag/test/fixture/primitive_egress_decoy"], "dag/test/fixture/primitive_egress_decoy/importer.dag") {
+    ModuleIdentityPopulationRefused { cause: _ } => false
+    ModuleIdentityPopulationObserved { modules: ms } =>
+      same_list(a: ms, b: ["test.fixture.primitive_egress_decoy.decoy", "test.fixture.primitive_egress_decoy.importer"])
+  }
+}
+
+// PAIRING, the refusing arm: an entry that does not exist is a typed refusal, never an empty
+// population read as "resolves nothing".
+test fn w_entry_closure_query_refuses_an_absent_entry() -> Bool {
+  match entry_closure_module_identities(["dag/test/fixture/primitive_egress_decoy"], "dag/test/fixture/primitive_egress_decoy/absent.dag") {
+    ModuleIdentityPopulationRefused { cause: _ } => true
+    ModuleIdentityPopulationObserved { modules: _ } => false
+  }
+}
+
+// PAIRING: the admitted-population query over the same fixture root admits exactly its two
+// module identities.
+test fn w_source_root_ingest_query_admits_the_fixture_modules() -> Bool {
+  match source_root_ingest_module_identities(["dag/test/fixture/primitive_egress_decoy"]) {
+    ModuleIdentityPopulationRefused { cause: _ } => false
+    ModuleIdentityPopulationObserved { modules: ms } =>
+      same_list(a: ms, b: ["test.fixture.primitive_egress_decoy.decoy", "test.fixture.primitive_egress_decoy.importer"])
+  }
+}

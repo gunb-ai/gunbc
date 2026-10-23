@@ -1,0 +1,536 @@
+module gunbc.target_binding
+
+import extdeps.bazel.label {
+  Label, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
+  render_label, label_canonicality,
+}
+import std.optional { Optional, Present, Absent }
+import std.types { String, List, NonEmptyStr }
+import std.integer { Int }
+
+// A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
+// identity and dependency edges; this relation answers the separate realization question. In
+// particular, no command line, function name, or execution closure is carried here: selecting a
+// transport belongs to the later realization layer, not to either side of this model relation.
+// FloorMemoryQualificationProducer supervises a required-floor run inside a cgroup it shares with
+// the child, then reads memory.peak and memory.events from OUTSIDE the dead process. Deliberately
+// NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
+// QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
+// the meaning fork DESIGN section 3 forbids.
+// NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY, which is the point of carrying the entry
+// as a field: it emits the named std.compiler_entry NativeClaimDriver entry, builds it, runs it and
+// hands the report to gunbc.native_claim_program native_claim_program_standing, so the next program
+// of that shape is one more BINDING ROW naming its entry, never another producer arm.
+// NativeServeProgramProducer is the same shape for std.compiler_entry NativeServeDriver: it emits and
+// builds the named service entry, starts it, writes gunbc.native_serve_probe's requests to real TCP
+// connections and hands what came back to native_serve_probe_standing. A separate arm because the
+// observation differs (a served process answering requests, not a report on stdout), so folding it
+// into the claim arm would give one arm two meanings.
+type TargetProducer
+  = SelfHostProducer
+  | RequiredFloorProducer
+  | BazelProducer
+  | BehavioralReceiptPlanProducer
+  | BehavioralReceiptCensusProducer
+  | BehavioralReceiptSelftestProducer
+  | HeadsReadingDifferentialProducer
+  | CompileCleanDiagnosticCensusProducer
+  | V2NativeCliProducer
+  | V2NativeFrontierProducer
+  | V2NativeCensusProducer { reading: V2NativeCensusReading }
+  | EmittedCrateWorkspaceProducer
+  | EvaluationStoreAddressExactHeadProducer
+  | PrimitiveEgressCensusProducer
+  | PrimitiveEgressCensusV2Producer
+  | PrimitiveEgressCensusDagProducer
+  | PrimitiveEgressCensusSeedProducer
+  | FloorMemoryQualificationProducer
+  | TypedGraphExclusiveBytesProducer
+  | TypedGraphExclusiveBytesFloorSubjectProducer
+  | RequiredLaneResolutionCensusProducer
+  | BareReferenceChannelOutcomeProducer
+  | SelfHostBehavioralEquivalenceProducer
+  | DependencyDemandCensusProducer
+  | GenericIdentityCensusProducer
+  | InterpolationHoleCensusProducer
+  | RegenRoundCostProducer
+  | NativeClaimProgramProducer { entry: String }
+  | NativeServeProgramProducer { entry: String }
+
+// WHICH READING OF THE NATIVE CENSUS FAMILY A ROW TAKES. One producer spawns the emitted v2
+// compiler's census verbs; the reading names the verb and the reader that decides its standing, so a
+// further census over the same walk is a variant here and a row there, never another producer.
+//   RefusalCensusReading: `census-infer`, the front-end/resolve/infer refusal report (gunbc#13026,
+//     census part 2). Its exit status is the type census's and is not read as this report's standing.
+//   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
+//     unindexed controls (the nominal-type plan's M0), read by
+//     gunbc.instruments.type_declaration_use_census_reading.
+type V2NativeCensusReading
+  = RefusalCensusReading
+  | TypeDeclarationUseReading
+
+type TargetBinding {
+  target: Label
+  producer: TargetProducer
+}
+
+// THE REGISTRY IS INDEXED ON THE LABEL'S CANONICAL RENDERING, which is derived from the one target
+// identity rather than accepted as a second key. Construction refuses duplicate targets, a second
+// producer for one target, and bindings for unknown targets. Lookup is then one map_get, never a
+// first-match scan through the population. sole_constructor keeps those admission facts attached
+// to the carrier: an external module cannot forge map contents that bypass the builder.
+type TargetBindingIndex sole_constructor {
+  targets_by_identity: Map<String, Label>
+  bindings_by_identity: Map<String, TargetBinding>
+}
+
+type TargetBindingIndexRefusal
+  = TargetLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+  | DuplicateTargetIdentity { target: Label }
+  | DuplicateTargetBinding { target: Label }
+  | BindingNamesUnknownTarget { target: Label }
+
+type TargetBindingIndexBuild
+  = TargetBindingIndexReady { index: TargetBindingIndex }
+  | TargetBindingIndexRefused { cause: TargetBindingIndexRefusal }
+
+type TargetBindingIndexAcc {
+  index: TargetBindingIndex
+  refusal: Optional<TargetBindingIndexRefusal>
+}
+
+fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndexAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => match label_canonicality(label: target) {
+      LabelNonCanonical { cause: cause } => TargetBindingIndexAcc {
+          index: acc.index
+          refusal: Present { value: TargetLabelNotCanonical { target: target, cause: cause } }
+        }
+      LabelCanonical => {
+        let key = render_label(l: target)
+        match map_get(acc.index.targets_by_identity, key) {
+          Present { value: _ } => TargetBindingIndexAcc {
+            index: acc.index
+            refusal: Present { value: DuplicateTargetIdentity { target: target } }
+          }
+          Absent => TargetBindingIndexAcc {
+            index: TargetBindingIndex {
+              targets_by_identity: map_insert(acc.index.targets_by_identity, key, target)
+              bindings_by_identity: acc.index.bindings_by_identity
+            }
+            refusal: Absent {}
+          }
+        }
+      }
+    }
+  }
+}
+
+fn index_binding(acc: TargetBindingIndexAcc, binding: TargetBinding) -> TargetBindingIndexAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => match label_canonicality(label: binding.target) {
+      LabelNonCanonical { cause: cause } => TargetBindingIndexAcc {
+          index: acc.index
+          refusal: Present { value: TargetLabelNotCanonical {
+            target: binding.target,
+            cause: cause
+          } }
+        }
+      LabelCanonical => {
+        let key = render_label(l: binding.target)
+        match map_get(acc.index.targets_by_identity, key) {
+          Absent => TargetBindingIndexAcc {
+            index: acc.index
+            refusal: Present { value: BindingNamesUnknownTarget { target: binding.target } }
+          }
+          Present { value: _ } =>
+            match map_get(acc.index.bindings_by_identity, key) {
+              Present { value: _ } => TargetBindingIndexAcc {
+                index: acc.index
+                refusal: Present { value: DuplicateTargetBinding { target: binding.target } }
+              }
+              Absent => TargetBindingIndexAcc {
+                index: TargetBindingIndex {
+                  targets_by_identity: acc.index.targets_by_identity
+                  bindings_by_identity: map_insert(acc.index.bindings_by_identity, key, binding)
+                }
+                refusal: Absent {}
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn build_target_binding_index(
+  targets: List<Label>,
+  bindings: List<TargetBinding>
+) -> TargetBindingIndexBuild {
+  let empty = TargetBindingIndexAcc {
+    index: TargetBindingIndex {
+      targets_by_identity: empty_map()
+      bindings_by_identity: empty_map()
+    }
+    refusal: Absent {}
+  }
+  let targets_indexed = fold(targets, init: empty, f: fn(acc, target) {
+    index_target(acc: acc, target: target)
+  })
+  let bindings_indexed = fold(bindings, init: targets_indexed, f: fn(acc, binding) {
+    index_binding(acc: acc, binding: binding)
+  })
+  match bindings_indexed.refusal {
+    Present { value: cause } => TargetBindingIndexRefused { cause: cause }
+    Absent => TargetBindingIndexReady { index: bindings_indexed.index }
+  }
+}
+
+type TargetBindingLookup
+  = TargetProducerBound { binding: TargetBinding }
+  | KnownTargetBindingMissing { target: Label }
+  | TargetUnknown { target: Label }
+  | TargetLookupLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+
+// Query admission repeats the canonicality decision deliberately. A typed key with a sole mint
+// would be preferable only if the substrate made that mint unforgeable; records and variants are
+// freely constructible here, so such a key would rename this validation while leaving callers able
+// to forge it. Until unforgeable construction exists, every boundary that turns a Label into the
+// rendered map key must refuse noncanonical input explicitly.
+fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBindingLookup {
+  match label_canonicality(label: target) {
+    LabelNonCanonical { cause: cause } =>
+      TargetLookupLabelNotCanonical { target: target, cause: cause }
+    LabelCanonical => {
+    let key = render_label(l: target)
+    match map_get(index.targets_by_identity, key) {
+      Absent => TargetUnknown { target: target }
+      Present { value: _ } =>
+        match map_get(index.bindings_by_identity, key) {
+          Present { value: binding } => TargetProducerBound { binding: binding }
+          Absent => KnownTargetBindingMissing { target: target }
+        }
+    }
+  }
+  }
+}
+
+// PRODUCER OBSERVATIONS KEEP COMPLETION APART FROM WHAT WAS OBSERVED. None of these types decides
+// whether an observation blocks an aggregate. The four instruments are deliberately outside
+// //:required, so that policy has no honest row to add here.
+type BehavioralReceiptPlanObservation
+  = BehavioralReceiptAgreed
+  | BehavioralReceiptDiverged
+
+type BehavioralReceiptPlanRefusalCause
+  = ReceiptPlanMergeBaseUnresolvable
+  | ReceiptPlanChangedAuthoritySetUnreadable
+  | ReceiptPlanModuleCorpusUnreadable
+  | ReceiptPlanExecutionRefused
+
+type BehavioralReceiptPlanStanding
+  = BehavioralReceiptPlanCompleted { observation: BehavioralReceiptPlanObservation }
+  | BehavioralReceiptPlanNoSubject { head: String }
+  | BehavioralReceiptPlanRefused { cause: BehavioralReceiptPlanRefusalCause }
+
+type BehavioralReceiptCensusObservation {
+  modules_planned: Int
+  modules_in_population: Int
+  modules_out_of_scope: List<String>
+  functions_parsed: Int
+  functions_derivable: Int
+  functions_refused: Int
+  derived_calls: Int
+}
+
+type BehavioralReceiptCensusRefusalCause
+  = ReceiptCensusSourceCorpusUnreadable
+  | ReceiptCensusModuleParseRefused
+  | ReceiptCensusTypeReadRefused
+
+// Census constructs its subject from the source-root corpus supplied to the producer. There is no
+// external diff subject that can be absent: failure to construct or read that corpus is one of the
+// typed producer refusals below, while a completed partial census carries its out-of-scope
+// population in the observation rather than reporting subject absence.
+type BehavioralReceiptCensusStanding
+  = BehavioralReceiptCensusCompleted { observation: BehavioralReceiptCensusObservation }
+  | BehavioralReceiptCensusRefused { cause: BehavioralReceiptCensusRefusalCause }
+
+type BehavioralReceiptSelftestObservation
+  = BehavioralReceiptArmsDiscriminate
+  | BehavioralReceiptArmsDoNotDiscriminate
+
+type BehavioralReceiptSelftestRefusalCause
+  = ReceiptSelftestFixtureAuthorityUnreadable
+  | ReceiptSelftestFixturePlanningRefused
+  | ReceiptSelftestFixturePreconditionUnsatisfied
+  | ReceiptSelftestCandidateUnreadable
+  | ReceiptSelftestExecutionRefused
+
+// Selftest owns a fixed authored fixture and two fixed candidate arms, so it likewise has no
+// caller-selected subject that can be absent. An unreadable fixture, an underived discriminating
+// input, or an execution failure is a typed producer refusal; a completed control whose arms no
+// longer discriminate remains an observation.
+type BehavioralReceiptSelftestStanding
+  = BehavioralReceiptSelftestCompleted { observation: BehavioralReceiptSelftestObservation }
+  | BehavioralReceiptSelftestRefused { cause: BehavioralReceiptSelftestRefusalCause }
+
+type HeadsReadingDifferentialObservation {
+  modules_compared: Int
+  divergent: List<String>
+  narrowed: List<String>
+  regressed: List<String>
+  both_refused: List<String>
+}
+
+type HeadsReadingDifferentialSubjectCause
+  = DifferentialSourceRootAbsent
+  | DifferentialSourceRootUnreadable
+  | DifferentialSourcePopulationIndexRefused
+
+type HeadsReadingDifferentialRefusalCause
+  = DifferentialReadingExecutionRefused
+  | DifferentialObservationAssemblyRefused
+
+type HeadsReadingDifferentialStanding
+  = HeadsReadingDifferentialCompleted { observation: HeadsReadingDifferentialObservation }
+  | HeadsReadingDifferentialSubjectUnreached {
+      source_roots: List<String>
+      cause: HeadsReadingDifferentialSubjectCause
+    }
+  | HeadsReadingDifferentialRefused { cause: HeadsReadingDifferentialRefusalCause }
+
+// THE RAW DIAGNOSTIC CENSUS, ONE ROW PER OBSERVED (CLASS, DISPOSITION) PAIR, COUNTED BEFORE ANY
+// SEVERITY DECISION. The class name is the compiler's own diagnostic variant name (the same key `cli_run`
+// `compile_clean_diagnostic_histogram_key` derives by total match), never a paraphrase, so a row
+// joins to the diagnostic authority rather than to a second taxonomy. The three counts are the
+// burndown's working grain: total diagnostics, the distinct modules carrying them, and the
+// distinct source positions they occupy -- a class whose positions outrun its modules is diffuse,
+// and one concentrated in a few modules is a per-site repair.
+//
+// DISPOSITION IS AN ATTRIBUTE OF THE ROW, NEVER A FILTER ON WHETHER THE ROW EXISTS. The census
+// this replaced partitioned first and counted the survivors, so a class whose disposition changed
+// -- a policy row unreadable, a promotion to blocking -- vanished from the very instrument meant
+// to watch it, and the zero assertion went vacuous exactly when it mattered. Here every emitted
+// diagnostic is counted, and the disposition recorded beside it is the diagnostic authority's
+// own answer, projected whole: `v1.std.core` `diagnostic_disposition` decides TWO independent
+// axes per instance -- `DiagnosticGateDisposition` (GateBlocking | GateAdvisoryTypecheck |
+// GateRenderedUncounted) and `DiagnosticSeverity` (SeverityError | SeverityNonError) -- and the
+// census carries both, because collapsing them is a false projection: `ComplexityUnknown` sits
+// at (SeverityError, GateRenderedUncounted), expressly rendered-and-uncounted, and a binary
+// advisory/blocking attribute would file it as advisory and pull it into advisory-ceiling
+// reasoning it is expressly excluded from. The one class the authority does not dispose is
+// UnlistedImportUse, whose gate the `gunbc.compile_clean_diagnostic_policy` staging row owns;
+// the census reads that row from the SAME single policy snapshot the provenance digests are
+// computed over, so the classification and the certified policy bytes can never come from two
+// reads. Changing a disposition changes the ATTRIBUTE; it cannot change the POPULATION the zero
+// assertion observes.
+//
+// THE ROW KEY IS (CLASS, GATE, SEVERITY), NOT CLASS ALONE. Gate is a per-INSTANCE fact:
+// `diagnostic_disposition` decides `WhereRefinementUnenforced` by the instance's reason (six
+// advisory reason strings; any other reason blocks), so one class can carry instances on both
+// sides of the partition. A mixed class produces one row per observed (gate, severity) pair
+// rather than a single row carrying a fabricated class-level answer, and a reader aggregating
+// per class sums across the class's rows (gunbc.instrument_targets diagnostic_class_raw_count
+// does exactly this). CEILING-ROSTER COVERAGE APPLIES TO CensusAdvisoryTypecheck ALONE: the
+// advisory ceilings govern the advisory warning program, and a rendered-uncounted row is not
+// advisory -- it is already expressly outside the count's governance.
+type DiagnosticCensusGateDisposition
+  = CensusBlocking
+  | CensusAdvisoryTypecheck
+  | CensusRenderedUncounted { reason: NonEmptyStr }
+
+type DiagnosticCensusSeverity
+  = CensusSeverityError
+  | CensusSeverityNonError
+
+type RawDiagnosticClassObservation {
+  diagnostic_class: NonEmptyStr
+  gate: DiagnosticCensusGateDisposition
+  severity: DiagnosticCensusSeverity
+  diagnostics: Int
+  distinct_modules: Int
+  distinct_positions: Int
+}
+
+// THE OBSERVATION'S PROVENANCE, FIVE DIGESTS THAT EACH CLOSE ONE WAY THE READING COULD BE ABOUT
+// SOMETHING ELSE. The field set is the Step 0 binding-provenance contract's receipt roster
+// (gunbc.namespace_step0_binding_provenance_contract step0_census_receipt_fields) projected onto a
+// census that has no strip: source vector, compiler executable, resolver policy, class schema,
+// closure. What each digest binds:
+//
+//   source_vector_digest -- the bytes compiled. The producer materializes the whole-tree source
+//     vector INTO MEMORY, hashes that vector, and hands the same in-memory bytes to the compiler,
+//     so the digest is bound to the observation by construction: the tree going A -> B -> A
+//     mid-walk cannot produce a mixed population that hashes clean, because nothing is re-read
+//     after the hash. This is the gap the unpinned-live-tree note (gunbc.instrument_targets,
+//     above the instrument roster) names, closed for this instrument at its own boundary.
+//   compiler_executable_digest -- the running binary, so a count produced by a different
+//     compiler is a different observation rather than a silently different oracle.
+//   resolver_policy_digest -- the exact closure of `gunbc.compile_clean_diagnostic_policy` as
+//     read for this run's disposition and ceiling-roster decisions.
+//   diagnostic_class_schema_digest -- the class schema the rows were written against, so a
+//     reader joining observations across a schema change refuses instead of mixing.
+//   closure_digest -- the module population the counts are denominated in.
+type CompileCleanDiagnosticCensusIdentity {
+  source_vector_digest: NonEmptyStr
+  compiler_executable_digest: NonEmptyStr
+  resolver_policy_digest: NonEmptyStr
+  diagnostic_class_schema_digest: NonEmptyStr
+  closure_digest: NonEmptyStr
+}
+
+// The subject is the whole-tree compile-clean closure (the same source set the floor gate
+// compiles), so `closure_modules` is the denominator every per-class count is read against, and
+// `raw_diagnostics` is the unfiltered vector length the per-class counts must sum to -- the
+// conservation law the producer checks before this value may exist.
+//
+// COMPLETION STANDING IS THE STANDING SUM BELOW, NOT A FIELD HERE. The contract's
+// CensusCompletenessStanding asks whether the observation finished, and for this producer the
+// answer is structural: the walk is one in-memory vector consumed in full, a short read is a
+// DiagnosticCensusConservationViolated refusal, and there is no partial-observation state a field
+// could name. A completion field with exactly one constructible value would be permanently green
+// by construction -- the decoration DESIGN 4b rates worse than absent.
+type CompileCleanDiagnosticCensusObservation {
+  identity: CompileCleanDiagnosticCensusIdentity
+  closure_modules: Int
+  raw_diagnostics: Int
+  classes: List<RawDiagnosticClassObservation>
+}
+
+// THE REFUSAL CAUSES, ONE PER WAY THE CENSUS CAN FAIL TO BE THE AUTHORITY IT CLAIMS. The first
+// two are the subject failures: a census over a source closure has no caller-selected subject
+// that can be absent, so the closure failing to resolve, or resolving to no graph, is a typed
+// refusal, never a census of zero. The rest are the authority failures this carrier exists to
+// make loud:
+//
+//   DiagnosticCensusPolicyUnreadable -- the disposition row or the ceiling roster could not be
+//     read. The gate already fails closed on this; the census now refuses on it too, because a
+//     census that cannot read dispositions and reports anyway is the false-zero state this
+//     rework exists to delete.
+//   DiagnosticCensusConservationViolated -- the per-class counts did not sum to the raw
+//     diagnostics vector length: a diagnostic was dropped or invented between emission and
+//     counting.
+//   DiagnosticCensusDetailCountMismatch -- the UnlistedImportUse class count disagrees with the
+//     detailed per-row worklist collected over the same vector.
+//   DiagnosticCensusCeilingRosterDuplicate -- two ceiling rows name one class.
+//   DiagnosticCensusCeilingRosterStale -- a ceiling row names a class the schema does not know,
+//     or one whose gate is no longer CensusAdvisoryTypecheck (a promoted class's row must delete
+//     with the promotion, and a rendered-uncounted class was never the roster's subject).
+//   DiagnosticCensusCeilingRosterUncovered -- an observed CensusAdvisoryTypecheck class carries
+//     no ceiling row. This is the reintroduction wall: a class that returns after burning to
+//     zero refuses here until its ceiling is re-declared. Blocking and rendered-uncounted rows
+//     need no roster row: the gate already refuses the first, and the second is expressly
+//     outside the advisory program's governance.
+//   DiagnosticCensusIdentityUnavailable -- one of the five identity digests could not be
+//     computed, so the observation could not be bound to its source, compiler, policy, schema
+//     and closure; an unbound observation is not a smaller one.
+//
+// THE LAST FOUR ARE THE SCHEMA WITNESS. The class schema was a hand-authored specimen vector an
+// author could update the compiler's exhaustive matches around and forget (review 2026-09-10,
+// finding 4): a new `CompilerDiagnostic` constructor forced the matches, not the specimen, so
+// the schema digest and the ceiling coverage could stay ignorant of a class no live corpus
+// instance yet revealed. The producer now derives the constructor census from the coproduct
+// authority itself -- the `v1.std.core` `CompilerDiagnostic` declaration in the same compiled
+// graph the population is counted from -- and refuses unless the specimen is a bijection onto
+// it: unique class identities (no two specimens projecting one class, so a string key can never
+// overwrite rather than expose), equal counts, no authority constructor unrepresented, no
+// specimen unknown to the authority. A new constructor that skips the specimen now reds the
+// census at the next run, and the histogram key's total match still reds the build itself.
+//   DiagnosticCensusSchemaAuthorityAbsent -- the compiled graph carries no `v1.std.core`
+//     `CompilerDiagnostic` coproduct declaration to derive the constructor census from.
+//   DiagnosticCensusSchemaSpecimenDuplicate -- two specimens project the same class identity.
+//   DiagnosticCensusSchemaCountMismatch -- the specimen count disagrees with the authority's
+//     constructor census.
+//   DiagnosticCensusSchemaConstructorUnrepresented -- an authority constructor has no specimen.
+//   DiagnosticCensusSchemaSpecimenUnknownToAuthority -- a specimen projects a class identity the
+//     authority's coproduct does not declare (a stale specimen).
+type CompileCleanDiagnosticCensusRefusalCause
+  = DiagnosticCensusClosureUnresolvable
+  | DiagnosticCensusGraphAbsent
+  | DiagnosticCensusPolicyUnreadable
+  | DiagnosticCensusConservationViolated
+  | DiagnosticCensusDetailCountMismatch
+  | DiagnosticCensusCeilingRosterDuplicate
+  | DiagnosticCensusCeilingRosterStale
+  | DiagnosticCensusCeilingRosterUncovered
+  | DiagnosticCensusIdentityUnavailable
+  | DiagnosticCensusSchemaAuthorityAbsent
+  | DiagnosticCensusSchemaSpecimenDuplicate
+  | DiagnosticCensusSchemaCountMismatch
+  | DiagnosticCensusSchemaConstructorUnrepresented
+  | DiagnosticCensusSchemaSpecimenUnknownToAuthority
+
+// A completed census holds exactly when the class-specific zero wall says so
+// (gunbc.instrument_targets compile_clean_diagnostic_census_holds): the raw UnlistedImportUse
+// count over this unfiltered population is zero. Every other class row -- advisory or blocking --
+// is reported without deciding, because the all-classes-empty completion target is the program's
+// final state, not this instrument's intermediate admission question.
+type CompileCleanDiagnosticCensusStanding
+  = CompileCleanDiagnosticCensusCompleted { observation: CompileCleanDiagnosticCensusObservation }
+  | CompileCleanDiagnosticCensusRefused { cause: CompileCleanDiagnosticCensusRefusalCause }
+
+// ---------------------------------------------------------------------------------------------
+// THE BARE-REFERENCE CHANNEL'S OUTCOME CARRIERS
+// ---------------------------------------------------------------------------------------------
+
+// WHAT THIS INSTRUMENT OBSERVES, AND WHAT IT DELIBERATELY DOES NOT.
+//
+// `gunbc.recurring_failure_mode.bare_reference_channel_declines_a_pull_in_silence` records that
+// the loader's bare half declines silently, and names its next rung as a CARRIER for declined
+// names -- which does not exist and is not built here. This instrument needs none, because it asks
+// a different and answerable question: for one source file, did the bare half RUN, and which
+// modules did it PULL. Both are already values the loader computes, so the observation is at the
+// grain of the decision's OUTCOME rather than at the grain of the distant symptom (an unresolved
+// type reported modules away) or of the reason (which only the carrier could supply).
+//
+// THIS CARRIER STATES NO RUNG, AND THE OMISSION IS DELIBERATE. The class's rung is the ledger
+// row's fact and has exactly one home -- `gunbc.recurring_failure_mode`
+// `bare_reference_channel_declines_a_pull_in_silence`, which reports 1 and says why. An earlier
+// revision of this annotation claimed rung 2 here; that was a second statement of one fact on the
+// carrier a reader meets first, which is the DESIGN section 3 fork, and it was wrong on the
+// merits besides: a gate that changes behaviour turns this target red for whoever RUNS it and
+// blocks no landing, and section 4b rung 2 is a mechanism that exposes AND blocks. Read the rung
+// from the row.
+type BareChannelEligibility
+  = BareChannelRuns
+  | BareChannelDisabledByImportLine
+
+// ELIGIBILITY IS A SEPARATE FIELD FROM THE PULL SET AND MUST STAY ONE. An eligible file that
+// pulled nothing (every arm of `pullable` declined) and a file whose channel never ran (one import
+// line anywhere) both end with an empty set, and they are the two DIFFERENT gates this fixture set
+// exists to tell apart. Folding them would make the entry-three row unable to fail for its own
+// reason.
+type BareReferenceChannelEntryReading {
+  module_path: NonEmptyStr
+  eligibility: BareChannelEligibility
+  pulled_modules: List<String>
+}
+
+// The expectation is stated as an OUTCOME plus the condition the entry isolates, so a divergence
+// reads as "entry X, which isolates gate one, now pulls" rather than as a bare set difference.
+type BareReferenceChannelExpectation {
+  module_path: NonEmptyStr
+  isolated_condition: NonEmptyStr
+  eligibility: BareChannelEligibility
+  pulled_modules: List<String>
+}
+
+// SUBJECT-UNREACHED IS NOT A DIVERGENCE, on the rule every instrument on this seam follows: a
+// missing fixture root observed nothing, and reporting that as a moved gate would be a fabricated
+// reading.
+type BareReferenceChannelSubjectCause
+  = BareChannelFixtureRootAbsent { root: String }
+  | BareChannelEntryAbsent { module_path: String }
+  | BareChannelIndexRefused { detail: String }
+
+// TWO ARMS, NOT THREE. A "diverged" arm carrying pre-joined pairs would give the verdict two
+// homes -- the producer deciding once by choosing an arm and the classifier deciding again -- and
+// the arm the producer chose would be the one a reader trusted. The producer READS and the
+// classifier DECIDES: `BareReferenceChannelRead` carries what was observed and nothing about
+// whether it was expected.
+type BareReferenceChannelStanding
+  = BareReferenceChannelRead { readings: List<BareReferenceChannelEntryReading> }
+  | BareReferenceChannelSubjectUnreached { cause: BareReferenceChannelSubjectCause }

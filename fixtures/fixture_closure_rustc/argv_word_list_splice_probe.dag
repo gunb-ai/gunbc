@@ -1,0 +1,96 @@
+module fixture.closure.rustc_argv_word_list_splice_probe
+
+import std.types { Bool, String }
+
+// A WORD LIST SPLICED INTO AN ARGV LITERAL, POSED TO RUSTC. The subject is v1.compiler.emit_rust
+// emit_shell_call: an argv element naming a `List<String>` input is a RUN OF WORDS at that position,
+// so the emission is `Command::args(..)`; emitting `Command::arg(..)` hands one argument a whole list
+// and rustc refuses it as E0277, `the trait bound Rc<im::Vector<String>>: AsRef<OsStr> is not
+// satisfied`. Measured on extdeps.rust.cargo_build, whose Clippy operation carries the shape twice
+// in one argv (`argv: ["cargo", "clippy", extra_args, "--", lint_args]`).
+//
+// WHY THIS IS RUSTC'S QUESTION AND NOT A SUBSTRING'S. After this change both `.arg(` and `.args(`
+// appear in the emitted transports, and a text oracle asserting that either one is PRESENT says
+// nothing about which element it was written for -- this module's own TwoListsOneArgv emits three of
+// each kind in one argv. The distinction that has to hold is a trait obligation on the argument's
+// type at each position, and a spelling cannot carry a position.
+//
+// THE FOUR OPERATIONS ARE FOUR POSITIONS. Interior, trailing, two lists in one argv with a literal
+// separator between them, and -- as the contrast that must not be swept up -- an operation whose
+// only non-head element is a single `String`, which must still emit one `.arg(..)`. A repair keying
+// on "the element is not a literal" rather than on the declared input type would widen over that
+// last one and is what this arm refuses.
+//
+// argv[0] IS NOT AMONG THEM, and its absence is a decision rather than a gap: a word list in the
+// program position is already refused loudly by rustc on the same trait bound, and this route cannot
+// adjudicate an emitted refusal in its place because an emitted panic COMPILES and would report here
+// as green. The emitter therefore leaves that position alone.
+//
+// THE OUTPUT SHAPE IS extdeps.rust.cargo_build's, DELIBERATELY, AND AN EARLIER CUT OF THIS FIXTURE
+// WAS WRONG TO SIMPLIFY IT. Declaring only `success: Bool from "exit_success"` and no exit block made
+// the emitted operation answer a bare `output.status.success()` where its own declared
+// `Result<bool, Box<dyn Error>>` was expected -- four E0308s that have NOTHING to do with the argv
+// splice, and which would have made this arm red for a reason it does not name. That is a real and
+// separate emitter gap (a single-output shell operation with no exit block emits an unwrapped value);
+// it is recorded here rather than repaired here, because a fixture that carries two defects
+// adjudicates neither. The shape below is the one the measured module declares.
+service fixture.WordListTransport {
+  operation InteriorList {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", extra_args, "done"] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+
+  operation TrailingList {
+    input { extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", "head", extra_args] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+
+  operation TwoListsOneArgv {
+    input {
+      extra_args: List<String> = []
+      lint_args: List<String> = []
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", "lint", extra_args, "--", lint_args] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+
+  operation SingleWordOnly {
+    input { word: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", word] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+}

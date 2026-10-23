@@ -1,0 +1,68 @@
+module extdeps.tools.uname
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64, Riscv64 }
+import std.optional { Present }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/uname.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.uname",
+      decl_name: "uname_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn uname_program() -> ProgramIdentity = uncataloged_program(invocation: "uname")
+
+// `-r` PRINTS THE RELEASE, which is the spelling extdeps.linux.kernel LinuxKernelRelease is branded
+// on. It is the reading that says WHICH kernel a standing was established against, so a standing
+// read on one kernel is not silently carried onto another.
+fn uname_release_command() -> ArgvCommand {
+  argv_command(program: uname_program(), arguments: ["-r"])
+}
+
+// `-m` PRINTS THE MACHINE HARDWARE NAME the kernel reports (its UTS machine field), the spelling a
+// running Linux guest gives for its own architecture. `-n` prints the node name, the kernel's
+// hostname -- an observation of what the machine answers to, which is a different fact from the
+// hostname the fleet allocated it.
+fn uname_machine_command() -> ArgvCommand {
+  argv_command(program: uname_program(), arguments: ["-m"])
+}
+
+fn uname_nodename_command() -> ArgvCommand {
+  argv_command(program: uname_program(), arguments: ["-n"])
+}
+
+// THE LINUX MACHINE SPELLING, PROJECTED ONTO Architecture. On Linux `uname -m` prints the kernel's
+// utsname machine field, which each architecture's Makefile sets as UTS_MACHINE: `aarch64` for arm64,
+// `x86_64` for x86-64 and `riscv64` for 64-bit RISC-V. This is a PARTIAL projection, like every other
+// upstream spelling of Architecture (extdeps.toolchain.types architecture_diagnostic_name): a spelling
+// it does not cite refuses, never falls back to the closest variant.
+fn uname_linux_machine_architecture(spelling: String) -> Architecture? {
+  if spelling == "aarch64" {
+    Present { value: Aarch64 }
+  } else if spelling == "x86_64" {
+    Present { value: X86_64 }
+  } else if spelling == "riscv64" {
+    Present { value: Riscv64 }
+  } else {
+    none
+  }
+}

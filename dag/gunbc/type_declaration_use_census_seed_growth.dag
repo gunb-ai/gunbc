@@ -1,0 +1,36 @@
+module gunbc.type_declaration_use_census_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust behind `gunbc test //gunbc/instruments:type-declaration-use-census`
+// (the nominal-type plan's M0, gunbc#13093). Same shape and owner as
+// gunbc.required_lane_resolution_census_seed_growth.
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The census is a v2 instrument: every
+// decision -- the per-module folds, the receipt, the fixture join, the out-of-gate filter and the
+// standing -- is a .dag fold (gunbc.instruments.type_declaration_use_census and
+// gunbc.instruments.type_declaration_use_census_reading). The host Rust performs only what no fold can:
+// write the two control roots from the reader's own rows, spawn the emitted compiler's census-infer verb
+// three times over one prepared binary, and pass the three runs' stdout and status to the reader.
+//
+// WHAT IS NOT NETTED. The `reading` field on TargetProducer::V2NativeCensus and the registry row extend
+// existing rosters (the host note: "a row in instrument_registry and an arm here"). run_census_infer in
+// the native driver's main is GENERATED (src/v1/05_emit_rust.dag, regenerated into the stage0 mirror),
+// not hand Rust.
+data type_declaration_use_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "V2NativeCensusReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_type_declaration_use_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "fixture_file_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "CensusInferRun", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "TypeDeclarationUseRuns", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "run_census_infer_with", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "run_type_declaration_use_census_runs", field: WholeDeclaration }
+  ],
+  reason: "gunbc test //gunbc/instruments:type-declaration-use-census runs the emitted v2 compiler's census-infer verb over the fixture root, the unindexed root and the whole tree (dag + src/v2), which needs a prepared native binary and three spawns -- process effects no .dag fold performs. V2NativeCensusReading is the host mirror of gunbc.target_binding V2NativeCensusReading, selecting the reading on the shared native-census producer. run_type_declaration_use_census writes the two control roots from gunbc.instruments.type_declaration_use_census_reading type_census_fixture_files / type_census_unindexed_files (fixture_file_rows lifts that reader's list of TypeCensusFixtureFile records into path/content pairs and refuses any other shape), calls run_type_declaration_use_census_runs (one prepare_emitted_compiler, three run_census_infer_with spawns returning CensusInferRun stdout and status in TypeDeclarationUseRuns), and hands all three to type_declaration_use_census_standing, which decides the standing.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when gunbc test runs on the v2-native CLI with a native instrument door that can spawn the emitted compiler and read its output as values (the capability std.compiler_entry NativeCliDriver's acquisition provides for source roots, extended to a child process), so the reader is called by a .dag entry rather than by host Rust.",
+  current_boundary: "Reachable only from the gunbc test arm for this label. Writes only under target/type-declaration-use-census, spawns only the prepared census-infer binary, decides no verdict, and substitutes no value for a refused run: every failure returns a typed InvocationOutcome (SubjectUnreached or Refused)."
+}

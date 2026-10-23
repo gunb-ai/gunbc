@@ -1,0 +1,5 @@
+module fixture.tsil.lit_refined
+type Refined = String where non_empty
+fn take_refined(r: Refined) -> Int {
+  1
+}

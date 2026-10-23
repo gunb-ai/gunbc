@@ -1,0 +1,36 @@
+CORRECTION to the reading of
+  mtcollins1-topology-control-known-good-socket0-2026-09-12.txt
+filed 2026-09-12 against commit 8e58b8fdfc2, whose message reads
+"The topology control PASSES, which is what makes the 3DS failures mean anything".
+
+That reading is withdrawn. The capture is withdrawn from no claim; only my
+interpretation of it is wrong.
+
+WHAT THE CAPTURE CONTAINS: an ipmitool SEL tail plus a chassis power status.
+Its final record is "Power Supply #0xeb | Power Supply AC lost | Asserted".
+There is no console capture, no firmware checkpoint, no OS milestone, and no
+record produced by anything running on the host.
+
+WHAT I CLAIMED: that the half-populated topology trains, signature
+"14m09s, zero restarts", and that module class is therefore the only variable
+between the passing and failing rows.
+
+WHY IT IS WRONG: the SEL staying quiet for 14m09s is the absence of a restart
+record. Absence of a restart is not a training result and not a boot. No
+positive terminal was observed by any producer. The claim inferred success from
+silence on a path whose collector had already failed four times in this same
+investigation by reporting its own silence as the host's.
+
+WHAT STANDS: the three DDR-initialization failures are unaffected. Each carries
+explicit firmware failure text in a console capture that covers the
+configuration phase. They are positive observations and need no control to be
+real.
+
+WHAT DOES NOT STAND: "module class is the only variable." That inference needed
+a topology-matched positive, and this capture is not one. Re-running the
+control with a collector attached BEFORE the stimulus, carried through to an
+observed positive terminal, is what would establish it.
+
+Found by the operator's fleet-lifecycle observation brief, revision 2, section
+13.2, which located it as an instance of its own primary regression: treating a
+quiet interval as a successful boot.

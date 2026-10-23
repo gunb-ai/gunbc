@@ -1,0 +1,42 @@
+module gunbc.runner_microvm_ci_admission
+
+import std.types { String, NonEmptyStr }
+import product.fabric.work { ControlPlaneCapacity }
+import gunbc.fabric_executor_class { ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn, CellBoundAttempt,
+  GitHubRunnerWorkload, WorkspaceWorkload,
+}
+
+// Reuse the broker's capacity authority at the direct controller boundary. Recovery of an
+// existing CI incarnation is still owed after purpose withdrawal; it cannot authorize a new
+// registration. Workspace recovery belongs to the owner-ledger path that settles its quota.
+type MicrovmCiAdmission
+  = MicrovmCiLaunchAdmitted
+  | MicrovmCiRecoveryRequired { bound: CellBoundAttempt }
+  | MicrovmCiAdmissionRefused { reason: String }
+
+fn microvm_ci_admission(executor: NonEmptyStr, sanction: ExecutorSanction,
+  readiness: CellIncarnationAdmission) -> MicrovmCiAdmission {
+  match readiness {
+    CellRecoveryRequired { bound } => if (bound.cell as String) != (executor as String) {
+      MicrovmCiAdmissionRefused { reason: "recovery names another executor" }
+    } else { match bound.attempt.workload {
+      GitHubRunnerWorkload { registration_id: _ } => MicrovmCiRecoveryRequired { bound: bound }
+      WorkspaceWorkload { bootstrap_identity: _, image_identity: _, lease_expires_unix: _ } =>
+        MicrovmCiAdmissionRefused { reason: "workspace recovery requires its durable owner-ledger directive" }
+    } }
+    CellIncarnationAdmitted { cell, generation: _ } => if (cell as String) != (executor as String) {
+      MicrovmCiAdmissionRefused { reason: "readiness names another executor" }
+    } else { match sanction {
+      ExecutorUnclassified { executor: _ } => MicrovmCiAdmissionRefused { reason: "executor has no capacity sanction" }
+      ExecutorSanctioned { executor: named, sanctioned } => if named != executor {
+        MicrovmCiAdmissionRefused { reason: "capacity sanction names another executor" }
+      } else if sanctioned != ControlPlaneCapacity {
+        MicrovmCiAdmissionRefused { reason: "executor purpose does not admit a new CI launch" }
+      } else { MicrovmCiLaunchAdmitted }
+    } }
+    CellWithdrawn { cell: _, withdrawal: _ } => MicrovmCiAdmissionRefused { reason: "cell readiness does not admit a new incarnation" }
+    HostWithdrawn { withdrawal: _ } => MicrovmCiAdmissionRefused { reason: "cell readiness does not admit a new incarnation" }
+  }
+}

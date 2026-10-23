@@ -1,0 +1,52 @@
+module gic.a
+
+type Box<Q> {
+  item: Q
+  rest: List<Q>
+}
+
+fn head_of<T>(xs: List<T>, d: T) -> T {
+  match xs |> first {
+    Present { value: v } => v
+    Absent => d
+  }
+}
+
+fn rename_of<M>(xs: List<M>, d: M) -> M {
+  match xs |> first {
+    Present { value: v } => v
+    Absent => d
+  }
+}
+
+fn ints() -> List<Int> {
+  [1]
+}
+
+fn take_s(s: String) -> String {
+  s
+}
+
+fn caller_literal() -> Int {
+  head_of(xs: [1], d: 2)
+}
+
+fn caller_function() -> Int {
+  head_of(xs: ints(), d: 2)
+}
+
+fn caller_renamed() -> Int {
+  rename_of(xs: [1], d: 2)
+}
+
+fn boxed() -> Box<Int> {
+  Box { item: 1, rest: [2] }
+}
+
+fn unbox<Q>(b: Box<Q>) -> Q {
+  b.item
+}
+
+fn same_spelling_as_a_record_parameter<Q>(b: Box<Q>, q: Q) -> Q {
+  q
+}

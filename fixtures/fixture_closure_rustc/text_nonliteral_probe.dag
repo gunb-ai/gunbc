@@ -1,0 +1,26 @@
+module fixture.closure.rustc_text_nonliteral_probe
+
+import v2.std.text { string_is_empty }
+
+// The MEANING-LEVEL red arm, and the fixture gunbc.rung_drop text_boundary_identity_wall names.
+// `concat` answers the kernel string; the return boundary declares the structural
+// v2.std.text.String; no homomorphism row stands between them, and the corpus-wide compatibility
+// relation admits the pairing by leaf-name spelling. A substring oracle over the emitted text
+// cannot see this -- the emitted bytes contain every substring a spelling assertion would look
+// for -- which is why the subject needs rustc rather than a text check.
+//
+// THE IMPORT ABOVE IS LOAD-BEARING AND MUST NOT BE DELETED AS UNUSED. It binds a name this module
+// never mentions again, so every reader -- and review 58161, which is why this note exists -- sees
+// dead weight. It is the opposite: `v1_compiler.cli_run` `resolve_virtual_source_with_imports`
+// builds this fixture's source set ONLY by following import statements transitively, so the import
+// is the single mechanism that puts v2.std.text into the resolved closure at all. Without it the
+// qualified return type has nothing to resolve against.
+//
+// MEASURED RATHER THAN ASSERTED, by running the route on this file with the import stripped:
+//   WITHOUT IMPORT => SourceRefused hard=1
+//     UnresolvedType { name: "v2.std.text.String" } | reached_rustc=false
+// So deleting it does not tidy the fixture; it converts the red arm from a RUSTC VERDICT into a
+// GUNBC REFUSAL and destroys the discrimination, while looking like cleanup. The pair does go red
+// if anyone does it -- `fixture_closure_reached_rustc` refuses to count an arm that never reached
+// rustc -- so the wall holds; this note exists so the wall is not hit in the first place.
+fn rustc_text_nonliteral_probe() -> v2.std.text.String { concat("x", "y") }

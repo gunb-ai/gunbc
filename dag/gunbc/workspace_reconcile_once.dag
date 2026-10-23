@@ -1,0 +1,120 @@
+module gunbc.workspace_reconcile_once
+
+import std.types { String, NonEmptyStr, List, Timestamp }
+import std.algebra { trim }
+import extdeps.exec.command { LocalExec }
+import extdeps.languages.bash.invocation { bash_program_command }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.command_runner { run_shell_command_capture }
+import product.placement_supply { HostIdentity }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_operation }
+import gunbc.workspace_allocation { workspace_request_json }
+import gunbc.workspace_allocation_store { WorkspaceAllocation }
+import gunbc.workspace_allocation_reservation { workspace_demand }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, WorkspaceConvergenceUnobserved }
+import gunbc.workspace_offer_producer {
+  WorkspaceHostOfferAdmission, WorkspaceHostOfferAdmitted, WorkspaceHostOfferUnmet,
+  workspace_host_offer_decode, WorkspaceHostOfferDecoded, WorkspaceHostOfferUndecodable,
+}
+import gunbc.workspace_prepare_convergence { workspace_prepare_convergence_from_observations }
+import gunbc.workspace_demo_preparation_policy { workspace_demo_evidence, workspace_demo_policy, workspace_demo_buy, workspace_demo_attempt }
+
+// ONE CANDIDATE HOST'S ANSWER. A host that cannot be reached, refuses, or answers undecodably is a
+// located refusal carried to the join; it is never dropped and never read as "no supply".
+type WorkspaceHostOfferReading
+  = WorkspaceHostOffersRead { host: HostIdentity, admissions: List<WorkspaceHostOfferAdmission>, unmet: List<NonEmptyStr> }
+  | WorkspaceHostOffersRefused { host: HostIdentity, reason: NonEmptyStr }
+
+// The candidate hosts are the modeled workspace roster's hosts (today srv1 slot 13 only).
+fn workspace_candidate_hosts() -> List<HostIdentity> {
+  fold(workspace_execution_slot_identities(), init: [], f: (acc, slot) =>
+    if any(acc, seen => (seen as String) == (slot.host as String)) { acc } else { acc + [slot.host] })
+}
+
+// Pure join of one host's raw observer output: every line must decode exactly for that host.
+fn workspace_host_offer_reading(host: HostIdentity, output: String) -> WorkspaceHostOfferReading {
+  let lines = filter(split(trim(s: output), separator: "\n"), line => trim(s: line) != "")
+  if lines.count() == 0 { WorkspaceHostOffersRefused { host: host, reason: "host observer returned no offer lines" } }
+  else {
+    let decoded = map(lines, line => workspace_host_offer_decode(text: line, expected_host: host))
+    let undecodable = flat_map(decoded, d => match d { WorkspaceHostOfferUndecodable { host: _, reason: r } => [r] WorkspaceHostOfferDecoded { read: _ } => [] })
+    if undecodable.count() > 0 { WorkspaceHostOffersRefused { host: host, reason: concat("host offer refused: ", join(map(undecodable, r => r as String), "; ")) as NonEmptyStr } }
+    else { WorkspaceHostOffersRead { host: host,
+      admissions: flat_map(decoded, d => match d { WorkspaceHostOfferDecoded { read: WorkspaceHostOfferAdmitted { admission: a } } => [a] WorkspaceHostOfferDecoded { read: WorkspaceHostOfferUnmet { host: _, reason: _ } } => [] WorkspaceHostOfferUndecodable { host: _, reason: _ } => [] }),
+      unmet: flat_map(decoded, d => match d { WorkspaceHostOfferDecoded { read: WorkspaceHostOfferUnmet { host: _, reason: r } } => [r] WorkspaceHostOfferDecoded { read: WorkspaceHostOfferAdmitted { admission: _ } } => [] WorkspaceHostOfferUndecodable { host: _, reason: _ } => [] }) } }
+  }
+}
+
+// THE TRANSPORT IS REALIZATION, DISPATCHED AT THE EDGE. The coordinator's own host runs its
+// installed read-only observer locally. CROSS-HOST TRANSPORT IS A DECLARED FRONTIER: no remote
+// installed-release locus is observable from here and the roster names one host, so every other
+// candidate refuses by name. Trigger: a second host in workspace_execution_slot_identities.
+fn workspace_observe_candidate(host: HostIdentity, local_host: HostIdentity, release_dir: NonEmptyStr, request_text: String) -> WorkspaceHostOfferReading {
+  if (host as String) != (local_host as String) {
+    WorkspaceHostOffersRefused { host: host, reason: "cross-host offer transport is not realized; only the coordinator's own host is observed" }
+  } else {
+    let command = join(["printf '%s' ", posix_single_quote(spelling: request_text), " | ",
+      executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: release_dir, function: "workspace_dispatch_offer_cli"))], "")
+    match run_shell_command_capture(command: bash_program_command(script: command), transport: LocalExec) {
+      ProcessOutputPresent { text } => workspace_host_offer_reading(host: host, output: text)
+      ProcessOutputAbsent => WorkspaceHostOffersRefused { host: host, reason: "installed host offer observer returned nothing" }
+      ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostOffersRefused { host: host, reason: "installed host offer observer refused" }
+    }
+  }
+}
+
+fn workspace_reading_refusals(readings: List<WorkspaceHostOfferReading>) -> List<String> {
+  flat_map(readings, r => match r {
+    WorkspaceHostOffersRefused { host: h, reason: why } => [concat(h as String, concat(": ", why as String))]
+    WorkspaceHostOffersRead { host: h, admissions: _, unmet: u } => map(u, why => concat(h as String, concat(": ", why as String)))
+  })
+}
+
+// THE JOIN REFUSES THE WHOLE FLEET IF ANY CANDIDATE REFUSED. A host that could not be observed is
+// not evidence that it has no supply, so selecting over the rest would run on a partial field and
+// silently discard the refusal. A host that answered with a valid, decoded unmet reason has been
+// observed, and is excluded on that reading.
+type WorkspaceHostJoin
+  = WorkspaceHostJoined { admissions: List<WorkspaceHostOfferAdmission> }
+  | WorkspaceHostJoinRefused { reason: String }
+
+fn workspace_join_host_readings(readings: List<WorkspaceHostOfferReading>) -> WorkspaceHostJoin {
+  let refused = flat_map(readings, r => match r {
+    WorkspaceHostOffersRefused { host: h, reason: why } => [concat(h as String, concat(": ", why as String))]
+    WorkspaceHostOffersRead { host: _, admissions: _, unmet: _ } => []
+  })
+  let admissions = flat_map(readings, r => match r {
+    WorkspaceHostOffersRead { host: _, admissions: a, unmet: _ } => a
+    WorkspaceHostOffersRefused { host: _, reason: _ } => []
+  })
+  if refused.count() > 0 { WorkspaceHostJoinRefused { reason: concat("candidate host could not be observed; no partial-fleet selection: ", join(refused, "; ")) } }
+  else if admissions.count() == 0 { WorkspaceHostJoinRefused { reason: concat("no candidate host admitted a workspace offer: ", join(workspace_reading_refusals(readings: readings), "; ")) } }
+  else { WorkspaceHostJoined { admissions: admissions } }
+}
+
+// THE ONE PREPARE ENTRY. Fan out, join, take every policy field from the one demo authority, and
+// hand the result to the existing convergence, which persists the selected plan. A request that
+// already has a durable plan is returned unchanged by that convergence (no reselection), and an
+// expired or retired request is refused there before any reservation is prepared.
+fn workspace_reconcile_prepare(store: FabricStorageBinding, allocation: WorkspaceAllocation,
+  local_host: HostIdentity, release_dir: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  let request = allocation.request
+  let request_text = serialize_json(v: workspace_request_json(request: request))
+  let readings = map(workspace_candidate_hosts(), host => workspace_observe_candidate(host: host, local_host: local_host, release_dir: release_dir, request_text: request_text))
+  match workspace_join_host_readings(readings: readings) {
+    WorkspaceHostJoinRefused { reason: why } => WorkspaceConvergenceUnobserved { reason: why }
+    WorkspaceHostJoined { admissions: admissions } => {
+    let evidence = workspace_demo_evidence(admissions: admissions, request: request)
+    workspace_prepare_convergence_from_observations(store: store, root: fabric_control_plane_store_root(), request: request,
+      attempt: workspace_demo_attempt(demand: workspace_demand(request: request, submitted_at: allocation.recorded_at, buy: workspace_demo_buy())),
+      evidence: evidence, policy: workspace_demo_policy(request: request, submitted_at: allocation.recorded_at, evidence: evidence),
+      submitted_at: allocation.recorded_at)
+    }
+  }
+}

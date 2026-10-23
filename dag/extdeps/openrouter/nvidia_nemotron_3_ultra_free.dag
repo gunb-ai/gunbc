@@ -1,0 +1,77 @@
+module extdeps.openrouter.nvidia_nemotron_3_ultra_free
+
+import std.types { NonEmptyStr, Bool, List }
+import std.measure { TokenCount, token_count, MoneyAmountMicro, money_amount_micro }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.openrouter.openrouter { OpenRouterReasoningEffort, EffortHigh, EffortMedium }
+import extdeps.nvidia.api_trial_terms { NvidiaApiTrialTerms, nvidia_api_trial_terms_v20250919 }
+
+// OPENROUTER'S LISTING OF NEMOTRON 3 ULTRA'S FREE VARIANT. What a listing admits is OpenRouter's fact
+// about its endpoint, not NVIDIA's about the model (extdeps.nvidia.nemotron_3_ultra), so it is a row in
+// OpenRouter's module family; a second listing is a second file, never an edit to this one.
+//
+// READ 2026-10-05 from the endpoints read at the anchor and from GET /api/v1/models: one endpoint,
+// provider Nvidia, upstream snapshot nvidia/nemotron-3-ultra-550b-a55b-20260604:free, context_length
+// 1000000, max_completion_tokens 65536, pricing prompt 0 / completion 0, supported_parameters reasoning,
+// include_reasoning, temperature, max_tokens, seed, top_p, tools, tool_choice, reasoning_effort; and on
+// the models listing, reasoning {mandatory: false, default_enabled: true, supported_efforts: ["high",
+// "medium"], default_effort: "high"}.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/api/v1/models/nvidia/nemotron-3-ultra-550b-a55b:free/endpoints",
+  }
+}
+
+data openrouter_models_listing_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/api/v1/models",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.openrouter.nvidia_nemotron_3_ultra_free",
+      decl_name: "nemotron_ultra_free_model_id",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [openrouter_models_listing_authority],
+}
+
+data nemotron_ultra_free_model_id: NonEmptyStr = "nvidia/nemotron-3-ultra-550b-a55b:free" as NonEmptyStr
+
+// THE ENDPOINT'S WINDOW AND OUTPUT CEILING. Both are the endpoint's admission, which is why they are here
+// and not on the model: the paid listing of the same model publishes 262144 and 16384.
+data nemotron_ultra_free_context_length: TokenCount = token_count(count: 1000000)
+
+data nemotron_ultra_free_max_completion_tokens: TokenCount = token_count(count: 65536)
+
+// THE EFFORTS THIS LISTING ACCEPTS, transcribed from supported_efforts in the listing's own order
+// (highest first), and the two facts beside them a request needs: reasoning is not mandatory, so
+// `reasoning.enabled: false` is a request the listing admits, and the default effort is high.
+data nemotron_ultra_free_supported_efforts: List<OpenRouterReasoningEffort> = [EffortHigh, EffortMedium]
+
+data nemotron_ultra_free_reasoning_mandatory: Bool = false
+
+// THE PRICE IS ZERO PER TOKEN (prompt and completion both read "0" USD) AND THE LIMIT IS PER REQUEST, which is what makes reasoning depth cost
+// neither money nor quota on this listing: a deeper effort spends latency and completion budget only.
+data nemotron_ultra_free_price_per_token: MoneyAmountMicro = money_amount_micro(count: 0)
+
+// WHICH MODEL MODE EACH ACCEPTED EFFORT REACHES IS NOT STATED, AND NOTHING HERE ASSERTS IT. The two
+// efforts coincide with the card's two thinking modes (full and medium), and "high reaches full" is the
+// obvious reading -- but neither OpenRouter nor NVIDIA publishes the translation, so it is a bet (DESIGN
+// section 4d) and no row consumes it. What IS published is the ORDER: supported_efforts is "returned in
+// descending effort order (highest first)" (the reasoning-tokens guide), so a consumer ranking depth reads
+// the position in this list, which is cited, rather than a mode, which is not.
+
+// THE TERMS THE ENDPOINT IS GOVERNED BY. OpenRouter links NVIDIA's API Trial Terms as this provider's
+// terms of service; the obligations are NVIDIA's (extdeps.nvidia.api_trial_terms).
+data nemotron_ultra_free_terms: NvidiaApiTrialTerms = nvidia_api_trial_terms_v20250919

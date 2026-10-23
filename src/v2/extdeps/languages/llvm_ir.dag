@@ -1,0 +1,873 @@
+module v2.extdeps.languages.llvm_ir
+
+import std.types { List }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.extdeps.languages.fidelity { FidelityDisposition }
+import v2.std.grammar {
+  StampClass,
+  StampBinding,
+  FormalProduction,
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  GrammarSchema,
+  GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
+  ModeledGrammar,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  grammar_formal_nonterminal,
+  grammar_formal_terminal
+}
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import std.algebra { Empty, list_append, list_snoc_item }
+import v2.std.algebra { fold_list }
+import v2.std.cardinality { NonZeroNat }
+import v2.std.collection { Absent, Map, Present, empty_map, map_insert }
+import v2.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling,
+  ModelCoreFactAxisWidth
+}
+import std.nat { Nat }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
+
+type FloatKind
+  = HalfFloat
+  | BFloatFloat
+  | SingleFloat
+  | DoubleFloat
+  | Fp128Float
+  | X86Fp80Float
+  | PpcFp128Float
+
+type LlvmType
+  = VoidType
+  | LabelType
+  | TokenType
+  | MetadataType
+  | IntegerType { bits: NonZeroNat }
+  | FloatingType { kind: FloatKind }
+  | PointerType { address_space: std.nat.Nat }
+  | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
+  | ArrayType { element: LlvmType, count: std.nat.Nat }
+  | StructType { fields: List<LlvmType>, packed: StructPacking }
+  | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
+  | NamedType { name: Symbol }
+
+type VectorScaling
+  = FixedVector
+  | ScalableVector
+
+type StructPacking
+  = NaturalAligned
+  | Packed
+
+type VarArg
+  = FixedArity
+  | Variadic
+
+type LlvmConstant
+  = IntConstant { ty: LlvmType, value: Int }
+  | FloatConstant { ty: LlvmType, bits: Int }
+  | NullPointer { ty: LlvmType }
+  | NoneToken
+  | AggregateConstant { ty: LlvmType, elements: List<LlvmConstant> }
+  | ZeroInitializer { ty: LlvmType }
+  | UndefValue { ty: LlvmType }
+  | PoisonValue { ty: LlvmType }
+  | BlockAddress { function: Symbol, block: Symbol }
+  | GlobalAddress { name: Symbol }
+  | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
+
+type LlvmValue
+  = LocalRef { name: Symbol }
+  | ConstantOperand { constant: LlvmConstant }
+  | GlobalRef { name: Symbol }
+
+type BinaryOpcode
+  = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
+  | OpShl | OpLShr | OpAShr | OpAnd | OpOr | OpXor
+  | OpFAdd | OpFSub | OpFMul | OpFDiv | OpFRem
+
+type ConversionOpcode
+  = OpTrunc | OpZExt | OpSExt
+  | OpFPTrunc | OpFPExt
+  | OpFPToUI | OpFPToSI | OpUIToFP | OpSIToFP
+  | OpPtrToInt | OpIntToPtr | OpBitCast | OpAddrSpaceCast
+
+type IntPredicate
+  = IcmpEq | IcmpNe
+  | IcmpUgt | IcmpUge | IcmpUlt | IcmpUle
+  | IcmpSgt | IcmpSge | IcmpSlt | IcmpSle
+
+type FloatPredicate
+  = FcmpFalse
+  | FcmpOeq | FcmpOgt | FcmpOge | FcmpOlt | FcmpOle | FcmpOne | FcmpOrd
+  | FcmpUeq | FcmpUgt | FcmpUge | FcmpUlt | FcmpUle | FcmpUne | FcmpUno
+  | FcmpTrue
+
+type ConstExprOpcode
+  = CeTrunc | CePtrToInt | CeIntToPtr | CeBitCast
+  | CeAddrSpaceCast | CeGetElementPtr
+  | CeAdd | CeSub | CeMul | CeShl | CeXor
+  | CeICmp | CeFCmp
+  | CeExtractElement | CeInsertElement | CeShuffleVector
+
+type PhiIncoming {
+  value: LlvmValue
+  block: Symbol
+}
+
+type PhiNode {
+  result: Symbol
+  result_type: LlvmType
+  incomings: List<PhiIncoming>
+}
+
+type SwitchCase {
+  match_value: LlvmConstant
+  target: Symbol
+}
+
+type CallArgument {
+  ty: LlvmType
+  value: LlvmValue
+}
+
+type CallResult
+  = VoidCall
+  | ValueCall { name: Symbol, result_type: LlvmType }
+
+type LandingPadCleanup
+  = IsCleanup
+  | NotCleanup
+
+type LandingClause
+  = CatchClause { type_info: LlvmValue }
+  | FilterClause { type_infos: List<LlvmValue> }
+
+type AtomicOrdering
+  = OrderingUnordered
+  | OrderingMonotonic
+  | OrderingAcquire
+  | OrderingRelease
+  | OrderingAcqRel
+  | OrderingSeqCst
+
+type CmpXchgSuccessOrdering
+  = SuccessMonotonic
+  | SuccessAcquire
+  | SuccessRelease
+  | SuccessAcqRel
+  | SuccessSeqCst
+
+type CmpXchgFailureOrdering
+  = FailureMonotonic
+  | FailureAcquire
+  | FailureSeqCst
+
+type FenceOrdering
+  = FenceAcquire
+  | FenceRelease
+  | FenceAcqRel
+  | FenceSeqCst
+
+type AtomicRmwOrdering
+  = RmwOrdMonotonic
+  | RmwOrdAcquire
+  | RmwOrdRelease
+  | RmwOrdAcqRel
+  | RmwOrdSeqCst
+
+type AtomicRmwOp
+  = RmwXchg | RmwAdd | RmwSub | RmwAnd | RmwNand | RmwOr | RmwXor
+  | RmwMax | RmwMin | RmwUMax | RmwUMin | RmwFAdd | RmwFSub
+  | RmwFMax | RmwFMin | RmwUIncWrap | RmwUDecWrap
+
+type LlvmInstruction
+  = Binary {
+      result: Symbol
+      result_type: LlvmType
+      op: BinaryOpcode
+      lhs: LlvmValue
+      rhs: LlvmValue
+    }
+  | Conversion {
+      result: Symbol
+      result_type: LlvmType
+      op: ConversionOpcode
+      value: LlvmValue
+    }
+  | IntCompare {
+      result: Symbol
+      predicate: IntPredicate
+      lhs: LlvmValue
+      rhs: LlvmValue
+    }
+  | FloatCompare {
+      result: Symbol
+      predicate: FloatPredicate
+      lhs: LlvmValue
+      rhs: LlvmValue
+    }
+  | Alloca {
+      result: Symbol
+      allocated_type: LlvmType
+      element_count: LlvmValue
+    }
+  | Load {
+      result: Symbol
+      result_type: LlvmType
+      pointer: LlvmValue
+      ordering: LoadAtomicity
+    }
+  | Store {
+      value: LlvmValue
+      pointer: LlvmValue
+      ordering: StoreAtomicity
+    }
+  | GetElementPtr {
+      result: Symbol
+      source_type: LlvmType
+      base: LlvmValue
+      indices: List<LlvmValue>
+    }
+  | AtomicRmw {
+      result: Symbol
+      op: AtomicRmwOp
+      pointer: LlvmValue
+      operand: LlvmValue
+      ordering: AtomicRmwOrdering
+    }
+  | CmpXchg {
+      result: Symbol
+      pointer: LlvmValue
+      compare_value: LlvmValue
+      new_value: LlvmValue
+      success_ordering: CmpXchgSuccessOrdering
+      failure_ordering: CmpXchgFailureOrdering
+    }
+  | Fence {
+      ordering: FenceOrdering
+    }
+  | ExtractValue {
+      result: Symbol
+      aggregate: LlvmValue
+      indices: List<Int>
+    }
+  | InsertValue {
+      result: Symbol
+      aggregate: LlvmValue
+      element: LlvmValue
+      indices: List<Int>
+    }
+  | ExtractElement {
+      result: Symbol
+      vector: LlvmValue
+      index: LlvmValue
+    }
+  | InsertElement {
+      result: Symbol
+      vector: LlvmValue
+      element: LlvmValue
+      index: LlvmValue
+    }
+  | ShuffleVector {
+      result: Symbol
+      first: LlvmValue
+      second: LlvmValue
+      mask: LlvmValue
+    }
+  | Select {
+      result: Symbol
+      condition: LlvmValue
+      if_true: LlvmValue
+      if_false: LlvmValue
+    }
+  | Call {
+      callee: LlvmValue
+      arguments: List<CallArgument>
+      result: CallResult
+    }
+  | Freeze {
+      result: Symbol
+      value: LlvmValue
+    }
+  | FNeg {
+      result: Symbol
+      result_type: LlvmType
+      operand: LlvmValue
+    }
+  | VaArg {
+      result: Symbol
+      result_type: LlvmType
+      va_list: LlvmValue
+      arg_type: LlvmType
+    }
+  | LandingPad {
+      result: Symbol
+      result_type: LlvmType
+      is_cleanup: LandingPadCleanup
+      clauses: List<LandingClause>
+    }
+  | CatchPad {
+      result: Symbol
+      catch_switch: LlvmValue
+      args: List<LlvmValue>
+    }
+  | CleanupPad {
+      result: Symbol
+      parent_pad: LlvmValue
+      args: List<LlvmValue>
+    }
+
+type LoadOrdering
+  = LoadUnordered
+  | LoadMonotonic
+  | LoadAcquire
+  | LoadSeqCst
+
+type StoreOrdering
+  = StoreUnordered
+  | StoreMonotonic
+  | StoreRelease
+  | StoreSeqCst
+
+type LoadAtomicity
+  = PlainLoad
+  | AtomicLoad { ordering: LoadOrdering }
+
+type StoreAtomicity
+  = PlainStore
+  | AtomicStore { ordering: StoreOrdering }
+
+type Terminator
+  = RetVoid
+  | RetValue { value: LlvmValue }
+  | UnconditionalBr { target: Symbol }
+  | ConditionalBr { condition: LlvmValue, if_true: Symbol, if_false: Symbol }
+  | Switch { value: LlvmValue, default_target: Symbol, cases: List<SwitchCase> }
+  | IndirectBr { address: LlvmValue, possible_targets: List<Symbol> }
+  | Unreachable
+  | Invoke {
+      callee: LlvmValue
+      arguments: List<CallArgument>
+      result: CallResult
+      normal_target: Symbol
+      unwind_target: Symbol
+    }
+  | CallBr {
+      callee: LlvmValue
+      arguments: List<CallArgument>
+      result: CallResult
+      fallthrough: Symbol
+      indirect_targets: List<Symbol>
+    }
+  | Resume { value: LlvmValue }
+  | CatchSwitch { result: Symbol, parent_pad: LlvmValue, handlers: List<Symbol>, unwind: UnwindDest }
+  | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
+  | CatchRet { catch_pad: LlvmValue, successor: Symbol }
+
+type UnwindDest
+  = UnwindToCaller
+  | UnwindToLabel { target: Symbol }
+
+type BasicBlock {
+  label: Symbol
+  phis: List<PhiNode>
+  body: List<LlvmInstruction>
+  terminator: Terminator
+}
+
+type Linkage
+  = LinkagePrivate
+  | LinkageInternal
+  | LinkageAvailableExternally
+  | LinkageLinkOnce
+  | LinkageLinkOnceOdr
+  | LinkageWeak
+  | LinkageWeakOdr
+  | LinkageCommon
+  | LinkageAppending
+  | LinkageExternal
+  | LinkageExternalWeak
+
+type FunctionBody
+  = Declared
+  | Defined { entry: BasicBlock, rest: List<BasicBlock> }
+
+type FunctionParameter {
+  ty: LlvmType
+  name: Symbol
+}
+
+type LlvmFunction {
+  name: Symbol
+  result_type: LlvmType
+  parameters: List<FunctionParameter>
+  var_arg: VarArg
+  linkage: Linkage
+  body: FunctionBody
+}
+
+type GlobalMutability
+  = MutableGlobal
+  | ConstantGlobal
+
+type GlobalInitializer
+  = ExternalInit
+  | InitializedWith { constant: LlvmConstant }
+
+type LlvmGlobal {
+  name: Symbol
+  value_type: LlvmType
+  mutability: GlobalMutability
+  linkage: Linkage
+  initializer: GlobalInitializer
+  address_space: Int
+}
+
+type NamedStructDef {
+  name: Symbol
+  definition: LlvmType
+}
+
+type LlvmModule {
+  data_layout: Symbol
+  target_triple: Symbol
+  named_structs: List<NamedStructDef>
+  globals: List<LlvmGlobal>
+  functions: List<LlvmFunction>
+}
+
+fn unwind_successors(d: UnwindDest) -> List<Symbol> {
+  match d {
+    UnwindToCaller => []
+    UnwindToLabel { target: t } => [t]
+  }
+}
+
+fn block_successors(t: Terminator) -> List<Symbol> {
+  match t {
+    RetVoid => []
+    RetValue { value: _ } => []
+    UnconditionalBr { target: tgt } => [tgt]
+    ConditionalBr { condition: _, if_true: a, if_false: b } => [a, b]
+    Switch { value: _, default_target: d, cases: cs } =>
+      concat([d], map(cs, fn(c) { c.target }))
+    IndirectBr { address: _, possible_targets: ts } => ts
+    Unreachable => []
+    Invoke { callee: _, arguments: _, result: _, normal_target: n, unwind_target: u } => [n, u]
+    CallBr { callee: _, arguments: _, result: _, fallthrough: f, indirect_targets: it } =>
+      concat([f], it)
+    Resume { value: _ } => []
+    CatchSwitch { result: _, parent_pad: _, handlers: hs, unwind: u } => concat(hs, unwind_successors(d: u))
+    CleanupRet { cleanup_pad: _, unwind: u } => unwind_successors(d: u)
+    CatchRet { catch_pad: _, successor: s } => [s]
+  }
+}
+
+fn block_well_formed(b: BasicBlock) -> Bool {
+  match b.terminator {
+    CatchSwitch { result: _, parent_pad: _, handlers: _, unwind: _ } => count(b.body) == 0
+    RetVoid => true
+    RetValue { value: _ } => true
+    UnconditionalBr { target: _ } => true
+    ConditionalBr { condition: _, if_true: _, if_false: _ } => true
+    Switch { value: _, default_target: _, cases: _ } => true
+    IndirectBr { address: _, possible_targets: _ } => true
+    Unreachable => true
+    Invoke { callee: _, arguments: _, result: _, normal_target: _, unwind_target: _ } => true
+    CallBr { callee: _, arguments: _, result: _, fallthrough: _, indirect_targets: _ } => true
+    Resume { value: _ } => true
+    CleanupRet { cleanup_pad: _, unwind: _ } => true
+    CatchRet { catch_pad: _, successor: _ } => true
+  }
+}
+
+type FidelityFeature
+  = StructuralCore
+  | SsaValueSpelling
+  | BlockTextualOrder
+  | LexicalTrivia
+  | TargetConfigToken
+  | AdvisoryMetadata
+  | UnmodeledInlineAsm
+  | UnmodeledSemanticAttribute
+  | UnmodeledType
+  | UnmodeledInstruction
+  | UnmodeledConstExpr
+  | MalformedStructure
+
+fn feature_disposition(f: FidelityFeature) -> FidelityDisposition<FidelityFeature> {
+  match f {
+    StructuralCore => Modeled
+    SsaValueSpelling => DeclaredNormalized { feature: SsaValueSpelling }
+    BlockTextualOrder => DeclaredNormalized { feature: BlockTextualOrder }
+    LexicalTrivia => DeclaredNormalized { feature: LexicalTrivia }
+    TargetConfigToken => DeclaredNormalized { feature: TargetConfigToken }
+    AdvisoryMetadata => DeclaredNormalized { feature: AdvisoryMetadata }
+    UnmodeledInlineAsm => FailClosed { feature: UnmodeledInlineAsm }
+    UnmodeledSemanticAttribute => FailClosed { feature: UnmodeledSemanticAttribute }
+    UnmodeledType => FailClosed { feature: UnmodeledType }
+    UnmodeledInstruction => FailClosed { feature: UnmodeledInstruction }
+    UnmodeledConstExpr => FailClosed { feature: UnmodeledConstExpr }
+    MalformedStructure => FailClosed { feature: MalformedStructure }
+  }
+}
+
+type LlvmIntegerBits
+  = LlvmBits32
+  | LlvmBits64
+
+type LlvmFloatKind
+  = LlvmHalfFloat
+  | LlvmSingleFloat
+  | LlvmDoubleFloat
+
+type LlvmIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  bits: LlvmIntegerBits
+  std_projection: Symbol
+}
+
+type LlvmFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  kind: LlvmFloatKind
+  std_projection: Symbol
+}
+data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_i32,
+  bits: LlvmBits32,
+  std_projection: ^llvm_std_projection_i32,
+}
+
+data llvm_facts_i64: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_i64,
+  bits: LlvmBits64,
+  std_projection: ^llvm_std_projection_i64,
+}
+
+data llvm_integer_facts_catalog: List<LlvmIntegerPrimitiveFacts> = [
+  llvm_facts_i32,
+  llvm_facts_i64,
+]
+
+data llvm_facts_half: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_half,
+  kind: LlvmHalfFloat,
+  std_projection: ^llvm_std_projection_half,
+}
+
+data llvm_facts_float: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_float,
+  kind: LlvmSingleFloat,
+  std_projection: ^llvm_std_projection_float,
+}
+
+data llvm_facts_double: LlvmFloatPrimitiveFacts = LlvmFloatPrimitiveFacts {
+  surface_spelling: ^llvm_surface_spelling_double,
+  kind: LlvmDoubleFloat,
+  std_projection: ^llvm_std_projection_double,
+}
+
+data llvm_float_facts_catalog: List<LlvmFloatPrimitiveFacts> = [
+  llvm_facts_half,
+  llvm_facts_float,
+  llvm_facts_double,
+]
+
+fn llvm_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn llvm_integer_bits_node(bits: LlvmIntegerBits) -> Node {
+  match bits {
+    LlvmBits32 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits32)
+    LlvmBits64 => llvm_inhabitant_atom(id: ^llvm_tag_width_bits64)
+  }
+}
+
+fn llvm_float_kind_node(kind: LlvmFloatKind) -> Node {
+  match kind {
+    LlvmHalfFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_half)
+    LlvmSingleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_single)
+    LlvmDoubleFloat => llvm_inhabitant_atom(id: ^llvm_tag_float_kind_double)
+  }
+}
+
+fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: llvm_inhabitant_atom(id: facts.surface_spelling)
+      },
+      Edge {
+        label: Authored { name: discriminant(v: ModelCoreFactAxisWidth {}) },
+        target: llvm_integer_bits_node(bits: facts.bits)
+      },
+      Edge {
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
+      },
+      Edge {
+        label: Authored { name: ^llvm_facts_field_std_projection },
+        target: llvm_inhabitant_atom(id: facts.std_projection)
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        target: llvm_inhabitant_atom(id: facts.surface_spelling)
+      },
+      Edge {
+        label: Authored { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        target: llvm_float_kind_node(kind: facts.kind)
+      },
+      Edge {
+        label: Authored { name: ^llvm_facts_field_std_projection },
+        target: llvm_inhabitant_atom(id: facts.std_projection)
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+}
+}
+
+fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(
+        empty_map(),
+        discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        llvm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      discriminant(v: ModelCoreFactAxisWidth {}),
+      llvm_integer_bits_node(bits: facts.bits)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
+  )
+}
+
+fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      llvm_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    llvm_float_kind_node(kind: facts.kind)
+  )
+}
+
+fn llvm_primitive_bundle_from_integer_facts(facts: LlvmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: llvm_integer_facts_node(facts: facts),
+    spec_facts: llvm_integer_spec_facts(facts: facts)
+  }
+}
+
+fn llvm_primitive_bundle_from_float_facts(facts: LlvmFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: llvm_float_facts_node(facts: facts),
+    spec_facts: llvm_float_spec_facts(facts: facts)
+  }
+}
+
+fn llvm_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: llvm_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: llvm_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn llvm_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: llvm_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: llvm_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn llvm_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: llvm_primitive_bundles_from_integer_catalog(),
+    right: llvm_primitive_bundles_from_float_catalog()
+  )
+}
+
+fn llvm_ir_model_core() -> ModelCore {
+  ModelCore {
+    primitives: llvm_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+fn llvm_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+fn llvm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+fn llvm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn llvm_global_ident_pattern() -> LexPattern {
+  SequencePattern {
+    left: LiteralPattern { text: "@" },
+    right: SequencePattern {
+      left: CharClassPattern { class: IdentStartChar },
+      right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+    }
+  }
+}
+
+fn llvm_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        llvm_lex_token(token_class: ^llvm_token_global_ident, pattern: llvm_global_ident_pattern()),
+        llvm_lex_token(token_class: ^llvm_token_kw_define, pattern: KeywordPattern { text: "define" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_void, pattern: KeywordPattern { text: "void" }),
+        llvm_lex_token(token_class: ^llvm_token_kw_ret, pattern: KeywordPattern { text: "ret" }),
+        llvm_lex_token(token_class: ^llvm_token_lparen, pattern: LiteralPattern { text: "(" }),
+        llvm_lex_token(token_class: ^llvm_token_rparen, pattern: LiteralPattern { text: ")" }),
+        llvm_lex_token(token_class: ^llvm_token_lbrace, pattern: LiteralPattern { text: "{" }),
+        llvm_lex_token(token_class: ^llvm_token_rbrace, pattern: LiteralPattern { text: "}" })
+      ],
+      modes: []
+    }
+  }
+}
+
+fn llvm_void_function_expr() -> GrammarExpr {
+  llvm_grammar_sequence(
+    left: llvm_grammar_terminal(token_class: ^llvm_token_kw_define),
+    right: llvm_grammar_sequence(
+      left: llvm_grammar_terminal(token_class: ^llvm_token_kw_void),
+      right: llvm_grammar_sequence(
+        left: llvm_grammar_terminal(token_class: ^llvm_token_global_ident),
+        right: llvm_grammar_sequence(
+          left: llvm_grammar_terminal(token_class: ^llvm_token_lparen),
+          right: llvm_grammar_sequence(
+            left: llvm_grammar_terminal(token_class: ^llvm_token_rparen),
+            right: llvm_grammar_sequence(
+              left: llvm_grammar_terminal(token_class: ^llvm_token_lbrace),
+              right: llvm_grammar_sequence(
+                left: llvm_grammar_terminal(token_class: ^llvm_token_kw_ret),
+                right: llvm_grammar_sequence(
+                  left: llvm_grammar_terminal(token_class: ^llvm_token_kw_void),
+                  right: llvm_grammar_terminal(token_class: ^llvm_token_rbrace)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn llvm_ir_grammar() -> ParseGrammar {
+  let start = GrammarProduction {
+    name: ^llvm_production_void_function,
+    expression: llvm_void_function_expr(),
+    emitted: grammar_atom(identity: ^llvm_surface_void_function)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^llvm_production_void_function,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+fn llvm_void_function_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^llvm_production_void_function),
+    rhs: [
+      grammar_formal_terminal(identity: ^llvm_token_kw_define),
+      grammar_formal_terminal(identity: ^llvm_token_kw_void),
+      grammar_formal_terminal(identity: ^llvm_token_global_ident),
+      grammar_formal_terminal(identity: ^llvm_token_lparen),
+      grammar_formal_terminal(identity: ^llvm_token_rparen),
+      grammar_formal_terminal(identity: ^llvm_token_lbrace),
+      grammar_formal_terminal(identity: ^llvm_token_kw_ret),
+      grammar_formal_terminal(identity: ^llvm_token_kw_void),
+      grammar_formal_terminal(identity: ^llvm_token_rbrace)
+    ]
+  }
+}
+
+fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: llvm_lex(),
+    grammar: llvm_ir_grammar()
+  }
+}
+
+fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: llvm_ir_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "define void @f() { ret void }",
+      production: llvm_void_function_formal_production(),
+      expected_parse_surface: grammar_atom(identity: ^llvm_surface_void_function)
+    }
+  }
+}

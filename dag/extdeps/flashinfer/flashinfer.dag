@@ -1,0 +1,425 @@
+module extdeps.flashinfer.flashinfer
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// FLASHINFER IS ITS OWN UPSTREAM. It is independently versioned, released and published, so its facts
+// live here rather than as a bare version string inside the product that consumes it (DESIGN section 3,
+// external upstream decomposition): a FlashInfer fact must not require editing vLLM's module. This
+// module is model-agnostic -- it carries what FlashInfer publishes, never which model a fleet serves on
+// it or what a fleet measured on those bytes; those are consumer-side receipts.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/flashinfer-ai/flashinfer"
+  },
+}
+
+data flashinfer_repository: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer" as NonEmptyStr
+
+// WHICH CHANNEL PUBLISHED A BUILD IS A CLOSED SET. PyPI, the project's stable index
+// (https://flashinfer.ai/whl/) and its nightly index (https://flashinfer.ai/whl/nightly/) publish
+// different package populations, so "is this reachable" dispatches on a variant rather than on a
+// substring of a human-readable locator.
+type FlashInferChannel
+  = FlashInferPyPi
+  | FlashInferProjectStable
+  | FlashInferProjectNightly
+
+fn flashinfer_channel_key(c: FlashInferChannel) -> NonEmptyStr {
+  match c {
+    FlashInferPyPi => "pypi" as NonEmptyStr
+    FlashInferProjectStable => "flashinfer.ai/whl" as NonEmptyStr
+    FlashInferProjectNightly => "flashinfer.ai/whl/nightly" as NonEmptyStr
+  }
+}
+
+// HOW A DEPENDENCY IS OBTAINED IS PART OF WHAT IT IS. A published release names the channel and index it
+// resolves against; a source revision names why it is not a release, because that reason is what must be
+// re-checked before the pin can retire. A version string alone cannot say which of these it is.
+type FlashInferAcquisition
+  = FlashInferPublishedRelease { version: NonEmptyStr, channel: FlashInferChannel, index: NonEmptyStr }
+  | FlashInferSourceRevision { revision: NonEmptyStr, reason_unreleased: NonEmptyStr }
+
+fn flashinfer_acquisition_key(a: FlashInferAcquisition) -> String {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: c, index: _ } =>
+      join(["release:", v as String, "@", flashinfer_channel_key(c: c) as String], "")
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      join(["source:", flashinfer_repository as String, "@", r as String], "")
+  }
+}
+
+// ONLY A PUBLISHED RELEASE HAS A PACKAGE VERSION. A caller holding a source revision learns that a
+// version-shaped argument (vLLM's FLASHINFER_VERSION build arg, a `pkg==V` requirement) cannot say what
+// it means, instead of receiving a spelling that would install something else.
+fn flashinfer_published_version(a: FlashInferAcquisition) -> NonEmptyStr? {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } => Present { value: v }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => none
+  }
+}
+
+// THE 0.6.18.post1 VERSION, the single home of the spelling. Cited: the GitHub release tag v0.6.18.post1
+// (github.com/flashinfer-ai/flashinfer/releases/tag/v0.6.18.post1, published 2026-09-05). vLLM pins it at
+// 07b75534651a0dd584c6f3be75d8c62fb8426397 and at d2d649e674c75425d2d6975c87eb89fd4d55fff8 identically
+// (requirements/cuda.txt flashinfer-python==0.6.18.post1 and flashinfer-cubin==0.6.18.post1;
+// docker/Dockerfile ARG FLASHINFER_VERSION=0.6.18.post1), read 2026-09-14; extdeps.vllm.source_build
+// reads the version from here.
+data flashinfer_0_6_18_post1_version: NonEmptyStr = "0.6.18.post1" as NonEmptyStr
+
+// THE CHANNEL IS THE PROJECT'S STABLE INDEX, NOT PyPI. vLLM's requirements/cuda.txt at both revisions
+// above states `flashinfer-cubin is not on PyPI since 0.6.14` and resolves it through
+// `--extra-index-url https://flashinfer.ai/whl/`; the jit-cache wheel is published only on the per-CUDA
+// index https://flashinfer.ai/whl/cu130/. flashinfer-python is on both PyPI and the stable index with the
+// same digest, so the one channel that carries the whole package population is the stable one.
+data flashinfer_0_6_18_post1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_6_18_post1_version,
+  channel: FlashInferProjectStable,
+  index: "flashinfer.ai/whl for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// A PIN IS THE ARTIFACT, AND THE DIGEST IS WHAT MAKES IT ONE. The digest is std.content_hash's
+// Sha256Digest rather than a string, so a malformed digest literal has no representation. The
+// architecture and CUDA version live in the wheel filename (binary distribution format: name, version
+// with local label, python, abi and platform tags), which is why the filename is exact rather than a
+// package-and-version pair: the x86_64 jit-cache wheel sits beside the aarch64 one at the same version.
+type FlashInferWheel sole_constructor {
+  package: NonEmptyStr
+  filename: NonEmptyStr
+  sha256: Sha256Digest
+}
+
+// THE THREE 0.6.18.post1 WHEELS AN aarch64 cu130 IMAGE INSTALLS. Each digest was read 2026-09-14 from two
+// independent upstream surfaces that agree: the `#sha256=` fragment of the index link
+// (https://flashinfer.ai/whl/flashinfer-python/, https://flashinfer.ai/whl/flashinfer-cubin/,
+// https://flashinfer.ai/whl/cu130/flashinfer-jit-cache/) and the `digest` field of the matching asset on
+// the GitHub release v0.6.18.post1. flashinfer-python's digest additionally matches PyPI's simple index and
+// the sha256 of the downloaded wheel; the cubin (1.57 GB) and jit-cache (1.13 GB) wheels were not
+// downloaded, so their digests rest on the two published listings.
+data flashinfer_0_6_18_post1_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.6.18.post1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "bbacb5b8bbf429e43bf2740bb45551d981f41d0462842e36ee6fb3e3452763ab" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "860ec5ce11a1d686bde04dbef4bedee15c39e3ec5e10adccb186dfee2e4113f2" as Sha256DigestHex },
+  },
+]
+
+// WHERE THE 0.6.18.post1 WHEELS RESOLVE AS FILES. The row above records that each digest was read
+// from two agreeing upstream surfaces, one of which is the asset listing of the GitHub release
+// v0.6.18.post1 on flashinfer-ai/flashinfer; a release asset is addressed by its filename under the
+// release's download base, which is the same derivation the nightly row performs and is carried once
+// here for the same reason -- a consumer derives a wheel's URL instead of re-spelling it.
+//
+// THIS IS AN ADDRESS, NOT AN AVAILABILITY GUARANTEE, and the distinction is the same one the nightly
+// row draws: what makes a fetched file the wheel this repository means is its sha256 matching the row
+// above, never the URL it arrived from. A consumer that fetches without comparing has established
+// nothing.
+data flashinfer_0_6_18_post1_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.6.18.post1" as NonEmptyStr
+
+fn flashinfer_0_6_18_post1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_6_18_post1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
+// ── 0.7.1rc1: THE FIRST RELEASE CARRYING RUNTIME SM120 SPARSE-MLA PAGE SIZES ──────────────────
+//
+// flashinfer-ai/flashinfer#5197 (merged 2026-09-18, eb5f05be1f) makes the SM120 sparse-MLA page size a
+// runtime parameter, including the 32-token extra pages a DeepSeek V4.1 ratio-2 layer takes once the
+// kernel page is 64 tokens (vllm-project/vllm#57292, #56461, #59203). v0.7.0 and v0.7.0.post1 predate it
+// (compare eb5f05be1f...v0.7.0.post1: diverged); v0.7.1rc1 (GitHub release, published 2026-09-30) contains
+// it (compare eb5f05be1f...v0.7.1rc1: ahead 221, behind 0), read 2026-10-01. It is a RELEASE CANDIDATE,
+// adopted by operator ruling 2026-10-01 for the V4.1 GB10 launch; 0.7.1 final replaces it when published.
+data flashinfer_0_7_1rc1_version: NonEmptyStr = "0.7.1rc1" as NonEmptyStr
+
+data flashinfer_0_7_1rc1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_7_1rc1_version,
+  channel: FlashInferProjectStable,
+  index: "flashinfer.ai/whl for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/cu130 for flashinfer-jit-cache and its per-architecture providers" as NonEmptyStr,
+}
+
+// THE ELEVEN 0.7.1rc1 WHEELS AN aarch64 cu130 IMAGE INSTALLS. From 0.7.x the jit-cache is a 4 KB shim
+// (flashinfer_jit_cache) whose METADATA Requires-Dist names one provider wheel per architecture
+// (sm80, sm89, sm90a, sm100a, sm103a, sm110a, sm120f, sm121a), all at 0.7.1rc1+cu130 -- read from the
+// shim wheel itself, whose downloaded sha256 matched below -- so `flashinfer-jit-cache==0.7.1rc1` from the
+// cu130 index installs all nine. Each digest was read 2026-10-01 from two agreeing upstream surfaces: the
+// `digest` field of the GitHub release v0.7.1rc1 asset and the `#sha256=` fragment of the flashinfer.ai
+// index link (whl/flashinfer-python, whl/flashinfer-cubin, whl/cu130/flashinfer-jit-cache,
+// whl/cu130/flashinfer-jit-cache-sm121a cross-checked; the other providers rest on the release listing).
+data flashinfer_0_7_1rc1_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.1rc1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "17b7a2d47a153456f056f9f4d309ac13a0a7bfccbec852f562f120f36146edd9" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.1rc1-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "760ea1b6485b7315683ea1852f9926270eb57b7d05b95f8cd262fd12c93e062b" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "bfd71831bb06f3361a9631dcfc0474712e8c45e6d44db16774ba65789a95067c" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm100a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm100a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a1ff150e5f81f1a96ab900bd9357e98092a119004b8292078fa9b09cabae92e5" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm103a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm103a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "15f6c9df6e3928c6de664191582075e087d49dfc3ed1e0db6741d37263155baa" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm110a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm110a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "242cdbf730471211883f0aa145f24c02ff0b2b51e083f160f4ec97592a9443d3" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm120f" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm120f-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "9d5b55adfbf0d68127710dbc602c7c8e93893581b598f73b97d259b457df232f" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm121a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm121a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a900e973695798581d60d5297fee3c9bee8d1f1e6211303af7c0171481446a34" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm80" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm80-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "539bb1454af4df30b0f846e3f27838e6de1b0a4f9eeb221a561ff99a52ddc2ce" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm89" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm89-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "25bff4e71bffaef61cf35a02c19fd4f06600d74f3643f9e84fc3672088fb154a" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache-sm90a" as NonEmptyStr,
+    filename: "flashinfer_jit_cache_sm90a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "67511bdeb5ee4de4c9af78b4b77d7158cf822cb4ba5ad29b3c25f7a3201cbca7" as Sha256DigestHex },
+  },
+]
+
+data flashinfer_0_7_1rc1_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer/releases/download/v0.7.1rc1" as NonEmptyStr
+
+fn flashinfer_0_7_1rc1_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_7_1rc1_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
+// THE PLAIN 0.6.18 SPELLING, which upstream pinned before the .post1 release existed:
+// requirements/cuda.txt at 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (2026-09-04) states
+// `flashinfer-python==0.6.18` and `flashinfer-cubin==0.6.18`, and docker/Dockerfile at the same
+// revision declares `ARG FLASHINFER_VERSION=0.6.18`. The GLM-5.3-Flash SM121 base image's recorded
+// build arguments carry exactly this spelling; the .post1 row above is a different pin at a later
+// revision, not a correction of this one.
+data flashinfer_0_6_18_version: NonEmptyStr = "0.6.18" as NonEmptyStr
+
+// THE 0.7.0.dev20260910 NIGHTLY, WHICH THE GLM-5.3-FLASH SM121 IMAGE FORCE-REINSTALLS OVER THE
+// BASE'S 0.6.18. The GLM native arm's serving image (the local build whose base is upstream vLLM
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83) carries these three wheels and pip-installs them
+// --no-deps --force-reinstall; the base's 0.6.18 predates the sparse-MLA page-table fix the model
+// needs. A nightly is a published build of a dated snapshot, not a release: the channel is the
+// nightly index, and the row stays honest about what a nightly is -- it may be pruned upstream, in
+// which case the digest-pinned wheel in the image is the surviving artifact and this row's index
+// citation is its provenance, not its availability guarantee.
+data flashinfer_0_7_0_dev20260910_version: NonEmptyStr = "0.7.0.dev20260910" as NonEmptyStr
+
+data flashinfer_0_7_0_dev20260910: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: flashinfer_0_7_0_dev20260910_version,
+  channel: FlashInferProjectNightly,
+  index: "flashinfer.ai/whl/nightly for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/nightly/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// THE THREE NIGHTLY WHEELS. The python and jit-cache digests agree across two independent surfaces
+// read 2026-09-17: the `#sha256=` fragment of the nightly index link, and sha256sum of the wheels
+// as installed in the serving image on srv9. The cubin wheel (1.57 GB) was not re-hashed; its
+// digest rests on the index listing alone, the same evidence level this module already carries for
+// the 0.6.18.post1 cubin and jit-cache rows.
+data flashinfer_0_7_0_dev20260910_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "a5fa6ee62652b6e02cef8e2be33a5a3fdc1f2ae70ed2a131beface7594c436bd" as Sha256DigestHex },
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: Sha256Digest { hex: "7c45246d658c9818a4179c2ce81729163112aefcb3bcd1ff63eb5004c0df5422" as Sha256DigestHex },
+  },
+]
+
+// WHERE THE NIGHTLY WHEELS ACTUALLY RESOLVE. The nightly index's links are GitHub release assets of
+// flashinfer-ai/whl under the release tag nightly-v0.7.0-20260910 (the `#sha256=` hrefs, read
+// 2026-09-17). The release base is carried once here so a consumer derives a wheel's URL instead of
+// re-spelling it.
+data flashinfer_0_7_0_dev20260910_release_url: NonEmptyStr = "https://github.com/flashinfer-ai/whl/releases/download/nightly-v0.7.0-20260910" as NonEmptyStr
+
+fn flashinfer_0_7_0_dev20260910_wheel_url(w: FlashInferWheel) -> NonEmptyStr {
+  join([flashinfer_0_7_0_dev20260910_release_url as String, "/", w.filename as String], "") as NonEmptyStr
+}
+
+// THE FIELDS OF A COMPLETE WHEEL FILENAME (binary distribution format, PEP 427,
+// packaging.python.org/en/latest/specifications/binary-distribution-format/):
+// `{distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl`. The version field keeps its local
+// label (`0.6.18.post1+cu130`), because that label is where the CUDA build lives; the optional build tag
+// is validated and not carried, since nothing in this module selects on it.
+type FlashInferWheelFilenameFields {
+  distribution: String
+  version: String
+  python: String
+  abi: String
+  platform: String
+}
+
+// A FILENAME IS COMPLETE ONLY WITH THE `.whl` SUFFIX, FIVE OR SIX NON-EMPTY DASH-SEPARATED FIELDS, AND A
+// BUILD TAG (the sixth-field case) THAT BEGINS WITH A DIGIT. Anything else is Absent: a string that merely
+// begins with a distribution and a version is not a wheel filename.
+fn flashinfer_wheel_filename_fields(filename: String) -> FlashInferWheelFilenameFields? {
+  if !ends_with(s: filename, suffix: ".whl") || string_length(s: filename) <= 4 {
+    none
+  } else {
+    let fields = split(s: substring(s: filename, start: 0, end: string_length(s: filename) - 4), separator: "-")
+    let n = count(fields)
+    if !(n == 5 || n == 6) || !all(fields, f => string_length(s: f) > 0) {
+      none
+    } else {
+      let offset = n - 5
+      let build_ok = if n == 6 {
+        match get(xs: fields, index: 2) {
+          Present { value: b } =>
+            code_point(substring(s: b, start: 0, end: 1)) >= 48 && code_point(substring(s: b, start: 0, end: 1)) <= 57
+          Absent => false
+        }
+      } else { true }
+      if !build_ok {
+        none
+      } else {
+        match get(xs: fields, index: 0) {
+          Absent => none
+          Present { value: distribution } => match get(xs: fields, index: 1) {
+            Absent => none
+            Present { value: version } => match get(xs: fields, index: 2 + offset) {
+              Absent => none
+              Present { value: python } => match get(xs: fields, index: 3 + offset) {
+                Absent => none
+                Present { value: abi } => match get(xs: fields, index: 4 + offset) {
+                  Absent => none
+                  Present { value: platform } => Present { value: FlashInferWheelFilenameFields {
+                    distribution: distribution,
+                    version: version,
+                    python: python,
+                    abi: abi,
+                    platform: platform,
+                  } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE PLATFORM TAG OF A WHEEL ROW: `any` for the pure-python wheels, `manylinux_2_28_aarch64` for the
+// aarch64 jit-cache build. Absent when the row's filename is not a complete wheel filename, rather than an
+// empty string standing in for a tag that was never read.
+fn flashinfer_wheel_platform_tag(w: FlashInferWheel) -> String? {
+  match flashinfer_wheel_filename_fields(filename: w.filename as String) {
+    Present { value: f } => Present { value: f.platform }
+    Absent => none
+  }
+}
+
+// WHY A WHEEL ROW REFUSES, one reason per distinct repair. A filename that is not a complete wheel filename
+// is not an artifact name at all; a digest that is not 64 lowercase hex digits is a transcription error; a filename whose distribution segment is not the package's is a row pasted
+// under the wrong package; a filename that does not carry the release version is a row from another
+// release; and a source revision has no published wheels at all, so pinning one against it is a category
+// error rather than a missing row.
+type FlashInferWheelRefusal
+  = FlashInferWheelFilenameMalformed { filename: NonEmptyStr }
+  | FlashInferWheelDigestMalformed { digest: String }
+  | FlashInferWheelFilenameNotForPackage { package: NonEmptyStr, filename: NonEmptyStr }
+  | FlashInferWheelFilenameNotForVersion { version: NonEmptyStr, filename: NonEmptyStr }
+  | FlashInferWheelAcquisitionUnpublished { revision: NonEmptyStr }
+
+type FlashInferWheelAdmission
+  = FlashInferWheelAdmitted { wheel: FlashInferWheel }
+  | FlashInferWheelRefused { refusal: FlashInferWheelRefusal }
+
+// THE WHEEL-FILENAME DISTRIBUTION SEGMENT, normalized the way the binary distribution format spells it:
+// runs of `-` and `.` in the project name become `_`. Package names in this module are already lowercase.
+fn flashinfer_wheel_distribution_segment(package: NonEmptyStr) -> String {
+  join(split(s: join(split(s: package as String, separator: "."), "_"), separator: "-"), "_")
+}
+
+// THE ONLY MINT FOR A WHEEL ROW FROM UNTRUSTED TEXT. The filename must first parse as a complete wheel
+// filename; then its distribution field must equal the package's normalized segment, and its version field
+// must be the release version exactly or that version followed by a local label (`+`), so `0.6.18` does not
+// admit a `0.6.18.post1` file and `flashinfer-python` does not admit a `flashinfer_python_extra` file.
+fn admit_flashinfer_wheel(
+  acquisition: FlashInferAcquisition,
+  package: NonEmptyStr,
+  filename: NonEmptyStr,
+  sha256_hex: String,
+) -> FlashInferWheelAdmission {
+  match acquisition {
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      FlashInferWheelRefused { refusal: FlashInferWheelAcquisitionUnpublished { revision: r } }
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } =>
+      match flashinfer_wheel_filename_fields(filename: filename as String) {
+        Absent => FlashInferWheelRefused { refusal: FlashInferWheelFilenameMalformed { filename: filename } }
+        Present { value: fields } =>
+          if fields.distribution != flashinfer_wheel_distribution_segment(package: package) {
+            FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForPackage { package: package, filename: filename } }
+          } else if !(fields.version == (v as String) || starts_with(s: fields.version, prefix: join([v as String, "+"], ""))) {
+            FlashInferWheelRefused { refusal: FlashInferWheelFilenameNotForVersion { version: v, filename: filename } }
+          } else {
+            match sha256_hex_digest(hex: sha256_hex) {
+              Absent => FlashInferWheelRefused { refusal: FlashInferWheelDigestMalformed { digest: sha256_hex } }
+              Present { value: d } =>
+                FlashInferWheelAdmitted { wheel: FlashInferWheel { package: package, filename: filename, sha256: d } }
+            }
+          }
+      }
+  }
+}
+
+// UPSTREAM vLLM's DOCKERFILE REFERENCES ONLY THE PyPI AND STABLE-INDEX CHANNELS. At both vLLM revisions
+// cited above, docker/Dockerfile installs `flashinfer-jit-cache==${FLASHINFER_VERSION}` with
+// `--index-url https://flashinfer.ai/whl/cu<major><minor>` and requirements/cuda.txt uses
+// `--extra-index-url https://flashinfer.ai/whl/`. This answers only whether an acquisition's CHANNEL is one
+// those files name: the nightly index and a source revision are not. It does not establish that a given
+// version publishes flashinfer-python, flashinfer-cubin and flashinfer-jit-cache in the variant an image
+// needs, so a true here is not reachability of the release.
+fn flashinfer_channel_is_referenced_by_upstream_dockerfile(a: FlashInferAcquisition) -> Bool {
+  match a {
+    FlashInferPublishedRelease { version: _, channel: c, index: _ } =>
+      match c {
+        FlashInferPyPi => true
+        FlashInferProjectStable => true
+        FlashInferProjectNightly => false
+      }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => false
+  }
+}

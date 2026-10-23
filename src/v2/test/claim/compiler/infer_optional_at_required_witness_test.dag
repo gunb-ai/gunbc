@@ -1,0 +1,180 @@
+module v2.test.claim.compiler.infer_optional_at_required_witness_test
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model, dag_type_atom_node }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  InhabitanceUndecidable,
+  Inhabits,
+  declared_type_inhabitance,
+  inhabitance_cardinality_type,
+  inhabitance_undecidable_reason_symbol,
+  position_declared_return
+}
+import v2.std.integer { integer_int_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_read,
+  rcf_refuses_with,
+  rcf_verdict
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN OPTIONAL NEVER INHABITS A REQUIRED DECLARED TYPE.
+//
+// The subject is v2.std.inhabitance declared_type_inhabitance: a produced `T?` at a declared kernel
+// type is REFUSED (inhabitance_optional_produced_at_required_declared), where it used to answer
+// UndecidableOptionalCarrier and be admitted with an advisory. The class is
+// gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared, which the seed
+// closed for v1 and which this closes on the v2 route for the declared types the relation can know
+// to be required.
+//
+// TWO GRAINS, ONE RELATION. The relation-level claims hand declared_type_inhabitance an obligation
+// and read its verdict: the refusal, and beside it every case that must NOT refuse -- the lift
+// (`T` at `T?`), optional at optional, and an optional at a declared type the relation cannot know
+// to be required (a declaration reference, which may name an alias of an optional). The route
+// claims run source text through the production front end into infer and read the same verdict
+// where a program reaches it: a declared return and a record field.
+//
+// THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Before the descent fix that
+// landed with this witness (gunbc#12806, which carried gunbc#12777: v2.std.cardinality
+// connective_multiplicity answers Bounded for Cardinality) a program mentioning `T?` was refused for
+// descent before any declared-type judgment was asked (infer_descent_not_derived). The route claims
+// are therefore also that fix's real-route evidence.
+//
+// A DIRECT-CALL ARGUMENT IS NOT A ROUTE RED YET: a named call's callee is a declaration reference
+// infer does not type by its declaration (gunbc#12506), so its formals are unresolved whatever is
+// passed. The relation-level refusal covers the position; the route claim for it is owed when that
+// capability lands.
+data oar_return_bad_source: String = "module v2.test.oar_return_bad\n\nfn oar_f(x: Int?) -> Int { x }\n"
+
+data oar_lift_source: String = "module v2.test.oar_lift\n\nfn oar_f(x: Int) -> Int? { x }\n"
+
+data oar_field_bad_source: String = "module v2.test.oar_field_bad\n\ntype OarR {\n  n: Int\n}\n\nfn oar_mk(x: Int?) -> OarR { OarR { n: x } }\n"
+
+data oar_ingest: SourceRootIngest = [
+  rcf_read(source: oar_return_bad_source, id: ^oar_return_bad_read, unit: ^oar_return_bad_cu, path: "src/v2/test/fixture/optional_at_required/return_bad.dag"),
+  rcf_read(source: oar_lift_source, id: ^oar_lift_read, unit: ^oar_lift_cu, path: "src/v2/test/fixture/optional_at_required/lift.dag"),
+  rcf_read(source: oar_field_bad_source, id: ^oar_field_bad_read, unit: ^oar_field_bad_cu, path: "src/v2/test/fixture/optional_at_required/field_bad.dag")
+]
+
+fn oar_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: oar_ingest, lm: dag_language_model())
+}
+
+fn oar_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match oar_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn oar_resolved_return_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_return_bad") }
+fn oar_resolved_lift() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_lift") }
+fn oar_resolved_field_bad() -> Outcome<ResolvedTree> { oar_resolve_subject(subject: "v2.test.oar_field_bad") }
+
+fn oar_optional_int() -> Node {
+  inhabitance_cardinality_type(inner: integer_int_type_node())
+}
+
+fn oar_obligation(declared: Node, produced: Node, type_variables: List<Symbol>) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_declared_return(),
+    parameter_identity: ^declared_return,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: produced,
+    type_variables: type_variables
+  }
+}
+
+fn oar_refused_optional_at_required(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: declared, produced: produced, type_variables: type_variables)) {
+    InhabitanceRefused { find_witness_reason: r } => r == ^inhabitance_optional_produced_at_required_declared
+    InhabitanceUndecidable { reason: _ } => false
+    Inhabits { homomorphism: _ } => false
+  }
+}
+
+fn oar_counted_optional_carrier(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
+  match declared_type_inhabitance(obligation: oar_obligation(declared: declared, produced: produced, type_variables: type_variables)) {
+    InhabitanceUndecidable { reason: reason } =>
+      inhabitance_undecidable_reason_symbol(reason: reason) == ^inhabitance_undecidable_optional_carrier
+    InhabitanceRefused { find_witness_reason: _ } => false
+    Inhabits { homomorphism: _ } => false
+  }
+}
+
+// THE RELATION-LEVEL RED: `Int?` produced at a declared `Int` is refused, by its own reason.
+test fn oar_an_optional_at_a_required_kernel_type_is_refused_holds() -> Bool {
+  oar_refused_optional_at_required(declared: integer_int_type_node(), produced: oar_optional_int(), type_variables: [])
+}
+
+// THE CONTROLS THAT MUST NOT REFUSE. The lift `Int` at `Int?` and `Int?` at `Int?` keep the counted
+// optional-carrier verdict they had.
+test fn oar_the_lift_and_optional_at_optional_stay_counted_holds() -> Bool {
+  oar_counted_optional_carrier(declared: oar_optional_int(), produced: integer_int_type_node(), type_variables: [])
+    && oar_counted_optional_carrier(declared: oar_optional_int(), produced: oar_optional_int(), type_variables: [])
+}
+
+// An optional at a declared type the relation cannot know to be required is NOT refused: a
+// declaration reference may name an alias of an optional type, and a type variable may be
+// instantiated at one. Both stay counted (the type variable as the generic formal it is).
+test fn oar_an_optional_at_a_declaration_reference_or_type_variable_is_not_refused_holds() -> Bool {
+  let reference = declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.test.oar_alias.Maybe"), occurrence_id: OccurrenceSynthetic)
+  oar_counted_optional_carrier(declared: reference, produced: oar_optional_int(), type_variables: [])
+    && !oar_refused_optional_at_required(
+      declared: dag_type_atom_node(identity: ^oar_type_param_t),
+      produced: oar_optional_int(),
+      type_variables: [^oar_type_param_t]
+    )
+}
+
+// THE ROUTE RED, DECLARED RETURN: `fn oar_f(x: Int?) -> Int { x }` refuses.
+test fn oar_an_optional_returned_at_a_declared_int_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_return_bad(), reason: ^inhabitance_optional_produced_at_required_declared)
+}
+
+// THE ROUTE RED, RECORD FIELD: `OarR { n: x }` with `x: Int?` at a field declared `Int` refuses.
+test fn oar_an_optional_at_a_required_record_field_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: oar_resolved_field_bad(), reason: ^inhabitance_optional_produced_at_required_declared)
+}
+
+// THE ROUTE CONTROL: the lift `fn oar_f(x: Int) -> Int? { x }` is still accepted.
+test fn oar_the_lift_is_still_accepted_on_the_route_holds() -> Bool {
+  match rcf_verdict(resolved: oar_resolved_lift()) {
+    RcfInferAccepted { diagnostics: _ } => true
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}

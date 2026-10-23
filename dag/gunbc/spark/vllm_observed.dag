@@ -1,0 +1,769 @@
+module gunbc.spark.vllm_observed
+
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  json_object_unique_member,
+}
+import extdeps.languages.json.number {
+  JsonNumberExact, JsonNumberOutsideExactFragment,
+  JsonNumberValueRead, JsonValueIsNotANumber, read_json_number_value,
+  json_number_fragment_refusal_text,
+}
+import product.host_identity { HostIdentity }
+import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
+import extdeps.vllm.server {
+  VllmRoute,
+  VllmRoutePopulation,
+  OrdinarilyRegistered,
+  RegisteredOnlyUnderDevelopmentMode,
+  VllmParallelEvidenceRoute,
+  ServerInfoRoute,
+  GetWorldSizeRoute,
+  CollectiveRpcRoute,
+  vllm_http_parallel_evidence_routes,
+  VllmEvidenceKind,
+  vllm_parallel_evidence_kind,
+  vllm_evidence_kind_establishes_configuration,
+  VllmEvidenceRouteResponse,
+  EvidenceRouteNotServed,
+  EvidenceRouteAnsweredWithoutParse,
+  VllmCapacitySourceKind,
+  GroupAwareStartupLog,
+  CacheConfigBlockFields,
+  VllmCapacitySourceDecision,
+  VllmCapacitySourceAssessment,
+  CapacitySourceAuthoritative,
+  CapacitySourceInsufficient,
+  decide_vllm_capacity_source_kind,
+}
+
+// A DATED READBACK OF ONE vLLM FRONT DOOR, AND A REFUSAL TO CALL IT A TENSOR-PARALLEL REALIZATION.
+//
+// gunbc.spark.serving_desired names an Ollama runtime for hosts that were running something else,
+// and gunbc.spark.serving_convergence_withholding refuses to converge them until the corpus can
+// describe what is there. This is the first half of describing it -- and the load-bearing half is
+// what the readback is NOT sufficient to claim.
+//
+// THE OBSERVATION IS HISTORICAL, AND THAT IS A PROPERTY OF THE SUBJECT. The front door answered on
+// 2026-09-03 and had stopped answering within the hour. This is a bundle of route-local observations
+// associated with one front-door investigation -- NOT one acquisition and not one identified
+// incarnation -- and nothing here may be read as "what is running".
+
+// FIELDS ARE GROUPED BY THE ROUTE THEY CAME FROM, WHICH IS NOT TIDINESS -- IT IS A CORRECTION.
+//
+// A single flat runtime record let the pull request attribute max_model_len to the cache-config
+// gauge. It came from /v1/models; the gauge never reported it. One record with a prose sentence
+// about provenance is exactly the shape that lets provenance drift from the value, so provenance is
+// now structural: a field cannot be described as coming from a route it does not sit under.
+// THE NUMERIC READBACKS ARE MEASURES, NOT CAPTURED DIGITS, and the absence of a parser is what
+// settles it rather than a preference.
+//
+// These arrived as text on the wire, and an earlier version kept them as text on the grounds that a
+// capture module should hold what it captured. That defence does not survive §2: a stream of digits
+// is not a different concept from the number it spells, so holding both would be one concept in two
+// representations, and holding only the text loses ordering and arithmetic on top of the unit. It
+// also defeated the module's own consumers -- a context length nothing can compare with is a blob
+// with a helpful name.
+//
+// The tempting middle -- carry the wire text AND a typed value -- is worse than either end here,
+// because nothing in this repository parses one into the other. The two fields would be independently
+// authored and free to drift, which is the validation shape this module keeps replacing with
+// construction. So the measure is the fact, and when a parser exists it can produce it from a capture
+// rather than beside one.
+type VllmModelsRouteReadback sole_constructor {
+  served_model_id: NonEmptyStr
+  configured_model_path: NonEmptyStr
+  max_model_len: TokenCount
+}
+
+// THE PATH IS A CONFIGURED PATH, NOT A CONTENT IDENTITY, AND THE FIELD NAME NOW SAYS SO.
+//
+// An earlier name, model_artifact_root, invited the reading that this ESTABLISHES which weights are
+// loaded -- and I published exactly that reading upward, saying the official checkpoint was
+// confirmed first-hand. It is not confirmed. /v1/models reports the path the server was configured
+// with. That is strong evidence about intent and no evidence about bytes: nothing here digests the
+// weights, and a path can name a directory whose contents were replaced.
+//
+// What the field DOES settle is narrower and still worth having: the served alias carries a token
+// that is NOT DERIVABLE from the configured path, so the alias and the path are two separate facts
+// and the alias is not artifact identity. It does not settle that the alias is FALSE -- a
+// served-model name is allowed to be arbitrary, and a directory name does not establish what its
+// contents are quantised to. Both readings refuse the id as an artifact claim; only one of them is
+// supported by what was observed.
+// THE SELF-REPORTED VERSION LIVES HERE, NOT IN extdeps, BECAUSE THIS REPOSITORY OBSERVED IT.
+//
+// extdeps.vllm.server scopes its laws against the upstream SOURCE REVISION its source was read at.
+// What /version answered is a receipt about one response body, so it belongs beside the readback that
+// produced it. There is no edge from one to the other: the self-report embeds a short revision, and
+// reading that as proof the process executed those bytes would be inventing runtime provenance out of
+// a string the process chose to print.
+type VllmSelfReportedVersion sole_constructor {
+  version_string: NonEmptyStr
+}
+
+fn vllm_self_reported_version(version_string: NonEmptyStr) -> VllmSelfReportedVersion {
+  VllmSelfReportedVersion { version_string: version_string }
+}
+
+// AND IT LIVES UNDER THE ROUTE THAT REPORTED IT, EXACTLY ONCE.
+//
+// A previous shape put the version in two places: the scope derived a `reported_version` from a
+// version route, and the bundle then accepted another independently constructed version route. Those
+// two could disagree -- scope says A, route says B -- with no construction preventing it, which is
+// one concept in two independently authored representations.
+//
+// The deeper reason is the bundle's own ceiling. `/version` is a ROUTE-LOCAL observation, and this
+// bundle expressly does not establish a cross-route join, so promoting what one route said into
+// common scope for the models route, the metrics gauge and the evidence observations would be
+// asserting exactly the join the row refuses to claim.
+type VllmVersionRouteReadback sole_constructor {
+  reported_version: VllmSelfReportedVersion
+}
+
+// UTILIZATION IS A DIMENSIONLESS RATIO IN BASIS POINTS, not "0.86". Percent would have to round a
+// two-decimal fraction into a Nat and lose the distinction between 0.86 and 0.855; basis points carry
+// it exactly at the precision vLLM accepts, against std.measure's existing dimensionless authority
+// rather than a fresh one.
+type VllmCacheConfigGaugeReadback sole_constructor {
+  kv_cache_dtype: NonEmptyStr
+  gpu_memory_utilization: BasisPoint
+  prefix_caching_enabled: Bool
+}
+
+// THIS IS A HISTORICAL BUNDLE, NOT A TRANSACTION, AND THE DIFFERENCE IS THE WHOLE CEILING.
+//
+// The previous shape called itself an acquisition -- "one read of one incarnation" -- and derived the
+// refusal host and the reported version from it, which fixed two narrower defects and left the
+// central one standing: the models response, the metrics response and the evidence-route outcomes
+// were still independently assembled constructor arguments. `sole_constructor` stops an external
+// record literal; it does not join values a caller supplied separately. Nothing required them to come
+// from one request batch, one endpoint, one attempt, or one running process, and a field spelling
+// `observed_on: "2026-09-03"` cannot separate launches -- several came and went on this pair that
+// day, including one that refused during engine initialization.
+//
+// The strong repair would bind every route parse to a retained per-request capture identity. That
+// evidence does not exist for this readback: no attempt id, no per-route timestamps, no captured
+// bodies survived. Minting one now would convert a remembered procedure into fabricated provenance,
+// so this is the honest form instead -- a bundle of route-local observations associated with one
+// front-door investigation, whose cross-route join was never retained.
+//
+// THE LIMITATION IS A TYPE, NOT A FLAG. `CrossRouteAcquisitionJoinUnestablished` has no established
+// counterpart that this constructor can select, so no later commit can flip this row into a joined
+// one. A properly captured observation is a DIFFERENT type through a different constructor that
+// demands real capture identities; this bundle never climbs into it, and no future rank receipt or
+// capacity observation can complete it.
+type VllmHistoricalFrontDoorScope sole_constructor {
+  front_door_host: HostIdentity
+  observed_on: NonEmptyStr
+}
+
+type VllmCrossRouteAcquisitionJoin
+  = CrossRouteAcquisitionJoinUnestablished { cause: NonEmptyStr }
+
+// THE REFUSAL IS NOT A VERDICT, AND MODELLING IT AS ONE WOULD BE THE LIE. A verdict type implies a
+// reachable admission arm; this readback has none, so the bundle carries a refusal outright.
+//
+// THE STAGE MATTERS AND IS WHY THIS IS A COPRODUCT. The population question is downstream of the
+// configuration question: you cannot ask whether every expected rank is present until you know how
+// many are expected, and that expected set must be DERIVED from resolved parallel configuration
+// rather than supplied by whoever is asking, or the caller authors both sides of its own join.
+type VllmTpRealizationMissingEvidence
+  = ResolvedParallelConfigurationNotObserved
+  | JoinedRankPopulationNotObserved
+
+type VllmTpRealizationRefusal sole_constructor {
+  front_door_host: HostIdentity
+  missing: VllmTpRealizationMissingEvidence
+}
+
+// AN EVIDENCE ROUTE THAT DID NOT ANSWER, AND THE CONCLUSION IT DOES NOT SUPPORT.
+//
+// The three parallel-evidence routes returned 404. The pull request said this means "the server was
+// launched without development mode". It does not. A 404 establishes that the route was not
+// available at that moment; it does not read a launch flag, and it cannot distinguish an unset flag
+// from a build without the route, a proxy stripping it, or a path that moved between versions.
+//
+// What the 404 DOES establish is the only thing this module needs: the evidence was unreachable.
+// The refusal rests on that and not on the inferred cause, so it survives the inference being wrong.
+type VllmEvidenceRouteOutcome sole_constructor {
+  route: VllmParallelEvidenceRoute
+  response: VllmEvidenceRouteResponse
+}
+
+// THE REFUSAL HOST IS DERIVED FROM THE SCOPE, WHICH IS THE ONE THING THIS CONSTRUCTOR DOES BIND.
+//
+// Previously the readback and the refusal were separate rows that each named a host, so one could be
+// edited to srv5 while the other still said srv6 and every witness stayed green. The refusal host is
+// now derived from the scope inside the constructor, so a divergent pair has no constructor at all.
+//
+// THAT IS THE LIMIT OF WHAT IS BOUND, AND THE TYPE SAYS SO. The route-local observations below are
+// independently retained facts handed to this constructor, and it does NOT establish that they came
+// from one read -- it stamps that their cross-route join was not retained. A constructor cannot
+// recover a binding the observation never captured.
+type VllmHistoricalReadbackBundle sole_constructor {
+  scope: VllmHistoricalFrontDoorScope
+  models_route: VllmModelsRouteReadback
+  version_route: VllmVersionRouteReadback
+  cache_config_gauge: VllmCacheConfigGaugeReadback
+  parallel_evidence_observations: List<VllmEvidenceRouteOutcome>
+  acquisition_join: VllmCrossRouteAcquisitionJoin
+  realization: VllmTpRealizationRefusal
+}
+
+// BOTH LIMITATIONS ARE STAMPED BY THIS CONSTRUCTOR, AND THEY ANSWER DIFFERENT QUESTIONS.
+//
+// `acquisition_join` says the route observations could not be joined as one acquisition.
+// `realization.missing` says no retained observation established resolved parallel configuration.
+// Collapsing them would lose the first: the second explains why the TP refusal sits at its earlier
+// stage, while the first is what makes clear that discovering a rank receipt LATER cannot rehabilitate
+// this bundle.
+//
+// Neither is computed. There is no configuration-bearing response arm in this module -- the parsed
+// capture was removed as caller-authored -- so a function deriving the stage from the observations
+// would return one arm for every input a fixture could write. That is a permanently-green check, and
+// this repository treats one as worse than no check, because it gets cited as coverage. The fact is
+// stated where it is known instead.
+fn vllm_historical_readback_bundle(
+  scope: VllmHistoricalFrontDoorScope,
+  models_route: VllmModelsRouteReadback,
+  version_route: VllmVersionRouteReadback,
+  cache_config_gauge: VllmCacheConfigGaugeReadback,
+  parallel_evidence_observations: List<VllmEvidenceRouteOutcome>,
+) -> VllmHistoricalReadbackBundle {
+  VllmHistoricalReadbackBundle {
+    scope: scope,
+    models_route: models_route,
+    version_route: version_route,
+    cache_config_gauge: cache_config_gauge,
+    parallel_evidence_observations: parallel_evidence_observations,
+    acquisition_join: CrossRouteAcquisitionJoinUnestablished {
+      cause: "per-route capture identity was not retained" as NonEmptyStr,
+    },
+    realization: VllmTpRealizationRefusal {
+      front_door_host: scope.front_door_host,
+      missing: ResolvedParallelConfigurationNotObserved,
+    },
+  }
+}
+
+// SMART CONSTRUCTORS, because sole_constructor keeps the record literal inside this module, so every
+// shape is reachable from outside only through a named function here.
+//
+// It does NOT follow that a caller cannot assemble parts from different reads -- an earlier version of
+// this comment claimed exactly that, and it was the sentence standing where the missing binding was.
+// sole_constructor stops an external record literal; it does not join values supplied separately.
+// That is why the bundle stamps its join as unestablished rather than asserting one.
+fn vllm_historical_front_door_scope(
+  front_door_host: HostIdentity,
+  observed_on: NonEmptyStr,
+) -> VllmHistoricalFrontDoorScope {
+  VllmHistoricalFrontDoorScope { front_door_host: front_door_host, observed_on: observed_on }
+}
+
+fn vllm_models_route_readback(
+  served_model_id: NonEmptyStr,
+  configured_model_path: NonEmptyStr,
+  max_model_len: TokenCount,
+) -> VllmModelsRouteReadback {
+  VllmModelsRouteReadback {
+    served_model_id: served_model_id,
+    configured_model_path: configured_model_path,
+    max_model_len: max_model_len,
+  }
+}
+
+// THE `created` FIELD OF A /v1/models ENTRY IS THE TIME THE ROUTE ANSWERED, NOT THE ENGINE'S START.
+// This was first modeled as a process generation and refuted by measurement: 52 readbacks of one
+// endpoint carried 52 distinct values, one per request (vLLM's OpenAI-compatible server stamps the
+// model card with the current time on each listing). So it establishes WHEN a readback was taken
+// and nothing about which process answered; a restart is NOT observable from this route. It keeps
+// upstream's name and is carried as std.types EpochSecs, never a bare Int, beside the readback
+// that produces it.
+type VllmModelsEntryCreated sole_constructor {
+  created: EpochSecs
+}
+
+fn vllm_models_entry_created(created: EpochSecs) -> VllmModelsEntryCreated {
+  VllmModelsEntryCreated { created: created }
+}
+
+fn vllm_version_route_readback(server_version: NonEmptyStr) -> VllmVersionRouteReadback {
+  VllmVersionRouteReadback { reported_version: vllm_self_reported_version(version_string: server_version) }
+}
+
+fn vllm_cache_config_gauge_readback(
+  kv_cache_dtype: NonEmptyStr,
+  gpu_memory_utilization: BasisPoint,
+  prefix_caching_enabled: Bool,
+) -> VllmCacheConfigGaugeReadback {
+  VllmCacheConfigGaugeReadback {
+    kv_cache_dtype: kv_cache_dtype,
+    gpu_memory_utilization: gpu_memory_utilization,
+    prefix_caching_enabled: prefix_caching_enabled,
+  }
+}
+
+fn vllm_evidence_route_outcome(
+  route: VllmParallelEvidenceRoute,
+  response: VllmEvidenceRouteResponse,
+) -> VllmEvidenceRouteOutcome {
+  VllmEvidenceRouteOutcome { route: route, response: response }
+}
+
+fn vllm_tp_realization_missing_wire(missing: VllmTpRealizationMissingEvidence) -> String {
+  match missing {
+    ResolvedParallelConfigurationNotObserved =>
+      "the resolved parallel configuration was not observed, so the expected rank set is not even derivable yet"
+    JoinedRankPopulationNotObserved =>
+      "the resolved parallel configuration is known but no receipt places every expected rank on the selected hosts"
+  }
+}
+
+fn vllm_tp_realization_refusal_cause(refusal: VllmTpRealizationRefusal) -> String {
+  join([
+    "vllm tensor-parallel realization refused for the front door on ",
+    refusal.front_door_host as String,
+    ": ",
+    vllm_tp_realization_missing_wire(missing: refusal.missing),
+    ". This is a missing positive fact, not an unanswered port: a tensor-parallel worker is not ",
+    "required to serve its own front door, so refusing on a silent port would invent a contract in ",
+    "order to fail it",
+  ], "")
+}
+
+data vllm_version_route_2026_09_03: VllmVersionRouteReadback = vllm_version_route_readback(
+  server_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr)
+
+// A DATED RECEIPT OF A HOST NO LONGER IN THE FLEET: srv6 was decommissioned with Group A on 2026-10-07, so
+// its identity is recorded as the receipt read it rather than through the deleted fleet identity row.
+data vllm_front_door_scope_2026_09_03: VllmHistoricalFrontDoorScope = vllm_historical_front_door_scope(
+  front_door_host: "srv6" as HostIdentity,
+  observed_on: "2026-09-03" as NonEmptyStr)
+
+// WHAT IS RETURNED NOW IS NOT THIS ROW'S QUESTION. vllm_models_route_standing reads the live
+// /v1/models document on every dashboard dispatch and produces VllmModelsRouteReadback from it; this
+// bundle is the 2026-09-03 reading and stays a dated receipt of that day's deployment. A reader
+// after a current path or context length wants the live producer, and a reader asking what this
+// fleet looked like on 2026-09-03 wants this.
+data vllm_readback_2026_09_03: VllmHistoricalReadbackBundle = vllm_historical_readback_bundle(
+  scope: vllm_front_door_scope_2026_09_03,
+  models_route: vllm_models_route_readback(
+    served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    configured_model_path: "models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
+    max_model_len: token_count(count: 262144)),
+  version_route: vllm_version_route_2026_09_03,
+  cache_config_gauge: vllm_cache_config_gauge_readback(
+    kv_cache_dtype: "fp8_ds_mla" as NonEmptyStr,
+    gpu_memory_utilization: basis_point(count: 8600),
+    prefix_caching_enabled: true),
+  parallel_evidence_observations: map(
+    vllm_http_parallel_evidence_routes,
+    r => vllm_evidence_route_outcome(
+           route: r, response: EvidenceRouteNotServed { http_status: "404" as NonEmptyStr })),
+)
+
+// CAPACITY IS ABSENT FROM THIS BUNDLE, AND THE LAW SAYING WHY CLASSIFIES SOURCES RATHER THAN
+// ADMITTING EVIDENCE.
+//
+// The gauge also carried a block count and a resolved minimum block size. Their product was computed,
+// called the live token pool, and published upward before the error was caught. The bundle carries no
+// capacity field, and extdeps.vllm.server decide_vllm_capacity_source_kind says which KIND of source
+// would be authoritative -- not that any capacity evidence was acquired, which this readback has none
+// of and could not honestly claim.
+//
+// The two numbers are real observations and are omitted anyway: a block count sitting in a
+// serving-capacity carrier will be multiplied again by the next person who finds it.
+fn vllm_capacity_from_cache_config_fields() -> VllmCapacitySourceAssessment {
+  decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields)
+}
+
+// WHAT THE ALIAS DISAGREEMENT ACTUALLY ESTABLISHES, NARROWED.
+//
+// This module claimed the served id and the configured path CONTRADICT each other. A substring test
+// does not establish a contradiction: the path not containing a quantisation token is not evidence
+// that the id's token is false, because a path need not name the quantisation at all. What is
+// established is weaker and sufficient -- the id carries a token the path does not, so the id is not
+// derivable from the path and must not be read as an artifact identity. The refusal of the id as an
+// artifact claim stands; the contradiction claim does not.
+fn vllm_served_id_is_not_derivable_from_configured_path(
+  readback: VllmModelsRouteReadback,
+) -> Bool {
+  contains(readback.served_model_id as String, "iq3s")
+    && !contains(readback.configured_model_path as String, "iq3s")
+}
+
+// ── DECODING THE /v1/models DOCUMENT, WHICH IS WHERE THIS MODULE'S OWN NOTE SAID TO PUT IT ────
+//
+// The carriers above were authored from a hand transcription and their annotation named the
+// successor: 'the measure is the fact, and when a parser exists it can produce it from a capture
+// rather than beside one.' A parser exists -- the harness GETs this exact document on every
+// dashboard dispatch through gunbc.harness.harness_backend, and has been reading the advertised ids
+// out of it and discarding the rest of the entry. So the decode lives here, beside the carrier whose
+// fields it fills, and the harness passes the parsed document in rather than growing a second idea
+// of what a vLLM entry contains.
+//
+// NOTHING ABOUT WHAT THE FIELDS MEAN CHANGES, AND THAT IS THE POINT OF REUSING THE CARRIER. A live
+// reading of configured_model_path is the same kind of fact as a transcribed one: the path the
+// server was CONFIGURED with, strong evidence about intent and no evidence about bytes. Making the
+// producer live raises the freshness of the reading, not its grade.
+//
+// THE 2026-09-03 ROWS ABOVE ARE NOT SUPERSEDED BY THIS AND ARE NOT A SECOND ANSWER TO ITS QUESTION.
+// They are an observation of a PAST deployment -- they record max_model_len 262144, where the route
+// observed on 2026-09-12 reports 1048576, so they describe a different state rather than disagreeing
+// about this one. This producer answers "what is the engine reporting NOW"; those rows answer "what
+// did it report then", which nothing else in the corpus can answer once they are gone.
+
+// THE THREE OUTCOMES ARE SEPARATE BECAUSE THEY ARE DIFFERENT THINGS TO GO AND DO. An entry that is
+// absent from the document is a route that did not advertise the model at all; a field the entry
+// does not carry is an upstream surface that changed shape; a field that is present and cannot be
+// read exactly is a value this substrate's number fragment declines. Collapsing them would report
+// 'no readback' for three causes with three different remedies -- and the middle one is the one that
+// must be loud, because a silently missing field is how a carrier starts being filled with defaults.
+type VllmModelsRouteReadbackStanding
+  = ModelsRouteRead { readback: VllmModelsRouteReadback }
+  | ModelsRouteEntryAbsent { served_model_id: NonEmptyStr, unexaminable_entries: Int }
+  | ModelsRouteFieldAbsent { served_model_id: NonEmptyStr, field: NonEmptyStr }
+  | ModelsRouteFieldUnreadable { served_model_id: NonEmptyStr, field: NonEmptyStr, cause: NonEmptyStr }
+  | ModelsRouteEntryDuplicated { served_model_id: NonEmptyStr, count: Int }
+  | ModelsRouteDocumentUnreadable { cause: NonEmptyStr }
+
+fn vllm_models_route_standing_wire(s: VllmModelsRouteReadbackStanding) -> String {
+  match s {
+    ModelsRouteRead { readback: r } => join(["read: ", r.configured_model_path as String], "")
+    ModelsRouteEntryAbsent { served_model_id: i, unexaminable_entries: u } =>
+      join([
+        "the /v1/models document carries no entry for ", i as String,
+        "; entries whose id could not be read: ", to_string(u),
+      ], "")
+    ModelsRouteFieldAbsent { served_model_id: i, field: f } =>
+      join(["the /v1/models entry for ", i as String, " carries no ", f as String, " member"], "")
+    ModelsRouteFieldUnreadable { served_model_id: i, field: f, cause: c } =>
+      join(["the /v1/models entry for ", i as String, " carries a ", f as String, " that cannot be read exactly: ", c as String], "")
+    ModelsRouteEntryDuplicated { served_model_id: i, count: n } =>
+      join(["the /v1/models document advertises ", i as String, " ", to_string(n), " times, so no single entry describes it"], "")
+    ModelsRouteDocumentUnreadable { cause: c } =>
+      join(["the /v1/models document could not be read as a model list: ", c as String], "")
+  }
+}
+
+// A CONTEXT LENGTH IS A COUNT OF TOKENS AND MUST ARRIVE AS ONE, AND THE REASON IT DID NOT IS PART
+// OF THE ANSWER. Four different things can go wrong here and they have four different remedies: the
+// member is not a number at all, which is an upstream document defect; the numeral is outside the
+// fragment this substrate reads exactly, which is a limit of ours; it carries fraction digits; or it
+// is negative. The first two are the split extdeps.languages.json.number draws deliberately -- a
+// defect in the document against a limit of this fragment -- and an earlier spelling of this
+// function collapsed all four into a bare Optional while the annotation above it claimed the split
+// was preserved by delegating. It was not preserved; it was discarded one line later, and the caller
+// then printed one sentence for four causes (review 64178). A reading that carries its own reason
+// cannot lose it at the boundary.
+type VllmContextLengthReading
+  = ContextLengthRead { tokens: TokenCount }
+  | ContextLengthNotANumber
+  | ContextLengthOutsideExactFragment { refusal: NonEmptyStr }
+  | ContextLengthNotWholeCount { units: Int, fraction_digits: Int }
+
+fn vllm_context_length_cause(r: VllmContextLengthReading) -> NonEmptyStr {
+  match r {
+    ContextLengthRead { tokens: _ } => "read" as NonEmptyStr
+    ContextLengthNotANumber =>
+      "the member is present but is not a JSON number, which is a defect in the document the route returned rather than a limit of this substrate" as NonEmptyStr
+    ContextLengthOutsideExactFragment { refusal: why } =>
+      join(["the numeral is outside the fragment this substrate reads exactly: ", why as String, ". That is a limit of ours, not a defect in the route's document"], "") as NonEmptyStr
+    ContextLengthNotWholeCount { units: u, fraction_digits: f } =>
+      join([
+        "the numeral reads exactly but is not a whole non-negative token count (units ", to_string(u),
+        ", fraction digits ", to_string(f), "), and rounding it would fabricate a bound on every turn this route serves",
+      ], "") as NonEmptyStr
+  }
+}
+
+fn vllm_models_route_token_count(v: JsonValue) -> VllmContextLengthReading {
+  match read_json_number_value(v: v) {
+    JsonValueIsNotANumber => ContextLengthNotANumber
+    JsonNumberValueRead { reading: r } =>
+      match r {
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: why } =>
+          ContextLengthOutsideExactFragment { refusal: json_number_fragment_refusal_text(r: why) }
+        JsonNumberExact { value: d } =>
+          if d.fraction_digits == 0 && d.units >= 0 {
+            ContextLengthRead { tokens: token_count(count: d.units) }
+          } else {
+            ContextLengthNotWholeCount { units: d.units, fraction_digits: d.fraction_digits }
+          }
+      }
+  }
+}
+
+// EVERY ARM OF json_object_unique_member IS ANSWERED, AND THE REASON IS THAT MODULE'S OWN. It
+// separates four outcomes deliberately -- found, absent, duplicated, and 'this value is not an
+// object at all' -- and says why: 'a scalar document has not omitted a field, it has no fields at
+// all, and collapsing the two would let a bare string satisfy an absence check.' An earlier spelling
+// here matched JsonMemberFound and sent the other three to 'carries no root member', which reported
+// a cause that had not happened and reintroduced, one layer down, the collapse this change was
+// opened to repair (review 64194).
+fn vllm_member_shape_cause(field: NonEmptyStr, lookup: JsonMemberLookup) -> NonEmptyStr {
+  match lookup {
+    JsonMemberFound { value: _ } => "found" as NonEmptyStr
+    JsonMemberAbsent => join(["the entry carries no ", field as String, " member"], "") as NonEmptyStr
+    JsonMemberDuplicated { count: n } =>
+      join(["the entry carries ", to_string(n), " ", field as String, " members, so no single value is its ", field as String], "") as NonEmptyStr
+    JsonMemberNotAnObject => join(["the entry is not an object, so it has no ", field as String, " member to read"], "") as NonEmptyStr
+  }
+}
+
+// ONE LOOKUP PER ENTRY, AND ONE AUTHORITY FOR WHAT ITS id IS. An earlier spelling asked the same
+// question twice with two predicates -- does this entry's id match, and is this entry's id readable
+// -- and their least common ancestor ran both filters over the same list, so json_object_unique_member
+// executed twice per entry (DESIGN 2: a repetition whose ancestor can carry the first value is
+// authored duplication, not a cache obligation).
+//
+// THE TRAVERSAL WAS THE CHEAP HALF OF THE COST. The expensive half was that two independent readings
+// of one value decided two numbers -- matched and unexaminable -- which
+// vllm_models_route_standing then uses to choose between absent, read and duplicated. Widening one
+// predicate's notion of readable without the other is a silent fork between those numbers, and the
+// two matches had already drifted in structure. One reading, one accumulator, and the fork has no
+// spelling (review 64237).
+type VllmModelsEntryIdReading
+  = EntryIdRead { id: String }
+  | EntryIdUnreadable
+
+fn vllm_models_entry_id(entry: JsonValue) -> VllmModelsEntryIdReading {
+  match json_object_unique_member(v: entry, key: "id") {
+    JsonMemberFound { value: idv } =>
+      match idv {
+        JsonString { value: sv } => EntryIdRead { id: sv }
+        JsonNull => EntryIdUnreadable
+        JsonBool { value: _ } => EntryIdUnreadable
+        JsonNumber { lexeme: _ } => EntryIdUnreadable
+        JsonArray { elements: _ } => EntryIdUnreadable
+        JsonObject { members: _ } => EntryIdUnreadable
+      }
+    JsonMemberAbsent => EntryIdUnreadable
+    JsonMemberDuplicated { count: _ } => EntryIdUnreadable
+    JsonMemberNotAnObject => EntryIdUnreadable
+  }
+}
+
+// THE DOCUMENT'S SHAPE IS ANSWERED BEFORE ITS CONTENT, and each way it can fail to be a model list
+// is its own sentence: a scalar document, no data member, two data members, or a data member that is
+// not an array. Every one of those was previously reported as 'no entry for this id', which names
+// the wrong remedy -- the route DID advertise something, and what it advertised could not be read.
+type VllmModelsDataStanding
+  = ModelsDataEntries { entries: List<JsonValue> }
+  | ModelsDataUnreadable { cause: NonEmptyStr }
+
+fn vllm_models_data_standing(doc: JsonValue) -> VllmModelsDataStanding {
+  match json_object_unique_member(v: doc, key: "data") {
+    JsonMemberFound { value: d } =>
+      match d {
+        JsonArray { elements: els } => ModelsDataEntries { entries: els }
+        JsonNull => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonBool { value: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonNumber { lexeme: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonString { value: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+        JsonObject { members: _ } => ModelsDataUnreadable { cause: "the document's data member is not an array" as NonEmptyStr }
+      }
+    JsonMemberAbsent => ModelsDataUnreadable { cause: "the document carries no data member" as NonEmptyStr }
+    JsonMemberDuplicated { count: n } =>
+      ModelsDataUnreadable {
+        cause: join(["the document carries ", to_string(n), " data members, so no single one is its model list"], "") as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      ModelsDataUnreadable { cause: "the document is not an object, so it has no data member" as NonEmptyStr }
+  }
+}
+
+// THE ENTRY IS SELECTED BY THE ID THE CALLER ADMITTED, NOT BY POSITION. A route may advertise more
+// than one model, and taking the first entry would bind a readback about model A to a turn admitted
+// for model B -- the pricing-offer-A-with-offer-B's-inputs failure, one layer down, where every
+// value is real and the join is nonsense.
+//
+// AN ENTRY WHOSE OWN id CANNOT BE READ IS COUNTED RATHER THAN SKIPPED. A filter that silently drops
+// a malformed entry makes 'the route does not advertise this model' indistinguishable from 'the
+// route advertised something this decode could not examine', and only the first of those means what
+// the absent arm says. The count travels on the absent arm so the difference is readable.
+//
+// ONE FOLD, ONE MATCH PER ENTRY, AND NO COPIED ACCUMULATOR. The two predicates that stood here fed
+// two filters over one list, which is two elimination surfaces beside `match` for one coproduct and
+// two independent readings of one value (reviews 64237, 64265). They are gone.
+//
+// WHAT KEPT THEM ALIVE THROUGH ONE REVISION WAS A COST, AND IT IS SOLVED RATHER THAN TRADED AWAY. A
+// fold accumulating every matched entry appends to a list on each hit, which is the copied
+// accumulator DESIGN 6 says to fix regardless of the realized n. It is unnecessary here: a match
+// count above one REFUSES, so nothing downstream needs the second matching entry. The fold carries
+// the count and a zero-or-one first match, so it appends at most once over the whole traversal and
+// still tells 0, 1 and many apart -- which is the only distinction vllm_models_route_standing makes.
+type VllmModelsEntrySelection {
+  first_match: List<JsonValue>
+  matched: Int
+  unexaminable: Int
+}
+
+fn vllm_models_entry_selection(entries: List<JsonValue>, served_model_id: NonEmptyStr) -> VllmModelsEntrySelection {
+  fold(
+    entries,
+    init: VllmModelsEntrySelection { first_match: [], matched: 0, unexaminable: 0 },
+    f: (acc, e) =>
+      match vllm_models_entry_id(entry: e) {
+        EntryIdUnreadable =>
+          VllmModelsEntrySelection {
+            first_match: acc.first_match,
+            matched: acc.matched,
+            unexaminable: acc.unexaminable + 1,
+          }
+        EntryIdRead { id: v } =>
+          if v == (served_model_id as String) {
+            VllmModelsEntrySelection {
+              first_match: if count(acc.first_match) == 0 { [e] } else { acc.first_match },
+              matched: acc.matched + 1,
+              unexaminable: acc.unexaminable,
+            }
+          } else {
+            acc
+          }
+      },
+  )
+}
+
+// THE ADVERTISED IDS COME FROM THE SAME READING, so this module is the one authority for what a
+// vLLM entry's id is. gunbc.harness.harness_backend walked the data array and the id member itself
+// to build its admitted-model input, which is a second source that can drift from this one on what
+// counts as an advertised id -- and the annotation above claimed the harness passed the document in
+// rather than growing a second idea of an entry (review 64265). It does now.
+fn vllm_models_advertised_ids(doc: JsonValue) -> List<String> {
+  match vllm_models_data_standing(doc: doc) {
+    ModelsDataUnreadable { cause: _ } => []
+    ModelsDataEntries { entries: els } =>
+      flat_map(els, e =>
+        match vllm_models_entry_id(entry: e) {
+          EntryIdRead { id: v } => [v]
+          EntryIdUnreadable => []
+        })
+  }
+}
+
+// ONE MATCH PER FIELD AND NO SEED. Each member is looked up once, every lookup arm has its own
+// sentence, and there is nowhere to substitute a default: an entry missing root does not become an
+// empty path, an entry that is a scalar is not reported as an entry missing a field, and a
+// max_model_len this substrate cannot read exactly does not become a zero context.
+fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonEmptyStr) -> VllmModelsRouteReadbackStanding {
+  match json_object_unique_member(v: entry, key: "root") {
+    JsonMemberNotAnObject =>
+      ModelsRouteFieldUnreadable {
+        served_model_id: served_model_id,
+        field: "root" as NonEmptyStr,
+        cause: vllm_member_shape_cause(field: "root" as NonEmptyStr, lookup: JsonMemberNotAnObject),
+      }
+    JsonMemberAbsent => ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "root" as NonEmptyStr }
+    JsonMemberDuplicated { count: n } =>
+      ModelsRouteFieldUnreadable {
+        served_model_id: served_model_id,
+        field: "root" as NonEmptyStr,
+        cause: vllm_member_shape_cause(field: "root" as NonEmptyStr, lookup: JsonMemberDuplicated { count: n }),
+      }
+    JsonMemberFound { value: rootv } =>
+      match rootv {
+        JsonString { value: root } =>
+          match json_object_unique_member(v: entry, key: "max_model_len") {
+            JsonMemberAbsent =>
+              ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "max_model_len" as NonEmptyStr }
+            JsonMemberNotAnObject =>
+              ModelsRouteFieldUnreadable {
+                served_model_id: served_model_id,
+                field: "max_model_len" as NonEmptyStr,
+                cause: vllm_member_shape_cause(field: "max_model_len" as NonEmptyStr, lookup: JsonMemberNotAnObject),
+              }
+            JsonMemberDuplicated { count: n } =>
+              ModelsRouteFieldUnreadable {
+                served_model_id: served_model_id,
+                field: "max_model_len" as NonEmptyStr,
+                cause: vllm_member_shape_cause(field: "max_model_len" as NonEmptyStr, lookup: JsonMemberDuplicated { count: n }),
+              }
+            JsonMemberFound { value: lenv } =>
+              match vllm_models_route_token_count(v: lenv) {
+                ContextLengthRead { tokens: len } =>
+                  ModelsRouteRead {
+                    readback: vllm_models_route_readback(
+                      served_model_id: served_model_id,
+                      configured_model_path: root as NonEmptyStr,
+                      max_model_len: len),
+                  }
+                ContextLengthNotANumber =>
+                  ModelsRouteFieldUnreadable {
+                    served_model_id: served_model_id,
+                    field: "max_model_len" as NonEmptyStr,
+                    cause: vllm_context_length_cause(r: ContextLengthNotANumber),
+                  }
+                ContextLengthOutsideExactFragment { refusal: why } =>
+                  ModelsRouteFieldUnreadable {
+                    served_model_id: served_model_id,
+                    field: "max_model_len" as NonEmptyStr,
+                    cause: vllm_context_length_cause(r: ContextLengthOutsideExactFragment { refusal: why }),
+                  }
+                ContextLengthNotWholeCount { units: u, fraction_digits: f } =>
+                  ModelsRouteFieldUnreadable {
+                    served_model_id: served_model_id,
+                    field: "max_model_len" as NonEmptyStr,
+                    cause: vllm_context_length_cause(r: ContextLengthNotWholeCount { units: u, fraction_digits: f }),
+                  }
+              }
+          }
+        JsonNull =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonBool { value: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonNumber { lexeme: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonArray { elements: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+        JsonObject { members: _ } =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string, so it is not a path the server was configured with" as NonEmptyStr,
+          }
+      }
+  }
+}
+
+// THE DOCUMENT-LEVEL ENTRY POINT. A document advertising the admitted id twice is not read as one
+// entry: folding the matches would pick a winner by list order, and two entries for one id is a
+// route contradicting itself rather than a route to read a path off. It gets its own arm and its own
+// count, because the remedy is neither "wait for the route to advertise it" nor "go read a field" --
+// it is that the route is inconsistent about what it serves.
+fn vllm_models_route_standing(doc: JsonValue, served_model_id: NonEmptyStr) -> VllmModelsRouteReadbackStanding {
+  match vllm_models_data_standing(doc: doc) {
+    ModelsDataUnreadable { cause: c } => ModelsRouteDocumentUnreadable { cause: c }
+    ModelsDataEntries { entries: els } => {
+      let selection = vllm_models_entry_selection(entries: els, served_model_id: served_model_id)
+      if selection.matched == 1 {
+        fold(
+          selection.first_match,
+          init: ModelsRouteEntryAbsent { served_model_id: served_model_id, unexaminable_entries: selection.unexaminable },
+          f: (acc, e) => vllm_models_route_standing_from_entry(entry: e, served_model_id: served_model_id))
+      } else if selection.matched == 0 {
+        ModelsRouteEntryAbsent { served_model_id: served_model_id, unexaminable_entries: selection.unexaminable }
+      } else {
+        ModelsRouteEntryDuplicated { served_model_id: served_model_id, count: selection.matched }
+      }
+    }
+  }
+}
