@@ -192,10 +192,7 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree, loci: Map
 // THE MODULE'S DECLARED CALLABLES, in member (source) order -- a list read off the module body, never a
 // host map, so the order is deterministic. Only a member whose target is an Arrow is a callable.
 fn occurrence_binding_declarations(tree: ResolvedTree) -> List<OccurrenceBindingDeclaration> {
-  let members = fold_list(xs: module_bodies_in_tree(node: tree.root, acc: []), empty: [], cons: fn(acc, b) {
-    fold_list(xs: module_body_member_edges(body: b), empty: acc, cons: fn(a, e) { list_snoc_item(xs: a, item: e) })
-  })
-  fold_list(xs: members, empty: [], cons: fn(acc, edge) {
+  fold_list(xs: occurrence_binding_member_edges(tree: tree), empty: [], cons: fn(acc, edge) {
     match edge.label {
       Authored { name: n } =>
         match edge.target.kind {
@@ -209,6 +206,12 @@ fn occurrence_binding_declarations(tree: ResolvedTree) -> List<OccurrenceBinding
       StructuralLabel { label: _ } => acc
       Positional => acc
     }
+  })
+}
+
+fn occurrence_binding_member_edges(tree: ResolvedTree) -> List<Edge> {
+  fold_list(xs: module_bodies_in_tree(node: tree.root, acc: []), empty: [], cons: fn(acc, b) {
+    fold_list(xs: module_body_member_edges(body: b), empty: acc, cons: fn(a, e) { list_snoc_item(xs: a, item: e) })
   })
 }
 
