@@ -21,6 +21,8 @@ HDR='import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.nat { Nat }
 import std.process { ProcessExit, exit_failure }
 type P { value: Int }
+type R { s: String  p: P  n: Int }
+fn mk_r() -> R { R { s: "x", p: mk_p(), n: 3 } }
 type C = Red | Green { n: Int }
 fn ne() -> NonEmptyStr { "ne" as NonEmptyStr }
 fn nat() -> Nat { 5 }
@@ -43,3 +45,10 @@ done
 probe listconcat "concat([1, 2], [3])"
 probe listconcat_rec "concat([mk_p()], [mk_p()])"
 probe joinlist_rec "join([mk_p()], \",\")"
+
+probe field_s_first "concat(mk_r().s, \"x\")"
+probe field_s_join "join([mk_r().s], \",\")"
+probe field_s_sep "join([\"a\"], mk_r().s)"
+probe field_p_first "concat(mk_r().p, \"x\")"
+probe field_n_first "concat(mk_r().n, \"x\")"
+probe field_s_if "concat(mk_r().s, if true { \" h\" } else { \" n\" })"

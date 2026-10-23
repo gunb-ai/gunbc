@@ -8960,13 +8960,13 @@ fn chain2_class(t: Node, scope: InferScope) -> String {
   else { "" }
 }
 
-fn chain2_value_type(c: Node) -> Node? {
-  let v = arg_value(n: c)
+fn chain2_value_type(c: Node, raw: Bool) -> Node? {
+  let v = if raw { c } else { arg_value(n: c) }
   match v.inferred { Present { value: Resolved { node: _ } } => Present { value: expression_value_type(e: v) }  _ => Absent }
 }
 
-fn chain2_arg_classes(func: String, c: Node, scope: InferScope) -> List<String> {
-  match chain2_value_type(c: c) {
+fn chain2_arg_classes(func: String, c: Node, raw: Bool, scope: InferScope) -> List<String> {
+  match chain2_value_type(c: c, raw: raw) {
     Present { value: t } =>
       if node_is_element_collection(n: t, source_indices: scope.type_env.source_indices) && !node_is_set_collection(n: t, source_indices: scope.type_env.source_indices) {
         if func == "join" {
@@ -8984,9 +8984,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     ExprMethodCall { method_semantics: _ } => expr_method_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
     _ => ""
   }
+  let is_method = match texpr.expr_data { ExprMethodCall { method_semantics: _ } => true  _ => false }
   let host_result = match text_representation_by_identity(n: resolved_type(n: r.typed), env: scope.type_env) { HostText => true  _ => false }
   if (fname == "concat" && host_result) || fname == "join" {
-    let classes = r.typed.children |> flat_map(c => chain2_arg_classes(func: fname, c: c, scope: scope))
+    let classes = r.typed.children |> enumerate |> flat_map(pr => chain2_arg_classes(func: fname, c: pr.second, raw: pr.first == 0 && is_method, scope: scope))
     let diags = classes |> map(k => inference_error(message: concat("CHAIN2CENSUS ", fname, " ", k), span: texpr.span, module_name: scope.module_name))
     InferResult { typed: r.typed, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_of_diagnostics(diagnostics: diags)) }
   } else { r }
