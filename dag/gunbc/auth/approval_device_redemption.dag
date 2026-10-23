@@ -435,6 +435,23 @@ fn approval_device_store_directory() -> ManagedDirectory {
   }
 }
 
+// THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23): the cache of Google's signing
+// keys that gunbc.auth.oidc_id_token_verification reads, kept beside the device store so the broker
+// never reaches a dashboard instance's directory. Ensured for the same reason as the store.
+data approval_jwks_cache_root: NonEmptyStr = "/var/lib/gunbc/approval-jwks"
+
+fn approval_jwks_cache_directory() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "approval-jwks-cache" as NonEmptyStr,
+    path: approval_jwks_cache_root as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
 type DeviceStoreWrite
   = DeviceStoreWritten
   | DeviceStoreSlotOccupied
