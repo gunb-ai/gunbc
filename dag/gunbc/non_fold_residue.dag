@@ -289,4 +289,14 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/bmc_recovery_route.dag::recovery_write_reset_arm" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/target_binding.dag::native_serve_probe_if_entry" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
 ]
