@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, KernelTypeSpellingTable, ambient_name_homes }
 import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text, binding_lines, field_at, ambient_census_kit_rows }
-import gunbc.namespace_cut.migration_kit { KitFinding, KitMigrated, KitNoImportDoesNotRefuse, kit_binding_finding, kit_ambient_route_count }
+import gunbc.namespace_cut.migration_kit { KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitNotRunnable, kit_binding_finding, kit_ambient_route_count }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -367,15 +367,23 @@ fn kit_row_failure(row: AmbientNameHome, kit_stdout: String) -> Optional<String>
   let routes = kit_ambient_route_count(stdout: kit_stdout, spelling: row.name)
   if landed {
     match finding {
+      KitNotRunnable { cause: _ } => optional_absent()
       KitMigrated => if routes == 0 { optional_absent() } else { optional_present(value: "kit row " + row.name + ": migrated but an ambient route still binds it") }
       _ => optional_present(value: "kit row " + row.name + ": landed in ambient_name_homes() but the census does not read it migrated")
     }
   } else {
     match finding {
+      KitNotRunnable { cause: _ } => optional_absent()
       KitNoImportDoesNotRefuse => optional_absent()
       _ => optional_present(value: "kit row " + row.name + ": a candidate not yet landed must read as still ambient, or was not reached")
     }
   }
+}
+
+// A kit row whose fixture occurrences the census never printed is NOT OBSERVED, never a mis-read: the control above
+// stays silent for it and this reports it, so the standing is exit 2 (no observation) instead of a failure or a green.
+fn kit_fixtures_unreached(head_stdout: String) -> Bool {
+  count(ambient_census_kit_rows() |> filter(r => match kit_binding_finding(unimported_stdout: kit_fixture_lines(stdout: head_stdout), imported_stdout: kit_fixture_lines(stdout: head_stdout), row: r) { KitNotRunnable { cause: _ } => true  _ => false })) > 0
 }
 
 fn kit_fixture_control_failure(head_stdout: String) -> Optional<String> {
@@ -400,7 +408,9 @@ fn binding_diff_standing(
       match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), kit_fixture_control_failure(head_stdout: head_stdout)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
-          if (base_status != 0) && (base_status != 2) {
+          if kit_fixtures_unreached(head_stdout: head_stdout) {
+            CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the census printed no kit_fixture binding row for a kit row, so the kit fixtures were not observed (the census refused rewritten modules or did not reach them); no observation, never a pass" } }
+          } else if (base_status != 0) && (base_status != 2) {
             CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base ambient-name census exited " + to_string(base_status) + " (its controls did not hold, or it did not run), so base was not observed" } }
           } else if (head_status != 0) && (head_status != 2) {
             CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head ambient-name census exited " + to_string(head_status) + " (its controls did not hold, or it did not run), so head was not observed" } }
