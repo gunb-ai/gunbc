@@ -721,14 +721,15 @@ fn flex_run_pass(input: FlexPassInput, api_key: Secret, releasing: FlexReleaseIn
     FlexPassDone { outcome: outcome } => outcome
     FlexPassCreateDue { request: request, intent: intent } => flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
     FlexPassDestroyDue { receipt: receipt, request: q } =>
-      FlexPassReleased { receipt: receipt, destroy_status: Present { value: flex_vast_destroy_perform(api_key: api_key, roster: input.observation.roster, request: q) } }
+      FlexPassReleased { receipt: receipt, destroy_status: Present { value: flex_vast_destroy_perform(api_key: api_key, roster: input.observation.roster, ours: input.policy.owner, request: q) } }
   }
 }
 
 // ---- THE VAST ROW'S HALF OF RELEASE. gunbc.serving.rented_release reads a supplier-agnostic instance; the
 // Vast instance maps into it here (id, label, actual_status), and the authorized destroy, which names the
 // instance by the agnostic id, is performed against the Vast instance of that id in the COMPLETE roster
-// this pass observed: a destroy can only ever name an instance this pass read, never a parsed number.
+// this pass observed, REDUCED TO OUR LABEL first: a destroy can only ever name an instance this pass read
+// carrying policy.owner, never a parsed number and never a foreign row that shares the id string.
 fn flex_vast_rented_instance(instance: VastAiInstance) -> RentedObservedInstance {
   RentedObservedInstance {
     id: int_to_decimal_string(value: instance.id) as NonEmptyStr,
@@ -737,16 +738,16 @@ fn flex_vast_rented_instance(instance: VastAiInstance) -> RentedObservedInstance
   }
 }
 
-fn flex_vast_destroy_target(roster: FlexInstancesStanding, request: RentedDestroyRequest) -> VastAiInstance? {
-  match roster {
+fn flex_vast_destroy_target(roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> VastAiInstance? {
+  match flex_ours_roster(roster: roster, ours: ours) {
     FlexInstancesComplete { roster: r } => first_where(r.instances, i => int_to_decimal_string(value: i.id) == (request.instance_id as String))
     _ => none
   }
 }
 
-fn flex_vast_destroy_perform(api_key: Secret, roster: FlexInstancesStanding, request: RentedDestroyRequest) -> String uses net: Network {
-  match flex_vast_destroy_target(roster: roster, request: request) {
-    Absent => "destroy not sent: the instance is not in this pass's complete Vast roster"
+fn flex_vast_destroy_perform(api_key: Secret, roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> String uses net: Network {
+  match flex_vast_destroy_target(roster: roster, ours: ours, request: request) {
+    Absent => "destroy not sent: no instance of ours with that id is in this pass's complete Vast roster"
     Present { value: target } =>
       match vast_ai.InstanceLifecycle.Destroy(api_key: api_key, instance_id: target.id) {
         RestAnswered { answer: _ } => "destroy answered"

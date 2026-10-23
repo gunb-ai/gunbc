@@ -675,15 +675,26 @@ fn w_vast_instance(id: Int, label: String?) -> VastAiInstance {
   }
 }
 
-// THE VAST DESTROY NAMES ONLY AN INSTANCE THIS PASS READ. The agnostic request carries a string id; the
-// Vast row resolves it against the complete roster, so an id outside the roster, or any roster that is
-// not complete, resolves to nothing and no destroy is sent.
+// THE VAST DESTROY NAMES ONLY AN INSTANCE OF OURS THIS PASS READ. The agnostic request carries a string id;
+// the Vast row resolves it against the complete roster REDUCED TO OUR LABEL, so an id outside the roster,
+// any roster that is not complete, and a foreign or unlabelled row that carries the authorized id all
+// resolve to nothing and no destroy is sent.
 test fn the_vast_destroy_target_is_an_instance_of_the_complete_roster() -> Bool {
+  let ours = flex_owner_label_gunbc_flex
   let q = RentedDestroyRequest { instance_id: "1001" as NonEmptyStr }
   let other = RentedDestroyRequest { instance_id: "2002" as NonEmptyStr }
-  (match flex_vast_destroy_target(roster: w_under_roster(), request: q) { Present { value: i } => i.id == 1001  Absent => false })
-    && (match flex_vast_destroy_target(roster: w_under_roster(), request: other) { Present { value: _ } => false  Absent => true })
-    && (match flex_vast_destroy_target(roster: FlexInstancesUnobserved, request: q) { Present { value: _ } => false  Absent => true })
+  (match flex_vast_destroy_target(roster: w_under_roster(), ours: ours, request: q) { Present { value: i } => i.id == 1001  Absent => false })
+    && (match flex_vast_destroy_target(roster: w_under_roster(), ours: ours, request: other) { Present { value: _ } => false  Absent => true })
+    && (match flex_vast_destroy_target(roster: FlexInstancesUnobserved, ours: ours, request: q) { Present { value: _ } => false  Absent => true })
+}
+
+// THE AUTHORIZED ID ON A FOREIGN ROW IS NOT DESTROYED. The release authorized id 1001 from a reading that
+// said ours; the current roster's row 1001 carries another label (or none), so actuation finds no target.
+test fn a_foreign_row_with_the_authorized_id_is_not_destroyed() -> Bool {
+  let ours = flex_owner_label_gunbc_flex
+  let q = RentedDestroyRequest { instance_id: "1001" as NonEmptyStr }
+  (match flex_vast_destroy_target(roster: exhausted(rows: [w_foreign(id: 1001, dollars: 1)]), ours: ours, request: q) { Present { value: _ } => false  Absent => true })
+    && (match flex_vast_destroy_target(roster: exhausted(rows: [w_vast_instance(id: 1001, label: none)]), ours: ours, request: q) { Present { value: _ } => false  Absent => true })
 }
 
 // THE VAST MAPPING INTO THE AGNOSTIC READING keeps the id, the label and the status, and nothing else.
