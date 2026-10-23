@@ -1,185 +1,254 @@
 module test.claim.approval_google_enrolment_witness
 
 import std.decl_ref { decl_ref }
+import extdeps.filesystem.filesystem_io
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, Timestamp, List }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, NonEmptyStr, Timestamp, List, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key }
 import extdeps.apple.app_attest { AppAttestProduction, AttestationVerification, attestation_verification_from_implementation }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
-import extdeps.auth.jwt { NumericDateWholeSeconds, JwtBareString, JwtAudienceSingle }
+import extdeps.auth.jwt { JwtStringOrUri, NumericDateWholeSeconds, JwtBareString, JwtAudience, JwtAudienceSingle, JwtAudienceMultiple }
 import extdeps.auth.oidc {
   OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, JsonWebKeyRef,
-  OidcIdTokenSignatureVerified, OidcIdTokenVerdict, OidcIdTokenRefused, OidcIdTokenNonceMismatch,
-  OidcIdTokenAudienceNotAdmitted, verify_oidc_id_token,
+  OidcIdTokenSignature, OidcIdTokenSignatureVerified, OidcIdTokenNonceMismatch, OidcIdTokenAudienceNotAdmitted,
 }
-import gunbc.auth.google_workspace_login { google_workspace_issuer }
-import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client, approve_ios_oauth_client_id }
 import extdeps.google.workspace { RegisteredIosClient }
+import gunbc.auth.google_workspace_login { google_workspace_issuer }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client, approve_ios_oauth_client_id, tracker_web_test_oauth_client_id }
 import gunbc.auth.approval_device_wire { MobileIos }
 import gunbc.auth.approval_google_enrolment {
   google_enrolment_transcript, google_enrolment_nonce, approval_google_enrolment_policy, google_enrollment_id,
-  ApproverSubjectPin, SubjectPinAbsent, SubjectPinned,
+  GoogleEnrolmentKeys, GoogleApproverAdmission, GoogleApproverAdmitted, GoogleApproverRefused,
+  admit_google_approver_on_roster, admit_google_approver,
+  SubjectPinCreateOrRead, SubjectPinCreatedForPresented, SubjectPinReread,
+  SubjectPinJoined, SubjectPinRefused, join_subject_pin,
   GoogleEnrolmentSlot, GoogleEnrolmentAbsent, GoogleEnrolmentActive, GoogleEnrolmentRevoked,
-  GoogleEnrolmentSubmission, GoogleEnrolmentAdmission, GoogleEnrolmentWrites, GoogleEnrolmentReplays, GoogleEnrolmentRefused,
-  GoogleEnrolmentTokenRefused, GoogleEnrolmentNotAnApprover, GoogleEnrolmentSubjectMismatch,
-  GoogleEnrolmentAttestationForOtherBytes, GoogleEnrolmentRevokedKey,
-  google_enrolment_admission, approval_google_enrolment_admission, new_device_notice,
+  GoogleEnrolmentAdmission, GoogleEnrolmentWrites, GoogleEnrolmentReplays, GoogleEnrolmentRefused,
+  GoogleEnrolmentTokenRefused, GoogleEnrolmentAudienceNotExact, GoogleEnrolmentAuthorizedPartyNotAdmitted,
+  GoogleEnrolmentNotAnApprover, GoogleEnrolmentSubjectMismatch,
+  GoogleEnrolmentAttestationForOtherBytes, GoogleEnrolmentRevokedKey, GoogleEnrolmentStoredMismatch,
+  google_enrolment_admission, new_device_notice,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE WITNESS for gunbc.auth.approval_google_enrolment. The ID token's verdict runs through the real
-// verify_oidc_id_token fold under the real approval_google_enrolment_policy, so the nonce and
-// audience refusals below are the extdeps fold's own arms, reached from the transcript. The signature
-// and the attestation are supplied values (DESIGN 3, a witness discriminates at one interface): their
-// producers are the JWKS realization and the App Attest verifier, whose inhabitance claims live with
-// those modules and with the enrol route.
+// THE WITNESS for gunbc.auth.approval_google_enrolment's three sealed stages. The ID token's verdict
+// runs through the real verify_oidc_id_token under the real approval_google_enrolment_policy, so the
+// nonce and audience refusals are the extdeps fold's own arms, reached from the submitted keys. The
+// signature and the attestation are supplied values (DESIGN 3, a witness discriminates at one
+// interface): their producers are the JWKS realization and the App Attest verifier, whose
+// inhabitance claims live with those modules and with child A's enrol route. The seals are
+// established by the compile-time REDs at the bottom.
 
-data fx_client_id: NonEmptyStr = approve_ios_oauth_client_id
 data fx_email: NonEmptyStr = "operator@gunb.ai"
+data fx_second_email: NonEmptyStr = "second@gunb.ai"
 data fx_subject: NonEmptyStr = "sub-operator"
 data fx_attest_key_id: NonEmptyStr = "ATTESTKEY"
 data fx_now: Timestamp = "2026-10-23T08:00:00Z"
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
 
-fn fx_roster() -> List<NonEmptyStr> { [fx_email] }
+fn ios_client() -> JwtStringOrUri { JwtBareString { value: approve_ios_oauth_client_id } }
+fn dashboard_client() -> JwtStringOrUri { JwtBareString { value: tracker_web_test_oauth_client_id } }
+
+fn keys_for(k: VerifyingKey) -> GoogleEnrolmentKeys {
+  GoogleEnrolmentKeys { platform: MobileIos, decision_key: k, attest_key_id: fx_attest_key_id }
+}
 
 // The token Google mints for a sign-in whose nonce was derived from `signed_for`'s transcript.
-fn fx_claims(signed_for: VerifyingKey, audience: NonEmptyStr, email: NonEmptyStr, subject: NonEmptyStr) -> OidcIdTokenClaims {
+fn fx_claims(signed_for: VerifyingKey, audience: JwtAudience, azp: JwtStringOrUri?, email: NonEmptyStr, subject: NonEmptyStr) -> OidcIdTokenClaims {
   OidcIdTokenClaims {
     issuer: google_workspace_issuer(),
     subject: JwtBareString { value: subject },
-    audience: JwtAudienceSingle { value: JwtBareString { value: audience } },
+    audience: audience,
     expires_at: NumericDateWholeSeconds { seconds: 2000 },
     issued_at: NumericDateWholeSeconds { seconds: 1000 },
     auth_time: none,
     nonce: Present { value: google_enrolment_nonce(transcript: google_enrolment_transcript(platform: MobileIos, decision_key: signed_for, attest_key_id: fx_attest_key_id)) },
-    acr: none, amr: none, azp: none, session_id: none,
+    acr: none, amr: none, azp: azp, session_id: none,
     hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
     standard: OidcStandardClaims { email: Present { value: email as String }, email_verified: Present { value: true }, name: none, picture: none },
   }
 }
 
-// The route's verdict: the policy is built from the SUBMITTED key's transcript.
-fn fx_verdict(submitted: VerifyingKey, claims: OidcIdTokenClaims) -> OidcIdTokenVerdict {
-  verify_oidc_id_token(
-    claims: claims,
-    signature: OidcIdTokenSignatureVerified { key: JsonWebKeyRef { issuer: google_workspace_issuer(), key_id: "witness-key" as NonEmptyStr } },
-    policy: approval_google_enrolment_policy(
-      transcript: google_enrolment_transcript(platform: MobileIos, decision_key: submitted, attest_key_id: fx_attest_key_id),
-      observed_at: NumericDateWholeSeconds { seconds: 1500 },
-    ),
-  )
+fn claims_as(email: NonEmptyStr, subject: NonEmptyStr, signed_for: VerifyingKey) -> OidcIdTokenClaims {
+  fx_claims(signed_for: signed_for, audience: JwtAudienceSingle { value: ios_client() }, azp: none, email: email, subject: subject)
+}
+
+fn verified_signature() -> OidcIdTokenSignature {
+  OidcIdTokenSignatureVerified { key: JsonWebKeyRef { issuer: google_workspace_issuer(), key_id: "witness-key" as NonEmptyStr } }
+}
+
+// Stage 1 through the sealed fold, on a two-address witness roster.
+fn fx_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission {
+  admit_google_approver_on_roster(roster: [fx_email, fx_second_email], claims: claims, signature: verified_signature(), keys: keys_for(k: submitted), observed_at: NumericDateWholeSeconds { seconds: 1500 })
+}
+
+fn fx_production_approver_admission(claims: OidcIdTokenClaims, submitted: VerifyingKey) -> GoogleApproverAdmission {
+  admit_google_approver(claims: claims, signature: verified_signature(), keys: keys_for(k: submitted), observed_at: NumericDateWholeSeconds { seconds: 1500 })
 }
 
 fn fx_attestation(attested_for: VerifyingKey) -> AttestationVerification
   admit_callers: [
-    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_submission"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "enrol"),
   ]
 {
   attestation_verification_from_implementation(key_id: fx_attest_key_id, public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: google_enrolment_transcript(platform: MobileIos, decision_key: attested_for, attest_key_id: fx_attest_key_id), refusal: none)
 }
 
-fn fx_submission(submitted: VerifyingKey, claims: OidcIdTokenClaims, attested_for: VerifyingKey) -> GoogleEnrolmentSubmission {
-  GoogleEnrolmentSubmission {
-    platform: MobileIos,
-    decision_key: submitted,
-    attest_key_id: fx_attest_key_id,
-    id_token: fx_verdict(submitted: submitted, claims: claims),
-    attestation: fx_attestation(attested_for: attested_for),
+// THE WHOLE PATH: approver, pin, enrolment. A refusal at an earlier stage is returned as a refused
+// admission, so each claim reads one outcome.
+fn enrol(claims: OidcIdTokenClaims, submitted: VerifyingKey, attested_for: VerifyingKey, pin: SubjectPinCreateOrRead, slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission {
+  match fx_approver_admission(claims: claims, submitted: submitted) {
+    GoogleApproverRefused { cause: c } => GoogleEnrolmentRefused { cause: c }
+    GoogleApproverAdmitted { approver: a } =>
+      match join_subject_pin(approver: a, observed: pin) {
+        SubjectPinRefused { cause: c } => GoogleEnrolmentRefused { cause: c }
+        SubjectPinJoined { pinned: p } => google_enrolment_admission(pinned: p, attestation: fx_attestation(attested_for: attested_for), slot: slot, observed_at: fx_now)
+      }
   }
 }
 
-fn fx_good() -> GoogleEnrolmentSubmission {
-  fx_submission(submitted: key_a, claims: fx_claims(signed_for: key_a, audience: fx_client_id, email: fx_email, subject: fx_subject), attested_for: key_a)
+fn fresh(claims: OidcIdTokenClaims, k: VerifyingKey) -> GoogleEnrolmentAdmission {
+  enrol(claims: claims, submitted: k, attested_for: k, pin: SubjectPinCreatedForPresented, slot: GoogleEnrolmentAbsent)
 }
 
-fn admit(s: GoogleEnrolmentSubmission, pin: ApproverSubjectPin, slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission {
-  google_enrolment_admission(roster: fx_roster(), s: s, pin: pin, slot: slot, observed_at: fx_now)
+fn first_write() -> GoogleEnrolmentAdmission {
+  fresh(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), k: key_a)
 }
 
-// THE POSITIVE CONTROL: a rostered Workspace identity, a token whose nonce names these keys, and an
-// attestation over the same transcript write one enrolment, pin the subject, and notify once.
-test fn a_first_sign_in_writes_the_enrolment_pins_the_subject_and_notifies() -> Bool {
-  let a = admit(s: fx_good(), pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent)
+// The same request against a stored slot (the pin already holds this subject).
+fn again(slot: GoogleEnrolmentSlot) -> GoogleEnrolmentAdmission {
+  enrol(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), submitted: key_a, attested_for: key_a, pin: SubjectPinReread { subject: fx_subject }, slot: slot)
+}
+
+fn writes(a: GoogleEnrolmentAdmission) -> Bool {
+  match a { GoogleEnrolmentWrites { enrollment: _ } => true  _ => false }
+}
+
+fn notifies(a: GoogleEnrolmentAdmission) -> Bool {
+  match new_device_notice(a: a) { Present { value: _ } => true  Absent => false }
+}
+
+// THE POSITIVE CONTROL.
+test fn a_first_sign_in_writes_the_enrolment_and_notifies() -> Bool {
+  let a = first_write()
   match a {
-    GoogleEnrolmentWrites { enrollment: e, pins_subject: p } =>
-      p && (e.enrollment_id as String) == (google_enrollment_id(subject: fx_subject, decision_key: key_a) as String)
-        && (match new_device_notice(a: a) { Present { value: _ } => true  Absent => false })
-    GoogleEnrolmentReplays { enrollment: _ } => false
-    GoogleEnrolmentRefused { cause: _ } => false
+    GoogleEnrolmentWrites { enrollment: e } =>
+      (e.enrollment_id as String) == (google_enrollment_id(subject: fx_subject, decision_key: key_a) as String) && notifies(a: a)
+    _ => false
   }
 }
 
-// THE NONCE BINDS THE TOKEN TO THE KEYS: a token Google minted for key_a's sign-in, replayed beside
-// key_b, refuses at the extdeps verdict's nonce arm.
+// THE NONCE BINDS THE TOKEN TO THE KEYS.
 test fn a_token_replayed_beside_another_decision_key_refuses_at_the_nonce() -> Bool {
-  let s = fx_submission(submitted: key_b, claims: fx_claims(signed_for: key_a, audience: fx_client_id, email: fx_email, subject: fx_subject), attested_for: key_b)
-  match admit(s: s, pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent) {
+  match fresh(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), k: key_b) {
     GoogleEnrolmentRefused { cause: GoogleEnrolmentTokenRefused { cause: OidcIdTokenNonceMismatch { presented: _, expected: _ } } } => true
     _ => false
   }
 }
 
-// A token minted for another client (the dashboard's web client) refuses at the audience arm.
-test fn a_token_for_another_client_refuses_at_the_audience() -> Bool {
-  let s = fx_submission(submitted: key_a, claims: fx_claims(signed_for: key_a, audience: "tracker-web-prod", email: fx_email, subject: fx_subject), attested_for: key_a)
-  match admit(s: s, pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent) {
+// THE AUDIENCE IS EXACT. A dashboard-only token refuses at the generic verdict. A token whose aud
+// names BOTH clients passes the generic intersection and must refuse at the exact check. A
+// single-aud token whose azp is the dashboard refuses at the authorized-party check.
+test fn a_dashboard_token_refuses_at_the_audience() -> Bool {
+  match fresh(claims: fx_claims(signed_for: key_a, audience: JwtAudienceSingle { value: dashboard_client() }, azp: none, email: fx_email, subject: fx_subject), k: key_a) {
     GoogleEnrolmentRefused { cause: GoogleEnrolmentTokenRefused { cause: OidcIdTokenAudienceNotAdmitted { presented: _, admitted: _ } } } => true
     _ => false
   }
 }
 
+test fn a_token_for_both_clients_with_dashboard_azp_refuses() -> Bool {
+  match fresh(claims: fx_claims(signed_for: key_a, audience: JwtAudienceMultiple { values: [ios_client(), dashboard_client()] }, azp: Present { value: dashboard_client() }, email: fx_email, subject: fx_subject), k: key_a) {
+    GoogleEnrolmentRefused { cause: GoogleEnrolmentAudienceNotExact } => true
+    _ => false
+  }
+}
+
+test fn a_dashboard_authorized_party_refuses() -> Bool {
+  match fresh(claims: fx_claims(signed_for: key_a, audience: JwtAudienceSingle { value: ios_client() }, azp: Present { value: dashboard_client() }, email: fx_email, subject: fx_subject), k: key_a) {
+    GoogleEnrolmentRefused { cause: GoogleEnrolmentAuthorizedPartyNotAdmitted } => true
+    _ => false
+  }
+}
+
+test fn an_ios_authorized_party_is_admitted() -> Bool {
+  writes(a: fresh(claims: fx_claims(signed_for: key_a, audience: JwtAudienceSingle { value: ios_client() }, azp: Present { value: ios_client() }, email: fx_email, subject: fx_subject), k: key_a))
+}
+
 // Workspace membership alone grants nothing.
 test fn a_workspace_member_off_the_roster_refuses() -> Bool {
-  let s = fx_submission(submitted: key_a, claims: fx_claims(signed_for: key_a, audience: fx_client_id, email: "teammate@gunb.ai", subject: "sub-teammate"), attested_for: key_a)
-  match admit(s: s, pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent) {
+  match fresh(claims: claims_as(email: "teammate@gunb.ai", subject: "sub-teammate", signed_for: key_a), k: key_a) {
     GoogleEnrolmentRefused { cause: GoogleEnrolmentNotAnApprover { email: _ } } => true
     _ => false
   }
 }
 
-// A recreated account under the rostered address carries a new subject and refuses against the pin.
-test fn a_new_subject_under_a_pinned_email_refuses() -> Bool {
-  let s = fx_submission(submitted: key_a, claims: fx_claims(signed_for: key_a, audience: fx_client_id, email: fx_email, subject: "sub-recreated"), attested_for: key_a)
-  match admit(s: s, pin: SubjectPinned { subject: fx_subject }, slot: GoogleEnrolmentAbsent) {
-    GoogleEnrolmentRefused { cause: GoogleEnrolmentSubjectMismatch { email: _ } } => true
-    _ => false
-  }
+// THE PIN PRECEDES THE WRITE. Two accounts race under one address: A's create commits and A
+// writes; B's create is lost, B rereads A's subject and refuses, so B reaches no admission that
+// writes or replays and publishes no notice -- the loser leaves no active enrolment.
+test fn the_loser_of_a_two_subject_pin_race_leaves_no_enrolment() -> Bool {
+  let loser = enrol(claims: claims_as(email: fx_email, subject: "sub-recreated", signed_for: key_a), submitted: key_a, attested_for: key_a, pin: SubjectPinReread { subject: fx_subject }, slot: GoogleEnrolmentAbsent)
+  writes(a: first_write())
+    && (match loser { GoogleEnrolmentRefused { cause: GoogleEnrolmentSubjectMismatch { email: _ } } => true  _ => false })
+    && !notifies(a: loser)
 }
 
-// An attestation over another key's transcript refuses even with a good token.
+test fn a_lost_pin_cas_whose_reread_is_this_subject_proceeds() -> Bool {
+  writes(a: again(slot: GoogleEnrolmentAbsent))
+}
+
 test fn an_attestation_over_another_transcript_refuses() -> Bool {
-  let s = fx_submission(submitted: key_a, claims: fx_claims(signed_for: key_a, audience: fx_client_id, email: fx_email, subject: fx_subject), attested_for: key_b)
-  match admit(s: s, pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent) {
+  match enrol(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), submitted: key_a, attested_for: key_b, pin: SubjectPinCreatedForPresented, slot: GoogleEnrolmentAbsent) {
     GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestationForOtherBytes } => true
     _ => false
   }
 }
 
-// IDEMPOTENCY: the same subject and key against an existing enrolment replays it, writes nothing and
-// does not notify again -- so a resent POST is the whole recovery story.
-test fn a_resent_sign_in_replays_and_does_not_notify() -> Bool {
-  let first = admit(s: fx_good(), pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent)
-  match first {
-    GoogleEnrolmentWrites { enrollment: e, pins_subject: _ } =>
-      let again = admit(s: fx_good(), pin: SubjectPinned { subject: fx_subject }, slot: GoogleEnrolmentActive { enrollment: e })
-      match again {
-        GoogleEnrolmentReplays { enrollment: r } =>
-          (r.enrollment_id as String) == (e.enrollment_id as String)
-            && (match new_device_notice(a: again) { Present { value: _ } => false  Absent => true })
+// IDEMPOTENCY, JOINED: the same request against its own stored record replays with no notice.
+test fn a_resent_sign_in_replays_its_own_record_and_does_not_notify() -> Bool {
+  match first_write() {
+    GoogleEnrolmentWrites { enrollment: e } =>
+      match again(slot: GoogleEnrolmentActive { enrollment: e }) {
+        GoogleEnrolmentReplays { enrollment: r } => (r.enrollment_id as String) == (e.enrollment_id as String) && !notifies(a: GoogleEnrolmentReplays { enrollment: r })
         _ => false
       }
     _ => false
   }
 }
 
-// A revoked key cannot come back by signing in again.
+// THE WRONG-SLOT CONTROL: a slot holding ANOTHER key's enrolment is not echoed back as this
+// request's; it refuses naming the first field that disagrees (the id).
+test fn a_slot_holding_another_keys_enrolment_refuses_instead_of_replaying() -> Bool {
+  match fresh(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_b), k: key_b) {
+    GoogleEnrolmentWrites { enrollment: other } =>
+      match again(slot: GoogleEnrolmentActive { enrollment: other }) {
+        GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: f } } => (f as String) == "enrollment_id"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE WRONG-FIELD CONTROL: a record for the SAME subject and key (so the same enrollment_id) written
+// under the other rostered address refuses on google_email, so the join is not only the id. The
+// record is produced by the real stages, never hand-built.
+test fn a_stored_record_differing_only_in_email_refuses_instead_of_replaying() -> Bool {
+  match fresh(claims: claims_as(email: fx_second_email, subject: fx_subject, signed_for: key_a), k: key_a) {
+    GoogleEnrolmentWrites { enrollment: other } =>
+      match again(slot: GoogleEnrolmentActive { enrollment: other }) {
+        GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: f } } => (f as String) == "google_email"
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn a_revoked_key_cannot_re_enrol() -> Bool {
-  match admit(s: fx_good(), pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent) {
-    GoogleEnrolmentWrites { enrollment: e, pins_subject: _ } =>
-      match admit(s: fx_good(), pin: SubjectPinned { subject: fx_subject }, slot: GoogleEnrolmentRevoked { enrollment: e, revoked_at: fx_now }) {
+  match first_write() {
+    GoogleEnrolmentWrites { enrollment: e } =>
+      match again(slot: GoogleEnrolmentRevoked { enrollment: e, revoked_at: fx_now }) {
         GoogleEnrolmentRefused { cause: GoogleEnrolmentRevokedKey } => true
         _ => false
       }
@@ -187,17 +256,48 @@ test fn a_revoked_key_cannot_re_enrol() -> Bool {
   }
 }
 
-// THE PRODUCTION ROWS: the policy's audience is the registered iOS client, and the production
-// roster refuses the fixture address (it names only the operator's Workspace address).
+// THE PRODUCTION ROWS.
 test fn the_production_audience_is_the_registered_ios_client() -> Bool {
   let p = approval_google_enrolment_policy(transcript: "t" as NonEmptyStr, observed_at: NumericDateWholeSeconds { seconds: 1 })
-  p.admitted_audiences == [JwtBareString { value: approve_ios_oauth_client_id }]
+  p.admitted_audiences == [ios_client()]
     && (match approve_ios_oauth_client.registration { RegisteredIosClient { bundle_id: b } => (b as String) == "ai.gunb.approve"  _ => false })
 }
 
 test fn the_production_roster_refuses_an_address_it_does_not_name() -> Bool {
-  match approval_google_enrolment_admission(s: fx_good(), pin: SubjectPinAbsent, slot: GoogleEnrolmentAbsent, observed_at: fx_now) {
-    GoogleEnrolmentRefused { cause: GoogleEnrolmentNotAnApprover { email: _ } } => true
+  match fx_production_approver_admission(claims: claims_as(email: fx_email, subject: fx_subject, signed_for: key_a), submitted: key_a) {
+    GoogleApproverRefused { cause: GoogleEnrolmentNotAnApprover { email: _ } } => true
     _ => false
   }
+}
+
+// ── THE SEALS, REFUSED AT COMPILE TIME ─────────────────────────────────────────────────────────
+// Each probe is a module outside every roster that holds a verified signature and good claims and
+// tries to mint an approver; the refusal is keyed by the callee's name (a class-only count would be a
+// property of the whole closure). The GREEN half is every claim above, calling through the admitted
+// fixtures.
+fn keyed_refusals(source: String, callee: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_count_at_key(rows: rows, diagnostic_class: "ConstructorCallAdmissionRefused", subject_name: callee, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_approver_source: String = "module probe_forged_google_approver\nimport std.types { NonEmptyStr }\nimport extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }\nimport extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcIdTokenSignatureVerified, JsonWebKeyRef }\nimport extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }\nimport gunbc.auth.approval_device_wire { MobileIos }\nimport gunbc.auth.approval_google_enrolment { GoogleEnrolmentKeys, GoogleApproverAdmission, admit_google_approver }\nfn forged() -> GoogleApproverAdmission {\n  admit_google_approver(claims: OidcIdTokenClaims { issuer: JwtUriString { value: \"https://accounts.google.com\" as NonEmptyStr, scheme: \"https\" as NonEmptyStr }, subject: JwtBareString { value: \"forger\" as NonEmptyStr }, audience: JwtAudienceSingle { value: JwtBareString { value: \"433089409875-p2dbfd5ug7f0svkm2dpec1uh9pk09bq6.apps.googleusercontent.com\" as NonEmptyStr } }, expires_at: NumericDateWholeSeconds { seconds: 2000 }, issued_at: NumericDateWholeSeconds { seconds: 1000 }, auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none, hosted_domain: Present { value: OidcHostedDomain { domain: \"gunb.ai\" as NonEmptyStr } }, standard: OidcStandardClaims { email: Present { value: \"brian@gunb.ai\" }, email_verified: Present { value: true }, name: none, picture: none } }, signature: OidcIdTokenSignatureVerified { key: JsonWebKeyRef { issuer: JwtUriString { value: \"https://accounts.google.com\" as NonEmptyStr, scheme: \"https\" as NonEmptyStr }, key_id: \"forged\" as NonEmptyStr } }, keys: GoogleEnrolmentKeys { platform: MobileIos, decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: \"BFORGED\" }, attest_key_id: \"forged\" }, observed_at: NumericDateWholeSeconds { seconds: 1500 })\n}\n"
+
+data forged_roster_fold_source: String = "module probe_forged_google_roster\nimport std.types { NonEmptyStr }\nimport extdeps.auth.jwt { NumericDateWholeSeconds }\nimport extdeps.auth.oidc { OidcIdTokenClaims, OidcIdTokenSignature }\nimport gunbc.auth.approval_google_enrolment { GoogleEnrolmentKeys, GoogleApproverAdmission, admit_google_approver_on_roster }\nfn forged(c: OidcIdTokenClaims, s: OidcIdTokenSignature, k: GoogleEnrolmentKeys) -> GoogleApproverAdmission {\n  admit_google_approver_on_roster(roster: [\"forger@gunb.ai\" as NonEmptyStr], claims: c, signature: s, keys: k, observed_at: NumericDateWholeSeconds { seconds: 1 })\n}\n"
+
+test fn an_unadmitted_caller_holding_a_verified_signature_cannot_mint_an_approver() -> Bool {
+  keyed_refusals(source: forged_approver_source, callee: "admit_google_approver") >= 1
+}
+
+test fn an_unadmitted_caller_cannot_supply_its_own_roster() -> Bool {
+  keyed_refusals(source: forged_roster_fold_source, callee: "admit_google_approver_on_roster") >= 1
+}
+
+// THE GREEN HALF OF THE SEAL: this witness module's own source compiles with no admission refusal on
+// either fold, so the REDs above are the seals and not a broken closure.
+test fn the_admitted_fixtures_resolve_under_the_seals() -> Bool {
+  let own = filesystem_read(path: "dag/test/claim/approval_google_enrolment_witness.dag").content
+  keyed_refusals(source: own, callee: "admit_google_approver") == 0
+    && keyed_refusals(source: own, callee: "admit_google_approver_on_roster") == 0
 }
