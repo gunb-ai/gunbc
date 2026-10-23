@@ -1,0 +1,10 @@
+// MEASUREMENT ONLY (scratch branch): identical to probe4 (bare String equality, std.types-only
+// import), run on MAIN's binaries+tree to answer whether eval grounding_not_derived for a NEW claim
+// module is pre-existing main behavior or introduced by the #14710 census rework.
+module v2.test.claim.qc503_probe4_main
+
+import std.types { Bool, String }
+
+test fn clean_module_string_equality_prepares() -> Bool {
+  "std.fermi" == "std.fermi"
+}
