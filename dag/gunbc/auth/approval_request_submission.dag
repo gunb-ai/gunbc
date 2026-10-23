@@ -88,6 +88,7 @@ type PublisherTokenRead
 
 fn read_publisher_token() -> PublisherTokenRead admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "publish_new_device_notice"),
 ] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {

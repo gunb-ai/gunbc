@@ -1298,9 +1298,19 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // Plus the test.claim.approval_device_routes_wet_witness identity (gunbc#12000): the
 // bound-realization control's enrolment-store Read. Triple enrollment: this expectation, its
 // WetScheduledClaim row, and the gunbc.ci.ci_layer_roots
-// LocalRepoWetLane row for approval_device_routes_wet_witness.dag.
+// LocalRepoWetLane row for approval_device_routes_wet_witness.dag. Plus the two
+// test.claim.approval_google_enrolment_wet_witness identities (the enrol sequence through the real store
+// and the subject pin's lost-CAS reread), whose first effect is shell.Mktemp.DirWithTemplate and whose
+// LocalRepoWetLane row is for approval_google_enrolment_wet_witness.dag.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} }, tail: Empty {} }
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } }
+  }
 }
 
 // Spark pair declared-unit digest identities lived here. They were deleted with

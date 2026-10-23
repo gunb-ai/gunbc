@@ -195,11 +195,11 @@ fn admit_google_approver_on_roster(
   }
 }
 
-// THE PRODUCTION ADMISSION, on the one roster row. Its admit_callers roster is the witness wrapper
-// today; child A's enrol route is the production caller it admits next (a declared frontier, named
-// in gunbc.plans.approval_google_enrolment section 4).
+// THE PRODUCTION ADMISSION, on the one roster row. Its admit_callers roster is the enrol route's
+// device_enrol_admit and the witness wrapper.
 fn admit_google_approver(claims: OidcIdTokenClaims, signature: OidcIdTokenSignature, keys: GoogleEnrolmentKeys, observed_at: NumericDate) -> GoogleApproverAdmission
   admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_enrol_admit"),
     decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_production_approver_admission"),
   ]
 {

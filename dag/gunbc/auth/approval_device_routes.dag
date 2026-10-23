@@ -43,6 +43,7 @@ import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, stored_request_json, observe_escalation, EscalationPending, EscalationDecided, EscalationNotFiled, EscalationUnreadable,
   claims_for, pending_escalations, PendingEscalationsListed, PendingEscalationsRefused,
 }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.auth.approval_device_wire {
   MobileIos, MobileAndroid, device_read_client_data, device_push_update_client_data, approval_device_read_skew,
   ReadAuthentication, decode_read_request, PushUpdateRequest, decode_push_update_request, push_update_json,
@@ -412,7 +413,7 @@ fn device_enrolment_notification(notice: NewDeviceNotice, approval_url: NonEmpty
 
 fn publish_new_device_notice(notice: NewDeviceNotice) -> String?
   admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_enrol_response_at"),
+    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_enrol_admit"),
   ]
 {
   match approval_broker_serving_base_url() {
@@ -829,29 +830,29 @@ fn device_operator_refusal(presented: TailnetIdentity) -> DeviceRouteResponse? {
   }
 }
 
-fn device_listing_row_json(slot: GoogleEnrolmentSlot) -> String? {
+fn device_listing_row_json(slot: GoogleEnrolmentSlot) -> String {
   match slot {
-    GoogleEnrolmentActive { enrollment: e } => Present { value: device_listing_member(e: e, standing: "active") }
-    GoogleEnrolmentRevoked { enrollment: e, revoked_at: _ } => Present { value: device_listing_member(e: e, standing: "revoked") }
-    GoogleEnrolmentAbsent => none
-    GoogleEnrolmentUnreadable { detail: _ } => none
+    GoogleEnrolmentActive { enrollment: e } => device_listing_member(e: e, standing: "active")
+    GoogleEnrolmentRevoked { enrollment: e, revoked_at: _ } => device_listing_member(e: e, standing: "revoked")
+    GoogleEnrolmentAbsent => ""
+    GoogleEnrolmentUnreadable { detail: _ } => ""
   }
 }
 
 fn device_listing_member(e: GoogleDeviceEnrollment, standing: String) -> String {
-  json_emit(v: JsonObject { members: [
-    JsonMember { key: "enrollment_id", value: JsonString { value: e.enrollment_id as String } },
-    JsonMember { key: "google_email", value: JsonString { value: e.google_email as String } },
-    JsonMember { key: "attest_key_id", value: JsonString { value: device_attest_key_of(e: e) } },
-    JsonMember { key: "enrolled_at", value: JsonString { value: e.enrolled_at } },
-    JsonMember { key: "standing", value: JsonString { value: standing } },
-  ] })
+  serialize_json(v: json_object(members: [
+    json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
+    json_kv(key: "google_email", value: json_string(s: e.google_email as String)),
+    json_kv(key: "attest_key_id", value: json_string(s: device_attest_key_of(e: e))),
+    json_kv(key: "enrolled_at", value: json_string(s: e.enrolled_at)),
+    json_kv(key: "standing", value: json_string(s: standing)),
+  ]))
 }
 
 fn device_attest_key_of(e: GoogleDeviceEnrollment) -> String {
   match e.evidence {
-    IosAttestedAppInstance { key_id: k, public_key_point_b64url: _, receipt_b64: _, environment: _ } => k as String
-    AndroidAttestedDecisionKey { decision_key: _ } => ""
+    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } => k as String
+    AndroidAttestedDecisionKey => ""
   }
 }
 
@@ -862,7 +863,7 @@ fn device_list_response(presented: TailnetIdentity) -> DeviceRouteResponse {
       match list_google_enrolments(root: approval_device_store_root) {
         GoogleEnrolmentListingRefused { detail: d } => device_refused(status: 503, reason: d as String)
         GoogleEnrolmentsListed { slots: slots } =>
-          DeviceRouteResponse { status: 200, body: "[" + join(filter_present(map(slots, s => device_listing_row_json(slot: s))), ",") + "]" }
+          DeviceRouteResponse { status: 200, body: "[" + join(filter(map(slots, s => device_listing_row_json(slot: s)), r => r != ""), ",") + "]" }
       }
   }
 }
