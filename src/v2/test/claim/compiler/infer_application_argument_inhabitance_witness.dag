@@ -58,7 +58,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 
 fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
@@ -83,9 +84,10 @@ fn inhabitance_apply(domain: Node, arg: Node) -> Node {
           domain: domain,
           return_type_binding: ^dag_binding_type_int,
           body: dag_int_literal_fixture_one()
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: arg }
+      Edge { label: Positional, target: arg, declaration: NotADeclaration }
     ]
   )
 }
@@ -111,7 +113,8 @@ fn inhabitance_generic_formal_tree() -> Node {
       children: [
         Edge {
           label: Positional,
-          target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+          target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+          declaration: NotADeclaration
         }
       ]
     )
@@ -142,15 +145,17 @@ fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
                 children: type_binder_set_children(binders: [
                   Edge {
                     label: Authored { name: ^inhabitance_type_param_t },
-                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+                    declaration: NotADeclaration
                   }
                 ], source: dag_type_atom_node(identity: ^inhabitance_type_param_t))
               )
             )
           )
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -181,15 +186,18 @@ fn inhabitance_arity_unmodeled_tree() -> Node {
           ),
           return_type_binding: ^dag_binding_type_int,
           body: dag_int_literal_fixture_one()
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_int_literal_fixture_one()
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_int_literal_fixture_two()
+        target: dag_int_literal_fixture_two(),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -201,11 +209,13 @@ fn inhabitance_formal_unresolved_tree() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^inhabitance_takes_int)
+        target: dag_type_atom_node(identity: ^inhabitance_takes_int),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_int_literal_fixture_one()
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -390,11 +400,13 @@ fn inhabitance_collection_type_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+        target: dag_type_atom_node(identity: ^inhabitance_type_list),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        target: dag_type_atom_node(identity: ^dag_binding_type_int),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -606,9 +618,10 @@ fn aai_list_of(elem: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+        target: dag_type_atom_node(identity: ^inhabitance_type_list),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: elem }
+      Edge { label: Positional, target: elem, declaration: NotADeclaration }
     ]
   )
 }

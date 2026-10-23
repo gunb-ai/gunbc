@@ -18504,10 +18504,12 @@ fn serve_write_response(
 }
 
 /// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
-/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
-/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
-/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
-/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+/// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
+/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
+/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
+/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
+/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
+/// value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18519,17 +18521,7 @@ fn serve_wire_header_line(
         return None;
     }
     let name = match ctx.field(fields, "name") {
-        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
-            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
-                "Location"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
-                "Set-Cookie"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
-                "Cache-Control"
-            } else {
-                return None;
-            }
-        }
+        Some(Value::Str(s)) => s.to_string(),
         _ => return None,
     };
     let value = match ctx.field(fields, "value") {
@@ -31672,7 +31664,7 @@ mod peel_alias_fixpoint_termination {
                 ),
             );
             // No files in this probe: the peel tree is synthetic, module_path is empty.
-            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // file_modules / module_named_imports / alias_cycles therefore come from empty_symbol_index,
             // the same constructor every other empty SymbolIndex uses.
             let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
@@ -31680,6 +31672,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: empty_index.services.clone(),
                 transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                alias_cycles: empty_index.alias_cycles.clone(),
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),

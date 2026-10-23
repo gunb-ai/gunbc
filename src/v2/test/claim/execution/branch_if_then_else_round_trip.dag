@@ -1,6 +1,5 @@
 module v2.test.claim.execution.branch_if_then_else_round_trip
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -154,8 +153,7 @@ data branch_if_then_else_inferred_tree: InferredTree = InferredTree {
   root: branch_if_then_else_emitted_root,
   facts: PartialFunction {
     lookup: branch_if_then_else_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn branch_if_then_else_emit_accepts() -> Outcome<Medium<String>> {
