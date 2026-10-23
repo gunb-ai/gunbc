@@ -2207,10 +2207,6 @@ data forge_evidence_only_source: String = verdict_probe_hdr + "\nfn forge_eviden
 // hand-picked interface, a boot target of its own invention, an observation that supports nothing.
 data forge_ready_source: String = verdict_probe_hdr + "\nfn forge_verdict() -> FirmwareNetworkBootStanding {\n  Ready { conclusion: AdmittedReadyConclusion {\n    firmware_mode: UefiPxe { tftp_root: uri_https(locator: \"edge.invalid/pxe\") },\n    network_interface: \"eth0\",\n    boot_target: BootTargetPxe,\n    evidence: " + forged_evidence_body + ",\n  }}\n}\n"
 
-// THE LAWFUL PAIR: the same imports, and the observation obtained from the PUBLIC observation
-// constructor (legal -- the probe owns observations) with no verdict constructed. Clean of the class,
-// so a refusal above is the seal and not a probe that fails to compile. Every hostile source in this
-// file travels with its lawful pair for exactly that reason.
 // THE REWRAP, WHICH IS THE PROBE THAT ACTUALLY GUARDS HOLD 1. The two sources above forge the
 // EVIDENCE (write its literal), which the payload seal has always refused -- so a probe that stops
 // there is satisfied by the old model and would have stayed green while a caller could rewrap lawful
@@ -2243,11 +2239,11 @@ fn sole_ctor_count(source: String) -> Int {
     // establish successful compilation and the lawful `== 0` can be satisfied by a failure -- and a
     // hostile `>= 1` can be satisfied WHILE an unrelated import defect coexists with the real violation,
     // because violations are collected per source and an import error does not suppress them. Neither
-    // zero nor positive counts say WHERE a name resolved from. What DOES guard the header is the textual
-    // module-and-symbol pin in the argument-spine test below -- drift detection only: it catches a typo,
-    // a deletion, or a retarget to a module that does not even declare the name. It is LEXICAL, so it
-    // does NOT establish resolved provenance; the frontier row
-    // firmware_network_boot_probe_resolution_frontier records that residual gap. No witness
+    // zero nor positive counts say WHERE a name resolved from. Nothing in this
+    // file guards the header's imports against silent drift: the admission wall is covered by the
+    // compiler's own fixtures, and the frontier row
+    // firmware_network_boot_probe_resolution_frontier records the missing capability (resolved
+    // identity of each use). No witness
     // demonstrates the fooled guard today: the check that would distinguish it (resolved identity of
     // the use) is exactly the capability that frontier names, so an embedded 'look-alike header that
     // still passes the substring' witness would only restate the substring semantics over hand-written
@@ -2257,19 +2253,16 @@ fn sole_ctor_count(source: String) -> Int {
   }
 }
 
-// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused, and the lawful pair
-// over the SAME imports must be clean. CAREFUL, measured not argued: neither side's COUNT proves
-// import resolution. The lawful pair ALONE does not separate 'refused correctly' from 'never
+// WHAT THIS PROVES, AND WHAT IT DOES NOT. Both hostile sources must be refused. CAREFUL, measured not argued: neither side's COUNT proves
+// import resolution. A clean count ALONE does not separate 'refused correctly' from 'never
 // compiled' -- an observed census can report zero rows of the wanted class while the source has
 // unrelated errors; zero does not establish successful compilation, and `== 0` is
 // satisfied by exactly such a zero. And the hostile side's `>= 1` does not certify the imports either: it
 // requires a violation to be PRESENT, and a real violation coexists with an unrelated import defect
 // (violations are collected per source; an import error does not suppress them), so a hostile source
-// could carry a broken import and still legitimately count 1. What the counts DO establish is the
-// seal verdict under a compilable source; what guards the header against silent drift is the textual
-// substring pin on the shared header in the argument-spine test -- drift detection, NOT a resolution
-// check: it narrows how the header can drift silently and does not prove where the name resolves to
-// (the frontier row firmware_network_boot_probe_resolution_frontier records that residual gap).
+// could carry a broken import and still legitimately count 1. What the count DOES establish is the
+// seal verdict under a compilable source; where the header's names resolve is not proven here (the
+// frontier row firmware_network_boot_probe_resolution_frontier records that gap).
 // OWNERSHIP OF MUTATIONS, stated so no claim here is broader than the
 // row that reddens it: THIS test is reddened by deleting `sole_constructor` from the `ReadyEvidence`
 // record -- both hostile sources contain a `ReadyEvidence` literal, so unsealing it takes both counts to
@@ -3636,7 +3629,7 @@ test fn an_unexpected_http_status_survives_to_the_final_refusal_with_its_status(
 // seam's own consumer frontier). unbound_dissolution reports DissolutionUnbound: no
 // declaration discharges this yet, stated plainly rather than dressed as a pending trigger.
 data firmware_network_boot_probe_resolution_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DISSOLVE-ON: a claim-witness-reachable readback maps an embedded probe source String to the QualifiedName each named use resolves to, consumable from .dag. When it lands, replace the textual substring guard in the_probe_and_its_control_still_exercise_every_argument_builder with an assertion that verdict_probe_hdr's SecureBootUnobserved resolves to gunbc.secure_boot_observation -- the drift modes a substring cannot distinguish, where a comment-only canonical import plus a real look-alike import still satisfy the guard. Acceptance for the replacement: canonical AND multiline spellings GREEN; a comment-only import RED; missing or look-alike RED. Candidate home for the op: the resolved-provenance path in v2.compiler.resolution_provenance (resolve_reference_provenance), given a source-string entry point.",
+  description: "DISSOLVE-ON: a claim-witness-reachable readback maps an embedded probe source String to the QualifiedName each named use resolves to, consumable from .dag. When it lands, assert that verdict_probe_hdr's SecureBootUnobserved resolves to gunbc.secure_boot_observation -- the drift modes a substring cannot distinguish, where a comment-only canonical import plus a real look-alike import still satisfy the guard. Acceptance for the replacement: canonical AND multiline spellings GREEN; a comment-only import RED; missing or look-alike RED. Candidate home for the op: the resolved-provenance path in v2.compiler.resolution_provenance (resolve_reference_provenance), given a source-string entry point.",
 )
 
 // THE GAP IS OPEN AND STAYS OPEN UNTIL A REAL READBACK LANDS -- not silently Pending,
