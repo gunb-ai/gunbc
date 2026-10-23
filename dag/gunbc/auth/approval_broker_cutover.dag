@@ -341,6 +341,7 @@ type CutoverRefusal
   = DarkDeploymentNotListening { detail: NonEmptyStr }
   | DarkDeploymentOnUnexpectedPort { observed: Port, expected: Port }
   | DarkStageBrokerAlreadyHoldsWriterAuthority
+  | UpgradeReadbackWhileRoadmapStillWrites
   | ReleaseUnreadable { detail: NonEmptyStr }
   | ReleaseDoesNotMatchCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
   | DemandNotMeasured { missing: NonEmptyStr }
@@ -425,19 +426,33 @@ fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal?
 // express -- a loopback client reaches the process whatever the front door says -- so a broker
 // already holding authority at the dark stage is refused by name rather than observed to be
 // unlikely.
-fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+fn broker_listening_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.dark {
     DarkUnitNotStarted { detail: d } => Present { value: DarkDeploymentNotListening { detail: d } }
     DarkUnitListening { port: p } =>
       if !(p == approval_broker_listen_port) {
         Present { value: DarkDeploymentOnUnexpectedPort { observed: p, expected: approval_broker_listen_port } }
       } else {
-        match approval_writer_authority {
-          BrokerWriter => Present { value: DarkStageBrokerAlreadyHoldsWriterAuthority }
-          RoadmapWriter => Absent
-        }
+        Absent
       }
   }
+}
+
+fn dark_deployment_admission_under(
+  authority: ApprovalWriterAuthority,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverRefusal? {
+  first_refusal(causes: [
+    broker_listening_admission(e: e),
+    match authority {
+      BrokerWriter => Present { value: DarkStageBrokerAlreadyHoldsWriterAuthority }
+      RoadmapWriter => Absent
+    },
+  ])
+}
+
+fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  dark_deployment_admission_under(authority: approval_writer_authority, e: e)
 }
 
 // THE READBACK MUST NAME THE CANDIDATE, NOT MERELY LOOK LIKE A REVISION. Three outcomes, and the
@@ -613,6 +628,13 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
         " -- authority and routing both derive from that one row ",
         "(gunbc.auth.approval_cutover_posture), and it moves in one modeled transaction after the ",
         "demand is measured.",
+      ], "") as NonEmptyStr
+    UpgradeReadbackWhileRoadmapStillWrites =>
+      join([
+        "the roadmap still holds approval-store writer authority, so there is no live broker ",
+        "release to upgrade: the install is the dark stage until the posture moves ",
+        "(gunbc.auth.approval_cutover_posture), and the upgrade readback would be vouching for a ",
+        "broker that cannot yet serve the approval paths.",
       ], "") as NonEmptyStr
     ReleaseUnreadable { detail: d } =>
       join(["the dark broker did not read back a release revision: ", d as String,
@@ -914,16 +936,78 @@ fn dark_install_release_discharged(
   tree_receipt: BrokerTreeReceiptRead,
   expected_release: NonEmptyStr,
 ) -> CutoverAdmission {
-  match tree_receipt_admission(read: tree_receipt, expected_release: expected_release) {
+  dark_install_release_discharged_under(
+    authority: approval_writer_authority,
+    listening_port: listening_port,
+    read: read,
+    tree_receipt: tree_receipt,
+    expected_release: expected_release,
+  )
+}
+
+// ── THE POSTURE SELECTS THE READBACK, AND THE INSTALL ROUTE STAYS ONE ───────────────────────
+// ONCE THE BROKER IS THE LIVE WRITER, "PROVE-RELEASE OF A DARK PROCESS" IS THE WRONG QUESTION AND
+// ITS REFUSAL IS CORRECT: dark_deployment_admission says by name that a broker holding the store is
+// not dark. The fleet-converge run that installed 66474e06 wrote the unit, restarted it and read
+// /livez 200 on that release, and then went RED on exactly that refusal -- the swap was right and
+// the question asked of it was not.
+//
+// SO THE MODE KEEPS ITS NAME AND ITS ROUTE (a rename would be a second spelling of the one deploy
+// route) AND THE POST-INSTALL QUESTION IS SELECTED FROM THE AUTHORITY THE POSTURE DERIVES. Dark
+// (RoadmapWriter) asks the dark readback unchanged. Live (BrokerWriter) asks the upgrade readback:
+// the same tree-receipt-names-the-candidate and the same /livez-revision-equals-installed
+// comparisons, minus the one refusal that is false of a live writer. The device-crypto sidecar
+// digest readback follows either, in gunbc.live_deploy.apply.
+//
+// THE REFUSAL STAYS TYPED AND FIRES WHERE IT IS GENUINELY WRONG: the dark readback still refuses a
+// broker holding the store, and the upgrade readback refuses a roadmap that still writes.
+fn upgrade_install_release_discharged_under(
+  authority: ApprovalWriterAuthority,
+  listening_port: Port,
+  read: ServeLivenessRead,
+  tree_receipt: BrokerTreeReceiptRead,
+  expected_release: NonEmptyStr,
+) -> CutoverAdmission {
+  match authority {
+    RoadmapWriter => StageRefused { stage: ProveRelease, cause: UpgradeReadbackWhileRoadmapStillWrites }
+    BrokerWriter =>
+      match first_refusal(causes: [
+        tree_receipt_admission(read: tree_receipt, expected_release: expected_release),
+        broker_listening_admission(e: dark_install_evidence(listening_port: listening_port, read: read, expected_release: expected_release)),
+        release_admission(e: dark_install_evidence(listening_port: listening_port, read: read, expected_release: expected_release)),
+      ]) {
+        Present { value: cause } => StageRefused { stage: ProveRelease, cause: cause }
+        Absent => StageAdmitted { stage: ProveRelease }
+      }
+  }
+}
+
+fn dark_install_release_discharged_under(
+  authority: ApprovalWriterAuthority,
+  listening_port: Port,
+  read: ServeLivenessRead,
+  tree_receipt: BrokerTreeReceiptRead,
+  expected_release: NonEmptyStr,
+) -> CutoverAdmission {
+  match first_refusal(causes: [
+    tree_receipt_admission(read: tree_receipt, expected_release: expected_release),
+    dark_deployment_admission_under(authority: authority, e: dark_install_evidence(listening_port: listening_port, read: read, expected_release: expected_release)),
+    release_admission(e: dark_install_evidence(listening_port: listening_port, read: read, expected_release: expected_release)),
+  ]) {
     Present { value: cause } => StageRefused { stage: ProveRelease, cause: cause }
-    Absent =>
-      approval_broker_cutover_stage_discharged(
-        stage: ProveRelease,
-        e: dark_install_evidence(
-          listening_port: listening_port,
-          read: read,
-          expected_release: expected_release,
-        ),
-      )
+    Absent => StageAdmitted { stage: ProveRelease }
+  }
+}
+
+fn broker_install_readback_under(
+  authority: ApprovalWriterAuthority,
+  listening_port: Port,
+  read: ServeLivenessRead,
+  tree_receipt: BrokerTreeReceiptRead,
+  expected_release: NonEmptyStr,
+) -> CutoverAdmission {
+  match authority {
+    RoadmapWriter => dark_install_release_discharged_under(authority: authority, listening_port: listening_port, read: read, tree_receipt: tree_receipt, expected_release: expected_release)
+    BrokerWriter => upgrade_install_release_discharged_under(authority: authority, listening_port: listening_port, read: read, tree_receipt: tree_receipt, expected_release: expected_release)
   }
 }

@@ -47,6 +47,9 @@ import gunbc.auth.approval_broker_cutover {
   approval_broker_cutover_admission,
   approval_broker_cutover_stage_discharged,
   dark_install_release_discharged, dark_install_evidence,
+  dark_install_release_discharged_under, upgrade_install_release_discharged_under,
+  broker_install_readback_under, DarkStageBrokerAlreadyHoldsWriterAuthority,
+  UpgradeReadbackWhileRoadmapStillWrites,
   BrokerTreeReceiptRead, TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
   observe_broker_tree_receipt, TreeReceiptNotObserved, TreeIsNotTheCandidate,
   DarkUnitNotStarted,
@@ -654,7 +657,8 @@ test fn the_dark_install_refuses_a_body_that_is_not_the_liveness_document() -> B
 // THE POSITIVE CONTROL. Without it every claim above is satisfiable by a fold that refuses
 // everything -- which is the same defect as one that admits everything, wearing the other sign.
 test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
-  match dark_install_release_discharged(
+  match dark_install_release_discharged_under(
+    authority: RoadmapWriter,
     listening_port: approval_broker_listen_port,
     read: probe_answered(body: cutover_fixture_liveness_body),
     tree_receipt: fixture_tree_receipt(),
@@ -914,5 +918,94 @@ test fn a_malformed_revision_and_a_wrong_revision_refuse_differently() -> Bool {
       _ => false
     }
     StageAdmitted { stage: _ } => false
+  }
+}
+
+// ── THE POST-INSTALL READBACK IS SELECTED FROM THE POSTURE ──────────────────────────────────
+// fleet-converge run 39897344906: the unit was written, the broker restarted, /livez named the
+// installed release, and the stage still refused because the broker already held the store. These
+// claims pin the three postures of the one install route.
+fn selected_readback(authority: ApprovalWriterAuthority, read: ServeLivenessRead) -> CutoverAdmission {
+  broker_install_readback_under(
+    authority: authority,
+    listening_port: approval_broker_listen_port,
+    read: read,
+    tree_receipt: fixture_tree_receipt(),
+    expected_release: cutover_fixture_revision,
+  )
+}
+
+// LIVE WRITER, CORRECT RELEASE: the upgrade readback admits. This is the run that went RED.
+test fn a_live_writer_posture_selects_the_upgrade_readback_and_admits_the_installed_release() -> Bool {
+  match selected_readback(authority: BrokerWriter, read: probe_answered(body: cutover_fixture_liveness_body)) {
+    StageAdmitted { stage: _ } => true
+    StageRefused { stage: _, cause: _ } => false
+  }
+}
+
+// THE RED CONTROL: the same inputs through the old (dark) question under a live writer refuse by
+// name. This is the pre-change behaviour of the install route, kept as the control that the
+// selection is what turns the run green.
+test fn the_old_dark_readback_refuses_the_live_writer_by_name() -> Bool {
+  match dark_install_release_discharged_under(
+    authority: BrokerWriter,
+    listening_port: approval_broker_listen_port,
+    read: probe_answered(body: cutover_fixture_liveness_body),
+    tree_receipt: fixture_tree_receipt(),
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageRefused { stage: _, cause: DarkStageBrokerAlreadyHoldsWriterAuthority } => true
+    other => false
+  }
+}
+
+// THE DARK POSTURE IS UNCHANGED: selection routes it to the dark readback, which admits.
+test fn a_dark_posture_still_selects_the_dark_readback() -> Bool {
+  match selected_readback(authority: RoadmapWriter, read: probe_answered(body: cutover_fixture_liveness_body)) {
+    StageAdmitted { stage: _ } => true
+    StageRefused { stage: _, cause: _ } => false
+  }
+}
+
+// THE UPGRADE READBACK IS A REAL READBACK, NOT A WAIVER: a live broker that serves another release,
+// answers nothing, or sits on a stale tree is refused.
+test fn the_upgrade_readback_refuses_a_stale_release_an_unanswered_unit_and_a_stale_tree() -> Bool {
+  let stale = probe_answered(body: join([
+    "{\"live\":true,\"", running_release_revision_key,
+    "\":\"fedcba9876543210fedcba9876543210fedcba98\",\"bound_port\":8085}",
+  ], ""))
+  let down = serve_liveness_read_from_probe(success: false, body: "", error: "connection refused" as NonEmptyStr)
+  let stale_release = match selected_readback(authority: BrokerWriter, read: stale) {
+    StageRefused { stage: _, cause: ReleaseDoesNotMatchCandidate { expected: _, observed: _ } } => true
+    other => false
+  }
+  let unanswered = match selected_readback(authority: BrokerWriter, read: down) {
+    StageRefused { stage: _, cause: DarkDeploymentNotListening { detail: _ } } => true
+    other => false
+  }
+  let stale_tree = match upgrade_install_release_discharged_under(
+    authority: BrokerWriter,
+    listening_port: approval_broker_listen_port,
+    read: probe_answered(body: cutover_fixture_liveness_body),
+    tree_receipt: TreeReceiptUnreadable { detail: "absent" as NonEmptyStr },
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageRefused { stage: _, cause: TreeReceiptNotObserved { detail: _ } } => true
+    other => false
+  }
+  stale_release && unanswered && stale_tree
+}
+
+// THE UPGRADE QUESTION IS WRONG WHILE THE ROADMAP STILL WRITES, and it says so by type.
+test fn the_upgrade_readback_refuses_a_roadmap_that_still_writes() -> Bool {
+  match upgrade_install_release_discharged_under(
+    authority: RoadmapWriter,
+    listening_port: approval_broker_listen_port,
+    read: probe_answered(body: cutover_fixture_liveness_body),
+    tree_receipt: fixture_tree_receipt(),
+    expected_release: cutover_fixture_revision,
+  ) {
+    StageRefused { stage: _, cause: UpgradeReadbackWhileRoadmapStillWrites } => true
+    other => false
   }
 }

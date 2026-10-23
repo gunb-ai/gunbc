@@ -123,9 +123,10 @@ import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, 
 import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
 import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.auth.approval_writer_authority { approval_writer_authority }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
-  dark_install_release_discharged, cutover_refusal_reason,
+  broker_install_readback_under, cutover_refusal_reason,
   BrokerTreeReceiptRead, observe_broker_tree_receipt,
 }
 import gunbc.live_deploy.readiness {
@@ -1022,7 +1023,8 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     body: receipt_read.content,
     error: join(["reading ", receipt_path, ": ", receipt_read.error], "") as NonEmptyStr,
   )
-  match dark_install_release_discharged(
+  match broker_install_readback_under(
+    authority: approval_writer_authority,
     listening_port: port,
     read: read,
     tree_receipt: tree_receipt,
@@ -1031,7 +1033,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     StageAdmitted { stage: _ } => device_crypto_sidecar_readback_exit(spec: spec, candidate: candidate)
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([
-        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        "approval broker install: the unit was written but the release readback (prove-release) refuses: ",
         cutover_refusal_reason(c: c) as String,
       ], ""))
   }
