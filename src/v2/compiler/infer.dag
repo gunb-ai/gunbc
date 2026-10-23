@@ -10792,8 +10792,8 @@ fn infer_demands_to_obligations(
                   let application = node_with_occurrence_id(
                     kind: ComputationNode { behavior: Transform },
                     children: [
-                      Edge { label: Positional, target: demand.predicate },
-                      Edge { label: Positional, target: demand.site }
+                      Edge { label: Positional, target: demand.predicate, declaration: NotADeclaration },
+                      Edge { label: Positional, target: demand.site, declaration: NotADeclaration }
                     ],
                     occurrence_id: allocated.identity
                   )
