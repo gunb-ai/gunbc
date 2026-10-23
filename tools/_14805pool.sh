@@ -38,7 +38,7 @@ echo "BUILD_COMMIT=$HEAD_SHA CB_SHA=$(sha $CB) TREE=$TREE"
 WT=/tmp/w805p_$TREE
 rm -rf $WT; git worktree add -q --detach $WT $HEAD_SHA || { echo WT_FAIL; exit 9; }
 if [ "$TREE" = base ]; then tar xzf tools/base14805.tgz -C $WT || exit 9; echo BASE_OVERLAY_OK; fi
-WL=tools/wl14805_$TREE.tsv
+WL=tools/wl14805_${TREE}${WLFILE:+_$WLFILE}.tsv
 [ -s $WL ] || { echo "EMPTY_WORKLIST $WL -- STOP"; exit 9; }
 END=$(( $(date +%s) + DEADLINE_MIN*60 - 60 ))   # stop 60s before own deadline
 mkdir -p /tmp/w805p_out; rm -f /tmp/w805p_out/*.out
