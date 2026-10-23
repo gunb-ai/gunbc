@@ -541,8 +541,43 @@ data compiler_pipeline_entry: CompilerEntryDriver = SourceRootEvalDriver
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  // file_refusals keyed by the module the refused file declares, built once at the context's finish: the
+  // import-target attribution asks per refused module, and a scan of file_refusals per ask is R x M.
+  refused_modules: Map<QualifiedName, NativeRefusedModuleRow>
   accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   positions: NativeCensusPositionTable
+}
+
+// ordinal is the refusal's position in file_refusals, so a module importing several refused targets is
+// attributed to the earliest-ingested one, exactly as the scan this index replaced answered.
+type NativeRefusedModuleRow {
+  ordinal: Int
+  refusal: NativeTestFileRefusal
+}
+
+type NativeRefusedModuleFold {
+  next: Int
+  rows: Map<QualifiedName, NativeRefusedModuleRow>
+}
+
+fn native_refused_module_index(refusals: FreeMonoid<NativeTestFileRefusal>) -> Map<QualifiedName, NativeRefusedModuleRow> {
+  fold_list(
+    xs: refusals,
+    empty: NativeRefusedModuleFold { next: 0, rows: empty_map() },
+    cons: fn(acc, fr) {
+      NativeRefusedModuleFold {
+        next: acc.next + 1,
+        rows: match fr.module {
+          Absent => acc.rows
+          Present { value: refused_module } =>
+            match map_lookup(m: acc.rows, key: refused_module) {
+              Present { value: _ } => acc.rows
+              Absent => map_insert(acc.rows, refused_module, NativeRefusedModuleRow { ordinal: acc.next, refusal: fr })
+            }
+        }
+      }
+    }
+  ).rows
 }
 
 type NativeTestPreparedModule {
@@ -1073,6 +1108,7 @@ fn native_test_context_finish(
       policy: v2.std.resolution_policy.default_name_resolution_policy()
     ),
     file_refusals: state.file_refusals,
+    refused_modules: native_refused_module_index(refusals: state.file_refusals),
     accepted_file_advisories: state.accepted_file_advisories,
     positions: state.positions
   }
@@ -1117,6 +1153,7 @@ fn native_test_context_with_resolution(context: NativeTestContext, resolution: O
   NativeTestContext {
     resolution: resolution,
     file_refusals: context.file_refusals,
+    refused_modules: context.refused_modules,
     accepted_file_advisories: context.accepted_file_advisories,
     positions: context.positions
   }
@@ -2614,25 +2651,23 @@ fn native_import_target_attribution(context: NativeTestContext, module: Qualifie
       match map_lookup(m: shared.roots.by_name, key: module) {
         Absent => NativeImportTargetsUnreadable { reason: ^native_import_target_module_not_indexed }
         Present { value: tree } =>
-          fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, refusal) {
-            match found {
-              NativeImportTargetRefused { target: _ } => found
-              NativeImportTargetsUnreadable { reason: _ } => found
-              NativeImportTargetNotAsked => found
-              NativeImportTargetsAdmitted =>
-                match refusal.module {
-                  Absent => found
-                  Present { value: refused_module } =>
-                    if any(xs: normalized_tree_import_bindings(tree: tree), predicate: fn(row) {
-                      qualified_name_init(qn: row.target) == refused_module
-                    }) {
-                      NativeImportTargetRefused { target: refusal }
-                    } else {
-                      found
-                    }
-                }
+          match fold_list(
+            xs: normalized_tree_import_bindings(tree: tree),
+            empty: optional_absent(),
+            cons: fn(best, row) {
+              match map_lookup(m: context.refused_modules, key: qualified_name_init(qn: row.target)) {
+                Absent => best
+                Present { value: hit } =>
+                  match best {
+                    Absent => optional_present(value: hit)
+                    Present { value: held } => if hit.ordinal < held.ordinal { optional_present(value: hit) } else { best }
+                  }
+              }
             }
-          })
+          ) {
+            Present { value: hit } => NativeImportTargetRefused { target: hit.refusal }
+            Absent => NativeImportTargetsAdmitted
+          }
       }
   }
 }

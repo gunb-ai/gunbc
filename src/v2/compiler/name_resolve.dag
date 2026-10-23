@@ -1463,6 +1463,24 @@ fn closure_phase2_blocked(
   })
 }
 
+// THE ROWS OF ONE MODULE, GROUPED ONCE. The publish and the observed outcome each need only their own
+// module's rows; filtering all D rows per module made both M x D. Grouping preserves row order.
+fn closure_rows_by_module(rows: List<DeclPhase1Row>) -> Map<QualifiedName, List<DeclPhase1Row>> {
+  fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
+    map_insert(m: acc, key: row.module, value: match map_lookup(m: acc, key: row.module) {
+      Present { value: mine } => list_snoc_item(xs: mine, item: row)
+      Absent => [row]
+    })
+  })
+}
+
+fn closure_module_rows(by_module: Map<QualifiedName, List<DeclPhase1Row>>, module_qn: QualifiedName) -> List<DeclPhase1Row> {
+  match map_lookup(m: by_module, key: module_qn) {
+    Present { value: mine } => mine
+    Absent => []
+  }
+}
+
 fn closure_publish_module(
   nt: NormalizedTree,
   module_qn: QualifiedName,
@@ -1471,17 +1489,13 @@ fn closure_publish_module(
   index: SymbolIndex
 ) -> SymbolIndex {
   let published = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
-    if row.module == module_qn {
-      match map_lookup(m: blocked, key: row.path) {
-        Present { value: _ } => acc
-        Absent =>
-          match row.local {
-            LocallyRefused { refusal: _ } => acc
-            LocallyResolved { node: n } => map_insert(m: acc, key: row.name, value: n)
-          }
-      }
-    } else {
-      acc
+    match map_lookup(m: blocked, key: row.path) {
+      Present { value: _ } => acc
+      Absent =>
+        match row.local {
+          LocallyRefused { refusal: _ } => acc
+          LocallyResolved { node: n } => map_insert(m: acc, key: row.name, value: n)
+        }
     }
   })
   symbol_index_fill_module_declarations(
@@ -1506,21 +1520,17 @@ fn closure_observed_outcome(
   ModuleObserved {
     module: module_qn,
     declarations: fold_list(xs: rows, empty: [], cons: fn(acc, row) {
-      if row.module == module_qn {
-        list_snoc_item(
-          xs: acc,
-          item: match map_lookup(m: blocked, key: row.path) {
-            Present { value: r } => DeclarationRefused { path: row.path, refusal: r }
-            Absent =>
-              match row.local {
-                LocallyResolved { node: _ } => DeclarationAvailable { path: row.path }
-                LocallyRefused { refusal: r } => DeclarationRefused { path: row.path, refusal: r }
-              }
-          }
-        )
-      } else {
-        acc
-      }
+      list_snoc_item(
+        xs: acc,
+        item: match map_lookup(m: blocked, key: row.path) {
+          Present { value: r } => DeclarationRefused { path: row.path, refusal: r }
+          Absent =>
+            match row.local {
+              LocallyResolved { node: _ } => DeclarationAvailable { path: row.path }
+              LocallyRefused { refusal: r } => DeclarationRefused { path: row.path, refusal: r }
+            }
+        }
+      )
     })
   }
 }
@@ -1614,11 +1624,12 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
         }
       )
       let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
+      let rows_by_module = closure_rows_by_module(rows: phase1.rows)
       let index = fold_list(xs: phase1.trees, empty: empty_symbol_index(), cons: fn(acc, nt) {
         match qualified_name_from_module_node(root: nt.root) {
           Rejected { diagnostics: _ } => acc
           Accepted { value: module_qn, diagnostics: _ } =>
-            closure_publish_module(nt: nt, module_qn: module_qn, rows: phase1.rows, blocked: blocked, index: acc)
+            closure_publish_module(nt: nt, module_qn: module_qn, rows: closure_module_rows(by_module: rows_by_module, module_qn: module_qn), blocked: blocked, index: acc)
         }
       })
       let observed = fold_list(xs: phase1.trees, empty: phase1.unavailable, cons: fn(acc, nt) {
@@ -1627,7 +1638,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           Accepted { value: module_qn, diagnostics: _ } =>
             list_snoc_item(
               xs: acc,
-              item: closure_observed_outcome(module_qn: module_qn, rows: phase1.rows, blocked: blocked)
+              item: closure_observed_outcome(module_qn: module_qn, rows: closure_module_rows(by_module: rows_by_module, module_qn: module_qn), blocked: blocked)
             )
         }
       })

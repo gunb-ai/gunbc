@@ -32,7 +32,7 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import std.algebra { fold_list, length }
+import std.algebra { empty_map, fold_list, length }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
@@ -260,6 +260,7 @@ test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> B
       let context = NativeTestContext {
         resolution: resolution_context(lm: dag_language_model_surface_empty_prelude(), roots: roots, index: source_root_index_empty(), active_roots: [], policy: v2.std.resolution_policy.default_name_resolution_policy()),
         file_refusals: [],
+        refused_modules: empty_map(),
         accepted_file_advisories: [],
         positions: native_census_position_table_empty()
       }
