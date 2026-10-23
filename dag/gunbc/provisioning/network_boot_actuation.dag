@@ -4,7 +4,16 @@ import std.decl_ref { DeclarationRef }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
 import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeChainloaderBuildReceipt }
 import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
+import gunbc.provisioning.altra_autoinstall_seed {
+  AltraAutoinstallSeed,
+  AltraAutoinstallSeedBinding,
+  AltraAutoinstallTarget,
+  TargetDiskSelection,
+  bind_altra_autoinstall_seed,
+  Bound,
+  BindRefused,
+}
 import gunbc.provisioning.provisioning_arm {
   ProvisioningArm,
   AttemptBinding,
@@ -13,6 +22,11 @@ import gunbc.provisioning.provisioning_arm {
   ArmedVirtualMedia,
   ArmUnobserved,
   ArmRefused,
+  ArmMissingEvidence,
+  SeedBindingNotObserved,
+  DeliveryStrategy,
+  DeliveryEvidence,
+  provisioning_arm_derive,
   FirmwarePreparation,
 }
 import gunbc.os_install_mechanism { OsInstallMechanism, PxeHttpInstall, VirtualMediaInstall, install_boot_target_for }
@@ -84,5 +98,41 @@ fn network_boot_arm_actuator_steps(arm: ProvisioningArm) -> NetworkBootActuation
       }
     ArmUnobserved { missing: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
     ArmRefused { cause: _ } => ArmActuationWithheld { attempt: arm.attempt, shape: arm.shape }
+  }
+}
+
+// THE INSTALL-ATTEMPT-RECORD STEP: the one production call of the sealed binder. An AltraAutoinstallSeedBinding
+// is minted only by bind_altra_autoinstall_seed, so the seed an arm carries is never typed by hand; this entry
+// takes the raw seed, target, unit key, intake attempt and live disk selection, binds, and only then derives
+// the arm and actuates it. The strategy is a single parameter: one strategy per attempt, and a refused binding
+// is Withheld, never re-armed as the other delivery. `evidence.seed` is overwritten by the binding, so a
+// caller cannot present a seed that the binder did not mint for this attempt. A refused binding has no
+// ArmRefusalCause arm in provisioning_arm, so it is reported as SeedBindingNotObserved (no binding exists to
+// observe) and the binder's blocker is not carried; the attempt is then withheld either way.
+fn network_boot_attempt_actuation(
+  strategy: DeliveryStrategy,
+  evidence: DeliveryEvidence,
+  attempt: AttemptBinding,
+  seed: AltraAutoinstallSeed,
+  target: AltraAutoinstallTarget,
+  unit_key: UnitKey,
+  intake_attempt: IntakeAttemptId,
+  selection: TargetDiskSelection,
+) -> NetworkBootActuation {
+  match bind_altra_autoinstall_seed(seed: seed, target: target, unit_key: unit_key, attempt: intake_attempt, selection: selection) {
+    Bound { binding: b } =>
+      network_boot_arm_actuator_steps(arm: provisioning_arm_derive(
+        strategy: strategy,
+        evidence: DeliveryEvidence {
+          firmware: evidence.firmware,
+          chainloader: evidence.chainloader,
+          virtual_media: evidence.virtual_media,
+          origin: evidence.origin,
+          seed: Present { value: b },
+        },
+        attempt: attempt,
+      ))
+    BindRefused { blocker: _ } =>
+      ArmActuationWithheld { attempt: attempt, shape: ArmUnobserved { missing: SeedBindingNotObserved } }
   }
 }

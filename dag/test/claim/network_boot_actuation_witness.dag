@@ -35,6 +35,7 @@ import gunbc.provisioning.network_boot_actuation {
   ArmActuationVirtualMedia,
   ArmActuationWithheld,
   network_boot_arm_actuator_steps,
+  network_boot_attempt_actuation,
 }
 import gunbc.firmware_network_boot_standing { Unobserved }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -88,6 +89,7 @@ import test.claim.altra_autoinstall_seed_witness {
   attempt_one,
   serial_selector,
   bay_population,
+  target_refused_by_unbound_key,
 }
 import gunbc.provisioning.altra_autoinstall_seed { bind_altra_autoinstall_seed, Bound, BindRefused, select_target_disk }
 
@@ -398,5 +400,52 @@ test fn two_pxe_arms_differing_only_in_seed_yield_different_actuations() -> Bool
       let other = actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha")
       !is_withheld(a: base) && !is_withheld(a: other) && base != other
     }
+  }
+}
+
+fn evidence_without_seed() -> DeliveryEvidence {
+  DeliveryEvidence {
+    firmware: fixture_firmware_needs_boot_next(),
+    chainloader: pinned(),
+    virtual_media: media_available(),
+    origin: fixture_origin(),
+    seed: Absent,
+  }
+}
+
+// The evidence carries NO seed; the armed result can only have come from the binder call inside the entry.
+test fn the_attempt_entry_arms_with_the_seed_the_binder_minted() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: built } => {
+      let got = network_boot_attempt_actuation(
+        strategy: PxeOrUefiHttp,
+        evidence: evidence_without_seed(),
+        attempt: attempt(unit: "unit-alpha"),
+        seed: built.seed,
+        target: target_altra,
+        unit_key: unit_a_key,
+        intake_attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      )
+      !is_withheld(a: got) && got == actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+    }
+  }
+}
+
+test fn a_refused_binding_withholds_the_attempt_instead_of_arming_it() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: built } =>
+      is_withheld(a: network_boot_attempt_actuation(
+        strategy: PxeOrUefiHttp,
+        evidence: full_evidence(),
+        attempt: attempt(unit: "unit-alpha"),
+        seed: built.seed,
+        target: target_refused_by_unbound_key(),
+        unit_key: unit_a_key,
+        intake_attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ))
   }
 }
