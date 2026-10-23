@@ -1284,7 +1284,7 @@ fn floor_expected_red_chunk_pair_serving_authority_wet_red() -> List<String> {
 // the seal lands it passes, this roster reports it stale and the row is deleted, leaving the claim as a
 // permanent regression control (DESIGN 4b(4)).
 fn floor_expected_red_chunk_cas_outcome_seal() -> List<String> {
-  Cons { head: "test.claim.approve_ios_enrolment_machine_persist_order_witness.a_forged_cas_committed_literal_is_refused_at_compile", tail: Empty {} }
+  Cons { head: "test.claim.cas_outcome_seal_witness.a_forged_cas_committed_literal_is_refused_at_compile", tail: Empty {} }
 }
 
 // THE WET REAL-EXECUTION REDS THAT CHARTER 4 MEASURED AND OWNED AND NO LEAF HAS FIXED YET (seven were measured; the belt recapture leaf fixed its three and deleted its chunk, as this paragraph requires), in two chunks, grouped by
