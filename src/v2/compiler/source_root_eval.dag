@@ -3113,11 +3113,30 @@ fn native_demand_census_readings(context: NativeTestContext, module_qn: Qualifie
   }
 }
 
-fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
+// THE AUTHORED ROWS GROUPED BY THEIR OWNER MODULE ONCE: each module reads its own rows, so the walk is not
+// modules x authored (DESIGN section 6: a cost-shape defect regardless of n). Order within an owner is kept.
+fn native_demand_census_authored_by_owner(authored: List<AuthoredUsesFunction>) -> Map<QualifiedName, List<AuthoredUsesFunction>> {
+  let empty: Map<QualifiedName, List<AuthoredUsesFunction>> = empty_map()
+  fold_list(xs: authored, empty: empty, cons: fn(acc, a) {
+    map_insert(
+      m: acc,
+      key: a.owner,
+      value: match map_lookup(m: acc, key: a.owner) {
+        Present { value: mine } => list_snoc_item(xs: mine, item: a)
+        Absent => [a]
+      }
+    )
+  })
+}
+
+fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: Map<QualifiedName, List<AuthoredUsesFunction>>) -> NativeDemandCensusWalk {
   match qualified_name_from_module_node(root: root.root) {
     Rejected { diagnostics: _ } => w
     Accepted { value: module_qn, diagnostics: _ } =>
-      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let mine = match map_lookup(m: authored, key: module_qn) {
+        Present { value: owned } => owned
+        Absent => Empty
+      }
       let step = native_test_resolve_module(context: w.context, module: module_qn)
       let outcomes = native_demand_census_closure_outcomes(context: step.context)
       match step.resolved {
@@ -3181,6 +3200,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
         empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
+      let authored_by_owner = native_demand_census_authored_by_owner(authored: folded.authored)
       let walked = fold_list(
         xs: folded.context.roots,
         empty: NativeDemandCensusWalk {
@@ -3190,7 +3210,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
           audited: Empty,
           standings: Empty
         },
-        cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: folded.authored) }
+        cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: authored_by_owner) }
       )
       outcome_accepted(value: demand_census_report(
         uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
