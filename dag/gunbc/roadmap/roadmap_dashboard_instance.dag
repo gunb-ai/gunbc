@@ -50,6 +50,7 @@ import gunbc.owned_directory {
   ForeignOwnershipRefuses,
   SameUserRegroupToDeclaredGroup,
   owned_directory_path,
+  owned_directory_member,
 }
 import gunbc.deployment_risk {
   DeploymentId,
@@ -1895,6 +1896,23 @@ data dashboard_git_worker_directory_children: List<NonEmptyStr> = [
 // merely happens to contain /logs or /refs (review round: path-substring classifier).
 fn dashboard_git_worker_directory_member(child: NonEmptyStr) -> NonEmptyStr {
   join(["git-worker-", child as String], "") as NonEmptyStr
+}
+
+// PARTITION AT THE MINT AUTHORITY (WORKER-ROOT-EQUIVALENT-3, typed-legs port). "Does this owned-directory
+// demand belong to the git worker subtree?" is decided HERE, where the demands are minted, by PATH-FREE
+// MEMBER EQUALITY against the single member authority above -- never by a substring of the path, which
+// would misclassify any unrelated owned directory whose path merely contains /logs, /refs or /objects
+// (review round: path-substring classifier). This is the predicate the standing directories plan EXCLUDES
+// by and the subtree plan INCLUDES by, so the two partitions are complementary by construction: no
+// instance of a demand is in both, and none is silently in neither (the standing plan installs everything
+// this refuses). Lives beside the minter rather than in the apply because the apply may only ASK the
+// source (DESIGN section 4: the richer source exists); the typed legs in gunbc.live_deploy.apply_legs call
+// this, they do not re-derive it.
+fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
+  any(
+    xs: dashboard_git_worker_directory_children,
+    predicate: child => owned_directory_member(t: t) == dashboard_git_worker_directory_member(child: child),
+  )
 }
 
 // THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Owned by the

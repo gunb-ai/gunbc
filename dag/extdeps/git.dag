@@ -1314,6 +1314,37 @@ fn git_in_trusted_repository_argv(repo: NonEmptyStr, verbs: List<String>) -> Lis
   git_argv_of_args(args: concat(git_in_trusted_repository_args(repo: repo), items: verbs))
 }
 
+// THE REPOSITORY PREMISE AS AN EXIT STATUS (WORKER-ROOT-EQUIVALENT-3, typed legs).
+// `git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir` exits 0 exactly when
+// <repo>/.git IS a git directory -- and nonzero when it is a skeleton without a valid HEAD, a plain
+// directory, or a .git that would only resolve by discovering UPWARD into some outer repository, because
+// an explicit --git-dir disables discovery entirely. Measured on srv1, git 2.43.0 at uid 1000 (parent,
+// 2026-10-23): committed repository 0, unborn branch 0, detached HEAD 0, HEAD-less skeleton 128, plain
+// directory 128, a .git nested inside another repository 128 ("not a git repository: <repo>/.git").
+// THE EXIT STATUS IS THE PREMISE: no capture, no comparison, no printf, no shell around it. An earlier
+// cut ran the three reads inside a bash `[ ]` with a command substitution; that construction died in a
+// word-order defect (the program word landed after its own args, so bash ran `-c` as a program, the
+// substitution printed nothing, and the collapsed `[ ]` turned a TEST ERROR into a silent "not a
+// repository"), and the fix is not to quote the substitution better but to delete the shell -- a verdict
+// that survives how its text was rendered is not a verdict, it is a rendering.
+// THE safe.directory GRANT RIDES ALONG for the same reason every untrusted-principal call takes it:
+// without it git 2.43 refuses ownership of a tree the caller does not own BEFORE resolving anything,
+// which would make a real repository look like a refusal. It is the one-path grant derived from the same
+// repo the --git-dir names; the narrowest grant is the only shape this can spell.
+// THE ARGS LIST IS PUBLIC because a claim pins the word order directly (program word FIRST, then the
+// options, then the subcommand) -- the ordering this builder exists to make undriftable, and a claim that
+// re-spells the argv is a second place it could drift.
+fn git_absolute_git_dir_premise_args(repo: NonEmptyStr) -> List<String> {
+  git_argv_of_args(args: concat(
+    git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }),
+    items: ["--git-dir", join([repo as String, "/.git"], ""), "rev-parse", "--absolute-git-dir"],
+  ))
+}
+
+fn git_absolute_git_dir_premise_argv(repo: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: git_absolute_git_dir_premise_args(repo: repo))
+}
+
 // gitrepository-layout(5): a non-bare repository keeps its GIT_DIR in the `.git` directory at the
 // root of its working tree.
 data git_non_bare_git_dir_name: String = ".git"
