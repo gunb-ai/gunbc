@@ -1226,7 +1226,7 @@ test fn the_apply_receipt_names_the_registration_each_admitted_listener_was_cert
         // multi-slot receipt cannot attribute an identity to the wrong unit, and suffixed so a bare slot
         // name -- which no fleet listener ever registered under -- could never satisfy this.
         length(cs) == 1
-          && (list_head(xs: cs) == concat(u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag)))
+          && match list_head(xs: cs) { Present { value: one } => one == concat(u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag)) Absent => false }
           && string_contains(s: runner_host_cap_phase_text(phase: v), pattern: concat("caps-certified=", u(n: "01") as String, "=", minted(n: "01", tag: slot_current_mint_tag)))
           // No bare-name certification anywhere in the receipt.
           && !string_contains(s: runner_host_cap_phase_text(phase: v), pattern: concat("=", registration_of(n: "01"), "\n"))
