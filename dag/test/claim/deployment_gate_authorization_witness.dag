@@ -60,6 +60,7 @@ import extdeps.github.deployment_protection_rule {
   ReviewState,
   OwnerSegment,
   RepoSegment,
+  EnvironmentSegment,
   review_endpoint_path,
   human_review_endpoint_path,
   the_two_review_surfaces_are_distinguishable,
@@ -1822,6 +1823,7 @@ test fn the_mint_refuses_a_repository_it_cannot_put_in_a_route() -> Bool {
              RepoSegment { value: v } => (v as String) == "gunbc/../other"
              OwnerSegment { value: _ } => false
              RunIdSegment { value: _ } => false
+             EnvironmentSegment { value: _ } => false
            })
     AcceptedReviewRefused { because: _ } => false
     Accepted { receipt: _ } => false

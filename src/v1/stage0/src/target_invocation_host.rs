@@ -624,6 +624,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("append-chain-ladder"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/append_chain_ladder.dag",
+                function: "append_chain_ladder_wire",
+            },
+        ),
+        (
             instrument_label("claim-coverage-census"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/claim_coverage_census_live.dag",
@@ -646,6 +653,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/known_red_derivation.dag",
                 function: "known_red_derivation_exit",
+            },
+        ),
+        (
+            instrument_label("roster-reach-inhabitance"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/roster_reach_inhabitance.dag",
+                function: "roster_reach_inhabitance_exit",
             },
         ),
         (

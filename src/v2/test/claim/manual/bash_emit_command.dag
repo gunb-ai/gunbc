@@ -76,7 +76,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, NotADeclaration }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -97,7 +97,8 @@ fn bash_arrow_emitted_red_fixture() -> Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -105,7 +106,8 @@ fn bash_arrow_emitted_red_fixture() -> Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -113,7 +115,8 @@ fn bash_arrow_emitted_red_fixture() -> Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
