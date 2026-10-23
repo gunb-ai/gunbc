@@ -34,8 +34,8 @@ fn tree_hooks(ds: List<NginxDirective>, want_authz: Bool) -> Int {
     Simple { name: _, args: _ } => 0
     Block { name: _, args: _, body: b } => tree_hooks(ds: b, want_authz: want_authz)
     LuaPhaseHook { phase: _, hook: h } => match h {
-      AuthzCapture { location: _, upstream_header: _, permit_header: _, refuse_status: _ } => if want_authz then 1 else 0
-      StreamEndCallout { host: _, port: _, path: _, permit_variable: _ } => if want_authz then 0 else 1
+      AuthzCapture { location: _, upstream_header: _, permit_header: _, refuse_status: _ } => if want_authz { 1 } else { 0 }
+      StreamEndCallout { host: _, port: _, path: _, permit_variable: _ } => if want_authz { 0 } else { 1 }
     }
   })
 }

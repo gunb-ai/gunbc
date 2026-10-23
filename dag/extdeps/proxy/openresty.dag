@@ -103,7 +103,7 @@ fn lua_phase_name(ph: LuaPhase) -> String {
 }
 
 fn join_with(items: List<String>, sep: String) -> String {
-  fold(items, init: "", f: (acc, e) => if acc == "" then e else acc + sep + e)
+  fold(items, init: "", f: (acc, e) => if acc == "" { e } else { acc + sep + e })
 }
 
 fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
