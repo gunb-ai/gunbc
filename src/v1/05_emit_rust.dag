@@ -541,7 +541,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
           target: Rust
         )
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items)
-      Absent => emit_rust_compile_error_expr(message: "Keyed collection missing key type")
+      Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
   } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
@@ -551,7 +551,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(name: tn, inner: inner_str, target: Rust)
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types, source_indices: source_indices, type_decl_items: emit_info.type_decl_items)
-      Absent => emit_rust_compile_error_expr(message: "Element collection missing element type")
+      Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
   } else {
     let tn = authored_name_at(source_indices: source_indices, node: n)
@@ -562,7 +562,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else if rust_overlayless_alias_leaf_requires_peel(env: emit_info.fn_type_env, n: n) {
       match lookup_type_for(env: emit_info.fn_type_env, node: n) {
         Present { value: binding } => rust_carrier_optional_wrap(n: n, rendered: render_rust_type(n: with_required_cardinality(n: resolved_type(n: binding)), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
-        Absent => emit_rust_compile_error_expr(message: "Alias peel binding absent")
+        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
       }
     } else {
       match realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: n, dag_name: qualified_last_segment(name: tn), env: emit_info.fn_type_env, source_indices: source_indices)) {
