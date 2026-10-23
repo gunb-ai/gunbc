@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.protect_carve_out_reopens_the_protected_subj
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 data protect_carve_out_reopens_the_protected_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "protect_carve_out_reopens_the_protected_subject" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable while writable paths are a joined string the author can still spell as instance_root." as NonEmptyStr } },
 
   receipts: [
     "INVALID STATE: a confinement that names a refused write (ProtectSystem=strict, ProtectHome=read-only) carves the protected subject back in as a writable path, so the write succeeds. DISTINGUISHING FACT: the annotation and the Protect* properties can both be true while ReadWritePaths (or an equivalent exception) is a parent of the thing they claim to refuse. HARM: a dispatched worker with --dangerously-skip-permissions writes the deployed binary or tree; the recovery cost is a dirty release, paid later at interest. Silent success is below the ladder.",

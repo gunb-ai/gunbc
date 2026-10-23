@@ -2890,7 +2890,7 @@ fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
     ResolveWalkRefused { first: f, rest: rs, observation: o, partial: p } =>
       child_walk_refused(w: w, first: f, rest: rs, observation: o, partial: p)
     ResolveWalkAccepted { value: t, diagnostics: ed, bindings: l } =>
-      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed, bindings: l)
+      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t, declaration: e.declaration }, d: ed, bindings: l)
   }
 }
 
@@ -3717,7 +3717,7 @@ fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIn
           }
         MapIntroductionKeysDistinct =>
           let walked = fold(entries, init: child_walk_init(), f: fn(acc, e) {
-            child_walk_step(w: acc, e: Edge { label: Positional, target: e.source }, r: resolve_map_entry_walk(ctx: ctx, entry: e.source, value_x: value_x))
+            child_walk_step(w: acc, e: Edge { label: Positional, target: e.source, declaration: NotADeclaration }, r: resolve_map_entry_walk(ctx: ctx, entry: e.source, value_x: value_x))
           })
           let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
           match child_walk_node(w: walked, n: carrier) {
@@ -5296,7 +5296,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
       ArrowCarriedSlot =>
         child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, bindings: [] })
       ArrowResourceRequirementsSlot =>
-        child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope), requirements: e.target))
+        child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_type_role(ctx: inner_ctx, scope: slot_scope), requirements: e.target))
       ArrowBodyOrNamedSlot =>
         child_walk_step(
           w: acc,

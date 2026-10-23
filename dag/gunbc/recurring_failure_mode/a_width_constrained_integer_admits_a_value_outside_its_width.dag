@@ -2,10 +2,11 @@ module gunbc.recurring_failure_mode.a_width_constrained_integer_admits_a_value_o
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
 
 data a_width_constrained_integer_admits_a_value_outside_its_width: RecurringFailureMode = RecurringFailureMode {
   identity: "a_width_constrained_integer_admits_a_value_outside_its_width" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a value typed by a width-constrained integer (std.integer UInt8..UInt128, Int8..Int128: Compose<carrier, MachineWidth<N>>) that is not in [0, 2^N) (unsigned) or [-2^(N-1), 2^(N-1)) (signed). HARM: silent wrongness at the declared type -- a literal 300 at UInt8, or 255 + 1 typed UInt8, is accepted and evaluated as an ordinary Int, so the interpreted and emitted realizations of one program disagree and nothing said the width was crossed. OPERATOR RULING (CHECKED): a width is a checked refinement on Int, wrapping exists only as a named operation, and there is no implicit narrowing or widening. This row is the width-specific face of bounded_natural_arithmetic_evaluated_as_unbounded_int, which keeps the arithmetic history; it is separate because the literal boundary, the arithmetic boundary and the carrier boundary climb on different triggers.",

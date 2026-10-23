@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim, skip }
+import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
@@ -1478,7 +1479,11 @@ fn belt_session_container_create(
                 SessionLaunchAdmitted { grant: launched } =>
                   match attempt_system_unit_enqueue_start(
                     instance_root: instance.instance_root as String,
-                    request: attempt_system_unit_start_request_from_plan(plan: plan, granted: launched.amount),
+                    request: attempt_system_unit_start_request_from_plan(
+                      plan: plan,
+                      granted: launched.amount,
+                      nonce: to_string(value: cas_generation_count(g: launched.slot_generation)),
+                    ),
                   ) {
                     AttemptSystemUnitEnqueueRefused { detail } =>
                       ContainerCreateFailed { step: "harness-unit-start", detail: detail }
@@ -1487,12 +1492,13 @@ fn belt_session_container_create(
                         step: "harness-unit-start",
                         detail: join(["a request for this attempt already exists at ", entry], ""),
                       }
-                    AttemptSystemUnitEnqueued { entry } =>
+                    AttemptSystemUnitEnqueued { entry, body } =>
                       match attempt_system_unit_harness_start_from_observation(
                         entry: entry,
                         reading: attempt_system_unit_read_answer(
                           instance_root: instance.instance_root as String,
                           entry: entry,
+                          request_body: body,
                         ),
                       ) {
                         AttemptSystemUnitHarnessStarted => ContainerCreated
@@ -4939,12 +4945,12 @@ fn belt_tick_admit_and_spawn(
 fn belt_tick_deferred_count(outcomes: List<BeltSpawnOutcome>) -> Int { belt_spawn_tally(outcomes: outcomes).deferred }
 
 fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchIdentity> {
-  fold(outcomes, init: [], f: (acc, o) => match o {
-    Spawned { node_id: _, session_name: _, provider: _, launch } => concat(acc, [launch])
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch } => concat(acc, [launch])
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch } => concat(acc, [launch])
-    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch, entry: _ } => concat(acc, [launch])
-    SpawnNotAdmitted { node_id: _, refusal: _ } => acc
+  flat_map(outcomes, o => match o {
+    Spawned { node_id: _, session_name: _, provider: _, launch } => [launch]
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch } => [launch]
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch } => [launch]
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch, entry: _ } => [launch]
+    SpawnNotAdmitted { node_id: _, refusal: _ } => [] as List<LaunchIdentity>
   })
 }
 

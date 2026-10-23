@@ -9,7 +9,7 @@ import v2.std.text { string_eq }
 // spawn and re-derives its whole import closure from source each time, so every module it reaches is
 // paid for on every dispatch (DESIGN section 2). It reached the dispatch actuator, the belt and the
 // harness backend -- about 920 of ~930 files -- for seven declarations of confinement fold, which now
-// live in gunbc.roadmap.dispatch_worker_unit_confinement. These three paths are the named dispatch
+// live in gunbc.roadmap.dispatch_worker_unit_confinement. These four paths are the named dispatch
 // brain: a closure that reaches any of them has re-imported the credential, harness, tmux and LLM
 // world into a root process. Identity grain (a path), because a size threshold would drift with
 // unrelated growth and pass a closure that swapped one heavy import for another.

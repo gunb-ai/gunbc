@@ -2942,13 +2942,13 @@ test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_su
   match production_escalation(node_id: "shell-dag-cron-entry-line-builder") {
     Absent => false
     Present { value: e1 } =>
-      match production_escalation(node_id: "shell-dag-floor-peak-calibration-rows") {
+      match production_escalation(node_id: "shell-dag-ci-fmt-gate-line") {
         Absent => false
         Present { value: e2 } =>
           match production_node(id: "shell-dag-cron-entry-line-builder") {
             Absent => false
             Present { value: n1 } =>
-              match production_node(id: "shell-dag-floor-peak-calibration-rows") {
+              match production_node(id: "shell-dag-ci-fmt-gate-line") {
                 Absent => false
                 Present { value: n2 } => {
                   let b1 = belt_supervisor_convene_brief(

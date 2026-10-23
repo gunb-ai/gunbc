@@ -1,10 +1,15 @@
 module gunbc.recurring_failure_mode.a_deadline_armed_over_a_child_it_cannot_signal_refuses_after_the_effect_completed
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_deadline_armed_over_a_child_it_cannot_signal_refuses_after_the_effect_completed: RecurringFailureMode = RecurringFailureMode {
   identity: "a_deadline_armed_over_a_child_it_cannot_signal_refuses_after_the_effect_completed" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the seed deadline wait reports a failed kill as a typed outcome and does not join the unsignalable child" } },
+
   receipts: [
     "INVALID STATE: a wall deadline is armed over a wait on a child whose kill the waiter cannot deliver (a root process started through sudo, signalled by an unprivileged serve). The seed's wait at the deadline calls kill_shell_process_group, which discards the kill result, and then joins the worker unconditionally, so the deadline cannot preempt the child: the refusal value is built at the deadline and returned only when the child exits, replacing the child's own outcome.",
     "RECEIPT, srv1 lab 2026-10-21 (lab-dev 2352488e, measured by the lab owner): a dispatch POST ran the inline spool drain (sudo flock gunbc run attempt_system_unit_launch_cli); the helper's front end took minutes, wrote the answer `started` and systemd started the attempt unit at 01:19:42; in the same second the serve logged `refused roadmap_serve_handle_srv1_lab on monotonic_wall clock: elapsed_ns=120001615197 limit_ms=120000`. The client received 0 bytes. The session slot stayed `launching` about 13 minutes until the recovery pass read the unit from systemd and settled it terminal:recovered.",

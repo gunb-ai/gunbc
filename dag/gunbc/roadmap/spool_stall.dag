@@ -134,7 +134,8 @@ type SpoolStallCleared
   = SpoolStallCleared
   | SpoolStallClearRefused { reason: String }
 
-// The record is deleted only by a release that found nothing still unmovable; an absent record is cleared.
+// Deletes the record; an absent record is cleared. The caller decides when: the attempt-unit release clears it
+// without a pre-check (see the module header).
 fn spool_stall_clear_at(record_path: String) -> SpoolStallCleared {
   let removed = Filesystem.Delete(path: record_path)
   match filesystem_delete(path: record_path, success: removed.success, error: removed.error, error_kind: removed.error_kind) {

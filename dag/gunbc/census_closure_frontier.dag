@@ -6,6 +6,11 @@ import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
 import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
+import gunbc.machine_intake.bmc_recovery_route_frontier {
+  bmc_recovery_route_consumer_frontier_rows,
+  bmc_recovery_route_onboarding_consumer_frontier_rows,
+  bmc_recovery_route_pairing_frontier_rows,
+}
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -54,6 +59,7 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_expires_in_ui_text_frontier_rows,
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
+import gunbc.githooks.githooks_pre_push_frontier { githooks_pre_push_concat_body_frontier_rows }
 import gunbc.fleet.mtcollins_firmware_converge { hpm_check_converge_reader_frontier_rows }
 import extdeps.linux.usb_gadget { configfs_attr_write_realization_frontier_rows, configfs_rmdir_absent_as_converged_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
@@ -176,6 +182,10 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     rented_allocation_host_enrollment_frontier_rows,
     serving_provision_derivation_frontier_rows,
     host_assimilation_program_frontier_rows,
+    githooks_pre_push_concat_body_frontier_rows,
+    bmc_recovery_route_consumer_frontier_rows(),
+    bmc_recovery_route_onboarding_consumer_frontier_rows(),
+    bmc_recovery_route_pairing_frontier_rows(),
   ]
 }
 

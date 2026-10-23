@@ -3,7 +3,7 @@ module v2.test.claim.self_host_contract.body_producer_emitted_contract
 import std.logic { Bool }
 import v2.compiler.body_producer { body_producer_dispatch_structured_body, produce_arrow_with_structured_body }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Node, Edge, Positional, Atom, Arrow, TypeNode, ComputationNode, Transform, Value, node_synthetic }
+import v2.std.node { Node, Edge, Positional, Atom, Arrow, TypeNode, ComputationNode, Transform, Value, node_synthetic, NotADeclaration }
 
 // THE 03_body_producer ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
 // v2.compiler.body_producer accepts a structured body that is a computation node (a Transform with
@@ -14,7 +14,8 @@ fn bpc_transform_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     children: [Edge {
       label: Positional,
-      target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+      target: node_synthetic(kind: ComputationNode { behavior: Value }, children: []),
+      declaration: NotADeclaration
     }]
   )
 }
