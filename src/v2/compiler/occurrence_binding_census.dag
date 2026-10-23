@@ -212,11 +212,15 @@ fn occurrence_binding_declarations(tree: ResolvedTree) -> List<OccurrenceBinding
   })
 }
 
+fn occurrence_binding_domain_members(domain: Edge) -> List<Edge> {
+  domain.target.children
+}
+
 fn occurrence_binding_declaration_params(arrow: Node) -> String {
   match list_at_optional(xs: arrow.children, index: 0) {
     Absent => ""
     Present { value: domain_edge } =>
-      fold_list(xs: domain_edge.target.children, empty: "", cons: fn(acc, e) {
+      fold_list(xs: occurrence_binding_domain_members(domain: domain_edge), empty: "", cons: fn(acc, e) {
         match e.label {
           Authored { name: p } =>
             (if acc == "" { "" } else { acc + ", " }) + symbol_lexeme(sym: p) + ": " + ref_text(t: type_ref_text(n: symbol_index_binder_type_or_target(target: e.target)))
