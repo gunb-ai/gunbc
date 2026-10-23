@@ -3,7 +3,12 @@ module gunbc.rung_drop.witness_deferral_freeze_population_rung_drop
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, LostAsPassenger }
 import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
-import gunbc.target_binding { Label, TargetName }
+// THE LABEL IS THE ROSTER'S OWN, IMPORTED NOT RESTATED. `rung_drop_population_is_readable` refuses
+// this row unless the label is rostered in gunbc.instrument_targets instrument_targets exactly
+// once; taking the very function that rostering calls -- instead of transcribing the label here --
+// means the drop and its instrument cannot drift: a renamed instrument retires the pointer with
+// it, rather than leaving a row pointing at a producer that never existed.
+import gunbc.instrument_targets { witness_deferral_freeze_population_label }
 
 // ONE RUNG DROP FOR THE WHOLE OFFLINE WITNESS DEFERRAL POPULATION (ruling stern-bat-401, option A,
 // 2026-10-23, from the Charter-4 census of gunbc.witness.witness_deferral_freeze). The population
@@ -56,7 +61,7 @@ data witness_deferral_freeze_population_rung_drop: RungDrop = RungDrop {
     temporary: OutsideTheLadder,
     reason: LostAsPassenger { carrier: "the discovery-corpus batch that executed deferred witnesses (run_discovery_corpus_with_options_inner and its offline_local_recipe consumer edge), deleted as unreachable on 2026-10-04 (calm-boar-904 line); the deferral rows survived their consumer, so 101 entries kept declaring coverage nothing ran" },
     population: DerivedBy {
-      label: Label { package: "gunbc/instruments", target: TargetName { name: "witness-deferral-freeze-population" } }
+      label: witness_deferral_freeze_population_label()
     },
     restoration_trigger: "native execution runs the claim inside the cost floor: the required job (claim_executor --required-ci, head-built) invokes the claim and it answers TRUE, at which point its FrozenPathDeferral row is DELETED from gunbc.witness.witness_deferral_freeze in the same change (shrinking only — restoring coverage while keeping the deferral row leaves the claim standing twice), the instrument's identity join loses that identity, and when the frozen list is empty this row retires with its enrolled set"
   } }
