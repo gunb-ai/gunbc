@@ -1,6 +1,7 @@
-module examples.pun_without_import
+module test.claim.pun_shadow.with_import
 
 import std.types { Int }
+import test.claim.pun_shadow.home { shadowed_name }
 
 type PunThing = PunDup { shadowed_name: Int } | PunOther
 
