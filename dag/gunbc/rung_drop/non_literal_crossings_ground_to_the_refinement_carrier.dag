@@ -42,7 +42,7 @@ import gunbc.instrument_targets { v2_native_census_scoped_label }
 data non_literal_crossings_ground_to_the_refinement_carrier: RungDrop = RungDrop {
   identity: "non_literal_crossings_ground_to_the_refinement_carrier" as NonEmptyStr,
 
-  subject: "non-literal values crossing INTO where-refined declared type positions, which the interim carrier grounding accepts against the refinement's carrier with a counted located advisory and no predicate judgment (v2.compiler.infer infer_refinement_carrier_grounding_row and infer_refinement_carrier_grounding_decision; authorized by this row, per the operator decision of 2026-10-23 to be recorded in gunbc.design_ruling by the refinement-deletion program)",
+  subject: "non-literal values crossing INTO where-refined declared type positions, which the interim carrier grounding accepts against the refinement's carrier with a counted located advisory and no predicate judgment (v2.compiler.infer infer_refinement_carrier_grounding_row and infer_refinement_carrier_grounding_decision; the operator decision of 2026-10-23, recorded at gunbc.design_ruling interim_carrier_grounding_admits_non_literal_crossings)",
 
   declared: "2026-10-23",
 
