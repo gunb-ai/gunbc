@@ -1,0 +1,20 @@
+module stlc.union_unique_entry
+
+type Solo {
+  n: Int
+}
+
+type Nothing2 {
+  tag: Int
+}
+
+type PickUnique = Solo | Nothing2
+
+fn pick_solo() -> PickUnique {
+  Solo { n: 1 }
+}
+
+fn use_unique() -> Int {
+  let _p = pick_solo()
+  0
+}

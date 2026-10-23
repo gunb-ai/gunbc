@@ -8,25 +8,24 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // THE DECLARED RUNG DROP for the v1 seed emitter's shared-layer refusal (DESIGN 4b(3), 5).
 //
 // The shared-type set is keyed on declaration identity. A type position whose declaration cannot be
-// resolved to one identity answers SharedLayerRefuse, and the answer is computed twice: once by the
-// typed pre-pass (05_emit_rust shared_layer_refusal_diagnostics, which yields SharedLayerRefused
-// with the declaring module and leaf, no files) and once by each renderer, which keeps a
-// compile_error! arm as an unreachable floor. The pre-pass judges only the causes that disagree on
-// declaration identity; the not-declared, not-resolved, field-access and box causes still refuse at
-// the render-time floor.
+// resolved to one identity answers SharedLayerRefuse, and each renderer emits a compile_error! arm for it,
+// loud at rustc. A typed pre-pass was built and deleted: no source reaches it (a union body member is a
+// variant declaration, not a type reference), so its RED could not be authored. The floor census that
+// asserted no gate closure emits the marker was dropped for the same reason: its RED is not authorable
+// from source, and a check green by construction is a decoration (DESIGN 4b).
 
 data emitter_shared_layer_refusal_floor_is_render_time: RungDrop = RungDrop {
   identity: "emitter_shared_layer_refusal_floor_is_render_time" as NonEmptyStr,
 
-  subject: "the v1 seed emitter's shared-layer refusal causes the typed pre-pass does not judge: TypeDeclNotResolved, TypeDeclNotDeclared, FieldAccessDeclaringFieldAbsent and the needs-box answer, which refuse as compile_error! in the emitted Rust",
+  subject: "the v1 seed emitter's shared-layer refusal causes TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotResolved, TypeDeclNotDeclared, FieldAccessDeclaringFieldAbsent and the needs-box answer, which refuse as compile_error! in the emitted Rust",
 
   declared: "2026-10-23",
 
   standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
-    reason: ReplacementStaged { replacement: "the typed pre-pass SharedLayerRefused over shared_layer_of_type_expr, staged beside the renderers' compile_error! arms, which stay as the floor" },
-    population: Enumerated { members: FreeSemigroup { head: "TypeDeclNotResolved", tail: ["TypeDeclNotDeclared", "FieldAccessDeclaringFieldAbsent", "NeedsBoxRefuse"] } },
-    restoration_trigger: "the renderers consume the pre-pass answer table instead of asking the sharing question again, so the refuse arm is unrepresentable at render time and the compile_error! floor is deleted"
+    reason: ReplacementStaged { replacement: "every type position carries a resolve stamp, so the renderers never receive an unresolvable reference" },
+    population: Enumerated { members: FreeSemigroup { head: "TypeDeclLeafAmbiguous", tail: ["TypeDeclKernelSpellingUndecided", "TypeDeclNotResolved", "TypeDeclNotDeclared", "FieldAccessDeclaringFieldAbsent", "NeedsBoxRefuse"] } },
+    restoration_trigger: "every type position carries a resolve stamp: emitter_decl_route at zero in v1.tests.claim.carrier_realization_census, which deletes the interim RouteLeafSpelling arms and the compile_error! refuse arms"
   } }
 }
