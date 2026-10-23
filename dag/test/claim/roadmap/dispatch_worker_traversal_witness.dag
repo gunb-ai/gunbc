@@ -256,6 +256,7 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
   let repo = srv1_lab_dashboard_instance().repo_root as String
   let roots = dispatch_worker_source_roots(repo_root: repo)
   let argv = gunbc_harness_spawn_argv(
+    function: "harness_worker_cli",
     gunbc_program: "/bin/gunbc",
     repo_root: repo,
     worktree_path: "/wt",
@@ -265,6 +266,11 @@ test fn both_source_roots_are_in_the_set_the_argv_and_the_judged_chain() -> Bool
     events_path: "/e",
     attempt_identity: "worker:n-k",
     alignment_chain_fingerprint: "f",
+    supervision_prompt: "/sp",
+    supervision_dir: "/sd",
+    handin_inbox: "/hi",
+    node_id: "n",
+    attempt_key: "k",
   )
   count(roots) == 2
     && any(fixture_set(), e => e.path == join([repo, "/dag"], ""))
