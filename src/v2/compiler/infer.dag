@@ -3695,34 +3695,50 @@ fn infer_loop_body_type_at(target: Node, entries: Map<Node, List<InferredFacts>>
   }
 }
 
+// THE LOOP CARRIER IS JOINED BY THE ONE ARM-JOIN AUTHORITY, AT THE DECLARED EXPECTED TYPE (gunbc.recurring_failure_mode
+// fold_accumulator_typed_from_init_not_from_the_expected_type). A lowered fold's carrier was the FIRST body's type, and
+// every other body had to equal it syntactically, so `fold(xs, init: none, ..)` typed its carrier from the open `none`
+// and the result never inhabited the declared return (std.keyed_row keyed_row_find). The loop row now receives the
+// frame's declared_position_expected exactly as the match and transform rows do, judges every body against it with
+// infer_match_arms_refusal_at_expected (a body that does not inhabit the declared type still refuses), and joins the
+// body types pairwise with infer_join_arm_types (RULE A AT A JOIN: an open body closes at the expected type; with no
+// expected type it closes at the declaring sibling, so a loop with no declared position is judged as before, and two
+// closed bodies that disagree still conflict).
 fn infer_loop_fixpoint_carrier(
   node: Node,
   body_targets: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
+  resolved: ResolvedTree,
+  expected: Optional<Node>,
+  rigid_binders: List<Symbol>,
 ) -> Outcome<Node> {
-  match list_at_optional(xs: body_targets, index: 0) {
-    Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
-    Present { value: first_body } =>
-      bind_outcome(
-        o: infer_loop_body_type_at(target: first_body, entries: entries),
-        f: fn(carrier) {
-          fold(body_targets, init: Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
-            match acc {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: c, diagnostics: _ } =>
-                match infer_loop_body_type_at(target: target, entries: entries) {
+  match infer_match_arms_refusal_at_expected(match_node: node, bodies: body_targets, entries: entries, expected: expected, resolved: resolved, rigid_binders: rigid_binders) {
+    Present { value: r } => Rejected { diagnostics: r }
+    Absent =>
+      match list_at_optional(xs: body_targets, index: 0) {
+        Absent => outcome_rejected(infer_loop_shape_invalid_diagnostic(node: node))
+        Present { value: first_body } =>
+          bind_outcome(
+            o: infer_loop_body_type_at(target: first_body, entries: entries),
+            f: fn(first_type) {
+              fold(body_targets, init: Accepted { value: first_type, diagnostics: None }, f: fn(acc, target) {
+                match acc {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: t, diagnostics: _ } =>
-                    if infer_branch_type_atoms_equal(a: c, b: t) {
-                      acc
-                    } else {
-                      outcome_rejected(infer_loop_iteration_type_mismatch_diagnostic(node: target))
+                  Accepted { value: c, diagnostics: _ } =>
+                    match infer_loop_body_type_at(target: target, entries: entries) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: t, diagnostics: _ } =>
+                        match infer_join_arm_types(first: c, second: t, expected: expected, resolved: resolved) {
+                          ArmTypesJoined { joined: j } => Accepted { value: j, diagnostics: None }
+                          ArmTypesNoneDeclare => Accepted { value: c, diagnostics: None }
+                          ArmTypesConflict => outcome_rejected(infer_loop_iteration_type_mismatch_diagnostic(node: target))
+                        }
                     }
                 }
+              })
             }
-          })
-        }
-      )
+          )
+      }
   }
 }
 
@@ -3730,6 +3746,9 @@ fn infer_loop_iteration(
   node: Node,
   partials: List<Node>,
   entries: Map<Node, List<InferredFacts>>,
+  resolved: ResolvedTree,
+  expected: Optional<Node>,
+  rigid_binders: List<Symbol>,
 ) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -3737,7 +3756,10 @@ fn infer_loop_iteration(
       match infer_loop_fixpoint_carrier(
         node: node,
         body_targets: infer_loop_iteration_fold_child_targets(node: node),
-        entries: entries
+        entries: entries,
+        resolved: resolved,
+        expected: expected,
+        rigid_binders: rigid_binders
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: carrier, diagnostics: ud } =>
@@ -6152,8 +6174,11 @@ fn infer_gather_loop_row_on_entries(
   entries: Map<Node, List<InferredFacts>>,
   pending: Diagnostics,
   partials: List<Node>,
+  resolved: ResolvedTree,
+  expected: Optional<Node>,
+  rigid_binders: List<Symbol>,
 ) -> InferGatherFoldAcc {
-  match infer_loop_iteration(node: node, partials: partials, entries: entries) {
+  match infer_loop_iteration(node: node, partials: partials, entries: entries, resolved: resolved, expected: expected, rigid_binders: rigid_binders) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -7656,7 +7681,10 @@ fn infer_gather_fold_step_merged(
       node: acc.node,
       entries: merged_entries,
       pending: merged_pending,
-      partials: partials
+      partials: partials,
+      resolved: resolved,
+      expected: acc.declared_position_expected,
+      rigid_binders: acc.rigid_binders
     )
   } else if acc.await_transform_row && children_remaining == 0 {
     infer_gather_transform_row_on_entries(
