@@ -174,8 +174,9 @@ pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
     empty_type_summary_index, is_enum_in_summaries, lookup_emit_type_summary,
-    type_decl_index_with_qualified_names, type_summary_lookup, EmitGraphInfo, EmitInfoBuildState,
-    TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion,
+    type_decl_index_insert, type_decl_index_with_qualified_names, type_summary_lookup,
+    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup,
+    TypeSummaryQuestion,
 };
 pub use crate::v1_compiler_infer_env::empty_type_env;
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
@@ -25878,13 +25879,31 @@ pub fn unify_record_lit_field_walk(
                             scope.clone(),
                             st.clone(),
                         ),
-                        std::option::Option::None => unify_generics(
-                            field_formal.clone(),
-                            crate::v1_compiler_infer_types::resolved_type(actual_value.clone()),
-                            generic_names.clone(),
-                            scope.type_env.source_indices.clone(),
-                            st.clone(),
-                        ),
+                        std::option::Option::None => {
+                            if is_lambda_expr(actual_value.clone()) {
+                                unify_lambda_solves(
+                                    unify_generics(
+                                        field_formal.clone(),
+                                        lambda_callable_type(actual_value.clone()),
+                                        generic_names.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                    ),
+                                    generic_names.clone(),
+                                    st.clone(),
+                                )
+                            } else {
+                                unify_generics(
+                                    field_formal.clone(),
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        actual_value.clone(),
+                                    ),
+                                    generic_names.clone(),
+                                    scope.type_env.source_indices.clone(),
+                                    st.clone(),
+                                )
+                            }
+                        }
                     }
                 }
                 std::option::Option::None => st.clone(),
@@ -26584,23 +26603,63 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             Rc::new(vec![]),
             env.source_indices.clone(),
         );
-        Rc::new(TypeEnv {
-            module_path: env.module_path.clone(),
-            bindings: env.bindings.clone(),
-            str_bindings: env.str_bindings.clone(),
-            ancestry_str_bindings: env.ancestry_str_bindings.clone(),
-            parents: Rc::new(vec![]),
-            recursive_types: env.recursive_types.clone(),
-            recursive_type_set: env.recursive_type_set.clone(),
-            inductive_fields: env.inductive_fields.clone(),
-            source_indices: env.source_indices.clone(),
-            intern_table: env.intern_table.clone(),
-            source_visible_names: env.source_visible_names.clone(),
-            authored_import_names: env.authored_import_names.clone(),
-            symbol_index: env.symbol_index.clone(),
-            unit_variant_index: rebuilt_index.clone(),
-            unit_variant_index_observed: true,
-        })
+        {
+            let __rb_0_0 = env.module_path.clone();
+            let __rb_1_0 = env.bindings.clone();
+            let __rb_2_0 = env.str_bindings.clone();
+            let __rb_3_0 = env.ancestry_str_bindings.clone();
+            let __rb_4_0 = Rc::new(vec![]);
+            let __rb_5_0 = env.recursive_types.clone();
+            let __rb_6_0 = env.recursive_type_set.clone();
+            let __rb_7_0 = env.inductive_fields.clone();
+            let __rb_8_0 = env.source_indices.clone();
+            let __rb_9_0 = env.intern_table.clone();
+            let __rb_10_0 = env.source_visible_names.clone();
+            let __rb_11_0 = env.authored_import_names.clone();
+            let __rb_12_0 = env.symbol_index.clone();
+            let __rb_13_0 = rebuilt_index.clone();
+            let __rb_14_0 = true;
+            let mut __rb_h = env;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.module_path = __rb_0_0;
+                    __rb_r.bindings = __rb_1_0;
+                    __rb_r.str_bindings = __rb_2_0;
+                    __rb_r.ancestry_str_bindings = __rb_3_0;
+                    __rb_r.parents = __rb_4_0;
+                    __rb_r.recursive_types = __rb_5_0;
+                    __rb_r.recursive_type_set = __rb_6_0;
+                    __rb_r.inductive_fields = __rb_7_0;
+                    __rb_r.source_indices = __rb_8_0;
+                    __rb_r.intern_table = __rb_9_0;
+                    __rb_r.source_visible_names = __rb_10_0;
+                    __rb_r.authored_import_names = __rb_11_0;
+                    __rb_r.symbol_index = __rb_12_0;
+                    __rb_r.unit_variant_index = __rb_13_0;
+                    __rb_r.unit_variant_index_observed = __rb_14_0;
+                }
+                None => {
+                    __rb_h = Rc::new(TypeEnv {
+                        module_path: __rb_0_0,
+                        bindings: __rb_1_0,
+                        str_bindings: __rb_2_0,
+                        ancestry_str_bindings: __rb_3_0,
+                        parents: __rb_4_0,
+                        recursive_types: __rb_5_0,
+                        recursive_type_set: __rb_6_0,
+                        inductive_fields: __rb_7_0,
+                        source_indices: __rb_8_0,
+                        intern_table: __rb_9_0,
+                        source_visible_names: __rb_10_0,
+                        authored_import_names: __rb_11_0,
+                        symbol_index: __rb_12_0,
+                        unit_variant_index: __rb_13_0,
+                        unit_variant_index_observed: __rb_14_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 
@@ -31810,30 +31869,84 @@ pub fn grounded_node(
     body: Option<Rc<Node>>,
     match_pattern: Option<Rc<MatchPattern>>,
 ) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: occurrence_identity.clone(),
-        name: n.name.clone(),
-        ident: n.ident.clone(),
-        span: n.span.clone(),
-        ident_span: n.ident_span.clone(),
-        children: children.clone(),
-        connective: n.connective.clone(),
-        params: n.params.clone(),
-        inferred: n.inferred.clone(),
-        return_cardinality: n.return_cardinality.clone(),
-        uses: n.uses.clone(),
-        body: body.clone(),
-        transport: n.transport.clone(),
-        properties: n.properties.clone(),
-        type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
-        declaration_marker: n.declaration_marker.clone(),
-        declaration: n.declaration.clone(),
-        expr_data: n.expr_data.clone(),
-    })
+    {
+        let __rb_0_0 = occurrence_identity.clone();
+        let __rb_1_0 = n.name.clone();
+        let __rb_2_0 = n.ident.clone();
+        let __rb_3_0 = n.span.clone();
+        let __rb_4_0 = n.ident_span.clone();
+        let __rb_5_0 = children.clone();
+        let __rb_6_0 = n.connective.clone();
+        let __rb_7_0 = n.params.clone();
+        let __rb_8_0 = n.inferred.clone();
+        let __rb_9_0 = n.return_cardinality.clone();
+        let __rb_10_0 = n.uses.clone();
+        let __rb_11_0 = body.clone();
+        let __rb_12_0 = n.transport.clone();
+        let __rb_13_0 = n.properties.clone();
+        let __rb_14_0 = n.type_annotation.clone();
+        let __rb_15_0 = n.is_self_recursive.clone();
+        let __rb_16_0 = n.has_non_tail_self_call.clone();
+        let __rb_17_0 = match_pattern.clone();
+        let __rb_18_0 = n.module_item_kind.clone();
+        let __rb_19_0 = n.declaration_marker.clone();
+        let __rb_20_0 = n.declaration.clone();
+        let __rb_21_0 = n.expr_data.clone();
+        let mut __rb_h = n;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.occurrence_identity = __rb_0_0;
+                __rb_r.name = __rb_1_0;
+                __rb_r.ident = __rb_2_0;
+                __rb_r.span = __rb_3_0;
+                __rb_r.ident_span = __rb_4_0;
+                __rb_r.children = __rb_5_0;
+                __rb_r.connective = __rb_6_0;
+                __rb_r.params = __rb_7_0;
+                __rb_r.inferred = __rb_8_0;
+                __rb_r.return_cardinality = __rb_9_0;
+                __rb_r.uses = __rb_10_0;
+                __rb_r.body = __rb_11_0;
+                __rb_r.transport = __rb_12_0;
+                __rb_r.properties = __rb_13_0;
+                __rb_r.type_annotation = __rb_14_0;
+                __rb_r.is_self_recursive = __rb_15_0;
+                __rb_r.has_non_tail_self_call = __rb_16_0;
+                __rb_r.match_pattern = __rb_17_0;
+                __rb_r.module_item_kind = __rb_18_0;
+                __rb_r.declaration_marker = __rb_19_0;
+                __rb_r.declaration = __rb_20_0;
+                __rb_r.expr_data = __rb_21_0;
+            }
+            None => {
+                __rb_h = Rc::new(Node {
+                    occurrence_identity: __rb_0_0,
+                    name: __rb_1_0,
+                    ident: __rb_2_0,
+                    span: __rb_3_0,
+                    ident_span: __rb_4_0,
+                    children: __rb_5_0,
+                    connective: __rb_6_0,
+                    params: __rb_7_0,
+                    inferred: __rb_8_0,
+                    return_cardinality: __rb_9_0,
+                    uses: __rb_10_0,
+                    body: __rb_11_0,
+                    transport: __rb_12_0,
+                    properties: __rb_13_0,
+                    type_annotation: __rb_14_0,
+                    is_self_recursive: __rb_15_0,
+                    has_non_tail_self_call: __rb_16_0,
+                    match_pattern: __rb_17_0,
+                    module_item_kind: __rb_18_0,
+                    declaration_marker: __rb_19_0,
+                    declaration: __rb_20_0,
+                    expr_data: __rb_21_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn ground_unchanged(n: Rc<Node>) -> Rc<GroundOut> {
@@ -34745,34 +34858,28 @@ pub fn build_emit_graph_info(
             structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),
         });
-        let built_raw = modules.iter().cloned().fold(
-            init.clone(),
-            |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| {
-                let module_name = crate::v1_std_core::authored_name_at(
-                    typed_module.type_env.source_indices.clone(),
-                    typed_module.module.clone(),
-                );
-                typed_module.items.clone().iter().cloned().fold(
-                    state,
-                    |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| {
-                        if item_declares_kernel_grounded_carrier(
-                            item.clone(),
-                            module_name.clone(),
-                            typed_module.type_env.source_indices.clone(),
-                        ) {
-                            inner_state
-                        } else {
-                            crate::v1_compiler_infer_emit_info::add_emit_item_summary(
-                                inner_state,
-                                module_name.clone(),
-                                item.clone(),
-                                typed_module.type_env.source_indices.clone(),
-                            )
-                        }
-                    },
-                )
-            },
-        );
+        let built_raw = modules.iter().cloned().fold(init.clone(), |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| {
+            let module_name = crate::v1_std_core::authored_name_at(typed_module.type_env.source_indices.clone(), typed_module.module.clone());
+typed_module.items.clone().iter().cloned().fold(state, |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| if item_declares_kernel_grounded_carrier(item.clone(), module_name.clone(), typed_module.type_env.source_indices.clone()) {
+                {
+                    let carrier_name = crate::v1_std_core::authored_name_at(typed_module.type_env.source_indices.clone(), item.clone());
+if (carrier_name.clone() == "".to_string()) {
+                        inner_state.clone()
+                    } else {
+                        Rc::new(EmitInfoBuildState {
+    type_summaries: inner_state.type_summaries.clone(),
+    type_decl_items: crate::v1_compiler_infer_emit_info::type_decl_index_insert(inner_state.type_decl_items.clone(), module_name.clone(), carrier_name.clone(), item.clone()),
+    fn_decl_items: inner_state.fn_decl_items.clone(),
+    fn_decl_identity_items: inner_state.fn_decl_identity_items.clone(),
+    structural_alias_fn_surface_names: inner_state.structural_alias_fn_surface_names.clone(),
+    structural_alias_direct_fn_names: inner_state.structural_alias_direct_fn_names.clone(),
+})
+                    }
+}
+            } else {
+                crate::v1_compiler_infer_emit_info::add_emit_item_summary(inner_state.clone(), module_name.clone(), item.clone(), typed_module.type_env.source_indices.clone())
+            })
+});
         let built = Rc::new(EmitInfoBuildState {
             type_summaries: crate::v1_compiler_infer_emit_info::close_fn_fields(
                 built_raw.type_summaries.clone(),
