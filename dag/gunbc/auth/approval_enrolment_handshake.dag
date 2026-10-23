@@ -24,8 +24,10 @@ import gunbc.auth.approval_device_redemption {
 
 // THE PENDING WINDOW. A PENDING record not confirmed by its deadline reads as Lapsed and cannot be
 // confirmed. The window only has to cover one Face ID prompt and one POST after the SYN-ACK
-// arrives. It matches the code's own window, so the operator's phone gets the same ten minutes for
-// both steps.
+// arrives, so it stays ten minutes. It is deliberately NOT the code's window
+// (gunbc.auth.approval_device_enrolment_code approval_enrolment_code_window): that one covers the
+// operator getting to the phone at all, and was widened to a day; this one starts only once the
+// phone is already mid-handshake.
 data approval_enrolment_pending_window_seconds: Int = 600
 
 // THE DEADLINE IS READ, NOT SWEPT -- the same pattern the code uses for its own expires_at. No
