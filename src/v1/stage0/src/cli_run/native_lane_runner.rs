@@ -5104,14 +5104,14 @@ fn run_census_scoped_with(
 /// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
 /// added to the source roots and the kit's fixture modules as its subjects
 /// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
-/// run so the union above, and every row it prints, is exactly what it was without the kit.
+/// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
+/// declares no kit (`None`) gets no kit run.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
-    kit_root: &str,
-    kit_subjects: &[String],
-) -> Result<(Vec<CensusInferRun>, CensusInferRun, CensusInferRun), String> {
+    kit: Option<(&str, &[String])>,
+) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5122,13 +5122,22 @@ pub fn run_census_controls_and_subjects(
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
     let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
-    let kit_labels: Vec<String> = kit_subjects
-        .iter()
-        .map(|subject| format!("//{}:all", subject.replace('.', "/")))
-        .collect();
-    let mut kit_roots = source_roots.to_vec();
-    kit_roots.push(kit_root.to_string());
-    let kit = run_census_scoped_with(&preparation.binary_path, &kit_labels, &kit_roots)?;
+    let kit = match kit {
+        Some((kit_root, kit_subjects)) => {
+            let kit_labels: Vec<String> = kit_subjects
+                .iter()
+                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+                .collect();
+            let mut kit_roots = source_roots.to_vec();
+            kit_roots.push(kit_root.to_string());
+            Some(run_census_scoped_with(
+                &preparation.binary_path,
+                &kit_labels,
+                &kit_roots,
+            )?)
+        }
+        None => None,
+    };
     Ok((controls, union, kit))
 }
 
