@@ -34,7 +34,7 @@ fn surplus_variant_probe_source(holding: String) -> String {
 
 // THE ROWS ACCESSOR IS NOT REDECLARED HERE. This file used to carry its own `type ProbeCensusRows`
 // plus a `surplus_variant_probe_rows` that matched the census coproduct by hand -- the second local
-// implementation of one rule (§6b), which review 82870 caught when a third copy appeared. It now
+// implementation of one rule (§6b), which a third copy exposed. It now
 // imports the one home, gunbc.compile_census_probe, and passes it a source it builds locally.
 
 data target_class: String = "TypeMismatch"

@@ -25,7 +25,8 @@ import v2.std.node {
   Edge,
   Node,
   Symbol,
-  node_rebuild
+  node_rebuild,
+  NotADeclaration
 }
 import v2.std.node_query { find_named_child, node_labeled_child_edges }
 import v2.std.passing_candidate_fold {
@@ -361,7 +362,7 @@ fn neutralize_edges_for_target(
               Accepted {
                 value: list_snoc_item(
                   xs: rebuilt_edges,
-                  item: Edge { label: edge.label, target: neutralized_target }
+                  item: Edge { label: edge.label, target: neutralized_target, declaration: edge.declaration }
                 ),
                 diagnostics: ad
               }

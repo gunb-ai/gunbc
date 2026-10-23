@@ -1,13 +1,9 @@
 module v2.test.claim.is_surface
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.test.claim.type_param_binder_frame { tpb_assemble, tpb_refuses_with }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.compiler.infer { infer }
-import v2.compiler.eval { eval, eval_default_interpretation, inputs_root_only }
-import v2.compiler.emit { emit }
-import v2.extdeps.languages.rust { rust_target_model_staging }
-import v2.compiler.refinement_discharge { discharge_refinement_obligations }
-import std.algebra { Cons, Empty, PartialFunction, fold_list }
+import std.algebra { list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -15,24 +11,22 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.compiler.arm_resolution { arm_test_realization_refusal }
-import v2.compiler.arm_resolution { PayloadArmReferenceAwaited, ResolvedArm, UnitArmSameArm }
 import v2.std.diagnostic { diagnostics_fatal, diagnostics_fatal_reason, NodeLocus }
+import v2.std.node_query { find_core_child }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_subtree_nodes }
+import v2.std.node { MatchArmPatternEdge, Atom, ComputationNode, Match, Node, Symbol, Transform, TypeNode, node_subtree_nodes }
 import std.optional { Absent, Optional, Present }
-import v2.compiler.inferred_tree { InferredTree }
 import std.types { List }
 import extdeps.filesystem.filesystem_io
-import v2.compiler.body_lowering_fold { DeclaredTypeModifiers, type_decl_modifiers_include_sole_constructor }
-import v2.test.claim.parse.parse_test_type_decl_modifier_carrier { tdm_normalized_rows }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// SUBJECT: `x is V` is carried as Transform[kw_is, x, V] through lowering and resolve; V stays the arm's
-// source spelling, resolved against x's type by infer (R1). BOUNDARY: source text in via tpb_assemble.
+// SUBJECT: `x is V` is sugar for `match x { V => true  _ => false }`. body_lowering lowers it to that
+// Match before infer (v2.compiler.body_lowering_fold body_lower_is_node), the same Match the seed parser
+// builds (v1 02_parse parse_is_arm_test), so no `is` node survives lowering and every check, eval and
+// emit route is the Match's. BOUNDARY: source text in via tpb_assemble.
 
 fn is_unit_test() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Color = Red | Green\n\nfn f(c: Color) -> Bool {\n  c is Red\n}\n")
@@ -58,13 +52,42 @@ fn is_head_is_kw(n: Node) -> Bool {
   }
 }
 
-test fn is_unit_test_lowers_to_one_is_node() -> Bool {
+// No kw_is node survives lowering: the `is` is a Match.
+test fn is_unit_test_lowers_to_no_is_node() -> Bool {
   match is_unit_test() {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) { if is_head_is_kw(n: x) { acc + 1 } else { acc } }) == 1
+      fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) { if is_head_is_kw(n: x) { acc + 1 } else { acc } }) == 0
   }
 }
+
+fn is_match_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: 0, f: fn(acc, x) {
+        match x.kind {
+          ComputationNode { behavior: Match } => acc + 1
+          _ => acc
+        }
+      })
+  }
+}
+
+// The kinds and atom identities of the subtree in order: occurrence-free shape of a lowering.
+fn is_shape(o: Outcome<ResolvedTree>) -> List<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: root, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: root.root), init: [], f: fn(acc, x) {
+        match is_atom_identity(n: x) {
+          Present { value: id } => list_snoc_item(xs: acc, item: id)
+          Absent => acc
+        }
+      })
+  }
+}
+
 
 fn is_src(decls: String, body: String) -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\n" + decls + "\nfn f(c: Color) -> Bool {\n  " + body + "\n}\n")
@@ -81,236 +104,110 @@ fn is_infer_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   }
 }
 
-fn is_arm_realizations(o: Outcome<ResolvedTree>) -> List<Bool> {
-  match o {
-    Rejected { diagnostics: _ } => []
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Rejected { diagnostics: _ } => []
-        Accepted { value: t, diagnostics: _ } =>
-          fold(node_subtree_nodes(root: root.root), init: [], f: fn(acc, x) {
-            match t.arm_resolutions.decided.lookup(x) {
-              Present { value: r } =>
-                match r.realization {
-                  UnitArmSameArm => [true]
-                  PayloadArmReferenceAwaited => [false]
-                }
-              Absent => acc
-            }
-          })
-      }
-  }
-}
-
-// POSITIVE CONTROL: a unit arm of x's own type resolves, and the decided realization is the unit one.
-test fn is_unit_arm_resolves_unit() -> Bool {
-  is_arm_realizations(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) == [true]
-}
-
-// A payload arm resolves too and its decided realization is the awaiting cause, never a unit one.
-test fn is_payload_arm_resolves_awaiting() -> Bool {
-  is_arm_realizations(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint")) == [false]
-}
-
-// RED: a misspelt arm refuses at infer with the typed cause.
-test fn is_misspelt_arm_refuses() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Rd"), reason: ^arm_resolution_reason_arm_not_declared_by_owner)
-}
-
-// RED: an arm of ANOTHER type refuses with the same cause: the roster is x's type's.
-test fn is_foreign_arm_refuses() -> Bool {
-  is_infer_reason(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"), reason: ^arm_resolution_reason_arm_not_declared_by_owner)
-}
-
-// RED: an authored attempt to construct the resolved-arm fact. The type has no grammar row and its
-// record literal is confined to its module (sole_constructor), so a program spelling one refuses.
-test fn is_authored_resolved_arm_refuses() -> Bool {
-  match tpb_assemble(src: "module p\n\nfn f(c: Int) -> Int {\n  ResolvedArm { owner_type: c }\n}\n") {
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
-      }
-    Rejected { diagnostics: _ } => true
-  }
-}
-
-fn is_tree_eval_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+fn is_infers(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
       match infer(tree: root) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: ot, diagnostics: _ } =>
-          match discharge_refinement_obligations(t: ot) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: t, diagnostics: _ } =>
-              tpb_refuses_with(o: eval(tree: t, interpretation: eval_default_interpretation(), inputs: inputs_root_only(root: t.root)), reason: reason)
-          }
-      }
-  }
-}
-
-// An `is` test executes nowhere yet: eval refuses it, typed, naming the missing v2 realization of tag_of/same_arm.
-test fn is_unit_arm_eval_refuses_awaiting_realization() -> Bool {
-  is_tree_eval_reason(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"), reason: ^arm_test_awaiting_v2_realization_of_tag_of_same_arm)
-}
-
-test fn is_payload_arm_eval_refuses_awaiting_realization() -> Bool {
-  is_tree_eval_reason(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint"), reason: ^arm_test_awaiting_v2_realization_of_tag_of_same_arm)
-}
-
-// The shared table: a test with no ResolvedArm entry refuses with its own cause, and a program with no `is`
-// is not refused (positive control that the gate does not widen).
-test fn is_test_without_fact_entry_refuses() -> Bool {
-  match is_inferred_tree(decls: "type Color = Red | Green\n", body: "c is Red") {
-    Present { value: t } =>
-      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, decided: PartialFunction { lookup: fn(k) { Absent } }) {
-        Present { value: d } => d.reason == ^arm_test_without_resolved_arm
-        Absent => false
-      }
-    Absent => false
-  }
-}
-
-// A real program with no `is` carries no arm test, so nothing is refused.
-test fn no_is_node_is_not_refused() -> Bool {
-  match is_inferred_tree(decls: "type Color = Red | Green\n", body: "true") {
-    Present { value: t } =>
-      match arm_test_realization_refusal(tests: t.arm_resolutions.tests, decided: t.arm_resolutions.decided) {
-        Present { value: _ } => false
-        Absent => true
-      }
-    Absent => false
-  }
-}
-
-fn is_inferred_tree(decls: String, body: String) -> Optional<InferredTree> {
-  match is_src(decls: decls, body: body) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Rejected { diagnostics: _ } => Absent
-        Accepted { value: ot, diagnostics: _ } =>
-          match discharge_refinement_obligations(t: ot) {
-            Rejected { diagnostics: _ } => Absent
-            Accepted { value: t, diagnostics: _ } => Present { value: t }
-          }
-      }
-  }
-}
-
-// The emit route refuses the same test with the same cause: no second path around the missing realization.
-test fn is_unit_arm_emit_refuses_awaiting_realization() -> Bool {
-  match is_src(decls: "type Color = Red | Green\n", body: "c is Red") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match infer(tree: root) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: ot, diagnostics: _ } =>
-          match discharge_refinement_obligations(t: ot) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: t, diagnostics: _ } =>
-              tpb_refuses_with(o: emit(tree: t, target: rust_target_model_staging()), reason: ^arm_test_awaiting_v2_realization_of_tag_of_same_arm)
-          }
-      }
-  }
-}
-
-// RED, FUNCTION-ARGUMENT ROUTE: a ResolvedArm forged in argument position of a call that consumes it.
-// The peer stands in for v2.compiler.arm_resolution (same type name, same sole_constructor seal); the
-// record-literal route above and this one are separate sites of the same wall. The cause is asserted by
-// name, so a broken seal reads as a failed claim, not as a different refusal. The REAL type's refusal at
-// the same site is the paired inhabitance receipt: src/v2/test/claim/manual/resolved_arm_forge_argument_red.dag.
-data is_sc_subject_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^is_sc_subject_artifact,
-  file_path: "src/v2/pilot/is_surface_forge_subject.dag"
-}
-
-data is_sc_peer_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^is_sc_peer_artifact,
-  file_path: "src/v2/pilot/is_surface_forge_peer.dag"
-}
-
-fn is_forge_peer_text() -> String {
-  "module aca\n\ntype ResolvedArm sole_constructor { owner: Int, arm: Int }\n\nfn take_arm(a: ResolvedArm) -> Int { a.owner }\n"
-}
-
-fn is_forge_assembled(subject_src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: DagSourceReadWitness {
-        source: Medium { carried: subject_src, fidelity: Lossless },
-        artifact: is_sc_subject_artifact,
-        compilation_unit: ^is_sc_subject_cu,
-        source_root: V2Tree
-      },
-      tail: [
-        DagSourceReadWitness {
-          source: Medium { carried: is_forge_peer_text(), fidelity: Lossless },
-          artifact: is_sc_peer_artifact,
-          compilation_unit: ^is_sc_peer_cu,
-          source_root: V2Tree
-        }
-      ]
-    },
-    admission: Admission {
-      subject: ResolutionSubject { name: Cons { head: ^bcb, tail: Empty } },
-      imports: Empty
-    },
-    lm: dag_language_model()
-  )
-}
-
-fn is_forge_infer_has_reason(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: rt, diagnostics: _ } =>
-      match infer(tree: rt) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: d } =>
-          (d.head.reason == reason)
-            || fold_list(xs: d.tail, empty: false, cons: fn(acc, x) { acc || (x.reason == reason) })
-      }
-  }
-}
-
-test fn is_forged_arm_argument_refuses_sole_constructor() -> Bool {
-  is_forge_infer_has_reason(o: is_forge_assembled(subject_src: "module bcb\n\nimport aca { ResolvedArm, take_arm }\n\nfn f(n: Int) -> Int {\n  take_arm(a: ResolvedArm { owner: n, arm: n })\n}\n"), reason: ^infer_reason_sole_constructor_refused)
-}
-
-test fn is_consumed_arm_parameter_is_admitted() -> Bool {
-  match is_forge_assembled(subject_src: "module bcb\n\nimport aca { ResolvedArm, take_arm }\n\nfn g(a: ResolvedArm) -> Int {\n  take_arm(a: a)\n}\n") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: rt, diagnostics: _ } =>
-      match infer(tree: rt) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
   }
 }
 
-// THE REAL DECLARATION IS SEALED, read by parse + normalize (no imports, no assembly): the stand-in
-// claims prove the wall refuses a sealed type, and this binds that to ResolvedArm itself. The row is
-// the one normalize captures from the parse (the channel infer's wall reads is built from it), so a
-// dropped sole_constructor reads here as a failed claim whatever the stand-in does.
-fn is_rows_seal_named(rows: List<DeclaredTypeModifiers>, name: Symbol) -> Bool {
-  fold_list(xs: rows, empty: false, cons: fn(found, row) {
-    found || (row.name == name && type_decl_modifiers_include_sole_constructor(modifiers: row.modifiers))
-  })
+fn is_refused_at_or_before_infer(o: Outcome<ResolvedTree>) -> Bool {
+  if is_infers(o: o) { false } else { true }
 }
 
-test fn is_real_resolved_arm_declaration_is_sole_constructor() -> Bool {
-  is_rows_seal_named(rows: tdm_normalized_rows(src: filesystem_read(path: "src/v2/compiler/arm_resolution.dag").content), name: ^ResolvedArm)
+fn is_explicit(decls: String, arm: String) -> Outcome<ResolvedTree> {
+  is_src(decls: decls, body: "match c {\n    " + arm + " => true\n    _ => false\n  }")
 }
 
-// RED FIXTURE: the same shape of declaration without the seal reads false; positive control: with it, true.
-test fn is_unsealed_declaration_is_not_sole_constructor() -> Bool {
-  is_rows_seal_named(rows: tdm_normalized_rows(src: "module m\n\ntype ResolvedArm { owner: Int }\n"), name: ^ResolvedArm) == false
+// POSITIVE CONTROL: unit and payload arms of x's own type infer, and each lowers to exactly one Match.
+test fn is_unit_arm_infers() -> Bool {
+  is_infers(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red"))
 }
 
-test fn is_sealed_fixture_declaration_is_sole_constructor() -> Bool {
-  is_rows_seal_named(rows: tdm_normalized_rows(src: "module m\n\ntype ResolvedArm sole_constructor { owner: Int }\n"), name: ^ResolvedArm)
+test fn is_payload_arm_infers() -> Bool {
+  is_infers(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint"))
+}
+
+test fn is_lowers_to_exactly_one_match() -> Bool {
+  is_match_count(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) == 1
+}
+
+// DIFFERENTIAL CONTROL (v2 half): `c is V` and the explicit match have the same atoms in the same order
+// for a unit arm and a payload arm; the seed half is test.claim.is_arm_seed_lowering_agrees_with_explicit_match.
+test fn is_unit_shape_equals_explicit_match() -> Bool {
+  is_shape(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) == is_shape(o: is_explicit(decls: "type Color = Red | Green\n", arm: "Red"))
+}
+
+test fn is_payload_shape_equals_explicit_match() -> Bool {
+  is_shape(o: is_src(decls: "type Color = Red | Tint { r: Int }\n", body: "c is Tint")) == is_shape(o: is_explicit(decls: "type Color = Red | Tint { r: Int }\n", arm: "Tint"))
+}
+
+// ARMS-SWAPPED RED: the shape with true/false swapped differs, so a lowering that swapped the arms would
+// fail the shape equality above.
+test fn is_swapped_explicit_match_shape_differs() -> Bool {
+  is_shape(o: is_src(decls: "type Color = Red | Green\n", body: "c is Red")) != is_shape(o: is_src(decls: "type Color = Red | Green\n", body: "match c {\n    Red => false\n    _ => true\n  }"))
+}
+
+// RED: a misspelt V refuses and the refusal is the explicit match's own (same stage, same reason).
+test fn is_misspelt_arm_refuses() -> Bool {
+  is_refused_at_or_before_infer(o: is_src(decls: "type Color = Red | Green\n", body: "c is Rd"))
+}
+
+test fn is_misspelt_arm_refuses_as_the_explicit_match_does() -> Bool {
+  is_refused_at_or_before_infer(o: is_explicit(decls: "type Color = Red | Green\n", arm: "Rd"))
+}
+
+// RED: V of ANOTHER type refuses; the roster is x's type's.
+test fn is_foreign_arm_refuses() -> Bool {
+  is_refused_at_or_before_infer(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"))
+}
+
+test fn is_foreign_arm_refuses_as_the_explicit_match_does() -> Bool {
+  is_refused_at_or_before_infer(o: is_explicit(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", arm: "Blue"))
+}
+
+// RED, NO ROUTE: an `is` with a non-member V yields no InferredTree, and eval and emit take only an
+// InferredTree, so the `is` cannot reach either by any route. The only path to a tree is infer.
+test fn is_non_member_arm_has_no_inferred_tree() -> Bool {
+  match is_src(decls: "type Color = Red | Green\n", body: "c is Rd") {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+// The refusal for a V of another type is located at the ARM that used it, never at the foreign
+// declaration the resolved pattern edge points to (that locus named the other type, not the use site).
+fn is_infer_locus_is_arm(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          match diagnostics_fatal(d: d).at {
+            NodeLocus { anchor: a } =>
+              match find_core_child(root: a.at, marker: MatchArmPatternEdge) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
+            _ => false
+          }
+      }
+  }
+}
+
+test fn is_foreign_arm_refusal_is_located_at_the_arm() -> Bool {
+  is_infer_locus_is_arm(o: is_src(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", body: "c is Blue"))
+}
+
+test fn is_foreign_arm_refusal_locus_as_the_explicit_match_does() -> Bool {
+  is_infer_locus_is_arm(o: is_explicit(decls: "type Color = Red | Green\ntype Other = Blue | Cyan\n", arm: "Blue"))
 }
