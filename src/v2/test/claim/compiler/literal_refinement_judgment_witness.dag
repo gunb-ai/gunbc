@@ -59,6 +59,8 @@ data lrj_ingest: SourceRootIngest = [
   lrj_read(source: lrj_nonliteral_source, id: ^lrj_nonliteral_read, unit: ^lrj_nonliteral_cu, path: "src/v2/test/fixture/lrj/nonliteral.dag"),
   lrj_read(source: lrj_wrong_type_source, id: ^lrj_wrong_type_read, unit: ^lrj_wrong_type_cu, path: "src/v2/test/fixture/lrj/wrong_type.dag"),
   lrj_read(source: lrj_one_arg_source, id: ^lrj_one_arg_read, unit: ^lrj_one_arg_cu, path: "src/v2/test/fixture/lrj/one_arg.dag"),
+  lrj_read(source: lrj_decl_only_source, id: ^lrj_decl_only_read, unit: ^lrj_decl_only_cu, path: "src/v2/test/fixture/lrj/decl_only.dag"),
+  lrj_read(source: lrj_formal_only_source, id: ^lrj_formal_only_read, unit: ^lrj_formal_only_cu, path: "src/v2/test/fixture/lrj/formal_only.dag"),
   lrj_read(source: lrj_plain_source, id: ^lrj_plain_read, unit: ^lrj_plain_cu, path: "src/v2/test/fixture/lrj/plain.dag")
 ]
 
@@ -237,4 +239,25 @@ test fn lrj_fatal_is_where_predicate_subject_holds() -> Bool {
 
 test fn lrj_fatal_is_demand_site_unplaceable_holds() -> Bool {
   lrj_one_arg_outcome_is(reason: ^infer_reason_refinement_demand_site_unplaceable)
+}
+
+// LOCATOR: which node of the refined fixture is the ungrounded one. decl_only has the refinement declaration
+// and its predicate; formal_only adds a function whose formal is the refinement, with no call.
+data lrj_decl_only_source: String = "module v2.test.lrj_decl_only\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n"
+
+data lrj_formal_only_source: String = "module v2.test.lrj_formal_only\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n"
+
+fn lrj_infers(subject: String) -> Bool {
+  match lrj_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } => match infer(tree: r) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+  }
+}
+
+test fn lrj_locator_declaration_alone_infers_holds() -> Bool {
+  lrj_infers(subject: "v2.test.lrj_decl_only")
+}
+
+test fn lrj_locator_refined_formal_without_a_call_infers_holds() -> Bool {
+  lrj_infers(subject: "v2.test.lrj_formal_only")
 }
