@@ -153,6 +153,7 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   PrimitiveRealizationsWired,
   target_bind_let_separator_present,
   IntLiteralDecimal,
+  ListIntroductionDelimited,
   TargetCapabilityKey,
   ProducedDeclSupport,
   ProducedDeclUnwired,
@@ -296,11 +297,12 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   TargetTypeExprVariantSlot
 }
 import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclColumnPlain,
+  ColumnUnwired,
+  ColumnWired,
+  MembersInAssociatedBlock,
   TargetSemanticDeclCoproductDecorationRule,
   TargetSemanticDeclCoproductEnumSurface,
-  HeaderLeadingLines,
-  ImportsLeading,
-  MembersInAssociatedBlock,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
@@ -327,7 +329,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   Instantiation,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.node_query { binder_edge }
 import v2.std.logic { bool_node }
@@ -954,7 +957,7 @@ fn rust_inhabitant_i32_node() -> Node {
 }
 
 fn rust_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn rust_declared_inhabitants_root() -> Node {
@@ -1230,6 +1233,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^rust_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^rust_token_int_literal },
+    list_introduction_form: ListIntroductionDelimited { open: ^rust_token_vec_open, separator: ^rust_token_comma, close: ^rust_token_list_close },
     block_evaluation_mode: ValueProducing
   }
 }
@@ -2486,7 +2490,9 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_path_sep, text: "::"),
     rust_lex_rule(token_class: ^rust_token_box_new, text: "new"),
     rust_lex_rule(token_class: ^rust_token_fn_type_lt, text: "<"),
-    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">")
+    rust_lex_rule(token_class: ^rust_token_fn_type_gt, text: ">"),
+    rust_lex_rule(token_class: ^rust_token_vec_open, text: "vec!["),
+    rust_lex_rule(token_class: ^rust_token_list_close, text: "]")
   ]
 }
 
@@ -2984,9 +2990,11 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
-    member_projection: MembersInAssociatedBlock,
-    import_projection: ImportsLeading,
-    header_projection: HeaderLeadingLines,
+    member_projection: ColumnWired { placement: MembersInAssociatedBlock },
+    import_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    header_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    doc_projection: ColumnUnwired,
+    conformance_projection: ColumnUnwired,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,
@@ -5033,8 +5041,8 @@ fn rust_sg5_set_non_ordable_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_collection_set_carrier_node() },
-      Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
+      Edge { label: Positional, target: target_collection_set_carrier_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: rust_sg5_non_ordable_type_node(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -5079,7 +5087,8 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_foobar } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -5087,7 +5096,8 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_x } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -5095,7 +5105,8 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_y } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -5112,11 +5123,13 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_rc } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: rust_sg2_foobar_xy_inner_instantiation_node()
+        target: rust_sg2_foobar_xy_inner_instantiation_node(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -5173,8 +5186,8 @@ fn rust_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
-      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -5340,7 +5353,8 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+        declaration: NotADeclaration
       }
     ),
     occurrence_id: OccurrenceSynthetic
@@ -5392,7 +5406,8 @@ fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+        declaration: NotADeclaration
       }
     ),
     occurrence_id: OccurrenceSynthetic
@@ -5407,7 +5422,8 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
       xs: base.children,
       item: Edge {
         label: Positional,
-        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
+        target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y),
+        declaration: NotADeclaration
       }
     ),
     occurrence_id: OccurrenceSynthetic

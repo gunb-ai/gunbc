@@ -1,6 +1,8 @@
 module test.claim.guarantee_probe_corpus_witness
 
 import extdeps.filesystem.filesystem_io
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { any_class_census, census_verdict, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
 import std.materialization_ladder { string_list_contains }
 import gunbc.guarantee_probe_corpus {
   guarantee_probe_corpus_charter_note,
@@ -298,8 +300,8 @@ test fn duplicate_probe_id_reds_registry() -> Bool {
 }
 
 test fn probe_set_digest_is_stable() -> Bool {
-  let a = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
-  let b = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
+  let a = probe_set_digest(probe_ids: guarantee_probe_ids()).digest
+  let b = probe_set_digest(probe_ids: guarantee_probe_ids()).digest
   a == b && a != ""
 }
 
@@ -459,11 +461,17 @@ test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn call_duplicate_two_anonymous_positional_params_never_collide() -> Bool {
-  let census = census_of(source: call_duplicate_green_source)
-  match census_any_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-    Present { value: n } => n == 0
-    Absent => true
+test fn call_duplicate_two_anonymous_positional_params_never_collide() -> ProcessExit {
+  census_exit(census_verdict(census: any_class_census(source: call_duplicate_green_source, wanted_class: "CallArgumentDuplicate"), holds: fn(n) { n == 0 }))
+}
+
+// RED: the same zero-claim over a source that DOES carry the duplicate must disagree (exit 1), so the
+// claim above cannot be satisfied by an empty or unrun census.
+test fn the_zero_duplicate_claim_disagrees_on_a_source_with_a_duplicate() -> Bool {
+  match census_verdict(census: any_class_census(source: call_duplicate_red_source, wanted_class: "CallArgumentDuplicate"), holds: fn(n) { n == 0 }) {
+    CensusDisagreed { reason: _ } => true
+    CensusUnobserved { cause: _ } => false
+    CensusHeld {} => false
   }
 }
 
@@ -838,8 +846,8 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      (receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
-        && !((receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
+      receipt.anchor.probe_set_digest.digest == (probe_set_digest(probe_ids: executed).digest)
+        && !(receipt.anchor.probe_set_digest.digest == (probe_set_digest(probe_ids: guarantee_probe_ids()).digest))
     Absent => false
   }
 }

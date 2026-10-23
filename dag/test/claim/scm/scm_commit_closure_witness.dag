@@ -14,7 +14,7 @@ module test.claim.scm.scm_commit_closure_witness
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
 import std.algebra { non_empty_to_list, empty_map }
-import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Instantiation, Positional, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Instantiation, Positional, TypeNode, node_synthetic, NotADeclaration }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -117,7 +117,7 @@ fn child_node() -> Node {
 fn parent_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: ^only_child }, target: child_node() }],
+    children: [Edge { label: Authored { name: ^only_child }, target: child_node(), declaration: NotADeclaration }],
   )
 }
 
@@ -228,8 +228,8 @@ fn closure_two_child_parent_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^alpha }, target: closure_alpha_child_node() },
-      Edge { label: Authored { name: ^beta }, target: closure_beta_child_node() },
+      Edge { label: Authored { name: ^alpha }, target: closure_alpha_child_node(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^beta }, target: closure_beta_child_node(), declaration: NotADeclaration },
     ],
   )
 }

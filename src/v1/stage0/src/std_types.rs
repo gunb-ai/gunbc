@@ -425,8 +425,6 @@ pub type WorkflowObserverId = String;
 
 pub type WorkflowProverId = String;
 
-pub type WorkflowRunId = String;
-
 pub type GitRef = String;
 
 #[derive(

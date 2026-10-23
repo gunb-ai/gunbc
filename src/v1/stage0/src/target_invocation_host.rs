@@ -314,7 +314,11 @@ pub enum TargetProducer {
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
-    DependencyDemandCensus,
+    /// `NativeCensusVerbProducer { verb }`: a whole-corpus census is a verb of the emitted compiler,
+    /// so a further census is a registry row naming its verb, never another variant.
+    NativeCensusVerb {
+        verb: &'static str,
+    },
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -589,7 +593,15 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         ),
         (
             instrument_label("dependency-demand-census"),
-            TargetProducer::DependencyDemandCensus,
+            TargetProducer::NativeCensusVerb {
+                verb: "demand-census",
+            },
+        ),
+        (
+            instrument_label("decl-ref-census"),
+            TargetProducer::NativeCensusVerb {
+                verb: "decl-ref-census",
+            },
         ),
         (
             instrument_label("generic-identity-census"),
@@ -619,10 +631,42 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("append-chain-ladder"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/append_chain_ladder.dag",
+                function: "append_chain_ladder_wire",
+            },
+        ),
+        (
             instrument_label("claim-coverage-census"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/claim_coverage_census_live.dag",
                 function: "claim_coverage_census_exit",
+            },
+        ),
+        // Second home for a binding `gunbc.instrument_targets` `known_red_derivation_binding` already
+        // owns: this table is hand-maintained -- `heal` never regenerates it -- so a rostered label with
+        // no row here exits 2 'no such target' whatever the .dag registry says. Adding the row is the
+        // only way to make the instrument's label reachable, and it follows the table's existing shape
+        // (the `claim-coverage-census` row is built the same way).
+        // RECEIPT / DEFERRAL for the duplicated mapping: generating this table from
+        // `gunbc.instrument_targets` is the repair, and it is a seed lane rather than this instrument's
+        // lane because it touches every instrument's binding at once. The hand-maintained table is
+        // already under a seed census, so the duplication is tracked rather than invisible: the
+        // `DeclarationRef { decl_name: "instrument_registry" }` row inside
+        // `gunbc.target_invocation_seed_growth` `target_invocation_seed_growth_justification`.
+        (
+            instrument_label("known-red-derivation"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/known_red_derivation.dag",
+                function: "known_red_derivation_exit",
+            },
+        ),
+        (
+            instrument_label("roster-reach-inhabitance"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/roster_reach_inhabitance.dag",
+                function: "roster_reach_inhabitance_exit",
             },
         ),
         (
@@ -1023,7 +1067,7 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
 
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
-fn run_producer(producer: TargetProducer) -> InvocationOutcome {
+fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
     match producer {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
@@ -1093,8 +1137,8 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::DependencyDemandCensus => {
-            run_dependency_demand_census(&self_host_source_roots())
+        TargetProducer::NativeCensusVerb { verb } => {
+            run_census_verb(verb, label, &self_host_source_roots())
         }
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
@@ -4526,7 +4570,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: invocation_refusal_rendered(&refusal),
             }
         }
-        Some((_, producer)) => run_producer(producer),
+        Some((bound, producer)) => run_producer(producer, &bound.target),
     }
 }
 
@@ -5286,7 +5330,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
-                names.iter().any(|want| name == *want)
+                names.contains(&name)
             })
             .cloned()
             .collect::<Vec<_>>()
@@ -5489,17 +5533,17 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
-fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_demand_census(source_roots) {
+/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
+/// the exit are decided by the emitted verb; the host adds no verdict.
+fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_census_verb(verb, source_roots) {
         Ok(code) => InvocationOutcome {
             termination: match code {
                 0 => Termination::ObservationHeld,
                 1 => Termination::ObservationDidNotHold,
                 _ => Termination::SubjectUnreached,
             },
-            message: format!(
-                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
-            ),
+            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
