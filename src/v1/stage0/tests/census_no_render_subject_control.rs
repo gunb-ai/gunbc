@@ -32,8 +32,8 @@
 use std::rc::Rc;
 use v1_compiler::cli_run::{compile_dag_diagnostic_census, CompileDiagnosticCensus};
 use v1_compiler::v1_compiler_compile::{
-    compile_to_resolved, emit_resolved_for_target, every_module_render_calls, RenderTarget,
-    RustModuleRenderSelection, SourceFile,
+    compile_to_resolved, emit_resolved_for_target, every_module_render_calls,
+    non_empty_selected_render_calls, RenderTarget, RustModuleRenderSelection, SourceFile,
 };
 
 // The five RED fixtures, verbatim from the fleet witness `data` rows.
@@ -56,10 +56,12 @@ const GREEN_GEW_PLAIN_EFFECTFUL: &str = "module gew_wall_effectful\n\ntype GewNe
 struct CensusObservation {
     rows: Vec<(String, String, bool, i64)>,
     render_calls_during: u64,
+    non_empty_selected_during: u64,
 }
 
 fn observe_census(source: &str) -> CensusObservation {
     let before = every_module_render_calls();
+    let selected_before = non_empty_selected_render_calls();
     let census = compile_dag_diagnostic_census(source);
     let after = every_module_render_calls();
     match census {
@@ -69,6 +71,7 @@ fn observe_census(source: &str) -> CensusObservation {
                 .map(|r| (r.diagnostic_class, r.subject_name, r.blocking, r.count))
                 .collect(),
             render_calls_during: after - before,
+            non_empty_selected_during: non_empty_selected_render_calls() - selected_before,
         },
         CompileDiagnosticCensus::NotRunnable(cause) => panic!(
             "the census refused instead of reporting the compiled graph's diagnostics: {cause}"
@@ -94,6 +97,10 @@ fn the_arity_zero_member_list_fixture_reports_its_parse_diagnostics() {
         obs.render_calls_during, 0,
         "a census call reached a RenderEveryModule render"
     );
+    assert_eq!(
+        obs.non_empty_selected_during, 0,
+        "a census call requested a render with a non-empty selected-basenames list"
+    );
     assert!(
         !parse_error_rows(&obs).is_empty(),
         "the arity-zero import member list reported no ParseError row; rows were {:?}",
@@ -107,6 +114,10 @@ fn the_duplicate_record_field_fixture_reports_its_parse_diagnostics() {
     assert_eq!(
         obs.render_calls_during, 0,
         "a census call reached a RenderEveryModule render"
+    );
+    assert_eq!(
+        obs.non_empty_selected_during, 0,
+        "a census call requested a render with a non-empty selected-basenames list"
     );
     assert!(
         !parse_error_rows(&obs).is_empty(),
@@ -132,6 +143,10 @@ fn the_parse_error_rows_name_the_field_and_both_positions() {
         obs.render_calls_during, 0,
         "a census call reached a RenderEveryModule render"
     );
+    assert_eq!(
+        obs.non_empty_selected_during, 0,
+        "a census call requested a render with a non-empty selected-basenames list"
+    );
     let rows = parse_error_rows(&obs);
     const LOCATED_SUBJECT: &str =
         "duplicate field 'a' in record literal: first at 7:21, again at 7:27";
@@ -153,6 +168,10 @@ fn the_generic_effectful_declaration_fixture_reports_its_parse_diagnostics() {
         obs.render_calls_during, 0,
         "a census call reached a RenderEveryModule render"
     );
+    assert_eq!(
+        obs.non_empty_selected_during, 0,
+        "a census call requested a render with a non-empty selected-basenames list"
+    );
     assert!(
         !parse_error_rows(&obs).is_empty(),
         "the generic effectful declaration reported no ParseError row; rows were {:?}",
@@ -166,6 +185,10 @@ fn the_removed_func_spelling_fixture_reports_its_parse_diagnostics() {
     assert_eq!(
         obs.render_calls_during, 0,
         "a census call reached a RenderEveryModule render"
+    );
+    assert_eq!(
+        obs.non_empty_selected_during, 0,
+        "a census call requested a render with a non-empty selected-basenames list"
     );
     assert!(
         !parse_error_rows(&obs).is_empty(),
@@ -187,6 +210,10 @@ fn the_parse_clean_controls_report_no_parse_error() {
             obs.render_calls_during, 0,
             "a census call on {name} reached a RenderEveryModule render"
         );
+        assert_eq!(
+            obs.non_empty_selected_during, 0,
+            "a census call on {name} requested a render with a non-empty selected-basenames list"
+        );
         assert!(
             parse_error_rows(&obs).is_empty(),
             "the parse-clean control {name} reported ParseError rows: {:?}; all rows {:?}",
@@ -207,8 +234,15 @@ fn a_whole_graph_render_really_moves_the_counter() {
     })]);
     let resolved = compile_to_resolved(sources.clone());
     let before = every_module_render_calls();
+    let selected_before = non_empty_selected_render_calls();
     let full = emit_resolved_for_target(resolved.clone(), RenderTarget::Rust);
     let after = every_module_render_calls();
+    assert_eq!(
+        non_empty_selected_render_calls() - selected_before,
+        0,
+        "a whole-graph render moved the selected-render counter, so the two counters are not \
+         counting the shapes they name"
+    );
     assert_eq!(
         after - before,
         1,

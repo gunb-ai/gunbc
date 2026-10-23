@@ -3642,6 +3642,28 @@ pub fn every_module_render_calls() -> u64 {
     EVERY_MODULE_RENDER_CALLS.with(|calls| calls.get())
 }
 
+// COUNTS, ON THE CALLING THREAD, EVERY REQUEST THAT ASKED FOR SOMETHING RENDERED.
+// The census route asks for NOTHING rendered: its selection is the empty
+// `RenderSelectedMirrors`. `RenderEveryModule` (whole-graph) widening is caught by
+// `EVERY_MODULE_RENDER_CALLS` above; this counter closes the other half of the gap (review
+// 85086 advisory) -- a widening that instead passed a NON-EMPTY selected-basenames list would
+// move nothing there. Both counters are incremented at the entry of
+// `emit_resolved_for_target_selected`, where every selection arrives whatever entry point the
+// caller chose, and they count the REQUEST, not matched output, because the control asks whether
+// the census requested a render subject at all.
+thread_local! {
+    static NON_EMPTY_SELECTED_RENDER_CALLS: std::cell::Cell<u64> = const {
+        std::cell::Cell::new(0)
+    };
+}
+
+/// This thread's count of renders requested with a NON-EMPTY selected-basenames selection.
+/// Alongside [`every_module_render_calls`], this makes the census control discriminating against
+/// both widening shapes: whole-graph and selected-list.
+pub fn non_empty_selected_render_calls() -> u64 {
+    NON_EMPTY_SELECTED_RENDER_CALLS.with(|calls| calls.get())
+}
+
 pub fn emit_resolved_for_target(
     resolved: Rc<ResolvedPipelineResult>,
     target: RenderTarget,
@@ -3658,11 +3680,19 @@ pub fn emit_resolved_for_target_selected(
     target: RenderTarget,
     selection: Rc<RustModuleRenderSelection>,
 ) -> Rc<PipelineResult> {
-    // ONE COUNTING SITE: every whole-graph render, whichever entry point asked for it, passes
-    // through this function with `RenderEveryModule` in hand. Counting here means a census-side
-    // widening cannot dodge the counter by calling the selected route directly.
-    if matches!(&*selection, RustModuleRenderSelection::RenderEveryModule) {
-        EVERY_MODULE_RENDER_CALLS.with(|calls| calls.set(calls.get() + 1));
+    // ONE COUNTING SITE: every render request, whichever entry point asked for it, passes
+    // through this function with its selection in hand. Counting here means a census-side
+    // widening cannot dodge the counters by calling a different entry point. Both shapes count:
+    // whole-graph (RenderEveryModule) and a NON-EMPTY selected list (review 85086 advisory).
+    match &*selection {
+        RustModuleRenderSelection::RenderEveryModule => {
+            EVERY_MODULE_RENDER_CALLS.with(|calls| calls.set(calls.get() + 1));
+        }
+        RustModuleRenderSelection::RenderSelectedMirrors { basenames } => {
+            if !basenames.is_empty() {
+                NON_EMPTY_SELECTED_RENDER_CALLS.with(|calls| calls.set(calls.get() + 1));
+            }
+        }
     }
     match emittable_graph(resolved.clone()) {
         std::option::Option::None => Rc::new(PipelineResult {
