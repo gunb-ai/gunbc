@@ -1410,14 +1410,11 @@ fn ready_evidence(
 //      CONCLUSION, not through possession of the proof. Proven by
 //      no_foreign_module_may_write_a_verdict_by_hand and, for the rewrap specifically, by
 //      the_conclusion_seal_is_a_wall_measured_as_a_delta_not_a_lone_count.
-//  (3) NOT ENFORCED BY THIS COMPILER -- the `sole_constructor` annotation on THIS UNION. Measured, not
-//      believed: adding a hand-written `Ready {...}` around an already-forged evidence raised the
-//      SoleConstructorViolation count by ZERO, so the union-level annotation is not what refuses. Every
-//      corpus precedent seals a RECORD (test.fixture.sole_constructor_sealed / _variant_probe, whose own
-//      audit probe frames the coproduct case as the open question), and this is consistent with them.
-//      It is kept because it costs nothing and records the intent should the native compiler grow the
-//      check -- but a reader must not take it as the wall. If (1) and (2) are ever weakened, the probes
-//      go red; nothing protects the verdict by reading this annotation.
+//  (3) NO SEAL ON THIS UNION. Seals bind RECORDS, not union arms (test.fixture.sole_constructor_sealed
+//      / _variant_probe): adding a hand-written `Ready {...}` around forged evidence raised the
+//      SoleConstructorViolation count by ZERO, so a union-level annotation would be a decoration. The
+//      custody is the sealed payloads of (2) and the call walls of (1); if (1) or (2) are weakened, the
+//      probes go red.
 //
 // Arms stay public for MATCHING: a match is not a mint, so consumers can consume verdicts freely and
 // none can fabricate one.
@@ -1499,7 +1496,7 @@ fn admit_preparation(
   AdmittedPreparation { route: route, blocking: blocking }
 }
 
-type FirmwareNetworkBootStanding sole_constructor
+type FirmwareNetworkBootStanding
   = Ready { conclusion: AdmittedReadyConclusion }
   | NeedsPreparation { admitted: AdmittedPreparation }
   | Unobserved { unanswered: List<UnansweredAxis> }
@@ -1585,6 +1582,10 @@ type FirmwareNetworkBootRefusal
   // which is the point: it turns 'someone added a blocker and a route by hand' into a visible
   // refusal instead of an attempt that cannot possibly boot.
   | NoRouteOwnsThisBlocking { why: NonEmptyStr }
+  // The sweep over a blocker's admissible rows produced neither an executable row nor a refusal, which
+  // its single walk cannot do for a non-empty list: the two selector fields disagree with the fold.
+  // Typed so it cannot be read as a catalog gap (NoRouteOwnsThisBlocking) or an unread unit.
+  | RouteSelectorsDisagree { blocker: PreparationBlockingOn }
   // THE TWO FIRMWARE ENUMERATIONS DISAGREE (review 81802's split made this state reachable, and it
   // deserves naming rather than an inference). BootOrder references a network-kind entry that the
   // BootOptions enumeration does not list. Choosing a side would be guessing which read is stale --
@@ -1686,6 +1687,10 @@ type NetworkBootAttempt sole_constructor {
 type NetworkBootAttemptConstruction
   = AttemptConstructed { attempt: NetworkBootAttempt }
   | AttemptBlockerUncataloged { blocker: PreparationBlockingOn }
+  // The sweep produced neither an executable row nor a refusal for a non-empty admissible list: its
+  // selector fields disagree with the fold. Not AttemptBlockerUncataloged, whose remedy (a catalog
+  // change) this state does not call for.
+  | AttemptRouteSelectorsDisagree { blocker: PreparationBlockingOn }
   // THE MECHANISM EXISTS AND ITS NAME IS NOT IN HAND, so there is nothing an actuator could send.
   // Distinct from AttemptBlockerUncataloged on purpose: that one means the fleet has no row and the
   // remedy is a catalog change; this one means the fleet has a row and the remedy is one read of one
@@ -1695,6 +1700,61 @@ type NetworkBootAttemptConstruction
       mechanism: NonEmptyStr,
       refusal: RouteBindingRefusal,
     }
+
+// WHAT A SWEEP WITH NO EXECUTABLE ROW MEANS, as a function of the one field left to read. The two
+// consumers (the verdict and the attempt mint) ask the same question of the same selection, so the
+// reading lives once. `Absent` is only reachable by a selection whose two fields were both empty for a
+// non-empty list, which `select_admissible` cannot produce; it is a separate, typed cause rather than a
+// guess at a catalog gap or an unread unit, and it takes a supplied value so a witness can reach it.
+fn refusal_cause_from(
+  blocker: PreparationBlockingOn,
+  first_refusal: Optional<RouteBindingRefusal>
+) -> FirmwareNetworkBootRefusal {
+  match first_refusal {
+    Present { value: RouteBindingStaleGrounding {
+      mechanism: mechanism,
+      grounded_for_bios_version: grounded,
+      observed_bios_version: seen,
+    } } =>
+      RouteBindingStaleForUnit {
+        mechanism: mechanism,
+        grounded_for_bios_version: grounded,
+        observed_bios_version: seen,
+      }
+    Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      RouteBindingUnresolved { mechanism: mechanism, owed_read: owed }
+    Absent => RouteSelectorsDisagree { blocker: blocker }
+  }
+}
+
+fn attempt_unbound_from(
+  blocker: PreparationBlockingOn,
+  first_refusal: Optional<RouteBindingRefusal>
+) -> NetworkBootAttemptConstruction {
+  match first_refusal {
+    Present { value: RouteBindingStaleGrounding {
+      mechanism: mechanism,
+      grounded_for_bios_version: grounded,
+      observed_bios_version: seen,
+    } } =>
+      AttemptRouteUnbound {
+        blocker: blocker,
+        mechanism: mechanism,
+        refusal: RouteBindingStaleGrounding {
+          mechanism: mechanism,
+          grounded_for_bios_version: grounded,
+          observed_bios_version: seen,
+        },
+      }
+    Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
+      AttemptRouteUnbound {
+        blocker: blocker,
+        mechanism: mechanism,
+        refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
+      }
+    Absent => AttemptRouteSelectorsDisagree { blocker: blocker }
+  }
+}
 
 fn network_boot_attempt(
   blocker: PreparationBlockingOn,
@@ -1740,33 +1800,7 @@ fn network_boot_attempt(
         // for this' (AttemptBlockerUncataloged) from 'the fleet has a row and we have not read this
         // unit's firmware' -- and the second one names the read that ends it.
         AdmissibleRouteSelection { executable: Absent, first_refusal: first } =>
-          match first {
-            Present { value: RouteBindingStaleGrounding {
-              mechanism: mechanism,
-              grounded_for_bios_version: grounded,
-              observed_bios_version: seen,
-            } } =>
-              AttemptRouteUnbound {
-                blocker: blocker,
-                mechanism: mechanism,
-                refusal: RouteBindingStaleGrounding {
-                  mechanism: mechanism,
-                  grounded_for_bios_version: grounded,
-                  observed_bios_version: seen,
-                },
-              }
-            Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
-              AttemptRouteUnbound {
-                blocker: blocker,
-                mechanism: mechanism,
-                refusal: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed },
-              }
-            // UNREACHABLE: the sweep above filled BOTH fields from one walk, so a non-empty admissible
-            // list cannot leave `first_refusal` empty while `executable` is also empty. It stays written
-            // out because the compiler requires the arm and because an empty answer here would mean the
-            // fold produced rows that belonged to neither state -- which is the one thing worth seeing.
-            Absent => AttemptBlockerUncataloged { blocker: blocker }
-          }
+          attempt_unbound_from(blocker: blocker, first_refusal: first)
       }
   }
 }
@@ -2080,36 +2114,7 @@ fn prepare(
         // ROWS EXIST AND NOT ONE CAN BE NAMED. The sweep already settled both answers, so this reads
         // the other field of the SAME result -- no second walk, no chance for the two to disagree.
         AdmissibleRouteSelection { executable: Absent, first_refusal: first } =>
-          match first {
-            Present { value: RouteBindingStaleGrounding {
-              mechanism: mechanism,
-              grounded_for_bios_version: grounded,
-              observed_bios_version: seen,
-            } } =>
-              Refused {
-                cause: RouteBindingStaleForUnit {
-                  mechanism: mechanism,
-                  grounded_for_bios_version: grounded,
-                  observed_bios_version: seen,
-                },
-                gaps: [],
-              }
-            Present { value: RouteBindingUnresolvedRoute { mechanism: mechanism, owed_read: owed } } =>
-              Refused {
-                cause: RouteBindingUnresolved { mechanism: mechanism, owed_read: owed },
-                gaps: [],
-              }
-            // UNREACHABLE: the list was non-empty and the fold is total per row, so a row landed in
-            // neither selector. Refusing with the disagreement named is the only honest thing left --
-            // and if a reader ever sees this cause, a selector has stopped matching an arm.
-            Absent =>
-              Refused {
-                cause: NoRouteOwnsThisBlocking {
-                  why: "admissible rows exist for this blocker yet the readiness fold reported none as executable and none as refused; the selectors disagree with the fold",
-                },
-                gaps: [],
-              }
-          }
+          Refused { cause: refusal_cause_from(blocker: blocker, first_refusal: first), gaps: [] }
       }
   }
 }

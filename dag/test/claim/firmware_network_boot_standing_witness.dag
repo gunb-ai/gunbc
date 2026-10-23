@@ -64,6 +64,10 @@ import gunbc.firmware_network_boot_standing {
   BiosVersionRefused,
   BiosVersionUnobserved,
   AttemptConstructed,
+  AttemptRouteSelectorsDisagree,
+  RouteSelectorsDisagree,
+  refusal_cause_from,
+  attempt_unbound_from,
   AttemptDhcpStanding,
   NetworkBootAttemptConstruction,
   DhcpOfferObserved,
@@ -1022,6 +1026,7 @@ fn attempt_carries_the_fleet_route(blocker: PreparationBlockingOn) -> Bool {
         && blocker_of(route: built.route) == blocker
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1082,6 +1087,7 @@ fn attempt_refuses_to_name_the_mechanism(
       named == mechanism && blocker_of_route_matches(blocker: carried, expected: blocker)
     AttemptConstructed { attempt: _ } => false
     AttemptBlockerUncataloged { blocker: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1150,9 +1156,11 @@ fn labels_are_inert_in_selection(
             && !(left.unit_label == right.unit_label)
         AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
       }
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1173,6 +1181,7 @@ fn the_two_labels_arrive_unchanged() -> Bool {
     AttemptConstructed { attempt: built } => built.unit_label == "mtcollins1"
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1211,9 +1220,11 @@ fn same_name_different_blocker_changes_the_route() -> Bool {
             && authoring.unit_label == redirect.unit_label
         AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
       }
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1230,6 +1241,7 @@ test fn the_attempt_receipt_cannot_be_minted_without_its_attempt_and_control_rec
     AttemptConstructed { attempt: built } => boot_control_is_the_imported_standing(control: built.boot_control)
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1313,6 +1325,7 @@ test fn an_attempt_over_a_disabled_option_constructs_where_usability_would_unbin
       }
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
     // THE FOLD-LEVEL HALF OF THE SAME CLAIM, stated where it is decided: on a list whose only network
     // option is disabled, existence says an option EXISTS and usability says none is USABLE. If these
@@ -1449,6 +1462,7 @@ test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Boo
       }
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
 }
 
@@ -1475,6 +1489,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
       }
     AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
   }
     && match network_boot_attempt(
          blocker: NetworkBootOptionNotSelected,
@@ -1494,6 +1509,7 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
            }
          AttemptBlockerUncataloged { blocker: _ } => false
     AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+    AttemptRouteSelectorsDisagree { blocker: _ } => false
        }
 }
 
@@ -2077,6 +2093,7 @@ test fn a_boot_order_naming_an_unenumerated_network_option_is_refused_not_guesse
     Refused { cause: RefusedByOperatorPolicy { policy: _ }, gaps: _ } => false
     Refused { cause: NoNetworkInterfacePresent { why: _ }, gaps: _ } => false
     Refused { cause: NoRouteOwnsThisBlocking { why: _ }, gaps: _ } => false
+    Refused { cause: RouteSelectorsDisagree { blocker: _ }, gaps: _ } => false
     // THE TWO BLOCKER-3 CAUSES, named rather than swept under a `_ => false`: they are refusals, so a
     // wildcard would let the seam report 'the conflict is named' while naming something else entirely.
     // Each states a different missing thing -- one says the read that would resolve the slot has not
@@ -3848,4 +3865,32 @@ test fn probe_resolution_frontier_is_open_not_secretly_satisfiable() -> Bool {
       present_decls: [decl_ref(module_path: "gunbc.secure_boot_observation", decl_name: "SecureBootObservation")],
     )
     == DissolutionUnbound
+}
+
+// THE TWO UNREACHABLE ARMS, REACHED. `select_admissible` cannot return a selection with neither an
+// executable row nor a refusal for a non-empty list, so no real unit lands here; the readers take the
+// selection's remaining field as a supplied value (§3), and a selection that is empty on both sides
+// must name the disagreement by its own typed cause rather than pass for a catalog gap or an unread unit.
+test fn a_selection_with_no_refusal_to_read_names_the_selectors_disagreeing_in_the_verdict() -> Bool {
+  match refusal_cause_from(blocker: NoInterfaceCarriesPxe, first_refusal: Absent) {
+    RouteSelectorsDisagree { blocker: carried } => carried == NoInterfaceCarriesPxe
+    FirmwareReadRefused { refusal: _ } => false
+    FirmwareModeUnsupportedByEdge { why: _ } => false
+    RefusedByOperatorPolicy { policy: _ } => false
+    NoNetworkInterfacePresent { why: _ } => false
+    NoRouteOwnsThisBlocking { why: _ } => false
+    BootOptionReferencesConflict { conflict: _ } => false
+    BootOrderHeadReferenceNotEnumerated { why: _ } => false
+    RouteBindingUnresolved { mechanism: _, owed_read: _ } => false
+    RouteBindingStaleForUnit { mechanism: _, grounded_for_bios_version: _, observed_bios_version: _ } => false
+  }
+}
+
+test fn a_selection_with_no_refusal_to_read_names_the_selectors_disagreeing_in_the_attempt() -> Bool {
+  match attempt_unbound_from(blocker: NoInterfaceCarriesPxe, first_refusal: Absent) {
+    AttemptRouteSelectorsDisagree { blocker: carried } => carried == NoInterfaceCarriesPxe
+    AttemptConstructed { attempt: _ } => false
+    AttemptBlockerUncataloged { blocker: _ } => false
+    AttemptRouteUnbound { blocker: _, mechanism: _, refusal: _ } => false
+  }
 }
