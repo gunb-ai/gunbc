@@ -44,18 +44,25 @@ fn kit_blocking_count(source: String) -> Int? {
   }
 }
 
-// Checks 1 and 2-positive, as a differential: the unimported call must add blocking rows the imported one lacks.
-fn kit_import_differential(row: AmbientNameHome) -> KitFinding {
-  match kit_blocking_count(source: kit_call_source(row: row, imported: false)) {
-    Present { value: red } =>
-      match kit_blocking_count(source: kit_call_source(row: row, imported: true)) {
-        Present { value: green } =>
-          if red <= green { KitNoImportDoesNotRefuse } else { if green > 0 { KitImportDoesNotClear } else { KitMigrated } }
-        Absent => KitNotRunnable { cause: "census not runnable on the imported source" as NonEmptyStr }
-      }
-    Absent => KitNotRunnable { cause: "census not runnable on the unimported source" as NonEmptyStr }
-  }
+// A BASELINE WITHOUT THE CALL anchors both arms: the unimported call must add blocking rows over it (check 1: the name
+// is unbound, not resolved ambiently), and the imported call must add none (check 2). Comparing the two call sources
+// to each other is confounded on a not-yet-migrated name, where the import itself refuses and both add rows.
+fn kit_baseline_source() -> String {
+  "module probe_migration_kit\nimport std.types { Int, List }\nfn probe(xs: List<Int>) -> List<Int> { xs }\n"
 }
 
-// Check 3 residue boundary: whether the retired contract is still rostered is read from std.primitives by the
-// kit's label; the template-row leg of check 6 is a census of shapes, not facts, and is RESIDUE until a producer exists.
+fn kit_import_differential(row: AmbientNameHome) -> KitFinding {
+  match kit_blocking_count(source: kit_baseline_source()) {
+    Present { value: base } =>
+      match kit_blocking_count(source: kit_call_source(row: row, imported: false)) {
+        Present { value: red } =>
+          match kit_blocking_count(source: kit_call_source(row: row, imported: true)) {
+            Present { value: green } =>
+              if red <= base { KitNoImportDoesNotRefuse } else { if green > base { KitImportDoesNotClear } else { KitMigrated } }
+            Absent => KitNotRunnable { cause: "census not runnable on the imported source" as NonEmptyStr }
+          }
+        Absent => KitNotRunnable { cause: "census not runnable on the unimported source" as NonEmptyStr }
+      }
+    Absent => KitNotRunnable { cause: "census not runnable on the baseline source" as NonEmptyStr }
+  }
+}
