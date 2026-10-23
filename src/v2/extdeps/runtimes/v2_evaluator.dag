@@ -102,9 +102,24 @@ type V4EvaluatorRuntime {
 // footprint anchor relies on). Next-rung trigger: declared slot identities on
 // ValueRepresentationModel / ExecutionSemantics / ModelCore, at which point this comparator widens
 // to the full slot-identity conjunction (the InterpretationAlgebra precedent).
+fn boundary_allowance_equal(a: BoundaryAllowance, b: BoundaryAllowance) -> Bool {
+  node_equal_ignoring_provenance(a: a.operation.operation, b: b.operation.operation)
+    && node_equal_ignoring_provenance(a: a.operation.effect_signature.signature, b: b.operation.effect_signature.signature)
+    && node_equal_ignoring_provenance(a: a.resource.resource, b: b.resource.resource)
+    && (a.allowed == b.allowed)
+}
+
+fn resource_effect_boundary_equal(a: ResourceEffectBoundary, b: ResourceEffectBoundary) -> Bool {
+  boundary_allowance_equal(a: a.ffi, b: b.ffi)
+    && boundary_allowance_equal(a: a.exceptions, b: b.exceptions)
+    && boundary_allowance_equal(a: a.async, b: b.async)
+    && boundary_allowance_equal(a: a.concurrency, b: b.concurrency)
+    && boundary_allowance_equal(a: a.identity_reference, b: b.identity_reference)
+}
+
 fn v4_evaluator_runtime_models_equal(a: V4EvaluatorRuntime, b: V4EvaluatorRuntime) -> Bool {
   (a.runtime_identity == b.runtime_identity)
-    && node_equal_ignoring_provenance(a: a.boundary, b: b.boundary)
+    && resource_effect_boundary_equal(a: a.boundary, b: b.boundary)
 }
 
 fn v2_eval_unit_type_node() -> Node {

@@ -639,11 +639,14 @@ fn node_edges_equal_ignoring_provenance(xs: List<Edge>, ys: List<Edge>) -> Bool 
       match ys {
         Empty => false
         Cons { head: y, tail: yrest } =>
-          (x.label == y.label)
-            && node_equal_ignoring_provenance(a: x.target, b: y.target)
+          node_edge_equal_ignoring_provenance(x: x, y: y)
             && node_edges_equal_ignoring_provenance(xs: xrest, ys: yrest)
       }
   }
+}
+
+fn node_edge_equal_ignoring_provenance(x: Edge, y: Edge) -> Bool {
+  (x.label == y.label) && node_equal_ignoring_provenance(a: x.target, b: y.target)
 }
 
 // node_same_occurrence: the two are the same authored occurrence with the same content. Occurrence
