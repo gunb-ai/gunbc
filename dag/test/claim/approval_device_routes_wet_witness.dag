@@ -2,9 +2,7 @@ module test.claim.approval_device_routes_wet_witness
 
 import std.logic { Bool }
 import std.types { String, Timestamp, List }
-import gunbc.auth.approval_device_routes { device_pending_response_at, device_enrol_response_at }
-import gunbc.auth.approval_writer_authority { BrokerProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission }
-import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
+import gunbc.auth.approval_device_routes { device_pending_response_at }
 import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json }
 import gunbc.auth.approval_device_crypto_realization {
   DeviceCryptoRealization, DeviceCryptoObligation, NativeDeviceCryptoBound, DeviceCryptoRequirement,
@@ -30,23 +28,4 @@ data fx_unrealized: String = "native device-crypto realization is unavailable"
 // the gate and answers from the store -- so it is the gate, not a later failure, that decided them.
 test fn a_bound_realization_passes_the_read_past_the_gate() -> Bool {
   !string_contains(s: device_pending_response_at(realization: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]), body: read_authentication_json(a: fx_auth), observed_at: fx_now).body, pattern: fx_unrealized)
-}
-
-
-// THE FRESH-ENROLMENT POSITIVE: the same well-formed enrolment request that the unbound realization refuses 503 before
-// any crypto (test.claim.approval_device_routes_witness the_enrolment_refuses_503_before_any_crypto_while_the_native_handler_is_unbound)
-// gets past the crypto gate under the bound realization. It is asked as the writer, so a non-writer answer (which would
-// also lack the realization reason, vacuously) is a false claim rather than a pass. The route then reads the code slot,
-// so this runs on the same wet lane as the read positive above.
-test fn a_fresh_enrolment_request_passes_the_crypto_gate_under_a_bound_realization() -> Bool {
-  match approval_write_admission(asker: BrokerProcess) {
-    ApprovalWriteRefused { holder: _, asker: _ } => false
-    ApprovalWriteAdmitted { writer: _ } =>
-      match envelope_vector_body(name: "enrolment_request") {
-        Absent => false
-        Present { value: body } =>
-          let r = device_enrol_response_at(realization: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]), body: body, process: BrokerProcess, observed_at: fx_now)
-          r.status != 400 && !string_contains(s: r.body, pattern: fx_unrealized)
-      }
-  }
 }

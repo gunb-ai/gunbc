@@ -5,87 +5,45 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             switch state.state {
-            case .unenrolled: EnrolView()
-            case .prepared, .submissionUnknown: EnrolmentPendingView()
+            case .signedOut: SignInView()
             case .enrolled: InboxView()
-            case .keyInvalidated(_, let reason): DeadEnrolmentView(title: "Decision key invalidated", reason: reason)
-            case .revoked(_, let reason): DeadEnrolmentView(title: "Enrolment revoked", reason: reason)
+            case .revoked(_, let reason): RevokedView(reason: reason)
             }
         }
     }
 }
 
-struct EnrolView: View {
+/// The only way in: Google sign-in. Nothing to type; a refused or abandoned sign-in leaves this screen.
+struct SignInView: View {
     @EnvironmentObject var state: AppState
-    @State private var code = ""
     @State private var busy = false
 
     var body: some View {
         Form {
-            Section("One-time code printed by the enrol command on srv1") {
-                TextField("code", text: $code).keyboardType(.numberPad)
-            }
             Section {
-                Button(busy ? "Enrolling…" : "Enrol this phone") {
+                Button(busy ? "Signing in…" : "Sign in with Google") {
                     busy = true
-                    Task { await state.prepare(code: code); busy = false }
+                    Task { await state.signIn(); busy = false }
                 }
-                .disabled(busy || code.isEmpty)
+                .disabled(busy)
             } footer: {
-                Text("Creates a Secure Enclave key that only unlocks with Face ID, attests this app instance, and registers for push.")
+                Text("Creates a Secure Enclave key that only unlocks with Face ID, attests this app instance, and enrols this phone under your Google account.")
             }
             if let e = state.lastError { Section("Refused") { Text(e).foregroundStyle(.red) } }
         }
-        .navigationTitle("Enrol")
+        .navigationTitle("Sign in")
     }
 }
 
-/// Prepared (keys exist, server has not accepted) or SubmissionUnknown (POST sent, answer lost).
-struct EnrolmentPendingView: View {
+struct RevokedView: View {
     @EnvironmentObject var state: AppState
-    @State private var busy = false
-
-    var body: some View {
-        Form {
-            switch state.state {
-            case .prepared:
-                Section("Enrolment prepared, not yet accepted") {
-                    Text("Keys are generated on this phone. Submitting sends the same attestation again; nothing new is generated.")
-                    Button(busy ? "Submitting…" : "Submit enrolment") { run { await state.submit() } }.disabled(busy)
-                }
-            case .submissionUnknown:
-                Section("Submission outcome unknown") {
-                    Text("The server may or may not have accepted this enrolment. The keys, attestation and code are kept until an authenticated re-read says active, revoked or absent; nothing new is generated.")
-                    Button("Re-read enrolment") { run { await state.resolveUnknownSubmission() } }.disabled(busy)
-                    Button("Retry the same submission") { run { await state.retrySubmission() } }.disabled(busy)
-                }
-            default:
-                EmptyView()
-            }
-            if case .prepared = state.state {
-                Section { Button("Start over", role: .destructive) { state.startOver() } }
-            }
-            if let e = state.lastError { Section("Refused") { Text(e).foregroundStyle(.red) } }
-        }
-        .navigationTitle("Enrolment")
-    }
-
-    private func run(_ op: @escaping () async -> Void) {
-        busy = true
-        Task { await op(); busy = false }
-    }
-}
-
-struct DeadEnrolmentView: View {
-    @EnvironmentObject var state: AppState
-    let title: String
     let reason: String
     var body: some View {
         Form {
-            Section(title) { Text(reason) }
-            Section { Button("Enrol again") { state.enrolAgain() } }
+            Section("Enrolment revoked") { Text(reason) }
+            Section { Button("Sign in again with a new key") { state.signOut() } }
         }
-        .navigationTitle(title)
+        .navigationTitle("Enrolment revoked")
     }
 }
 
