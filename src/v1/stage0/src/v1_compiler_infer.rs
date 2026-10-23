@@ -196,13 +196,13 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type, is_recursive_type_by_name, kernel_settled_name,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
-    merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
-    overlay_skips_kernel_name, put_inductive_field, put_inductive_field_cross,
-    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, settled_type, settled_type_of_declaration,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
-    text_representation_by_identity, text_representation_is_text_arm,
+    merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
+    node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
+    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
+    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
     type_reference_declaration, type_reference_declaration_reading, type_reference_declaration_ref,
     unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
@@ -11076,6 +11076,73 @@ pub fn cast_source_is_solver_unit_placeholder(source_node: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_node_names_declaration(
+    n: Rc<Node>,
+    wanted: Rc<DeclarationRef>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        n.clone(),
+        scope.type_env.source_indices.clone(),
+        scope.type_env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
+        } => crate::std_decl_ref::declaration_ref_eq(d.clone(), wanted.clone()),
+        _ => false,
+    }
+}
+
+pub fn is_non_text_kernel_cast_source(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    ((((crate::v1_compiler_infer_env::node_is_kernel_mint_named(n.clone(), "Int".to_string())
+        || crate::v1_compiler_infer_env::node_is_kernel_mint_named(
+            n.clone(),
+            "Float".to_string(),
+        ))
+        || crate::v1_compiler_infer_env::node_is_kernel_mint_named(n.clone(), "Bool".to_string()))
+        || crate::v1_compiler_infer_env::node_is_kernel_mint_named(n.clone(), "Unit".to_string()))
+        || type_node_names_declaration(
+            n.clone(),
+            crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
+            scope.clone(),
+        ))
+}
+
+pub fn non_text_kernel_cast_into_non_empty_text_diags(
+    source_inferred: Option<Rc<InferredNode>>,
+    target_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match source_inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: src_node, .. }) => {
+            if (type_node_names_declaration(
+                target_type.clone(),
+                crate::std_decl_ref::decl_ref("std.types".to_string(), "NonEmptyStr".to_string()),
+                scope.clone(),
+            ) && is_non_text_kernel_cast_source(src_node.clone(), scope.clone()))
+            {
+                {
+                    let si = scope.type_env.source_indices.clone();
+                    let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), crate::v1_std_core::authored_name_at(si.clone(), src_node.clone())), " as ".to_string()), crate::v1_std_core::authored_name_at(si.clone(), target_type.clone())), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)".to_string());
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::InternalError {
+                            message: msg.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )])
+                }
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        _ => Rc::new(vec![]),
+    }
+}
+
 pub fn cast_source_is_declared_nominal(
     source_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -17014,6 +17081,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 span.clone(),
                 scope.clone(),
             );
+            let cast_non_text_diags = non_text_kernel_cast_into_non_empty_text_diags(
+                inner_typed.inferred.clone(),
+                target_type.clone(),
+                span.clone(),
+                scope.clone(),
+            );
             let cast_refinement_diags = where_refinement_mismatch_diags(
                 target_type.clone(),
                 inner_typed.clone(),
@@ -17036,8 +17109,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     inner_emissions.clone(),
                     infer_emissions_of_diagnostics(v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(cast_diags.clone(), cast_optional_diags.clone()),
-                            cast_sole_ctor_diags.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(cast_diags.clone(), cast_optional_diags.clone()),
+                                cast_sole_ctor_diags.clone(),
+                            ),
+                            cast_non_text_diags.clone(),
                         ),
                         cast_refinement_diags.clone(),
                     )),
