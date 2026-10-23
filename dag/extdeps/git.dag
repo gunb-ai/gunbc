@@ -1331,14 +1331,22 @@ fn git_in_trusted_repository_argv(repo: NonEmptyStr, verbs: List<String>) -> Lis
 // without it git 2.43 refuses ownership of a tree the caller does not own BEFORE resolving anything,
 // which would make a real repository look like a refusal. It is the one-path grant derived from the same
 // repo the --git-dir names; the narrowest grant is the only shape this can spell.
-// THE ARGS LIST IS PUBLIC because a claim pins the word order directly (program word FIRST, then the
-// options, then the subcommand) -- the ordering this builder exists to make undriftable, and a claim that
-// re-spells the argv is a second place it could drift.
+// THE ARGS LIST IS ARGS-ONLY, EXACTLY LIKE git_config_local_set_args AND EVERY SIBLING THAT FEEDS
+// argv_command(program: git_program(), arguments: _). It must NOT carry the program word: the ArgvCommand
+// that executes it already supplies program: git_program(), so a list that began with "git" would run
+// `git git -c ...` and git would answer "'git' is not a git command" (exit 1) -- which is what a
+// git_argv_of_args wrapper here did, and srv1 caught (job r14328p3t2, 96f6c467ab9c): the premise halted at
+// git-worker-subtree-premise on EVERY repository, committed ones included, because the program word was
+// doubled. git_argv_of_args is for the shape_*_argv LIST form that carries its own program word (it is a
+// whole command line, not the arguments field of an ArgvCommand); this is the arguments field, so it is
+// args-only and the program word has ONE home -- the ArgvCommand's program. A claim pins the executing
+// shape directly: the ArgvCommand's program (git) and its arguments (safe.directory override, then
+// --git-dir <repo>/.git, then rev-parse --absolute-git-dir), NOT a list that contains the program word.
 fn git_absolute_git_dir_premise_args(repo: NonEmptyStr) -> List<String> {
-  git_argv_of_args(args: concat(
+  concat(
     git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }),
     items: ["--git-dir", join([repo as String, "/.git"], ""), "rev-parse", "--absolute-git-dir"],
-  ))
+  )
 }
 
 fn git_absolute_git_dir_premise_argv(repo: NonEmptyStr) -> ArgvCommand {

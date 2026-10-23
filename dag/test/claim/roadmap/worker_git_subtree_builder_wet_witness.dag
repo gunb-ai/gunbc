@@ -39,6 +39,7 @@ import extdeps.git {
   git_maintenance_auto_disabled_config_command, git_repack_quiet_command, git_pack_refs_all_command,
   git_local_config_get_command, git_init_quiet_command, git_add_all_force_command,
   git_commit_snapshot_command, git_branch_command, git_show_ref_verify_quiet_command,
+  git_absolute_git_dir_premise_argv,
 }
 import extdeps.tools.findutils {
   find_subtree_regroup_command, find_subtree_group_writable_command, find_subtree_mode_readback_command,
@@ -676,4 +677,32 @@ fn wet_argv_leads_with_env(words: List<String>, head: String) -> Bool {
 
 fn wet_count_of(words: List<String>, wanted: String) -> Int {
   count(filter(xs: words, predicate: w => w == wanted))
+}
+
+// SIX, THE PREMISE ARGV SHAPE, pinned as the exact words the executor spawns -- the word-order claim the
+// port needs. The premise is an EXIT-STATUS leg whose ArgvCommand carries program: git_program(); the
+// arguments must therefore be ARGS-ONLY, and the whole executable line must read EXACTLY
+//   git -c safe.directory=<repo> --git-dir <repo>/.git rev-parse --absolute-git-dir
+// with the program word "git" present EXACTLY ONCE. This is the second sighting of the 2dc2b8de defect
+// class in this file's own ledger: there the builders passed program=git AND arguments beginning with "env"
+// (so the words read `git env ... git config`); here a git_argv_of_args wrapper put the program word into
+// the arguments of an argv_command that also supplied program=git, so every spawn was `git git -c ...` and
+// git answered "'git' is not a git command" (exit 1). srv1 caught it (job r14328p3t2 at 96f6c467ab9c): the
+// premise halted at git-worker-subtree-premise on EVERY repository. The DRY word-order claim that was here
+// pinned the args LIST (program word first) and the plan witness compared the leg's command to the same
+// builder -- both the builder agreeing with itself, so both stayed green over a broken argv. Pinning
+// argv_words (program ++ arguments, the shape that actually executes) discriminates: a doubled program
+// makes "git" count 2 and the whole comparison false. Like the posture shape claim it needs no host, so it
+// is meaningful on a machine with no git -- a shape this file cannot execute still must not ship.
+test fn the_premise_argv_words_are_an_executable_shape_with_one_program_word() -> Bool {
+  let root = "/tmp/wre3-premise-shape-unused"
+  let words = argv_words(command: git_absolute_git_dir_premise_argv(repo: root as NonEmptyStr))
+  words
+    == [
+      "git", "-c", concat("safe.directory=", root),
+      "--git-dir", concat(root, "/.git"), "rev-parse", "--absolute-git-dir",
+    ]
+    && wet_count_of(words: words, wanted: "git") == 1
+    && wet_count_of(words: words, wanted: "-c") == 1
+    && wet_count_of(words: words, wanted: "rev-parse") == 1
 }
