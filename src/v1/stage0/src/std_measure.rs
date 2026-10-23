@@ -1710,6 +1710,19 @@ pub fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
     measure_count(r.clone())
 }
 
+pub type GigaTensorOperationsPerSecond = Rc<Measure<Frequency, Giga, Nat>>;
+
+pub fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
+    measure_count(r.clone())
+}
+
 pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
 
 pub fn milli_requests_per_second(count: Nat) -> MilliRequestsPerSecond {
