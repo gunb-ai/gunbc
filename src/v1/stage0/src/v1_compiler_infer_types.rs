@@ -2235,30 +2235,44 @@ pub fn type_heads_agree(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
-    if (type_head_is_declared_carrier_alias(left_name.clone())
-        || type_head_is_declared_carrier_alias(right_name.clone()))
-    {
-        (type_head_carrier(left_name.clone()) == type_head_carrier(right_name.clone()))
-    } else {
-        match left.declaration.clone() {
-            Some(ld) => match right.declaration.clone() {
-                Some(rd) => {
-                    ((ld.module_path.clone() == rd.module_path.clone())
-                        && (ld.decl_name.clone() == rd.decl_name.clone()))
+    match left.declaration.clone() {
+        Some(ld) => match right.declaration.clone() {
+            Some(rd) => {
+                if ((ld.module_path.clone() == rd.module_path.clone())
+                    && (ld.decl_name.clone() == rd.decl_name.clone()))
+                {
+                    true
+                } else {
+                    if (type_head_is_declared_carrier_alias(left_name.clone())
+                        || type_head_is_declared_carrier_alias(right_name.clone()))
+                    {
+                        (type_head_carrier(left_name.clone())
+                            == type_head_carrier(right_name.clone()))
+                    } else {
+                        false
+                    }
                 }
-                std::option::Option::None => settled_head_identity_agrees(
-                    left.clone(),
-                    right.clone(),
-                    source_indices.clone(),
-                    text.clone(),
-                ),
-            },
+            }
             std::option::Option::None => settled_head_identity_agrees(
                 left.clone(),
                 right.clone(),
                 source_indices.clone(),
                 text.clone(),
             ),
+        },
+        std::option::Option::None => {
+            if (type_head_is_declared_carrier_alias(left_name.clone())
+                || type_head_is_declared_carrier_alias(right_name.clone()))
+            {
+                (type_head_carrier(left_name.clone()) == type_head_carrier(right_name.clone()))
+            } else {
+                settled_head_identity_agrees(
+                    left.clone(),
+                    right.clone(),
+                    source_indices.clone(),
+                    text.clone(),
+                )
+            }
         }
     }
 }
