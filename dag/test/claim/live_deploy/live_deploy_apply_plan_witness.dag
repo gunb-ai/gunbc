@@ -460,8 +460,8 @@ test fn the_git_worker_subtree_premise_leg_follows_the_convergence_readback_imme
     && premise == readback + 1
     && step_index(legs: group, step: "git-worker-subtree-premise") == 0
     && step_index(legs: group, step: "ensure-owned-directory") > step_index(legs: group, step: "git-worker-subtree-premise")
-    && step_index(legs: group, step: "git-worker-subtree-regroup-objects") > step_index(legs: group, step: "ensure-owned-directory")
-    && step_index(legs: group, step: "repository-shared-posture-0") > step_index(legs: group, step: "git-worker-subtree-regroup-logs")
+    && step_index(legs: group, step: "git-worker-subtree-regroup-.git/objects") > step_index(legs: group, step: "ensure-owned-directory")
+    && step_index(legs: group, step: "repository-shared-posture-0") > step_index(legs: group, step: "git-worker-subtree-regroup-.git/logs")
     && step_index(legs: group, step: "git-maintenance-service-unit") > step_index(legs: group, step: "repository-shared-posture-2")
 }
 
@@ -481,9 +481,9 @@ test fn the_git_worker_subtree_ensures_the_children_as_owned_directory_legs() ->
   })
   premise_is_diagnosed
     && n_ensure == 3
-    && has_step(legs: legs, step: "git-worker-subtree-regroup-objects")
-    && has_step(legs: legs, step: "git-worker-subtree-regroup-refs")
-    && has_step(legs: legs, step: "git-worker-subtree-regroup-logs")
+    && has_step(legs: legs, step: "git-worker-subtree-regroup-.git/objects")
+    && has_step(legs: legs, step: "git-worker-subtree-regroup-.git/refs")
+    && has_step(legs: legs, step: "git-worker-subtree-regroup-.git/logs")
     && regroup_names_shared_group
     && has_step(legs: legs, step: "repository-shared-posture-0")
     && has_step(legs: legs, step: "git-maintenance-daemon-reload")
