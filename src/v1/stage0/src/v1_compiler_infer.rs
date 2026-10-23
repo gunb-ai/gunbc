@@ -5049,7 +5049,7 @@ pub fn equality_extensional_container_rows() -> Rc<HashMap<String, bool>> {
 pub fn equality_inadmissible_declaration_identities() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec![crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Edge".to_string())])
+            Rc::new(vec![crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Edge".to_string()), crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Node".to_string())])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -5058,7 +5058,7 @@ pub fn equality_inadmissible_declaration_identities() -> Rc<Vec<String>> {
 pub fn equality_walk_boundary_declaration_identities() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec![crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Node".to_string())])
+            Rc::new(vec![])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
