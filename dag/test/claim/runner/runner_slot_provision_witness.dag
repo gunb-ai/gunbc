@@ -613,6 +613,20 @@ data fixture_runner_registration_minted: String = "{\"AgentId\":\"7\",\"AgentNam
 data fixture_runner_registration_nameless: String = "{\"AgentId\":\"7\",\"Ephemeral\":\"True\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
 data fixture_runner_registration_name_not_a_string: String = "{\"AgentId\":\"7\",\"AgentName\":7,\"Ephemeral\":\"True\"}"
 data fixture_runner_registration_empty_name: String = "{\"AgentId\":\"7\",\"AgentName\":\"\",\"Ephemeral\":\"True\"}"
+// A MALFORMED Ephemeral alongside a WELL-FORMED AgentName. Ephemeral is inspected first, so this file
+// refuses on Ephemeral and AgentName is never read -- the direction the decode comment now states
+// honestly, instead of claiming the two members are read symmetrically.
+data fixture_runner_registration_bad_ephemeral: String = "{\"AgentId\":\"7\",\"AgentName\":\"srv3-02-1792746455-1106408\",\"Ephemeral\":\"maybe\"}"
+
+test fn a_malformed_ephemeral_refuses_rather_than_reporting_an_agent_name() -> Bool {
+  // Fail-closed in the direction that matters: a file the decoder cannot vouch for yields NO identity at
+  // all -- neither an AgentNameRead nor a slot-derived stand-in -- so nothing downstream can join a roster
+  // on a name taken from a document whose registration mode is unknown.
+  match actions_runner_registration_decode(raw: fixture_runner_registration_bad_ephemeral) {
+    ActionsRunnerRegistrationUnreadable { reason: r } => string_contains(s: r, pattern: "Ephemeral")
+    _ => false
+  }
+}
 
 test fn the_registration_file_also_carries_the_name_the_listener_registered_under() -> Bool {
   let minted = match actions_runner_registration_decode(raw: fixture_runner_registration_minted) {
