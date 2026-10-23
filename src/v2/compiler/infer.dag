@@ -5701,7 +5701,17 @@ type InferApplicationArguments {
 // Transform whose positional children are the callee then its positional arguments. Absent for any other
 // shape -- several predicates, an argument, a labelled record -- and Absent never admits.
 fn infer_where_sole_predicate(where_clause: Node) -> Optional<Node> {
-  match find_named_child(root: where_clause, name: ^grammar_production_captured_node_projection) {
+  match infer_edge_targets(edges: where_clause.children) {
+    Cons { head: production, tail: Empty } => infer_where_production_sole_predicate(production: production)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => Absent
+    Empty => Absent
+  }
+}
+
+// THE KEPT CLAUSE (body_lower_kept_where_clause) is a Conj with ONE edge, the where-refinement production,
+// whose captured child is the predicate set; refinement_declaration hands back that wrapper.
+fn infer_where_production_sole_predicate(production: Node) -> Optional<Node> {
+  match find_named_child(root: production, name: ^grammar_production_captured_node_projection) {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: set, diagnostics: _ } =>
       match infer_edge_targets(edges: set.children) {
