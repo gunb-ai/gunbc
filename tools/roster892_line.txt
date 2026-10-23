@@ -1,0 +1,1 @@
+  filter(map(fleet_hosts(), h => h as NonEmptyStr), h => host_roster_contains(roster: subjects, host: h) == false)
