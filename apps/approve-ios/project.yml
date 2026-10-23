@@ -23,7 +23,7 @@ settings:
 packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
-    from: "9.0.0"
+    from: 9.0.0
 targets:
   Approve:
     type: application
