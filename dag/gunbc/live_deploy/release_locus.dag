@@ -14,7 +14,7 @@ import gunbc.auth.approval_ntfy_runtime_observe {
   approval_ntfy_runtime_observe_run_as,
 }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
-import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 
 // THE RELEASE IDENTITY AND THE PER-CANDIDATE RELEASE LOCUS, HOMED AS A LEAF. These were declared in
 // gunbc.live_deploy.emit, so every reader of a release path -- the approval broker's own routes and
@@ -91,6 +91,14 @@ fn release_locus_member_path(root: String, revision: ReleaseRevisionBinding, nam
   join([release_locus_dir(root: root, revision: revision), "/", name], "")
 }
 
+// THE BROKER'S RELEASE LOCUS HAS EXACTLY THESE EXECUTABLE MEMBERS, AND THIS ROW IS THE ONLY ENUMERATION. The broker unit
+// loads an EnvironmentFile named from the sidecar binary and orders itself after the sidecar unit, so a locus holding only
+// the gunbc binary cannot start the broker (2026-10-21: run 39545280023 installed the gunbc binary alone and systemd
+// refused the unit with "Failed to load environment files"). Staging installs and reads back every name here; a member
+// is added by adding a name, never by a second install step. The helper snapshot is a different locus and holds only
+// gunbc_release_bin_name.
+data approval_broker_release_locus_executables: List<String> = [gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name]
+
 fn release_locus_binary_path(root: String, revision: ReleaseRevisionBinding) -> String {
   release_locus_member_path(root: root, revision: revision, name: gunbc_release_bin_name)
 }
@@ -110,6 +118,24 @@ data approval_broker_helper_snapshot_base: String = "/opt/gunbc/approval-broker-
 type HelperLocus {
   base: String
   owner: NonEmptyStr
+}
+
+// A ROOT-OWNED HELPER GRANT'S SITE: the snapshot locus and the parents it is installed under, and the
+// sudoers file that grants it, with its staged and readback names. One shape for every grant the
+// snapshot-then-sudoers sequence installs (the approval broker's helpers, the attempt launcher's), so
+// the sequence is written once and each grant is a row.
+// The revision a grant's locus records beside its snapshots, and where.
+type HelperRevisionReceipt { path: String, text: String }
+
+type HelperGrantSite {
+  locus: HelperLocus
+  spine: List<String>
+  sudoers_content: String
+  sudoers_mode: NonEmptyStr
+  sudoers_temp_path: String
+  sudoers_path: String
+  stage_name: String
+  readback_name: String
 }
 
 fn approval_broker_helper_snapshot_locus() -> HelperLocus {

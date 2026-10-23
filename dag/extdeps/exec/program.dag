@@ -78,6 +78,7 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.wc", decl_name: "wc_program"),
     decl_ref(module_path: "extdeps.tools.nbdkit", decl_name: "nbdkit_program"),
     decl_ref(module_path: "extdeps.tools.sha512sum", decl_name: "sha512sum_program"),
+    decl_ref(module_path: "extdeps.tools.base64", decl_name: "base64_program"),
     decl_ref(module_path: "extdeps.tools.gzip", decl_name: "gzip_program"),
     decl_ref(module_path: "extdeps.tools.rustfmt", decl_name: "rustfmt_program"),
     decl_ref(module_path: "extdeps.tools.npm", decl_name: "npm_program"),
@@ -217,6 +218,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }

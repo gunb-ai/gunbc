@@ -212,8 +212,8 @@ fn broker_favicon_response(process: ApprovalServingProcess) -> ServeHttpResponse
 
 fn broker_text_response(status: HttpStatus, content_type: MediaType, body: String, marker: ApprovalBrokerMarker, process: ApprovalServingProcess) -> ServeHttpResponse {
   match approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process) {
-    BrokerBodyMarked { body: marked } =>
-      ServeHttpResponse { status: status, content_type: content_type, body: marked, headers: [] }
+    BrokerBodyMarked { body: marked, headers: marker_headers } =>
+      ServeHttpResponse { status: status, content_type: content_type, body: marked, headers: marker_headers }
     // A marker that cannot be built is a construction failure of THIS response, so it fails the way
     // every other construction failure in this fold fails: a typed 500 naming the reason, through the
     // same refusal body a page-render refusal takes. Not an unmarked response — an unmarked response is

@@ -30,7 +30,7 @@ import gunbc.runner.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, HostEnrollmentIntent, fleet_enrollment_intents, hosts_enrolled_among }
 import std.algebra { Cons, Empty }
 
 // VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path
@@ -331,7 +331,11 @@ fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
 // with no runner spec -- a provider guest whose runner role is not modeled -- appears as Unmodeled,
 // so a fleet total that walks this roster cannot look complete while one host cannot be deployed.
 fn fleet_runner_host_resolutions() -> List<RunnerHostDeployResolution> {
-  map(hosts_enrolled_for(wanted: CiRunnerParticipation), h => runner_host_deploy_for(host: h))
+  runner_host_resolutions_among(intents: fleet_enrollment_intents)
+}
+
+fn runner_host_resolutions_among(intents: List<HostEnrollmentIntent>) -> List<RunnerHostDeployResolution> {
+  map(hosts_enrolled_among(intents: intents, wanted: CiRunnerParticipation), h => runner_host_deploy_for(host: h))
 }
 
 // THE ADMITTED ROW FOR ONE HOST, OPTIONAL BECAUSE ADMISSION IS NOT GUARANTEED. A consumer that wants

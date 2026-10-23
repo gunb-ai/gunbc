@@ -1,18 +1,27 @@
 module gunbc.recurring_failure_mode.a_typed_port_drops_a_precondition_leg_the_script_carried
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
-import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
 
 data a_typed_port_drops_a_precondition_leg_the_script_carried: RecurringFailureMode = RecurringFailureMode {
   identity: "a_typed_port_drops_a_precondition_leg_the_script_carried" as NonEmptyStr,
 
 
   // #14383 made the rung reading a required field; this row landed before it. Encoded from this row's own
-  // receipts: "RUNG FOUND AT 2, mitigatable" and "CEILING 3, structurally guaranteed for every effect whose
-  // legs are enumerable from the typed plan"; trigger_capability is the row's NEXT-RUNG TRIGGER capability.
-  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a capability that makes every required leg of a HostEffect observable on the single plan the typed emitter builds, so a port cannot drop one." } },
+  // receipts. The ceiling receipt reads "CEILING 3, mechanically preventable", and its NUMBER and its NAME
+  // disagree: on the DESIGN section 4b ladder (1 = mitigatable, 2 = mechanically preventable, 3 = structurally
+  // guaranteed, 4 = structurally impossible) the NAME is authoritative, because the paragraph goes on to
+  // describe the wall as a dissolution artifact carrying an AUTHORED operation list that a gate checks -- an
+  // invalid state that stays writable while that mechanism stays enrolled, which is rung 2's definition and
+  // not rung 3's ("no `Accepted` program contains it"; rung 3 needs a refusal the COMPILER derives, and no such
+  // compiler-derived refusal exists -- grep for one finds only this row's prose). The first encoding read the
+  // digit and wrote ceiling: StructurallyGuaranteed, which is rung inflation (§4b meta-obligation 1): the field
+  // claimed a wall nothing enforces, so the class would never rank for climbing. Found-at stays rung 2 per
+  // "RUNG FOUND AT: 2 (mitigation, and the mitigation was main's claim, not the port's)", so current equals
+  // ceiling and the standing is AtCeiling, with the ceiling_reason carrying the receipt's own wording and the
+  // NEXT-RUNG TRIGGER paragraph remaining the tracked climb (a stall under meta-obligation 2, not a gap).
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: the wall is a dissolution artifact carrying the retired script's operation list as data, which a gate checks -- authored data, so the invalid state stays writable and safety depends on that mechanism executing and staying enrolled." as NonEmptyStr } },
   receipts: [
     "**a typed port drops a precondition leg the script carried** (a retained shell script is dissolved into typed effects, every arm of the new effect is well-typed and every refusal is preserved, and one operation that the script performed UNCONDITIONALLY BEFORE the interesting work is simply not in the new sequence. Nothing fails to compile, because the omitted operation left no type behind to go missing: a `curl` and a checksum comparison are commands, not declarations).",
 

@@ -1,5 +1,7 @@
 module v2.test.claim.manual.branch_infer
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_atom(s: Symbol) -> Node {
@@ -26,9 +28,9 @@ fn branch_infer_if_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { label: Positional, target: condition, declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: else_arm, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

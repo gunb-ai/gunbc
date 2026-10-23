@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjectionRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.auth.request_authentication { IngressUnattested }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import extdeps.http.server { ServeWireResponse, WireHeaderCacheControl }
+import extdeps.http.server { ServeWireResponse }
 import std.encoding { base64_decode, Standard }
 
 // THE COMMITTED BASE64 IS THE RECORDED NUMBER OF OCTETS. The base64 alphabet carries six bits per
@@ -79,7 +79,7 @@ test fn the_served_entry_answers_the_stylesheet_route() -> Bool {
     && r.content_type_label == "text/css; charset=utf-8"
     && r.body == web_font_stylesheet()
     && count(r.headers) == 1
-    && all(r.headers, h => h.name == WireHeaderCacheControl && h.value == "public, max-age=31536000, immutable")
+    && all(r.headers, h => h.name == "Cache-Control" && h.value == "public, max-age=31536000, immutable")
     && get(path: "/assets/fonts-0000000000000000.css").status == 404
 }
 

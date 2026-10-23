@@ -858,8 +858,8 @@ fn verification_subject_match(
   ) {
     VerificationSubjectDiffers {
       field: "criteria_digest",
-      expected: expected.criteria_digest as String,
-      found: found.criteria_digest as String,
+      expected: expected.criteria_digest.digest as String,
+      found: found.criteria_digest.digest as String,
     }
   } else if found.attempt_key != expected.attempt_key {
     VerificationSubjectDiffers {

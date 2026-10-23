@@ -1,7 +1,7 @@
 module gunbc.rung_drop.payload_arm_tag_reference_hollow_value
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { population_from_list, RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
 // THE DECLARED DROP FOR NAMING A PAYLOAD ARM'S TAG AS A HOLLOW VALUE (DESIGN 4b(3)). Naming a payload
@@ -18,16 +18,19 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // them and Atom.identity is not retyped here. The general seam is deleted and its replacement does not
 // exist yet: v1.compiler.infer elaborate_arm_reference (a ConstructorTag minted from a resolved arm) is
 // deferred to the first source route that reaches it, Charter 3 R1's resolved-arm surface.
+// RECEIPT (R1 PR2, session merry-hawk-432): `x is V` landed as parse-level sugar for `match x { V => true  _ => false }`
+// (v1.parse parse_is_arm_test; v2.compiler.body_lowering_fold body_lower_is_node). It tests a value's arm; it mints no
+// ConstructorTag and gives the nine target_model payload arms no resolved-arm source, since they hold no value of the
+// owner type. The drop STANDS: its trigger is unmet and this PR discharges nothing of it.
 data payload_arm_tag_reference_hollow_value: RungDrop = RungDrop {
   identity: "payload_arm_tag_reference_hollow_value" as NonEmptyStr,
   subject: "a payload coproduct arm named by a hollow literal at discriminant to obtain its tag",
   declared: "2026-10-20",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: DeletedWithoutReplacement,
-    population: ["v1.compiler.infer payload_arm_tag_reference_waiver_pairs: 9 arm declarations, the v2.std.compilers.target_model payload arms, matched by the arm owner type's declaring module and name together with the arm name as a named component of that owner, covering every occurrence of each arm"],
+    population: population_from_list(xs: ["v1.compiler.infer payload_arm_tag_reference_waiver_pairs: 9 arm declarations, the v2.std.compilers.target_model payload arms, matched by the arm owner type's declaring module and name together with the arm name as a named component of that owner, covering every occurrence of each arm"]),
     restoration_trigger: "the CAPABILITY restored is a resolved-arm source of an arm name (v1.compiler.infer elaborate_arm_reference minting a ConstructorTag from a resolved arm, reachable from source), with every consumer in v1.compiler.infer payload_arm_tag_reference_waiver_pairs migrated to it (the nine v2.std.compilers.target_model payload arms), the control payload_arm_tag_reference_agrees_with_value_tag (a hollow W11 literal agreeing with the tag of a value of that arm, removed from both constructor_tag_route_probe modules because it needs a hollow value by construction) restored over the new capability, and payload_arm_tag_reference_waiver_results and the list deleted, and a hollow payload-arm literal at discriminant refusing universally in every module without any list. Naming a PR does not discharge it; observed as that literal refusing in an unlisted module and in every formerly listed one"
-  }
+  } }
 }
