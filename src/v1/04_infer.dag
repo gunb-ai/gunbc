@@ -15088,11 +15088,6 @@ fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_
   }
 }
 
-// A LAMBDA FIELD OF A RECORD LITERAL CONTRIBUTES THROUGH THE SAME ARROW AS A LAMBDA ARGUMENT. The field walk
-// read resolved_type of the lambda, which is its BODY type, so `init: fn(src) { StringSplitState { .. } }`
-// bound nothing to R when it was the only field fixing R; the substitution stayed empty, the rebinding round
-// never ran, and a sibling `is_done: fn(state) { state.rest }` kept the uninstantiated R as its parameter's
-// type (v2.std.text string_split; the emitter then had no declaration to key the field access on).
 // What a lambda argument may contribute in round 1: only a binding that carries information. Its
 // return is computed under a substitution that may not yet bind its own parameters, so it can be
 // an unresolved type variable (callable_param), and binding a parameter to that would fix it first
@@ -15159,15 +15154,7 @@ fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_
           Present { value: nested_record } =>
             unify_record_lit_generics(formal: field_formal, record: nested_record, generic_names: generic_names, scope: scope, acc: st)
           Absent =>
-            if is_lambda_expr(e: actual_value) {
-              unify_lambda_solves(
-                solved: unify_generics(formal: field_formal, actual: lambda_callable_type(lambda: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
-                generic_names: generic_names,
-                acc: st
-              )
-            } else {
-              unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
-            }
+            unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
         }
       Absent => st
     }
