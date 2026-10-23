@@ -7221,7 +7221,20 @@ pub fn run_self_host_frontier(
     walk(&crate_dir.join("src"), &crate_dir, &mut observed)?;
     // The roster also names the crate's cargo test harnesses and build script, which live outside
     // src/; the observed universe is every .rs file of the crate, not only the src tree.
-    walk(&crate_dir.join("tests"), &crate_dir, &mut observed)?;
+    // tests/ is not a required member of the crate layout, so its absence is an observation, not a
+    // refusal: no harness file is observed, and every roster row naming one under tests/ reaches the
+    // fold unmatched, where it is a counted stale row. Any other read failure still refuses.
+    let before_tests = observed.len();
+    let tests_dir = crate_dir.join("tests");
+    match std::fs::metadata(&tests_dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        _ => walk(&tests_dir, &crate_dir, &mut observed)?,
+    }
+    eprintln!(
+        "[self-host-frontier] observed tests/ harness files: {} ({})",
+        observed.len() - before_tests,
+        if tests_dir.is_dir() { "tests/ present" } else { "tests/ absent" }
+    );
     if crate_dir.join("build.rs").is_file() {
         observed.push("build.rs".to_string());
     }
