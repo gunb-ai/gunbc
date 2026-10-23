@@ -11190,66 +11190,70 @@ pub fn validate_cast(
                                 module_name.clone(),
                             ))
                         }
-                    } else if source_is_nominal.clone() {
-                        {
-                            let msg = v1_rt::concat(
-                                v1_rt::concat(
+                    } else {
+                        if source_is_nominal.clone() {
+                            {
+                                let msg = v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            "invalid cast: ".to_string(),
-                                            source_name.clone(),
+                                            v1_rt::concat(
+                                                "invalid cast: ".to_string(),
+                                                source_name.clone(),
+                                            ),
+                                            " as ".to_string(),
                                         ),
-                                        " as ".to_string(),
+                                        target_name.clone(),
                                     ),
-                                    target_name.clone(),
-                                ),
-                                ": a nominal value has no declared conversion".to_string(),
-                            );
-                            let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                message: msg.clone(),
-                                span: span.clone(),
-                            });
-                            Some(crate::v1_std_core::make_error_node(
-                                diag.clone(),
-                                module_name.clone(),
-                            ))
-                        }
-                    } else {
-                        if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
-                            std::option::Option::None
+                                    ": a nominal value has no declared conversion".to_string(),
+                                );
+                                let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                });
+                                Some(crate::v1_std_core::make_error_node(
+                                    diag.clone(),
+                                    module_name.clone(),
+                                ))
+                            }
                         } else {
-                            if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
+                            if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
                                 std::option::Option::None
                             } else {
-                                if crate::std_coercion::dag_can_cast(
-                                    source_name.clone(),
+                                if !crate::std_coercion::is_dag_cast_domain_type(
                                     target_name.clone(),
                                 ) {
                                     std::option::Option::None
                                 } else {
-                                    {
-                                        let msg = v1_rt::concat(
-                                            v1_rt::concat(
+                                    if crate::std_coercion::dag_can_cast(
+                                        source_name.clone(),
+                                        target_name.clone(),
+                                    ) {
+                                        std::option::Option::None
+                                    } else {
+                                        {
+                                            let msg = v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        "invalid cast: ".to_string(),
-                                                        source_name.clone(),
+                                                        v1_rt::concat(
+                                                            "invalid cast: ".to_string(),
+                                                            source_name.clone(),
+                                                        ),
+                                                        " as ".to_string(),
                                                     ),
-                                                    " as ".to_string(),
+                                                    target_name.clone(),
                                                 ),
-                                                target_name.clone(),
-                                            ),
-                                            " -- no declared conversion route in std.coercion"
-                                                .to_string(),
-                                        );
-                                        let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                            message: msg.clone(),
-                                            span: span.clone(),
-                                        });
-                                        Some(crate::v1_std_core::make_error_node(
-                                            diag.clone(),
-                                            module_name.clone(),
-                                        ))
+                                                " -- no declared conversion route in std.coercion"
+                                                    .to_string(),
+                                            );
+                                            let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                                message: msg.clone(),
+                                                span: span.clone(),
+                                            });
+                                            Some(crate::v1_std_core::make_error_node(
+                                                diag.clone(),
+                                                module_name.clone(),
+                                            ))
+                                        }
                                     }
                                 }
                             }
