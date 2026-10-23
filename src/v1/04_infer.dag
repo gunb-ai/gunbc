@@ -15267,7 +15267,24 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   // equal a parameter's name (a field label, an unrelated type) is left as authored.
   let is_leaf = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_leaf {
-    n
+    match map_get(subst, type_node_label(n: n, source_indices: source_indices)) {
+      Present { value: _ } =>
+        let kind = match n.inferred {
+          Present { value: TypeVariable { id: i } } => concat("tv:", i)
+          Present { value: Resolved { node: _ } } => "resolved"
+          Present { value: _ } => "other"
+          Absent => "none"
+        }
+        Node {
+          occurrence_identity: OccurrenceSynthetic, name: concat("DUMP[", type_node_label(n: n, source_indices: source_indices), " inf=", kind, " decl=", if n.declaration == none { "n" } else { "y" }, " mk=", if n.declaration_marker == none { "n" } else { "y" }, "]"), span: n.span, ident_span: n.ident_span,
+          children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
+          return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
+          properties: n.properties, type_annotation: n.type_annotation,
+          is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
+          match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+        }
+      Absent => n
+    }
   } else {
 
     let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))
