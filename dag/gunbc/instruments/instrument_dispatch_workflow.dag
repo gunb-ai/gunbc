@@ -30,7 +30,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, decl_ref_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  type_declaration_use_census_label, dependency_demand_census_label, decl_ref_census_label, effect_pair_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
   known_red_derivation_label, roster_reach_inhabitance_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
@@ -137,7 +137,7 @@ data instrument_dispatch_timeout_minutes: Int = 240
 // adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
-    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(),
+    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), effect_pair_census_label(),
     v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
@@ -209,6 +209,9 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: decl_ref_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    // The effect-pair census walks the same whole corpus through the same shared D13 walk, so it is the
+    // same subject at the same price as dependency-demand-census (a row of its own, not a shared one).
+    InstrumentDispatchMemoryDemand { label: effect_pair_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The known-red derivation's subject is the whole corpus resolved claim by claim: the same price
     // class as the whole-tree censuses, and it shares their row rather than inventing a number of its

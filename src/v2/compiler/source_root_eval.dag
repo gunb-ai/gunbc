@@ -18,7 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -7271,6 +7271,9 @@ fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootInges
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbDeclRef =>
       let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbEffectPair =>
+      let o = native_effect_pair_census_output(ingest: ingest)
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
   }
 }
