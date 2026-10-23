@@ -14,7 +14,7 @@ import extdeps.apple.app_attest { AttestKeyId }
 import gunbc.auth.approval_device_wire {
   framed, device_redemption_signing_input, DeviceRedemptionSigningInput, RedemptionChallenge,
   approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
-  GoogleEnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
+  GoogleEnrolmentRequest, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
   WireDecoded, WireRefused, google_enrolment_request_json, decode_google_enrolment_request, signed_redemption_json, decode_signed_redemption,
   push_update_json, decode_push_update, ReadAuthentication, read_authentication_json, decode_read_request, PushUpdateRequest, push_update_request_json, decode_push_update_request, path_segment, device_request_path, device_push_update_client_data, decode_path_segment, PathSegmentDecoded, PathSegmentMalformed,
 }
