@@ -1,0 +1,31 @@
+module v2.test.claim.compiler.seat16_probe
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers, fmi_infer_tree, fmi_reason }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
+import v2.test.claim.type_param_binder_frame { tpb_std_optional_witness }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { Cons }
+import std.types { Bool, List }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data s16_find: String = "module p\n\nimport std.optional { Present, Optional }\nimport std.types { List }\n\ntype KeyedRow<K, V> {\n  row_key: K\n  value: V\n}\n\nfn find<K, V>(rows: List<KeyedRow<K, V>>, wanted_key: K, key_eq: fn(K, K) -> Bool) -> KeyedRow<K, V>? {\n  fold(rows, init: none, f: fn(acc, row) {\n    if key_eq(row.row_key, wanted_key) {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
+data s16_interval: String = "module p\n\ntype Iv<T> {\n  low: T\n  high: T\n}\n\nfn mk<T>(low: T, high: T) -> Iv<T> {\n  Iv { low: low, high: high }\n}\n"
+data s16_present: String = "module p\n\nimport std.optional { Present, Optional }\n\nfn f(x: Int) -> Optional<Int> {\n  Present { value: x }\n}\n"
+
+fn s16_reason(src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: src, peers: Cons { head: tpb_std_optional_witness(), tail: fmi_list_peers() }) {
+    Rejected { diagnostics: _ } => ^s16_assembly_refused
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+test fn s16_find_accepted() -> Bool { s16_reason(src: s16_find) == ^accepted }
+test fn s16_find_grounding() -> Bool { s16_reason(src: s16_find) == ^infer_grounding_not_derived }
+test fn s16_interval_accepted() -> Bool { s16_reason(src: s16_interval) == ^accepted }
+test fn s16_interval_grounding() -> Bool { s16_reason(src: s16_interval) == ^infer_grounding_not_derived }
+test fn s16_present_accepted() -> Bool { s16_reason(src: s16_present) == ^accepted }
+test fn s16_assembly_refused_find() -> Bool { s16_reason(src: s16_find) == ^s16_assembly_refused }
