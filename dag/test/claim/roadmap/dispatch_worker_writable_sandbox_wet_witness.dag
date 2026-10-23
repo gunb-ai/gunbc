@@ -169,14 +169,29 @@ fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: 
   )
 }
 
-// The paired control: the same principal, OUTSIDE the sandbox, writes a sibling of the target in its
-// directory and removes it. The user-manager transient runs as the invoking principal (no User=), so a
-// target that principal cannot write refuses the touch by ownership, not by the sandbox. Only a target
-// the principal can write lets a refusal count. quick-bee-65
-fn unsandboxed_sibling_write_ok(path: String) -> Bool {
-  let sibling = join([path, ".unsandboxed-control"], "")
-  shell.Exec.RunArgv(program: "touch", arguments: ["--", sibling]).exit_code == 0
-    && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", sibling]).exit_code == 0
+// The paired control: the SAME route as the sandboxed touch (a user-manager transient, same principal,
+// same supplementary groups), with no sandbox properties, writes a sibling of the target in its
+// directory and removes it. Running it from the claim process instead would differ in credentials (an
+// ssh session carries groups the long-running user manager lacks), so a target writable only through
+// such a group would refuse the sandboxed touch by permission while the control wrote, and the
+// refusal would be credited to the sandbox. The pair differs in exactly one variable. quick-bee-65
+fn unsandboxed_sibling_write_ok(unit: NonEmptyStr, path: String) -> Bool {
+  match systemd_run_user_wait_command(
+    unit: unit,
+    properties: [],
+    setenv_bindings: [],
+    command_argv: [
+      "/bin/sh", "-c", "touch -- \"$1\" && rm -f -- \"$1\"", "sh",
+      join([path, ".unsandboxed-control"], ""),
+    ],
+  ) {
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: wait } =>
+      shell.Exec.RunArgv(
+        program: "systemd-run",
+        arguments: systemd_run_command_argument_words(command: wait.command),
+      ).exit_code == 0
+  }
 }
 
 fn refusal_reading_after_control(control_wrote: Bool, reading: SandboxTouchReading) -> SandboxTouchReading {
@@ -190,7 +205,10 @@ fn refusal_reading_after_control(control_wrote: Bool, reading: SandboxTouchReadi
 
 fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
   match refusal_reading_after_control(
-    control_wrote: unsandboxed_sibling_write_ok(path: path),
+    control_wrote: unsandboxed_sibling_write_ok(
+      unit: join([unit as String, "-control"], "") as NonEmptyStr,
+      path: path,
+    ),
     reading: sandbox_touch_read(instance: instance, unit: unit, path: path),
   ) {
     SandboxTouchRefusedReading => true
@@ -225,10 +243,14 @@ test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_incon
     && reading_is_refused(reading: refusal_reading_after_control(control_wrote: true, reading: SandboxTouchRefusedReading))
 }
 
-// Inhabitance: the real control route returns false for a directory the principal cannot write, true for one it can.
+// Inhabitance of the real control route (needs a user manager, like the sibling cells): ENOENT and
+// EACCES directories read false, a writable one true. The EACCES half is unobservable as root, so the
+// claim requires a non-root principal and is false on a root runner rather than passing without it.
 test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
-  !unsandboxed_sibling_write_ok(path: "/proc/gunbc-no-such-dir/target")
-    && unsandboxed_sibling_write_ok(path: "/tmp/gunbc-control-inhabitance-target")
+  shell.Exec.RunArgv(program: "sh", arguments: ["-c", "test \"$(id -u)\" -ne 0"]).exit_code == 0
+    && !unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-enoent.service" as NonEmptyStr, path: "/proc/gunbc-no-such-dir/target")
+    && !unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-eacces.service" as NonEmptyStr, path: "/usr/gunbc-control-target")
+    && unsandboxed_sibling_write_ok(unit: "gunbc-control-inhabit-ok.service" as NonEmptyStr, path: "/tmp/gunbc-control-inhabitance-target")
 }
 
 fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
