@@ -5731,7 +5731,7 @@ fn infer_literal_refinement_demand(
   if !infer_node_is_literal(node: pair.arg) {
     Absent
   } else {
-    let target = infer_declared_type_denotation(declared: pair.formal.declared)
+    let target = pair.formal.declared
     match refinement_declaration(index: declarations, reference: target) {
       Absent => Absent
       Present { value: refinement } =>

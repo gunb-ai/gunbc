@@ -58,6 +58,7 @@ data lrj_ingest: SourceRootIngest = [
   lrj_read(source: lrj_violated_field_source, id: ^lrj_violated_field_read, unit: ^lrj_violated_field_cu, path: "src/v2/test/fixture/lrj/violated_field.dag"),
   lrj_read(source: lrj_nonliteral_source, id: ^lrj_nonliteral_read, unit: ^lrj_nonliteral_cu, path: "src/v2/test/fixture/lrj/nonliteral.dag"),
   lrj_read(source: lrj_wrong_type_source, id: ^lrj_wrong_type_read, unit: ^lrj_wrong_type_cu, path: "src/v2/test/fixture/lrj/wrong_type.dag"),
+  lrj_read(source: lrj_one_arg_source, id: ^lrj_one_arg_read, unit: ^lrj_one_arg_cu, path: "src/v2/test/fixture/lrj/one_arg.dag"),
   lrj_read(source: lrj_plain_source, id: ^lrj_plain_read, unit: ^lrj_plain_cu, path: "src/v2/test/fixture/lrj/plain.dag")
 ]
 
@@ -173,4 +174,16 @@ test fn lrj_literal_of_another_type_still_refuses_holds() -> Bool {
 
 test fn lrj_literal_at_an_unrefined_carrier_records_no_obligation_holds() -> Bool {
   lrj_obligation_count(subject: "v2.test.lrj_plain") == 0 && lrj_end_to_end_admits(subject: "v2.test.lrj_plain")
+}
+
+// PROBES the run reads to tell WHERE a failure sits: the simplest refined call argument must record exactly
+// one obligation, and a bare unrefined one none.
+data lrj_one_arg_source: String = "module v2.test.lrj_one_arg\n\nfn lrj_p(s: String) -> Bool { true }\n\ntype LrjNe = String where lrj_p\n\nfn lrj_take(v: LrjNe) -> Bool { true }\n\ndata lrj_arg: Bool = lrj_take(\"x\")\n"
+
+test fn lrj_probe_simplest_refined_argument_records_one_obligation_holds() -> Bool {
+  lrj_obligation_count(subject: "v2.test.lrj_one_arg") == 1
+}
+
+test fn lrj_probe_simplest_refined_argument_infers_at_all_holds() -> Bool {
+  lrj_obligation_count(subject: "v2.test.lrj_one_arg") >= 0
 }
