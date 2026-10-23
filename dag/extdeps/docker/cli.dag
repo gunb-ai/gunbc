@@ -76,6 +76,13 @@ type DockerCreateSpec {
   restart: DockerRestartPolicy
   mounts: List<DockerMount>
   env: List<DockerEnvAssignment>
+  // `--env-file <path>`: variables read by the docker CLI from a file on the client host, so a value
+  // (a credential) never appears in the argv. docs.docker.com/reference/cli/docker/container/run/#env
+  env_files: List<FilePath>
+  // `--entrypoint`: replaces the image's ENTRYPOINT; absent keeps it.
+  // Neither field is yet compared with a `docker inspect` readback (Config.Env, Config.Entrypoint):
+  // no convergence over DockerCreateSpec exists today, so there is no comparison to extend.
+  entrypoint: NonEmptyStr?
   command: List<String>
 }
 
@@ -144,7 +151,13 @@ fn docker_container_resource_flags(spec: DockerCreateSpec) -> List<String> {
       flat_map(spec.cap_add, c => docker_cap_add_words(c: c)),
       concat(
         flat_map(spec.mounts, m => docker_mount_flag(m: m)),
-        flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+        concat(
+          flat_map(spec.env, e => ["--env", join([e.name as String, "=", e.value], "")]),
+          concat(
+            flat_map(spec.env_files, f => ["--env-file", f as String]),
+            match spec.entrypoint { Present { value: e } => ["--entrypoint", e as String]  Absent => [] },
+          ),
+        ),
       ),
     ),
   )

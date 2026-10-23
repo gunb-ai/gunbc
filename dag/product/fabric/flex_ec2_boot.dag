@@ -1,0 +1,194 @@
+module product.fabric.flex_ec2_boot
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.measure { Second, second_count, byte_size_count }
+import extdeps.docker { BindMount }
+import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, NamespaceHost, RestartNo, docker_create_command, docker_start_command }
+import extdeps.exec.command { shell_command_render }
+import extdeps.huggingface.hub { HubRevisionFileList, HubRevisionFile, HubLfsSha256, HubGitBlobSha1, hub_repo_cache_directory_name }
+import extdeps.cloud.aws_ec2 {
+  AwsEc2LaunchTemplateData, AwsEc2MetadataOptions, AwsEc2BlockDeviceMapping,
+  AwsEc2EbsMapping, AwsEc2EbsBlockDevice,
+}
+import std.measure { gibibyte }
+import gunbc.retained_shell_script { RetainedShellScript }
+import product.fabric.flex_serving_image { FlexServingImage, flex_serving_image_reference }
+
+// THE EC2 REALIZATION OF THE ONE SERVING IMAGE (gunbc.plans.flex_supplier_generalization section 3b). The
+// image, port, shm and onstart are product.fabric.flex_serving_image's and are not restated. What is EC2's:
+// the boot pre-step that puts /cache on instance-store NVMe, fetches the pinned weights from the region's
+// bucket and verifies every file against the pin, restores the tuning cache for its complete key, and
+// receives POOL_API_KEY through SSM; the typed container spec; and the user-data and launch-template
+// shapes that carry them. The Vast row has no pre-step: Vast runs the same onstart inside its own template.
+//
+// BETS STATED, NOT HIDDEN (DESIGN 4d), each falsified or confirmed on the first Plan-mode boot:
+// - the image's own ENTRYPOINT (Caddy portal, sshd) is not needed on EC2 and is replaced by bash running
+//   the onstart; the server serves TLS on the image port itself (Vast template, port 18000).
+// - with HF_HUB_OFFLINE=1 and the revision present as a plain-file snapshot, lil-serve loads the pinned
+//   revision without contacting the Hub (the cache layout extdeps.huggingface.hub hub_snapshot_directory
+//   names; symlink-free snapshots are the HF_HUB_DISABLE_SYMLINKS layout).
+// - the AMI carries docker, the NVIDIA container toolkit, a 580+ driver, the AWS CLI, mdadm and git (for
+//   git hash-object), and the lil image already pulled (plan section 3, image).
+
+data flex_ec2_shell_dissolves_to: DeclarationRef = decl_ref(module_path: "gunbc.plans.shell_emission_model", decl_name: "shell_emission_model_plan")
+
+// THE PRE-STEP. Procedural by nature (device discovery, a bounded poll, a verify loop) and a counted
+// RetainedShellScript row, never a free String. It reads only the non-secret files user-data wrote under
+// /opt/flex and refuses, logged, on every unmet requirement: no NVMe, an unreadable bucket parameter, a
+// file that does not match the pin, a file the pin does not name, a missing POOL_API_KEY after the wait.
+data flex_ec2_prestep: RetainedShellScript = RetainedShellScript {
+  body: "# flex EC2 boot pre-step. Inputs are the files user-data wrote under /opt/flex (non-secret):\n# boot.env (MODEL_CACHE_DIR, REVISION, IMAGE_DIGEST, SSM_PREFIX, BUCKET_PARAM, BOOT_WAIT_S),\n# weights.sha256 and weights.gitsha1 (the pinned revision's file list), onstart.sh.\nset -euo pipefail\n. /opt/flex/boot.env\nL=/var/log/flex-boot.log; ev() \{ echo \"$(date -u +%FT%TZ) $*\" >> $L; }\nrefuse() \{ ev \"REFUSED: $*\"; exit 1; }\n# 1. Instance-store NVMe -> /cache (RAID0 when more than one disk). Never EBS.\nmapfile -t D < <(for d in /dev/disk/by-id/nvme-Amazon_EC2_NVMe_Instance_Storage_*; do [ -e \"$d\" ] && readlink -f \"$d\"; done | grep -v 'p[0-9]*$' | sort -u)\n[ $\{#D[@]} -ge 1 ] || refuse \"no instance-store NVMe; /cache must be local NVMe\"\nif [ $\{#D[@]} -gt 1 ]; then mdadm --create /dev/md0 --run --level=0 --raid-devices=$\{#D[@]} \"$\{D[@]}\"; DEV=/dev/md0; else DEV=$\{D[0]}; fi\nmkfs.ext4 -F -q -E nodiscard \"$DEV\"; mkdir -p /cache; mount -o noatime \"$DEV\" /cache\nmkdir -p /cache/hf/hub /cache/jit /run/flex; chmod 700 /run/flex\n# 2. Identity from IMDSv2.\nT=$(curl -sf -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600') || refuse \"IMDSv2 token\"\nmd() \{ curl -sf -H \"X-aws-ec2-metadata-token: $T\" \"http://169.254.169.254/latest/meta-data/$1\"; }\nIID=$(md instance-id) || refuse \"instance id\"; export AWS_DEFAULT_REGION=$(md placement/region) || refuse \"region\"\nBUCKET=$(aws ssm get-parameter --name \"$BUCKET_PARAM\" --query Parameter.Value --output text) || refuse \"weights bucket parameter $BUCKET_PARAM unreadable in $AWS_DEFAULT_REGION\"\naws configure set default.s3.max_concurrent_requests 64\n# 3. Weights: copy the pinned revision to NVMe, then verify every file against the pin. No HF fallback.\nSNAP=/cache/hf/hub/$MODEL_CACHE_DIR/snapshots/$REVISION; mkdir -p \"$SNAP\"\naws s3 cp --recursive --only-show-errors \"s3://$BUCKET/hf/$MODEL_CACHE_DIR/$REVISION/\" \"$SNAP/\" || refuse \"weights copy\"\ncd \"$SNAP\"\nsha256sum --quiet --strict -c /opt/flex/weights.sha256 >> $L 2>&1 || refuse \"weights do not match the pinned sha256\"\nwhile read -r h p; do [ \"$(git hash-object \"$p\")\" = \"$h\" ] || refuse \"$p does not match its pinned git blob id\"; done < /opt/flex/weights.gitsha1\nN=$(find . -type f | wc -l); W=$(( $(wc -l < /opt/flex/weights.sha256) + $(wc -l < /opt/flex/weights.gitsha1) ))\n[ \"$N\" -eq \"$W\" ] || refuse \"snapshot holds $N files, the pin names $W\"\ncd /\nev \"weights verified ($W files, revision $REVISION)\"\n# 4. Tuning cache: the key is the complete preimage. A hit requires the sentinel written last.\nGPU=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1 | tr ' /' '__'); DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)\nOH=$(sha256sum /opt/flex/onstart.sh | cut -c1-64)\nKEY=\"jit/$GPU/$DRV/$IMAGE_DIGEST/$REVISION/$OH\"\nif aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY/complete\" > /dev/null 2>&1; then\n  aws s3 cp --recursive --only-show-errors \"s3://$BUCKET/$KEY/tree/\" /cache/jit/ || refuse \"tuning cache copy\"\n  HIT=1; ev \"tuning cache hit $KEY\"\nelse HIT=0; ev \"tuning cache miss $KEY\"; fi\n# 5. POOL_API_KEY: written by the loop after RunInstances, named by instance id. Bounded wait, then refuse.\nV=\"\"; S=0\nwhile [ $S -lt \"$BOOT_WAIT_S\" ]; do\n  V=$(aws ssm get-parameter --with-decryption --name \"$SSM_PREFIX/$IID\" --query Parameter.Value --output text 2>/dev/null) && break\n  V=\"\"; sleep 5; S=$((S + 5))\ndone\n[ -n \"$V\" ] || refuse \"no POOL_API_KEY at $SSM_PREFIX/$IID after $BOOT_WAIT_S s\"\n( umask 077; printf 'POOL_API_KEY=%s\\n' \"$V\" > /run/flex/pool.env ); unset V\nev \"pre-step done\"\n",
+  reason: "EC2 boot: assemble and mount the instance-store NVMe, copy and verify the pinned weights, restore the tuning cache, wait boundedly for the per-instance POOL_API_KEY. Device discovery, a bounded poll and a per-file verify loop have no typed host-effect carrier yet." as NonEmptyStr,
+  dissolves_to: flex_ec2_shell_dissolves_to,
+}
+
+// THE POST-START PUBLISH, run in the background after the container starts. On a miss only, and only
+// after /health answers (tuning complete), it uploads /cache/jit and writes the `complete` sentinel LAST,
+// so the pre-step's hit test can never adopt a partial cache (std.materialization_ladder; a partial key
+// match is never reused because the key is the whole preimage).
+data flex_ec2_publish: RetainedShellScript = RetainedShellScript {
+  body: "# flex EC2 post-start: on a tuning-cache miss only, publish /cache/jit once the server answers /health,\n# then write the sentinel LAST so a reader never adopts a partial cache.\n. /opt/flex/boot.env; L=/var/log/flex-boot.log; ev() \{ echo \"$(date -u +%FT%TZ) $*\" >> $L; }\n[ \"$HIT\" = 0 ] || exit 0\nS=0; until curl -skf \"https://127.0.0.1:$PORT/health\" > /dev/null; do sleep 15; S=$((S + 15)); [ $S -lt 7200 ] || \{ ev \"no /health in 7200 s; tuning cache not published\"; exit 0; }; done\naws s3 cp --recursive --only-show-errors /cache/jit/ \"s3://$BUCKET/$KEY/tree/\" && printf '%s\\n' \"$KEY\" | aws s3 cp - \"s3://$BUCKET/$KEY/complete\" && ev \"tuning cache published $KEY\" || ev \"tuning cache publish failed $KEY\"\n",
+  reason: "EC2 post-start: publish the tuning cache under its complete key once the server is healthy, sentinel last. A readiness poll followed by an ordered upload has no typed host-effect carrier yet." as NonEmptyStr,
+  dissolves_to: flex_ec2_shell_dissolves_to,
+}
+
+// The boot parameters that are policy, not image facts. None is a secret and none names a bucket: the
+// bucket is read at boot from the parameter named here, in the instance's own region.
+type FlexEc2BootPolicy {
+  ssm_key_prefix: NonEmptyStr
+  bucket_parameter: NonEmptyStr
+  key_wait: Second
+  root_volume_gib: Int
+  security_group_ids: List<NonEmptyStr>
+}
+
+data flex_ec2_container_name: NonEmptyStr = "flex" as NonEmptyStr
+data flex_ec2_onstart_path: NonEmptyStr = "/opt/flex/onstart.sh" as NonEmptyStr
+data flex_ec2_pool_env_path: NonEmptyStr = "/run/flex/pool.env" as NonEmptyStr
+
+// THE CONTAINER, TYPED. The onstart backgrounds its server and returns, so the main process runs it and
+// then sleeps; if the onstart refuses, the container exits with its status and does not restart (the
+// server's own crash loop is inside the onstart). POOL_API_KEY arrives through --env-file, so its value is
+// in no argv; the HF hub dir and the disk KV tier are both on the NVMe.
+fn flex_ec2_container_spec(image: FlexServingImage) -> DockerCreateSpec {
+  DockerCreateSpec {
+    name: flex_ec2_container_name,
+    image: flex_serving_image_reference(image: image),
+    network: NamespaceHost,
+    ipc: NamespaceHost,
+    shm_size_bytes: byte_size_count(b: image.shm),
+    memlock_unlimited: false,
+    gpus_all: true,
+    devices: [],
+    cap_add: [],
+    restart: RestartNo,
+    mounts: [
+      BindMount { host_path: "/cache", container_path: "/cache", readonly: false },
+      BindMount { host_path: "/cache/hf", container_path: "/root/.cache/huggingface", readonly: false },
+      BindMount { host_path: flex_ec2_onstart_path as String, container_path: flex_ec2_onstart_path as String, readonly: true },
+    ],
+    env: [
+      DockerEnvAssignment { name: "PORT" as NonEmptyStr, value: to_string(image.port as Int) },
+      DockerEnvAssignment { name: "HF_HUB_OFFLINE" as NonEmptyStr, value: "1" },
+    ],
+    env_files: [flex_ec2_pool_env_path as String],
+    entrypoint: Present { value: "bash" as NonEmptyStr },
+    command: ["-c", join(["bash ", flex_ec2_onstart_path as String, " && exec sleep infinity"], "")],
+  }
+}
+
+// THE PIN AS THE TWO CHECK FILES THE VERIFIER READS: `sha256sum -c` lines for LFS files and
+// `<git blob id> <path>` lines for the rest. Every file of the list lands in exactly one.
+fn flex_ec2_sha256_line(f: HubRevisionFile) -> String {
+  match f.digest {
+    HubLfsSha256 { sha256: h } => join([h as String, "  ", f.path_in_repo as String, "\n"], "")
+    HubGitBlobSha1 { sha1: _ } => ""
+  }
+}
+
+fn flex_ec2_gitsha1_line(f: HubRevisionFile) -> String {
+  match f.digest {
+    HubLfsSha256 { sha256: _ } => ""
+    HubGitBlobSha1 { sha1: h } => join([h as String, " ", f.path_in_repo as String, "\n"], "")
+  }
+}
+
+fn flex_ec2_boot_env(image: FlexServingImage, files: HubRevisionFileList, policy: FlexEc2BootPolicy) -> String {
+  join([
+    "MODEL_CACHE_DIR=", hub_repo_cache_directory_name(repo: files.repo) as String, "\n",
+    "REVISION=", files.revision as String, "\n",
+    "IMAGE_DIGEST=", image.digest_sha256 as String, "\n",
+    "SSM_PREFIX=", policy.ssm_key_prefix as String, "\n",
+    "BUCKET_PARAM=", policy.bucket_parameter as String, "\n",
+    "BOOT_WAIT_S=", to_string(second_count(policy.key_wait)), "\n",
+    "PORT=", to_string(image.port as Int), "\n",
+  ], "")
+}
+
+// One file written by a quoted heredoc: no expansion, so the body lands byte for byte, unless a line of
+// the body equals the delimiter, which the builder refuses rather than truncating the file.
+fn flex_ec2_heredoc_collides(body: String, delimiter: String) -> Bool {
+  join(["\n", body, "\n"], "").contains(join(["\n", delimiter, "\n"], ""))
+}
+
+fn flex_ec2_heredoc(path: String, body: String, delimiter: String) -> String {
+  join(["cat > ", path, " <<'", delimiter, "'\n", body, if body.ends_with("\n") { "" } else { "\n" }, delimiter, "\n"], "")
+}
+
+type FlexEc2UserData
+  = FlexEc2UserDataRendered { text: String }
+  | FlexEc2UserDataRefused { cause: NonEmptyStr }
+
+// RunInstances and launch-template user data is limited to 16 KB in raw form, before base64 encoding
+// (EC2 User Guide, user-data). Over the limit refuses here; truncating would boot a different script.
+data flex_ec2_user_data_limit_bytes: Int = 16384
+
+data flex_ec2_heredoc_delimiter: String = "FLEX_EOF_4f1c"
+
+fn flex_ec2_user_data(image: FlexServingImage, files: HubRevisionFileList, policy: FlexEc2BootPolicy) -> FlexEc2UserData {
+  let sha = join(map(files.files, f => flex_ec2_sha256_line(f: f)), "")
+  let git = join(map(files.files, f => flex_ec2_gitsha1_line(f: f)), "")
+  let env = flex_ec2_boot_env(image: image, files: files, policy: policy)
+  let d = flex_ec2_heredoc_delimiter
+  if flex_ec2_heredoc_collides(body: image.onstart, delimiter: d) || flex_ec2_heredoc_collides(body: sha, delimiter: d) || flex_ec2_heredoc_collides(body: git, delimiter: d) {
+    FlexEc2UserDataRefused { cause: "a file body carries a line equal to the heredoc delimiter" as NonEmptyStr }
+  } else {
+    let text = join([
+      "#!/bin/bash\nset -euo pipefail\nmkdir -p /opt/flex\n",
+      flex_ec2_heredoc(path: flex_ec2_onstart_path as String, body: image.onstart, delimiter: d),
+      flex_ec2_heredoc(path: "/opt/flex/weights.sha256", body: sha, delimiter: d),
+      flex_ec2_heredoc(path: "/opt/flex/weights.gitsha1", body: git, delimiter: d),
+      flex_ec2_heredoc(path: "/opt/flex/boot.env", body: env, delimiter: d),
+      flex_ec2_prestep.body, "\n",
+      shell_command_render(command: docker_create_command(spec: flex_ec2_container_spec(image: image))), "\n",
+      shell_command_render(command: docker_start_command(name: flex_ec2_container_name)), "\n",
+      "( ", flex_ec2_publish.body, " ) >> /var/log/flex-boot.log 2>&1 &\n",
+    ], "")
+    if count(bytes_octets(b: utf8_encode_bytes(s: text))) > flex_ec2_user_data_limit_bytes {
+      FlexEc2UserDataRefused { cause: "the rendered user data exceeds the 16 KB EC2 limit" as NonEmptyStr }
+    } else {
+      FlexEc2UserDataRendered { text: text }
+    }
+  }
+}
+
+// THE LAUNCH TEMPLATE DATA. IMDSv2 required (the pre-step and the interruption poll use it); the root EBS
+// volume holds only the OS and the image, never weights or caches; the AMI id is a per-region read.
+fn flex_ec2_launch_template_data(ami: NonEmptyStr, user_data: String, policy: FlexEc2BootPolicy) -> AwsEc2LaunchTemplateData {
+  AwsEc2LaunchTemplateData {
+    image_id: ami,
+    block_device_mappings: [
+      AwsEc2EbsMapping {
+        device_name: "/dev/sda1" as NonEmptyStr,
+        ebs: AwsEc2EbsBlockDevice { volume_size_gib: gibibyte(count: policy.root_volume_gib), volume_type: "gp3" as NonEmptyStr, delete_on_termination: true },
+      },
+    ],
+    user_data: user_data,
+    metadata_options: AwsEc2MetadataOptions { http_tokens: "required" as NonEmptyStr, http_put_response_hop_limit: 1 },
+    security_group_ids: policy.security_group_ids,
+    instance_initiated_shutdown_behavior: "terminate" as NonEmptyStr,
+  }
+}

@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { ByteSize, Gibibyte, gibibyte_ceiling }
+import std.content_hash { Sha256DigestHex, Sha1DigestHex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https, uri_wire }
 
@@ -350,4 +351,31 @@ fn hub_checkpoint_manifest(
 // `safetensors_bytes` and does not round at all.
 fn hub_checkpoint_manifest_gibibytes(m: HubCheckpointManifest) -> Gibibyte {
   gibibyte_ceiling(b: m.safetensors_bytes)
+}
+
+// ── ONE FILE OF A REVISION, AS THE TREE API STATES IT ───────────────────────────────────────────
+//
+// THE PER-FILE PIN. The tree API (hub_repo_tree_api_url, `?recursive=true`) answers, for each file at an
+// exact revision, its path, its size and one of two digests: a file stored through Git LFS carries the
+// SHA-256 of its content (`lfs.oid`); every other file carries its git blob id (`oid`), the SHA-1 of
+// `blob <size>\0` followed by the content. They are two families, so they are two arms and never one
+// string compared by spelling. A placement that copies a revision's bytes anywhere else verifies each
+// file against this row before the bytes are served; a copy is never its own pin.
+type HubFileDigest
+  = HubLfsSha256 { sha256: Sha256DigestHex }
+  | HubGitBlobSha1 { sha1: Sha1DigestHex }
+
+type HubRevisionFile {
+  path_in_repo: NonEmptyStr
+  size: ByteSize
+  digest: HubFileDigest
+}
+
+// A REVISION'S COMPLETE FILE LIST. Complete means every `file` entry of the recursive tree answer, so a
+// verifier that finds a file the list does not name, or misses one it names, refuses.
+type HubRevisionFileList {
+  repo: HubRepoId
+  revision: NonEmptyStr
+  files: List<HubRevisionFile>
+  read_by: NonEmptyStr
 }

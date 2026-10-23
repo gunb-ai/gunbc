@@ -1,0 +1,74 @@
+module test.claim.fabric.flex_ec2_boot_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.measure { second }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import product.fabric.flex_serving_image { FlexServingImage, flex_lil_serving_image }
+import product.fabric.flex_ec2_boot {
+  FlexEc2BootPolicy, FlexEc2UserDataRendered, FlexEc2UserDataRefused, flex_ec2_user_data,
+  flex_ec2_user_data_limit_bytes, flex_ec2_heredoc_delimiter, flex_ec2_container_spec,
+}
+import extdeps.docker.cli { docker_create_arguments }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_files }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Policy values are supplied (names only, no bucket, no secret); the image and the pin are the real
+// producers, so the render below is the one an EC2 card would boot.
+data policy: FlexEc2BootPolicy = FlexEc2BootPolicy {
+  ssm_key_prefix: "/gunbc-flex/pool-key" as NonEmptyStr,
+  bucket_parameter: "/gunbc-flex/weights-bucket" as NonEmptyStr,
+  key_wait: second(count: 600),
+  root_volume_gib: 200,
+  security_group_ids: [],
+}
+
+fn rendered() -> String {
+  match flex_ec2_user_data(image: flex_lil_serving_image, files: qwen3_8_flash_next_files, policy: policy) {
+    FlexEc2UserDataRendered { text: t } => t
+    FlexEc2UserDataRefused { cause: _ } => ""
+  }
+}
+
+test fn the_real_user_data_renders_within_the_ec2_limit_and_carries_the_one_onstart() -> Bool {
+  let t = rendered()
+  (t != "")
+    && (count(bytes_octets(b: utf8_encode_bytes(s: t))) <= flex_ec2_user_data_limit_bytes)
+    && t.contains(flex_lil_serving_image.onstart)
+    && t.contains("REVISION=dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2")
+    && t.contains("tensors/model-00021-of-00021.safetensors")
+}
+
+// The credential reaches the container through a file, never through an argv word.
+test fn the_container_argv_takes_the_pool_key_by_file_not_by_value() -> Bool {
+  let argv = docker_create_arguments(spec: flex_ec2_container_spec(image: flex_lil_serving_image))
+  argv.contains("--env-file") && argv.contains("/run/flex/pool.env")
+    && !(join(argv, " ").contains("POOL_API_KEY"))
+    && argv.contains("--gpus") && argv.contains("type=bind,src=/cache,dst=/cache")
+}
+
+fn with_onstart(o: String) -> FlexServingImage {
+  FlexServingImage {
+    repository: flex_lil_serving_image.repository,
+    digest_sha256: flex_lil_serving_image.digest_sha256,
+    port: flex_lil_serving_image.port,
+    shm: flex_lil_serving_image.shm,
+    onstart: o,
+  }
+}
+
+fn refused(image: FlexServingImage) -> Bool {
+  match flex_ec2_user_data(image: image, files: qwen3_8_flash_next_files, policy: policy) {
+    FlexEc2UserDataRefused { cause: _ } => true
+    FlexEc2UserDataRendered { text: _ } => false
+  }
+}
+
+// REDs: a body line equal to the delimiter would end the heredoc early, and an over-limit script would
+// be rejected or truncated by EC2; both refuse here, and the real onstart does neither.
+test fn a_delimiter_line_or_an_over_limit_script_refuses() -> Bool {
+  refused(image: with_onstart(o: join(["echo a\n", flex_ec2_heredoc_delimiter, "\necho b\n"], "")))
+    && refused(image: with_onstart(o: join(map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], i => flex_lil_serving_image.onstart), "")))
+    && !refused(image: flex_lil_serving_image)
+}
