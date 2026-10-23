@@ -186,7 +186,6 @@ import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
-  retained_srvn,
 }
 import extdeps.ssh.session { ssh_session_exec_script }
 import gunbc.typed_argv_exec {
