@@ -72,7 +72,7 @@ fn green_rows() -> ProbeCensusRows? {
   )
 }
 
-// THE DISCRIMINATING RED. Exactly one blocking TypeMismatch at the CgroupNotQuiet key — not
+// THE DISCRIMINATING RED. Exactly one blocking TypeMismatch at the target_subject key — not
 // "something refused".
 test fn an_empty_subtree_cannot_inhabit_cgroup_still_holding() -> Bool {
   match red_rows() {

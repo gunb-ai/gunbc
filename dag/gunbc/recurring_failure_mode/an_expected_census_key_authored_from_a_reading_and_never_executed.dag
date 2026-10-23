@@ -1,13 +1,15 @@
 module gunbc.recurring_failure_mode.an_expected_census_key_authored_from_a_reading_and_never_executed
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data an_expected_census_key_authored_from_a_reading_and_never_executed: RecurringFailureMode = RecurringFailureMode {
   identity: "an_expected_census_key_authored_from_a_reading_and_never_executed" as NonEmptyStr,
 
-  rung: RungUnread { cause: NoRungStated },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a construction or check requiring that an expected (class, subject) census key was produced by the fixture it characterizes -- the RED fixture's own executed census contains the key, SUFFICIENT FOR a claim whose target key no compile emits to be refused at authoring time instead of failing at run time." } },
 
   receipts: [
     "AN EXPECTED CENSUS KEY WRITTEN FROM A READING OF THE COMPILER AND NEVER OBSERVED, so the discriminating RED asserts a (class, subject) row no compile produces and is red from the day it lands. INVALID STATE: a claim whose target key is absent from every census it ranges over; it fails for a reason that is about its own oracle, not its subject.",
