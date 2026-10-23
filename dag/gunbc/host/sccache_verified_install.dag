@@ -1,0 +1,150 @@
+module gunbc.host.sccache_verified_install
+
+import std.types { NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
+
+import extdeps.crypto.hash { Digest }
+import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_path }
+import gunbc.host.verified_binary_install {
+  // VerifiedBinaryInstallPlan is the return type of `sccache_verified_install_admitted_plan`
+  // below. It was used UN-IMPORTED until review 81885 (3), and the strict per-entry closure compile of
+  // THIS module reported blocking=0 / unresolved=0 with the name absent — so the gate did run and did not
+  // fire. WHY it cannot fire here is measured, not assumed (see the receipt on
+  // gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace, which owns this class):
+  // renaming the annotation to a type that exists NOWHERE in the tree makes the same compile refuse
+  // (exit=1, `unresolved type 'VerifiedBinaryInstallPlanZzzNoSuchType'`), so annotations ARE resolved; the
+  // bare name simply binds through the loader's bare-reference channel because the declaring module is
+  // already in the closure, pulled by the sibling names in this very import block. The import is therefore
+  // not decoration: without it, nothing anywhere — not a per-entry compile, not a whole-tree compile —
+  // can see that this module depends on gunbc.host.verified_binary_install. The type is named here so the
+  // module is honestly self-describing and its dependency edge is legible.
+  VerifiedBinaryInstallParams,
+  VerifiedBinaryInstallPlan,
+  verified_binary_install_shell,
+  verified_binary_install_admitted_plan,
+}
+
+// THE SCCACHE BOUNDARY VALUES, SUPPLIED ONCE.
+//
+// `gunbc.host.verified_binary_install` is the effect and names no product; this module is the
+// adapter that says what an sccache install IS. It exists as one module rather than as two blocks
+// of parameter literals at the two call sites because the two sites are the same effect on the same
+// binary, and this repository has already been bitten by spelling one concept in two authorities:
+// the comment above `sccache_installed_binary_path` records a P1/P1b fork where the runner installed
+// `apt-get install -y sccache` to /usr/bin/sccache while the cache module installed a pinned v0.15.0
+// tarball to /usr/local/bin, both firing on the same host. Two copies of `https://github.com/mozilla/
+// sccache/releases/download/` assembled by hand is that fork waiting to happen again.
+//
+// WHAT IT READS: `SccacheBinaryRelease` (version + per-arch digests, the cited release row) and
+// `sccache_installed_binary_path` (where the pinned release lands). Those are sccache's own
+// authority in extdeps.cache.sccache; this adapter composes them into the generic parameter record
+// and adds only the staging layout the cited tarball's shape dictates.
+//
+// WHAT IT DOES NOT DO: decide the refusal. A digest mismatch is refused by
+// `verified_binary_install_admitted_plan` in the generic module, which returns
+// `RefusedToInstall { refusal, dest_path, source_url }` where `refusal` is the upstream sum's
+// `DigestMismatch { observed, expected }` -- both digests as DIGESTS, not as sentences, and not an
+// `Unverifiable` (bytes were measured here; they just disagreed). A refusal the consumer must report,
+// never an empty list that could be read as "nothing to do". This module is
+// where the digest COMES FROM, which is why a witness that changes the digest here is the RED that
+// says nothing gets installed.
+
+// THE STAGING LAYOUT OF THE CITED TARBALL. The release publishes
+// `sccache-v<version>-<arch>-unknown-linux-musl.tar.gz`, and the archive contains that same
+// directory with `sccache` inside it. These are facts of the cited release's layout, and they are the
+// reason THIS module supplies `archive_member`: the generic effect cannot know a tarball's layout, so the
+// caller that can cite the release names the member. What the generic effect DOES do with that member is
+// derive every path it touches from it (see `verified_binary_install_staged_path`), which is what keeps
+// this caller from ever being able to name a file the archive does not contain.
+fn sccache_release_archive_dir(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> String {
+  join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
+}
+
+fn sccache_release_archive_url(rel: SccacheBinaryRelease, arch: NonEmptyStr) -> NonEmptyStr {
+  let dir = sccache_release_archive_dir(rel: rel, arch: arch)
+  // `as NonEmptyStr` MUST sit on the same line as the closing `join(...)`: on its own line the parser
+  // starts a fresh statement and reports `undefined variable 'as'` (measured at head d233a87daeb, one
+  // hard diagnostic, the whole module refusing to emit). fleet_tailnet.dag:52 keeps `], "") as
+  // NonEmptyStr` on one line for the same reason. Non-emptiness is genuinely guaranteed here: the join
+  // always emits the literal `https://` prefix, so no release row can produce an empty url.
+  join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "") as NonEmptyStr
+}
+
+// THE PARAMETER RECORD BOTH CONSUMERS RUN THE EFFECT THROUGH. `+x` rather than `0755`: the cited
+// installer added the executable bit to the file the archive shipped, which is the mode statement
+// that survives an archive member whose owner bits are already what they are; a wholesale octal
+// would be a different claim. Elevated because /usr/local/bin is not writable by the runner user,
+// and the elevation is the non-interactive sudo, so a host without the NOPASSWD grant refuses
+// instead of prompting on a tty.
+fn sccache_verified_install_params(
+  rel: SccacheBinaryRelease,
+  arch: NonEmptyStr,
+  digest: Digest,
+) -> VerifiedBinaryInstallParams {
+  let dir = sccache_release_archive_dir(rel: rel, arch: arch)
+  VerifiedBinaryInstallParams {
+    url: sccache_release_archive_url(rel: rel, arch: arch),
+    digest: digest,
+    archive_member: join([dir, "/sccache"], ""),
+    download_path: "/tmp/sccache.tar.gz" as NonEmptyStr,
+    extract_root: "/tmp",
+    dest_path: sccache_installed_binary_path as NonEmptyStr,
+    exec_mode: "+x" as NonEmptyStr,
+    elevated: true,
+  }
+}
+
+// THE DEBT THIS SHELL FORM STILL CARRIES (DESIGN §4b; restored at review 81885 together with
+// `verified_binary_install_shell_dissolution_trigger`, which records the full rung history). The
+// deleted `sccache_install_script` trigger asked for the verified-download-plus-install effect to be
+// bound WITHOUT THE SHELL LEAF. The build-cache site meets that; this function exists only for the
+// runner's P1 prereq, which still hands a rendered string to `HostEffect { effect: Shell }`.
+//   previous rung   — `extdeps.cache.sccache.sccache_install_script`, deleted by this PR
+//   temporary rung  — this function, which delegates to `verified_binary_install_shell`
+//   reason          — the runner prereq is realized as a Shell host effect and is not a
+//                     `retained_srvn` site, so retyping it is a different unit of work
+//   bounded pop.    — one consumer, named: `runner_host_sccache_provision_script` and its aarch64
+//                     sibling in gunbc/runner/runner_host_deploy.dag. Nothing else calls this.
+//   trigger         — the runner provisioning binds `verified_binary_install_admitted_plan` through
+//                     typed argv, WITHOUT THE SHELL LEAF; then this function is deleted rather than
+//                     edited, together with `verified_binary_install_shell`.
+data sccache_verified_install_script_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "gunbc.host.sccache_verified_install",
+    decl_name: "sccache_verified_install_script",
+  )
+)
+
+// THE FULL SHELL FORM, for a consumer that runs the install as its own script (the runner host
+// deploy P1 prereq step, which provisions sccache as a prerequisite and nothing else). It is the
+// runner prereq ONLY: the build-cache site does not reach it, and its continued existence is
+// tracked by `sccache_verified_install_script_dissolution_trigger` above.
+fn sccache_verified_install_script(
+  rel: SccacheBinaryRelease,
+  arch: NonEmptyStr,
+  digest: Digest,
+) -> String {
+  verified_binary_install_shell(p: sccache_verified_install_params(rel: rel, arch: arch, digest: digest))
+}
+
+// THE RED'S ENTRY POINT, AND WHY IT IS HERE RATHER THAN IN THE GENERIC MODULE. The claim "a digest
+// mismatch refuses and nothing gets installed" is about sccache's digest, so the test supplies
+// sccache's boundary values with the digest swapped and reads back the refusal: the plan is refused,
+// its refusal is the `DigestMismatch` arm carrying both digests, and the plan itself is in its
+// RefusedToInstall ARM rather than in a
+// Planned arm with an empty list — there is deliberately no accessor that renders a refusal as "no
+// steps", because a refusal that looks like nothing-to-do is the silent default DESIGN §5 forbids.
+// Same shape for the positive control: with the release row's own digest the plan is Planned with the
+// five install steps (extract, move, mode, and the two staging removals).
+fn sccache_verified_install_admitted_plan(
+  rel: SccacheBinaryRelease,
+  arch: NonEmptyStr,
+  digest: Digest,
+  observed_sha256sum_line: String,
+) -> VerifiedBinaryInstallPlan {
+  verified_binary_install_admitted_plan(
+    p: sccache_verified_install_params(rel: rel, arch: arch, digest: digest),
+    observed_sha256sum_line: observed_sha256sum_line,
+  )
+}

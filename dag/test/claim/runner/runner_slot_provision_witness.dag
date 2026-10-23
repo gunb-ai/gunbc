@@ -7,6 +7,7 @@ import extdeps.github.actions_runner {
   actions_runner_registration_decode,
   ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
   ActionsRunnerRegistrationPersistent, ActionsRunnerRegistrationEphemeral,
+  AgentNameRead, AgentNameAbsent, AgentNameUnreadable,
   actions_runner_release_2_336_0,
   actions_runner_binary_artifact_for_arch,
   actions_runner_download_url,
@@ -584,11 +585,11 @@ data fixture_runner_registration_persistent: String = "{\"AgentId\":\"2\",\"Agen
 
 test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
   let ephemeral = match actions_runner_registration_decode(raw: fixture_runner_registration_ephemeral) {
-    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => true
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: _ } => true
     _ => false
   }
   let persistent = match actions_runner_registration_decode(raw: fixture_runner_registration_persistent) {
-    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => true
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => true
     _ => false
   }
   let garbage = match actions_runner_registration_decode(raw: "not json") {
@@ -600,6 +601,54 @@ test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
     _ => false
   }
   ephemeral && persistent && garbage && widened
+}
+
+// THE SAME FILE HOLDS THE NAME THE LISTENER REGISTERED UNDER, which is the identity the cap bracket is being
+// changed to join the organization roster on (today it joins on the slot's bare name, which no fleet listener
+// ever registered under). A fleet listener is registered through a JIT mint, which mints a NEW suffixed name per job
+// (srv3-02-1792746455-1106408), so the file's AgentName and the slot's bare name are different facts and
+// only the file's is a current identity. These controls hold the two apart: a file that carries no
+// AgentName answers ABSENT, which is not the slot name, not an empty name, and not a wildcard.
+data fixture_runner_registration_minted: String = "{\"AgentId\":\"7\",\"AgentName\":\"srv3-02-1792746455-1106408\",\"Ephemeral\":\"True\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
+data fixture_runner_registration_nameless: String = "{\"AgentId\":\"7\",\"Ephemeral\":\"True\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
+data fixture_runner_registration_name_not_a_string: String = "{\"AgentId\":\"7\",\"AgentName\":7,\"Ephemeral\":\"True\"}"
+data fixture_runner_registration_empty_name: String = "{\"AgentId\":\"7\",\"AgentName\":\"\",\"Ephemeral\":\"True\"}"
+// A MALFORMED Ephemeral alongside a WELL-FORMED AgentName. Ephemeral is inspected first, so this file
+// refuses on Ephemeral and AgentName is never read -- the direction the decode comment now states
+// honestly, instead of claiming the two members are read symmetrically.
+data fixture_runner_registration_bad_ephemeral: String = "{\"AgentId\":\"7\",\"AgentName\":\"srv3-02-1792746455-1106408\",\"Ephemeral\":\"maybe\"}"
+
+test fn a_malformed_ephemeral_refuses_rather_than_reporting_an_agent_name() -> Bool {
+  // Fail-closed in the direction that matters: a file the decoder cannot vouch for yields NO identity at
+  // all -- neither an AgentNameRead nor a slot-derived stand-in -- so nothing downstream can join a roster
+  // on a name taken from a document whose registration mode is unknown.
+  match actions_runner_registration_decode(raw: fixture_runner_registration_bad_ephemeral) {
+    ActionsRunnerRegistrationUnreadable { reason: r } => string_contains(s: r, pattern: "Ephemeral")
+    _ => false
+  }
+}
+
+test fn the_registration_file_also_carries_the_name_the_listener_registered_under() -> Bool {
+  let minted = match actions_runner_registration_decode(raw: fixture_runner_registration_minted) {
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: AgentNameRead { value: n } } => (n as String) == "srv3-02-1792746455-1106408"
+    _ => false
+  }
+  // Absent is its OWN answer. Coercing it to the slot's bare name is the exact defect this work removes:
+  // the bracket would then join a name the listener never registered under and report the slot as
+  // unregistered.
+  let nameless = match actions_runner_registration_decode(raw: fixture_runner_registration_nameless) {
+    ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral, agent_name: AgentNameAbsent } => true
+    _ => false
+  }
+  let not_a_string = match actions_runner_registration_decode(raw: fixture_runner_registration_name_not_a_string) {
+    ActionsRunnerRegistrationDecoded { registration: _, agent_name: AgentNameUnreadable { reason: _ } } => true
+    _ => false
+  }
+  let empty = match actions_runner_registration_decode(raw: fixture_runner_registration_empty_name) {
+    ActionsRunnerRegistrationDecoded { registration: _, agent_name: AgentNameUnreadable { reason } } => string_contains(s: reason, pattern: "empty")
+    _ => false
+  }
+  minted && nameless && not_a_string && empty
 }
 
 test fn a_name_outside_the_host_grammar_refuses_even_when_dead() -> Bool {

@@ -14,7 +14,8 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_model { BmcWorld, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
+import gunbc.bmc_model { BmcWorld, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count }
+import gunbc.host.host_reset_return { host_reset_observer_label_env }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
@@ -27,8 +28,12 @@ import gunbc.machine_intake.mtcollins1_boot_dry_realization {
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
-  DispatchWorkerKilled,
+  DispatchWorkerKilled, ShellObserved, ShellProcessExited, operation_input_text,
 }
+import std.process { ProcessExit, ExitSuccess }
+import gunbc.host.host_reset_return_run { host_reset_return_wet }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
@@ -136,6 +141,414 @@ fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins
 
 fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
   evaluate_in_witness_frame(frame: matrix_frame(world: world), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) })
+}
+
+// A SUBJECT RUN OVER THE ROUTE'S OWN FRAME. A frame is a realization over a world, and the world is
+// the whole of what the effects can see; nothing here grants a subject more than the boot claims get.
+fn matrix_subject_over<A>(
+  realization: OperationRealization<MtCollins1BootWorld>,
+  subject: fn(Bool) -> A,
+) -> WitnessEvaluation<A, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(frame: matrix_frame_over(realization: realization), subject: subject)
+}
+
+// THE WORLD THE UNATTENDED RESET-RETURN DISPATCH RUNS IN. Same worker, same modeled effects as the
+// boot -- the reset job and the boot run on one machine -- so the reset claims judge the production
+// entry against the boot's own world rather than a second, drifting model of it. Two facts differ, and
+// both belong to the reset dispatch alone: it reads the observer label its converge dispatch carried,
+// and it files its receipt under the run id it was dispatched with.
+fn world_for_reset_route(observer_label: String, run_id: String) -> MtCollins1BootWorld {
+  let base = world_with_console(lines: [])
+  MtCollins1BootWorld {
+    // POWERED ON at the start, where the BOOT world starts powered off. The difference is the route's
+    // own refusal surface, not a preference: the reset route refuses a subject that was not up before
+    // it issued (a reset cannot prove a return for a machine that was never serving), while the boot
+    // exists to power a cold chassis on. Starting on also makes the down-then-back watch earn its keep
+    // here -- the only way the watch sees the subject leave is the cycle the route itself issued.
+    // THE POWER-CYCLE WINDOW, WIDENED FROM THE MODEL'S 5s DEFAULT. The model's own cycle_off_interval
+    // schedules the restore 5s after the cycle write; the route spends roughly that long on its own
+    // post-issuance readbacks (every dispatch advances the virtual clock), so with 5s the scheduled
+    // restore matures BEFORE the watch's first poll and the subject is never observed down -- the
+    // measured failure (reset-not-measured cause=never observed down). A MegaRAC power cycle holding
+    // the chassis off for 45s is the realistic hardware fact, and both watch bounds (120 down-samples
+    // at ~1s, 200 back-samples at ~6s) bracket it. This is a fact about the modeled machine the frame
+    // simulates, not a nudge to make the claim pass: the watch still has to SEE down and THEN back,
+    // and a route that never wrote would still never be observed back.
+    bmc: bmc_world_cycled(power: BmcPowerOn, off: second(count: 45)),
+    media: base.media,
+    // The boot's OWN filesystem, with ONE directory added: the directory the route's own receipt path
+    // "target/host-reset-return.txt" lives in -- a write into an absent directory is refused, so this
+    // is what lets the receipt the claims judge actually exist. Everything else comes from the boot:
+    // the controller credential file the entry reads by the path its environment names (a capability
+    // reaching the route through the modeled filesystem, not through an argument), and the maintenance-
+    // exclusion store the handoff consults before ANY controller write, seeded empty so the read is a
+    // no-exclusion read rather than an absent-store refusal.
+    fs: ModeledFilesystem {
+      files: base.fs.files,
+      directories: concat(xs: base.fs.directories, ys: ["target"]),
+      refused_reads: base.fs.refused_reads,
+    },
+    // PREPENDED, not appended, because the modeled environment answers a repeated name from the first
+    // row that matches it (gunbc.process_environment_model.modeled_variable): the reset dispatch's own
+    // run id and observer label must win over the boot run's, exactly as a dispatched job's environment
+    // overrides the runner's inherited one.
+    environment: concat(xs: [
+      ModeledVariable { name: host_reset_observer_label_env as String, value: observer_label },
+      ModeledVariable { name: "GITHUB_RUN_ID", value: run_id },
+    ], ys: base.environment),
+    clock: base.clock,
+    agent: base.agent,
+    remote_hosts: base.remote_hosts,
+    worker: base.worker,
+    console: base.console,
+  }
+}
+
+// BmcWorld carries no with-cycle setter, and the test side constructs the record directly (the same
+// shape gunbc.machine_intake.machine_intake_prior_life_boundary_witness uses). Everything else is the
+// untouched bmc_world default.
+fn bmc_world_cycled(power: BmcPower, off: Second) -> BmcWorld {
+  let w = bmc_world(power: power)
+  BmcWorld {
+    power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: w.sel,
+    sol_session_open: w.sol_session_open, cycle_off_interval: off,
+    host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: w.record_surfaces,
+  }
+}
+
+// THE REACHABILITY ANSWER, FOR THE ROUTE THAT ASKS IT. The reset route asks ssh.Session.Reachability
+// of its subject before, during and after the reset; the boot never asks it. No answer may be a
+// constant here: a constant "reachable" lets a reset that never moved the chassis pass the route's
+// down-then-back watch, which is the exact fabrication gunbc.host.host_reset_return exists to catch.
+// So the reachability of the subject IS the modeled chassis power -- the same BmcWorld the
+// ChassisPowerControl dispatch writes and boot_advance ages -- and an endpoint nobody inventoried is
+// not reachable, because nothing is invented to answer it.
+data reset_route_subject_endpoint: String = "10.20.14.30"
+
+fn reset_route_reachability_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  let asked = operation_input_text(invocation: call.invocation, name: "host")
+  let wanted = match asked {
+    Present { value: host } => host
+    Absent => ""
+  }
+  // The reachability probe is the world's CLOCK TANK for the watch: it ages the BMC model at the
+  // call's own virtual instant before reading power, so the power-cycle's scheduled BmcPowerRestored
+  // matures inside the watch that is waiting for it. bmc_advance is the model's own aging function --
+  // the same one the realization's advance carries -- and it is idempotent for an instant it has
+  // already passed, so applying it here cannot fire an event twice.
+  let aged = with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: call.now))
+  let reachable = if wanted == reset_route_subject_endpoint || wanted == "mtcollins1" {
+    // ssh LIVENESS, not chassis power. The probe the route watches with completes an ssh handshake:
+    // a machine whose chassis power is On but whose OS has not finished booting answers NO. Reading
+    // power alone made every poll after the power-cycle's restore answer reachable, so the down-watch
+    // never saw the subject leave (HostObservedDownAndNotBack / never_down) -- the outage the watch
+    // exists to observe was invisible to the fixture. The boot delay is the world's own fact: the host
+    // is ssh-live only once modeled_host_up_after_boot has passed since the boot the model recorded
+    // (host_booted_at, set by the same model's power-up and restore transitions). A world that has
+    // never booted answers on power, which is the state the frame is certified against.
+    host_is_ssh_live(bmc: aged.bmc, now: call.now)
+  } else {
+    match first_where(xs: w.remote_hosts, keep: fn(h) { (h.endpoint as String) == wanted }) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: if reachable { 0 } else { 255 }, stdout: "", stderr: "" } },
+    state: aged,
+    // A poll burns a second of the virtual clock. A zero-length poll freezes the world's clock:
+    // the power-cycle's scheduled BmcPowerRestored (bmc_world's cycle_off_interval, +5s) would
+    // never mature, the watch would read the subject down forever, and the route's verdict could
+    // only ever be host-return-not-measured. One second per poll is the poll's own duration --
+    // the reachability check is a probe with a cost, not an oracle outside of time.
+    elapsed: second(count: 1),
+  }
+}
+
+// THE MODELED OS BOOT TIME. The interval between the controller restoring chassis power and the host
+// completing its boot enough to answer an ssh handshake. It is a fixture fact about the modeled
+// machine, kept here beside the handler that consumes it; a machine image takes a real amount of time
+// to come up, and a fixture that pretended otherwise would make the down-watch blind in exactly the
+// direction the claim asserts about (a world where nothing is ever down proves nothing about watching
+// for a return).
+data modeled_host_up_after_boot: Second = second(count: 90)
+
+// ssh liveness out of the model's own facts: the chassis must be On AND the boot the model recorded
+// (host_booted_at, set by bmc_host_boots on power-up and on a power-cycle restore) must have happened
+// at least modeled_host_up_after_boot ago. A world with no recorded boot answers on power alone --
+// the frame's certified initial state, where the host is up and has been.
+fn host_is_ssh_live(bmc: BmcWorld, now: Second) -> Bool {
+  if !bmc_power_is_on(world: bmc) {
+    false
+  } else {
+    match bmc.host_booted_at {
+      Absent => true
+      Present { value: booted } => second_count(s: now) >= second_count(s: booted) + second_count(s: modeled_host_up_after_boot)
+    }
+  }
+}
+
+// THE FRAME THE RESET ROUTE IS EXECUTED UNDER: the boot's own production realization over the reset
+// world, with ONE binding changed -- the ssh.Session.Reachability answer replaced by the world-aware
+// one above. It is replaced here rather than inside the production composition for two reasons: two
+// bindings for one operation is a refusal, not an override, so the production answer must be filtered
+// out first; and the boot witnesses stay certified against the realization they were certified
+// against, while the reset route's reachability answer remains a visible fixture choice beside the
+// world whose power it reads.
+fn matrix_reset_route_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  matrix_frame_over(realization: OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: filter(production.bindings, b => !(b.at.service == "ssh.Session" && b.at.operation == "Reachability")), ys: [
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/ssh/session.dag", service: "ssh.Session", operation: "Reachability" },
+        handler: reset_route_reachability_handler,
+      },
+    ]),
+  })
+}
+
+// EXECUTE THE PRODUCTION RESET-RETURN ENTRY IN THIS FRAME. The subject IS the entry; the judge reads
+// what the route did, not what a test said it would do.
+fn run_reset_route(world: MtCollins1BootWorld, evidence: MegaRacOperationEvidence) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_reset_route_frame(world: world),
+    subject: fn(_scope) { host_reset_return_wet(evidence: evidence) },
+  )
+}
+
+// ─── THE BOOT ROUTE: THE SAME IDEA ON THE BOOT SIDE ────────────────────────────────────────────
+// The boot entry's census filing reaches srv2 over the SAME fleet-ssh context the reset route's
+// reachability probe uses, and that context's preparation calls three operations the boot
+// realization never bound -- the owner-only mux-directory creation and the two stat readbacks that
+// certify it (gunbc.fleet.fleet_ssh_locus -> materialize_fleet_ssh_multiplex_directory). An unbound
+// operation refuses, the context is refused "before any ssh leg", the census filing is never read on
+// srv2, and the attempt ends at the census gate BEFORE the media attach and the handoff -- so a boot
+// claim that judged value.admitted off this world would be reading an identity off a route that
+// never reached gunbc.machine_intake.oob_boot_handoff. Binding these three is the boot-side twin of
+// the reachability binding above: it answers each operation the way a CI runner answers it on a
+// healthy machine (the directory is created at 0700, owned by the same principal that owns the job's
+// RUNNER_TEMP), and it makes the executed path reach the fold instead of faking a verdict. The
+// handler answers NO question the claim asks: it certifies the fixture machine's temp directory, not
+// the boot selection, the capability row, or the controller.
+data boot_route_runner_temp: String = "/tmp/gunbc-ci-runner"
+data boot_route_runner_owner: String = "runner"
+
+fn boot_route_mux_created(_state: MtCollins1BootWorld, _call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
+    state: _state,
+    elapsed: second(count: 0),
+  }
+}
+
+fn boot_route_mode_of(_state: MtCollins1BootWorld, _call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "700", stderr: "" } },
+    state: _state,
+    elapsed: second(count: 0),
+  }
+}
+
+fn boot_route_owner_of(_state: MtCollins1BootWorld, _call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: boot_route_runner_owner, stderr: "" } },
+    state: _state,
+    elapsed: second(count: 0),
+  }
+}
+
+// THE WORLD THE BOOT ROUTE RUNS IN: the healthy one-socket census world, plus the job-owned temp
+// directory the fleet-ssh context demands a place for. RUNNER_TEMP is PREPENDED for the same reason
+// the reset world prepends its own run id -- the modeled environment answers a repeated name from the
+// first matching row -- and the directory itself is added to the modeled filesystem so a read of the
+// runner's own tree agrees with the handler that certifies it.
+fn world_for_boot_route() -> MtCollins1BootWorld {
+  let base = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
+  MtCollins1BootWorld {
+    bmc: base.bmc,
+    media: base.media,
+    fs: ModeledFilesystem {
+      directories: concat(xs: base.fs.directories, ys: [boot_route_runner_temp]),
+      files: base.fs.files,
+      refused_reads: base.fs.refused_reads,
+    },
+    environment: concat(xs: [ModeledVariable { name: "RUNNER_TEMP", value: boot_route_runner_temp }], ys: base.environment),
+    clock: base.clock,
+    agent: base.agent,
+    remote_hosts: base.remote_hosts,
+    worker: base.worker,
+    console: base.console,
+  }
+}
+
+// The envelope the boot route runs under is the matrix envelope PLUS the shell.Stat service: the
+// mux-directory certification reads the directory's mode and owner through shell.Stat, and an
+// operation whose service carries no grant refuses as uncovered before its binding is ever consulted.
+// Every other grant, and the frame identity, are the matrix's own.
+data boot_route_extra_services: List<String> = ["shell.Stat"]
+
+// THE POST-POWER-ON FAN GATE'S READS, CERTIFIED THE WAY A HEALTHY mtcollins1 CONTROLLER ANSWERS.
+// The production boot path gained a chassis-fan gate (main #14263) that runs AFTER power-on and BEFORE
+// the census watch: settle, then observe_fan_round -- ChassisStatus, then sdr type Temperature, then sdr
+// type Fan -- then post_power_fan_verdict decides. The boot realization never bound the fan reads (the
+// gate was written after it was, and it reads through diagnostic.ipmi.Tool.SdrTypeList), so an unbound
+// operation refuses, the round is unreadable, and the gate stops the boot for a fixture reason instead
+// of deciding on the reading. These bindings answer each read the way the committed observation of boot
+// run 39005709187 (the capture mtcollins1_fitted_fan_set stands on) prints it when the chassis is ON and
+// the fans are turning: every fitted header FAN4_0/FAN4_1/FAN5_0/FAN5_1 at non-zero RPM, every other
+// sensor row decodable, the Temperature rows published and recognised, the chassis line reporting power
+// on -- which is the reading post_power_fan_verdict ADMITS. The handler is powerless: it answers the
+// three reads from the world's power state and the fixture rows, and decides nothing; the verdict remains
+// post_power_fan_verdict's alone. A world that is powered off answers the chassis line off, which is the
+// gate's own PostPowerChassisNotOn refusal shape, so the refused arm is executable too.
+// Every row is the committed unit fixture's shape (test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
+// unit_rows, the capture the fitted set stands on): the four fitted headers at non-zero RPM with status ok,
+// the two unfitted headers the same board prints as No Reading.
+data boot_route_fan_rows: List<String> = [
+  "FAN4_0_Speed       | 00h | ok  | 29.1 | 5700 RPM",
+  "FAN4_1_Speed       | 01h | ok  | 29.1 | 5700 RPM",
+  "FAN5_0_Speed       | 02h | ok  | 29.1 | 5700 RPM",
+  "FAN5_1_Speed       | 03h | ok  | 29.1 | 5800 RPM",
+  "FAN0_0_Speed       | 04h | ok  | 29.1 | No Reading",
+  "FAN3_1_Speed       | 05h | ok  | 29.1 | No Reading",
+]
+// The temperature rows carry a published, fully decoded reading (the committed witness's posted shape).
+data boot_route_temperature_rows: List<String> = [
+  "CPU0_Temp          | 01h | ok  |  3.1 | 45 degrees C",
+  "DIMM_Temp          | 02h | ok  |  3.2 | 38 degrees C",
+]
+
+// The refused arm's rows: every row identical to the healthy capture EXCEPT the first fitted header,
+// which prints 0 RPM -- the committed refusal fixture's reading (FittedHeaderZeroRpm).
+data boot_route_fan_rows_first_zero: List<String> = [
+  "FAN4_0_Speed       | 00h | ok  | 29.1 | 0 RPM",
+  "FAN4_1_Speed       | 01h | ok  | 29.1 | 5700 RPM",
+  "FAN5_0_Speed       | 02h | ok  | 29.1 | 5700 RPM",
+  "FAN5_1_Speed       | 03h | ok  | 29.1 | 5800 RPM",
+  "FAN0_0_Speed       | 04h | ns  | 29.1 | No Reading",
+  "FAN3_1_Speed       | 05h | ns  | 29.1 | No Reading",
+]
+
+fn boot_route_sdr_rows(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
+    Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { boot_route_fan_rows } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
+    Absent => boot_route_temperature_rows
+  }
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
+}
+
+fn matrix_boot_route_frame_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let certified = OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: production.bindings, ys: [
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mkdir", operation: "NewOwnerOnly" },
+        handler: boot_route_mux_created,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "ModeOf" },
+        handler: boot_route_mode_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" },
+        handler: boot_route_owner_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/bmc/ipmi.dag", service: "diagnostic.ipmi.Tool", operation: "SdrTypeList" },
+        handler: boot_route_sdr_rows_refused,
+      },
+    ]),
+  }
+  let boot_services = concat(xs: matrix_services, ys: boot_route_extra_services)
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
+      grants: concat(map(boot_services, s => matrix_grant(service: s, verb: Read)), map(boot_services, s => matrix_grant(service: s, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: certified }
+  }
+}
+
+fn boot_route_sdr_rows_refused(state: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  let rows = match first(filter(call.invocation.bindings, b => (b.name as String) == "sensor_type")) {
+    Present { value: b } => match b.value { InputText { text: t } => if t == "Fan" { boot_route_fan_rows_first_zero } else { boot_route_temperature_rows } _ => boot_route_temperature_rows }
+    Absent => boot_route_temperature_rows
+  }
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: join(rows, "\n"), stderr: "" } },
+    state: state,
+    elapsed: second(count: 1),
+  }
+}
+
+// EXECUTE THE PRODUCTION BOOT ENTRY IN THE FAN-REFUSED WORLD: same entry, same subject; only the fan
+// rows differ (first fitted header at zero RPM), and the gate's own verdict stops the boot.
+fn run_boot_route_without_fans(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_boot_route_frame_without_fans(world: world),
+    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+  )
+}
+
+fn matrix_boot_route_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let certified = OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: production.bindings, ys: [
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mkdir", operation: "NewOwnerOnly" },
+        handler: boot_route_mux_created,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "ModeOf" },
+        handler: boot_route_mode_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" },
+        handler: boot_route_owner_of,
+      },
+      OperationBinding {
+        at: OperationRef { path: "dag/extdeps/bmc/ipmi.dag", service: "diagnostic.ipmi.Tool", operation: "SdrTypeList" },
+        handler: boot_route_sdr_rows,
+      },
+    ]),
+  }
+  let boot_services = concat(xs: matrix_services, ys: boot_route_extra_services)
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "mtcollins1-boot-matrix", kind: SharedStateFrame }
+      grants: concat(map(boot_services, s => matrix_grant(service: s, verb: Read)), map(boot_services, s => matrix_grant(service: s, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: certified }
+  }
+}
+
+// EXECUTE THE PRODUCTION BOOT ENTRY IN THIS FRAME. Same entry, same subject expression as run_attempt
+// -- only the frame carries the three certified mux answers, so the boot reaches the census filing,
+// the attach, the media write, the handoff and the power actuation as a healthy runner's boot does.
+fn run_boot_route(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_boot_route_frame(world: world),
+    subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+  )
 }
 
 // ─── THE HEALTHY WORLD, and the facts it is built from ───────────────────────────────────────────
