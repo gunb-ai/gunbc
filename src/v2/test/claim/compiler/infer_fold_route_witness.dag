@@ -1,0 +1,122 @@
+module v2.test.claim.compiler.infer_fold_route_witness
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.types { Bool, String }
+import v2.compiler.infer { infer }
+import v2.std.node { Symbol }
+import v2.test.claim.optional_sugar_declaration_bound { osd_std_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOLD ROUTE (std.keyed_row, N7 root fan-out 107). An open optional seed meeting a Present body is refused by the
+// AMBIENT fold (`fold` binds ambient:collection_roster, so it never takes the application route) and accepted by a
+// DECLARED fold-shaped callee, because the application route's expected-return seed (v2.compiler.infer
+// infer_expected_return_seed, Rule A, JudgedAtApplication) fixes the accumulator type from the declared return. The
+// repair is therefore DECLARING fold (the namespace migration), not an infer change: once fold has a declared home,
+// the ambient claims below flip to accepted, and that flip is the migration's acceptance.
+//
+// Every control runs the real route: assemble, resolve, infer. std.algebra and v2.std.collection are stubs so the
+// claims do not depend on the real std.algebra resolving. Seeds are `Absent`, not `none` (none-lowering is a separate
+// gap; a census with keyed_row's seed changed to Absent was identical).
+//
+// HOLDS NOW, AND MUST KEEP HOLDING: the declared-fold positives, the RED, the typed-seed control.
+// HOLDS NOW, AND MUST FLIP WHEN FOLD IS DECLARED: the two ambient_* claims (they assert the defect's signature, the
+// fatal reason arrow_body_does_not_inhabit_declared_return; the migration PR inverts them to accepted).
+
+data ifr_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_fold_route_artifact, file_path: "src/v2/pilot/ifr_pilot.dag" }
+data ifr_collection_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_fold_route_collection_artifact, file_path: "src/v2/pilot/ifr_collection_pilot.dag" }
+data ifr_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_fold_route_algebra_artifact, file_path: "src/v2/pilot/ifr_algebra_pilot.dag" }
+data ifr_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^infer_fold_route_std_artifact, file_path: "src/v2/pilot/ifr_std_pilot.dag" }
+
+fn ifr_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^infer_fold_route_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ifr_assemble(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: [
+      ifr_witness(src: concat("module p\n\nimport std.optional { Absent, Optional, Present }\nimport v2.std.collection { List }\n\ntype KRow<K, V> {\n  row_key: K\n  value: V\n}\n\n", body), artifact: ifr_artifact),
+      ifr_witness(src: osd_std_optional(), artifact: ifr_std_artifact),
+      ifr_witness(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: ifr_collection_artifact),
+      ifr_witness(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: ifr_algebra_artifact)
+    ],
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn ifr_accepted(body: String) -> Bool {
+  match ifr_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn ifr_refused_with(body: String, reason: Symbol) -> Bool {
+  match ifr_assemble(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn ifr_fold_like() -> String { "fn fold_like<T, A>(xs: List<T>, init: A, f: fn(A, T) -> A) -> A { init }\n\n" }
+
+fn ifr_keyed_body(callee: String) -> String {
+  concat("fn g<K, V>(rows: List<KRow<K, V>>, wanted: K, key_eq: fn(K, K) -> Bool) -> KRow<K, V>? { ", callee, " }\n")
+}
+
+// DECLARED FOLD: the application route seeds the accumulator from the declared return.
+test fn ifr_declared_fold_absent_seed_present_body_is_accepted() -> Bool {
+  ifr_accepted(body: concat(ifr_fold_like(), "fn g(xs: List<Int>) -> Int? { fold_like(xs, Absent, fn(a, x) { Present { value: x } }) }\n"))
+}
+
+test fn ifr_declared_fold_absent_seed_branching_body_is_accepted() -> Bool {
+  ifr_accepted(body: concat(ifr_fold_like(), "fn g(xs: List<Int>, w: Int) -> Int? { fold_like(xs, Absent, fn(a, x) { if x == w { Present { value: x } } else { a } }) }\n"))
+}
+
+test fn ifr_declared_fold_keyed_row_find_shape_is_accepted() -> Bool {
+  ifr_accepted(body: concat(ifr_fold_like(), ifr_keyed_body(callee: "fold_like(rows, Absent, fn(acc, row) { if key_eq(row.row_key, wanted) { Present { value: row } } else { acc } })")))
+}
+
+// RED: a body off the declared carrier still refuses; seeding the accumulator from the declared return must not widen
+// what a fold may return.
+test fn ifr_declared_fold_body_off_the_carrier_still_refuses() -> Bool {
+  !ifr_accepted(body: concat(ifr_fold_like(), ifr_keyed_body(callee: "fold_like(rows, Absent, fn(acc, row) { if key_eq(row.row_key, wanted) { Present { value: 1 } } else { acc } })")))
+}
+
+// CONTROL: the ambient fold with a TYPED seed is accepted today; the defect is the untyped open seed, not fold itself.
+test fn ifr_ambient_fold_typed_seed_is_accepted() -> Bool {
+  ifr_accepted(body: "fn g(xs: List<Int>) -> Int? {\n  let s: Int? = Absent\n  fold(xs, init: s, f: fn(a, x) { Present { value: x } })\n}\n")
+}
+
+// MUST FLIP WHEN FOLD IS DECLARED: today the ambient fold refuses the same shapes the declared fold accepts.
+test fn ifr_ambient_fold_absent_seed_present_body_is_refused_today() -> Bool {
+  ifr_refused_with(body: "fn g(xs: List<Int>) -> Int? { fold(xs, init: Absent, f: fn(a, x) { Present { value: x } }) }\n", reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+test fn ifr_ambient_fold_keyed_row_find_shape_is_refused_today() -> Bool {
+  ifr_refused_with(body: ifr_keyed_body(callee: "fold(rows, init: Absent, f: fn(acc, row) { if key_eq(row.row_key, wanted) { Present { value: row } } else { acc } })"), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
