@@ -4424,6 +4424,20 @@ fn native_census_infer_accepted_frontier(outcome: NativeInferCensusOutcome) -> O
   }
 }
 
+// RAVEN PROBE (lane5, scratch NEVER lands): the FATAL diagnostic of an infer refusal, whole. The
+// infer-refused census row drops the node the wall fired on (census_file_refusal_at_from_locus maps
+// NodeLocus to FileRefusalAtUnresolvedNode and census_occurrence_from_locus keeps only the id), so a
+// refused module's head_reason=infer_grounding_not_derived row carries no site. The node is present
+// in the outcome's chain head at diagnostic minting (infer_grounding_not_derived_diagnostic stamps
+// node_locus(node: n)); this reads it back out unchanged. Non-error, stderr-only, one extra JSON key
+// on the existing [native-census-infer] line: it cannot change abandonment or any stdout row.
+fn native_census_infer_fatal_probe(outcome: NativeInferCensusOutcome) -> Optional<Diagnostic> {
+  match outcome {
+    NativeInferCensusInferRefused { resolved: _, chain: chain } => Present { value: diagnostics_fatal(d: chain) }
+    _ => Absent
+  }
+}
+
 // THE NATIVE TEST TARGET THE INFER CENSUS MARKS ITS ROOTS AGAINST: roadmap node `native-seven`
 // (gunbc.roadmap.roadmap_authority), whose boundary names this label and rules that its population is
 // DERIVED from the label, never kept as a list. So there is no roster of its tests here. The label is
