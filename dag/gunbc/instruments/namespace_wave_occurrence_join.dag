@@ -1,6 +1,6 @@
 module gunbc.instruments.namespace_wave_occurrence_join
 
-import std.types { String, Bool, List, Int, Map }
+import std.types { String, Bool, List, Int, Map, NonEmptyStr }
 import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, length, fold_list, list_init, list_reverse }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.optional { Optional, Present, Absent }
@@ -120,15 +120,40 @@ fn join_locus_from_ints(text: String, line: Optional<Int>, column: Optional<Int>
 // ---------------------------------------------------------------------------------------------------
 // THE EDIT PROOF.
 
-// `replaced` / `replacement`: the bytes a replacement step takes out and puts in (a label or call-head rename), "" for an
-// inserted import. Only a step that replaces EXACTLY an occurrence's own spelling, starting at it, can carry that occurrence
-// (a rename); every other step that contains an occurrence still refuses EditCoversOccurrence.
-type EditStep {
-  start: Int
-  end: Int
-  new_len: Int
-  replaced: String
-  replacement: String
+// ONE STEP OF THE GENERATOR'S EDIT MAP, by what it does to the bytes (review 84836: the kinds are a sum, not a sentinel,
+// and every length is derived, never stored beside the text it measures).
+//   SpliceStep   the bytes [start, end) replaced by `text` -- an import block; what it removed is not carried, so it
+//                can never carry an occurrence and any occurrence inside it refuses EditCoversOccurrence;
+//   ReplaceStep  exactly the bytes of `from` at `start` replaced by `to` -- a label or call-head rename; its extent is
+//                `from`'s own length, so a span that disagrees with the replaced text has no constructor;
+//   InsertStep   `text` inserted at `at`, removing nothing -- a positional label.
+type EditStep
+  = SpliceStep { start: Int, end: Int, text: String }
+  | ReplaceStep { start: Int, from: NonEmptyStr, to: String }
+  | InsertStep { at: Int, text: String }
+
+fn step_start(step: EditStep) -> Int {
+  match step {
+    SpliceStep { start: s, end: _, text: _ } => s
+    ReplaceStep { start: s, from: _, to: _ } => s
+    InsertStep { at: a, text: _ } => a
+  }
+}
+
+fn step_end(step: EditStep) -> Int {
+  match step {
+    SpliceStep { start: _, end: e, text: _ } => e
+    ReplaceStep { start: s, from: f, to: _ } => s + text_byte_length(text: f as String)
+    InsertStep { at: a, text: _ } => a
+  }
+}
+
+fn step_new_len(step: EditStep) -> Int {
+  match step {
+    SpliceStep { start: _, end: _, text: t } => text_byte_length(text: t)
+    ReplaceStep { start: _, from: _, to: t } => text_byte_length(text: t)
+    InsertStep { at: _, text: t } => text_byte_length(text: t)
+  }
 }
 
 type EditProof
@@ -155,17 +180,25 @@ fn text_byte_length(text: String) -> Int {
   length(xs: bytes_octets(b: utf8_encode_bytes(s: text)))
 }
 
+// The generator's label edit says what it removes in `from`; an empty `from` at a zero-width extent removes nothing.
+// Any other label edit whose `from` is empty is not one this map can name, so it is a splice that carries nothing.
 fn label_step(edit: RosterLabelEdit) -> EditStep {
-  EditStep { start: edit.start, end: edit.end, new_len: text_byte_length(text: edit.to), replaced: edit.from, replacement: edit.to }
+  if edit.from == "" {
+    if edit.start == edit.end { InsertStep { at: edit.start, text: edit.to } } else { SpliceStep { start: edit.start, end: edit.end, text: edit.to } }
+  } else if (edit.end - edit.start) == text_byte_length(text: edit.from) {
+    ReplaceStep { start: edit.start, from: edit.from as NonEmptyStr, to: edit.to }
+  } else {
+    SpliceStep { start: edit.start, end: edit.end, text: edit.to }
+  }
 }
 
 fn outcome_steps(outcome: RosterOutcome) -> List<EditStep> {
   match outcome {
     RosterClean => []
     RosterRefused { reason: _ } => []
-    RosterEdit { start: s, end: e, text: t, own_line: o } => [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t), replaced: "", replacement: "" }]
+    RosterEdit { start: s, end: e, text: t, own_line: o } => [SpliceStep { start: s, end: e, text: (if o { "\n" } else { "" }) + t }]
     RosterLabelEdits { edits: es } => fold_list(xs: es, empty: [], cons: fn(acc, e) { list_snoc_item(xs: acc, item: label_step(edit: e)) })
-    RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => fold_list(xs: ls, empty: [EditStep { start: s, end: e, new_len: text_byte_length(text: (if o { "\n" } else { "" }) + t), replaced: "", replacement: "" }], cons: fn(acc, l) { list_snoc_item(xs: acc, item: label_step(edit: l)) })
+    RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => fold_list(xs: ls, empty: [SpliceStep { start: s, end: e, text: (if o { "\n" } else { "" }) + t }], cons: fn(acc, l) { list_snoc_item(xs: acc, item: label_step(edit: l)) })
   }
 }
 
@@ -264,21 +297,26 @@ type MappedOffset
   | OffsetCovered
 
 fn step_covers(step: EditStep, offset: Int) -> Bool {
-  (step.start <= offset) && (offset < step.end)
+  (step_start(step: step) <= offset) && (offset < step_end(step: step))
 }
 
 fn step_shift(acc: Int, step: EditStep) -> Int {
-  acc + step.new_len - (step.end - step.start)
+  acc + step_new_len(step: step) - (step_end(step: step) - step_start(step: step))
 }
 
 fn map_through_round(steps: List<EditStep>, offset: Int) -> MappedOffset {
   let covering = steps |> filter(s => step_covers(step: s, offset: offset))
-  let shifted = offset + fold(steps |> filter(s => s.end <= offset), init: 0, f: fn(a, s) { step_shift(acc: a, step: s) })
+  let shifted = offset + fold(steps |> filter(s => step_end(step: s) <= offset), init: 0, f: fn(a, s) { step_shift(acc: a, step: s) })
   if count(covering) == 0 {
     OffsetMapped { offset: shifted }
   } else if count(covering) == 1 {
     match first(covering) {
-      Present { value: s } => if (s.start == offset) && (s.replaced != "") { OffsetRenamed { offset: shifted, from: s.replaced, to: s.replacement } } else { OffsetCovered }
+      Present { value: s } =>
+        match s {
+          ReplaceStep { start: st, from: f, to: t } => if st == offset { OffsetRenamed { offset: shifted, from: f as String, to: t } } else { OffsetCovered }
+          SpliceStep { start: _, end: _, text: _ } => OffsetCovered
+          InsertStep { at: _, text: _ } => OffsetCovered
+        }
       Absent => OffsetCovered
     }
   } else {
@@ -474,7 +512,7 @@ fn join_pair(rows: List<AmbientNameHome>, coordinate: String, before: JoinEntry,
 }
 
 // THE RENAME ARM (tidy-ant-251's ruling on the map_get wave). A base occurrence the generator's own rename edit carried
-// (OffsetRenamed: one replacement step starting at it whose `replaced` is the occurrence's spelling) pairs with the head
+// (OffsetRenamed: one ReplaceStep starting at it whose `from` is the occurrence's spelling) pairs with the head
 // occurrence of the replacement spelling at the carried position. It is admitted only when a row renames exactly this
 // spelling to exactly that replacement, the base occurrence was bound by the primitive-authority table, and the head one
 // binds the row's home as a declaration. Anything else refuses: RenameUnruled (no row renames from -> to),
@@ -814,12 +852,12 @@ fn generated_row() -> String {
 fn generated_controls() -> String {
   let text = "module m\n\nfn lit() -> List<Int> {\n  [1]\n}\n"
   let evidence = ModuleEvidence { module: "m", base_text: text, head_text: "module m\n", readable: true }
-  let deleted = EditProven { rounds: [[EditStep { start: 10, end: text_byte_length(text: text), new_len: 0, replaced: "", replacement: "" }]] }
+  let deleted = EditProven { rounds: [[SpliceStep { start: 10, end: text_byte_length(text: text), text: "" }]] }
   let same = EditProven { rounds: [] }
   join_control_verdict(name: "generated rows equal", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: [generated_row()], head_rows: [generated_row(), "binding_partial\tm\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\t-"], evidence: evidence, proof: same), want_admitted: 0, want_refused: ["GeneratedChanged"])
     + join_control_verdict(name: "generated rows identical multiset", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: [generated_row(), generated_row()], head_rows: [generated_row(), generated_row()], evidence: evidence, proof: same), want_admitted: 0, want_refused: [])
     + join_control_verdict(name: "deleted extent holding a list literal", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: [generated_row()], head_rows: [], evidence: evidence, proof: deleted), want_admitted: 0, want_refused: ["GeneratedChanged"])
-    + join_control_verdict(name: "extent covers an occurrence", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: ["binding_unbound\tm\tchars\t4:3"], head_rows: [], evidence: evidence, proof: EditProven { rounds: [[EditStep { start: 0, end: text_byte_length(text: text), new_len: 1, replaced: "", replacement: "" }]] }), want_admitted: 0, want_refused: ["EditCoversOccurrence"])
+    + join_control_verdict(name: "extent covers an occurrence", deltas: occurrence_join_with_proof(rows: join_control_rows(), module: "m", base_rows: ["binding_unbound\tm\tchars\t4:3"], head_rows: [], evidence: evidence, proof: EditProven { rounds: [[SpliceStep { start: 0, end: text_byte_length(text: text), text: "x" }]] }), want_admitted: 0, want_refused: ["EditCoversOccurrence"])
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -841,9 +879,9 @@ fn rename_call_steps(text: String, o: Int) -> List<EditStep> {
   let open = o + string_length(s: "map_get(")
   let comma = open + string_length(s: first_arg(text: text, from: open))
   [
-    EditStep { start: o, end: o + 7, new_len: 10, replaced: "map_get", replacement: "map_lookup" },
-    EditStep { start: open, end: open, new_len: 3, replaced: "", replacement: "m: " },
-    EditStep { start: comma + 2, end: comma + 2, new_len: 5, replaced: "", replacement: "key: " }
+    ReplaceStep { start: o, from: "map_get", to: "map_lookup" },
+    InsertStep { at: open, text: "m: " },
+    InsertStep { at: comma + 2, text: "key: " }
   ]
 }
 
@@ -854,10 +892,18 @@ fn first_arg(text: String, from: Int) -> String {
   }
 }
 
+fn rename_step_text(step: EditStep) -> String {
+  match step {
+    SpliceStep { start: _, end: _, text: t } => t
+    ReplaceStep { start: _, from: _, to: t } => t
+    InsertStep { at: _, text: t } => t
+  }
+}
+
 // The steps applied last-first (ASCII: byte offsets are character offsets).
 fn rename_apply(text: String, steps: List<EditStep>) -> String {
   fold(list_reverse(xs: steps), init: text, f: fn(t, st) {
-    substring(s: t, start: 0, end: st.start) + st.replacement + substring(s: t, start: st.end, end: string_length(s: t))
+    substring(s: t, start: 0, end: step_start(step: st)) + rename_step_text(step: st) + substring(s: t, start: step_end(step: st), end: string_length(s: t))
   })
 }
 
