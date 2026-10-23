@@ -3615,25 +3615,29 @@ pub fn compile_to_resolved_with_options(
     }
 }
 
-/// COUNTS, ON THE CALLING THREAD, EVERY RENDER THAT ASKED FOR EVERY MODULE.
-/// `RenderEveryModule` is the whole-graph render the census must never request: the census runs
-/// on the compiled graph's diagnostics and asks for no render subject at all, so a census that
-/// reached a whole-graph render is a regression, not a slower pass. The census control
-/// (`src/v1/stage0/tests/census_no_render_subject_control.rs`) snapshots this counter around real
-/// census calls; every whole-graph render reaches [`emit_resolved_for_target_selected`] with
-/// `RenderEveryModule` in hand (the unselected entry delegates here), so a census-side widening
-/// cannot dodge the count by choosing an entry point.
-///
-/// PER-THREAD, NOT PROCESS-GLOBAL (review 85075): `cargo test` runs one integration file's tests
-/// in parallel threads of a single process, and a process-wide counter let one test's whole-graph
-/// render move another test's census delta -- flaky in both directions, which made the zero-delta
-/// check non-discriminating. The census, its snapshots, and the render all run on the calling
-/// thread (the compile route is `Rc`-based and spawns nothing), so a thread-local delta counts
-/// exactly this thread's renders.
+// COUNTS, ON THE CALLING THREAD, EVERY RENDER THAT ASKED FOR EVERY MODULE.
+// `RenderEveryModule` is the whole-graph render the census must never request: the census runs
+// on the compiled graph's diagnostics and asks for no render subject at all, so a census that
+// reached a whole-graph render is a regression, not a slower pass. The census control
+// (`src/v1/stage0/tests/census_no_render_subject_control.rs`) snapshots this counter around real
+// census calls; every whole-graph render reaches [`emit_resolved_for_target_selected`] with
+// `RenderEveryModule` in hand (the unselected entry delegates here), so a census-side widening
+// cannot dodge the count by choosing an entry point.
+//
+// PER-THREAD, NOT PROCESS-GLOBAL (review 85075): `cargo test` runs one integration file's tests
+// in parallel threads of a single process, and a process-wide counter let one test's whole-graph
+// render move another test's census delta -- flaky in both directions, which made the zero-delta
+// check non-discriminating. The census, its snapshots, and the render all run on the calling
+// thread (the compile route is `Rc`-based and spawns nothing), so a thread-local delta counts
+// exactly this thread's renders. (Plain comments, not doc comments: a doc comment on the
+// thread_local! macro invocation trips unused_doc_comments, which this crate denies.)
 thread_local! {
     static EVERY_MODULE_RENDER_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
+/// This thread's count of whole-graph (`RenderEveryModule`) renders so far. Read it before and
+/// after a census call; a census that renders must never reach `emit_resolved_for_target_selected`
+/// with `RenderEveryModule`, so the delta over a census is the control's assertion.
 pub fn every_module_render_calls() -> u64 {
     EVERY_MODULE_RENDER_CALLS.with(|calls| calls.get())
 }
