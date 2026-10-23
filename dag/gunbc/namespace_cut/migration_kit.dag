@@ -21,6 +21,14 @@ import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at }
 // (4) realization by identity is the emit-check label. (5) is the required self-host job, only named.
 // (6) no second route is the same differential over a source that ALSO declares a local of the name.
 //
+// WHERE THE INHABITANCE CLAIM EXECUTES (DESIGN section 3's pairing obligation): the fixtures below are SUPPLIED values
+// at resolve's boundary; the REAL path is `gunbc test //gunbc/instruments:namespace-wave-binding-diff`
+// (gunbc.instruments.namespace_wave_binding_diff), run by the wave's author on the wave's own PR over the real
+// ambient-name-census population (`//gunbc/instruments:ambient-name-census`). It reads the wave's row in
+// gunbc.namespace_cut.ambient_name_home ambient_name_homes() and admits only an occurrence that was ambient on base and
+// binds row.home on head. Deleting that integration leaves these supplied-value checks green over a world that moved,
+// so a wave PR is not accepted on this module alone: it names that run's result beside this module's.
+//
 // A VERDICT, NOT A BOOL: a claim over a not-yet-migrated name must say WHICH check fired, so the list_push
 // reading on main is a located observation and not a bare false.
 
