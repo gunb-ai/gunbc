@@ -10,6 +10,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { binder_edge }
+import v2.test.claim.compiler.literal_refinement_judgment_witness { lrj_end_to_end_admits, lrj_end_to_end_reason_is }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -104,12 +105,15 @@ fn rdt_admitted(o: Optional<Outcome<InferredTree>>) -> Bool {
 // its value to exactly one arm: a `true` body admits, a `false` body refuses
 // refinement_predicate_violated at the site. The pair is the discriminator for "the value is read":
 // the two bodies must land on DIFFERENT arms.
+// The obligation is no longer supplied: infer's own literal-only judgment records it for a literal at a
+// where-refinement (v2.test.claim.compiler.literal_refinement_judgment_witness), so these two take the
+// application from infer's output over real source.
 test fn rdt_a_holding_predicate_admits_holds() -> Bool {
-  rdt_admitted(o: rdt_discharged(body: rdt_true()))
+  lrj_end_to_end_admits(subject: "v2.test.lrj_holds")
 }
 
 test fn rdt_a_violated_predicate_refuses_at_the_site_holds() -> Bool {
-  rdt_refused_at_site_with(o: rdt_discharged(body: rdt_false()), reason: ^refinement_predicate_violated)
+  lrj_end_to_end_reason_is(subject: "v2.test.lrj_violated", reason: ^refinement_predicate_violated)
 }
 
 // (1b) AN APPLICATION THE ONE EVALUATOR CANNOT RUN IS UNDISCHARGEABLE -- never admitted, never
