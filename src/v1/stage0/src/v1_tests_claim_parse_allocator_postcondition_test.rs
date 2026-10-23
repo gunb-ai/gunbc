@@ -95,13 +95,16 @@ pub fn sorted_ascending(xs: Rc<Vec<i64>>) -> bool {
 pub fn postcondition_holds(parsed: Rc<ParseWithTableResult>) -> bool {
     {
         let ids = Rc::new({
-            let mut __sorted: Vec<_> = published_ids(parsed.clone()).iter().cloned().collect();
-            __sorted.sort_by(|a: &i64, b: &i64| {
-                let __ka = (|x: i64| x.clone())(a.clone());
-                let __kb = (|x: i64| x.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = published_ids(parsed.clone())
+                .iter()
+                .cloned()
+                .map(|__e: i64| {
+                    let __k = (|x: i64| x.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         ((parsed_ok(parsed.clone()) && {
             let mut __all = true;
