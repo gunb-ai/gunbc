@@ -3392,10 +3392,7 @@ fn infer_join_arm_types(first: Node, second: Node, expected: Optional<Node>, res
     Present { value: _ } =>
       let a = infer_arm_type_closed_at(t: first, declaring: declaring, resolved: resolved)
       let b = infer_arm_type_closed_at(t: second, declaring: declaring, resolved: resolved)
-      if infer_type_equal_ignoring_provenance(
-        a: infer_type_alias_normalized_at(t: a, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
-        b: infer_type_alias_normalized_at(t: b, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
-      ) {
+      if infer_closed_arm_types_agree(a: a, b: b, resolved: resolved) {
         ArmTypesJoined { joined: a }
       } else {
         ArmTypesConflict
@@ -3440,6 +3437,15 @@ fn infer_match_no_arm_declares(any_open: Bool, declaring: Optional<Node>) -> Boo
   }
 }
 
+// THE ONE "CLOSED ARM AGREES" JUDGMENT: two arm types already closed at the declaring type are the same type once aliases are
+// normalized, ignoring provenance. The two-arm join and the N-arm coproduct fold both consume it.
+fn infer_closed_arm_types_agree(a: Node, b: Node, resolved: ResolvedTree) -> Bool {
+  infer_type_equal_ignoring_provenance(
+    a: infer_type_alias_normalized_at(t: a, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
+    b: infer_type_alias_normalized_at(t: b, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
+  )
+}
+
 fn infer_coproduct_arm_body_types(
   rows: List<InferCoproductArmRow>,
   entries: Map<Node, List<InferredFacts>>,
@@ -3468,10 +3474,7 @@ fn infer_coproduct_arm_body_types(
           Present { value: held } =>
             InferArmBodyTypes {
               derived: acc.derived,
-              mismatch: acc.mismatch || !infer_type_equal_ignoring_provenance(
-                a: infer_type_alias_normalized_at(t: held, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
-                b: infer_type_alias_normalized_at(t: t, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
-              ),
+              mismatch: acc.mismatch || !infer_closed_arm_types_agree(a: held, b: t, resolved: resolved),
               underived: acc.underived
             }
         }
