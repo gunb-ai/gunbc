@@ -29,7 +29,7 @@ import gunbc.compiler_frontend_program_interlock {
   milestone_prerequisites,
 }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import gunbc.rung_drop.namespace_wave_admission_wall_removed { namespace_wave_admission_wall_removed }
 import gunbc.self_host_behavioral_equivalence_receipt {
@@ -702,10 +702,10 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 // join exists.
 fn standing_rung_drop_outstanding(drop: RungDrop) -> List<String> {
   match drop.standing {
-    Standing => [drop.identity as String]
-    Retired { trigger_fired: _ } => []
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => []
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => if dissolved_is_admissible(drop: drop) { [] } else { [drop.identity as String] }
+    Standing { declaration: _ } => [drop.identity as String]
+    Retired { trigger_fired: _, declaration: _ } => []
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => []
+    Dissolved { removal: _, declaration: _ } => []
   }
 }
 

@@ -1,0 +1,105 @@
+module test.claim.fleet.fleet_converge_roster_token_prelude_witness
+
+import std.types { Bool, List, String }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
+import gunbc.auth.access_token_source { workload_identity_token_env }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
+
+// A FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.
+//
+// The target is SUPPLIED: this witness discriminates at the emitted job (fleet_converge_job steps), given a mode
+// whose entry reaches organization_runner_roster_live_read, and does not re-run the call-reach walk. That the
+// supplied target does reach the read, and that no other pool target does, is the paired inhabitance claim
+// gunbc.instruments.roster_reach_inhabitance (`gunbc test //gunbc/instruments:roster-reach-inhabitance`). The defect this closes: the cap bracket's admission began
+// reading the roster (#14670) while its step carried no token, so the live read refused at run time.
+data token_marker: String = "GUNBC_ORG_ADMIN_TOKEN"
+
+// THE SCOPE THE MINT ASKS FOR, as the literal GitHub receives: the reader needs organization_self_hosted_runners READ
+// and nothing else. Written here as an independent oracle for the request body, not derived from the module that
+// renders it, so a widened profile (write, or an unnarrowed mint whose body is absent) fails against it.
+data narrow_scope_request: String = "-d '{\"permissions\": {\"organization_self_hosted_runners\": \"read\"}}'"
+
+fn step_runs(steps: List<Step>) -> List<String> {
+  fold(steps, init: [], f: (acc, s) => match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => concat(acc, [r])
+    _ => acc
+  })
+}
+
+fn runs_naming(t: GunbcRunStepTarget, runs: List<String>) -> List<String> {
+  filter(runs, r => string_contains(s: r, pattern: t.entry) && string_contains(s: r, pattern: t.function))
+}
+
+fn target_carries_token(t: GunbcRunStepTarget, runs: List<String>) -> Bool {
+  let named = runs_naming(t: t, runs: runs)
+  count(named) > 0 && all(named, r => string_contains(s: r, pattern: token_marker) && string_contains(s: r, pattern: narrow_scope_request))
+}
+
+test fn the_supplied_roster_reading_mode_carries_the_token() -> Bool {
+  target_carries_token(
+    t: gunbc_ci_runner_host_file_converge_target,
+    runs: step_runs(steps: fleet_converge_job().steps)
+  )
+}
+
+// RED CONTROL ON THE SCOPE: the token is minted but unnarrowed (no request body), or narrowed to write: both refuse.
+test fn an_unnarrowed_or_widened_mint_is_refused() -> Bool {
+  let head = concat("gunbc run ", concat(gunbc_ci_runner_host_file_converge_target.entry, concat(" ", gunbc_ci_runner_host_file_converge_target.function)))
+  let unnarrowed = concat(token_marker, head)
+  let widened = concat(token_marker, concat("-d '{\"permissions\": {\"organization_self_hosted_runners\": \"write\"}}'", head))
+  !target_carries_token(t: gunbc_ci_runner_host_file_converge_target, runs: [unnarrowed])
+    && !target_carries_token(t: gunbc_ci_runner_host_file_converge_target, runs: [widened])
+}
+
+// RED CONTROL ON THE PREDICATE: the same check over a script with no prelude refuses.
+test fn a_converge_run_without_the_prelude_is_refused() -> Bool {
+  !target_carries_token(
+    t: gunbc_ci_runner_host_file_converge_target,
+    runs: [concat("gunbc run ", concat(gunbc_ci_runner_host_file_converge_target.entry, concat(" ", gunbc_ci_runner_host_file_converge_target.function)))]
+  )
+}
+
+// A STEP THAT CARRIES A SCRIPT READING THE WIF TOKEN BINDS IT.
+//
+// The prelude reads "$WIF_ACCESS_TOKEN" (the name is the declared workload_identity_token_env) from the step's own
+// environment; a step whose env does not bind it dies at run time with "unbound variable" (fleet-converge run
+// 39879022568). The check above saw only that the prelude was PRESENT. The reads are derived from the emitted run text
+// and the bindings from the emitted env, so no list of steps or names is repeated here.
+fn step_reads_wif_token(run: String) -> Bool {
+  string_contains(s: run, pattern: concat("$", workload_identity_token_env as String))
+}
+
+fn env_keys(env: List<YamlKeyValue>?) -> List<String> {
+  match env {
+    Present { value: kvs } => map(kvs, e => e.key)
+    Absent => []
+  }
+}
+
+fn every_wif_reader_binds_it(steps: List<Step>) -> Bool {
+  all(steps, s => match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      !step_reads_wif_token(run: r) || count(filter(env_keys(env: e), k => k == (workload_identity_token_env as String))) > 0
+    _ => true
+  })
+}
+
+test fn every_generated_step_reading_the_wif_token_binds_it() -> Bool {
+  every_wif_reader_binds_it(steps: fleet_converge_job().steps)
+}
+
+// DISCRIMINATING CONTROLS on the predicate: a reader with no env, or with an env binding something else, refuses; a
+// reader that binds it, and a step that never reads it, are accepted.
+fn reader_step(env: List<YamlKeyValue>?) -> Step {
+  RunStep { name: none, id: none, run: "x=\"$WIF_ACCESS_TOKEN\"", shell: none, env: env, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
+}
+
+test fn a_wif_reader_with_no_binding_is_refused() -> Bool {
+  let no_env: List<YamlKeyValue>? = none
+  !every_wif_reader_binds_it(steps: [reader_step(env: no_env)])
+    && !every_wif_reader_binds_it(steps: [reader_step(env: Present { value: [kv(key: "OTHER", value: yaml_string(s: "v"))] })])
+    && every_wif_reader_binds_it(steps: [reader_step(env: Present { value: [kv(key: workload_identity_token_env as String, value: yaml_string(s: "v"))] })])
+    && every_wif_reader_binds_it(steps: [RunStep { name: none, id: none, run: "true", shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }])
+}
