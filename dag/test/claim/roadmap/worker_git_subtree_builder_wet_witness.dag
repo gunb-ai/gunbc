@@ -26,7 +26,7 @@ module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 // one it created under a mktemp root.
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import std.algebra { trim }
+import std.algebra { trim, Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
@@ -696,13 +696,22 @@ fn wet_count_of(words: List<String>, wanted: String) -> Int {
 // is meaningful on a machine with no git -- a shape this file cannot execute still must not ship.
 test fn the_premise_argv_words_are_an_executable_shape_with_one_program_word() -> Bool {
   let root = "/tmp/wre3-premise-shape-unused"
-  let words = argv_words(command: git_absolute_git_dir_premise_argv(repo: root as NonEmptyStr))
-  words
-    == [
-      "git", "-c", concat("safe.directory=", root),
-      "--git-dir", concat(root, "/.git"), "rev-parse", "--absolute-git-dir",
-    ]
-    && wet_count_of(words: words, wanted: "git") == 1
-    && wet_count_of(words: words, wanted: "-c") == 1
-    && wet_count_of(words: words, wanted: "rev-parse") == 1
+  let command = git_absolute_git_dir_premise_argv(repo: root as NonEmptyStr)
+  // The PROGRAM and the ARGUMENTS are pinned separately, the way they execute: the program is git's, and
+  // the arguments are ARGS-ONLY -- their first word is the option "-c", never the program word. A builder
+  // that wraps git_argv_of_args again puts "git" at the head of the arguments, and the words the executor
+  // spawns become `git git -c ...`.
+  (command.program.invocation as String) == "git"
+    && (match command.arguments {
+      Cons { head: h, tail: _ } => h == "-c"
+      Empty => false
+    })
+    && argv_words(command: command)
+      == [
+        "git", "-c", concat("safe.directory=", root),
+        "--git-dir", concat(root, "/.git"), "rev-parse", "--absolute-git-dir",
+      ]
+    && wet_count_of(words: argv_words(command: command), wanted: "git") == 1
+    && wet_count_of(words: argv_words(command: command), wanted: "-c") == 1
+    && wet_count_of(words: argv_words(command: command), wanted: "rev-parse") == 1
 }
