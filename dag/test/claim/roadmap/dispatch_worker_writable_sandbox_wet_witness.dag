@@ -169,13 +169,66 @@ fn sandbox_touch_read(instance: HostDashboardInstance, unit: NonEmptyStr, path: 
   )
 }
 
+// The paired control: the same principal, OUTSIDE the sandbox, writes a sibling of the target in its
+// directory and removes it. The user-manager transient runs as the invoking principal (no User=), so a
+// target that principal cannot write refuses the touch by ownership, not by the sandbox. Only a target
+// the principal can write lets a refusal count. quick-bee-65
+fn unsandboxed_sibling_write_ok(path: String) -> Bool {
+  let sibling = join([path, ".unsandboxed-control"], "")
+  shell.Exec.RunArgv(program: "touch", arguments: ["--", sibling]).exit_code == 0
+    && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", sibling]).exit_code == 0
+}
+
+fn refusal_reading_after_control(control_wrote: Bool, reading: SandboxTouchReading) -> SandboxTouchReading {
+  match reading {
+    SandboxTouchRefusedReading => if control_wrote { SandboxTouchRefusedReading } else { SandboxTouchInconclusive }
+    SandboxTouchNeverRan => SandboxTouchNeverRan
+    SandboxTouchWroteReading => SandboxTouchWroteReading
+    SandboxTouchInconclusive => SandboxTouchInconclusive
+  }
+}
+
 fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
-  match sandbox_touch_read(instance: instance, unit: unit, path: path) {
+  match refusal_reading_after_control(
+    control_wrote: unsandboxed_sibling_write_ok(path: path),
+    reading: sandbox_touch_read(instance: instance, unit: unit, path: path),
+  ) {
     SandboxTouchRefusedReading => true
     SandboxTouchNeverRan => false
     SandboxTouchWroteReading => false
     SandboxTouchInconclusive => false
   }
+}
+
+fn reading_is_inconclusive(reading: SandboxTouchReading) -> Bool {
+  match reading {
+    SandboxTouchInconclusive => true
+    SandboxTouchRefusedReading => false
+    SandboxTouchNeverRan => false
+    SandboxTouchWroteReading => false
+  }
+}
+
+fn reading_is_refused(reading: SandboxTouchReading) -> Bool {
+  match reading {
+    SandboxTouchRefusedReading => true
+    SandboxTouchInconclusive => false
+    SandboxTouchNeverRan => false
+    SandboxTouchWroteReading => false
+  }
+}
+
+// RED for the control, on supplied values: a refused touch whose control could not write reads
+// inconclusive, never refused; the same refusal with a writing control stands.
+test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive() -> Bool {
+  reading_is_inconclusive(reading: refusal_reading_after_control(control_wrote: false, reading: SandboxTouchRefusedReading))
+    && reading_is_refused(reading: refusal_reading_after_control(control_wrote: true, reading: SandboxTouchRefusedReading))
+}
+
+// Inhabitance: the real control route returns false for a directory the principal cannot write, true for one it can.
+test fn the_unsandboxed_control_reads_the_principals_write_access() -> Bool {
+  !unsandboxed_sibling_write_ok(path: "/proc/gunbc-no-such-dir/target")
+    && unsandboxed_sibling_write_ok(path: "/tmp/gunbc-control-inhabitance-target")
 }
 
 fn sandbox_touch_wrote(instance: HostDashboardInstance, unit: NonEmptyStr, path: String) -> Bool {
@@ -199,7 +252,7 @@ fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance) -> Bool {
 }
 
 test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   let attempt = probe_attempt_dir(instance: inst)
   prepare_probe_attempt(instance: inst)
     && worker_shape_runs_an_allowed_touch(instance: inst)
@@ -231,7 +284,7 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   let wt = probe_attempt_worktree(instance: inst)
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
