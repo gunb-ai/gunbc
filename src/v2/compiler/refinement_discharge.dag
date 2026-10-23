@@ -42,7 +42,7 @@ import v2.std.runtime { RuntimeValue }
 // ZERO OBLIGATIONS EVALUATE NOTHING: the tree is re-wrapped and returned.
 
 fn discharge_refinement_obligations(t: ObligatedInferredTree) -> Outcome<InferredTree> {
-  let tree = InferredTree { root: t.root, facts: t.facts, arm_resolutions: t.arm_resolutions }
+  let tree = InferredTree { root: t.root, facts: t.facts }
   discharge_each(tree: tree, remaining: t.obligations)
 }
 
