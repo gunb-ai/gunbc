@@ -1,7 +1,8 @@
 module gunbc.rung_drop.roster_reach_inhabitance_unscheduled
 
-import std.types { NonEmptyStr, List, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, population_from_list }
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, DerivedBy }
+import gunbc.instrument_targets { roster_reach_inhabitance_label }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for the real call-reach walk behind the roster-token witness (DESIGN 3 pairing
@@ -12,13 +13,11 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // target stops reaching organization_runner_roster_live_read. DRAFT: awaiting operator approval outside the
 // diff (DESIGN 5).
 //
-// THE POPULATION NAMES the supplied target the witness is handed. It cannot import gunbc.ci.ci_spec (the
-// rung_drop roster sits under the host chain ci_spec closes a cycle with), so the join to the target is held
-// by gunbc.instruments.roster_reach_inhabitance roster_reach_controls_hold, which imports both.
-
-fn roster_reach_inhabitance_unscheduled_population() -> List<String> {
-  ["dag/gunbc/runner/runner_host_file_converge.dag::runner_host_file_converge_ci_wet"]
-}
+// THE POPULATION IS WHAT THE WALK COVERS, NOT THE ONE TARGET IT IS HANDED. The lost guarantee is detecting ANY
+// roster-reading target in the runner and fleet pool, so the population is DerivedBy the instrument label
+// //gunbc/instruments:roster-reach-inhabitance (a row of gunbc.instrument_targets; rung_drop_population_is_readable
+// accepts it), which re-derives the reaching set itself. Its control (roster_reach_controls_hold) holds the join
+// to the supplied runner_host_file_converge_ci_wet.
 
 data roster_reach_inhabitance_unscheduled: RungDrop = RungDrop {
   identity: "roster_reach_inhabitance_unscheduled" as NonEmptyStr,
@@ -31,7 +30,7 @@ data roster_reach_inhabitance_unscheduled: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "gunbc.instruments.roster_reach_inhabitance, run by operator dispatch of //gunbc/instruments:roster-reach-inhabitance" },
-    population: population_from_list(xs: roster_reach_inhabitance_unscheduled_population()),
+    population: DerivedBy { label: roster_reach_inhabitance_label() },
     restoration_trigger: "CAPABILITY: the call-reach walk (fn_arrow_decl_facts_live over the runner and fleet pool) completes inside the runner envelope, so it is enrolled on a lane or cadence that executes it to a terminal verdict on every change touching that pool. MEASURED RECEIPT: gunbc.instruments.roster_reach_inhabitance at b5e586bfc2b on srv1 (20 GiB cap, swap 0) hit rc=124 at the 10800s timeout with memory.peak 20,807,602,176 bytes (19.4 GiB) and never left pre-entry -- a proven cost-shape defect, named here as the next-rung trigger, not a timeout to raise. INTERIM INHABITANCE RECEIPT, to be linked when it exists and not claimed in advance: the first live fleet-converge runner_host_file_converge run on srv3 after #14814 lands, whose roster read must succeed through the real path"
   } }
 }
