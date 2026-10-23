@@ -14,7 +14,7 @@ import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at }
 // compile_dag_diagnostic_census (via gunbc.compile_census_probe) and the existing census-reading route.
 //
 // CHECKS HERE: (1) no-import RED and (2) with-import GREEN, decided by the located binding record
-// (kit_binding_finding over ambient-name-census output for the fixture kit_call_source builds), exact declaration
+// (kit_binding_finding over census lines; supplied-only today, see its frontier note), exact declaration
 // identity, no count route. (3) retired contract absent is kit_contract_finding, with a control. (4) realization by
 // identity is kit_emit_identity_holds. (5) is the required self-host job, only named. (6) no second route is
 // kit_ambient_route_count over the same census output; the template-row leg is named residue.
@@ -88,8 +88,12 @@ fn reading_is_bound_to(r: BindingReading, identity: String) -> Bool {
 
 // THE IDENTITY VERDICT for checks 1 and 2: the same KitFinding, decided by the judge over the census's printed output
 // for the unimported and imported fixture modules (one stdout each, as ambient-name-census prints them). This is the
-// verdict a wave's real census output feeds (ambient-name-census prints the fixture module kit_call_source builds). There
-// is no count route for checks 1-2: a blocking-row count is not an identity join (DESIGN section 5) and can pass with
+// verdict a census reading of the kit's fixture modules would feed. NO PRODUCER FEEDS IT TODAY: the ambient-name-census
+// label censuses the fixture root and the subject closure, not kit_call_source's modules, so this function runs on
+// supplied lines only. That is a declared frontier, not a consumed route: trigger = the first wave row, where the
+// census label gains the fixture pair (unimported/imported) for each ambient_name_homes() row and a label feeds
+// its stdout here. Until then check 2's exact identity executes on the real path only through the binding diff's
+// admission (row.home on head), and check 1's no-import RED has no real-path execution. There is no count route for checks 1-2: a blocking-row count is not an identity join (DESIGN section 5) and can pass with
 // the call never reached.
 fn kit_binding_finding(unimported_stdout: String, imported_stdout: String, row: AmbientNameHome) -> KitFinding {
   let spelling = row.name
