@@ -1200,6 +1200,12 @@ fn step_renders_its_own_member_commands(step: DeploymentStep) -> Bool {
     Absent => false
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => false
+      // WORKER-ROOT-EQUIVALENT-3: the two git-subtree members are NOT DeploymentSteps -- they ride the
+      // roster and emit their own apply through the typed group in gunbc.live_deploy.apply_legs
+      // (deploy_apply_git_worker_subtree_plan), so a step never carries them. False here is
+      // total-and-unreached, not a behaviour.
+      GitWorkerSubtree { path: _, child: _ } => false
+      RepositorySharedPosture { path: _ } => false
       TreePublication => true
       Executable => true
       UnitFile => true

@@ -1891,9 +1891,10 @@ data dashboard_git_worker_directory_children: List<NonEmptyStr> = [
 // THE MEMBER LABEL THE THREE GIT-WORKER OWNED-DIRECTORY DEMANDS ARE MINTED WITH. This ONE function is
 // the typed origin of "is this demand one of the git subtree's?": the roster mints members through it
 // (dashboard_instance_worker_git_directories) and the apply partitions through it
-// (gunbc.live_deploy.emit is_dashboard_git_worker_directory_demand), by PATH-FREE member equality --
-// never by a substring of the path, which would misclassify any unrelated owned directory whose path
-// merely happens to contain /logs or /refs (review round: path-substring classifier).
+// (is_dashboard_git_worker_directory_demand below, called from gunbc.live_deploy.apply_legs
+// git_worker_subtree_demand_claimed), by PATH-FREE member equality -- never by a substring of the path,
+// which would misclassify any unrelated owned directory whose path merely happens to contain /logs or
+// /refs (review round: path-substring classifier).
 fn dashboard_git_worker_directory_member(child: NonEmptyStr) -> NonEmptyStr {
   join(["git-worker-", child as String], "") as NonEmptyStr
 }
