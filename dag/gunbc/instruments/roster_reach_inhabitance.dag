@@ -1,0 +1,94 @@
+module gunbc.instruments.roster_reach_inhabitance
+
+import std.types { Bool, List, String }
+import std.process { ExitSuccess, ExitFailure }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
+import v2.std.fn_index { FnArrowDecl, call_reachable_decls_from_root, fn_arrow_decl_facts_live }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INHABITANCE CLAIM PAIRED WITH test.claim.fleet.fleet_converge_roster_token_prelude_witness (DESIGN §3).
+// That witness is handed the target whose entry reaches the roster read and discriminates the emitted step's
+// token and its scope. This instrument runs the REAL call-reach walk over the runner and fleet pool and
+// asserts the route: exactly one run-step target reaches organization_runner_roster_live_read, and it is the
+// supplied one. Deleting the walk, or a new roster-reading mode appearing without the witness being handed
+// it, turns this red.
+//
+// WHERE IT RUNS, AND WHY NOT ON THE MERGE FLOOR. The pass is one fn_arrow_decl_facts_live over the pool plus
+// one reach per in-pool target, which is hours of interpreter time (a single witness doing it twice ran past
+// 4.5 h on srv1 without a verdict). So it is a rostered instrument run by operator dispatch on the fleet
+// (gunbc.instruments.instrument_dispatch_workflow), `gunbc test //gunbc/instruments:roster-reach-inhabitance`,
+// on no lane: the receipt it prints is what a change to the supplied target cites. TRIGGER TO MOVE IT ONTO A
+// LANE: the pool walk costing less than a lane budget once fn_arrow_decl_facts_live is a modeled substrate
+// fold (the dissolution its own scaffold row names).
+//
+// REACH, AND WHAT IT DOES NOT SEE. The walk follows calls through the pool modules only; a target whose entry
+// module lies outside the pool is not evaluated, and a roster read written as a service call rather than a
+// bare call is invisible to the declaration census (see fleet_health_read_only_witness).
+data pool_roots: List<String> = ["dag/gunbc/runner", "dag/gunbc/fleet"]
+
+data roster_read_name: String = "gunbc.fleet.organization_runner_roster_read.organization_runner_roster_live_read"
+
+fn slashes_to_dots(s: String) -> String {
+  if string_length(s: s) == 0 { "" } else {
+    let head = substring(s: s, start: 0, end: 1)
+    concat(if head == "/" { "." } else { head }, slashes_to_dots(s: substring(s: s, start: 1, end: string_length(s: s))))
+  }
+}
+
+fn entry_module(t: GunbcRunStepTarget) -> String {
+  slashes_to_dots(s: substring(s: t.entry, start: 4, end: string_length(s: t.entry) - 4))
+}
+
+fn decl_module(d: FnArrowDecl) -> String {
+  substring(s: d.qualified_name, start: 0, end: string_length(s: d.qualified_name) - string_length(s: d.name) - 1)
+}
+
+fn in_pool(t: GunbcRunStepTarget) -> Bool {
+  any(pool_roots, r => string_contains(s: t.entry, pattern: r))
+}
+
+fn reaches_roster_read_over(t: GunbcRunStepTarget, decls: List<FnArrowDecl>) -> Bool {
+  let reach = call_reachable_decls_from_root(
+    entry_module: entry_module(t: t),
+    fn_name: t.function,
+    terminal_callee_symbols: [],
+    closure_modules: map(decls, d => decl_module(d: d)),
+    decls: decls
+  )
+  any(reach.reached, d => d.qualified_name == roster_read_name)
+}
+
+fn roster_reading_targets(decls: List<FnArrowDecl>) -> List<GunbcRunStepTarget> {
+  filter(gunbc_run_step_targets(), t => in_pool(t: t) && reaches_roster_read_over(t: t, decls: decls))
+}
+
+fn roster_reach_holds(derived: List<GunbcRunStepTarget>) -> Bool {
+  count(derived) == 1 && all(derived, t => t.function == gunbc_ci_runner_host_file_converge_target.function)
+}
+
+fn roster_reach_receipt(derived: List<GunbcRunStepTarget>) -> String {
+  concat("roster-reach-inhabitance: targets reaching organization_runner_roster_live_read = [", concat(join(map(derived, t => t.function), ", "), "]\n"))
+}
+
+// THE CONTROL: a population of two (the supplied target plus one more) and an empty population are both
+// refused by the same predicate the live walk is judged by.
+fn roster_reach_controls_hold() -> Bool {
+  let supplied = gunbc_ci_runner_host_file_converge_target
+  roster_reach_holds(derived: [supplied])
+    && !roster_reach_holds(derived: [])
+    && !roster_reach_holds(derived: [supplied, supplied])
+}
+
+fn roster_reach_inhabitance_exit() -> CliWireResponse {
+  let derived = roster_reading_targets(decls: fn_arrow_decl_facts_live(pool_roots: pool_roots, pool_files: []))
+  if !roster_reach_controls_hold() {
+    CliWirePrintable { bytes: "roster-reach-inhabitance: control predicate does not discriminate\n", exit: ExitFailure { code: 1, reason: "roster-reach-inhabitance: the predicate accepted an empty or doubled population" } }
+  } else if roster_reach_holds(derived: derived) {
+    CliWirePrintable { bytes: roster_reach_receipt(derived: derived), exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: roster_reach_receipt(derived: derived), exit: ExitFailure { code: 1, reason: "roster-reach-inhabitance: the pool's roster-reading targets are not exactly the one the token witness is handed" } }
+  }
+}

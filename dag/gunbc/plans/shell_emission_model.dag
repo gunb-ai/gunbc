@@ -53,7 +53,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
     h2(text: "7. Named residue / dissolution triggers"),
     ul(items: [
       li(text: "**(a) Dispatcher endgame (OPEN Q3):** dissolve `05_emit_orchestration`'s hand-dispatch into `06_translate`'s rule table — the §4 endgame that makes \"a new construct is a row\" TRUE."),
-      li(text: "**(b) `live_deploy_emit_shell_dissolution_trigger`:** retires only at host_effect Phase B (escalated)."),
+      li(text: "**(b) `live_deploy_remote_mutation_service_op_realization_dissolution_trigger`:** binds `tree_sync_restart_step_with_diagnosis` directly and retires when that rendered step does (the former `live_deploy_emit_shell_dissolution_trigger` row was deleted; its binders were dead shell or already typed)."),
       li(text: "**(c) Foreign-media honesty:** live_deploy/githooks heredoc bodies that stay opaque foreign media are permanent transport scaffolds, not migratable raw control flow — check by **model walk**, not grep."),
     ]),
     h2(text: "8. Open questions (unresolved)"),

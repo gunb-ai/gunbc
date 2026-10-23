@@ -21,7 +21,9 @@ import gunbc.dissolution_census {
   dissolution_census_refused_keys,
   frontier_rows_bound_count,
 }
-import std.roster_frontier { frontier_rows_well_formed, frontier_subject_eq }
+import std.roster_frontier { frontier_rows_well_formed, frontier_subject_eq, DeclSubject }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionPending, dissolution_status }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -109,4 +111,22 @@ test fn nothing_is_fired_and_still_present_today() -> Bool {
 test fn every_frontier_subject_is_enrolled_once() -> Bool {
   let rows = census_closure_frontier_rows()
   !any(rows, row => count(filter(rows, other => frontier_subject_eq(a: other.subject, b: row.subject))) != 1)
+}
+
+// The image-baked arm's consumer row is enrolled in the live census and PENDING while its trigger
+// declaration (the fold of runner_image_baked_deployment_plan into the runner_host_medium image-build
+// input) is absent: evidence [] carries no present declaration, so a bound row that is not Pending
+// would mean the trigger resolved without its declaration. The row lives in
+// gunbc.host.host_assimilation_program host_assimilation_program_frontier_rows.
+test fn the_image_baked_consumer_row_is_enrolled_and_pending() -> Bool {
+  let subject = decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "runner_image_baked_deployment_plan")
+  let rows = filter(census_closure_frontier_rows(), r => match r.subject {
+    DeclSubject { ref: x } => x == subject
+    _ => false
+  })
+  count(rows) == 1
+    && !any(rows, r => match dissolution_status(condition: r.dissolution, present_decls: []) {
+      DissolutionPending => false
+      _ => true
+    })
 }

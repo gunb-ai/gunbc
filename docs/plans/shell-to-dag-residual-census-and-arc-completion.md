@@ -397,7 +397,7 @@ Both are deleted in this true-up (deletion is the receipt; a "done" row beside a
 
 | site (file · construction) | builder (file · fn) | runs on | dissolve to |
 | --- | --- | --- | --- |
-| `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_healthz_probe_script_for_port(port) }` | `readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` (curl localhost `/healthz`; already uses the typed `curl_bounded_localhost_get_argv_prefix`) | srv1 LocalShell via `host_effect_apply_gated` | `http.Client.Get` · `extdeps/http/client.dag` (or the typed curl argv end-to-end) — see §4.C / §5.B |
+| `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_healthz_probe_script_for_port(port) }` | `readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` (curl localhost `/healthz`; uses the typed `curl_bounded_get_argv`) | srv1 LocalShell via `host_effect_apply_gated` | `http.Client.Get` · `extdeps/http/client.dag` (or the typed curl argv end-to-end) — see §4.C / §5.B |
 | `live_deploy/readiness.dag` · `ShellCommand { script: live_deploy_unit_diagnosis_command(unit) }` | `intent.dag` · `live_deploy_unit_diagnosis_command` (`systemctl status --no-pager --full <unit> \| tail`) | srv1 LocalShell | a `systemd.Systemctl.Status` op (§5.A add) — **and the `\| tail` + defensive `exit 0` is a §5 absorbing fallback** (intent.dag's own comment admits it masks systemctl's nonzero); the typed op models exit-3-for-dead-unit instead |
 
 Residue only (not construction to migrate):

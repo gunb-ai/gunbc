@@ -3,7 +3,7 @@ module v2.std.list_introduction
 import std.types { List }
 import std.algebra { Empty, list_snoc_item, skip, list_at_optional }
 
-import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Node, Positional, Transform, Value, Branch, Loop, Bind, Match, all_edges_positional, node_with_occurrence_id }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Edge, Node, Positional, Transform, Value, Branch, Loop, Bind, Match, all_edges_positional, node_with_occurrence_id, NotADeclaration }
 import std.occurrence_identity { NodeOccurrenceIdentity }
 import std.optional { Optional, optional_absent, optional_present, Absent, Present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
@@ -43,10 +43,11 @@ fn lower_list_introduction_at(elements: List<Node>, occurrence_id: NodeOccurrenc
       init: [
         Edge {
           label: Positional,
-          target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: occurrence_id)
+          target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: occurrence_id),
+          declaration: NotADeclaration
         }
       ],
-      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
+      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element, declaration: NotADeclaration }) }
     ),
     occurrence_id: occurrence_id
   )
