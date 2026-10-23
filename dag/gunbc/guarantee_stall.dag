@@ -6,6 +6,9 @@ import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_label, guarantee_run
 import gunbc.rung_climb {
   ClimbBlocker,
   AwaitsOneGrounding,
+  GroundingAuthority,
+  GroundingDeclared,
+  GroundingUndeclared,
   ClimbableButUnbuilt,
   climb_blocker_label,
   TriggerAdmission,

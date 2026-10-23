@@ -12,6 +12,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
+import gunbc.auth.wire_strict_reader { WireAdmission, admission_of }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
 import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe, utf8_decode_octets }
 import std.coercion { unicode_scalar_fold }
@@ -1040,3 +1041,27 @@ fn device_request_path(escalation_id: NonEmptyStr) -> NonEmptyStr {
 fn device_enrollment_path(enrollment_id: NonEmptyStr) -> NonEmptyStr {
   join([approval_device_enrollment_path_prefix as String, path_segment(s: enrollment_id) as String], "") as NonEmptyStr
 }
+
+// ── Admission policy rows (rulings B3 and B4) ─────────────────────────────────────────────────
+// What the protocol ADMITS of each sum, beside the spelling fn that names every declared arm.
+// admission_of builds each row from ARMS and the sum's spelling fn, so a spelling no arm has is unwritable;
+// the arm lists' completeness is joined to the declarations by wire_spelling_injective_witness.
+data wire_admission_platform: WireAdmission = admission_of(
+  subject: "platform", arms: [MobileIos, MobileAndroid], admitted: [MobileIos], spell: p => platform_wire(p: p) as String)
+
+data wire_admission_apns_environment: WireAdmission = admission_of(
+  subject: "environment", arms: [ApnsDevelopment, ApnsProduction], admitted: [ApnsProduction, ApnsDevelopment], spell: e => apns_environment_wire(e: e) as String)
+
+data wire_admission_decision: WireAdmission = admission_of(
+  subject: "decision", arms: [ProposeApprove, ProposeDeny], admitted: [ProposeApprove, ProposeDeny], spell: d => proposed_decision_name(d: d) as String)
+
+data wire_admission_signature_suite: WireAdmission = admission_of(
+  subject: "suite", arms: [EcdsaP256Sha256], admitted: [EcdsaP256Sha256], spell: s => signature_suite_wire(s: s) as String)
+
+data wire_admission_public_key_encoding: WireAdmission = admission_of(
+  subject: "encoding", arms: [Sec1Uncompressed], admitted: [Sec1Uncompressed], spell: e => public_key_encoding_wire(e: e) as String)
+
+data wire_admission_signature_encoding: WireAdmission = admission_of(
+  subject: "encoding", arms: [P1363FixedWidth], admitted: [P1363FixedWidth], spell: e => signature_encoding_wire(e: e) as String)
+
+data wire_admission_rows: List<WireAdmission> = [wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite, wire_admission_public_key_encoding, wire_admission_signature_encoding]
