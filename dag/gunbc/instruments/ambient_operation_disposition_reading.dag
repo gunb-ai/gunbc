@@ -50,12 +50,10 @@ fn ambient_operation_in_flight() -> List<String> {
   ["list_push", "map_get"]
 }
 
-fn ambient_operation_sources() -> List<String> {
-  ["ambient:primitive_authority", "ambient:collection_roster", "generated"]
-}
-
+// Every ambient table is in scope (the census labels each `ambient:<table>`), so a spelling such as `split`
+// or `join` is read whichever table binds it; `generated` rows are the compiler-minted references.
 fn is_in_scope_source(source: String) -> Bool {
-  count(ambient_operation_sources() |> filter(s => s == source)) != 0
+  starts_with(s: source, prefix: "ambient:") || source == "generated"
 }
 
 fn row_key(line: String) -> String {
