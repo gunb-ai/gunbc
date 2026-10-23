@@ -1,4 +1,5 @@
 module std.node
+import std.algebra { map_lookup }
 
 import std.induction {
   InductiveField, RecursionShape,
@@ -115,7 +116,7 @@ data compiler_recursive_types: Map<String, Bool> = {
 }
 
 fn is_compiler_recursive_type(name: String) -> Bool {
-  match map_get(compiler_recursive_types, name) {
+  match map_lookup(m: compiler_recursive_types, key: name) {
     Present { value: _ } => true
     Absent => false
   }

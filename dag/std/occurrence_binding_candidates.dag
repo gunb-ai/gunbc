@@ -3,7 +3,7 @@ module std.occurrence_binding_candidates
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
-import std.algebra { FreeMonoid, Empty, Cons }
+import std.algebra { map_lookup, FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
@@ -143,7 +143,7 @@ fn module_by_occurrence_fold_step(
   match build.refusal {
     Present { value: _ } => build
     Absent =>
-      match map_get(build.module_by_occurrence, row.occurrence.value) {
+      match map_lookup(m: build.module_by_occurrence, key: row.occurrence.value) {
         Present { value: existing } =>
           if existing == row.module_path {
             build
@@ -296,7 +296,7 @@ fn declaration_exposure_fold_step(
   match build.refusal {
     Present { value: _ } => build
     Absent =>
-      match map_get(build.exposure_by_occurrence, row.occurrence.value) {
+      match map_lookup(m: build.exposure_by_occurrence, key: row.occurrence.value) {
         Present { value: existing } =>
           if (existing == row.exposure) {
             build
@@ -360,7 +360,7 @@ fn authored_order_fold_step(
   match build.refusal {
     Present { value: _ } => build
     Absent =>
-      match map_get(build.order_by_occurrence, row.occurrence.value) {
+      match map_lookup(m: build.order_by_occurrence, key: row.occurrence.value) {
         Present { value: existing } =>
           if authored_token_ordinal_eq(left: existing, right: row.ordinal) {
             build
@@ -406,14 +406,14 @@ fn ordinal_of_occurrence(
   order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
   occurrence: OccurrenceId
 ) -> AuthoredTokenOrdinal? {
-  map_get(order_by_occurrence, occurrence.value)
+  map_lookup(m: order_by_occurrence, key: occurrence.value)
 }
 
 fn exposure_of_occurrence(
   exposure_by_occurrence: Map<Int, DeclarationExposure>,
   occurrence: OccurrenceId
 ) -> DeclarationExposure? {
-  map_get(exposure_by_occurrence, occurrence.value)
+  map_lookup(m: exposure_by_occurrence, key: occurrence.value)
 }
 
 fn module_exposure_declaration_missing_path_refusal(
@@ -421,12 +421,12 @@ fn module_exposure_declaration_missing_path_refusal(
   exposure_by_occurrence: Map<Int, DeclarationExposure>,
   declaration: DeclarationOccurrence
 ) -> OccurrenceModulePathIndexRefusal? {
-  match map_get(exposure_by_occurrence, declaration.occurrence.value) {
+  match map_lookup(m: exposure_by_occurrence, key: declaration.occurrence.value) {
     Absent => none
     Present { value: exposure } =>
       match exposure {
         ModuleExposure { module: _ } =>
-          match map_get(module_by_occurrence, declaration.occurrence.value) {
+          match map_lookup(m: module_by_occurrence, key: declaration.occurrence.value) {
             Absent =>
               Present {
                 value: MissingOccurrenceModulePathRow {
@@ -445,7 +445,7 @@ fn reference_missing_module_path_refusal(
   module_by_occurrence: Map<Int, NonEmptyStr>,
   reference: ReferenceOccurrence
 ) -> OccurrenceModulePathIndexRefusal? {
-  match map_get(module_by_occurrence, reference.occurrence.value) {
+  match map_lookup(m: module_by_occurrence, key: reference.occurrence.value) {
     Absent =>
       Present {
         value: MissingOccurrenceModulePathRow {
@@ -498,7 +498,7 @@ fn module_of_occurrence(
   module_by_occurrence: Map<Int, NonEmptyStr>,
   occurrence: OccurrenceId
 ) -> NonEmptyStr? {
-  map_get(module_by_occurrence, occurrence.value)
+  map_lookup(m: module_by_occurrence, key: occurrence.value)
 }
 
 fn exposure_validate_transport_declarations(
@@ -512,7 +512,7 @@ fn exposure_validate_transport_declarations(
       match refusal {
         Present { value: _ } => refusal
         Absent =>
-          match map_get(exposure_by_occurrence, declaration.occurrence.value) {
+          match map_lookup(m: exposure_by_occurrence, key: declaration.occurrence.value) {
             Present { value: _ } => none
             Absent =>
               Present {
@@ -529,7 +529,7 @@ fn authored_order_validate_transport_occurrence(
   order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
   occurrence: OccurrenceId
 ) -> AuthoredOrderIndexRefusal? {
-  match map_get(order_by_occurrence, occurrence.value) {
+  match map_lookup(m: order_by_occurrence, key: occurrence.value) {
     Present { value: _ } => none
     Absent =>
       Present {
@@ -703,7 +703,7 @@ fn declarations_by_name_insert(
   name: String,
   declaration: DeclarationOccurrence
 ) -> Map<String, List<DeclarationOccurrence>> {
-  match map_get(acc, name) {
+  match map_lookup(m: acc, key: name) {
     Absent => map_insert(acc, name, [declaration])
     Present { value: existing } =>
       map_insert(acc, name, concat([declaration], existing))
@@ -744,7 +744,7 @@ fn declarations_by_name_build(
       match acc {
         DeclarationsByNameFoldMissing { occurrence: _ } => acc
         DeclarationsByNameFoldReady { by_name: by_name } =>
-          match map_get(entries_by_id, declaration.occurrence.value) {
+          match map_lookup(m: entries_by_id, key: declaration.occurrence.value) {
             Absent =>
               DeclarationsByNameFoldMissing {
                 occurrence: declaration.occurrence,
@@ -863,10 +863,10 @@ fn candidate_occurrence_ids_for_reference(
   index: OccurrenceCandidateIndex,
   reference: ReferenceOccurrence
 ) -> List<OccurrenceId> {
-  match map_get(index.validated.entries_by_id, reference.occurrence.value) {
+  match map_lookup(m: index.validated.entries_by_id, key: reference.occurrence.value) {
     Absent => []
     Present { value: entry } =>
-      match map_get(index.declarations_by_name, entry.projection.authored_name) {
+      match map_lookup(m: index.declarations_by_name, key: entry.projection.authored_name) {
         Absent => []
         Present { value: same_spelling } =>
           reverse(same_spelling)
@@ -940,7 +940,7 @@ fn direct_module_dependency_dedup_step(
   if edge.consumer_module == edge.provider_module {
     acc
   } else {
-    match map_get(acc.providers_by_consumer, edge.consumer_module) {
+    match map_lookup(m: acc.providers_by_consumer, key: edge.consumer_module) {
       Absent =>
         DirectModuleDependencyDedupBuild {
           providers_by_consumer: map_insert(
@@ -1243,7 +1243,7 @@ fn module_path_file_index_fold_step(
     Present { value: _ } => build
     Absent =>
       let key = row.module_path as String
-      match map_get(build.entries, key) {
+      match map_lookup(m: build.entries, key: key) {
         Absent =>
           ModulePathFileIndexBuild {
             entries: map_insert(build.entries, key, row.file_path),
@@ -1335,7 +1335,7 @@ fn file_for_module_path(
   module_files: Map<String, FilePath>,
   module_path: NonEmptyStr
 ) -> FilePath? {
-  map_get(module_files, module_path as String)
+  map_lookup(m: module_files, key: module_path as String)
 }
 
 fn cross_file_binding_provenance_from_provider(
@@ -1486,7 +1486,7 @@ fn direct_file_dependency_dedup_step(
   if edge.consumer_file == edge.provider_file {
     acc
   } else {
-    match map_get(acc.providers_by_consumer, edge.consumer_file) {
+    match map_lookup(m: acc.providers_by_consumer, key: edge.consumer_file) {
       Absent =>
         DirectFileDependencyDedupBuild {
           providers_by_consumer: map_insert(
@@ -1772,7 +1772,7 @@ fn remap_occurrence_id(
   id: OccurrenceId,
   state: OccurrenceIdRemapState
 ) -> OccurrenceIdRemapResult {
-  match map_get(state.remap, id.value) {
+  match map_lookup(m: state.remap, key: id.value) {
     Present { value: remapped } =>
       OccurrenceIdRemapResult { id: remapped, state: state }
     Absent =>

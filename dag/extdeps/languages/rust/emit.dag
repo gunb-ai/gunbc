@@ -48,7 +48,7 @@ import extdeps.uri {
   Uri,
   Https
 }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
+import std.algebra { map_lookup, collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -412,7 +412,7 @@ fn is_rt_function(name: String) -> Bool {
 }
 
 fn rt_bridge_name(name: String) -> String {
-  match map_get(rt_bridge_function_names(), name) {
+  match map_lookup(m: rt_bridge_function_names(), key: name) {
     Present { value: bridge } => bridge
     Absent => name
   }

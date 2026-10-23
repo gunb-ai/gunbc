@@ -1,4 +1,5 @@
 module gunbc.target_binding
+import std.algebra { map_lookup }
 
 import extdeps.bazel.label {
   Label, PackageName, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
@@ -195,7 +196,7 @@ fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndex
         }
       LabelCanonical => {
         let key = render_label(l: target)
-        match map_get(acc.index.targets_by_identity, key) {
+        match map_lookup(m: acc.index.targets_by_identity, key: key) {
           Present { value: _ } => TargetBindingIndexAcc {
             index: acc.index
             refusal: Present { value: DuplicateTargetIdentity { target: target } }
@@ -226,13 +227,13 @@ fn index_binding(acc: TargetBindingIndexAcc, binding: TargetBinding) -> TargetBi
         }
       LabelCanonical => {
         let key = render_label(l: binding.target)
-        match map_get(acc.index.targets_by_identity, key) {
+        match map_lookup(m: acc.index.targets_by_identity, key: key) {
           Absent => TargetBindingIndexAcc {
             index: acc.index
             refusal: Present { value: BindingNamesUnknownTarget { target: binding.target } }
           }
           Present { value: _ } =>
-            match map_get(acc.index.bindings_by_identity, key) {
+            match map_lookup(m: acc.index.bindings_by_identity, key: key) {
               Present { value: _ } => TargetBindingIndexAcc {
                 index: acc.index
                 refusal: Present { value: DuplicateTargetBinding { target: binding.target } }
@@ -291,10 +292,10 @@ fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBind
       TargetLookupLabelNotCanonical { target: target, cause: cause }
     LabelCanonical => {
     let key = render_label(l: target)
-    match map_get(index.targets_by_identity, key) {
+    match map_lookup(m: index.targets_by_identity, key: key) {
       Absent => TargetUnknown { target: target }
       Present { value: _ } =>
-        match map_get(index.bindings_by_identity, key) {
+        match map_lookup(m: index.bindings_by_identity, key: key) {
           Present { value: binding } => TargetProducerBound { binding: binding }
           Absent => KnownTargetBindingMissing { target: target }
         }

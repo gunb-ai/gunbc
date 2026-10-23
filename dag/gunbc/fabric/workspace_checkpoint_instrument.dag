@@ -2,7 +2,7 @@ module gunbc.fabric.workspace_checkpoint_instrument
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Map }
 import std.optional { Present, Absent }
-import std.algebra { Cons, Empty, MapIntroductionEntry, map_from_entries }
+import std.algebra { map_lookup, Cons, Empty, MapIntroductionEntry, map_from_entries }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { ByteSize, byte_size, measure_count, ObservationInstant, ProcessMonotonic, WallClock, Nanosecond, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
@@ -481,7 +481,7 @@ fn workspace_restore_barrier_fault(barrier: List<WorkspaceEntry>, by_path: Map<S
   match barrier {
     Empty => none
     Cons { head: e, tail: rest } =>
-      match map_get(by_path, e.path as String) {
+      match map_lookup(m: by_path, key: e.path as String) {
         Absent => Present { value: RestoreMissingFile { path: e.path } }
         Present { value: d } =>
           if content_hash_eq_cryptographic(left: d, right: e.chunk.key) { workspace_restore_barrier_fault(barrier: rest, by_path: by_path) } else { Present { value: RestoreBytesDiffer { path: e.path } } }
@@ -493,7 +493,7 @@ fn workspace_restore_extra(restored: List<WorkspaceRestoredFile>, barrier_paths:
   match restored {
     Empty => none
     Cons { head: f, tail: rest } =>
-      match map_get(barrier_paths, f.path as String) {
+      match map_lookup(m: barrier_paths, key: f.path as String) {
         Absent => Present { value: f.path }
         Present { value: _ } => workspace_restore_extra(restored: rest, barrier_paths: barrier_paths)
       }

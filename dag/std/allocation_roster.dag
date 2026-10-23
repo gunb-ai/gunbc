@@ -1,4 +1,5 @@
 module std.allocation_roster
+import std.algebra { map_lookup }
 
 import std.types { List, Map, Bool, String }
 
@@ -63,10 +64,10 @@ fn allocate<V>(
   secondary: String,
   value: V
 ) -> AllocationAdmission<V> {
-  match map_get(roster.by_primary, primary) {
+  match map_lookup(m: roster.by_primary, key: primary) {
     Present { value: _ } => AllocationPrimaryKeyRepeated { key: primary }
     Absent =>
-      match map_get(roster.secondary_claimed, secondary) {
+      match map_lookup(m: roster.secondary_claimed, key: secondary) {
         Present { value: _ } => AllocationSecondaryKeyRepeated { key: secondary }
         Absent =>
           AllocationAdmitted {
@@ -117,7 +118,7 @@ fn build_allocation_roster<R, V>(
 // from it would have picked a winner by authoring order. A roster value cannot be inconsistent, so
 // the question has no subject and the guard has nothing to guard.
 fn allocation_lookup<V>(roster: AllocationRoster<V>, wanted: String) -> V? {
-  map_get(roster.by_primary, wanted)
+  map_lookup(m: roster.by_primary, key: wanted)
 }
 
 // THE FUSED FORM CONSUMERS ACTUALLY WANT: build, then look up, with a refused build answering Absent

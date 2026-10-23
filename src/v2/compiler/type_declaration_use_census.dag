@@ -1,6 +1,6 @@
 module v2.compiler.type_declaration_use_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional }
+import std.algebra { map_lookup, Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional }
 import std.types { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -679,7 +679,7 @@ fn nominal_over(v: DeclarationVerdict) -> Bool {
 
 fn declared_verdict(index: Map<String, DeclarationVerdict>, t: TypeRefText) -> Optional<DeclarationVerdict> {
   match t {
-    DeclaredRef { path: p } => map_get(index, p)
+    DeclaredRef { path: p } => map_lookup(m: index, key: p)
     KernelRef { name: _ } => Absent
     ParamRef { name: _ } => Absent
     StructuralRef => Absent
@@ -798,7 +798,7 @@ fn declaration_index(vs: FreeMonoid<DeclarationVerdict>) -> Map<String, Declarat
 
 fn referenced_anywhere(run: TypeCensusRun, path: String) -> Bool {
   fold_list(xs: run.modules, empty: false, cons: fn(acc, m) {
-    acc || match map_get(m.references, path) { Present { value: _ } => true  Absent => false }
+    acc || match map_lookup(m: m.references, key: path) { Present { value: _ } => true  Absent => false }
   })
 }
 
@@ -848,14 +848,14 @@ fn form_text(f: TypeDeclForm) -> String {
 }
 
 fn tally(acc: Map<String, Int>, key: String) -> Map<String, Int> {
-  match map_get(acc, key) {
+  match map_lookup(m: acc, key: key) {
     Present { value: n } => map_insert(acc, key, n + 1)
     Absent => map_insert(acc, key, 1)
   }
 }
 
 fn tally_lines(kind: String, m: Map<String, Int>) -> List<String> {
-  map(map_keys(m), k => "summary " + kind + " " + k + " " + to_string(match map_get(m, k) { Present { value: n } => n  Absent => 0 }))
+  map(map_keys(m), k => "summary " + kind + " " + k + " " + to_string(match map_lookup(m: m, key: k) { Present { value: n } => n  Absent => 0 }))
 }
 
 // EVERY MODULE CARRYING AN AFFECTED DECLARATION OR CAST. Which of them the required gate does not

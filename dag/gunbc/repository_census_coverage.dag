@@ -1,4 +1,5 @@
 module gunbc.repository_census_coverage
+import std.algebra { map_lookup }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -128,7 +129,7 @@ fn census_subject_index_step(
   build: CensusSubjectIndexBuild,
   key: CensusSubjectKey,
 ) -> CensusSubjectIndexBuild {
-  match map_get(build.seen, key as String) {
+  match map_lookup(m: build.seen, key: key as String) {
     Present { value: prior } =>
       if prior == 1 {
         CensusSubjectIndexBuild {
@@ -203,7 +204,7 @@ fn census_reconciliation_operations(
 }
 
 fn census_subject_key_in_index(index: CensusSubjectIndex, key: CensusSubjectKey) -> Bool {
-  match map_get(index.seen, key as String) {
+  match map_lookup(m: index.seen, key: key as String) {
     Present { value: _ } => true
     Absent => false
   }

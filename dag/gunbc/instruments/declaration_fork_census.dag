@@ -1,4 +1,5 @@
 module gunbc.instruments.declaration_fork_census
+import std.algebra { map_lookup }
 
 import std.types { Int, String, List }
 import v2.std.decl_index { DeclFact, decl_facts }
@@ -43,7 +44,7 @@ type ForkCensusBuild {
 }
 
 fn fork_census_step(build: ForkCensusBuild, fact: DeclFact) -> ForkCensusBuild {
-  match map_get(build.counts, fact.name) {
+  match map_lookup(m: build.counts, key: fact.name) {
     Present { value: prior } => ForkCensusBuild {
       counts: map_insert(build.counts, fact.name, prior + 1),
       names_reversed: build.names_reversed,
@@ -62,7 +63,7 @@ fn name_counts_of(facts: List<DeclFact>) -> List<NameCount> {
     f: (acc, fact) => fork_census_step(build: acc, fact: fact)
   )
   map(build.names_reversed, n =>
-    match map_get(build.counts, n) {
+    match map_lookup(m: build.counts, key: n) {
       Present { value: c } => NameCount { name: n, count: c }
       Absent => NameCount { name: n, count: 0 }
     })

@@ -1,4 +1,5 @@
 module gunbc.fleet.site_pxe_edge_receipts
+import std.algebra { map_lookup }
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr }
 import std.content_hash {
@@ -297,8 +298,8 @@ fn tally_bump(prior: OfferTally?, edge: SuppliedEdgeOffer) -> OfferTally {
 fn index_offers(edges: List<SuppliedEdgeOffer>) -> OfferIndex {
   edges |> fold(init: OfferIndex { candidates: empty_map(), named: empty_map() }, f: (ix, e) =>
     OfferIndex {
-      candidates: map_insert(ix.candidates, exchange_key_of_offer(edge: e), tally_bump(prior: map_get(ix.candidates, exchange_key_of_offer(edge: e)), edge: e))
-      named: map_insert(ix.named, acceptance_key_of_offer(edge: e), tally_bump(prior: map_get(ix.named, acceptance_key_of_offer(edge: e)), edge: e))
+      candidates: map_insert(ix.candidates, exchange_key_of_offer(edge: e), tally_bump(prior: map_lookup(m: ix.candidates, key: exchange_key_of_offer(edge: e)), edge: e))
+      named: map_insert(ix.named, acceptance_key_of_offer(edge: e), tally_bump(prior: map_lookup(m: ix.named, key: acceptance_key_of_offer(edge: e)), edge: e))
     }
   )
 }
@@ -308,10 +309,10 @@ fn select_offer(client: SuppliedClientExchange, edges: List<SuppliedEdgeOffer>) 
 }
 
 fn select_indexed(client: SuppliedClientExchange, index: OfferIndex) -> OfferSelection {
-  match map_get(index.candidates, exchange_key_of_client(client: client)) {
+  match map_lookup(m: index.candidates, key: exchange_key_of_client(client: client)) {
     Absent => NoCandidateOffers
     Present { value: seen } =>
-      match map_get(index.named, acceptance_key_of_client(client: client)) {
+      match map_lookup(m: index.named, key: acceptance_key_of_client(client: client)) {
         Present { value: named } =>
           if named.count == 1 {
             UniqueAccepted { edge: named.first }

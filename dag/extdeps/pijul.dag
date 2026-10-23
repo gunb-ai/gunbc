@@ -1,6 +1,6 @@
 module extdeps.pijul
 
-import std.algebra { trim }
+import std.algebra { map_lookup, trim }
 
 import std.types { NonEmptyStr, Bytes, Timestamp, Map, brand }
 import std.integer { NonNegativeInt, UInt8 }
@@ -1539,7 +1539,7 @@ fn pijul_delivery_dependency_issue(
   let resulting_index = pijul_scan_unique(items: resulting).seen
   resulting
     |> flat_map(hash =>
-      match map_get(available, hash) {
+      match map_lookup(m: available, key: hash) {
         Present { value: change } =>
           change.dependencies
             |> filter(dependency =>

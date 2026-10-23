@@ -1,4 +1,5 @@
 module gunbc.action_use_admission
+import std.algebra { map_lookup }
 
 import std.types { Bool, Int, List, NonEmptyStr, String, commit_sha_text_holds }
 import extdeps.github.expressions { Expression, ExpressionContext, Github, Inputs, ContextAccess, LogicalOr, LogicalAnd, interpolate, serialize_expression }
@@ -199,11 +200,11 @@ fn admit_action_release_against(readings: List<ActionManifestReading>, action_re
 // of once per admission.
 data action_manifest_readings_by_producer: Map<String, List<ActionManifestReading>> = fold(action_manifest_readings, init: empty_map(), f: fn(m, r) {
   let key = action_release_uses_text(action_release: r.action_release)
-  map_insert(m, key, concat(match map_get(m, key) { Present { value: rs } => rs  Absent => [] }, [r]))
+  map_insert(m, key, concat(match map_lookup(m: m, key: key) { Present { value: rs } => rs  Absent => [] }, [r]))
 })
 
 fn manifest_readings_for_producer(uses_text: String) -> List<ActionManifestReading> {
-  match map_get(action_manifest_readings_by_producer, uses_text) {
+  match map_lookup(m: action_manifest_readings_by_producer, key: uses_text) {
     Present { value: rs } => rs
     Absent => []
   }

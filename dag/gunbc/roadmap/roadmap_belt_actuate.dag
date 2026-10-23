@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
-import std.algebra { trim, skip }
+import std.algebra { map_lookup, trim, skip }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
@@ -7348,7 +7348,7 @@ fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceOb
     paths,
     init: BeltZipAcc { i: 0, entries: [] },
     f: fn(acc, path) {
-      match map_get(by_index, key: to_string(acc.i)) {
+      match map_lookup(m: by_index, key: key: to_string(acc.i)) {
         Absent => acc
         Present { value: source } =>
           BeltZipAcc {
@@ -7678,7 +7678,7 @@ fn belt_scm_advance_fold(store: ObjectStore, tip_record: CorpusManifestRecord, c
           WorktreeDelete { path: p } =>
             BeltDeltaFold { store: acc.store, unique: path_unique_with_path_removed(unique: acc.unique, path: p), refused: none }
           WorktreeBind { path: p } =>
-            match map_get(texts, key: p as String) {
+            match map_lookup(m: texts, key: key: p as String) {
               Absent =>
                 BeltDeltaFold { store: acc.store, unique: acc.unique, refused: Present { value: join(["the advance's diff re-binds ", p as String, " but its bytes at the target revision were not read"], "") } }
               Present { value: text } => belt_scm_delta_bind_text(acc: acc, path: p, text: text)
@@ -7919,7 +7919,7 @@ fn belt_scm_rebound_identities(store: ObjectStore, changes: List<WorktreeChange>
       match change {
         WorktreeDelete { path: _ } => []
         WorktreeBind { path } =>
-          match map_get(texts, key: path as String) {
+          match map_lookup(m: texts, key: key: path as String) {
             Absent => []
             Present { value: text } => [scm_object_identity(object: authored_source_object(text: text))]
           }
@@ -14103,13 +14103,13 @@ fn belt_publish_plan(head: List<CorpusManifestEntry>, root: List<CorpusManifestE
   let head_bound = path_unique_of_record_entries(entries: head)
   concat(
     head
-      |> filter(e => match map_get(base_bound, key: e.path) {
+      |> filter(e => match map_lookup(m: base_bound, key: key: e.path) {
         Absent => true
         Present { value: held } => !object_id_eq(left: held.source.locator, right: e.source.locator)
       })
       |> map(e => PublishBind { entry: e }),
     root
-      |> filter(e => match map_get(head_bound, key: e.path) {
+      |> filter(e => match map_lookup(m: head_bound, key: key: e.path) {
         Absent => true
         Present { value: _ } => false
       })
@@ -14143,13 +14143,13 @@ fn belt_publish_apply(base: List<CorpusManifestEntry>, plan: List<BeltPublishCha
       PublishBind { entry } => map_insert(m, entry.path as String, object_id_key(identity: entry.source.locator))
       PublishDelete { path } => map_without(m: m, key: path as String)
     })
-  sort_by(map_keys(applied), k => k) |> map(k => join([k, "=", match map_get(applied, key: k) { Present { value: d } => d Absent => "" }], ""))
+  sort_by(map_keys(applied), k => k) |> map(k => join([k, "=", match map_lookup(m: applied, key: key: k) { Present { value: d } => d Absent => "" }], ""))
 }
 
 fn map_without(m: Map<String, String>, key: String) -> Map<String, String> {
   fold(map_keys(m), init: empty_map(), f: (acc, k) =>
     if k == key { acc } else {
-      match map_get(m, key: k) {
+      match map_lookup(m: m, key: key: k) {
         Present { value: v } => map_insert(acc, k, v)
         Absent => acc
       }

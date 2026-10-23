@@ -1,4 +1,5 @@
 module gunbc.serving.rented_enrollment
+import std.algebra { map_lookup }
 
 import std.types { String, NonEmptyStr, List, Map, Int }
 import product.fabric.work { identity_frame }
@@ -59,14 +60,14 @@ fn rented_endpoint_wire(e: ServingRouteEndpoint) -> String {
 }
 
 fn rented_count_bump(counts: Map<String, Int>, key: String) -> Map<String, Int> {
-  match map_get(counts, key) {
+  match map_lookup(m: counts, key: key) {
     Present { value: n } => map_insert(counts, key, n + 1)
     Absent => map_insert(counts, key, 1)
   }
 }
 
 fn rented_count_of(counts: Map<String, Int>, key: String) -> Int {
-  match map_get(counts, key) {
+  match map_lookup(m: counts, key: key) {
     Present { value: n } => n
     Absent => 0
   }
@@ -121,7 +122,7 @@ type RentedEnrollmentLookup
   | RentedEnrollmentNotFound { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
 
 fn rented_enrollment_for(index: RentedEnrollmentIndex, replica: RentedReplicaIdentity) -> RentedEnrollmentLookup {
-  match map_get(index.by_replica, rented_replica_wire(id: replica)) {
+  match map_lookup(m: index.by_replica, key: rented_replica_wire(id: replica)) {
     Absent => RentedEnrollmentNotFound { replica: replica, obligation: rented_replica_unenrolled_obligation }
     Present { value: d } =>
       match d {

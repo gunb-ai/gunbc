@@ -1,4 +1,5 @@
 module gunbc.roadmap.roadmap_program_view
+import std.algebra { map_lookup }
 
 import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapAcceptanceReceipt,
@@ -169,7 +170,7 @@ fn program_member_map(ids: List<String>) -> Map<String, Bool> {
 }
 
 fn program_map_member(map: Map<String, Bool>, id: String) -> Bool {
-  match map_get(map, id) {
+  match map_lookup(m: map, key: id) {
     Present { value: _ } => true
     Absent => false
   }
@@ -208,7 +209,7 @@ fn program_node_acc_has_duplicate(acc: ProgramNodeAcc, id: String) -> Bool {
 
 fn program_node_acc_insert(acc: ProgramNodeAcc, n: RoadmapNode) -> ProgramNodeAcc {
   let id = n.node as String
-  match map_get(acc.by_id, id) {
+  match map_lookup(m: acc.by_id, key: id) {
     Present { value: _ } =>
       ProgramNodeAcc {
         by_id: acc.by_id,
@@ -238,7 +239,7 @@ fn program_find_node_indexed(
   index: Map<String, RoadmapNode>,
   id: RoadmapNodeId,
 ) -> RoadmapNode? {
-  match map_get(index, id as String) {
+  match map_lookup(m: index, key: id as String) {
     Present { value: n } => Present { value: n }
     Absent => Absent
   }
@@ -249,7 +250,7 @@ fn program_receipt_count_step(
   r: RoadmapAcceptanceReceipt,
 ) -> Map<String, Int> {
   let id = r.node as String
-  match map_get(acc, id) {
+  match map_lookup(m: acc, key: id) {
     Present { value: c } => map_insert(acc, id, c + 1)
     Absent => map_insert(acc, id, 1)
   }
@@ -284,7 +285,7 @@ fn program_node_headline_map(nodes: List<RoadmapNode>) -> Map<String, String> {
 }
 
 fn program_headline_lookup(headlines: Map<String, String>, id: String) -> String {
-  match map_get(headlines, id) {
+  match map_lookup(m: headlines, key: id) {
     Present { value: h } => h
     Absent => id
   }
@@ -419,7 +420,7 @@ fn program_int_max(a: Int, b: Int) -> Int {
 }
 
 fn program_depth_lookup_map(depths: Map<String, Int>, id: String) -> Int {
-  match map_get(depths, id) {
+  match map_lookup(m: depths, key: id) {
     Present { value: d } => d
     Absent => 0
   }
@@ -435,7 +436,7 @@ fn program_parent_index_step(
 ) -> Map<String, List<String>> {
   let child = edge.child as String
   let parent = edge.parent as String
-  match map_get(acc, child) {
+  match map_lookup(m: acc, key: child) {
     Present { value: parents } => map_insert(acc, child, concat(parents, [parent]))
     Absent => map_insert(acc, child, [parent])
   }
@@ -446,7 +447,7 @@ fn program_parent_index(edges: List<RoadmapEdge>) -> Map<String, List<String>> {
 }
 
 fn program_parent_ids_index(index: Map<String, List<String>>, node: String) -> List<String> {
-  match map_get(index, node) {
+  match map_lookup(m: index, key: node) {
     Present { value: parents } => parents
     Absent => []
   }
@@ -742,7 +743,7 @@ fn program_duplicate_receipt_causes(
     }) {
       acc
     } else {
-      match map_get(counts, id) {
+      match map_lookup(m: counts, key: id) {
         Present { value: c } =>
           if c > 1 {
             concat(acc, [DuplicateAcceptanceReceipt { node: r.node }])

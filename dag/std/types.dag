@@ -1,7 +1,7 @@
 module std.types
 import std.optional { Absent, Present, optional_absent, optional_present }
 
-import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape }
+import std.algebra { map_lookup, FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_map_shape }
 import std.unicode.types { unicode_scalar }
 
 data kernel_type_set: Map<String, Bool> = {
@@ -10,7 +10,7 @@ data kernel_type_set: Map<String, Bool> = {
 }
 
 fn is_kernel_type(name: String) -> Bool {
-  match map_get(kernel_type_set, name) {
+  match map_lookup(m: kernel_type_set, key: name) {
     Present { value: _ } => true
     Absent => false
   }
@@ -37,14 +37,14 @@ fn is_container_type(name: String) -> Bool {
 }
 
 fn container_expected_arity(name: String) -> Int? {
-  map_get(container_type_arity, name)
+  map_lookup(m: container_type_arity, key: name)
 }
 
 fn container_param_names_for(kind_name: String) -> List<String> {
   if kind_name == "Witness" {
     ["T"]
   } else {
-    match map_get(kernel_algebra_profile, kind_name) {
+    match map_lookup(m: kernel_algebra_profile, key: kind_name) {
       Present { value: p } => algebra_type_param_names(profile: p)
       Absent => []
     }
@@ -83,11 +83,11 @@ data container_template_algebra_rows: Map<String, String> = carrier_container_al
 data container_template_alias_rows: Map<String, String> = carrier_container_alias_rows()
 
 fn container_template_algebra(name: String) -> String? {
-  map_get(container_template_algebra_rows, name)
+  map_lookup(m: container_template_algebra_rows, key: name)
 }
 
 fn container_template_alias_algebra(name: String) -> String? {
-  map_get(container_template_alias_rows, name)
+  map_lookup(m: container_template_alias_rows, key: name)
 }
 
 // THE COMPLETE ROSTER, DERIVED. This list feeds `v1.compiler.coercion` `inhabitant_test_names`,

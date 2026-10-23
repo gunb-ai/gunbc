@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_leng
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { FreeSemigroup }
+import std.algebra { map_lookup, FreeSemigroup }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -548,7 +548,7 @@ fn insert_published_probe_slot(
   p: PublishedCredentialLanProbe,
 ) -> Map<Int, PublishedProbeSlot> {
   let key = published_lan_identity_key(channel: p.channel, address: p.address)
-  match map_get(acc, key) {
+  match map_lookup(m: acc, key: key) {
     Absent => map_insert(acc, key, OneProbe { probe: p })
     Present { value: slot } =>
       match slot {
@@ -568,7 +568,7 @@ fn bump_assigned_lan_identity(
   address: Ipv4Address,
 ) -> Map<Int, Int> {
   let key = published_lan_identity_key(channel: channel, address: address)
-  match map_get(acc, key) {
+  match map_lookup(m: acc, key: key) {
     Absent => map_insert(acc, key, 1)
     Present { value: n } => map_insert(acc, key, n + 1)
   }
@@ -664,7 +664,7 @@ fn join_open_assigned_lan(
   applied_at: EpochMs,
   require_published_closed: Bool,
 ) -> CensusJoinProgress {
-  match map_get(probe_index, published_lan_identity_key(channel: channel, address: address)) {
+  match map_lookup(m: probe_index, key: published_lan_identity_key(channel: channel, address: address)) {
     Absent => CensusJoinClosed { cause: PublishedCredentialCensusMemberUnprobed { channel: channel } }
     Present { value: slot } =>
       match slot {
@@ -719,7 +719,7 @@ fn insert_published_user_access_slot(
   row: IpmiUserChannelAccess,
 ) -> Map<Int, PublishedUserAccessSlot> {
   let key = published_user_access_key(channel: row.channel, user: row.user)
-  match map_get(acc, key) {
+  match map_lookup(m: acc, key: key) {
     Absent => map_insert(acc, key, OneUserAccess { access: row })
     Present { value: slot } =>
       match slot {
@@ -738,7 +738,7 @@ fn published_user_privilege_on_channel(
   channel: IpmiChannelNumber,
   published_user: IpmiUserId,
 ) -> BmcSecureRefusalCause? {
-  match map_get(access_index, published_user_access_key(channel: channel, user: published_user)) {
+  match map_lookup(m: access_index, key: published_user_access_key(channel: channel, user: published_user)) {
     Absent => Present { value: PublishedCredentialUserAccessUnestablished { channel: channel } }
     Present { value: slot } =>
       match slot {
@@ -758,7 +758,7 @@ fn unaddressed_lan_published_access_cause(
   channel: IpmiChannelNumber,
   published_user: IpmiUserId,
 ) -> BmcSecureRefusalCause? {
-  match map_get(access_index, published_user_access_key(channel: channel, user: published_user)) {
+  match map_lookup(m: access_index, key: published_user_access_key(channel: channel, user: published_user)) {
     Absent => Present { value: PublishedCredentialUserAccessUnestablished { channel: channel } }
     Present { value: slot } =>
       match slot {
@@ -816,7 +816,7 @@ fn probe_unmatched_or_duplicate(
   probe: PublishedCredentialLanProbe,
   assigned_index: Map<Int, Int>,
 ) -> BmcSecureRefusalCause? {
-  match map_get(assigned_index, published_lan_identity_key(channel: probe.channel, address: probe.address)) {
+  match map_lookup(m: assigned_index, key: published_lan_identity_key(channel: probe.channel, address: probe.address)) {
     Absent => Present { value: PublishedCredentialProbeUnmatched { channel: probe.channel } }
     Present { value: n } =>
       if n > 1 {
@@ -1918,7 +1918,7 @@ fn census_member_channel(m: IpmiChannelCensusMember) -> IpmiChannelNumber {
 fn published_channels_left_open(observed: BmcAccountStateObservation) -> List<IpmiChannelNumber> {
   let index = index_published_user_access(rows: observed.channel_census.user_access)
   fold(observed.channel_census.members, init: [], f: (acc, m) =>
-    match map_get(index, published_user_access_key(channel: census_member_channel(m: m), user: observed.published_user)) {
+    match map_lookup(m: index, key: published_user_access_key(channel: census_member_channel(m: m), user: observed.published_user)) {
       Absent => acc
       Present { value: slot } =>
         match slot {

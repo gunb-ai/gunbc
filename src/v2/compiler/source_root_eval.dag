@@ -3760,7 +3760,7 @@ fn native_census_infer_type_contribution(
 
 fn native_census_normalized_tree(context: NativeTestContext, module: String) -> Optional<NormalizedTree> {
   match context.resolution {
-    Accepted { value: shared, diagnostics: _ } => map_get(shared.roots.by_name, qualified_name_from_dotted_string(dotted: module))
+    Accepted { value: shared, diagnostics: _ } => map_lookup(m: shared.roots.by_name, key: qualified_name_from_dotted_string(dotted: module))
     Rejected { diagnostics: _ } => optional_absent()
   }
 }

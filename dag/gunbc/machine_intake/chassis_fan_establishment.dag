@@ -1,4 +1,5 @@
 module gunbc.machine_intake.chassis_fan_establishment
+import std.algebra { map_lookup }
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.optional { Absent, Present }
@@ -69,14 +70,14 @@ type FanHeaderLookup
 // ONE INDEX PER READ, THEN A LOOKUP PER HEADER: each line is folded into a name-keyed map exactly once, and a second row
 // under a name makes its entry Duplicate whatever order the rows arrive in. Judging N headers is then N lookups, not N scans.
 fn fan_header_index(lines: List<SdrTypeLine>) -> Map<String, FanHeaderLookup> {
-  fold(lines, init: empty_map(), f: (acc, line) => map_insert(acc, line.name as String, match map_get(acc, line.name as String) {
+  fold(lines, init: empty_map(), f: (acc, line) => map_insert(acc, line.name as String, match map_lookup(m: acc, key: line.name as String) {
     Present { value: _ } => FanHeaderDuplicate
     Absent => FanHeaderUnique { line: line }
   }))
 }
 
 fn fan_header_lookup(index: Map<String, FanHeaderLookup>, header: NonEmptyStr) -> FanHeaderLookup {
-  match map_get(index, header as String) {
+  match map_lookup(m: index, key: header as String) {
     Present { value: found } => found
     Absent => FanHeaderAbsent
   }

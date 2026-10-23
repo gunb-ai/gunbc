@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { FreeMonoid, collection_concat_shape }
+import std.algebra { map_lookup, FreeMonoid, collection_concat_shape }
 import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, Int, String, SourceSpan, List, Map }
 
@@ -664,9 +664,9 @@ fn occurrence_transport_index_build(
       match build.refusal {
         Present { value: _ } => build
         Absent =>
-          match map_get(
-            build.entries_by_id,
-            entry.projection.occurrence.value
+          match map_lookup(
+            m: build.entries_by_id,
+            key: entry.projection.occurrence.value,
           ) {
             Present { value: existing } =>
               OccurrenceTransportIndexBuild {
@@ -728,9 +728,9 @@ fn occurrence_transport_role_index_build(
       match build.refusal {
         Present { value: _ } => build
         Absent =>
-          match map_get(
-            build.declarations_by_id,
-            declaration.occurrence.value
+          match map_lookup(
+            m: build.declarations_by_id,
+            key: declaration.occurrence.value,
           ) {
             Present { value: existing } =>
               OccurrenceTransportRoleIndexBuild {
@@ -766,9 +766,9 @@ fn occurrence_transport_role_index_build(
           match build.refusal {
             Present { value: _ } => build
             Absent =>
-              match map_get(
-                build.references_by_id,
-                reference.occurrence.value
+              match map_lookup(
+                m: build.references_by_id,
+                key: reference.occurrence.value,
               ) {
                 Present { value: existing } =>
                   OccurrenceTransportRoleIndexBuild {
@@ -802,7 +802,7 @@ fn declaration_occurrence_refusal(
   references_by_id: Map<Int, ReferenceOccurrence>,
   declaration: DeclarationOccurrence
 ) -> OccurrenceTransportRefusal? {
-  match map_get(index_by_id, declaration.occurrence.value) {
+  match map_lookup(m: index_by_id, key: declaration.occurrence.value) {
     Absent =>
       Present {
         value: MissingAuthoredOccurrenceIdentity {
@@ -814,7 +814,7 @@ fn declaration_occurrence_refusal(
         left: declaration.containment,
         right: entry.containment
       ) {
-        match map_get(references_by_id, declaration.occurrence.value) {
+        match map_lookup(m: references_by_id, key: declaration.occurrence.value) {
           Present { value: reference } =>
             Present {
               value: WrongOccurrenceRole {
@@ -842,7 +842,7 @@ fn reference_occurrence_refusal(
   declarations_by_id: Map<Int, DeclarationOccurrence>,
   reference: ReferenceOccurrence
 ) -> OccurrenceTransportRefusal? {
-  match map_get(index_by_id, reference.occurrence.value) {
+  match map_lookup(m: index_by_id, key: reference.occurrence.value) {
     Absent =>
       Present {
         value: MissingAuthoredOccurrenceIdentity {
@@ -854,7 +854,7 @@ fn reference_occurrence_refusal(
         left: reference.containment,
         right: entry.containment
       ) {
-        match map_get(declarations_by_id, reference.occurrence.value) {
+        match map_lookup(m: declarations_by_id, key: reference.occurrence.value) {
           Present { value: declaration } =>
             Present {
               value: WrongOccurrenceRole {

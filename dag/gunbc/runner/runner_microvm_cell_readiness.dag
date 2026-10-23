@@ -1,4 +1,5 @@
 module gunbc.runner.runner_microvm_cell_readiness
+import std.algebra { map_lookup }
 
 import std.decl_ref { decl_ref }
 
@@ -238,7 +239,7 @@ fn index_step(acc: CellReadinessIndexing, record: CellReadinessRecord) -> CellRe
       match record_incoherence(record: record) {
         Present { value: w } => StoreIndexRefused { withdrawal: w }
         Absent =>
-          match map_get(ix.by_cell, record_cell(record: record) as String) {
+          match map_lookup(m: ix.by_cell, key: record_cell(record: record) as String) {
             Present { value: _ } => StoreIndexRefused { withdrawal: HostStoreAmbiguous { cell: record_cell(record: record) } }
             Absent => StoreIndexed { index: CellReadinessIndex { by_cell: map_insert(ix.by_cell, record_cell(record: record) as String, record) } }
           }
@@ -251,7 +252,7 @@ fn index_cell_readiness(records: List<CellReadinessRecord>) -> CellReadinessInde
 }
 
 fn indexed_record(index: CellReadinessIndex, cell: CellId) -> CellReadinessRecord? {
-  map_get(index.by_cell, cell as String)
+  map_lookup(m: index.by_cell, key: cell as String)
 }
 
 type CellWithdrawal

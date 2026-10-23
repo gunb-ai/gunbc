@@ -1,7 +1,7 @@
 module gunbc.instruments.ambient_name_census_reading
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
+import std.algebra { map_lookup, Cons, Empty, empty_map, map_insert, list_at_optional }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
@@ -198,9 +198,9 @@ fn ambient_summary_lines(stdout: String) -> List<String> {
   let ambient = binding_lines(stdout: stdout) |> filter(l => starts_with(s: field_at(line: l, index: 4), prefix: "ambient:"))
   let counts = fold(ambient, init: empty_map(), f: fn(m, l) {
     let key = field_at(line: l, index: 4) + "\t" + field_at(line: l, index: 2)
-    map_insert(m, key, match map_get(m, key) { Present { value: n } => n + 1  Absent => 1 })
+    map_insert(m, key, match map_lookup(m: m, key: key) { Present { value: n } => n + 1  Absent => 1 })
   })
-  map(map_keys(counts), k => "ambient_summary\t" + k + "\t" + to_string(match map_get(counts, k) { Present { value: n } => n  Absent => 0 }))
+  map(map_keys(counts), k => "ambient_summary\t" + k + "\t" + to_string(match map_lookup(m: counts, key: k) { Present { value: n } => n  Absent => 0 }))
 }
 
 fn distinct_lines(lines: List<String>) -> List<String> {
@@ -221,12 +221,12 @@ fn module_subject_attribution(tree_stdout: String) -> Map<String, List<String>> 
   fold(split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_subject\t")), init: empty_map(), f: fn(m, l) {
     let module = field_at(line: l, index: 2)
     let subject = field_at(line: l, index: 1)
-    map_insert(m, module, match map_get(m, module) { Present { value: xs } => list_push(xs, subject)  Absent => [subject] })
+    map_insert(m, module, match map_lookup(m: m, key: module) { Present { value: xs } => list_push(xs, subject)  Absent => [subject] })
   })
 }
 
 fn module_subjects_text(attribution: Map<String, List<String>>, module: String) -> String {
-  match map_get(attribution, module) { Present { value: xs } => join(distinct_lines(lines: xs), separator: ",")  Absent => "-" }
+  match map_lookup(m: attribution, key: module) { Present { value: xs } => join(distinct_lines(lines: xs), separator: ",")  Absent => "-" }
 }
 
 fn observed_modules(tree_stdout: String) -> Map<String, Bool> {
@@ -238,7 +238,7 @@ fn unobserved_rewritten(rewritten: String, tree_stdout: String) -> List<String> 
   let observed = observed_modules(tree_stdout: tree_stdout)
   split(s: rewritten, delimiter: "\n")
     |> filter(l => field_at(line: l, index: 1) == "present")
-    |> filter(l => match map_get(observed, field_at(line: l, index: 0)) { Present { value: _ } => false  Absent => true })
+    |> filter(l => match map_lookup(m: observed, key: field_at(line: l, index: 0)) { Present { value: _ } => false  Absent => true })
     |> map(l => field_at(line: l, index: 0))
 }
 
@@ -250,9 +250,9 @@ fn inconsistent_module_failure(tree_stdout: String) -> Optional<String> {
   let distinct = distinct_lines(lines: module_lines(stdout: tree_stdout))
   let counts = fold(distinct, init: empty_map(), f: fn(m, l) {
     let k = field_at(line: l, index: 1)
-    map_insert(m, k, match map_get(m, k) { Present { value: n } => n + 1  Absent => 1 })
+    map_insert(m, k, match map_lookup(m: m, key: k) { Present { value: n } => n + 1  Absent => 1 })
   })
-  match first(map_keys(counts) |> filter(k => match map_get(counts, k) { Present { value: n } => n > 1  Absent => false })) {
+  match first(map_keys(counts) |> filter(k => match map_lookup(m: counts, key: k) { Present { value: n } => n > 1  Absent => false })) {
     Present { value: k } => Present { value: "module " + k + " read differently by two subject closures" }
     Absent => Absent
   }
@@ -292,14 +292,14 @@ fn ambient_name_census_standing(
   let tree_rows = distinct_lines(lines: binding_lines(stdout: tree_stdout))
   let observed = observed_modules(tree_stdout: tree_stdout)
   let unreached = distinct_lines(lines: unreached_lines(stdout: tree_stdout))
-    |> filter(l => match map_get(observed, field_at(line: l, index: 1)) { Present { value: _ } => false  Absent => true })
+    |> filter(l => match map_lookup(m: observed, key: field_at(line: l, index: 1)) { Present { value: _ } => false  Absent => true })
   // A rewritten module the run reached but whose resolve refused has no binding rows: it was read, and
   // refused, which is not the same fact as never read. Both leave the wave's edits unjudged at
   // occurrence grain, so both answer 2; they are named apart so the cause is not misreported.
   let refused_modules = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
   let not_observed = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
-  let refused_rewritten = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => true  Absent => false })
-  let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
+  let refused_rewritten = not_observed |> filter(m => match map_lookup(m: refused_modules, key: m) { Present { value: _ } => true  Absent => false })
+  let missing = not_observed |> filter(m => match map_lookup(m: refused_modules, key: m) { Present { value: _ } => false  Absent => true })
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
@@ -314,7 +314,7 @@ fn ambient_name_census_standing(
     + (unanswered |> join(separator: "\n")) + "\n"
     + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
-    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
+    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_lookup(m: refused_modules, key: m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"

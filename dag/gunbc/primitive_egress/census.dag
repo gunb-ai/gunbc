@@ -1,4 +1,5 @@
 module gunbc.primitive_egress.census
+import std.algebra { map_lookup }
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
@@ -255,7 +256,7 @@ fn consumer_fold(edges: List<PrimitiveCallEdge>, on_surface: fn(PrimitiveIdentit
       match edge_join(edge: edge, on_surface: on_surface) {
         EstablishedConsumer { identity: id } => {
           let key = identity_name(identity: id)
-          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_consumer_tally() }
+          let prior = match map_lookup(m: acc.tallies, key: key) { Present { value: t } => t  Absent => empty_consumer_tally() }
           ConsumerFold {
             tallies: map_insert(acc.tallies, key, tally_resolved(t: prior, layer: caller_layer(module_path: edge.caller_module), module: edge.caller_module)),
             service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings,
@@ -263,7 +264,7 @@ fn consumer_fold(edges: List<PrimitiveCallEdge>, on_surface: fn(PrimitiveIdentit
         }
         UnresolvedConsumer { identity: id } => {
           let key = identity_name(identity: id)
-          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_consumer_tally() }
+          let prior = match map_lookup(m: acc.tallies, key: key) { Present { value: t } => t  Absent => empty_consumer_tally() }
           ConsumerFold {
             tallies: map_insert(acc.tallies, key, tally_unresolved(t: prior, caller: concat(edge.caller_module, " ", edge.caller_decl))),
             service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings,
@@ -426,7 +427,7 @@ fn identity_standing(
     modeled_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_modeled),
     host_seams: projection_declarations(rows: projections, identity: identity, wanted: is_host_seam),
     divergent_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_divergent),
-    consumers: match map_get(consumers.tallies, name) { Present { value: t } => t  Absent => empty_consumer_tally() },
+    consumers: match map_lookup(m: consumers.tallies, key: name) { Present { value: t } => t  Absent => empty_consumer_tally() },
     disposition: disposition_match(rows: dispositions, identity: identity, ownership: ownership, ctx: qualification_context_for(identity: identity, facts: facts, joined: joined, projections: projections, resolve: resolve, witness_prefixes: witness_prefixes)),
     seed_growth: ownership,
   }

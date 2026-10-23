@@ -1,4 +1,5 @@
 module gunbc.auth.gcp_iam_converge
+import std.algebra { map_lookup }
 
 import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation, mtcollins1_boot_run_scoped_federations, fleet_run_scoped_new_federations }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
@@ -553,7 +554,7 @@ fn same_key_set(a: List<String>, b: List<String>) -> Bool {
   duplicated_by_key(xs: a, key: x => x).length() == 0
     && duplicated_by_key(xs: b, key: x => x).length() == 0
     && a.length() == b.length()
-    && all(b, x => match map_get(index, x) { Present { value: _ } => true  Absent => false })
+    && all(b, x => match map_lookup(m: index, key: x) { Present { value: _ } => true  Absent => false })
 }
 
 fn grant_readings_cover(declared: List<SecretAccessGrant>, readings: List<GrantPolicyReading>) -> Bool {

@@ -1,4 +1,5 @@
 module extdeps.cpu.ampere_altra_package
+import std.algebra { map_lookup }
 
 import std.types { String, NonEmptyStr, List, Map, Int }
 import std.measure { Micrometer, micrometer }
@@ -213,7 +214,7 @@ fn scan_table4_differential_polarities(rows: List<Table4PinRow>) -> Map<NonEmpty
     match differential_pair_base_name(signal: row.signal_name) {
       Absent => acc
       Present { value: base } => {
-        let prior = match map_get(acc, base) {
+        let prior = match map_lookup(m: acc, key: base) {
           Present { value: scan } => scan
           Absent => DifferentialPolarityScan { has_positive: false, has_negative: false }
         }
@@ -251,7 +252,7 @@ fn classify_table4_signal(
   } else {
     match differential_pair_base_name(signal: signal) {
       Absent => SingleEndedSignalContact
-      Present { value: base } => match map_get(polarities, base) {
+      Present { value: base } => match map_lookup(m: polarities, key: base) {
         Present { value: scan } =>
           if differential_pair_is_complete(scan: scan) {
             DifferentialPairMemberContact { pair: base }
@@ -367,7 +368,7 @@ fn scan_differential_pair_population(contacts: List<PackageContact>) -> Differen
   fold(contacts, init: DifferentialPairPopulationScan { counts: empty_map() }, f: fn(acc, c) {
     match c.function {
       DifferentialPairMemberContact { pair: p } => {
-        let prior = match map_get(acc.counts, p) {
+        let prior = match map_lookup(m: acc.counts, key: p) {
           Present { value: n } => n
           Absent => 0
         }
@@ -420,7 +421,7 @@ fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPai
           IncompleteDifferentialPair { pair: _, member_count: _ } => acc
           AllDifferentialPairsComplete => match c.function {
             DifferentialPairMemberContact { pair: p } => {
-              let members = match map_get(scan.counts, p) {
+              let members = match map_lookup(m: scan.counts, key: p) {
                 Present { value: n } => n
                 Absent => 0
               }

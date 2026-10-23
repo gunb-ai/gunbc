@@ -1,7 +1,7 @@
 module std.termination
 import std.optional { Absent, Present }
 
-import std.algebra { BoundedLattice, Ordering }
+import std.algebra { map_lookup, BoundedLattice, Ordering }
 import std.types { List, Map }
 
 type DescentEvidence
@@ -72,7 +72,7 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
 }
 
 fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
-  match map_get(base, key) {
+  match map_lookup(m: base, key: key) {
     Present { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
     Absent => map_insert(base, key, new_val)
   }

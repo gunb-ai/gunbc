@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_event_snapshot_census
 
 import std.types { String, Int, Bool, List, Map }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.algebra { trim }
+import std.algebra { map_lookup, trim }
 import std.list { first_duplicate_by_key }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_string, json_array, json_object, json_kv }
@@ -91,7 +91,7 @@ fn snapshot_census_present_across(snapshots: List<String>, prior: SnapshotCensus
   match prior {
     SnapshotCensusPriorRead { snapshots: before } => {
       let held = snapshot_census_path_index(paths: before)
-      filter(snapshots, s => match map_get(held, s) { Present { value: _ } => true  Absent => false })
+      filter(snapshots, s => match map_lookup(m: held, key: s) { Present { value: _ } => true  Absent => false })
     }
     SnapshotCensusPriorAbsent => []
     SnapshotCensusPriorUnreadable { reason: _ } => []

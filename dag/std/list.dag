@@ -1,4 +1,5 @@
 module std.list
+import std.algebra { map_lookup }
 
 import std.types { List, Bool, String, Map, Int }
 // Temporary realization: the seed intercepts algebra.contains and discards eq.
@@ -55,7 +56,7 @@ fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
     match acc {
       FirstDuplicateFound { value: v } => FirstDuplicateFound { value: v }
       FirstDuplicateNotFound { seen: seen } =>
-        match map_get(seen, key(x)) {
+        match map_lookup(m: seen, key: key(x)) {
           Present { value: _ } => FirstDuplicateFound { value: x }
           Absent => FirstDuplicateNotFound { seen: map_insert(seen, key(x), true) }
         }
@@ -82,7 +83,7 @@ type KeyedScan<T> {
 
 fn distinct_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
   let scan = fold(xs, init: KeyedScan { seen: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
-    match map_get(acc.seen, key(x)) {
+    match map_lookup(m: acc.seen, key: key(x)) {
       Present { value: _ } => acc
       Absent => KeyedScan { seen: map_insert(acc.seen, key(x), 1), kept_reversed: concat([x], acc.kept_reversed) }
     }
@@ -103,14 +104,14 @@ type DuplicatedScan<T> {
 
 fn duplicated_by_key<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
   let scan = fold(xs, init: DuplicatedScan { firsts: empty_map(), reported: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
-    match map_get(acc.firsts, key(x)) {
+    match map_lookup(m: acc.firsts, key: key(x)) {
       Absent => DuplicatedScan {
         firsts: map_insert(acc.firsts, key(x), x),
         reported: acc.reported,
         kept_reversed: acc.kept_reversed,
       }
       Present { value: first } =>
-        match map_get(acc.reported, key(x)) {
+        match map_lookup(m: acc.reported, key: key(x)) {
           Present { value: _ } => acc
           Absent => DuplicatedScan {
             firsts: acc.firsts,

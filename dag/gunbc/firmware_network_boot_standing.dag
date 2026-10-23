@@ -22,7 +22,7 @@ module gunbc.firmware_network_boot_standing
 // name what it covers, and no match in this module is ever on it.
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
-import std.algebra { length, fold_list, list_append, contains, list_map, string_concat_join, Cons, Empty }
+import std.algebra { map_lookup, length, fold_list, list_append, contains, list_map, string_concat_join, Cons, Empty }
 import std.optional { Optional, Present, Absent, optional_prefer_first_present }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
@@ -2680,7 +2680,7 @@ fn conflicting_reference_readings(
       map_insert(
         acc,
         key,
-        concat(match map_get(acc, key) { Present { value: seen } => seen  Absent => [] }, [option]),
+        concat(match map_lookup(m: acc, key: key) { Present { value: seen } => seen  Absent => [] }, [option]),
       )
     },
   )
@@ -2693,7 +2693,7 @@ fn conflicting_reference_readings(
           // whole accumulator -- no `length > 0`, no boolean 'have we found one' shadow of it.
           Present { value: _ } => acc
           Absent =>
-            match map_get(buckets, reference) {
+            match map_lookup(m: buckets, key: reference) {
               Absent => acc
               Present { value: readings } => conflict_within_bucket(reference: reference, readings: readings)
             }

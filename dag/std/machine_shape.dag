@@ -1,4 +1,5 @@
 module std.machine_shape
+import std.algebra { map_lookup }
 
 import std.types { NonEmptyStr, Bool, List, Map, list_length, brand }
 import std.measure {
@@ -96,7 +97,7 @@ fn machine_shape_validate_edge(index: MachineShapeValidationIndex, edge: Interco
       } else if !map_contains_key(index.domain_ids, sharer_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: sharer_id } } }
       } else {
-        match map_get(index.owner_levels, owner_id) {
+        match map_lookup(m: index.owner_levels, key: owner_id) {
           Present { value: owner_level_index } =>
             if !map_contains_key(owner_level_index, level_id) {
               Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }

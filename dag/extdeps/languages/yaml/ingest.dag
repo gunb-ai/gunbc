@@ -3,7 +3,7 @@ module extdeps.languages.yaml.ingest
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.optional { Present, Absent }
-import std.algebra { trim }
+import std.algebra { map_lookup, trim }
 import std.types { Char }
 import std.error_primitives { Ok, Err }
 import std.unicode.scalar { SurrogateCodePoint, CodePointOutOfRange, from_code_point }
@@ -191,7 +191,7 @@ fn yaml_resolve_numeric_grammar(s: String) -> YamlValue {
   } else if yaml_is_core_float(s: s) {
     YamlFloat { lexeme: s }
   } else {
-    match map_get(yaml_core_schema_words, s) {
+    match map_lookup(m: yaml_core_schema_words, key: s) {
       Present { value: v } => v
       Absent => YamlString { value: s }
     }
@@ -201,7 +201,7 @@ fn yaml_resolve_numeric_grammar(s: String) -> YamlValue {
 // THE CORE SCHEMA'S TAG RESOLUTION FOR A PLAIN SCALAR (section 10.3.2), for text already known to
 // be a well-formed plain scalar.
 fn yaml_resolve_plain(s: String) -> YamlValue {
-  match map_get(yaml_core_schema_words, s) {
+  match map_lookup(m: yaml_core_schema_words, key: s) {
     Present { value: v } => v
     Absent => if string_contains(s: yaml_numeric_starts, pattern: substring(s: s, start: 0, end: 1)) { yaml_resolve_numeric(s: s) } else { YamlString { value: s } }
   }
@@ -307,7 +307,7 @@ fn yaml_hex_value(s: String, i: Int, acc: Int) -> Int {
   if i >= s.length() {
     acc
   } else {
-    match map_get(yaml_hex_values, char_at(s, i)) {
+    match map_lookup(m: yaml_hex_values, key: char_at(s, i)) {
       Present { value: d } => yaml_hex_value(s: s, i: i + 1, acc: (acc * 16) + d)
       Absent => -1
     }
@@ -363,7 +363,7 @@ fn yaml_double_quoted_escape(pieces: List<String>, index: Int, p: String, acc: L
   let c = substring(s: p, start: 0, end: 1)
   let width = if c == "x" { 2 } else if c == "u" { 4 } else if c == "U" { 8 } else { 0 }
   if width == 0 {
-    match map_get(yaml_double_quoted_escapes, c) {
+    match map_lookup(m: yaml_double_quoted_escapes, key: c) {
       Absent => YamlScalarRefused { reason: join(["`\\", c, "` is not a YAML escape (section 5.7)"], "") }
       Present { value: cp } => yaml_double_quoted_scalar(pieces: pieces, index: index, escape: c, cp: cp, rest: substring(s: p, start: 1, end: p.length()), acc: acc)
     }
@@ -544,7 +544,7 @@ fn yaml_flow_plain_entry(e: String) -> YamlScalarResult {
   if e == "" {
     yaml_flow_entry(e: e)
   } else {
-    match map_get(yaml_value_start_class, substring(s: e, start: 0, end: 1)) {
+    match map_lookup(m: yaml_value_start_class, key: substring(s: e, start: 0, end: 1)) {
       Absent => ReadYamlScalar { value: YamlString { value: e } }
       Present { value: cls } =>
         if cls != 1 {
@@ -623,7 +623,7 @@ fn yaml_literal_text(body: String, prefix: String) -> String {
 }
 
 fn yaml_block_scalar(header: String, cont: String, col: Int) -> YamlBlockResult {
-  match map_get(yaml_block_scalar_chomping, header) {
+  match map_lookup(m: yaml_block_scalar_chomping, key: header) {
     Absent => YamlBlockRefused { line: 0, reason: join(["the block scalar header `", header, "` is outside the supported subset (only `|`, `|-` and `|+`, with no indentation indicator and no comment)"], "") }
     Present { value: chomping } => yaml_literal_body(chomping: chomping, cont: cont, col: col)
   }
@@ -1017,7 +1017,7 @@ data yaml_key_start_class: Map<String, Int> = {
 }
 
 fn yaml_key_start_leaves_fast_path(c0: String, k: String) -> Bool {
-  match map_get(yaml_key_start_class, c0) {
+  match map_lookup(m: yaml_key_start_class, key: c0) {
     Absent => false
     Present { value: cls } => if cls == 1 { true } else { map_contains_key(yaml_core_schema_words, k) }
   }
@@ -1057,7 +1057,7 @@ fn yaml_entry(c: String, n: Int) -> YamlEntryRead {
       if ends_with(s: v, suffix: ":") || yaml_key_leaves_fast_path(k: k) {
         yaml_entry_general(c: c, n: n)
       } else {
-        match map_get(yaml_value_start_class, substring(s: v, start: 0, end: 1)) {
+        match map_lookup(m: yaml_value_start_class, key: substring(s: v, start: 0, end: 1)) {
           Absent => YamlEntryAccepted { entry: YamlKeyValue { key: k, value: YamlString { value: v } } }
           Present { value: cls } =>
             if cls == 1 {

@@ -1,4 +1,5 @@
 module gunbc.emitted_crate_workspace
+import std.algebra { map_lookup }
 
 import gunbc.crate_partition {
   EmittedEdgeRefusal,
@@ -143,7 +144,7 @@ fn emitted_workspace_crate_dir(package: String) -> String {
 }
 
 fn emitted_workspace_lookup(m: Map<String, String>, key: String) -> Optional<String> {
-  map_get(m, key)
+  map_lookup(m: m, key: key)
 }
 
 // The runtime is a FIXED foundation crate every unit depends on, so the policy partitions the
@@ -164,7 +165,7 @@ fn emitted_workspace_unit_rows(modules: List<ModuleId>, assignment: Map<ModuleId
       package_name: package,
       crate_dir: emitted_workspace_crate_dir(package: package),
       kind: Stage0LayeredCoreCrate,
-      modules: modules |> filter(m => match map_get(assignment, m) {
+      modules: modules |> filter(m => match map_lookup(m: assignment, key: m) {
           Present { value: u } => u == unit_id
           Absent => false
         }) |> map(m => m as String) |> sort_by(m => m),
@@ -220,7 +221,7 @@ fn emitted_workspace_derived_rows(unit_rows: List<Stage0PartitionCrateRow>, unit
 }
 
 fn emitted_workspace_unit_of(assignment: Map<ModuleId, CompilationUnitId>, module: String) -> Optional<CompilationUnitId> {
-  map_get(assignment, module as ModuleId)
+  map_lookup(m: assignment, key: module as ModuleId)
 }
 
 // An edge (from_unit -> to_unit) of the unit graph is in the TRANSITIVE REDUCTION when no OTHER

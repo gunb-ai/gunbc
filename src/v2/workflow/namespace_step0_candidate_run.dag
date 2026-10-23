@@ -1,4 +1,5 @@
 module v2.workflow.namespace_step0_candidate_run
+import std.algebra { map_lookup }
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
@@ -305,7 +306,7 @@ type Step0IndexFold {
 fn step0_histogram_index(rows: List<CompileDiagnosticCensusRow>) -> Step0HistogramIndex {
   let built = fold(rows, init: Step0IndexFold { index: empty_map(), duplicates: 0 }, f: fn(acc, row) {
     let key = step0_row_key(row: row)
-    match map_get(acc.index, key) {
+    match map_lookup(m: acc.index, key: key) {
       Present { value: _ } => Step0IndexFold { index: acc.index, duplicates: acc.duplicates + 1 }
       Absent => Step0IndexFold { index: map_insert(acc.index, key, row.count), duplicates: acc.duplicates }
     }
@@ -322,7 +323,7 @@ fn step0_differential_left_step(
   post_index: Map<String, Int>,
   row: CompileDiagnosticCensusRow
 ) -> Step0HistogramDifferential {
-  match map_get(post_index, step0_row_key(row: row)) {
+  match map_lookup(m: post_index, key: step0_row_key(row: row)) {
     Absent => Step0HistogramDifferential {
       domain: acc.domain,
       pre_occurrences: acc.pre_occurrences,
@@ -384,7 +385,7 @@ fn step0_differential_right_step(
   pre_index: Map<String, Int>,
   row: CompileDiagnosticCensusRow
 ) -> Step0HistogramDifferential {
-  match map_get(pre_index, step0_row_key(row: row)) {
+  match map_lookup(m: pre_index, key: step0_row_key(row: row)) {
     Present { value: _ } => acc
     Absent => Step0HistogramDifferential {
       domain: acc.domain,

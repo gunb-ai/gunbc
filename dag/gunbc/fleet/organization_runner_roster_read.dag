@@ -1,7 +1,7 @@
 module gunbc.fleet.organization_runner_roster_read
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Map, Secret }
-import std.algebra { Cons, Empty, trim }
+import std.algebra { map_lookup, Cons, Empty, trim }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -541,7 +541,7 @@ fn reconcile_registrations(pages: List<OrganizationRunnerRosterPage>) -> Registr
     disputed_reversed: []
   }, f: fn(acc, r) {
     let key = to_string(r.id)
-    match map_get(acc.first_reading, key) {
+    match map_lookup(m: acc.first_reading, key: key) {
       Absent => ReconcileScan {
         first_reading: map_insert(acc.first_reading, key, r),
         disputed: acc.disputed,
@@ -552,7 +552,7 @@ fn reconcile_registrations(pages: List<OrganizationRunnerRosterPage>) -> Registr
         if registration_readings_agree(a: seen, b: r) {
           acc
         } else {
-          match map_get(acc.disputed, key) {
+          match map_lookup(m: acc.disputed, key: key) {
             Present { value: _ } => acc
             Absent => ReconcileScan {
               first_reading: acc.first_reading,
@@ -565,7 +565,7 @@ fn reconcile_registrations(pages: List<OrganizationRunnerRosterPage>) -> Registr
     }
   })
   RegistrationReconciliation {
-    kept: filter(reverse(scan.first_seen_reversed), r => match map_get(scan.disputed, to_string(r.id)) {
+    kept: filter(reverse(scan.first_seen_reversed), r => match map_lookup(m: scan.disputed, key: to_string(r.id)) {
       Present { value: _ } => false
       Absent => true
     }),

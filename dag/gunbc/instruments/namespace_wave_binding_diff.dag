@@ -1,7 +1,7 @@
 module gunbc.instruments.namespace_wave_binding_diff
 
 import std.types { String, Bool, List, Int, Map, NonEmptyStr }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, list_snoc_item }
+import std.algebra { map_lookup, Cons, Empty, empty_map, map_insert, list_at_optional, list_snoc_item }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
@@ -152,7 +152,7 @@ fn observed_module_set(stdout: String) -> Map<String, Bool> {
 }
 
 fn module_in(set: Map<String, Bool>, module: String) -> Bool {
-  match map_get(set, module) { Present { value: _ } => true  Absent => false }
+  match map_lookup(m: set, key: module) { Present { value: _ } => true  Absent => false }
 }
 
 fn rows_with_prefix(stdout: String, prefix: String) -> List<String> {
@@ -200,7 +200,7 @@ fn binding_diff_observed(base_lines: List<String>, head_lines: List<String>, row
   let changed = head_lines |> fold(init: [], f: fn(acc, l) {
     let key = line_key(line: l)
     let after = line_target(line: l)
-    match map_get(base, key_text(key: key)) {
+    match map_lookup(m: base, key: key_text(key: key)) {
       Absent => list_snoc_item(xs: acc, item: Appeared { key: key, after: after })
       Present { value: bl } =>
         let before = line_target(line: bl)
@@ -212,7 +212,7 @@ fn binding_diff_observed(base_lines: List<String>, head_lines: List<String>, row
     }
   })
   let vanished = base_lines
-    |> filter(l => match map_get(head, key_text(key: line_key(line: l))) { Present { value: _ } => false  Absent => true })
+    |> filter(l => match map_lookup(m: head, key: key_text(key: line_key(line: l))) { Present { value: _ } => false  Absent => true })
     |> map(l => Vanished { key: line_key(line: l), before: line_target(line: l) })
   let all = changed + vanished
   BindingDiff {

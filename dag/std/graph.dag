@@ -6,7 +6,7 @@ import std.termination {
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,
   TerminationProof
 }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { map_lookup, collection_concat_shape, collection_count_shape, collection_map_shape }
 
 type GraphEdge {
   caller: String
@@ -50,11 +50,11 @@ fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdja
   let initial_forward = seed_adjacency_map(names: names)
   let initial_reverse = seed_adjacency_map(names: names)
   graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
-    let forward_neighbors = match map_get(acc.forward, edge.caller) {
+    let forward_neighbors = match map_lookup(m: acc.forward, key: edge.caller) {
       Present { value: ns } => concat(ns, [edge.callee])
       Absent => [edge.callee]
     }
-    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
+    let reverse_neighbors = match map_lookup(m: acc.reverse, key: edge.callee) {
       Present { value: ns } => concat(ns, [edge.caller])
       Absent => [edge.caller]
     }
@@ -78,7 +78,7 @@ fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: Dfs
     acc
   } else {
     let next_visited = set_insert(acc.visited, node)
-    let neighbors = match map_get(adjacency, node) {
+    let neighbors = match map_lookup(m: adjacency, key: node) {
       Present { value: ns } => ns
       Absent => []
     }
@@ -95,7 +95,7 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
   } else {
     let next_visited = set_insert(acc.visited, node)
     let next_members = acc.members |> list_push(node)
-    let neighbors = match map_get(adjacency, node) {
+    let neighbors = match map_lookup(m: adjacency, key: node) {
       Present { value: ns } => ns
       Absent => []
     }
