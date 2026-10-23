@@ -2142,7 +2142,7 @@ fn module_binding_of(route: ModuleBindingRoute, identity: ResolvedReferenceIdent
 // (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
 type KernelTypeReading
   = KernelTypeBinding { canonical: Symbol }
-  | KernelSpellingCapturedByForeignDeclaration
+  | KernelSpellingForeignDeclaration
   | NotAKernelTypeReading
 
 fn resolve_kernel_type_reading(identity: Symbol, path: QualifiedName, declared_here: Bool) -> KernelTypeReading {
@@ -2156,7 +2156,7 @@ fn resolve_kernel_type_reading(identity: Symbol, path: QualifiedName, declared_h
             NotAKernelTypeReading
           } else {
             match dag_kernel_type_foreign_declaration(canonical: spelled) {
-              ForeignDeclarationRefuses => KernelSpellingCapturedByForeignDeclaration
+              ForeignDeclarationRefuses => KernelSpellingForeignDeclaration
               ForeignDeclarationBinds => NotAKernelTypeReading
             }
           }
@@ -2202,7 +2202,7 @@ fn resolve_atom_declared(
         ),
         diagnostics: pending
       }
-    KernelSpellingCapturedByForeignDeclaration =>
+    KernelSpellingForeignDeclaration =>
       Rejected {
         diagnostics: rejected_with_pending(
           pending: pending,

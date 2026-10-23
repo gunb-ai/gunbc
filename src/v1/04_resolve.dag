@@ -52,7 +52,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
-  width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, type_declaration_visible_with_spelling, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
+  width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, type_declaration_in_own_scope_with_spelling, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
 }
 
@@ -1549,7 +1549,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
         }
       )
       let resolved_fields = map(field_results, fr => fr.item)
-      let shadow_diags = if variant.children |> count == 0 && type_declaration_visible_with_spelling(env: env, name: authored_name(env: env, node: variant)) {
+      let shadow_diags = if variant.children |> count == 0 && type_declaration_in_own_scope_with_spelling(env: env, name: authored_name(env: env, node: variant)) {
         [make_error_node(diagnostic: UnionMemberShadowsType { name: authored_name(env: env, node: variant), span: variant.span }, module_name: module_name)]
       } else { [] }
       let field_diags = concat(shadow_diags, flat_map(field_results, fr => fr.diagnostics))

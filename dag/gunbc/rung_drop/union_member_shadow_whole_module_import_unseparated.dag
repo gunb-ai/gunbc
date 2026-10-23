@@ -1,0 +1,21 @@
+module gunbc.rung_drop.union_member_shadow_whole_module_import_unseparated
+
+import std.types { NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+data union_member_shadow_whole_module_import_unseparated_population: FreeSemigroup<String> = FreeSemigroup { head: "a union member spelled like a type of a whole-module import (import m) of the declaring module: accepted by resolve; census today is 0", tail: [] }
+
+data union_member_shadow_whole_module_import_unseparated: RungDrop = RungDrop {
+  identity: "union_member_shadow_whole_module_import_unseparated" as NonEmptyStr,
+  subject: "UnionMemberShadowsType for a type reached through a whole-module import",
+  declared: "2026-10-23",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "type_declaration_in_own_scope_with_spelling refuses own declarations and listed imports; a whole-module import contributes its own interface and its transitive names to one map, so the two cannot be told apart" },
+    population: Enumerated { members: union_member_shadow_whole_module_import_unseparated_population },
+    restoration_trigger: "an own-interface visibility set that separates a module's own exports from transitive names, so the check refuses a member spelled like a whole-module import's own type; executed by test.claim.union_member_shadows_type_witness a_member_spelled_like_a_type_of_a_whole_module_import_is_accepted_today_a_declared_gap flipping to a refusal"
+  } }
+}

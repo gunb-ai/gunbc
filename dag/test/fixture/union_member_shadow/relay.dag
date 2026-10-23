@@ -1,0 +1,10 @@
+module test.fixture.union_member_shadow.relay
+
+import std.types { Int }
+import test.fixture.union_member_shadow.provider { UmsLeaf }
+
+// Reaches UmsLeaf only to hand a consumer a module whose closure contains it: the consumer of this
+// module sees UmsLeaf through the import closure, never through an import of its own.
+fn ums_relay_answer() -> Int {
+  1
+}

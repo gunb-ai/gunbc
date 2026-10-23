@@ -1253,12 +1253,25 @@ type UnitVariantPhantomLookup
   | UnitVariantPhantomEvidenceUnavailable
 
 // A union's bare member is a fresh unit variant, never a reference to a type (type position resolves
-// types first, so a variant sharing a visible type's spelling is unreachable there). The spelling
-// naming a type declaration visible in the declaring module is therefore two meanings for one name
-// (DESIGN section 3); resolve refuses it at the member span, which is also what makes a marker for
-// that spelling impossible to reach the emitter.
-fn type_declaration_visible_with_spelling(env: TypeEnv, name: String) -> Bool {
-  match lookup_binding_by_name(env: env, name: name) {
+// types first, so a variant sharing a type's spelling is unreachable there). The spelling naming a
+// type declaration in the declaring module's OWN scope -- its declarations plus its listed imports --
+// is therefore two meanings for one name (DESIGN section 3); resolve refuses it at the member span,
+// which is also what makes a marker for that spelling impossible to reach the emitter. A type merely
+// visible through the import closure is not in the author's scope: the emitted Rust keeps one module
+// per source module, so nothing collides, and refusing it would force upstream spellings off their
+// real names (section 3) on the evidence of a closure the author never wrote (section 4d). This
+// replaces the lookup_binding_by_name check, which falls through transitive ancestry.
+// Known gap: a whole-module import (`import m`) contributes its own interface to the same map as its
+// transitive names, so an own-interface type reached that way is not separated here
+// (gunbc.rung_drop union_member_shadow_whole_module_import_unseparated).
+fn type_declaration_in_own_scope_with_spelling(env: TypeEnv, name: String) -> Bool {
+  let own = match map_get(env.str_bindings, name) {
+    Present { value: binding } => Present { value: binding }
+    Absent =>
+      if map_has(m: env.authored_import_names, key: name) { lookup_binding_by_name(env: env, name: name) }
+      else { none }
+  }
+  match own {
     Present { value: binding } =>
       binding.resolved.module_item_kind == ModuleItemTypeDeclaration
         && binding_declares_name(binding: binding, name: name, source_indices: env.source_indices)

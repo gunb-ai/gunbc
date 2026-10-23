@@ -20,9 +20,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Resolve now refuses that spelling at the member (UnionMemberShadowsType), and the emitter's marker
 // rule has no shadow guard of its own: a source that reaches it cannot contain the shape.
 //
-// RED: the same-module and imported shadowing shapes refuse with that class. CONTROLS: a union with
-// no shadowing member is accepted and emits its marker, and the spelling declared as a type only in
-// a module the declarer does not import (the forked_spelling variant_twin shape) is accepted.
+// The scope is the declarer's OWN: its declarations plus its listed imports. RED: the same-module and
+// listed-import shapes refuse with that class. CONTROLS: a union with no shadowing member is accepted
+// and emits its marker; the spelling declared as a type only in a module the declarer does not
+// import, and the spelling reachable only through another module's imports (the forked_spelling
+// variant_twin shape, and the relay fixture here), are accepted. DECLARED GAP
+// (gunbc.rung_drop union_member_shadow_whole_module_import_unseparated): a whole-module import
+// contributes its own interface and its transitive names to one map, so the own-interface type
+// reached that way is accepted today; the last test pins that reading and must flip to a refusal
+// when an own-interface visibility set lands.
 
 fn shadow_refusals(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -64,4 +70,16 @@ test fn a_non_shadowing_union_still_emits_its_marker() -> Bool {
 
 test fn a_member_spelled_like_a_type_outside_the_declarers_scope_is_accepted() -> Bool {
   blocking_total(out_of_scope_src) == 0
+}
+
+data transitive_src: String = "module ums_transitive\n\nimport test.fixture.union_member_shadow.relay { ums_relay_answer }\n\ntype UmsPick3 = UmsLeaf | UmsOther\n"
+
+data whole_module_src: String = "module ums_whole_module\n\nimport test.fixture.union_member_shadow.provider\n\ntype UmsPick4 = UmsLeaf | UmsOther\n"
+
+test fn a_member_spelled_like_a_type_reachable_only_through_another_modules_imports_is_accepted() -> Bool {
+  blocking_total(transitive_src) == 0
+}
+
+test fn a_member_spelled_like_a_type_of_a_whole_module_import_is_accepted_today_a_declared_gap() -> Bool {
+  shadow_refusals(whole_module_src) == 0
 }
