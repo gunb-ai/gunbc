@@ -2,7 +2,10 @@ module v2.test.claim.native_driver_plan
 
 import std.types { List }
 import v2.std.text { String }
-import std.algebra { length }
+import std.algebra { length, fold_list }
+import gunbc.instrument_targets { instrument_bindings }
+import gunbc.native_census_verb { NativeCensusVerbWord, native_census_verb_of_word, native_census_verbs }
+import gunbc.target_binding { TargetBinding, NativeCensusVerbProducer }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
@@ -15,8 +18,7 @@ import v2.compiler.source_root_eval {
   NativeDriverCensusResolve,
   NativeDriverCensusInfer,
   NativeDriverCensusScoped,
-  NativeDriverDemandCensus,
-  NativeDriverDeclRefCensus,
+  NativeDriverCensusVerb,
   NativeDriverPlanRefused,
   NativeDriverPlanned,
   native_driver_adjudicate_needs_facts,
@@ -50,8 +52,7 @@ fn parsed_verb_is_census(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => true
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
-        NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -66,8 +67,7 @@ fn parsed_verb_is_census_resolve(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => true
         NativeDriverCensusInfer { source_roots: _ } => false
-        NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -82,8 +82,7 @@ fn parsed_verb_is_adjudicate(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
-        NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => true
       }
@@ -110,8 +109,7 @@ fn planned_facts_path(argv: List<String>) -> String {
         NativeDriverCensus { source_roots: _ } => ""
         NativeDriverCensusResolve { source_roots: _ } => ""
         NativeDriverCensusInfer { source_roots: _ } => ""
-        NativeDriverDemandCensus { source_roots: _ } => ""
-        NativeDriverDeclRefCensus { source_roots: _ } => ""
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => ""
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => ""
       }
   }
@@ -149,8 +147,7 @@ fn parsed_verb_is_census_infer(argv: List<String>) -> Bool {
       match verb {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => false
-        NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => true
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
@@ -194,7 +191,7 @@ test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool {
 
 test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool {
   (refusal_detail(argv: ["adjudicat", "x"])
-    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped or demand-census")
+    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census")
   && plan_exit_is_misuse(argv: ["adjudicat", "x"])
 }
 
@@ -213,7 +210,7 @@ test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool {
 // refusal is reported.
 test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
   refusal_detail(argv: ["nonsense", "census"])
-    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped or demand-census"
+    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census"
 }
 
 // THE PATTERN OPTION: carried to the plan as the authority parsed it, and refused at the command
@@ -228,8 +225,7 @@ fn planned_pattern_render(argv: List<String>) -> String {
         NativeDriverCensus { source_roots: _ } => ""
         NativeDriverCensusResolve { source_roots: _ } => ""
         NativeDriverCensusInfer { source_roots: _ } => ""
-        NativeDriverDemandCensus { source_roots: _ } => ""
-        NativeDriverDeclRefCensus { source_roots: _ } => ""
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => ""
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => ""
       }
   }
@@ -289,8 +285,7 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
-        NativeDriverDemandCensus { source_roots: _ } => true
-        NativeDriverDeclRefCensus { source_roots: _ } => false
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => false
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -317,8 +312,7 @@ fn planned_scoped_subject(argv: List<String>) -> String {
         NativeDriverCensus { source_roots: _ } => ""
         NativeDriverCensusResolve { source_roots: _ } => ""
         NativeDriverCensusInfer { source_roots: _ } => ""
-        NativeDriverDemandCensus { source_roots: _ } => ""
-        NativeDriverDeclRefCensus { source_roots: _ } => ""
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => ""
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => ""
       }
   }
@@ -359,8 +353,7 @@ fn planned_scoped_against(argv: List<String>) -> String {
         NativeDriverCensus { source_roots: _ } => "<other>"
         NativeDriverCensusResolve { source_roots: _ } => "<other>"
         NativeDriverCensusInfer { source_roots: _ } => "<other>"
-        NativeDriverDemandCensus { source_roots: _ } => "<other>"
-        NativeDriverDeclRefCensus { source_roots: _ } => "<other>"
+        NativeDriverCensusVerb { verb: _, source_roots: _ } => "<other>"
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => "<other>"
       }
   }
@@ -375,4 +368,27 @@ test fn census_scoped_against_names_a_baseline_and_not_a_root_holds() -> Bool {
 test fn census_scoped_against_without_a_path_refuses_as_misuse_holds() -> Bool {
   (refusal_detail(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against"]) == native_driver_census_scoped_needs_against)
   && plan_exit_is_misuse(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against"])
+}
+
+// THE JOIN THAT KEEPS THE VERB ONE FACT. The binding's producer field IS NativeCensusVerbWord
+// (gunbc.native_census_verb), so a binding naming a verb that is not a word cannot be written; the one
+// direction left to join is that every word has a binding.
+fn binding_names_verb(b: TargetBinding, v: NativeCensusVerbWord) -> Bool {
+  match b.producer {
+    NativeCensusVerbProducer { verb: w } => w == v
+    _ => false
+  }
+}
+
+test fn every_native_census_verb_word_has_a_binding_holds() -> Bool {
+  fold_list(xs: native_census_verbs, empty: true, cons: fn(ok, v) {
+    ok && fold_list(xs: instrument_bindings(), empty: false, cons: fn(found, b) { found || binding_names_verb(b: b, v: v) })
+  })
+}
+
+test fn a_misspelled_census_verb_is_not_a_word_holds() -> Bool {
+  match native_census_verb_of_word(word: "decl-ref-cenzus") {
+    Present { value: _ } => false
+    Absent => true
+  }
 }

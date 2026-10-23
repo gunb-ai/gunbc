@@ -49,6 +49,13 @@ data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   provenance: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.",
 }
 
+data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action"),
+  decided: "2026-10-22",
+  section: "3b",
+  provenance: "Operator ruling on the policy question gunbc#14694 left open: \"i prefer everything to go thru one route\". Every disruptive or privileged action, including FleetOnce actions with host-root reach on srv1, is approved through the approval broker route AccessRequest -> ApprovalCapability -> redeem_capability (gunbc.auth.access_request, approval_capability, approval_broker), fronted by the iOS approval app; the administrator edge is not a second approval route. Applied in gunbc.auth.authorization_pattern_selection candidate_patterns (the edge is a candidate only for an effect that must run unattended), so FleetOnce plus host-root reach selects OperatorApprovedCapability.",
+}
+
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset"),
   decided: "2026-09-26",
@@ -168,6 +175,13 @@ data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
 }
 
+data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "where_refinements_retire_for_checked_constructors"),
+  decided: "2026-10-02",
+  section: "4",
+  provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -273,6 +287,13 @@ data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
   provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
 }
 
+data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
+  decided: "2026-10-23",
+  section: "3",
+  provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
+}
+
 data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
@@ -314,6 +335,7 @@ fn design_rulings() -> List<DesignRuling> {
     root_generalization_closes_breadth,
     instrument_is_a_row_not_a_flag,
     authorization_pattern_is_a_selection,
+    one_approval_route_for_every_privileged_action,
     coercion_is_the_implicit_safe_subset,
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,
@@ -327,6 +349,7 @@ fn design_rulings() -> List<DesignRuling> {
     explicit_present_is_the_authoring_policy,
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
+    where_refinements_retire_for_checked_constructors,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
@@ -342,6 +365,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
+    approval_enrolment_is_google_sign_in,
   ]
 }
 

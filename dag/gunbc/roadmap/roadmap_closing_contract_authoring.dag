@@ -44,6 +44,7 @@ import gunbc.roadmap.roadmap_validation_oracle {
   validation_oracle_observe_from_source,
   validation_oracle_first_incomplete,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // THE COMPLETION PREDICATE FOR EVERY CLOSING-CONTRACT TASK, PARAMETERIZED BY ITS TARGET.
 // gunbc.roadmap.roadmap_authority closing_contract_task_naming_correction_note named this construction as
@@ -275,7 +276,7 @@ type ClosingContractRunner
   = ClosingContractRunnerResolved { binary: FilePath }
   | ClosingContractRunnerUnavailable { detail: String }
 
-data closing_contract_witness_bin_rel: String = "target/release/gunbc"
+data closing_contract_witness_bin_rel: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 data closing_contract_witness_bin_name: NonEmptyStr = "gunbc"
 

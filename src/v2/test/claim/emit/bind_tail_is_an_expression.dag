@@ -20,6 +20,7 @@ import v2.std.node {
   node_synthetic,
   ArrowBodyEdge,
   core_edge,
+  NotADeclaration
 }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
@@ -50,11 +51,11 @@ fn probe_atom(id: Symbol) -> Node {
 }
 
 fn probe_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn probe_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn probe_bind(key: Symbol, value: Node, tail: Node) -> Node {
