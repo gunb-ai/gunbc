@@ -42,7 +42,7 @@ fn lpr_resolve_reason(p_src: String) -> Symbol {
 
 // THE RED: no import of std.algebra, so no tier declares the name.
 test fn list_push_without_the_declared_import_refuses_at_resolve() -> Bool {
-  lpr_resolve_reason(p_src: "module p\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_push(xs, 1)\n}\n")
+  lpr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_push(xs: xs, item: 1)\n}\n")
     == ^resolve_reason_unbound_symbol
 }
 
@@ -54,6 +54,6 @@ test fn surviving_contract_row_still_binds_at_resolve() -> Bool {
 
 // THE POSITIVE: the declared import binds to the real std.algebra declaration (read from disk).
 test fn declared_import_of_the_home_binds_where_ambient_refuses() -> Bool {
-  lpr_resolve_reason(p_src: "module p\n\nimport std.algebra { list_push }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_push(xs, 1)\n}\n")
+  lpr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List }\nimport std.algebra { list_push }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_push(xs: xs, item: 1)\n}\n")
     == ^accepted
 }
