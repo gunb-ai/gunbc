@@ -539,7 +539,8 @@ fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<InferredTree>
         outcome_accepted(
           value: InferredTree {
             root: partition.root,
-            facts: facts
+            facts: facts,
+            arm_resolutions: partition.ambient.arm_resolutions
           }
         )
       }

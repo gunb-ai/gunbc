@@ -1,0 +1,56 @@
+module test.claim.runner.runner_host_medium_publish_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested }
+import gunbc.provisioning.seeded_install_media_publish { SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
+import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, runner_host_medium_image }
+import gunbc.runner.runner_host_medium_publish {
+  mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, runner_image_attempt_holds, render_runner_image_attempt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn built_of(input: UbuntuSeededInstallMediaBuildInput) -> UbuntuSeededInstallMediaBuilt {
+  ubuntu_seeded_install_media_built(input: input, output_digest: digest)
+}
+
+// The route's host derives an image (not a fixture): the publish caller is handed this value.
+test fn the_mtcollins1_runner_host_derives_an_image() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: _, runner: _ } => true
+    _ => false
+  }
+}
+
+test fn a_derivation_that_does_not_render_publishes_nothing_and_does_not_hold() -> Bool {
+  !runner_image_attempt_holds(a: RunnerImageNotDerived { reason: "x" })
+    && render_runner_image_attempt(a: RunnerImageNotDerived { reason: "x" }) == "publication=not attempted\npublication_reason=x\n"
+}
+
+test fn a_refused_publication_does_not_hold() -> Bool {
+  !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: SeededImagePublicationRefused { reason: "r", work: CreationNotRequested } })
+}
+
+test fn an_already_published_image_holds_and_its_receipt_names_the_digest() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let a = RunnerImagePublishRan { publication: SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr } }
+      runner_image_attempt_holds(a: a) && contains(render_runner_image_attempt(a: a), "output_digest=0123456789abcdef")
+    }
+    _ => false
+  }
+}
+
+test fn a_published_image_with_an_unremoved_build_directory_does_not_hold() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } =>
+      !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: SeededImagePublished {
+        built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr, work: RemovalUnconfirmed { dir: "/tmp/w" as NonEmptyStr, exit_code: 1, stderr: "r" }, staging_residue: none } })
+    _ => false
+  }
+}

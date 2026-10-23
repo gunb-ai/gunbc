@@ -82,6 +82,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, fold_list_right, PointwisePower, empty_map, map_insert, map_contains_key }
@@ -497,7 +498,7 @@ fn java_void_declared_inhabitant_node() -> Node {
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn java_declared_inhabitants_root() -> Node {

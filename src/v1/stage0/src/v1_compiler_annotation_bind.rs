@@ -88,13 +88,16 @@ pub fn swept_region_key(r: Rc<SweptRegion>) -> String {
 
 pub fn swept_region_order(regions: Rc<Vec<Rc<SweptRegion>>>) -> Rc<Vec<Rc<SweptRegion>>> {
     Rc::new({
-        let mut __sorted: Vec<_> = regions.iter().cloned().collect();
-        __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
-            let __ka = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(a.clone());
-            let __kb = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(b.clone());
-            v1_rt::canonical_key_cmp(&__ka, &__kb)
-        });
-        __sorted
+        let mut __keyed: Vec<_> = regions
+            .iter()
+            .cloned()
+            .map(|__e: Rc<SweptRegion>| {
+                let __k = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(__e.clone());
+                (__k, __e)
+            })
+            .collect();
+        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
     })
 }
 
@@ -260,13 +263,16 @@ pub fn region_key_index(
             },
         );
         let ordered = Rc::new({
-            let mut __sorted: Vec<_> = regions.iter().cloned().collect();
-            __sorted.sort_by(|a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
-                let __ka = (|r: Rc<AnnotationRegion>| r.extent.start.clone())(a.clone());
-                let __kb = (|r: Rc<AnnotationRegion>| r.extent.start.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = regions
+                .iter()
+                .cloned()
+                .map(|__e: Rc<AnnotationRegion>| {
+                    let __k = (|r: Rc<AnnotationRegion>| r.extent.start.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         let stepped = ordered.iter().cloned().fold(
             Rc::new(RegionKeyStepAcc {
