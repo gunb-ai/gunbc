@@ -25,6 +25,7 @@ module v2.test.claim.compiler.infer_generic_formal_shape_mismatch_reason_witness
 // the projection of the no_candidate constant, which is what makes (A)'s word a claim.
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness { inhabitance_generic_formal_tree }
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
   dag_arrow_with_body_node,
@@ -251,4 +252,56 @@ test fn the_emitted_label_is_the_projection_of_the_no_candidate_constant_holds()
     position: PositionDirectCallArgument,
     find_witness_reason: ^find_witness_reason_no_candidate
   ) == ^application_argument_does_not_inhabit
+}
+
+// ===== PROBE SET (added after srv1 runs at 8b2f98c3dff8 and 7240a31fec39: (A) fails, (B)(C)(D)
+// pass). These do not assert the defect; they NAME the refusal (A)'s fixture actually gets, so the
+// next iteration changes the one thing that needs changing instead of guessing. =====
+
+// PROBE 1 -- IS IT REFUSED AT ALL? If this is false, (A) fails because the application is ACCEPTED
+// (some route decided the formal inhabits, or the whole application short-circuited), and the
+// question becomes which accept-path swallowed it, not which refusal fired.
+test fn probe_shape_mismatch_fixture_is_refused_at_all() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// PROBE 2 -- THE UNDECIDABLE-ARGUMENT EXIT. infer_judge_generic_formal :4947-4952: when the
+// argument's derived type is NOT in the entries map (lookup absent, or inferred_facts_resolved_type
+// Violates), the judge ACCEPTS the obligation carrying
+// inhabitance_undecidable_argument_type_not_derived and never reaches the matcher. If infer()
+// promotes that carried diagnostic to fatal, (A) sees it instead of the arm's label. True = this
+// exit answered: my literal's facts are not seeding the entries map under this tree shape.
+test fn probe_shape_mismatch_fatal_is_undecidable_argument_type_not_derived() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^inhabitance_undecidable_argument_type_not_derived
+  }
+}
+
+// PROBE 3 -- AN UPSTREAM UNBOUND SYMBOL. ^aai_type_box names nothing in the empty index; if the
+// alias normalizer at :4954 (infer_type_alias_normalized_at over formal.declared) or an earlier pass
+// refuses on it, the fatal is the resolve reason and the arm is never reached. True = an upstream
+// unbound-symbol refusal answered first.
+test fn probe_shape_mismatch_fatal_is_resolve_unbound_symbol() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+// PROBE 4 -- THE ACCEPTED FIXTURE, IN THIS MODULE'S OWN RUN, AS THE CONTROL. This imports the
+// accepted claim module's fixture constructor verbatim
+// (v2.test.claim.compiler.infer_application_argument_inhabitance_witness
+// inhabitance_generic_formal_tree :107) and asserts exactly what its claim at :253 asserts. If this
+// passes while (A) fails, the DIFFERENCE BETWEEN THE TWO FIXTURES is the clue -- mine differs by the
+// formal's binder name (^aai_param_x vs ^inhabitance_param_t) and the argument arity (two formals
+// vs one); read the two trees against each other before changing anything else.
+test fn probe_accepted_fixture_control_refuses_the_label() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
+  }
 }
