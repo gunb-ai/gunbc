@@ -65,12 +65,14 @@ fn card_budget_from_measured_cell(memory_bytes: ByteSize, cell: CellOutcome, ful
 // (1 kv head) replicates at every TP>1; the GDN state shards 1/TP. Full-attention and indexer bytes are derived from
 // config.json; the GDN state is per SEQUENCE, so the remainder after subtracting them is that state amortized over the
 // measured mix at the measured max-model-len, a context-length-dependent figure, not a per-token constant.
-fn full_attention_rank_bytes(full: Nat, tp: Nat) -> Nat {
-  if tp > 1 { full / 2 } else { full }
+// (review 84955 sweep: the shardable quantity is bytes, so it rides ByteSize; `tp` is a dimensionless
+// shard count, not a unit.)
+fn full_attention_rank_bytes(full: ByteSize, tp: Nat) -> ByteSize {
+  if tp > 1 { byte_size(count: byte_size_count(b: full) / 2) } else { full }
 }
 
 fn rank_bytes_per_token(b: CardBudget, tp: Nat) -> ByteSize {
-  byte_size(count: full_attention_rank_bytes(full: byte_size_count(b: b.full_attention_bytes_per_token), tp: tp) + byte_size_count(b: b.indexer_bytes_per_token) + byte_size_count(b: b.gdn_amortized_bytes_per_token) / tp)
+  byte_size(count: byte_size_count(b: full_attention_rank_bytes(full: b.full_attention_bytes_per_token, tp: tp)) + byte_size_count(b: b.indexer_bytes_per_token) + byte_size_count(b: b.gdn_amortized_bytes_per_token) / tp)
 }
 
 // Sensitivity control: the derived indexer bytes scaled (the per-block scale bytes are unknown), taken out of the GDN term.

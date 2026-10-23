@@ -68,6 +68,10 @@ fn row_for(id: PredictionId, card: PredictionCard) -> PredictionRow? {
   if count(hits) == 1 { fold(hits, init: none, f: (_acc, r) => Present { value: r }) } else { none }
 }
 
+fn between_bytes(v: ByteSize?, lo: Nat, hi: Nat) -> Bool {
+  match v { Present { value: x } => byte_size_count(b: x) >= lo && byte_size_count(b: x) <= hi, none => false }
+}
+
 fn between(v: Nat?, lo: Nat, hi: Nat) -> Bool {
   match v { Present { value: x } => x >= lo && x <= hi, none => false }
 }
@@ -101,8 +105,8 @@ test fn w_b200_catalog_carries_no_bandwidth_so_the_card_needs_an_operator_figure
 test fn w_model_derivations_follow_the_config() -> Bool {
   let a = qwen3_8_flash_next_architecture
   a.gdn_layers + a.qsa_layers == a.layer_count
-    && flash_next_qsa_kv_bytes_per_token(arch: a, element_bytes: 1) == 12288
-    && flash_next_qsa_kv_bytes_per_token(arch: a, element_bytes: 2) == 24576
+    && byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: a, element_bytes: byte_size(count: 1))) == 12288
+    && byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: a, element_bytes: byte_size(count: 2))) == 24576
     && flash_next_params_per_routed_expert(arch: a) == 4915200
     && flash_next_routed_expert_parameters(arch: a) > 120000000000
     && flash_next_routed_expert_parameters(arch: a) < a.total_parameters
@@ -111,7 +115,7 @@ test fn w_model_derivations_follow_the_config() -> Bool {
 // THE RECEIPT: calibration derived from it, not typed beside it.
 test fn w_maxq_receipt_reproduces_the_registered_workload() -> Bool {
   let r = flash_next_maxq_run_2026_10_21
-  between(maxq_kv_bytes_per_token(receipt: r), 19500, 20100)
+  between_bytes(maxq_kv_bytes_per_token(receipt: r), 19500, 20100)
     && between(mean_prompt_tokens(receipt: r), 106000, 106800)
     && token_count_value(t: r.kv_cache_tokens) == 773026
     && r.preemptions == 465
@@ -121,9 +125,9 @@ test fn w_maxq_receipt_reproduces_the_registered_workload() -> Bool {
 // THE IMAGE: FP8 main KV is b12x-only, so the other two arches get BF16 width; B200's native FP4 is
 // conditional on a JIT compile; an arch with no row is absent, never NotBuilt.
 test fn w_image_observations_set_kv_width_per_arch() -> Bool {
-  between(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm120), 1, 1)
-    && between(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm90), 2, 2)
-    && between(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm100), 2, 2)
+  between_bytes(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm120), 1, 1)
+    && between_bytes(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm90), 2, 2)
+    && between_bytes(image_main_kv_element_bytes(rows: flash_next_image_observations, arch: Sm100), 2, 2)
     && (match image_capability_availability(rows: flash_next_image_observations, arch: Sm100, capability: FlashInferNativeFp4Moe) {
       Present { value: v } => match v { JitIfCompiles { fallback: _ } => true, BuiltIn => false, NotBuilt { evidence: _ } => false }
       none => false
@@ -340,7 +344,7 @@ test fn w_warm_throughput_scoreable_only_under_warm_valid() -> Bool {
 test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Bool {
   let cell = quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 })
   match cell {
-    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: byte_size(count: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1)), indexer_bytes_per_token: byte_size(count: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1))) {
+    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1)), indexer_bytes_per_token: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1))) {
       Present { value: b } => {
         let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 1, expert_parallel: false }, b: b)
         let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 1, expert_parallel: false }, b: b)
@@ -353,7 +357,7 @@ test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Boo
               TopologyFits { retained_tokens: r8, per_replica_tokens: _, weight_copies_bytes: w8 } => match tp8_idx {
                 TopologyFits { retained_tokens: ri, per_replica_tokens: _, weight_copies_bytes: _ } => match dp8 {
                   TopologyFits { retained_tokens: rd, per_replica_tokens: _, weight_copies_bytes: wd } =>
-                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1) == 384 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 2) == 768 && rd == p1 * 8 && byte_size_count(b: wd) == byte_size_count(b: w8) * 8
+                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && byte_size_count(b: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1))) == 384 && byte_size_count(b: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 2))) == 768 && rd == p1 * 8 && byte_size_count(b: wd) == byte_size_count(b: w8) * 8
                   _ => false
                 }
                 _ => false

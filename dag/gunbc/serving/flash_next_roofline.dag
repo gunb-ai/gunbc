@@ -63,29 +63,33 @@ fn ratio_permille(num: Nat, den: Nat) -> Nat? {
 
 // P1 -- KV CAPACITY FROM MEMORY: utilization x capacity, minus weights, minus overhead, over KV bytes per
 // token. Absent when the reserve consumes the budget or bytes per token is zero.
-fn kv_capacity_tokens(card: RooflineCard, kv_bytes_per_token: Nat) -> Nat? {
+// (review 84955: kv_bytes_per_token rides std.measure's ByteSize — the one byte quantity this fn consumed
+// as bare Nat. Its return is a token count, which the 84774 verdict leaves as plain Nat.)
+fn kv_capacity_tokens(card: RooflineCard, kv_bytes_per_token: ByteSize) -> Nat? {
   let budget = byte_size_count(b: card.memory_bytes) * card.gpu_memory_utilization_bp / 10000
   let reserve = byte_size_count(b: card.weights_bytes) + byte_size_count(b: card.overhead_bytes)
-  if kv_bytes_per_token == 0 || reserve >= budget {
+  if byte_size_count(b: kv_bytes_per_token) == 0 || reserve >= budget {
     none
   } else {
-    Present { value: (budget - reserve) / kv_bytes_per_token }
+    Present { value: (budget - reserve) / byte_size_count(b: kv_bytes_per_token) }
   }
 }
 
 // THE MAX-Q'S MEASURED KV BYTES PER TOKEN (pool bytes / pool tokens, GDN state included), the one
-// calibration the registered P1 stands on.
-fn maxq_kv_bytes_per_token(receipt: FlashNextMaxQRunReceipt) -> Nat? {
+// calibration the registered P1 stands on. (review 84955 sweep: same pattern, ByteSize.)
+fn maxq_kv_bytes_per_token(receipt: FlashNextMaxQRunReceipt) -> ByteSize? {
   let tokens = token_count_value(t: receipt.kv_cache_tokens)
-  if tokens == 0 { none } else { Present { value: byte_size_count(b: receipt.kv_cache_bytes) / tokens } }
+  if tokens == 0 { none } else { Present { value: byte_size(count: byte_size_count(b: receipt.kv_cache_bytes) / tokens) } }
 }
 
 // KV BYTES PER TOKEN ON ANOTHER CARD: the Max-Q's measured figure, which was taken with the FP8 main KV
 // (element width 1), moved by the QSA layers' K+V bytes at the card's element width. The GDN state and
 // indexer cache are held at their Max-Q size; they are the part of this figure that is calibration, not
 // derivation.
-fn kv_bytes_per_token_at_width(arch: FlashNextArchitecture, calibration_bytes_per_token: Nat, element_bytes: Nat) -> Nat {
-  calibration_bytes_per_token + flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: element_bytes) - flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: 1)
+// (review 84955: the calibration bytes, the element width and the result ride std.measure's ByteSize —
+// no locally minted per-token byte alias; the denominator, per token, lives in the fn name.)
+fn kv_bytes_per_token_at_width(arch: FlashNextArchitecture, calibration_bytes_per_token: ByteSize, element_bytes: ByteSize) -> ByteSize {
+  byte_size(count: byte_size_count(b: calibration_bytes_per_token) + byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: element_bytes)) - byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: byte_size(count: 1))))
 }
 
 // P2 -- MEAN-SIZE SESSIONS RESIDENT: capacity over the receipt's mean prompt tokens per request.
@@ -116,12 +120,13 @@ fn unique_experts_per_layer(arch: FlashNextArchitecture, rows: Nat) -> Nat {
 
 // Routed-expert bytes at 4.5 bits per parameter (4-bit weights plus one FP8 scale per 16): the storage
 // of NVFP4, and of the Marlin W4A16 repack of it.
-fn expert_bytes(arch: FlashNextArchitecture) -> Nat {
-  flash_next_params_per_routed_expert(arch: arch) * 9 / 16
+// (review 84955 sweep: byte quantities ride std.measure's ByteSize, these two helpers included.)
+fn expert_bytes(arch: FlashNextArchitecture) -> ByteSize {
+  byte_size(count: flash_next_params_per_routed_expert(arch: arch) * 9 / 16)
 }
 
-fn routed_weight_bytes(arch: FlashNextArchitecture) -> Nat {
-  arch.layer_count * arch.routed_experts * expert_bytes(arch: arch)
+fn routed_weight_bytes(arch: FlashNextArchitecture) -> ByteSize {
+  byte_size(count: arch.layer_count * arch.routed_experts * byte_size_count(b: expert_bytes(arch: arch)))
 }
 
 type DecodeStepBytes {
@@ -136,12 +141,12 @@ type DecodeStepBytes {
 // indexer_budget_tokens of each request's KV.
 fn decode_step_bytes(arch: FlashNextArchitecture, card: RooflineCard, concurrent: Nat, draft_depth: Nat, context_tokens: Nat) -> DecodeStepBytes {
   let rows = concurrent * (draft_depth + 1)
-  let routed_total = routed_weight_bytes(arch: arch)
+  let routed_total = byte_size_count(b: routed_weight_bytes(arch: arch))
   let weights = byte_size_count(b: card.weights_bytes)
   DecodeStepBytes {
-    routed_expert_bytes: byte_size(count: arch.layer_count * unique_experts_per_layer(arch: arch, rows: rows) * expert_bytes(arch: arch)),
+    routed_expert_bytes: byte_size(count: arch.layer_count * unique_experts_per_layer(arch: arch, rows: rows) * byte_size_count(b: expert_bytes(arch: arch))),
     non_routed_bytes: byte_size(count: if weights > routed_total { weights - routed_total } else { 0 }),
-    qsa_kv_read_bytes: byte_size(count: concurrent * flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: byte_size_count(b: card.main_kv_element_bytes)) * nat_min(a: context_tokens, b: arch.indexer_budget_tokens)),
+    qsa_kv_read_bytes: byte_size(count: concurrent * byte_size_count(b: flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: card.main_kv_element_bytes)) * nat_min(a: context_tokens, b: arch.indexer_budget_tokens)),
   }
 }
 

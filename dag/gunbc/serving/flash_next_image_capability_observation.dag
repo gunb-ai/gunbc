@@ -2,6 +2,7 @@ module gunbc.serving.flash_next_image_capability_observation
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
@@ -117,11 +118,14 @@ fn availability_is_built(a: CapabilityAvailability?) -> Bool {
 // THE MAIN-KV ELEMENT WIDTH THIS IMAGE ALLOWS ON AN ARCH: one byte (FP8) only where the image's FP8 main
 // KV is built, two bytes (BF16) otherwise. Absent when the pair is unobserved. This is the one fact that
 // moves KV bytes per token between the Max-Q and the other cards.
-fn image_main_kv_element_bytes(rows: List<ImageCapabilityObservation>, arch: ImageGpuArch) -> Nat? {
+// (review 84955 sweep: the element width is a byte quantity — bytes per element — so it rides ByteSize
+// and composes with RooflineCard.main_kv_element_bytes without a re-mint. Absent stays absent: a
+// JIT-decided width is not a reading.)
+fn image_main_kv_element_bytes(rows: List<ImageCapabilityObservation>, arch: ImageGpuArch) -> ByteSize? {
   match image_capability_availability(rows: rows, arch: arch, capability: Fp8MainKvCache) {
     Present { value: v } => match v {
-      BuiltIn => Present { value: 1 }
-      NotBuilt { evidence: _ } => Present { value: 2 }
+      BuiltIn => Present { value: byte_size(count: 1) }
+      NotBuilt { evidence: _ } => Present { value: byte_size(count: 2) }
       JitIfCompiles { fallback: _ } => none
     }
     none => none
