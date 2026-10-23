@@ -10,7 +10,8 @@ import extdeps.http.server {
 }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body, approval_broker_marker_in_response,
+  DeviceEnrolHandlerObserved,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, BrokerNoRouteMatched,
   approval_broker_served_token, approval_serving_process_token,
@@ -29,7 +30,8 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse }
+import extdeps.http.server { ServeHttpResponse, ServeResponseHeaderServedBy }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -218,7 +220,11 @@ test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bo
     tailscale_identity: "",
   )
   r.status == 404
-    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+    && match approval_broker_marker_in_response(body: r.body, headers: r.headers) {
+      MarkerObserved { process: p, marker: m } =>
+        approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: BrokerNoRouteMatched)
+      NoMarkerInBody => false
+    }
 }
 
 // AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
@@ -445,4 +451,44 @@ test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
     body: "",
   )
   r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// ── A JSON ANSWER IS JSON, AND THE MARKER STILL READS ───────────────────────────────────────
+// The defect: every application/json answer carried "x-approval-broker: <token>" after the closing
+// brace, so a strict JSON client (apps/approve-ios) could read no device route. These three claims
+// run the real entry for the enrol route (any body: the refusal is JSON too).
+fn device_enrol_answer() -> ServeHttpResponse {
+  approval_broker_respond(method_label: "POST", path: "/approve/device/enrol", body: "{}", tailscale_identity: "")
+}
+
+test fn device_route_json_body_parses_as_json_with_no_marker_in_it() -> Bool {
+  let r = device_enrol_answer()
+  r.content_type.subtype == "json"
+    && !string_contains(s: r.body, pattern: "approval-broker")
+    && match parse_json_document(s: r.body) {
+      JsonDocumentParsed { value: _ } => true
+      JsonDocumentUnreadable { gap: _ } => false
+    }
+}
+
+test fn device_route_json_marker_is_in_the_served_by_header_and_the_reader_observes_it() -> Bool {
+  let r = device_enrol_answer()
+  r.headers == [ServeResponseHeaderServedBy { token: approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) }]
+    && match approval_broker_marker_in_response(body: r.body, headers: r.headers) {
+      MarkerObserved { process: p, marker: m } =>
+        approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved)
+      NoMarkerInBody => false
+    }
+}
+
+// RED CONTROL: the old arm's bytes (marker joined after the body) are NOT JSON under the same
+// parser. This holds when the parse discriminates; it is what the first claim above would have
+// reported had the old arm still produced the body.
+test fn control_old_arm_body_with_trailing_marker_is_not_json() -> Bool {
+  let r = device_enrol_answer()
+  let old = join([r.body, "x-approval-broker: ", approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) as String, "\n"], "")
+  match parse_json_document(s: old) {
+    JsonDocumentParsed { value: _ } => false
+    JsonDocumentUnreadable { gap: _ } => true
+  }
 }

@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import std.markup { MarkupComment, serialize_fragment_with }
 import extdeps.languages.html { html_markup_medium }
 import std.markup { Serialized, Rejected }
-import extdeps.http.server { MediaType }
+import extdeps.http.server { MediaType, ServeResponseHeader, ServeResponseHeaderServedBy }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess, BrokerProcess }
 
 // ── WHICH FOLD ANSWERED, WRITTEN INTO THE ONLY CHANNEL THE PROBE CAN READ ────────────────────
@@ -41,11 +41,9 @@ import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapPro
 // at all says neither served it. The discriminator is the PROCESS SEGMENT plus the presence of a
 // marker, never the status.
 //
-// A BODY AND NOT A HEADER, because extdeps.http.server ServeHttpResponse carries status, content
-// type and body and no header map. That is not a limitation worked around here: the wire projection
-// the seed's accept loop reads back (ServeWireResponse) has the same three fields, so a header
-// would have to be added at both ends before anything could carry it, and the body is the channel
-// that already crosses that seam.
+// BODY WHERE THE FORMAT HAS A COMMENT, HEADER OTHERWISE (see approval_broker_marked_body). The
+// original reading here -- that ServeHttpResponse had no header map -- stopped being true when
+// ServeResponseHeader landed.
 
 // THE LAST THREE ARMS ARE NOT HANDLERS, and they are here because the invariant is about the
 // PROCESS and not about the four routes. BrokerAdapterRefused covers what the adapter answers
@@ -203,21 +201,29 @@ fn approval_broker_marker_comment(body: String) -> BrokerMarkerComment {
 // construction failure that the serve fold turns into a typed 500 through the same route a page-render
 // refusal already takes (broker_text_response, which is where every response from these folds is built).
 // A caller cannot join a BrokerMarkerRefused into a body: there is no String to join.
+// THE MARKER LIVES IN THE BODY ONLY WHERE THE FORMAT HAS COMMENT SYNTAX, AND IN A RESPONSE HEADER
+// EVERYWHERE ELSE. The first cut joined "x-approval-broker: <token>" after the body of every subtype
+// but html and javascript, which made every application/json answer not JSON (captured live: the iOS
+// client's strict decoder could read no device route). A format with no comment syntax has no place
+// in its body that a marker can occupy without becoming content, so the body is not the channel; the
+// header map ServeHttpResponse now carries is. text/plain is the same class (a receipt or status body
+// is data its client compares and parses by line), so it takes the header too: the rule is "does the
+// format have a comment", not "is it JSON".
 type BrokerMarkedBody
-  = BrokerBodyMarked { body: String }
+  = BrokerBodyMarked { body: String, headers: List<ServeResponseHeader> }
   | BrokerMarkerRefused { reason: String }
 
 fn approval_broker_marked_body(content_type: MediaType, body: String, m: ApprovalBrokerMarker, process: ApprovalServingProcess) -> BrokerMarkedBody {
-  let token = approval_broker_served_token(p: process, m: m) as String
+  let token = approval_broker_served_token(p: process, m: m)
   if content_type.subtype == "html" {
-    match approval_broker_marker_comment(body: token) {
-      MarkerCommentRendered { text: c } => BrokerBodyMarked { body: join([body, "\n", c, "\n"], "") }
+    match approval_broker_marker_comment(body: token as String) {
+      MarkerCommentRendered { text: c } => BrokerBodyMarked { body: join([body, "\n", c, "\n"], ""), headers: [] }
       MarkerCommentRefused { reason: r } => BrokerMarkerRefused { reason: r }
     }
   } else if content_type.subtype == "javascript" {
-    BrokerBodyMarked { body: join([body, "\n// x-approval-broker: ", token, "\n"], "") }
+    BrokerBodyMarked { body: join([body, "\n// x-approval-broker: ", token as String, "\n"], ""), headers: [] }
   } else {
-    BrokerBodyMarked { body: join([body, "x-approval-broker: ", token, "\n"], "") }
+    BrokerBodyMarked { body: body, headers: [ServeResponseHeaderServedBy { token: token }] }
   }
 }
 
@@ -287,4 +293,19 @@ fn approval_broker_marker_agreement(
   } else {
     MarkerDiffers
   }
+}
+
+// Body first, then each X-Served-By header the response carries. The tokens are unique spellings,
+// so scanning a header's token with the body scan is the same test, not a second one.
+fn approval_broker_marker_in_response(body: String, headers: List<ServeResponseHeader>) -> ObservedMarker {
+  fold(headers, init: approval_broker_marker_in_body(body: body), f: (acc, h) =>
+    match acc {
+      MarkerObserved { process: _, marker: _ } => acc
+      NoMarkerInBody =>
+        match h {
+          ServeResponseHeaderServedBy { token: t } => approval_broker_marker_in_body(body: t as String)
+          _ => NoMarkerInBody
+        }
+    }
+  )
 }

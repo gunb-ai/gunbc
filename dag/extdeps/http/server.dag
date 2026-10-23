@@ -359,6 +359,7 @@ type ServeResponseHeader
   | ServeResponseHeaderSetCookie { cookie: SetCookie }
   | ServeResponseHeaderNoStore
   | ServeResponseHeaderCacheImmutable { max_age_seconds: Int }
+  | ServeResponseHeaderServedBy { token: NonEmptyStr }
 
 // RFC 6265 section 4.1 Set-Cookie, as its named parts rather than a pre-spelled line: the
 // cookie-pair and the attributes a deployment sets (Path, Secure, HttpOnly, Max-Age, and
@@ -414,6 +415,7 @@ type ServeWireHeaderName
   = WireHeaderLocation
   | WireHeaderSetCookie
   | WireHeaderCacheControl
+  | WireHeaderServedBy
 
 type ServeWireHeader {
   name: ServeWireHeaderName
@@ -426,6 +428,7 @@ fn serve_wire_header_name_label(name: ServeWireHeaderName) -> String {
     WireHeaderLocation => "Location"
     WireHeaderSetCookie => "Set-Cookie"
     WireHeaderCacheControl => "Cache-Control"
+    WireHeaderServedBy => "X-Served-By"
   }
 }
 
@@ -434,6 +437,7 @@ fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
     ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: WireHeaderLocation, value: l as String }
     ServeResponseHeaderSetCookie { cookie: c } => ServeWireHeader { name: WireHeaderSetCookie, value: set_cookie_value(cookie: c) }
     ServeResponseHeaderNoStore => ServeWireHeader { name: WireHeaderCacheControl, value: "no-store" }
+    ServeResponseHeaderServedBy { token: t } => ServeWireHeader { name: WireHeaderServedBy, value: t as String }
     ServeResponseHeaderCacheImmutable { max_age_seconds: n } =>
       ServeWireHeader { name: WireHeaderCacheControl, value: join(["public, max-age=", to_string(value: n), ", immutable"], "") }
   }
