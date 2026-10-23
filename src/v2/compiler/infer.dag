@@ -7723,8 +7723,8 @@ fn infer_branch_arm_sibling(branch: Node, arm: Node) -> Optional<Node> {
       match list_at_optional(xs: targets, index: 2) {
         Absent => Absent
         Present { value: else_target } =>
-          if arm == then_target { Present { value: else_target } }
-          else if arm == else_target { Present { value: then_target } }
+          if node_same_occurrence(a: arm, b: then_target) { Present { value: else_target } }
+          else if node_same_occurrence(a: arm, b: else_target) { Present { value: then_target } }
           else { Absent }
       }
   }
@@ -9494,7 +9494,7 @@ fn infer_application_actual_is_callback(application: Node, edge: Edge) -> Bool {
 fn infer_construct_field_is_callback(construct: Node, edge: Edge) -> Bool {
   match construct_tag_optional(n: construct) {
     Absent => false
-    Present { value: tag } => (tag != edge.target) && infer_node_is_function_literal(n: edge.target)
+    Present { value: tag } => !node_same_occurrence(a: tag, b: edge.target) && infer_node_is_function_literal(n: edge.target)
   }
 }
 
