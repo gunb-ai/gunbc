@@ -23,9 +23,11 @@ import v2.extdeps.languages.dag {
   dag_type_atom_node
 }
 import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  iaai_resolved_with_optional,
   inhabitance_generic_formal_tree,
   inhabitance_generic_formal_tree_over,
-  inhabitance_named_conj_domain
+  inhabitance_named_conj_domain,
+  inhabitance_optional_formal_tree
 }
 
 // SEED RULE: annotated-parameter helper for every read on pattern-bound values (M3 msg_1e0159e5).
@@ -96,6 +98,7 @@ data nam_candidate_set: List<String> = [
   "infer_reason_caller_admission_caller_unkeyed",
   "infer_reason_caller_admission_callee_unresolved",
   "infer_transform_operand_type_mismatch",
+  "infer_literal_at_optional_is_not_present",
   "ACCEPTED"
 ]
 
@@ -232,4 +235,114 @@ test fn nam_c_fatal_is_transform_operand_mismatch() -> Bool {
 
 test fn nam_c_fatal_is_in_the_candidate_set() -> Bool {
   nam_in_set(x: nam_c_reason())
+}
+
+// FAMILY PARTITION (belt for the narrow set): the reason symbols mintable through the pipeline are
+// ~430 across the compiler (measured), so 14 exact candidates may all miss. These prefix claims
+// partition the space; whichever family claim PASSes names where to widen for the second run, so a
+// run is never wasted on 'nothing matched'. The families are disjoint by prefix.
+fn nam_starts(x: String, prefix: String) -> Bool {
+  starts_with(s: x, prefix: prefix)
+}
+
+test fn nam_a_fatal_family_is_inhabitance() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "inhabitance_")
+}
+
+test fn nam_a_fatal_family_is_infer() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "infer_")
+}
+
+test fn nam_a_fatal_family_is_resolve() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "resolve")
+}
+
+test fn nam_a_fatal_family_is_body_lowering() -> Bool {
+  nam_starts(x: nam_a_reason(), prefix: "body_lowering_")
+}
+
+test fn nam_a_fatal_family_is_none() -> Bool {
+  (!(nam_starts(x: nam_a_reason(), prefix: "inhabitance_"))) && (!(nam_starts(x: nam_a_reason(), prefix: "infer_"))) && (!(nam_starts(x: nam_a_reason(), prefix: "resolve"))) && (!(nam_starts(x: nam_a_reason(), prefix: "body_lowering_"))) && (nam_a_reason() != "ACCEPTED")
+}
+
+test fn nam_c_fatal_family_is_inhabitance() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "inhabitance_")
+}
+
+test fn nam_c_fatal_family_is_infer() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "infer_")
+}
+
+test fn nam_c_fatal_family_is_resolve() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "resolve")
+}
+
+test fn nam_c_fatal_family_is_body_lowering() -> Bool {
+  nam_starts(x: nam_c_reason(), prefix: "body_lowering_")
+}
+
+test fn nam_c_fatal_family_is_none() -> Bool {
+  (!(nam_starts(x: nam_c_reason(), prefix: "inhabitance_"))) && (!(nam_starts(x: nam_c_reason(), prefix: "infer_"))) && (!(nam_starts(x: nam_c_reason(), prefix: "resolve"))) && (!(nam_starts(x: nam_c_reason(), prefix: "body_lowering_"))) && (nam_c_reason() != "ACCEPTED")
+}
+
+// ---- CLAIM (b): bare Int at an Int? formal, bisected to #14644 (the Optional stack) ----
+// THE STANDING HYPOTHESIS, to be falsified or confirmed by this run: #14644 did NOT accept the
+// bare literal (a silent widen would be the regression M3's prior expects); it refuses it with the
+// NEW typed reason infer_literal_at_optional_is_not_present -- already pinned green by the source-
+// route sibling v2.test.claim.compiler.infer_arm_close_witness rc8_declared_formal_bare_literal_-
+// refuses ("no implicit lift", per explicit_present_is_the_authoring_policy). If nam_b_fatal_is_-
+// literal_at_optional PASSes and nam_b_reason_is_accepted FAILs, (b) is FIXTURE DRIFT: the claim
+// still asserts the pre-#14644 label while the tree now refuses with the correct ruling-aligned
+// reason. If nam_b_reason_is_accepted PASSes, it is the silent-widen REGRESSION and gets its own
+// RED. The tree and predicate are identical to claim (b)'s body (iaai_resolved_with_optional over
+// inhabitance_optional_formal_tree, then infer, then the fatal).
+fn nam_b_reason() -> String {
+  match iaai_resolved_with_optional(root: inhabitance_optional_formal_tree()) {
+    Rejected { diagnostics: _ } => "RESOLVE_REFUSED"
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => nam_fatal_sym(d: d)
+      }
+  }
+}
+
+test fn nam_b_reason_is_accepted() -> Bool {
+  nam_b_reason() == "ACCEPTED"
+}
+
+test fn nam_b_fatal_is_the_label() -> Bool {
+  nam_b_reason() == nam_a_label
+}
+
+test fn nam_b_fatal_is_literal_at_optional() -> Bool {
+  nam_b_reason() == "infer_literal_at_optional_is_not_present"
+}
+
+test fn nam_b_fatal_is_unbound_symbol() -> Bool {
+  nam_b_reason() == "resolve_reason_unbound_symbol"
+}
+
+test fn nam_b_fatal_is_grounding_not_derived() -> Bool {
+  nam_b_reason() == "infer_grounding_not_derived"
+}
+
+test fn nam_b_fatal_is_in_the_candidate_set() -> Bool {
+  nam_in_set(x: nam_b_reason())
+}
+
+test fn nam_b_fatal_family_is_inhabitance() -> Bool {
+  nam_starts(x: nam_b_reason(), prefix: "inhabitance_")
+}
+
+test fn nam_b_fatal_family_is_infer() -> Bool {
+  nam_starts(x: nam_b_reason(), prefix: "infer_")
+}
+
+test fn nam_b_fatal_family_is_resolve() -> Bool {
+  nam_starts(x: nam_b_reason(), prefix: "resolve")
+}
+
+test fn nam_b_fatal_family_is_none() -> Bool {
+  (!(nam_starts(x: nam_b_reason(), prefix: "inhabitance_"))) && (!(nam_starts(x: nam_b_reason(), prefix: "infer_"))) && (!(nam_starts(x: nam_b_reason(), prefix: "resolve"))) && (nam_b_reason() != "ACCEPTED") && (nam_b_reason() != "RESOLVE_REFUSED")
 }
