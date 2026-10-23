@@ -392,28 +392,6 @@ fn deploy_raw(command: String) -> PipelineStep {
   }
 }
 
-// The staging directory is a BINDING, not a command whose text happens to assign. PipelineStep
-// already carries Let with an ExprCmdSubst value, so the name, the callee and its argument are
-// three modeled parts instead of one quoted line an author assembled — and the variable name is
-// the same single authority the staged-path word reads (operations.deploy_stage_dir_var).
-fn deploy_mktemp_dir_let_step(name: String) -> PipelineStep {
-  Let {
-    name: name,
-    value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
-  }
-}
-
-fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
-  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.carried
-        Some { diagnostics: _ } => refused
-      }
-    Rejected { diagnostics: _ } => refused
-  }
-}
-
 // A LIMIT RENDERS ITS FLAG OR RENDERS NOTHING, AND THE EMPTY ARM IS NOT A DEFAULT.
 // LimitUnset is a declared policy state (std.evaluation_budget
 // evaluation_limit_unset_is_a_state_not_a_default_note), so it emits no flag and the
@@ -1877,14 +1855,6 @@ fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, own
   join(map(helper_snapshot_readback_intents(ancestors: ancestors, dir: dir, owner: owner), n => helper_snapshot_intent_text(intent: n)), "\n")
 }
 
-fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
-  helper_snapshot_readback_command_at(
-    ancestors: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base),
-    dir: dir,
-    owner: bash_build_word_lit(text: approval_broker_helper_root_principal as String),
-  )
-}
-
 // THE ISSUING VERB LEARNS ITS OWN RELEASE FROM THE STEP THAT RUNS IT. The verb is invoked with
 // `gunbc run` from the release directory, and nothing in a run tells the function which release
 // that is. It cannot name its helper without that. The deployment step already binds the revision
@@ -1933,50 +1903,12 @@ data release_executable_install_source: String = concat(cargo_default_release_di
 // itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
-// THE TRAP LINE IS STILL A STRING, AND IT IS THE ONLY REMAINING ONE IN EITHER PREAMBLE.
-// v2.extdeps.languages.bash_build has no trap node and PipelineStep has no trap variant, so
-// there is nothing to build it from. It is left as authored text rather than approximated:
-// every nearby shape (a Do-run of `trap`, a subshell) either re-assembles the same quoting by
-// hand or changes what the trap does. Adding the grammar row is the fix and it is out of this
-// PR's scope; naming the gap here is what keeps the next reader from reaching for the
-// approximation. See also the brace-group gap at tree_sync_restart_step_with_diagnosis.
 fn member_effect_step(e: MemberEffect<DeploymentStep>) -> DeploymentStep {
   match e {
     EffectAdd { to } => to
     EffectReplace { from: _, to } => to
     EffectRemove { from } => from
   }
-}
-
-fn deploy_stage_cleanup_frame_pipeline(bind_vars: List<String>, trap_vars: List<String>) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      [deploy_raw(command: deploy_shell_strict_options_command)],
-      concat(
-        fold(bind_vars, init: [], f: (acc, v) => concat(acc, [deploy_mktemp_dir_let_step(name: v)])),
-        [deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: trap_vars))],
-      ),
-    ),
-    on_failure: FailFast,
-  }
-}
-
-fn deploy_stage_cleanup_frame_script(bind_vars: List<String>, trap_vars: List<String>) -> String {
-  emit_pipeline_or_poison(
-    p: deploy_stage_cleanup_frame_pipeline(bind_vars: bind_vars, trap_vars: trap_vars),
-    refused: "__GUNBC_STAGE_CLEANUP_FRAME_REFUSED__",
-  )
-}
-
-fn deploy_retract_stage_cleanup_frame_script() -> String {
-  deploy_stage_cleanup_frame_script(bind_vars: [deploy_stage_dir_var], trap_vars: [deploy_stage_dir_var])
-}
-
-fn deploy_two_dir_trap_one_var_mutant_script() -> String {
-  deploy_stage_cleanup_frame_script(
-    bind_vars: [deploy_stage_dir_var],
-    trap_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
-  )
 }
 
 fn spec_has_artifact_kind(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Bool {
@@ -2025,46 +1957,11 @@ fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Boo
   )
 }
 
-// THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than
-// left implicit (review, 2026-07-30). The refusal-arm defect established that a byte-equality
-// golden gate and target-language VALIDITY are different oracle families, and only the first exists
-// over these two artifacts. What landed in response was a string-shape claim about one call site —
-// the escape form present, the raw apostrophe absent — which closes that site and says nothing
-// about the next hand-quoted one.\n\nSo the class is open and this row names its closure rather
-// than implying the point fix covered it. The repo already has the machinery: a bounded bash
-// grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure
-// — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two
-// committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves
-// short.\n\nThe point fix it described is now gone with its subject: the arm that needed quoting
-// was the tailscale teardown refusal, and that refusal was itself built on a false claim about the
-// CLI, so the emitter no longer quotes anything by hand. That REMOVES a call site; it does not
-// close the class, and the bound is now worse rather than better — with no hand-quoted site left in
-// this module, nothing here would red if the next one were introduced.\n\nDISSOLVES ON: both
-// generated deploy scripts parsed by an executing consumer on every emit, with a discriminating RED
-// that introduces a hand-concatenated quote at any call site and goes red on the parse rather than
-// on a string shape. The shared authority itself stays independently witnessed at
-// shell_quote_escapes_an_embedded_apostrophe, which does not depend on this module having a caller.
-//
-// THE TWO SCRIPTS ARE GONE; THE SHELL THIS MODULE STILL RENDERS IS NOT. The apply and the retract
-// are typed legs (gunbc.live_deploy.apply_legs, gunbc.live_deploy.retract_legs), so no generated
-// deploy script remains for the parse oracle to read. What still renders privileged shell here is
-// tree_sync_restart_step_with_diagnosis and tailscale_serve_apply_step (the roadmap nodes
-// shell-dag-live-deploy-restart-tailscale and shell-dag-live-deploy-install-owned own their typed
-// replacement), so the row binds the first of them: it dissolves when that rendered step does.
-data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "tree_sync_restart_step_with_diagnosis",
-    field: WholeDeclaration
-  }
-}
-
 data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    decl_name: "tree_sync_restart_step_with_diagnosis",
     field: WholeDeclaration,
   }
 }
