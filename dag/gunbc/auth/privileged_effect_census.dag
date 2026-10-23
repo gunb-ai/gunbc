@@ -23,6 +23,7 @@ import gunbc.spark.bootstrap_provision {
   CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client_intervention }
 import gunbc.cloudflare.r2_origin { cloudflare_bootstrap_custody_intervention, cloudflare_account_allocation_intervention }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
 import gunbc.review_sheet_operator { shared_drive_create_intervention, spreadsheet_create_intervention }
@@ -1114,7 +1115,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_rearm_at"),
     effect: PrivilegedEffect {
-      subject: "reset-failed and start the one belt-exit path unit the stalled exit spool tripped (operator release verb)" as NonEmptyStr,
+      subject: "reset-failed and start the one system path unit a stalled spool tripped: the belt-exit path unit (belt_exit_stall_release_cli) or the attempt-unit drain path unit (attempt_unit_stall_release_cli), one effect, one site" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -1824,6 +1825,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_account_allocation_intervention"),
     effect: manual_no_api_effect(subject: "create the Cloudflare account that owns the fleet's R2 storage, billed to the LLC" as NonEmptyStr, step: cloudflare_account_allocation_intervention(), cause: "Cloudflare account creation is a dashboard signup; no API creates an account" as NonEmptyStr, billing: BillsExternally),
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.tracker_web_oauth_client", decl_name: "approve_ios_oauth_client_intervention"),
+    effect: manual_no_api_effect(subject: "create the approve-ios iOS OAuth client in the gunbc-tracker Auth Platform project" as NonEmptyStr, step: approve_ios_oauth_client_intervention(), cause: "Auth Platform OAuth client registration has no write API; the client is created in the Cloud console" as NonEmptyStr, billing: NoBillingConsequence),
     realized: RealizedHumanStep,
     divergence_reason: none,
   },

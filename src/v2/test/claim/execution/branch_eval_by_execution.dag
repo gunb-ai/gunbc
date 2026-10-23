@@ -1,6 +1,5 @@
 module v2.test.claim.execution.branch_eval_by_execution
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -66,6 +65,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -335,7 +335,7 @@ fn branch_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration }
     ]
   }
 }
@@ -345,8 +345,8 @@ fn branch_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^branch_actual }, target: call },
-      Edge { label: Authored { name: ^branch_expected }, target: expected }
+      Edge { label: Authored { name: ^branch_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^branch_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }
@@ -364,8 +364,7 @@ fn branch_admitted_tree(root: Node) -> InferredTree {
     root: root,
     facts: PartialFunction {
       lookup: branch_facts_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 

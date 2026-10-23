@@ -339,6 +339,8 @@ data excl_claim_batch_parse_gate_dissolve: DissolutionCondition = unbound_dissol
 
 data excl_claim_batch_unobserved_exit_reason: String = "SUBSTANTIATED per-row (authored 2026-10-21, gunbc#14539): both fns drive shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL claim_batch child over a PLANTED module pair and adjudicate its exit status and output shape, so the hermetic envelope refuses each effect by construction (no mock_response for operation Run). The subject IS the child process exit status: collapsing EntryResolveRefusal::ClosureDiagnostics into the unobserved arm flips exit 1 to 2 and the in-process unit tests (pure over two bools and over refusal classification) cannot see the CLI wiring. A Rust integration test would sit off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path). The closure error is planted into a mktemp root under target/ at run time, never committed. Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as ExpectedToHold. The missing-entry row passes only the planted root; the closure-error row must also pass --source-root dag so gunbc.output_policy resolves, so its child walks the whole tree and runs over bin_witness_wet_per_row_wall_budget_seconds, which no path that runs local_repo_wet_schedule() arms (--eval-budget-ms arms the CPU/eval budget, not wall time; the only production set_witness_wall_budget call is in reach_base_standings, which has zero callers). That over-budget admission is stated here, and the same mechanism is declared as gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall, whose population names this file. This note dissolves if a wall budget or an in-process exit seam is armed on this lane."
 
+data excl_claim_batch_exit_two_reason: String = "SUBSTANTIATED per-row: the three fns drive shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL claim_batch child over a PLANTED entry whose claim returns a ProcessExit, and adjudicate the child's exit status and output line. The subject IS the process exit status of a claim that returns ExitFailure code 2 (no observation, exit 2, UNOBSERVED) against code 1 (exit 1, FAIL) and a held claim (exit 0); the hermetic envelope refuses each effect by construction (no mock_response for operation Run), and the in-process tests cannot see the CLI wiring. The entry is planted into a mktemp root under target/ at run time, never committed. Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as ExpectedToHold. Each child passes --source-root dag so std.process resolves, so it walks the whole tree and runs over bin_witness_wet_per_row_wall_budget_seconds, the same unarmed-wall-budget mechanism declared at gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall, whose population names this file."
+
 data excl_claim_batch_unobserved_exit_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then these rows move to the execution corpus and this row and the two schedule entries delete together.")
 data excl_shell_spawn_refused_reason: String = "SUBSTANTIATED per-row: the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and whether the seed's shell transport turns a failed spawn into ShellSpawnRefused rather than aborting the evaluation. Both are facts about the real spawn, so the file cannot be made hermetic: a mock_response for test.ShellSpawnProbe.Observed would be authored data, and the discriminating red (an absent binary yields ShellSpawnRefused) would pass against a fabricated refusal whether or not the transport realizes one. Its fns are scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, which the required floor executes: the only effect is spawning a local program (true, false, an absent name) -- no network, no cargo, no remote host, no writes."
 
@@ -971,6 +973,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_claim_batch_unobserved_exit_reason,
     dissolution: excl_claim_batch_unobserved_exit_dissolve},
   WitnessExclusionRow {
+    pattern: "claim_batch_exit_two_unobserved_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_claim_batch_exit_two_reason,
+    dissolution: excl_claim_batch_unobserved_exit_dissolve},
+  WitnessExclusionRow {
     pattern: "mtcollins1_census_image_local_wet.dag",
     classification: LocalRepoWetLane,
     reason: "SUBSTANTIATED per-row: one fn reads a committed artifact through Filesystem.Read, one reaches shell.Exec.RunArgv through gunbc.command_runner.run_shell_command_observe, and one drives gunbc.provisioning.seeded_install_media_publish resolve_seeded_image against a shell.Mktemp.Dir directory; none carries a mock_response, so hermetic discovery REFUSES rather than skipping. Their subjects are a real file's bytes and a real process's output: the attempt=3 host capture parsed under the reconstructed envelope grammar, and the capture program the renderer writes executed under `sh -c` and parsed back. A mocked read or a mocked stdout would re-check the parser against authored data, which is the supplied-input half test.claim.machine_intake.mtcollins1_census_image_witness already covers; this file is the inhabitance half DESIGN section 3 requires beside it. THE EXECUTION IS PURELY LOCAL -- one file read inside the checkout and `sh -c` over echo/printf with a halt of `true`, no network, no remote host, no Cargo -- which is why it belongs on the local-repo wet lane." as String,
@@ -1135,11 +1142,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
-  WitnessExclusionRow {
-    pattern: "proc_self_cgroup_real_execution_witness.dag",
-    classification: BinWitnessWet,
-    reason: excl_install_media_reason,
-    dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
     pattern: "shell_spawn_refused_real_execution_witness.dag",
     classification: LocalRepoWetLane,
@@ -1859,10 +1861,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unmerged_index_with_no_markers_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/commit_writer_heal_admission_real_execution.dag", f: "space_and_tab_named_paths_admit_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_missing_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_ambiguous_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_refuses_malformed_shell_holds"),
-  bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness.dag", f: "bash_assign_from_source_observed_shell_holds"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag", f: "live_rust_observation_matches_actions_subject"),
   bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
   bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness.dag", f: "host_effect_plan_typed_read_witness_holds_by_real_execution"),

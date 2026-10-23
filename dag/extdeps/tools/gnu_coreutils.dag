@@ -422,6 +422,19 @@ fn coreutils_install_directory_owned_argv(
   )
 }
 
+// THE ARGV COMMAND OVER THE ONE SPELLING OF install -d -m -o -g (coreutils_install_directory_owned_arguments).
+// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual, "install
+// invocation"): who OWNS what a privileged process creates is the point, since a mkdir run as root leaves a
+// root-owned directory its real consumer cannot rename. Owner and group are NAMES because install(1) accepts
+// either spelling and callers hold declared account names. Consumer: gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook, which renders it as the ExecStopPost record creation.
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
 // install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,
 // ownership following the invoking principal. Its one caller reaches it through
 // sudo_elevate_command, so the invoking principal IS root and -o/-g would be restatements of the
