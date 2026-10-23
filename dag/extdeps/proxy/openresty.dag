@@ -40,6 +40,9 @@ type OpenRestyVersion = NonEmptyStr where brand("OpenRestyVersion")
 
 data openresty_1_27_1_1: OpenRestyVersion = "1.27.1.1" as OpenRestyVersion
 
+// The directives below are the ones that decide whether a response is relayed as it arrives and whether
+// the proxy may pick a second upstream. The log phase's outcome variables are not modeled: they were
+// unreliable on client abort in the S1 falsifier, so release must not depend on them.
 type ProxyNextUpstream
   = | ProxyNextUpstreamOff
 
@@ -170,5 +173,3 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
 fn render_nginx_directives(rows: List<NginxDirective>) -> String {
   join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "")
 }
-
-data openresty_streaming_directives_note: NonEmptyStr = "These are the directives of the pinned build that decide whether a response is relayed as it arrives and whether the proxy may pick a second upstream: proxy_pass with a variable target (no upstream block, so no balancing or health state), proxy_next_upstream off (no retry onto another peer), proxy_buffering off and proxy_request_buffering off (chunks pass through), and the lua phase hooks access_by_lua (before forwarding) and log_by_lua (after the request finishes, on every end). Whether the log phase fires on client abort and on upstream reset was observed on this build; its outcome variables were not reliable on abort, so they are not modeled here." as NonEmptyStr
