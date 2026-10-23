@@ -1,6 +1,7 @@
 module gunbc.namespace_cut.ambient_name_home
 
 import std.types { List, NonEmptyStr, String }
+import std.optional { Optional }
 
 // THE ONE ROSTER OF AMBIENT NAMES AND THEIR DECLARED HOMES (NAMESPACE-XL waves; operator ruling
 // 2026-10-15: every name the corpus uses, the seed's "built-ins" included, is an ordinary declaration
@@ -32,6 +33,9 @@ type AmbientNameHome {
   home: NonEmptyStr
   table: AmbientNameTable
   origin: AmbientNameHomeOrigin
+  // The ambient *_contract row (std.primitives) this move retires, when the name had one; Absent for a name
+  // that left a table with no contract row. Read by the namespace-migration acceptance kit's contract-absent check.
+  retired_contract: Optional<NonEmptyStr>
 }
 
 // Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
