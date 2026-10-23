@@ -7535,9 +7535,9 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
 // mint provenance (node_is_kernel_mint_named over the resolved node), the NonEmptyStr target by the
 // declaration its type reference resolves to (type_reference_declaration_ref, the same read the nominal-source wall makes of this node; whose by-binding fallbacks the reading variant lacks). A corpus type is
 // not a kernel mint and is not refused here: a type that happens to be named Int falls to the general
-// out-of-domain question the stall below owns. std.nat Nat is a Peano coproduct, not a kernel mint, and
-// is outside is_dag_cast_domain_type, so nothing else refuses it: it is refused by its own resolved
-// declaration (std.nat.Nat), never by spelling.
+// out-of-domain question the stall below owns. A binder typed std.nat Nat reaches infer as the kernel primitive Nat (srv1 probe: method
+// lookup reports receiver Primitive(Nat), and no declaration reference), so it is a kernel mint like the other four, read by
+// mint provenance; it is outside is_dag_cast_domain_type, so nothing else refuses it.
 // The check needs the TypeEnv, so it runs at the ExprCast arm beside validate_cast rather than inside it.
 //
 // WHY A LEAF HERE AND NOT A TABLE ROW (DESIGN section 6b, root generalization). The earliest
@@ -7557,17 +7557,17 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
   }
 }
 
-fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
+fn is_non_text_kernel_cast_source(n: Node) -> Bool {
   node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
     || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
-    || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
+    || node_is_kernel_mint_named(n: n, name: "Nat")
 }
 
 fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       if type_node_names_declaration(n: target_type, wanted: decl_ref(module_path: "std.types", decl_name: "NonEmptyStr"), scope: scope)
-        && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
+        && is_non_text_kernel_cast_source(n: src_node) {
         let si = scope.type_env.source_indices
         let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
         [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
