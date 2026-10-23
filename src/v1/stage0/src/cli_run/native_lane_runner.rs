@@ -7149,7 +7149,11 @@ mod emitted_build_not_clean_cause_tests {
 pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec![verb.to_string()];
-    args.extend(source_roots.iter().cloned());
+    // PROBE-ONLY (witty-dove-820): census roots may be narrowed to a resolving subset.
+    match std::env::var("GUNBC_PROBE_CENSUS_ROOTS") {
+        Ok(v) if !v.is_empty() => args.extend(v.split(':').map(str::to_string)),
+        _ => args.extend(source_roots.iter().cloned()),
+    }
     let output = Command::new(&preparation.binary_path)
         .args(&args)
         .output()
