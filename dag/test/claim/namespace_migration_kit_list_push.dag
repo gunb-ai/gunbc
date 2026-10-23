@@ -1,23 +1,26 @@
 module test.claim.namespace_migration_kit_list_push
 
-import std.types { Bool, NonEmptyStr, String }
-import std.optional { optional_present }
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes, ExistingDeclaration, PrimitiveAuthorityTable }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes }
+import gunbc.instruments.ambient_name_census_reading { ambient_census_kit_rows }
 import gunbc.namespace_cut.migration_kit { kit_binding_finding, kit_ambient_route_count, kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// SUPPLIED ROW for list_push (#14751's wave). Until that wave adds its ambient_name_homes() row this is the
-// kit's one subject; the wave replaces this module's row with its own and keeps the claim.
-fn list_push_row() -> AmbientNameHome {
-  AmbientNameHome {
-    name: "list_push" as NonEmptyStr,
-    home: "std.algebra" as NonEmptyStr,
-    table: PrimitiveAuthorityTable,
-    origin: ExistingDeclaration,
-    retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr)
-  }
+// THE ROW IS READ, NOT RESTATED: ambient_census_kit_rows() is the one roster the census label also runs, so a wave that
+// edits the candidate's home or contract, or lands the row in ambient_name_homes(), moves this claim with it.
+fn list_push_rows() -> List<AmbientNameHome> {
+  ambient_census_kit_rows() |> filter(h => h.name == "list_push")
+}
+
+fn with_row(f: fn(AmbientNameHome) -> Bool) -> Bool {
+  match first(list_push_rows()) { Present { value: r } => f(r)  Absent => false }
+}
+
+test fn list_push_has_exactly_one_kit_row() -> Bool {
+  count(list_push_rows()) == 1
 }
 
 // THE DISPOSITION IS DERIVED from the namespace authority: list_push is migrated iff ambient_name_homes() carries its row,
@@ -63,39 +66,39 @@ test fn judge_unbound_is_unbound_and_no_row_is_not_reached() -> Bool {
 // CHECK 3: the retired contract is rostered iff the row is not migrated; its pairing control (concat_contract, which
 // stays) must NOT be broken, so an import-shape failure cannot pass as "absent".
 test fn list_push_contract_matches_the_row_disposition() -> Bool {
-  match kit_contract_finding(row: list_push_row(), control_contract: "concat_contract") {
+  with_row(r => match kit_contract_finding(row: r, control_contract: "concat_contract") {
     ContractAbsent => list_push_migrated()
     ContractStillPresent => !list_push_migrated()
     _ => false
-  }
+  })
 }
 
 test fn probe_contract_control_is_not_broken() -> Bool {
-  match kit_contract_finding(row: list_push_row(), control_contract: "concat_contract") { ContractControlBroken => false  _ => true }
+  with_row(r => match kit_contract_finding(row: r, control_contract: "concat_contract") { ContractControlBroken => false  _ => true })
 }
 
 // THE IDENTITY VERDICT on supplied census output: declared home -> migrated; ambient on the unimported side -> the
 // no-import RED does not fire; unbound unimported plus ambient imported -> import does not clear.
 test fn identity_verdict_migrated_on_declared_import() -> Bool {
-  is_migrated(f: kit_binding_finding(unimported_stdout: judge_unbound, imported_stdout: judge_declared, row: list_push_row()))
+  with_row(r => is_migrated(f: kit_binding_finding(unimported_stdout: judge_unbound, imported_stdout: judge_declared, row: r)))
 }
 
 test fn identity_verdict_reads_ambient_as_not_refusing() -> Bool {
-  match kit_binding_finding(unimported_stdout: judge_ambient_unimported, imported_stdout: judge_declared, row: list_push_row()) { KitNoImportDoesNotRefuse => true  _ => false }
+  with_row(r => match kit_binding_finding(unimported_stdout: judge_ambient_unimported, imported_stdout: judge_declared, row: r) { KitNoImportDoesNotRefuse => true  _ => false })
 }
 
 test fn identity_verdict_other_home_does_not_clear() -> Bool {
-  match kit_binding_finding(unimported_stdout: judge_unbound, imported_stdout: judge_other_home, row: list_push_row()) { KitImportDoesNotClear => true  _ => false }
+  with_row(r => match kit_binding_finding(unimported_stdout: judge_unbound, imported_stdout: judge_other_home, row: r) { KitImportDoesNotClear => true  _ => false })
 }
 
 // CHECK 4 (host_symbol per the Rust realization of list_push, v1_rt::rc_list_push; self path crate::std_algebra::list_push(
 // per the emitted path convention in resolved_call_emission_identity_witness).
 test fn list_push_emission_matches_the_row_disposition() -> Bool {
-  kit_emit_identity_holds(row: list_push_row(), host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(") == list_push_migrated()
+  with_row(r => kit_emit_identity_holds(row: r, host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(") == list_push_migrated())
 }
 
 test fn list_push_unimported_does_not_select_the_declaration_path() -> Bool {
-  kit_emit_unimported_does_not_select_declaration(row: list_push_row(), self_path: "crate::std_algebra::list_push(")
+  with_row(r => kit_emit_unimported_does_not_select_declaration(row: r, self_path: "crate::std_algebra::list_push("))
 }
 
 // CHECK 6 on supplied census lines: an ambient row for the spelling is a second route; a declared one is not; and the
