@@ -190,3 +190,24 @@ test fn onc_none_pun_after_lowercase_head_refuses() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+
+// Seat 10 REDs (RFM v1_elaborates_bare_none_to_optional_unit_and_lets_unit_inhabit_bool, native route): a bare `none` never closes to Optional<Unit>. Through an identity generic its constructor variable stays unsolved and the binder cannot be read as Bool; Unit at a Bool annotation refuses at the annotation; each beside an accepted positive control.
+test fn onc_bare_none_through_identity_generic_is_unsolved_not_unit() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n"))
+}
+
+test fn onc_typed_none_binder_at_int_optional_accepts() -> Bool {
+  onc_none_infer_accepted(body: "fn f() -> Int? {\n  let c: Int? = none\n  c\n}\n")
+}
+
+test fn onc_typed_none_binder_at_bool_refuses() -> Bool {
+  onc_none_assembles(body: "fn f() -> Bool {\n  let c: Int? = none\n  let z: Bool = c\n  z\n}\n") && !onc_none_infer_accepted(body: "fn f() -> Bool {\n  let c: Int? = none\n  let z: Bool = c\n  z\n}\n")
+}
+
+test fn onc_unit_at_bool_annotation_refuses() -> Bool {
+  onc_none_assembles(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n") && !onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Bool {\n  let z: Bool = u\n  z\n}\n")
+}
+
+test fn onc_unit_at_unit_and_bool_at_bool_accept() -> Bool {
+  onc_none_infer_accepted(body: "type Unit\n\nfn f(u: Unit) -> Unit {\n  let z: Unit = u\n  z\n}\n") && onc_none_infer_accepted(body: "fn f(b: Bool) -> Bool {\n  let z: Bool = b\n  z\n}\n")
+}
