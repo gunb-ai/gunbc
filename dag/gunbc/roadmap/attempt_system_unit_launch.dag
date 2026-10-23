@@ -903,10 +903,10 @@ fn attempt_system_unit_run_admitted_start(
 // answer; a refusal (malformed body, unknown verb, a start that failed) is that job done, so it must not turn the
 // drain unit red. Only a request whose answer could not be written is the drain failing at its job.
 type AttemptUnitHandled
-  = AttemptUnitAnswered { refusal: String }
+  = AttemptUnitAnswered { refusal: String? }
   | AttemptUnitAnswerUnwritten { reason: String }
 
-fn attempt_system_unit_answer_request(instance_root: String, entry: String, body: String, answer: AttemptSystemUnitAnswer, refusal: String) -> AttemptUnitHandled {
+fn attempt_system_unit_answer_request(instance_root: String, entry: String, body: String, answer: AttemptSystemUnitAnswer, refusal: String?) -> AttemptUnitHandled {
   if attempt_system_unit_write_answer(instance_root: instance_root, entry: entry, body: body, answer: answer) {
     AttemptUnitAnswered { refusal: refusal }
   } else {
@@ -920,7 +920,7 @@ fn attempt_system_unit_refuse_request(instance_root: String, entry: String, body
     entry: entry,
     body: body,
     answer: AttemptSystemUnitRefusedAnswer { reason: why },
-    refusal: why,
+    refusal: Present { value: why },
   )
 }
 
@@ -940,7 +940,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
         } else {
           match attempt_system_unit_cli_start(instance: instance, verb: verb, request: request) {
             ExitSuccess =>
-              attempt_system_unit_answer_request(instance_root: root, entry: entry, body: content, answer: AttemptSystemUnitStarted, refusal: "")
+              attempt_system_unit_answer_request(instance_root: root, entry: entry, body: content, answer: AttemptSystemUnitStarted, refusal: Absent)
             ExitFailure { code: _, reason: why } =>
               attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: why)
           }
@@ -997,8 +997,11 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 // `refused` counts the retired requests whose answer is a refusal: reported, never an exit failure.
 fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, handled: AttemptUnitHandled) -> AttemptUnitDrainPass {
   match handled {
-    AttemptUnitAnswered { refusal: why } => {
-      let refusals = if why == "" { 0 } else { 1 }
+    AttemptUnitAnswered { refusal: cause } => {
+      let refusals = match cause {
+        Present { value: _ } => 1
+        Absent => 0
+      }
       AttemptUnitDrainPass { exit: pass.exit, retired: pass.retired + 1, refused: pass.refused + refusals, unmovable: pass.unmovable }
     }
     AttemptUnitAnswerUnwritten { reason: why } =>

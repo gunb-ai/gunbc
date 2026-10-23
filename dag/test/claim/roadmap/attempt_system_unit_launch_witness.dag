@@ -1069,19 +1069,25 @@ fn fresh_drain_pass() -> AttemptUnitDrainPass {
 
 // A refusal is an answer: the pass counts it and its exit stays success. POSITIVE CONTROL: a started request.
 test fn a_refused_request_is_counted_and_does_not_fail_the_pass() -> Bool {
-  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: "start request is truncated" })
+  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: Present { value: "start request is truncated" } })
   pass.refused == 1 && pass.retired == 1 && exit_is_success(e: pass.exit)
 }
 
+// RED: a refusal whose cause text is empty is still a refusal (presence is the fact, not the text).
+test fn a_refusal_with_empty_cause_text_is_still_counted() -> Bool {
+  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: Present { value: "" } })
+  pass.refused == 1 && pass.retired == 1
+}
+
 test fn a_started_request_is_retired_without_a_refusal() -> Bool {
-  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: "" })
+  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: Absent })
   pass.refused == 0 && pass.retired == 1 && exit_is_success(e: pass.exit)
 }
 
 // RED: the drain failing at its job (no answer written) fails the pass, and stays failed past later refusals.
 test fn a_request_whose_answer_cannot_be_written_fails_the_pass() -> Bool {
   let failed = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswerUnwritten { reason: "k: the answer could not be written" })
-  let later = attempt_unit_pass_retired(pass: failed, handled: AttemptUnitAnswered { refusal: "x" })
+  let later = attempt_unit_pass_retired(pass: failed, handled: AttemptUnitAnswered { refusal: Present { value: "x" } })
   match later.exit {
     ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written") && later.refused == 1
     ExitSuccess => false
