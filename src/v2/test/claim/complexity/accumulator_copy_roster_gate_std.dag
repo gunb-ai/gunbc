@@ -11,6 +11,8 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String, Int }
 import std.algebra { length }
+import std.error_primitives { pure_dag_seam_unreachable_int }
+import gunbc.guarantee_stall { BoundedPopulation, UncountedNotEnumerable }
 import gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall {
   accumulator_copy_untyped_combiner_refusals_stall
 }
@@ -57,10 +59,17 @@ data std_tranche_string_carrier_debt_count: Int = 7
 // takes the typed `file_gate_disposition` and prints its own arm, so one executed run says which
 // fact fired; the stall row records that the lens itself still answers Bool and what grounds it.
 fn std_change_refusal_ceiling() -> Int {
-  length(xs: filter(
-    xs: accumulator_copy_untyped_combiner_refusals_stall.population.members,
-    predicate: m => starts_with(s: m, prefix: "std.change ")
-  ))
+  match accumulator_copy_untyped_combiner_refusals_stall.population {
+    // The stall row's declared population is the authority; the join against "std.change "
+    // members is the file this gate covers. A NotYetCounted population is a refusal, not a
+    // silent zero ceiling: no number is declared there, and inventing one is the drift this
+    // rewrite removes.
+    BoundedPopulation { members: ms } => length(xs: filter(
+      xs: ms,
+      predicate: m => starts_with(s: m, prefix: "std.change ")
+    ))
+    UncountedNotEnumerable { reason: _ } => pure_dag_seam_unreachable_int()
+  }
 }
 
 fn std_change_disposition_text(d: RosterGateDisposition) -> String {
