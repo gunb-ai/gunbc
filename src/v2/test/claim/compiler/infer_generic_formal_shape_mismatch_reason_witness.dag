@@ -35,6 +35,7 @@ import v2.extdeps.languages.dag {
 import v2.std.diagnostic {
   Accepted,
   Rejected,
+  Some,
   diagnostics_fatal_reason,
   diagnostics_has_reason
 }
