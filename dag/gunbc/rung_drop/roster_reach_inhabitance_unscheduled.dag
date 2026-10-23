@@ -3,7 +3,6 @@ module gunbc.rung_drop.roster_reach_inhabitance_unscheduled
 import std.types { NonEmptyStr, List, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target }
 
 // THE DECLARED RUNG DROP for the real call-reach walk behind the roster-token witness (DESIGN 3 pairing
 // obligation, 4b(3)). test.claim.fleet.fleet_converge_roster_token_prelude_witness is handed its reaching
@@ -13,10 +12,12 @@ import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_target }
 // target stops reaching organization_runner_roster_live_read. DRAFT: awaiting operator approval outside the
 // diff (DESIGN 5).
 //
-// THE POPULATION IS DERIVED from the supplied target the witness is handed, not copied.
+// THE POPULATION NAMES the supplied target the witness is handed. It cannot import gunbc.ci.ci_spec (the
+// rung_drop roster sits under the host chain ci_spec closes a cycle with), so the join to the target is held
+// by gunbc.instruments.roster_reach_inhabitance roster_reach_controls_hold, which imports both.
 
 fn roster_reach_inhabitance_unscheduled_population() -> List<String> {
-  [concat(gunbc_ci_runner_host_file_converge_target.entry, concat("::", gunbc_ci_runner_host_file_converge_target.function))]
+  ["dag/gunbc/runner/runner_host_file_converge.dag::runner_host_file_converge_ci_wet"]
 }
 
 data roster_reach_inhabitance_unscheduled: RungDrop = RungDrop {
