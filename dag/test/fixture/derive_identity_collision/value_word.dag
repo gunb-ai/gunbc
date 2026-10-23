@@ -1,0 +1,8 @@
+module test.fixture.derive_identity_collision.value_word
+
+import std.types { Int }
+
+type Word64 {
+  hi: Int
+  lo: Int
+}

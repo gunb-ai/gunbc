@@ -1,0 +1,45 @@
+module test.claim.derive_identity_collision_emit_witness
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DERIVE DECISION KEYS ON THE DECLARATION, NOT ITS LEAF (DESIGN section 3).
+//
+// Two modules in one closure each declare `Word64`: value_word's is two machine integers and so is
+// Copy-able, heap_word's holds a List and so is shared and must never derive Copy. The emitter once
+// read the shared-type set by spelling and shared a leaf only when EVERY declarer would be, so the
+// heap declaration inherited the value declaration's unshared answer and emitted
+// `#[derive(Debug, Clone, Copy, ..)]` over an Rc<Vec<..>> field, which rustc refuses E0204. The
+// specimen is std.bit.Word64 beside std.machine_word.Word64
+// (gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target).
+//
+// THE ARMS ARE A PAIR, one per declaration, so neither a Copy-everywhere nor a Copy-nowhere emitter
+// passes both. Each asserts on the file of ITS OWN declaring module in a closure holding both.
+
+fn the_value_declaration_keeps_copy_beside_a_same_leaf_heap_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.derive_identity_collision_consumer_value\n\nimport test.fixture.derive_identity_collision.value_word\nimport test.fixture.derive_identity_collision.heap_word\nimport std.types { Int }\n\ndata one: Int = 1\n",
+    "src/test_fixture_derive_identity_collision_value_word.rs",
+    ["Debug, Clone, Copy, PartialEq"],
+    ["compile_error"]
+  )
+}
+
+fn the_heap_declaration_never_derives_copy_beside_a_same_leaf_value_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.derive_identity_collision_consumer_heap\n\nimport test.fixture.derive_identity_collision.value_word\nimport test.fixture.derive_identity_collision.heap_word\nimport std.types { Int }\n\ndata one: Int = 1\n",
+    "src/test_fixture_derive_identity_collision_heap_word.rs",
+    ["pub struct Word64"],
+    ["Copy", "compile_error"]
+  )
+}
+
+test fn a_value_declaration_derives_copy_when_a_heap_declaration_shares_its_leaf() -> Bool {
+  the_value_declaration_keeps_copy_beside_a_same_leaf_heap_declaration()
+}
+
+test fn a_heap_declaration_derives_no_copy_when_a_value_declaration_shares_its_leaf() -> Bool {
+  the_heap_declaration_never_derives_copy_beside_a_same_leaf_value_declaration()
+}

@@ -8161,7 +8161,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
-    let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
+    let has_fn_fields = type_declaration_has_fn_fields(module_path: env.module_path, name: item_text, emit_info: emit_info)
     let header_clone_param_names = emit_item_header_clone_param_names(
       item: item,
       item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
@@ -8285,8 +8285,37 @@ fn type_has_fn_fields(name: String, emit_info: EmitGraphInfo) -> Bool {
   }
 }
 
-fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
-  !type_has_fn_fields(name: name, emit_info: emit_info)
+// THE DECLARATION'S OWN ANSWER, keyed by the identity the declaring module and name mint
+// (type_decl_identity), never by the leaf: two modules that both declare `Word64` get one answer
+// each. The leaf-keyed type_has_fn_fields above answers false for a leaf two declarations own, so a
+// declaration that carries a function field read as carrying none and derived the full serde set.
+// It remains only for the USE-SITE readers (an expression's type, a callee's return), which hold no
+// declaring module; they dissolve with gunbc.recurring_failure_mode
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer's trigger.
+fn type_declaration_has_fn_fields(module_path: String, name: String, emit_info: EmitGraphInfo) -> Bool {
+  match type_summary_at_key(index: emit_info.type_summaries, key: type_decl_identity(owner_module: module_path, decl_name: name)) {
+    TypeSummaryFound { summary: ts } => ts.has_fn_fields
+    TypeSummaryLeafAmbiguous { leaf: _ } => false
+    TypeSummaryNotDeclared => false
+  }
+}
+
+// WHETHER A DECLARATION IS SHARED (Rc-wrapped, so never Copy), read from ITS OWN summary. The set
+// build_shared_types returns is keyed by spelling and shares a leaf only when EVERY declarer would
+// be, which is right for a USE of an ambiguous leaf (a reference cannot say which it means) and wrong
+// for a DECLARATION, which knows exactly which it is: std.bit.Word64 { Rc<Vec<..>> } read
+// std.machine_word.Word64 { hi: Int, lo: Int }'s unshared answer and derived Copy over a heap field.
+fn type_declaration_is_shared(module_path: String, name: String, emit_info: EmitGraphInfo) -> Bool {
+  match type_summary_at_key(index: emit_info.type_summaries, key: type_decl_identity(owner_module: module_path, decl_name: name)) {
+    TypeSummaryFound { summary: ts } =>
+      set_contains(maybe_mark_shared_type(acc: empty_set(), summary: ts, recursive_type_set: emit_info.recursive_type_set, target_needs_sharing: sharing_for_target(target: Rust).needs_sharing), ts.name)
+    TypeSummaryLeafAmbiguous { leaf: _ } => false
+    TypeSummaryNotDeclared => false
+  }
+}
+
+fn struct_needs_serde(module_path: String, name: String, emit_info: EmitGraphInfo) -> Bool {
+  !type_declaration_has_fn_fields(module_path: module_path, name: name, emit_info: emit_info)
 }
 
 // SEALED CONSTRUCTION, DERIVED FROM THE DECLARATION ITSELF. `sole_constructor` is
@@ -8350,12 +8379,12 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
 }
 
 fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
-  let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
+  let has_fn_fields = type_declaration_has_fn_fields(module_path: env.module_path, name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
     name: name,
     children: children,
-    shared_types: shared_types,
+    shared: type_declaration_is_shared(module_path: env.module_path, name: name, emit_info: emit_info),
     has_fn_fields: has_fn_fields,
     map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
@@ -8509,7 +8538,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
   let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env)
-  let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
+  let needs_serde = struct_needs_serde(module_path: env.module_path, name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == field_from_key_property_name) |> first {
       Present { value: prop } => match field_init_node_value(n: prop).expr_data {
@@ -8553,7 +8582,7 @@ fn enum_derives(module_path: String, name: String, children: List<Node>, has_fn_
 // and the attribute decision are therefore one decision with two renderings, and both read the
 // same has_fn_fields here rather than deriving it twice.
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, header_clone_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
-  let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
+  let has_fn_fields = type_declaration_has_fn_fields(module_path: env.module_path, name: name, emit_info: emit_info)
   let deserialize_forbidden = members_forbid_deserialize(owner_identity: type_decl_identity(owner_module: env.module_path, decl_name: name), members: member_type_nodes(is_product: false, children: children), emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(module_path: env.module_path, name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let effective_serde_policy = if has_fn_fields {
