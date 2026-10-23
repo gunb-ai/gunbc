@@ -240,21 +240,24 @@ jobs:
                   return json.load(r)
           import base64 as _b64
           SERVER = os.environ['GITHUB_SERVER_URL']
+          BASE_REF = 'origin/main'.replace('origin/', '')
           def auth_header():
               return 'Authorization: Basic ' + _b64.b64encode(('x-access-token:' + TOKEN).encode()).decode()
           def ensure_objects(rev):
               subprocess.run(['git', 'config', '--global', '--replace-all', 'http.' + SERVER + '/.extraHeader', auth_header()], check=True)
+              subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=50', 'origin', rev], check=False)
+              subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)
               shallow = os.path.exists(os.path.join('.git', 'shallow'))
               for _round in range(8):
                   probe = subprocess.run(['git', 'cat-file', '-t', rev], capture_output=True, text=True)
                   if probe.returncode == 0 and probe.stdout.strip() == 'commit':
                       return
-                  subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', 'main:refs/remotes/origin/main'], check=True)
+                  subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--depth=500', 'origin', BASE_REF + ':refs/remotes/origin/' + BASE_REF], check=True)
                   if shallow:
                       subprocess.run(['git', '-c', 'http.extraHeader=' + auth_header(), 'fetch', '--quiet', '--deepen=500', 'origin'], check=False)
               raise SystemExit('wave-transport: the merge base object is unreachable after 8 deepen rounds -- refusing before the instrument runs')
           def merge_base():
-              return api('/repos/' + REPO + '/compare/main...' + HEAD)['merge_base_commit']['sha']
+              return api('/repos/' + REPO + '/compare/' + BASE_REF + '...' + HEAD)['merge_base_commit']['sha']
           def clear(dest):
               os.makedirs(dest, exist_ok=True)
               for old in os.listdir(dest):
@@ -306,6 +309,11 @@ jobs:
                       if not chunk:
                           break
                       f.write(chunk)
+          def place(dest, src):
+              dst = os.path.join(dest, os.path.basename(src))
+              if os.path.exists(dst) and open(dst, 'rb').read() != open(src, 'rb').read():
+                  raise SystemExit('wave-transport: transport_duplicate_receipt_bytes_differ: ' + os.path.basename(src) + ' staged twice with different bytes -- refusing before the instrument runs')
+              shutil.copy2(src, dst)
           def fetch(wid, dest, want_name, must_glob):
               for a in api('/repos/' + REPO + '/actions/runs/' + str(wid) + '/artifacts')['artifacts']:
                   if a.get('name') != want_name or a.get('expired'):
@@ -323,12 +331,8 @@ jobs:
                   if not hits:
                       shutil.rmtree(tmp)
                       return False
-                  for root, dirs, files in os.walk(tmp):
-                      for name in files:
-                          sub = os.path.relpath(root, tmp)
-                          dst_dir = dest if sub == '.' else os.path.join(dest, sub)
-                          os.makedirs(dst_dir, exist_ok=True)
-                          shutil.copy2(os.path.join(root, name), os.path.join(dst_dir, name))
+                  for hit in hits:
+                      place(dest, hit)
                   shutil.rmtree(tmp)
                   return True
               return False
@@ -347,7 +351,7 @@ jobs:
                   clear(PROBE)
                   if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):
                       for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):
-                          shutil.copy2(hit, os.path.join(STAGING, os.path.basename(hit)))
+                          place(STAGING, hit)
                       break
               clear(PROBE)
           PYEOF
