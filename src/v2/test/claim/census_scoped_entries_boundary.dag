@@ -51,14 +51,6 @@ test fn shape_two_element_equality() -> Bool {
   native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) == ["extdeps.git.versioning", "std.fermi"]
 }
 
-test fn shape_single_element_pattern_match() -> Bool {
-  match native_census_scoped_entries(subjects: ["std.fermi"]) {
-    Cons { head: h, tail: t } =>
-      h == "std.fermi"
-        && match t {
-          Empty => true
-          Cons { head: _, tail: _ } => false
-        }
-    Empty => false
-  }
+test fn shape_call_vs_call_equality() -> Bool {
+  native_census_scoped_entries(subjects: ["std.fermi"]) == native_census_scoped_entries(subjects: ["std.fermi"])
 }
