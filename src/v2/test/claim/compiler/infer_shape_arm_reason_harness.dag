@@ -97,7 +97,7 @@ data shah_trivial_source: String = "module shape_arm_probe\n\nfn f() -> Int {\n 
 // constructor value at an Int formal. The candidate test runs for real on this door, so a green
 // harness must read the label here. A constructor value, not a literal: literals route through the
 // literal elaboration tables (infer.dag:4806ff) and can answer a different reason.
-data shah_control_source: String = "module shape_arm_probe\n\ntype Flag\n  = On\n\nfn takes(x: Int) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  takes(On)\n}\n"
+data shah_control_source: String = "module shape_arm_probe\n\ntype Flag\n  = On\n  | Off\n\nfn takes(x: Int) -> Int {\n  1\n}\n\nfn caller() -> Int {\n  takes(On)\n}\n"
 
 // THE FIXTURE (kept from v1 for continuity with the srv1 reading): formal T<T>, applied to 1. Per
 // the header analysis its label -- if still the label -- is earned at the honest door, not the arm.
@@ -113,9 +113,15 @@ test fn harness_trivial_module_is_accepted() -> Bool {
   shah_reason(src: shah_trivial_source) == "ACCEPTED"
 }
 
-// (2) ground control: the plain door reads the label through this harness.
+// (2) ground control: the plain door reads the label through this harness. The != companions print
+// WHY it failed when == fails: acceptance names itself here, so one run tells whether the control
+// module was accepted (fixture wrong) or refused with a different reason (door wrong).
 test fn harness_control_reads_the_label() -> Bool {
   shah_reason(src: shah_control_source) == "infer:application_argument_does_not_inhabit"
+}
+
+test fn harness_control_is_not_accepted() -> Bool {
+  shah_reason(src: shah_control_source) != "ACCEPTED"
 }
 
 // (3) the T<T> fixture, unchanged reading from v1: the fatal == the label.
