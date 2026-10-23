@@ -1987,7 +1987,6 @@ fn variant_literal_expected_application(owner: Node, expected: Node?, scope: Inf
   match expected {
     Present { value: exp } =>
       if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
-      else if exp.children |> any(c => match child_type_node(ch: c).inferred { Present { value: TypeVariable { id: _ } } => true  _ => false }) { none }
       else {
         match lookup_type_for(env: scope.type_env, node: exp) {
           Present { value: head } => if rc_ptr_eq(head, owner) { Present { value: with_required_cardinality(n: exp) } } else { none }
@@ -8377,23 +8376,10 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspon
       ExprLiteral { value: _ } => true
       _ => false
     }
-    // THE CALLEE'S UNSOLVED TYPE PARAMETERS ARE NOT AN EXPECTATION FOR AN ARGUMENT (the same rule a
-    // generic literal's template field obeys, see type_node_mentions_any_name). `bind_outcome(o: fold(..,
-    // init: Accepted { value: Rec { .. } }, ..), f: fn(state) { .. })` offers the fold `Outcome<T>`, T being
-    // bind_outcome's own, and the init variant literal then took that application over the one its payload
-    // fixes: `state` typed `T` and its field read had no declaration. Each unsolved name becomes a TYPE
-    // VARIABLE, which variant_literal_expected_application does not admit as an application.
-    let unsolved_generic_variables = fold(generic_names, init: empty_map(), f: (m, g) =>
-      match map_get(st.subst, g) {
-        Present { value: _ } => m
-        Absent => map_insert(m, g, type_variable_node(id: g))
-      }
-    )
-    let formal_param_expected = substitute_generics(n: formal_param_type, subst: unsolved_generic_variables, source_indices: scope.type_env.source_indices)
     let contextual_expected = if formal_is_code_point_sequence && argument_is_literal { code_point_formal } else { match arg_value(n: a).expr_data {
-      ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_expected }
-      ExprRecordLit { parent_enum: _ } => formal_param_expected
-      _ => formal_param_expected
+      ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
+      ExprRecordLit { parent_enum: _ } => formal_param_type
+      _ => formal_param_type
     } }
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
     let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
