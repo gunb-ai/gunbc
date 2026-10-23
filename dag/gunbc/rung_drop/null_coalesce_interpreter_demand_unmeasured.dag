@@ -16,13 +16,11 @@ data null_coalesce_interpreter_demand_unmeasured: RungDrop = RungDrop {
 
   declared: "2026-10-11",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: FreeSemigroup { head: "test.claim.eval_model_probe null_coalesce_skips_a_refusing_right_when_left_is_present (replaced by a match-arm claim that does not exercise ??)", tail: ["test.claim.eval_model_probe null_coalesce_demands_its_right_when_left_is_absent (replaced by a match-arm claim that does not exercise ??)"] } },
     restoration_trigger: "a claim-evaluation route parses and evaluates a `??` expression, sufficient that a present left skips a refusing right operand and an absent left demands it, shown as a discriminating pair on that route",
-  }
+  } }
 }

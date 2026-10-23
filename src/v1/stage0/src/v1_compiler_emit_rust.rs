@@ -34,7 +34,7 @@ pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_owner
 pub use crate::std_measure::{millisecond_count};
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity};
 pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label, HostRealizationReason};
-pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration};
+pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration, never_projection_declarations};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
 pub use crate::std_syntax::{LiteralValue, BinOp, AlgebraFieldKind};
@@ -7503,13 +7503,16 @@ pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> 
         let lines = Rc::new({
             let mut __result = Vec::new();
             for path in Rc::new({
-                let mut __sorted: Vec<_> = declared.iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|path: String| path.clone())(a.clone());
-                    let __kb = (|path: String| path.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
+                let mut __keyed: Vec<_> = declared
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|path: String| path.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
             })
             .iter()
             .cloned()
@@ -13409,7 +13412,18 @@ pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bo
 pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
     {
         let here = crate::std_decl_ref::decl_ref(module_path.clone(), name.clone());
-        if crate::std_decl_ref::declaration_ref_eq(here.clone(), never_eliminator_declaration()) {
+        if (crate::std_decl_ref::declaration_ref_eq(here.clone(), never_eliminator_declaration())
+            || {
+                let mut __found = false;
+                for d in never_projection_declarations().iter().cloned() {
+                    if crate::std_decl_ref::declaration_ref_eq(here.clone(), d.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+        {
             "#[allow(unreachable_code)]\n".to_string()
         } else {
             "".to_string()
@@ -30515,65 +30529,19 @@ pub fn emit_rust_sort_by_method_call(
             sharing.iter_owned.clone(),
             recv_str.clone(),
         );
-        let a_clone = crate::v1_compiler_emit_core_support::apply_type_template1(
+        let e_clone = crate::v1_compiler_emit_core_support::apply_type_template1(
             sharing.clone_value.clone(),
-            "a".to_string(),
+            "__e".to_string(),
         );
-        let b_clone = crate::v1_compiler_emit_core_support::apply_type_template1(
-            sharing.clone_value.clone(),
-            "b".to_string(),
-        );
-        let closure_params = if (elem_type_str.clone() == "_".to_string()) {
-            "|a, b|".to_string()
+        let decorate_param = if (elem_type_str.clone() == "_".to_string()) {
+            "|__e|".to_string()
         } else {
             v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("|a: &".to_string(), elem_type_str.clone()),
-                        ", b: &".to_string(),
-                    ),
-                    elem_type_str.clone(),
-                ),
+                v1_rt::concat("|__e: ".to_string(), elem_type_str.clone()),
                 "|".to_string(),
             )
         };
-        rust_shared_wrap_ctor(v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        "{ let mut __sorted: Vec<_> = ".to_string(),
-                                                        iter_str.clone(),
-                                                    ),
-                                                    ".collect(); __sorted.sort_by(".to_string(),
-                                                ),
-                                                closure_params.clone(),
-                                            ),
-                                            " { let __ka = (".to_string(),
-                                        ),
-                                        sort_key_fn.clone(),
-                                    ),
-                                    ")(".to_string(),
-                                ),
-                                a_clone.clone(),
-                            ),
-                            "); let __kb = (".to_string(),
-                        ),
-                        sort_key_fn.clone(),
-                    ),
-                    ")(".to_string(),
-                ),
-                b_clone.clone(),
-            ),
-            "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }".to_string(),
-        ))
+        rust_shared_wrap_ctor(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{ let mut __keyed: Vec<_> = ".to_string(), iter_str.clone()), ".map(".to_string()), decorate_param.clone()), " { let __k = (".to_string()), sort_key_fn.clone()), ")(".to_string()), e_clone.clone()), "); (__k, __e) }).collect(); __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0)); __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>() }".to_string()))
     }
 }
 
@@ -35106,7 +35074,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                 if ((candidates.clone().len() as i64) > 1) {
                                     {
                                         let candidate_names = Rc::new({
-                                            let mut __sorted: Vec<_> = Rc::new({
+                                            let mut __keyed: Vec<_> = Rc::new({
                                                 let mut __result = Vec::new();
                                                 for c in candidates.iter().cloned() {
                                                     __result.push(c.name.clone());
@@ -35115,13 +35083,19 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                             })
                                             .iter()
                                             .cloned()
+                                            .map(|__e: String| {
+                                                let __k =
+                                                    (|name: String| name.clone())(__e.clone());
+                                                (__k, __e)
+                                            })
                                             .collect();
-                                            __sorted.sort_by(|a: &String, b: &String| {
-                                                let __ka = (|name: String| name.clone())(a.clone());
-                                                let __kb = (|name: String| name.clone())(b.clone());
-                                                v1_rt::canonical_key_cmp(&__ka, &__kb)
+                                            __keyed.sort_by(|__x, __y| {
+                                                v1_rt::canonical_key_cmp(&__x.0, &__y.0)
                                             });
-                                            __sorted
+                                            __keyed
+                                                .into_iter()
+                                                .map(|(_, __e)| __e)
+                                                .collect::<Vec<_>>()
                                         });
                                         Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
     candidates: candidate_names.clone(),

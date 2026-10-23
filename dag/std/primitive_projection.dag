@@ -96,6 +96,15 @@ data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_
 // helpers. Never has no producer.
 data never_type_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "Never")
 data never_eliminator_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "absurd")
+// THE PER-RESULT-TYPE ELIMINATIONS OF THE ONE DIVERGENT SEAM (std.error_primitives
+// pure_dag_seam_unreachable_int / _float / _string, each absurd over the Never-typed seam). Rust emission
+// gives exactly these items, and absurd, an item-level allow(unreachable_code): rustc refuses a call with
+// an uninhabited argument at the caller, so the elimination lives in these items and no caller allows.
+data never_projection_declarations: List<DeclarationRef> = [
+  decl_ref(module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable_int"),
+  decl_ref(module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable_float"),
+  decl_ref(module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable_string")
+]
 
 fn never_type_qualified_path() -> String {
   concat(never_type_declaration.module_path as String, ".", never_type_declaration.decl_name as String)
