@@ -41,7 +41,7 @@ import v2.std.live_read {
   ModuleDeclarationFactsScan,
   DeclFactsReflection
 }
-import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
+import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme, NotADeclaration }
 import v2.std.fn_index {
   FnArrowDecl,
   fn_arrow_decl_facts_live,
@@ -306,7 +306,7 @@ fn selection_atom_node(lexeme: String) -> Node {
 fn selection_body_node(callee: String) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
+    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -314,7 +314,7 @@ fn selection_body_node(callee: String) -> Node {
 fn selection_non_call_atom_body(text: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: text) } ],
+    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: text), declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }

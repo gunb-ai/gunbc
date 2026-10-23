@@ -1,6 +1,5 @@
 module v2.test.claim.translate_underived_refusal
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
@@ -65,6 +64,7 @@ import v2.std.node {
   core_edge,
   content_hash,
   node_rebuild,
+  NotADeclaration
 }
 import std.optional { Absent, Optional, optional_absent }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
@@ -144,7 +144,7 @@ fn translate_mixed_tree_root() -> Node {
     n: rust_add_emitted_root,
     children: list_snoc_item(
       xs: rust_add_emitted_root.children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: Edge { label: Positional, target: translate_underived_value_specimen, declaration: NotADeclaration }
     )
   )
 }
@@ -161,8 +161,7 @@ fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data translate_mixed_derived_root_underived_child_tree: InferredTree = InferredTree {
   root: translate_mixed_tree_root(),
-  facts: PartialFunction { lookup: translate_mixed_tree_facts_lookup },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: translate_mixed_tree_facts_lookup }
 }
 
 fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<InferredFacts> {
@@ -175,8 +174,7 @@ fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<I
 
 data translate_absent_parent_underived_child_tree: InferredTree = InferredTree {
   root: translate_mixed_tree_root(),
-  facts: PartialFunction { lookup: translate_absent_parent_underived_child_facts_lookup },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
 
 fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
@@ -184,7 +182,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
     n: python_emitted_add_fn_node(),
     children: list_snoc_item(
       xs: python_emitted_add_fn_node().children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: Edge { label: Positional, target: translate_underived_value_specimen, declaration: NotADeclaration }
     )
   )
 }
@@ -208,8 +206,7 @@ fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) ->
 
 data translate_bodyless_emission_root_with_poison_child_tree: InferredTree = InferredTree {
   root: translate_bodyless_emission_root_with_poison_child_root(),
-  facts: PartialFunction { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
 
 fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
@@ -223,7 +220,8 @@ fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
             xs: arrow.children,
             item: Edge {
               label: Positional,
-              target: translate_underived_value_specimen
+              target: translate_underived_value_specimen,
+              declaration: NotADeclaration
             }
           )
         )
@@ -247,8 +245,7 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<Inferr
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup },
-          arm_resolutions: constructed_root_arm_resolutions()
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }
@@ -274,8 +271,7 @@ fn translate_bodied_arrow_contract_payload_tree() -> Outcome<InferredTree> {
               item: core_edge(marker: ArrowEffectClaimsEdge, target: translate_underived_value_specimen)
             )
           ),
-          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup },
-          arm_resolutions: constructed_root_arm_resolutions()
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }
@@ -290,7 +286,7 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Positional, target: arrow }
+            Edge { label: Positional, target: arrow, declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
         }
@@ -306,8 +302,7 @@ fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> 
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup },
-          arm_resolutions: constructed_root_arm_resolutions()
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }
