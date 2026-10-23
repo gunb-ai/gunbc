@@ -782,24 +782,43 @@ pub(crate) fn commit_witness_claim_pair_resolvability_with_index(
     let cached = entry_cache
         .entry(entry.to_string())
         .or_insert_with(|| roster_entry_registry_cache(index, roots, entry));
-    match cached {
+    let names = match cached {
         RosterEntryRegistryCache::EntryMissing { detail } => {
-            CommitWitnessClaimPairResolvability::EntryMissing {
+            return CommitWitnessClaimPairResolvability::EntryMissing {
                 detail: detail.clone(),
             }
         }
         RosterEntryRegistryCache::EntryResolveFailed { detail } => {
-            CommitWitnessClaimPairResolvability::EntryResolveFailed {
+            return CommitWitnessClaimPairResolvability::EntryResolveFailed {
                 detail: detail.clone(),
             }
         }
-        RosterEntryRegistryCache::Functions(names) => {
-            if names.contains(function) {
-                CommitWitnessClaimPairResolvability::Resolvable
-            } else {
-                CommitWitnessClaimPairResolvability::FunctionNotFound
-            }
-        }
+        RosterEntryRegistryCache::Functions(names) => names,
+    };
+    // THE FILE-GRAIN SENTINEL, THE SAME ONE ITS TWO SIBLING CONSUMERS CARRY. A roster row with
+    // `check_fns: []` expands (test_module_hygiene_bridge::expand_explicit_entries) to one pair
+    // per TEST MARKER in the entry file -- an empty function name is the authority's documented
+    // "every marked declaration in this file", not a name that has to exist in the item
+    // registry. Before this arm the scan asked the registry whether "" is a function and
+    // reported `function_not_found` for all six deliberate file-grain rows that
+    // gunbc.commit_workflow's own witness
+    // (dag/test/claim/commit_check_demand_witness.dag
+    // commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries) REQUIRES; the
+    // claim was right and the scan was the second, wrong representation of the expansion rule.
+    if test_module_hygiene_bridge::is_file_grain_function(function) {
+        let path = super::workspace_root().join(entry);
+        return match test_module_hygiene_bridge::enumerate_entry_test_fns(
+            path.to_str().unwrap_or(entry),
+        ) {
+            Ok(markeds) if !markeds.is_empty() => CommitWitnessClaimPairResolvability::Resolvable,
+            Ok(_) => CommitWitnessClaimPairResolvability::FileGrainEntryHasNoMarkedDeclarations,
+            Err(_) => CommitWitnessClaimPairResolvability::FileGrainEntryUnreadable,
+        };
+    }
+    if names.contains(function) {
+        CommitWitnessClaimPairResolvability::Resolvable
+    } else {
+        CommitWitnessClaimPairResolvability::FunctionNotFound
     }
 }
 
@@ -832,6 +851,12 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
             }
             CommitWitnessClaimPairResolvability::FunctionNotFound => {
                 "function_not_found".to_string()
+            }
+            CommitWitnessClaimPairResolvability::FileGrainEntryHasNoMarkedDeclarations => {
+                "file_grain_entry_has_no_marked_declarations".to_string()
+            }
+            CommitWitnessClaimPairResolvability::FileGrainEntryUnreadable => {
+                "file_grain_entry_unreadable".to_string()
             }
         };
         defects.push((entry, function, cause));
