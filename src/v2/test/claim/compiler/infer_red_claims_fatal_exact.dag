@@ -1,0 +1,103 @@
+module v2.test.claim.compiler.infer_red_claims_fatal_exact
+
+// SEAT 16, SCRATCH (never-merge). Round 5: exact-name claims inside the bucket the
+// sweep module located. One == claim per candidate; the single PASS names the fatal.
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_type_atom_node
+}
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  inhabitance_generic_formal_tree,
+  inhabitance_generic_formal_tree_over,
+  inhabitance_named_conj_domain
+}
+
+fn ex_fatal_sym(d: NonEmptyDiagnostics) -> String {
+  symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+}
+
+fn ex_a_reason() -> String {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => ex_fatal_sym(d: d)
+  }
+}
+
+fn ex_c_tree() -> ResolvedTree {
+  claim_resolved_tree_without_declarations(
+    root: inhabitance_generic_formal_tree_over(
+      declared: dag_arrow_with_body_node(
+        domain: inhabitance_named_conj_domain(
+          parameter: ^inhabitance_param_x,
+          declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+        ),
+        return_type_binding: ^inhabitance_type_param_t,
+        body: dag_int_literal_fixture_one()
+      )
+    )
+  )
+}
+
+fn ex_c_reason() -> String {
+  match infer(tree: ex_c_tree()) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => ex_fatal_sym(d: d)
+  }
+}
+
+test fn ex_a_is_fold_lowering_not_a_fold_call() -> Bool {
+  ex_a_reason() == "fold_lowering_not_a_fold_call"
+}
+test fn ex_a_is_fold_lowering_operand_absent() -> Bool {
+  ex_a_reason() == "fold_lowering_operand_absent"
+}
+test fn ex_a_is_fold_lowering_shape_invalid() -> Bool {
+  ex_a_reason() == "fold_lowering_shape_invalid"
+}
+test fn ex_a_is_fold_lowering_step_form_unresolved() -> Bool {
+  ex_a_reason() == "fold_lowering_step_form_unresolved"
+}
+test fn ex_a_is_generator_provenance_artifact_not_generated() -> Bool {
+  ex_a_reason() == "generator_provenance_artifact_not_generated"
+}
+test fn ex_a_is_grounding_evidence_is_source() -> Bool {
+  ex_a_reason() == "grounding_evidence_is_source"
+}
+test fn ex_a_is_import_binding_row_not_import_decl() -> Bool {
+  ex_a_reason() == "import_binding_row_not_import_decl"
+}
+test fn ex_a_is_integer_div_by_zero() -> Bool {
+  ex_a_reason() == "integer_div_by_zero"
+}
+test fn ex_c_is_fold_lowering_not_a_fold_call() -> Bool {
+  ex_c_reason() == "fold_lowering_not_a_fold_call"
+}
+test fn ex_c_is_fold_lowering_operand_absent() -> Bool {
+  ex_c_reason() == "fold_lowering_operand_absent"
+}
+test fn ex_c_is_fold_lowering_shape_invalid() -> Bool {
+  ex_c_reason() == "fold_lowering_shape_invalid"
+}
+test fn ex_c_is_fold_lowering_step_form_unresolved() -> Bool {
+  ex_c_reason() == "fold_lowering_step_form_unresolved"
+}
+test fn ex_c_is_generator_provenance_artifact_not_generated() -> Bool {
+  ex_c_reason() == "generator_provenance_artifact_not_generated"
+}
+test fn ex_c_is_grounding_evidence_is_source() -> Bool {
+  ex_c_reason() == "grounding_evidence_is_source"
+}
+test fn ex_c_is_import_binding_row_not_import_decl() -> Bool {
+  ex_c_reason() == "import_binding_row_not_import_decl"
+}
+test fn ex_c_is_integer_div_by_zero() -> Bool {
+  ex_c_reason() == "integer_div_by_zero"
+}
