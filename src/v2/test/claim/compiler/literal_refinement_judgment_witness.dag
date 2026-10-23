@@ -187,3 +187,54 @@ test fn lrj_probe_simplest_refined_argument_records_one_obligation_holds() -> Bo
 test fn lrj_probe_simplest_refined_argument_infers_at_all_holds() -> Bool {
   lrj_obligation_count(subject: "v2.test.lrj_one_arg") >= 0
 }
+
+// FATAL NAMER over lrj_one_arg: exactly one of these is true, so the run names where the fixture stops.
+fn lrj_one_arg_outcome_is(reason: Symbol) -> Bool {
+  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      match infer(tree: r) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == reason
+      }
+  }
+}
+
+test fn lrj_fatal_is_resolve_refused_holds() -> Bool {
+  match lrj_resolve(subject: "v2.test.lrj_one_arg") { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
+}
+
+test fn lrj_fatal_is_infer_accepted_holds() -> Bool {
+  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } => match infer(tree: r) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+  }
+}
+
+test fn lrj_fatal_is_application_argument_does_not_inhabit_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^application_argument_does_not_inhabit)
+}
+
+test fn lrj_fatal_is_grounding_not_derived_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^infer_grounding_not_derived)
+}
+
+test fn lrj_fatal_is_grounding_demanded_not_derived_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^infer_grounding_demanded_not_derived)
+}
+
+test fn lrj_fatal_is_argument_type_not_derived_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+
+test fn lrj_fatal_is_formal_unresolved_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^inhabitance_undecidable_formal_unresolved)
+}
+
+test fn lrj_fatal_is_where_predicate_subject_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^inhabitance_undecidable_where_predicate_subject_unmodelled)
+}
+
+test fn lrj_fatal_is_demand_site_unplaceable_holds() -> Bool {
+  lrj_one_arg_outcome_is(reason: ^infer_reason_refinement_demand_site_unplaceable)
+}
