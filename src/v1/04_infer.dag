@@ -143,7 +143,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
-  env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
+  env_with_type_variable_bindings, node_with_children_params_inferred_basis, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
   lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
@@ -16370,20 +16370,16 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+// A generic-parameter reference is stamped with the parameter's identity (TypeVariable) wherever a type
+// expression holds it: as a bare field type, under type arguments (children), and inside a callable
+// (params, and the return carried in a Resolved inferred). Substitution keys on that stamp alone, so a
+// position the stamp misses is a position substitution cannot reach.
 fn stamp_field_type_from_decl_params(field_type: Node, serving_decl: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if (serving_decl.params |> count) == 0 || field_type.inferred != none {
+  if (serving_decl.params |> count) == 0 {
     field_type
   } else {
-    let is_bare = (field_type.children |> count) == 0 && field_type.connective == NoConnective && (field_type.params |> count) == 0
-    if is_bare {
-      let nm = type_node_label(n: field_type, source_indices: source_indices)
-      let is_param = fold(
-        serving_decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
-        init: false,
-        f: (acc, pn) => acc || pn == nm
-      )
-      if is_param { node_with_inferred(n: field_type, inferred: Present { value: TypeVariable { id: nm } }) } else { field_type }
-    } else { field_type }
+    let param_names = serving_decl.params |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, generic_param_name_at(n: p, source_indices: source_indices), true))
+    stamp_type_param_occurrences(n: field_type, param_names: param_names, source_indices: source_indices)
   }
 }
 
@@ -16398,7 +16394,13 @@ fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_
       }
     } else { n }
   } else {
-    node_with_children(n: n, children: n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices)))
+    let children = n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices))
+    let params = n.params |> map(p => stamp_type_param_occurrences(n: p, param_names: param_names, source_indices: source_indices))
+    let inferred = match n.inferred {
+      Present { value: Resolved { node: rt } } => Present { value: Resolved { node: stamp_type_param_occurrences(n: rt, param_names: param_names, source_indices: source_indices) } }
+      _ => n.inferred
+    }
+    node_with_children_params_inferred_basis(n: n, children: children, params: params, inferred: inferred)
   }
 }
 
