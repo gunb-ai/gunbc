@@ -130,7 +130,7 @@ THE RESIDUE IS NAMED, NOT CLOSED: a self-call body is a DECIDABLE structural mar
 // two authorities. A consumer collecting call candidates must suppress the builtin co-candidate for
 // the first two fidelities and must keep refusing on the third.
 
-fn primitive_projection_row(primitive: PrimitiveIdentity, module_path: String, decl_name: String, fidelity: ProjectionFidelity) -> PrimitiveProjection {
+fn primitive_projection_row(primitive: PrimitiveIdentity, module_path: NonEmptyStr, decl_name: NonEmptyStr, fidelity: ProjectionFidelity) -> PrimitiveProjection {
   PrimitiveProjection { primitive: primitive, declaration: decl_ref(module_path: module_path, decl_name: decl_name), fidelity: fidelity }
 }
 

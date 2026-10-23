@@ -29,7 +29,7 @@ import std.operator_realization { StructuralOrderingBinding }
 // Peano row is true by the definition of the naturals: n maps to succ^n(zero), and that map is the
 // unique semiring homomorphism from the kernel integers restricted to the nonnegatives.
 
-fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, succ: String, prev_field: String) -> LiteralHomomorphism {
+fn peano_literal_homomorphism(module_path: NonEmptyStr, nat: NonEmptyStr, zero: NonEmptyStr, succ: NonEmptyStr, prev_field: NonEmptyStr) -> LiteralHomomorphism {
   LiteralHomomorphism {
     source_kind: KernelIntLiteral,
     destination: decl_ref(module_path: module_path, decl_name: nat),
@@ -37,7 +37,7 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
     producer: PeanoUnfold {
       zero: decl_ref(module_path: module_path, decl_name: zero),
       succ: decl_ref(module_path: module_path, decl_name: succ),
-      prev_field: prev_field as NonEmptyStr
+      prev_field: prev_field
     }
   }
 }
@@ -89,7 +89,7 @@ data conversion_plan_rows: List<ConversionPlan> = [
   }
 ]
 
-fn structural_ordering_binding(carrier_module: String, carrier: String, compare_module: String, compare: String, ordering_module: String, ordering: String) -> StructuralOrderingBinding {
+fn structural_ordering_binding(carrier_module: NonEmptyStr, carrier: NonEmptyStr, compare_module: NonEmptyStr, compare: NonEmptyStr, ordering_module: NonEmptyStr, ordering: NonEmptyStr) -> StructuralOrderingBinding {
   StructuralOrderingBinding {
     carrier: decl_ref(module_path: carrier_module, decl_name: carrier),
     compare: decl_ref(module_path: compare_module, decl_name: compare),
