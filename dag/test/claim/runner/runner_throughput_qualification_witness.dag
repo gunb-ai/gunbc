@@ -65,7 +65,7 @@ import gunbc.runner.runner_throughput_qualification {
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
 import std.nat { Nat, nat_range_inclusive }
-import std.observation { OccurrenceId }
+import std.observation { AttemptOccurrenceId }
 import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
 }
@@ -399,7 +399,7 @@ fn seat_ids(n: Int) -> List<GitHubWorkflowRunId> {
 
 fn seat_reading(id: GitHubWorkflowRunId, settlement: SeatSettlement) -> CohortSeatReading<GitHubWorkflowRunId> {
   CohortSeatReading {
-    seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr },
+    seat: id, source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr },
     ready_at: t(n: 5), started_at: t(n: 20), ended_at: t(n: 40), settlement: settlement,
   }
 }
@@ -409,7 +409,7 @@ fn cohort_of(seats: List<CohortSeatReading<GitHubWorkflowRunId>>) -> RunnerCohor
     seal: seal_cohort(
       reading: CohortReading {
         roster: map(seats, s => s.seat), barrier_released_at: t(n: 10), host_window_from: t(n: 0), host_window_to: t(n: 100),
-        host_source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: "host" as NonEmptyStr }, seats: seats,
+        host_source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: "host" as NonEmptyStr }, seats: seats,
       },
       seat_key: run_key,
     ),
@@ -637,7 +637,7 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
   let short = seat_ids(n: w - 1)
   let failed = map(ids, id => if id.value == 35447067201 { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatFailed { cause: "floor phase refused" as NonEmptyStr } }) } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
   let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })), [seat_reading(id: GitHubWorkflowRunId { value: 35447099999 }, settlement: SeatSettledAs { settled: SeatSucceeded })])
-  let apart = map(ids, id => if id.value == 35447067201 { CohortSeatReading { seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
+  let apart = map(ids, id => if id.value == 35447067201 { CohortSeatReading { seat: id, source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
   w >= 2
     && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
