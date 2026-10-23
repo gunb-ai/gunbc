@@ -24,7 +24,7 @@ import std.realization_schedule {
 }
 import std.content_hash { ContentHash, content_hash_of_value }
 import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.lens_verdict { Holds, LensVerdict, Violation, NotApplicable, Unrealized }
 
 data synthetic_target: ContentHash = content_hash_of_value(value: "walk-plan-schedule-lens-v1")
