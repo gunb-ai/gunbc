@@ -1,0 +1,806 @@
+module gunbc.design.brand_mark_studio
+
+import std.types { Int, List, String, Bool }
+import std.optional { Absent, Present }
+import std.markup { Attribute, Fragment, FragmentText, attr }
+import gunbc.site.markup { el_attrs }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.html { serialize_html_source }
+import gunbc.design.brand_mark {
+  BrandMark, BrandMarkBox, BrandMarkDisc, BrandMarkShape, FaceMark, RoundedBox, Disc,
+  brand_mark, brand_mark_box_path, brand_mark_frame,
+}
+
+// THE MARK STUDIO: the redesign of gunbc.design.brand_mark worked as INDEPENDENT AXES, so any pick on
+// one axis composes with any pick on every other:
+//
+//   mark = silhouette x relief x costume x expression x material x palette
+//
+// THE CONTRACTS BETWEEN AXES ARE WHAT MAKE THEM INDEPENDENT.
+// - A silhouette yields ANCHORS (crown, ear points, eye centres and size, mouth box, chin, sides).
+// - A costume attaches PARTS at anchors, never at fixed coordinates, so it fits every silhouette;
+//   each part carries a PAINT ROLE (body, feature, accessory, trim, accent) and a draw depth.
+// - An expression reshapes the eyes and mouth inside their anchors.
+// - A material paints BY ROLE and never names a part, so wool ears and a wool Santa hat are one rule.
+// - A relief gives the mark DEPTH by LAYER: the body (shell and everything behind it) and the face
+//   (eyes and mouth) are lit or extruded as wholes, so depth never depends on the costume or texture.
+// - A palette resolves each role, and the ground, to a colour: a seasonal look is a palette.
+// The robot is the face wearing the robot costume (square eyes, antenna); the GitHub Apps are presets.
+//
+// These are sketches for deciding direction. A pick becomes the brand model; the studio is the
+// rendering of the choice space. Render every page into a directory:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/design/brand_mark_studio.dag
+//     --function studio_write --arg dir=<out-dir>
+
+// ═══ ANCHORS (from a silhouette) ═══
+
+type StudioAnchors {
+  shell: BrandMarkBox
+  eye_left_x: Int
+  eye_right_x: Int
+  eye_y: Int
+  eye_r: Int
+  mouth: BrandMarkBox
+}
+
+// The outline of the shell. A rounded box is today's; a squircle keeps the box but blends each corner
+// into its sides; a pebble is fuller at the bottom than the top, so it sits like an object.
+type StudioShellShape = ShellRoundedBox | ShellSquircle | ShellPebble
+
+type StudioSilhouette {
+  key: String
+  title: String
+  note: String
+  shape: StudioShellShape
+  tilt: Int
+  shell_r: Int
+  eye_scale: Int
+  eye_inset: Int
+  mouth_w: Int
+}
+
+data studio_silhouettes: List<StudioSilhouette> = [
+  StudioSilhouette { key: "current", title: "Current", note: "Today's proportions.", shape: ShellRoundedBox, tilt: 0, shell_r: 360, eye_scale: 100, eye_inset: 0, mouth_w: 192 },
+  StudioSilhouette { key: "softer", title: "Softer shell", note: "Rounder corners: more pebble, friendlier.", shape: ShellRoundedBox, tilt: 0, shell_r: 440, eye_scale: 100, eye_inset: 0, mouth_w: 192 },
+  StudioSilhouette { key: "squircle", title: "Squircle", note: "Corners blend into the sides: an app-icon outline, calmer than a rounded box.", shape: ShellSquircle, tilt: 0, shell_r: 0, eye_scale: 110, eye_inset: 0, mouth_w: 192 },
+  StudioSilhouette { key: "pebble", title: "Pebble", note: "Fuller at the bottom: reads as an object with weight.", shape: ShellPebble, tilt: 0, shell_r: 0, eye_scale: 110, eye_inset: 20, mouth_w: 192 },
+  StudioSilhouette { key: "tilted", title: "Tilted", note: "Softer shell turned 6 degrees: a head cocked, more character.", shape: ShellRoundedBox, tilt: -6, shell_r: 420, eye_scale: 110, eye_inset: 0, mouth_w: 192 },
+  StudioSilhouette { key: "big-eyes", title: "Bigger eyes", note: "Eyes 125%: more expressive, reads better small.", shape: ShellRoundedBox, tilt: 0, shell_r: 360, eye_scale: 125, eye_inset: 0, mouth_w: 192 },
+  StudioSilhouette { key: "closer", title: "Closer eyes", note: "Eyes nearer the centre: younger, more focused.", shape: ShellRoundedBox, tilt: 0, shell_r: 380, eye_scale: 115, eye_inset: 60, mouth_w: 168 },
+  StudioSilhouette { key: "grin", title: "Wider mouth", note: "Mouth 1.5x: more of a grin.", shape: ShellRoundedBox, tilt: 0, shell_r: 400, eye_scale: 110, eye_inset: 0, mouth_w: 288 },
+]
+
+fn studio_anchors(s: StudioSilhouette) -> StudioAnchors {
+  let m = brand_mark(kind: FaceMark)
+  let eye = match m.left_eye {
+    Disc { disc } => disc
+    RoundedBox { box } => BrandMarkDisc { cx: box.x + box.w / 2, cy: box.y + box.h / 2, r: box.w / 2 }
+  }
+  let mouth_cy = m.mouth.y + m.mouth.h / 2
+  StudioAnchors {
+    shell: BrandMarkBox { x: m.shell.x, y: m.shell.y, w: m.shell.w, h: m.shell.h, r: s.shell_r },
+    eye_left_x: eye.cx + s.eye_inset,
+    eye_right_x: brand_mark_frame - eye.cx - s.eye_inset,
+    eye_y: eye.cy,
+    eye_r: eye.r * s.eye_scale / 100,
+    mouth: BrandMarkBox { x: (brand_mark_frame - s.mouth_w) / 2, y: mouth_cy - m.mouth.h / 2, w: s.mouth_w, h: m.mouth.h, r: m.mouth.r },
+  }
+}
+
+// Each cubic quadrant runs from one side's midpoint to the next, with its two controls `a` and `b`
+// short of the corner along each side: a small inset gives a squarer corner.
+fn studio_shell_d(shape: StudioShellShape, b: BrandMarkBox) -> String {
+  let x0 = b.x
+  let x1 = b.x + b.w
+  let y0 = b.y
+  let y1 = b.y + b.h
+  let mx = b.x + b.w / 2
+  match shape {
+    ShellRoundedBox => brand_mark_box_path(b: b)
+    ShellSquircle => {
+      let a = b.w * 9 / 100
+      let c = b.h * 9 / 100
+      let my = b.y + b.h / 2
+      join(["M", n(mx), ",", n(y0),
+        " C", n(x1 - a), ",", n(y0), " ", n(x1), ",", n(y0 + c), " ", n(x1), ",", n(my),
+        " C", n(x1), ",", n(y1 - c), " ", n(x1 - a), ",", n(y1), " ", n(mx), ",", n(y1),
+        " C", n(x0 + a), ",", n(y1), " ", n(x0), ",", n(y1 - c), " ", n(x0), ",", n(my),
+        " C", n(x0), ",", n(y0 + c), " ", n(x0 + a), ",", n(y0), " ", n(mx), ",", n(y0), " Z"], "")
+    }
+    ShellPebble => {
+      let waist = b.y + b.h * 56 / 100
+      join(["M", n(mx), ",", n(y0),
+        " C", n(x1 - b.w * 16 / 100), ",", n(y0), " ", n(x1), ",", n(y0 + b.h * 16 / 100), " ", n(x1), ",", n(waist),
+        " C", n(x1), ",", n(y1 - b.h * 7 / 100), " ", n(x1 - b.w * 10 / 100), ",", n(y1), " ", n(mx), ",", n(y1),
+        " C", n(x0 + b.w * 10 / 100), ",", n(y1), " ", n(x0), ",", n(y1 - b.h * 7 / 100), " ", n(x0), ",", n(waist),
+        " C", n(x0), ",", n(y0 + b.h * 16 / 100), " ", n(x0 + b.w * 16 / 100), ",", n(y0), " ", n(mx), ",", n(y0), " Z"], "")
+    }
+  }
+}
+
+// ═══ PARTS ═══
+
+type StudioRole = RoleBody | RoleFeature | RoleAccessory | RoleTrim | RoleAccent
+
+// Behind the shell, or in front of it (over the features).
+type StudioDepth = DepthBehind | DepthFront
+
+// stroke 0 is a filled shape; otherwise the path is a line of that width.
+type StudioPart {
+  role: StudioRole
+  depth: StudioDepth
+  d: String
+  stroke: Int
+}
+
+fn n(v: Int) -> String {
+  to_string(v)
+}
+
+fn studio_fill(role: StudioRole, depth: StudioDepth, d: String) -> StudioPart {
+  StudioPart { role: role, depth: depth, d: d, stroke: 0 }
+}
+
+fn studio_line(role: StudioRole, depth: StudioDepth, d: String, w: Int) -> StudioPart {
+  StudioPart { role: role, depth: depth, d: d, stroke: w }
+}
+
+fn studio_circle_d(cx: Int, cy: Int, r: Int) -> String {
+  join(["M", n(cx - r), ",", n(cy), " A", n(r), ",", n(r), " 0 1,0 ", n(cx + r), ",", n(cy), " A", n(r), ",", n(r), " 0 1,0 ", n(cx - r), ",", n(cy), " Z"], "")
+}
+
+fn studio_poly_d(points: List<Int>) -> String {
+  concat(join(["M", join(map(studio_pairs(xs: points), p => p), " L")], ""), " Z")
+}
+
+// [x0, y0, x1, y1, ...] as "x0,y0", "x1,y1", ...
+fn studio_pairs(xs: List<Int>) -> List<String> {
+  studio_pairs_from(xs: xs, i: 0, acc: [])
+}
+
+fn studio_pairs_from(xs: List<Int>, i: Int, acc: List<String>) -> List<String> {
+  match get(xs, i) {
+    Absent => acc
+    Present { value: x } => match get(xs, i + 1) {
+      Absent => acc
+      Present { value: y } => studio_pairs_from(xs: xs, i: i + 2, acc: acc |> list_push(join([n(x), ",", n(y)], "")))
+    }
+  }
+}
+
+// ═══ COSTUMES (attach at anchors) ═══
+
+type StudioEyeShape = EyesRound | EyesSquare
+
+type StudioCostume = CostumePlain | CostumeRobot | CostumeCat | CostumeDevil | CostumeWitch | CostumeSanta
+
+type StudioCostumeOption {
+  key: String
+  title: String
+  costume: StudioCostume
+}
+
+data studio_costumes: List<StudioCostumeOption> = [
+  StudioCostumeOption { key: "plain", title: "Plain", costume: CostumePlain },
+  StudioCostumeOption { key: "robot", title: "Robot", costume: CostumeRobot },
+  StudioCostumeOption { key: "cat", title: "Cat", costume: CostumeCat },
+  StudioCostumeOption { key: "devil", title: "Devil", costume: CostumeDevil },
+  StudioCostumeOption { key: "witch", title: "Trick-or-treater", costume: CostumeWitch },
+  StudioCostumeOption { key: "santa", title: "Santa", costume: CostumeSanta },
+]
+
+fn studio_costume_eyes(c: StudioCostume) -> StudioEyeShape {
+  match c {
+    CostumeRobot => EyesSquare
+    _ => EyesRound
+  }
+}
+
+fn studio_costume_parts(c: StudioCostume, a: StudioAnchors) -> List<StudioPart> {
+  let top = a.shell.y
+  let left = a.shell.x
+  let right = a.shell.x + a.shell.w
+  let bottom = a.shell.y + a.shell.h
+  let mid = a.shell.x + a.shell.w / 2
+  let mouth_mid_y = a.mouth.y + a.mouth.h / 2
+  match c {
+    CostumePlain => []
+    CostumeRobot => [
+      studio_fill(role: RoleBody, depth: DepthBehind, d: brand_mark_box_path(b: BrandMarkBox { x: mid - 20, y: top - 60, w: 40, h: 70, r: 0 })),
+      studio_fill(role: RoleAccent, depth: DepthBehind, d: studio_circle_d(cx: mid, cy: top - 70, r: 50)),
+    ]
+    CostumeCat => [
+      studio_fill(role: RoleBody, depth: DepthBehind, d: studio_poly_d(points: [left + 90, top + 200, left + 170, top - 230, left + 470, top + 30])),
+      studio_fill(role: RoleBody, depth: DepthBehind, d: studio_poly_d(points: [right - 90, top + 200, right - 170, top - 230, right - 470, top + 30])),
+      studio_fill(role: RoleAccent, depth: DepthFront, d: studio_poly_d(points: [left + 190, top + 40, left + 210, top - 120, left + 370, top + 20])),
+      studio_fill(role: RoleAccent, depth: DepthFront, d: studio_poly_d(points: [right - 190, top + 40, right - 210, top - 120, right - 370, top + 20])),
+      studio_fill(role: RoleAccent, depth: DepthFront, d: studio_poly_d(points: [mid - 40, a.mouth.y - 70, mid + 40, a.mouth.y - 70, mid, a.mouth.y - 20])),
+      studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(a.mouth.x - 60), ",", n(mouth_mid_y), " L", n(left + 70), ",", n(mouth_mid_y - 40), " M", n(a.mouth.x - 60), ",", n(mouth_mid_y + 40), " L", n(left + 70), ",", n(mouth_mid_y + 60)], ""), w: 18),
+      studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(a.mouth.x + a.mouth.w + 60), ",", n(mouth_mid_y), " L", n(right - 70), ",", n(mouth_mid_y - 40), " M", n(a.mouth.x + a.mouth.w + 60), ",", n(mouth_mid_y + 40), " L", n(right - 70), ",", n(mouth_mid_y + 60)], ""), w: 18),
+    ]
+    CostumeDevil => [
+      studio_fill(role: RoleAccessory, depth: DepthBehind, d: join(["M", n(left + 300), ",", n(top + 60), " Q", n(left + 160), ",", n(top - 120), " ", n(left + 120), ",", n(top - 300), " Q", n(left + 340), ",", n(top - 150), " ", n(left + 480), ",", n(top + 30), " Z"], "")),
+      studio_fill(role: RoleAccessory, depth: DepthBehind, d: join(["M", n(right - 300), ",", n(top + 60), " Q", n(right - 160), ",", n(top - 120), " ", n(right - 120), ",", n(top - 300), " Q", n(right - 340), ",", n(top - 150), " ", n(right - 480), ",", n(top + 30), " Z"], "")),
+      studio_line(role: RoleAccessory, depth: DepthBehind, d: join(["M", n(right - 100), ",", n(bottom - 160), " Q", n(right + 260), ",", n(bottom - 40), " ", n(right + 200), ",", n(bottom - 420)], ""), w: 44),
+      studio_fill(role: RoleAccessory, depth: DepthBehind, d: studio_poly_d(points: [right + 200, bottom - 520, right + 120, bottom - 380, right + 280, bottom - 380])),
+      studio_line(role: RoleBody, depth: DepthFront, d: join(["M", n(a.eye_left_x - a.eye_r), ",", n(a.eye_y - a.eye_r - 90), " L", n(a.eye_left_x + a.eye_r + 20), ",", n(a.eye_y - a.eye_r - 20)], ""), w: 40),
+      studio_line(role: RoleBody, depth: DepthFront, d: join(["M", n(a.eye_right_x + a.eye_r), ",", n(a.eye_y - a.eye_r - 90), " L", n(a.eye_right_x - a.eye_r - 20), ",", n(a.eye_y - a.eye_r - 20)], ""), w: 40),
+    ]
+    CostumeWitch => [
+      studio_fill(role: RoleAccessory, depth: DepthFront, d: join(["M", n(mid - 330), ",", n(top + 90), " L", n(mid + 40), ",", n(top - 520), " Q", n(mid + 260), ",", n(top - 470), " ", n(mid + 300), ",", n(top - 330), " Q", n(mid + 150), ",", n(top - 380), " ", n(mid + 330), ",", n(top + 90), " Z"], "")),
+      studio_fill(role: RoleAccessory, depth: DepthFront, d: join(["M", n(left - 80), ",", n(top + 120), " Q", n(mid), ",", n(top - 10), " ", n(right + 80), ",", n(top + 120), " Q", n(mid), ",", n(top + 210), " ", n(left - 80), ",", n(top + 120), " Z"], "")),
+      studio_fill(role: RoleTrim, depth: DepthFront, d: join(["M", n(mid - 290), ",", n(top + 20), " L", n(mid + 290), ",", n(top + 20), " L", n(mid + 305), ",", n(top + 90), " L", n(mid - 305), ",", n(top + 90), " Z"], "")),
+      studio_fill(role: RoleAccent, depth: DepthFront, d: studio_circle_d(cx: right + 30, cy: bottom - 60, r: 150)),
+      studio_line(role: RoleTrim, depth: DepthFront, d: join(["M", n(right - 110), ",", n(bottom - 120), " Q", n(right + 30), ",", n(bottom - 330), " ", n(right + 170), ",", n(bottom - 120)], ""), w: 22),
+    ]
+    CostumeSanta => [
+      studio_fill(role: RoleAccessory, depth: DepthFront, d: join(["M", n(left + 140), ",", n(top + 120), " Q", n(mid - 60), ",", n(top - 420), " ", n(right + 120), ",", n(top - 40), " L", n(right + 40), ",", n(top + 90), " Q", n(right - 60), ",", n(top - 160), " ", n(right - 140), ",", n(top + 120), " Z"], "")),
+      studio_fill(role: RoleTrim, depth: DepthFront, d: studio_circle_d(cx: right + 110, cy: top + 20, r: 85)),
+      studio_fill(role: RoleTrim, depth: DepthFront, d: brand_mark_box_path(b: BrandMarkBox { x: left + 90, y: top + 40, w: a.shell.w - 180, h: 130, r: 65 })),
+      studio_fill(role: RoleTrim, depth: DepthFront, d: join([
+        studio_circle_d(cx: mid - 300, cy: bottom - 140, r: 150), " ", studio_circle_d(cx: mid, cy: bottom - 60, r: 200), " ",
+        studio_circle_d(cx: mid + 300, cy: bottom - 140, r: 150), " ", studio_circle_d(cx: mid - 140, cy: bottom + 40, r: 130), " ",
+        studio_circle_d(cx: mid + 140, cy: bottom + 40, r: 130),
+      ], "")),
+    ]
+  }
+}
+
+// ═══ EXPRESSIONS (eyes and mouth inside their anchors) ═══
+
+// The register is a tired machine, not a cheerful mascot. Every mood is an open eye with a LID: a
+// piece of the body laid over the eye along a line set by how far it drops at the inner and outer
+// corner (percent of the eye's radius), so one rule moods round eyes and the robot's square ones,
+// and the lid takes the body's material and relief like the rest of the shell.
+type StudioExpression = ExprNeutral | ExprLethargic | ExprMoody | ExprSad | ExprAngry | ExprDepressed
+
+type StudioExpressionOption {
+  key: String
+  title: String
+  expression: StudioExpression
+}
+
+data studio_expressions: List<StudioExpressionOption> = [
+  StudioExpressionOption { key: "neutral", title: "Neutral", expression: ExprNeutral },
+  StudioExpressionOption { key: "lethargic", title: "Lethargic", expression: ExprLethargic },
+  StudioExpressionOption { key: "moody", title: "Moody", expression: ExprMoody },
+  StudioExpressionOption { key: "sad", title: "Sad", expression: ExprSad },
+  StudioExpressionOption { key: "angry", title: "Angry", expression: ExprAngry },
+  StudioExpressionOption { key: "depressed", title: "Depressed", expression: ExprDepressed },
+]
+
+fn studio_open_eye(shape: StudioEyeShape, cx: Int, cy: Int, r: Int) -> StudioPart {
+  match shape {
+    EyesRound => studio_fill(role: RoleFeature, depth: DepthFront, d: studio_circle_d(cx: cx, cy: cy, r: r))
+    EyesSquare => studio_fill(role: RoleFeature, depth: DepthFront, d: brand_mark_box_path(b: BrandMarkBox { x: cx - r * 7 / 8, y: cy - r * 7 / 8, w: r * 7 / 4, h: r * 7 / 4, r: r / 4 }))
+  }
+}
+
+// The lid line runs from the inner corner to the outer one; `inner_right` says which side is inner
+// (the left eye's inner corner is on its right).
+fn studio_lid(cx: Int, cy: Int, r: Int, inner: Int, outer: Int, inner_right: Bool) -> StudioPart {
+  let pad = r / 3
+  let left_drop = if inner_right { outer } else { inner }
+  let right_drop = if inner_right { inner } else { outer }
+  studio_fill(role: RoleBody, depth: DepthFront, d: studio_poly_d(points: [
+    cx - r - pad, cy - r - pad,
+    cx + r + pad, cy - r - pad,
+    cx + r + pad, cy + r * right_drop / 100,
+    cx - r - pad, cy + r * left_drop / 100,
+  ]))
+}
+
+fn studio_lidded_eyes(shape: StudioEyeShape, a: StudioAnchors, look: Int, inner: Int, outer: Int) -> List<StudioPart> {
+  let cy = a.eye_y + a.eye_r * look / 100
+  [
+    studio_open_eye(shape: shape, cx: a.eye_left_x, cy: cy, r: a.eye_r),
+    studio_lid(cx: a.eye_left_x, cy: cy, r: a.eye_r, inner: inner, outer: outer, inner_right: true),
+    studio_open_eye(shape: shape, cx: a.eye_right_x, cy: cy, r: a.eye_r),
+    studio_lid(cx: a.eye_right_x, cy: cy, r: a.eye_r, inner: inner, outer: outer, inner_right: false),
+  ]
+}
+
+fn studio_face_parts(e: StudioExpression, shape: StudioEyeShape, a: StudioAnchors) -> List<StudioPart> {
+  let x0 = a.mouth.x
+  let x1 = a.mouth.x + a.mouth.w
+  let y = a.mouth.y + a.mouth.h / 2
+  let h = a.mouth.h
+  let w = a.mouth.h * 2 / 3
+  let frown = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0), ",", n(y + h), " Q", n((x0 + x1) / 2), ",", n(y - h), " ", n(x1), ",", n(y + h)], ""), w: w)
+  let tight = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0 + h / 2), ",", n(y + h / 2), " Q", n((x0 + x1) / 2), ",", n(y - h / 2), " ", n(x1 - h / 2), ",", n(y + h / 2)], ""), w: w * 5 / 4)
+  let sag = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0), ",", n(y - h / 3), " L", n(x1), ",", n(y + h * 2 / 3)], ""), w: w)
+  let wave = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0), ",", n(y), " Q", n(x0 + (x1 - x0) / 4), ",", n(y - h * 2 / 3), " ", n((x0 + x1) / 2), ",", n(y), " T", n(x1), ",", n(y)], ""), w: w)
+  let small_frown = studio_line(role: RoleFeature, depth: DepthFront, d: join(["M", n(x0 + (x1 - x0) / 4), ",", n(y + h * 3 / 2), " Q", n((x0 + x1) / 2), ",", n(y + h / 3), " ", n(x1 - (x1 - x0) / 4), ",", n(y + h * 3 / 2)], ""), w: w)
+  match e {
+    ExprNeutral => [studio_open_eye(shape: shape, cx: a.eye_left_x, cy: a.eye_y, r: a.eye_r), studio_open_eye(shape: shape, cx: a.eye_right_x, cy: a.eye_y, r: a.eye_r), studio_fill(role: RoleFeature, depth: DepthFront, d: brand_mark_box_path(b: a.mouth))]
+    ExprLethargic => concat(studio_lidded_eyes(shape: shape, a: a, look: 0, inner: 10, outer: 10), [sag])
+    ExprMoody => concat(studio_lidded_eyes(shape: shape, a: a, look: 0, inner: -25, outer: -15), [wave])
+    ExprSad => concat(studio_lidded_eyes(shape: shape, a: a, look: 10, inner: -70, outer: 15), [frown])
+    ExprAngry => concat(studio_lidded_eyes(shape: shape, a: a, look: 0, inner: 25, outer: -60), [tight])
+    ExprDepressed => concat(studio_lidded_eyes(shape: shape, a: a, look: 30, inner: 20, outer: 35), [small_frown])
+  }
+}
+
+// ═══ PALETTES (role -> colour) ═══
+
+type StudioPalette {
+  key: String
+  title: String
+  ground: String
+  body: String
+  feature: String
+  accessory: String
+  trim: String
+  accent: String
+  // The coin's side. Named rather than derived by darkening the body: a black body darkened is still
+  // black, and the side has to read against both the body and the ground.
+  side: String
+}
+
+data studio_palettes: List<StudioPalette> = [
+  StudioPalette { key: "ink", title: "Ink on stone", ground: "#f4f1ec", body: "#0f0f0f", feature: "#f4f1ec", accessory: "#0f0f0f", trim: "#f4f1ec", accent: "#d9826f", side: "#5a5650" },
+  StudioPalette { key: "ci", title: "gunbai-ci green", ground: "#ebe9e0", body: "#194025", feature: "#ebe9e0", accessory: "#194025", trim: "#ebe9e0", accent: "#7fb08a", side: "#0a2213" },
+  StudioPalette { key: "halloween", title: "Halloween", ground: "#24182f", body: "#141414", feature: "#ff9a1f", accessory: "#e2531b", trim: "#8c4fff", accent: "#ff9a1f", side: "#4b3566" },
+  StudioPalette { key: "manga", title: "Manga ink on paper", ground: "#fbf8f1", body: "#ffffff", feature: "#111111", accessory: "#e5484d", trim: "#111111", accent: "#ff9db0", side: "#c9c4bb" },
+  StudioPalette { key: "christmas", title: "Christmas", ground: "#f4f1ec", body: "#0f0f0f", feature: "#f4f1ec", accessory: "#c8202f", trim: "#ffffff", accent: "#2f8f4e", side: "#5a5650" },
+]
+
+fn studio_paint(p: StudioPalette, role: StudioRole) -> String {
+  match role {
+    RoleBody => p.body
+    RoleFeature => p.feature
+    RoleAccessory => p.accessory
+    RoleTrim => p.trim
+    RoleAccent => p.accent
+  }
+}
+
+// ═══ RELIEF (depth by layer; independent of costume and material) ═══
+
+// The body layer is the shell and every part behind it; the face layer is the eyes and mouth.
+// - Coin: a solid side under the body, as if a thick token were seen slightly from above. Flat paint
+//   only, so it survives small sizes and is the one relief an indexed PNG can carry unchanged.
+// - Pillow: the body lit as a rounded surface from the top left (a blurred-alpha height field under
+//   diffuse and specular light).
+// - Carved: the pillow body with the face pressed into it (an inner shadow on the top rim of each
+//   feature, a highlight on the bottom one).
+// - Cel: anime/manga lighting, hard-edged. The body keeps its flat paint, with one shadow crescent
+//   where it turns away from the light (bottom right) and one highlight sliver where it faces it (top
+//   left), each the body's own outline offset against itself, so it fits every shape and costume.
+type StudioRelief = ReliefFlat | ReliefCoin | ReliefPillow | ReliefCarved | ReliefCel
+
+type StudioReliefOption {
+  key: String
+  title: String
+  note: String
+  relief: StudioRelief
+}
+
+data studio_reliefs: List<StudioReliefOption> = [
+  StudioReliefOption { key: "flat", title: "Flat", note: "No depth: today's glyph.", relief: ReliefFlat },
+  StudioReliefOption { key: "coin", title: "Coin", note: "A solid side under the body, like a thick token. Flat colours only, so it holds up at favicon size.", relief: ReliefCoin },
+  StudioReliefOption { key: "pillow", title: "Pillow", note: "Light from the top left on a softly rounded body: puffy, slightly 3D.", relief: ReliefPillow },
+  StudioReliefOption { key: "carved", title: "Carved", note: "Pillow body with the eyes and mouth pressed in.", relief: ReliefCarved },
+  StudioReliefOption { key: "cel", title: "Cel", note: "Anime/manga shading: one hard shadow crescent and one hard highlight, no gradients.", relief: ReliefCel },
+]
+
+// The coin's side: the body repeated in steps down to its thickness, in the palette's side paint.
+data studio_coin_steps: List<Int> = [14, 28, 42, 56, 70, 84]
+
+fn studio_relief_defs(r: StudioRelief, id: String) -> List<Fragment> {
+  let light = el_attrs("feDistantLight", [attr(name: "azimuth", value: "225"), attr(name: "elevation", value: "30")], [])
+  let pillow = el_attrs("filter", [attr(name: "id", value: concat(id, "-pillow")), attr(name: "x", value: "-10%"), attr(name: "y", value: "-10%"), attr(name: "width", value: "120%"), attr(name: "height", value: "120%")], [
+    el_attrs("feGaussianBlur", [attr(name: "in", value: "SourceAlpha"), attr(name: "stdDeviation", value: "46"), attr(name: "result", value: "h")], []),
+    el_attrs("feDiffuseLighting", [attr(name: "in", value: "h"), attr(name: "surfaceScale", value: "6"), attr(name: "diffuseConstant", value: "2"), attr(name: "lighting-color", value: "#ffffff"), attr(name: "result", value: "d")], [light]),
+    el_attrs("feSpecularLighting", [attr(name: "in", value: "h"), attr(name: "surfaceScale", value: "6"), attr(name: "specularConstant", value: "1"), attr(name: "specularExponent", value: "40"), attr(name: "lighting-color", value: "#ffffff"), attr(name: "result", value: "s")], [light]),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceGraphic"), attr(name: "in2", value: "d"), attr(name: "operator", value: "arithmetic"), attr(name: "k1", value: "1"), attr(name: "k2", value: "0"), attr(name: "k3", value: "0"), attr(name: "k4", value: "0"), attr(name: "result", value: "shaded")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "s"), attr(name: "in2", value: "shaded"), attr(name: "operator", value: "arithmetic"), attr(name: "k1", value: "0"), attr(name: "k2", value: "1"), attr(name: "k3", value: "1"), attr(name: "k4", value: "0"), attr(name: "result", value: "lit")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "lit"), attr(name: "in2", value: "SourceAlpha"), attr(name: "operator", value: "in")], []),
+  ])
+  let carve = el_attrs("filter", [attr(name: "id", value: concat(id, "-carve")), attr(name: "x", value: "-10%"), attr(name: "y", value: "-10%"), attr(name: "width", value: "120%"), attr(name: "height", value: "120%")], [
+    el_attrs("feOffset", [attr(name: "in", value: "SourceAlpha"), attr(name: "dx", value: "0"), attr(name: "dy", value: "18"), attr(name: "result", value: "down")], []),
+    el_attrs("feGaussianBlur", [attr(name: "in", value: "down"), attr(name: "stdDeviation", value: "7"), attr(name: "result", value: "downb")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceAlpha"), attr(name: "in2", value: "downb"), attr(name: "operator", value: "out"), attr(name: "result", value: "rim")], []),
+    el_attrs("feFlood", [attr(name: "flood-color", value: "#000000"), attr(name: "flood-opacity", value: "0.6")], []),
+    el_attrs("feComposite", [attr(name: "in2", value: "rim"), attr(name: "operator", value: "in"), attr(name: "result", value: "shadow")], []),
+    el_attrs("feOffset", [attr(name: "in", value: "SourceAlpha"), attr(name: "dx", value: "0"), attr(name: "dy", value: "-12"), attr(name: "result", value: "up")], []),
+    el_attrs("feGaussianBlur", [attr(name: "in", value: "up"), attr(name: "stdDeviation", value: "5"), attr(name: "result", value: "upb")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceAlpha"), attr(name: "in2", value: "upb"), attr(name: "operator", value: "out"), attr(name: "result", value: "lip")], []),
+    el_attrs("feFlood", [attr(name: "flood-color", value: "#ffffff"), attr(name: "flood-opacity", value: "0.35")], []),
+    el_attrs("feComposite", [attr(name: "in2", value: "lip"), attr(name: "operator", value: "in"), attr(name: "result", value: "shine")], []),
+    el_attrs("feMerge", [], [el_attrs("feMergeNode", [attr(name: "in", value: "SourceGraphic")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shadow")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shine")], [])]),
+  ])
+  // Each band is the body minus the body shifted toward the light (shadow) or away from it
+  // (highlight): no blur, so the edge is a hard line, as in cel animation.
+  let cel = el_attrs("filter", [attr(name: "id", value: concat(id, "-cel")), attr(name: "x", value: "-10%"), attr(name: "y", value: "-10%"), attr(name: "width", value: "120%"), attr(name: "height", value: "120%")], [
+    el_attrs("feOffset", [attr(name: "in", value: "SourceAlpha"), attr(name: "dx", value: "-70"), attr(name: "dy", value: "-90"), attr(name: "result", value: "toward")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceAlpha"), attr(name: "in2", value: "toward"), attr(name: "operator", value: "out"), attr(name: "result", value: "crescent")], []),
+    el_attrs("feFlood", [attr(name: "flood-color", value: "#1b1530"), attr(name: "flood-opacity", value: "0.42")], []),
+    el_attrs("feComposite", [attr(name: "in2", value: "crescent"), attr(name: "operator", value: "in"), attr(name: "result", value: "shadow")], []),
+    el_attrs("feOffset", [attr(name: "in", value: "SourceAlpha"), attr(name: "dx", value: "26"), attr(name: "dy", value: "34"), attr(name: "result", value: "away")], []),
+    el_attrs("feComposite", [attr(name: "in", value: "SourceAlpha"), attr(name: "in2", value: "away"), attr(name: "operator", value: "out"), attr(name: "result", value: "sliver")], []),
+    el_attrs("feFlood", [attr(name: "flood-color", value: "#ffffff"), attr(name: "flood-opacity", value: "0.55")], []),
+    el_attrs("feComposite", [attr(name: "in2", value: "sliver"), attr(name: "operator", value: "in"), attr(name: "result", value: "shine")], []),
+    el_attrs("feMerge", [], [el_attrs("feMergeNode", [attr(name: "in", value: "SourceGraphic")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shadow")], []), el_attrs("feMergeNode", [attr(name: "in", value: "shine")], [])]),
+  ])
+  match r {
+    ReliefFlat => []
+    ReliefCoin => []
+    ReliefPillow => [pillow]
+    ReliefCarved => [pillow, carve]
+    ReliefCel => [cel]
+  }
+}
+
+// A part drawn in one given paint, ignoring material: the coin's side.
+fn studio_part_plain(part: StudioPart, paint: String) -> Fragment {
+  if part.stroke > 0 {
+    el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: "none"), attr(name: "stroke", value: paint), attr(name: "stroke-width", value: n(part.stroke)), attr(name: "stroke-linecap", value: "round")], [])
+  } else {
+    el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: paint)], [])
+  }
+}
+
+fn studio_translate(dy: Int, children: List<Fragment>) -> Fragment {
+  el_attrs("g", [attr(name: "transform", value: join(["translate(0,", n(dy), ")"], ""))], children)
+}
+
+fn studio_coin_side(body: List<StudioPart>, p: StudioPalette) -> List<Fragment> {
+  map(studio_coin_steps, dy => studio_translate(dy: dy, children: map(body, part => studio_part_plain(part: part, paint: p.side))))
+}
+
+fn studio_filtered(id: String, children: List<Fragment>) -> Fragment {
+  el_attrs("g", [attr(name: "filter", value: studio_url(id: id))], children)
+}
+
+// ═══ MATERIALS (paint by role; never name a part) ═══
+
+type StudioMaterial = MaterialFlat | MaterialLit | MaterialWool | MaterialCuphead | MaterialManga
+
+type StudioMaterialOption {
+  key: String
+  title: String
+  note: String
+  material: StudioMaterial
+}
+
+data studio_materials: List<StudioMaterialOption> = [
+  StudioMaterialOption { key: "flat", title: "Flat", note: "Today's glyph: one paint per role.", material: MaterialFlat },
+  StudioMaterialOption { key: "lit", title: "Lit", note: "Soft top light and bottom shade on every solid part: a glossy object.", material: MaterialLit },
+  StudioMaterialOption { key: "wool", title: "Wool", note: "Yarn: fuzzy displaced edges and knit strands (Yoshi's Woolly World).", material: MaterialWool },
+  StudioMaterialOption { key: "cuphead", title: "Cuphead", note: "1930s ink: heavy outlines, film grain and vignette.", material: MaterialCuphead },
+  StudioMaterialOption { key: "manga", title: "Manga", note: "Crisp ink outlines and screentone dots: pairs with the cel relief.", material: MaterialManga },
+]
+
+fn studio_url(id: String) -> String {
+  join(["url(#", id, ")"], "")
+}
+
+fn studio_stop(offset: String, color: String, opacity: String) -> Fragment {
+  el_attrs("stop", [attr(name: "offset", value: offset), attr(name: "stop-color", value: color), attr(name: "stop-opacity", value: opacity)], [])
+}
+
+fn studio_material_defs(m: StudioMaterial, id: String) -> List<Fragment> {
+  match m {
+    MaterialFlat => []
+    MaterialLit => [el_attrs("linearGradient", [attr(name: "id", value: concat(id, "-lit")), attr(name: "x1", value: "0"), attr(name: "y1", value: "0"), attr(name: "x2", value: "0"), attr(name: "y2", value: "1")], [
+      studio_stop(offset: "0", color: "#ffffff", opacity: "0.42"), studio_stop(offset: "0.45", color: "#ffffff", opacity: "0"),
+      studio_stop(offset: "0.7", color: "#000000", opacity: "0"), studio_stop(offset: "1", color: "#000000", opacity: "0.35"),
+    ])]
+    MaterialWool => [
+      el_attrs("filter", [attr(name: "id", value: concat(id, "-wool")), attr(name: "x", value: "-10%"), attr(name: "y", value: "-10%"), attr(name: "width", value: "120%"), attr(name: "height", value: "120%")], [
+        el_attrs("feTurbulence", [attr(name: "type", value: "fractalNoise"), attr(name: "baseFrequency", value: "0.035"), attr(name: "numOctaves", value: "3"), attr(name: "seed", value: "7"), attr(name: "result", value: "noise")], []),
+        el_attrs("feDisplacementMap", [attr(name: "in", value: "SourceGraphic"), attr(name: "in2", value: "noise"), attr(name: "scale", value: "26")], []),
+      ]),
+      el_attrs("pattern", [attr(name: "id", value: concat(id, "-knit")), attr(name: "width", value: "60"), attr(name: "height", value: "60"), attr(name: "patternUnits", value: "userSpaceOnUse"), attr(name: "patternTransform", value: "rotate(35)")], [
+        el_attrs("path", [attr(name: "d", value: "M0,15 Q15,0 30,15 T60,15 M0,45 Q15,30 30,45 T60,45"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "#ffffff"), attr(name: "stroke-opacity", value: "0.22"), attr(name: "stroke-width", value: "7")], []),
+      ]),
+    ]
+    MaterialCuphead => [
+      el_attrs("filter", [attr(name: "id", value: concat(id, "-grain")), attr(name: "x", value: "0"), attr(name: "y", value: "0"), attr(name: "width", value: "100%"), attr(name: "height", value: "100%")], [
+        el_attrs("feTurbulence", [attr(name: "type", value: "fractalNoise"), attr(name: "baseFrequency", value: "0.9"), attr(name: "numOctaves", value: "2"), attr(name: "result", value: "n")], []),
+        el_attrs("feColorMatrix", [attr(name: "type", value: "matrix"), attr(name: "values", value: "0 0 0 0 0.25  0 0 0 0 0.17  0 0 0 0 0.08  0 0 0 0.55 0"), attr(name: "result", value: "g")], []),
+        // The noise fills the filter's whole rectangle; keeping only what lies inside the rounded
+        // ground is what stops its square corners showing.
+        el_attrs("feComposite", [attr(name: "in", value: "g"), attr(name: "in2", value: "SourceAlpha"), attr(name: "operator", value: "in")], []),
+      ]),
+      el_attrs("radialGradient", [attr(name: "id", value: concat(id, "-vig"))], [studio_stop(offset: "0.6", color: "#2b1a08", opacity: "0"), studio_stop(offset: "1", color: "#2b1a08", opacity: "0.5")]),
+    ]
+    // Screentone: a 45-degree dot grid, the printed halftone manga uses for mid-tones.
+    MaterialManga => [
+      el_attrs("pattern", [attr(name: "id", value: concat(id, "-tone")), attr(name: "width", value: "26"), attr(name: "height", value: "26"), attr(name: "patternUnits", value: "userSpaceOnUse"), attr(name: "patternTransform", value: "rotate(45)")], [
+        el_attrs("circle", [attr(name: "cx", value: "13"), attr(name: "cy", value: "13"), attr(name: "r", value: "5"), attr(name: "fill", value: "#111111"), attr(name: "fill-opacity", value: "0.28")], []),
+      ]),
+    ]
+  }
+}
+
+fn studio_part_fragment(part: StudioPart, m: StudioMaterial, p: StudioPalette, id: String) -> List<Fragment> {
+  let paint = studio_paint(p: p, role: part.role)
+  let base = if part.stroke > 0 {
+    [attr(name: "d", value: part.d), attr(name: "fill", value: "none"), attr(name: "stroke", value: paint), attr(name: "stroke-width", value: n(part.stroke)), attr(name: "stroke-linecap", value: "round")]
+  } else {
+    [attr(name: "d", value: part.d), attr(name: "fill", value: paint), attr(name: "fill-rule", value: "nonzero")]
+  }
+  let solid = part.stroke == 0
+  match m {
+    MaterialFlat => [el_attrs("path", base, [])]
+    MaterialLit => if solid { [el_attrs("path", base, []), el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: studio_url(id: concat(id, "-lit")))], [])] } else { [el_attrs("path", base, [])] }
+    MaterialWool => if solid {
+      [el_attrs("g", [attr(name: "filter", value: studio_url(id: concat(id, "-wool")))], [el_attrs("path", base, []), el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: studio_url(id: concat(id, "-knit")))], [])])]
+    } else {
+      [el_attrs("g", [attr(name: "filter", value: studio_url(id: concat(id, "-wool")))], [el_attrs("path", base, [])])]
+    }
+    MaterialManga => if solid {
+      [
+        el_attrs("path", concat(base, [attr(name: "stroke", value: "#111111"), attr(name: "stroke-width", value: "18"), attr(name: "stroke-linejoin", value: "round"), attr(name: "paint-order", value: "stroke")]), []),
+        el_attrs("path", [attr(name: "d", value: part.d), attr(name: "fill", value: studio_url(id: concat(id, "-tone")))], []),
+      ]
+    } else {
+      [el_attrs("path", base, [])]
+    }
+    MaterialCuphead => if solid {
+      [el_attrs("path", concat(base, [attr(name: "stroke", value: "#1b1209"), attr(name: "stroke-width", value: "28"), attr(name: "stroke-linejoin", value: "round"), attr(name: "paint-order", value: "stroke")]), [])]
+    } else {
+      [el_attrs("path", base, [])]
+    }
+  }
+}
+
+// ═══ ONE MARK ═══
+
+type StudioPick {
+  silhouette: StudioSilhouette
+  relief: StudioRelief
+  costume: StudioCostume
+  expression: StudioExpression
+  material: StudioMaterial
+  palette: StudioPalette
+}
+
+// The mark in draw order, as the three layers a relief treats as wholes.
+type StudioLayers {
+  body: List<StudioPart>
+  face: List<StudioPart>
+  front: List<StudioPart>
+}
+
+fn studio_layers(pick: StudioPick) -> StudioLayers {
+  let a = studio_anchors(s: pick.silhouette)
+  let costume = studio_costume_parts(c: pick.costume, a: a)
+  let shell = studio_fill(role: RoleBody, depth: DepthBehind, d: studio_shell_d(shape: pick.silhouette.shape, b: a.shell))
+  let behind = filter(costume, p => match p.depth { DepthBehind => true DepthFront => false })
+  StudioLayers {
+    body: concat(behind, [shell]),
+    face: studio_face_parts(e: pick.expression, shape: studio_costume_eyes(c: pick.costume), a: a),
+    front: filter(costume, p => match p.depth { DepthFront => true DepthBehind => false }),
+  }
+}
+
+fn studio_paint_parts(parts: List<StudioPart>, pick: StudioPick, id: String) -> List<Fragment> {
+  flat_map(parts, part => studio_part_fragment(part: part, m: pick.material, p: pick.palette, id: id))
+}
+
+fn studio_svg(pick: StudioPick, id: String, px: Int) -> Fragment {
+  let layers = studio_layers(pick: pick)
+  let ground = el_attrs("rect", [attr(name: "x", value: "-300"), attr(name: "y", value: "-650"), attr(name: "width", value: "1800"), attr(name: "height", value: "1950"), attr(name: "rx", value: "380"), attr(name: "fill", value: pick.palette.ground)], [])
+  let body = studio_paint_parts(parts: layers.body, pick: pick, id: id)
+  let face = studio_paint_parts(parts: layers.face, pick: pick, id: id)
+  let lit_body = match pick.relief {
+    ReliefFlat => body
+    ReliefCoin => concat(studio_coin_side(body: layers.body, p: pick.palette), body)
+    ReliefPillow => [studio_filtered(id: concat(id, "-pillow"), children: body)]
+    ReliefCarved => [studio_filtered(id: concat(id, "-pillow"), children: body)]
+    ReliefCel => [studio_filtered(id: concat(id, "-cel"), children: body)]
+  }
+  let set_face = match pick.relief {
+    ReliefCarved => [studio_filtered(id: concat(id, "-carve"), children: face)]
+    _ => face
+  }
+  let mark = concat(concat(lit_body, set_face), studio_paint_parts(parts: layers.front, pick: pick, id: id))
+  let c = brand_mark_frame / 2
+  let drawn = if pick.silhouette.tilt == 0 { mark } else {
+    [el_attrs("g", [attr(name: "transform", value: join(["rotate(", n(pick.silhouette.tilt), " ", n(c), " ", n(c), ")"], ""))], mark)]
+  }
+  let finish = match pick.material {
+    MaterialCuphead => [
+      el_attrs("rect", [attr(name: "x", value: "-300"), attr(name: "y", value: "-650"), attr(name: "width", value: "1800"), attr(name: "height", value: "1950"), attr(name: "rx", value: "380"), attr(name: "fill", value: studio_url(id: concat(id, "-vig")))], []),
+      el_attrs("rect", [attr(name: "x", value: "-300"), attr(name: "y", value: "-650"), attr(name: "width", value: "1800"), attr(name: "height", value: "1950"), attr(name: "rx", value: "380"), attr(name: "filter", value: studio_url(id: concat(id, "-grain")))], []),
+    ]
+    _ => []
+  }
+  el_attrs("svg", [
+    attr(name: "xmlns", value: "http://www.w3.org/2000/svg"),
+    attr(name: "viewBox", value: "-300 -650 1800 1950"),
+    attr(name: "width", value: n(px)),
+    attr(name: "height", value: n(px * 1950 / 1800)),
+  ], concat(concat(concat([el_attrs("defs", [], concat(studio_material_defs(m: pick.material, id: id), studio_relief_defs(r: pick.relief, id: id)))], [ground]), drawn), finish))
+}
+
+// ═══ PAGES ═══
+
+data studio_sizes: List<Int> = [256, 96, 48, 24]
+
+fn studio_default_silhouette() -> StudioSilhouette {
+  match get(studio_silhouettes, 0) {
+    Present { value } => value
+    Absent => StudioSilhouette { key: "current", title: "Current", note: "", shape: ShellRoundedBox, tilt: 0, shell_r: 360, eye_scale: 100, eye_inset: 0, mouth_w: 192 }
+  }
+}
+
+fn studio_default_palette() -> StudioPalette {
+  match get(studio_palettes, 0) {
+    Present { value } => value
+    Absent => StudioPalette { key: "ink", title: "", ground: "#f4f1ec", body: "#0f0f0f", feature: "#f4f1ec", accessory: "#0f0f0f", trim: "#f4f1ec", accent: "#d9826f", side: "#5a5650" }
+  }
+}
+
+fn studio_base() -> StudioPick {
+  StudioPick { silhouette: studio_default_silhouette(), relief: ReliefFlat, costume: CostumePlain, expression: ExprNeutral, material: MaterialFlat, palette: studio_default_palette() }
+}
+
+fn studio_text(tag: String, s: String) -> Fragment {
+  el_attrs(tag, [], [FragmentText { content: s }])
+}
+
+// One card: a pick at every size.
+fn studio_card(title: String, note: String, pick: StudioPick, id: String) -> Fragment {
+  el_attrs("div", [attr(name: "class", value: "card")], [
+    studio_text(tag: "h3", s: title),
+    studio_text(tag: "p", s: note),
+    el_attrs("div", [attr(name: "class", value: "sizes")], map(studio_sizes, px => studio_svg(pick: pick, id: join([id, n(px)], "-"), px: px))),
+  ])
+}
+
+// A small tile for the combination grid: one size.
+fn studio_tile(pick: StudioPick, id: String) -> Fragment {
+  el_attrs("td", [], [studio_svg(pick: pick, id: id, px: 120)])
+}
+
+data studio_style: String = "body\{margin:0;padding:16px;font:15px/1.45 system-ui,sans-serif;background:#faf9f6;color:#1b1b1b}main\{max-width:1280px;margin:auto}nav\{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:8px}h1\{font-size:22px;margin:8px 0}.lead\{color:#555;max-width:760px}.cards\{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px}.card\{background:#fff;border:1px solid #e3e0da;border-radius:12px;padding:12px}.card h3\{margin:0;font-size:16px}.card p\{margin:2px 0 8px;color:#666;font-size:13px}.sizes\{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}.grid\{border-collapse:collapse;overflow-x:auto;display:block}.grid th\{font-size:12px;padding:4px;text-align:center}.grid td\{padding:4px}svg\{max-width:100%;height:auto}@media(max-width:480px)\{.cards\{grid-template-columns:1fr}}"
+
+data studio_nav: List<String> = ["index", "silhouette", "relief", "shape-depth", "costume", "expression", "material", "palette", "grid", "presets"]
+
+fn studio_page(title: String, lead: String, body: List<Fragment>) -> String {
+  let links = map(studio_nav, k => el_attrs("a", [attr(name: "href", value: concat(k, ".html"))], [FragmentText { content: k }]))
+  let doc = el_attrs("html", [attr(name: "lang", value: "en")], [
+    el_attrs("head", [], [
+      el_attrs("meta", [attr(name: "charset", value: "utf-8")], []),
+      el_attrs("meta", [attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1")], []),
+      studio_text(tag: "title", s: title),
+      studio_text(tag: "style", s: studio_style),
+    ]),
+    el_attrs("body", [], [el_attrs("main", [], concat([el_attrs("nav", [], links), studio_text(tag: "h1", s: title), el_attrs("p", [attr(name: "class", value: "lead")], [FragmentText { content: lead }])], body))]),
+  ])
+  concat("<!doctype html>\n", serialize_html_source(node: doc))
+}
+
+fn studio_cards(cards: List<Fragment>) -> List<Fragment> {
+  [el_attrs("div", [attr(name: "class", value: "cards")], cards)]
+}
+
+fn studio_page_index() -> String {
+  studio_page(title: "gunb mark studio", lead: "The mark as independent axes: silhouette x relief x costume x expression x material x palette. New: relief (depth) and the shape-depth grid. Each axis page varies one axis and holds the rest at the base (current silhouette, no relief, plain, neutral, flat, ink). The grid crosses costume and material. Rough sketches for picking a direction, not final art.", body: [])
+}
+
+fn studio_page_silhouette() -> String {
+  let b = studio_base()
+  studio_page(title: "Silhouette", lead: "Proportions every other axis attaches to. Costumes and expressions follow the anchors, so they move with whichever is picked.", body: studio_cards(cards: map(studio_silhouettes, s =>
+    studio_card(title: s.title, note: s.note, pick: StudioPick { silhouette: s, relief: b.relief, costume: CostumeRobot, expression: b.expression, material: b.material, palette: b.palette }, id: concat("sil-", s.key)))))
+}
+
+fn studio_page_costume() -> String {
+  let b = studio_base()
+  studio_page(title: "Costume / character", lead: "Parts attached at anchors, each with a paint role. The robot is the face wearing the robot costume.", body: studio_cards(cards: map(studio_costumes, c =>
+    studio_card(title: c.title, note: "", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: c.costume, expression: b.expression, material: b.material, palette: b.palette }, id: concat("cos-", c.key)))))
+}
+
+fn studio_page_expression() -> String {
+  let b = studio_base()
+  studio_page(title: "Expression", lead: "A tired machine, not a cheerful mascot: each mood is an open eye under a lid set by its inner and outer drop, plus a mouth. Works with round and square (robot) eyes.", body: studio_cards(cards: flat_map(studio_expressions, e => [
+    studio_card(title: e.title, note: "face", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumePlain, expression: e.expression, material: b.material, palette: b.palette }, id: join(["exp", e.key, "f"], "-")),
+    studio_card(title: e.title, note: "robot", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumeRobot, expression: e.expression, material: b.material, palette: b.palette }, id: join(["exp", e.key, "r"], "-")),
+  ])))
+}
+
+fn studio_page_relief() -> String {
+  let b = studio_base()
+  studio_page(title: "Depth / relief", lead: "Depth by layer: the body is extruded or lit as a whole, and the face can be pressed in. Independent of costume, material and palette. Watch 24px: coin keeps flat colours, so it is the one that survives a favicon unchanged.", body: studio_cards(cards: flat_map(studio_reliefs, r => [
+    studio_card(title: r.title, note: r.note, pick: StudioPick { silhouette: b.silhouette, relief: r.relief, costume: CostumePlain, expression: b.expression, material: b.material, palette: b.palette }, id: join(["rel", r.key, "f"], "-")),
+    studio_card(title: r.title, note: "robot", pick: StudioPick { silhouette: b.silhouette, relief: r.relief, costume: CostumeRobot, expression: b.expression, material: b.material, palette: b.palette }, id: join(["rel", r.key, "r"], "-")),
+  ])))
+}
+
+// Shape crossed with depth: the question "a slightly more interesting, slightly 3D shape".
+fn studio_page_shape_depth() -> String {
+  let b = studio_base()
+  let shapes = filter(studio_silhouettes, s => s.key == "current" || s.key == "squircle" || s.key == "pebble" || s.key == "tilted")
+  let head = el_attrs("tr", [], concat([el_attrs("th", [], [])], map(studio_reliefs, r => studio_text(tag: "th", s: r.title))))
+  let rows = map(shapes, s => el_attrs("tr", [], concat([studio_text(tag: "th", s: s.title)], map(studio_reliefs, r =>
+    studio_tile(pick: StudioPick { silhouette: s, relief: r.relief, costume: CostumePlain, expression: b.expression, material: b.material, palette: b.palette }, id: join(["sd", s.key, r.key], "-"))))))
+  studio_page(title: "Shape x depth", lead: "The outline crossed with the relief, plain face, flat ink: every tile is the same mark with two picks changed.", body: [el_attrs("table", [attr(name: "class", value: "grid")], concat([head], rows))])
+}
+
+fn studio_page_material() -> String {
+  let b = studio_base()
+  studio_page(title: "Material / texture", lead: "Paints every part by its role. Watch the small sizes: textures may only suit 96px and up, with the flat glyph below.", body: studio_cards(cards: flat_map(studio_materials, m => [
+    studio_card(title: m.title, note: m.note, pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumePlain, expression: b.expression, material: m.material, palette: b.palette }, id: join(["mat", m.key, "f"], "-")),
+    studio_card(title: m.title, note: "robot", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumeRobot, expression: b.expression, material: m.material, palette: b.palette }, id: join(["mat", m.key, "r"], "-")),
+  ])))
+}
+
+fn studio_page_palette() -> String {
+  let b = studio_base()
+  studio_page(title: "Palette", lead: "Role to colour, and the ground. A seasonal look is a palette, not a redraw.", body: studio_cards(cards: map(studio_palettes, p =>
+    studio_card(title: p.title, note: "", pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: CostumeRobot, expression: b.expression, material: b.material, palette: p }, id: concat("pal-", p.key)))))
+}
+
+fn studio_page_grid() -> String {
+  let b = studio_base()
+  let head = el_attrs("tr", [], concat([el_attrs("th", [], [])], map(studio_materials, m => studio_text(tag: "th", s: m.title))))
+  let rows = map(studio_costumes, c => el_attrs("tr", [], concat([studio_text(tag: "th", s: c.title)], map(studio_materials, m =>
+    studio_tile(pick: StudioPick { silhouette: b.silhouette, relief: b.relief, costume: c.costume, expression: ExprLethargic, material: m.material, palette: b.palette }, id: join(["grid", c.key, m.key], "-"))))))
+  studio_page(title: "Costume x material", lead: "Every costume in every material, lethargic expression, ink palette: none of these is drawn by hand.", body: [el_attrs("table", [attr(name: "class", value: "grid")], concat([head], rows))])
+}
+
+type StudioPreset {
+  title: String
+  note: String
+  pick: StudioPick
+  key: String
+}
+
+fn studio_palette_named(key: String) -> StudioPalette {
+  match first(filter(studio_palettes, p => p.key == key)) {
+    Present { value } => value
+    Absent => studio_default_palette()
+  }
+}
+
+fn studio_page_presets() -> String {
+  let s = studio_default_silhouette()
+  let presets = [
+    StudioPreset { key: "bot", title: "gunbai[bot] avatar", note: "robot, flat, ink (today's)", pick: StudioPick { silhouette: s, relief: ReliefFlat, costume: CostumeRobot, expression: ExprNeutral, material: MaterialFlat, palette: studio_palette_named(key: "ink") } },
+    StudioPreset { key: "ci", title: "gunbai-ci avatar", note: "plain, flat, CI green (today's)", pick: StudioPick { silhouette: s, relief: ReliefFlat, costume: CostumePlain, expression: ExprNeutral, material: MaterialFlat, palette: studio_palette_named(key: "ci") } },
+    StudioPreset { key: "tired-bot", title: "Tired bot", note: "robot, lethargic, coin, ink", pick: StudioPick { silhouette: s, relief: ReliefCoin, costume: CostumeRobot, expression: ExprLethargic, material: MaterialFlat, palette: studio_palette_named(key: "ink") } },
+    StudioPreset { key: "depressed-bot", title: "Depressed bot", note: "robot, depressed, pillow, ink", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeRobot, expression: ExprDepressed, material: MaterialFlat, palette: studio_palette_named(key: "ink") } },
+    StudioPreset { key: "halloween-devil", title: "Halloween: devil", note: "devil, angry, coin, Cuphead, Halloween", pick: StudioPick { silhouette: s, relief: ReliefCoin, costume: CostumeDevil, expression: ExprAngry, material: MaterialCuphead, palette: studio_palette_named(key: "halloween") } },
+    StudioPreset { key: "halloween-witch", title: "Halloween: trick-or-treater", note: "witch, moody, pillow, wool, Halloween", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeWitch, expression: ExprMoody, material: MaterialWool, palette: studio_palette_named(key: "halloween") } },
+    StudioPreset { key: "xmas", title: "Christmas: Santa", note: "santa, lethargic, carved, lit, Christmas", pick: StudioPick { silhouette: s, relief: ReliefCarved, costume: CostumeSanta, expression: ExprLethargic, material: MaterialLit, palette: studio_palette_named(key: "christmas") } },
+    StudioPreset { key: "manga", title: "Manga", note: "plain, depressed, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumePlain, expression: ExprDepressed, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
+    StudioPreset { key: "manga-cat", title: "Manga cat", note: "cat, sad, cel, manga, manga ink", pick: StudioPick { silhouette: s, relief: ReliefCel, costume: CostumeCat, expression: ExprSad, material: MaterialManga, palette: studio_palette_named(key: "manga") } },
+    StudioPreset { key: "cat", title: "Cat", note: "cat, neutral, pillow, wool, ink", pick: StudioPick { silhouette: s, relief: ReliefPillow, costume: CostumeCat, expression: ExprNeutral, material: MaterialWool, palette: studio_palette_named(key: "ink") } },
+  ]
+  studio_page(title: "Presets", lead: "Named combinations: one pick per axis. The GitHub Apps and seasonal looks are presets.", body: studio_cards(cards: map(presets, p => studio_card(title: p.title, note: p.note, pick: p.pick, id: concat("pre-", p.key)))))
+}
+
+type StudioPageFile {
+  name: String
+  html: String
+}
+
+fn studio_pages() -> List<StudioPageFile> {
+  [
+    StudioPageFile { name: "index", html: studio_page_index() },
+    StudioPageFile { name: "silhouette", html: studio_page_silhouette() },
+    StudioPageFile { name: "relief", html: studio_page_relief() },
+    StudioPageFile { name: "shape-depth", html: studio_page_shape_depth() },
+    StudioPageFile { name: "costume", html: studio_page_costume() },
+    StudioPageFile { name: "expression", html: studio_page_expression() },
+    StudioPageFile { name: "material", html: studio_page_material() },
+    StudioPageFile { name: "palette", html: studio_page_palette() },
+    StudioPageFile { name: "grid", html: studio_page_grid() },
+    StudioPageFile { name: "presets", html: studio_page_presets() },
+  ]
+}
+
+// Writes every page; the first failed write stops the run and names the file.
+fn studio_write(dir: String) -> ProcessExit {
+  let failed = fold(studio_pages(), init: "", f: (err, page) => if err != "" { err } else {
+    let path = join([dir, "/", page.name, ".html"], "")
+    let wrote = Filesystem.Write(path: path, content: page.html)
+    if wrote.success { "" } else { join([path, ": ", wrote.error], "") }
+  })
+  if failed == "" { ExitSuccess } else { exit_failure(reason: failed) }
+}
