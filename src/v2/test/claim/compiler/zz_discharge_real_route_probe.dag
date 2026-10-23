@@ -286,3 +286,32 @@ test fn zz_code_arg_is_18() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", whic
 test fn zz_code_arg_is_19() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 19 }
 test fn zz_code_arg_is_20() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 20 }
 test fn zz_code_arg_is_21() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 21 }
+
+// Entry census over the resolved tree infer was handed: which nodes have ANY facts entry.
+fn zz_has_entry(t: ObligatedInferredTree, n: Node) -> Bool {
+  match t.facts.lookup(n) { Present { value: _ } => true  Absent => false }
+}
+
+fn zz_census(subject: String, only_transform: Bool, want_every: Bool) -> Bool {
+  match zz_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } =>
+      match zz_obligated(subject: subject) {
+        Absent => false
+        Present { value: t } =>
+          fold(node_subtree_nodes(root: r.root), init: want_every, f: fn(acc, n) {
+            let counted = if only_transform {
+              match n.kind { ComputationNode { behavior: Transform } => true  _ => false }
+            } else { true }
+            if counted {
+              if want_every { acc && zz_has_entry(t: t, n: n) } else { acc || zz_has_entry(t: t, n: n) }
+            } else { acc }
+          })
+      }
+  }
+}
+
+test fn zz_census_any_node_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: false, want_every: false) }
+test fn zz_census_every_node_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: false, want_every: true) }
+test fn zz_census_any_transform_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: true, want_every: false) }
+test fn zz_census_every_transform_has_entry() -> Bool { zz_census(subject: "v2.test.zzpd_t", only_transform: true, want_every: true) }
