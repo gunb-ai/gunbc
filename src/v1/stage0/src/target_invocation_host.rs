@@ -254,8 +254,8 @@ pub enum V2NativeCensusReading {
         subject: &'static [&'static str],
     },
     TypeDeclarationUse,
-    /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
-    OccurrenceBinding,
+    /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-resolution rows census-infer prints (`v2.compiler.occurrence_resolution_census`).
+    OccurrenceResolution,
     /// `gunbc.instruments.namespace_wave_binding_diff`: those rows on base and on head, joined.
     BindingDiff,
     NativeProcessMemory {
@@ -438,7 +438,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::OccurrenceBinding,
+                reading: V2NativeCensusReading::OccurrenceResolution,
             },
         ),
         (
@@ -1100,7 +1100,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::OccurrenceBinding,
+            reading: V2NativeCensusReading::OccurrenceResolution,
         } => run_ambient_name_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::BindingDiff,
