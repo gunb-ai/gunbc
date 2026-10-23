@@ -62,7 +62,7 @@ import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
-  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOptionalityMismatch,
+  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOnInadmissibleType, EqualityOptionalityMismatch,
   TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -3542,6 +3542,32 @@ type EqualityAdmissionRefusal {
 
 data equality_extensional_container_rows: Map<String, Bool> = carrier_container_equality_rows()
 
+// DECLARED EQUALITY-INADMISSIBLE TYPES (ruling 2026-10-21, sleek-owl-397): rows keyed on DECLARATION
+// IDENTITY, read before any member walk. v2.std.node Edge carries Edge.declaration, a provenance
+// field outside content_hash and the erasure routes, which derived == nevertheless reads; a derived
+// == reaching an Edge therefore compares provenance and answers differently from the erasure routes.
+// Node reaches Edge through its children and joins this set when its existing == sites are moved.
+// SEED PATH ONLY: the native v2 infer has no == operand judgment; the capability that retires that
+// gap is a native v2 == operand judgment (gunbc.rung_drop native_equality_operand_judgment).
+data equality_inadmissible_declaration_identities: List<String> = [
+  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge")
+]
+
+// THE WALK STOPS AT THESE: Node's children reach Edge, but Node == is not yet inadmissible (ruling A:
+// Edge now, Node when its existing == sites are moved to the erasure route). Each row is a site-debt
+// boundary that leaves with the Node row above, not a second admission.
+data equality_walk_boundary_declaration_identities: List<String> = [
+  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
+]
+
+fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
+  if equality_inadmissible_declaration_identities |> any(i => i == identity) {
+    equality_refused(carrier: name, member: "declared equality-inadmissible", member_judged: true)
+  } else {
+    none
+  }
+}
+
 fn equality_refused(carrier: String, member: String, member_judged: Bool) -> EqualityAdmissionRefusal? {
   Present { value: EqualityAdmissionRefusal { type_name: carrier, member: member, member_judged: member_judged } }
 }
@@ -3579,7 +3605,11 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
         none
       } else {
         let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
-        if (peeled.connective == Arrow) {
+        if equality_inadmissible_type_refusal(identity: identity, name: name) != none {
+          equality_inadmissible_type_refusal(identity: identity, name: name)
+        } else if equality_walk_boundary_declaration_identities |> any(i => i == identity) {
+          none
+        } else if (peeled.connective == Arrow) {
           equality_refused(carrier: name, member: "function value", member_judged: true)
         } else if (peeled.connective == Conj) {
           equality_member_fields_refusal(owner_name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth + 1)
@@ -3668,7 +3698,9 @@ fn equality_unresolved_leaf_admission(peeled: Node, name: String, scope: InferSc
 
 fn equality_resolved_declaration_admission(rt: Node, peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
   let rt_identity = node_declaration_identity(n: rt, source_indices: scope.type_env.source_indices)
-  if rt_identity != "::" && map_contains_key(visited, rt_identity) {
+  if equality_inadmissible_type_refusal(identity: rt_identity, name: name) != none {
+    equality_inadmissible_type_refusal(identity: rt_identity, name: name)
+  } else if rt_identity != "::" && map_contains_key(visited, rt_identity) {
     none
   } else {
     equality_resolved_declaration_structure(rt: rt, peeled: peeled, name: name, scope: scope, visited: if rt_identity == "::" { visited } else { map_insert(visited, rt_identity, true) }, depth: depth)
@@ -3724,7 +3756,9 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
 }
 
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
-  if r.member_judged {
+  if r.member == "declared equality-inadmissible" {
+    EqualityOnInadmissibleType { type_name: r.type_name, span: span }
+  } else if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
   } else {
     EqualityMemberUnjudgeable { type_name: r.type_name, member: r.member, span: span }

@@ -3,23 +3,17 @@ module v2.test.claim.namespace_xl0.reference_conservation_admission
 import v2.compiler.reference_conservation_admission {
   ChangedScopeObservedConserved,
   ChangedScopeObservedDropped,
-  ExplainedDrop,
-  KnownDropShape,
-  StatementLetBinder,
-  known_drop_shape_restoration_trigger,
   NoBodyLoweringChange,
   changed_scope_observation_of_subjects,
   conservation_subject_of_text,
   conserved_normalize,
-  changed_scope_observation_conserves,
-  no_explained_drops
+  conservation_refusals,
+  changed_scope_observation_conserves
 }
-import v2.compiler.reference_conservation { ReferenceConservationSubject }
-import v2.test.claim.namespace_xl0.reference_conservation {
-  clean_control_subject,
-  statement_let_binder_subject
-}
-import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.compiler.reference_conservation { ReferenceConservationSubject, dag_declared_token_classes, reference_conservation_of_subject }
+import v2.test.claim.namespace_xl0.reference_conservation { clean_control_subject, let_binder_removed_subject, nth_authored_atom, statement_let_binder_subject }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, Textual }
+import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
@@ -34,67 +28,63 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ---- the fixture grain -------------------------------------------------------------------------
 
 test fn the_admitted_route_accepts_the_clean_control_holds() -> Bool {
-  match conserved_normalize(subject: clean_control_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: clean_control_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-// The discriminating red of the route: normalize ACCEPTS this source (the let binder is lost silently),
-// and the admitted route refuses it, located at the lost atom's own byte range.
-test fn the_admitted_route_refuses_an_unexplained_drop_at_the_lost_atom_holds() -> Bool {
-  match conserved_normalize(subject: statement_let_binder_subject(), explained: no_explained_drops()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      d.head.reason == ^conservation_reason_dropped_reference && match d.head.at {
+// The discriminating red of the route. No source normalizes to an ACCEPTED tree that loses an atom
+// any more (the last such shape, the statement let binder, is conserved), so the refusal is read on
+// the verdict itself: this source's normalize REFUSES a statement that binds nothing, the atoms
+// beneath that refusal are accounted for by nothing, and the verdict over the real report refuses
+// them as dropped references, located at the lost atom's own byte range. The pairing claim is
+// the clean control above plus the conserved controls in
+// v2.test.claim.namespace_xl0.reference_conservation: the real route accepts every shape that is
+// conserved, so deleting the verdict from conserved_normalize does not remove the last execution of
+// the real path.
+data unbound_prefix_source: String = "module v2.test.rc_unbound_prefix\n\nfn rc_f() -> Int {\n  1\n  2\n}\n"
+
+fn unbound_prefix_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "rc_unbound_prefix", text: unbound_prefix_source)
+}
+
+test fn a_dropped_atom_refuses_at_the_lost_atom_holds() -> Bool {
+  match conservation_refusals(report: reference_conservation_of_subject(subject: unbound_prefix_subject(), token_classes: dag_declared_token_classes())) {
+    Empty => false
+    Cons { head: d, tail: _ } =>
+      d.reason == ^conservation_reason_dropped_reference && match d.at {
         Textual { file: _, extent: _ } => true
         _ => false
       }
   }
 }
 
-// The binder `rc_bound` in `let rc_bound = 1`, at its exact extent in statement_let_binder_source.
-// (This machinery was specimened on the named-argument label until MQ-1 conserved that label, then
-// on the where-refinement predicate until resolve bound it; the statement let binder is the one
-// declared drop still live.)
-data rc_bound_explained: ExplainedDrop = ExplainedDrop { start: 70, end: 78, shape: StatementLetBinder }
-
-test fn a_declared_explanation_admits_exactly_the_drop_it_names_holds() -> Bool {
-  match conserved_normalize(subject: statement_let_binder_subject(), explained: Cons { head: rc_bound_explained, tail: Empty }) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-// An explanation for a drop that does not happen is a refusal, so a repaired shape reds every
-// fixture still excusing it.
-test fn an_explanation_that_consumes_no_drop_refuses_holds() -> Bool {
-  match conserved_normalize(subject: clean_control_subject(), explained: Cons { head: rc_bound_explained, tail: Empty }) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^conservation_reason_explanation_stale
-  }
-}
-
-// THE JOIN IS BY OCCURRENCE, NOT BY SPELLING. Two functions each drop a let binder spelled
-// `rc_bound`; explaining the first leaves the second refused, at the second's own extent.
-data two_same_spelled_let_binders_source: String = "module v2.test.rc_two_lets\n\nfn rc_a() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n\nfn rc_b() -> Int {\n  let rc_bound = 2\n  rc_bound\n}\n"
-
-data first_binder_explained: ExplainedDrop = ExplainedDrop { start: 53, end: 61, shape: StatementLetBinder }
-
-test fn explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds() -> Bool {
-  match conserved_normalize(subject: two_same_spelled_let_binders_subject(), explained: Cons { head: first_binder_explained, tail: Empty }) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      d.head.reason == ^conservation_reason_dropped_reference && match d.head.at {
-        Textual { file: _, extent: ByteRange { start: s, end: _ } } => s == 105
-        _ => false
+// THE ADMISSION-PATH RED. The real normalized root of `statement_let_binder_source` with the let
+// binder's atom removed (v2.test.claim.namespace_xl0.reference_conservation subject_without_atom),
+// re-admitted through normalized_tree admit_normalized_tree and paired with the ORIGINAL parse. The
+// route must refuse, located at that atom's own locus as the parse read it. The bypass claim below
+// is the same supplied subject read without the verdict: its normalized outcome is Accepted, so
+// the refusal above is conserved_normalize's, not the structural admission's, and removing the
+// verdict from conserved_normalize turns the refusal claim green. The unmodified source is accepted
+// by the clean controls, so the real path still executes.
+test fn a_removed_authored_atom_is_refused_at_its_locus_by_the_admitted_route_holds() -> Bool {
+  match nth_authored_atom(subject: statement_let_binder_subject(), identity: ^rc_bound, n: 0) {
+    Absent => false
+    Present { value: atom } =>
+      match conserved_normalize(subject: let_binder_removed_subject()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: NonEmptyDiagnostics { head: d, tail: _ } } => d.reason == ^conservation_reason_dropped_reference && d.at == atom.locus
       }
   }
 }
 
-// THE WRONG-SHAPE CONTROL IS WITHDRAWN, NOT LOST: with StatementLetBinder the only declared shape, an
-// explanation at the exact extent under a different shape has no constructor, so its red cannot be
-// authored (DESIGN section 4b). It returns with the next declared shape.
+test fn the_same_supplied_tree_is_accepted_without_the_conservation_gate_holds() -> Bool {
+  match let_binder_removed_subject().normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 // ---- the discriminating red: an operator expression read as an operand ------------------------
 
@@ -111,49 +101,26 @@ data operator_call_argument_source: String = "module v2.test.rc_operator_arg\n\n
 data operator_if_arm_source: String = "module v2.test.rc_operator_branch\n\nimport std.types { Bool }\n\nfn rc_branch(p: Bool, rc_q: Bool) -> Bool { if p { p && rc_q } else { false } }\n"
 
 test fn an_operator_expression_call_argument_is_admitted_holds() -> Bool {
-  match conserved_normalize(subject: operator_call_argument_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: operator_call_argument_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn an_operator_expression_in_an_if_arm_is_admitted_holds() -> Bool {
-  match conserved_normalize(subject: operator_if_arm_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: operator_if_arm_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
-  }
-}
-
-// Every declared shape names, by declaration, the lowering authority that retires it and the claim
-// that pins it.
-fn restoration_named(shape: KnownDropShape) -> Bool {
-  let t = known_drop_shape_restoration_trigger(shape: shape)
-  t.retired_by.module_path == "v2.compiler.body_lowering_fold" && t.pinned_by.module_path == "v2.test.claim.namespace_xl0.reference_conservation"
-}
-
-test fn every_known_drop_shape_names_its_restoration_trigger_holds() -> Bool {
-  restoration_named(shape: StatementLetBinder)
-}
-
-// Removing a declaration reds the fixture: the same source, with and without its explanation.
-test fn removing_a_declared_explanation_reds_its_fixture_holds() -> Bool {
-  match conserved_normalize(subject: statement_let_binder_subject(), explained: no_explained_drops()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } =>
-      match conserved_normalize(subject: statement_let_binder_subject(), explained: Cons { head: rc_bound_explained, tail: Empty }) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
   }
 }
 
 // ---- the changed-scope grain -------------------------------------------------------------------
 
 // Membership is read off the file's own import declarations; these two sources differ only in
-// whether they import the body-lowering root, and each carries the statement let-binder drop.
-data scope_member_dropping_source: String = "module v2.test.rc_scope_member\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport std.types { Bool }\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
+// whether they import the body-lowering root, and each carries a statement that binds nothing, which normalize refuses and conservation reports as dropped.
+data scope_member_dropping_source: String = "module v2.test.rc_scope_member\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport std.types { Bool }\n\nfn rc_f() -> Int {\n  1\n  2\n}\n"
 
-data scope_outsider_dropping_source: String = "module v2.test.rc_scope_outsider\n\nimport std.types { Bool }\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
+data scope_outsider_dropping_source: String = "module v2.test.rc_scope_outsider\n\nimport std.types { Bool }\n\nfn rc_f() -> Int {\n  1\n  2\n}\n"
 
 data scope_member_clean_source: String = "module v2.test.rc_scope_member_clean\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport std.types { Bool }\n\nfn rc_bare(c: Bool) -> Bool { c }\n"
 
@@ -188,10 +155,6 @@ test fn a_conserving_body_lowering_member_is_observed_conserved_holds() -> Bool 
 // v2.workflow.floor_pure_producer_share for the reason v2.test.claim.namespace_xl0.reference_conservation
 // states: the production phases no claim here is about are paid once, and every claim still executes
 // the admitted route or the observation it names.
-fn two_same_spelled_let_binders_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "rc_two_lets", text: two_same_spelled_let_binders_source)
-}
-
 fn operator_call_argument_subject() -> ReferenceConservationSubject {
   conservation_subject_of_text(path: "rc_operator_arg", text: operator_call_argument_source)
 }
@@ -224,7 +187,7 @@ fn call_projection_operand_subject() -> ReferenceConservationSubject {
 }
 
 test fn a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds() -> Bool {
-  match conserved_normalize(subject: call_projection_operand_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: call_projection_operand_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

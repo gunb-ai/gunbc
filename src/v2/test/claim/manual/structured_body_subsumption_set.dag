@@ -7,7 +7,8 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import v2.compiler.body_producer { produce_arrow_with_structured_body }
 import v2.extdeps.languages.dag {
@@ -28,8 +29,8 @@ fn int_pair_arrow_signature() -> Node {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
       signature.order
     ]
   )
