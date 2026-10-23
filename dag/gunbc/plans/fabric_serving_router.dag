@@ -1,0 +1,57 @@
+module gunbc.plans.fabric_serving_router
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn fabric_serving_router_body() -> List<MarkdownBlock> {
+  [
+    p(text: "Status: design, for review before any code. Work item `adhoc-d8117af7-113`, authored 2026-10-23. Operator ruling of 2026-10-23, relayed by calm-crab-645: the ctrl repository is throwaway and nothing may rely on it. Its router ranks replicas by running-request count, which `gunbc.serving.router_realization` `router_capability_permission` forbids (`ComputeOwnLoadScore`). That module's own comment says the router realization is not in this repository; this plan brings it here. The router must not keep its own decision state: it composes homes that already exist and adds only the transport they lack."),
+    h2(text: "1. The decision half already exists (verified on main at cb654894621)"),
+    TableBlock {
+      header: row(cells: [cell(text: "Router step (`RouterCapability`)"), cell(text: "Home")]),
+      alignments: [AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`NormaliseRequestToDemand`"), cell(text: "`gunbc.serving.turn_demand`; `gunbc.serving.turn_admission` `serving_group_admission`")]),
+        row(cells: [cell(text: "`AskPlacementAuthority`, `ProjectEndpointFromGrant`"), cell(text: "`gunbc.harness.harness_cli` `harness_place_cli`; `product.capacity.lease` `LeaseGrant`; `product.fabric.selection` `select_supply`")]),
+        row(cells: [cell(text: "Permit at the group's door (closes `ForwardWithoutPermit`)"), cell(text: "`gunbc.serving.serving_front_door` `mint_serving_seat_permit`, `front_door_admit_on_store`, `front_door_stream_end`, `front_door_recover`; `product.capacity.redemption`. A witness executes it, but it is not deployed.")]),
+        row(cells: [cell(text: "`ReleaseSeatOnCompletion`"), cell(text: "`gunbc.harness.harness_cli` `harness_release_cli`")]),
+        row(cells: [cell(text: "Client authentication"), cell(text: "`gunbc.auth.request_authentication`; `gunbc.serving.serving_key_grant`")]),
+        row(cells: [cell(text: "OpenAI-compatible wire"), cell(text: "`extdeps.llm.openai_rest` (request shape, `/v1/chat/completions`) and `extdeps.llm.openai_compat_sse` `OpenAiCompatSseRead` (the stream shape, `[DONE]`, severed streams). `extdeps.openrouter` is a separate upstream and is not the home. Gap 2 below therefore extends these two modules; no new extdeps module is created.")]),
+        row(cells: [cell(text: "Rented supply, enrolment and release"), cell(text: "`gunbc.serving.rented_allocation`, `rented_allocation_host_enrollment`, `rented_enrollment` (`rented_cohort_enrollments` is `[]`), `rented_release` (drain, anchor, clean, destroy legs). witty-lynx-354 owns these in #14879.")]),
+      ],
+    },
+    h2(text: "2. The load-bearing question: where the streaming listener lives"),
+    p(text: "The router has to hold a client connection open while it relays an SSE stream from an engine, and on the way it calls the front door and release folds. The repository has three listener realizations, not the two the brief named:"),
+    ol(items: [
+      li(text: "**A. Extend the seed's `gunbc serve`** (`src/v1/stage0/src/cli_run.rs`: one Content-Length request and response, no chunked or SSE body, no keep-alive). Purpose test, `gunbc.v1.v1_maintenance_standing` `MaintenanceAdmission`: a change is admitted only when it serves the v2 self-host program. A streaming proxy for an inference fleet does not serve that program. It is `SeedFeatureCompletion` (the seed never did it) and `PublicSurfaceGrowth` (a new served surface), and those refused classes dominate every admitted one. The same carrier records that adding capability to the seed for its own sake still fails. **Refused.**"),
+      li(text: "**B. A new v2-emitted serve realization**, i.e. a second listener contract beside the native door. `gunbc.native_serve` is already the contract for compiled served programs: `std.compiler_entry` `NativeServeDriver`, with the rendered main in `v1.compiler.emit_rust` `emit_native_serve_driver_main_rs` and a production consumer in the approval broker (`gunbc.auth.approval_device_crypto_serve`). A second listener contract would be the §3 fork, two doors with two sets of limits, deadlines and refusals. **Refused as a separate realization.**"),
+      li(text: "**C. Recommended: extend the native door's contract with a streamed-response arm.** `gunbc.native_serve` gains a handler result that is either the existing `ServeWireResponse` or a stream: headers, then a bounded sequence of body chunks pulled from an outbound Network read, then an end that says either completed or severed. The rendered main writes it with chunked transfer coding (RFC 9112 section 7.1) and calls a declared end fold that receives the end's typed outcome, so `front_door_stream_end` and the release run on every exit path, including a client disconnect. The per-request deadline becomes a deadline per chunk plus a whole-stream bound. Both are values in the contract, as the head and body limits already are. Network is already in this denominator: the 2026-10-04 declared extension to D11 recorded in `gunbc.plans.demand_engine_program` admits Clock and Network for `NativeServeDriver` entries, with outgoing HTTP as a `transport rest` service. What is new is a streaming read on that REST lowering."),
+    ]),
+    p(text: "**Why this needs a ruling.** C edits `v1.compiler.emit_rust`, the emitter that renders native mains, which sits in v1 territory. It also widens what a native service entry may do, from one response to a bounded stream. The 2026-10-04 extension was made by a session (gentle-dove-36) extending an operator ruling, not by the operator. C is the only option that does not grow the seed's interpreter and does not fork the listener, and it serves the native route's terminal goal (ordinary programs get lawful realization for free). Even so, whether a streamed response falls inside the service denominator is an extension of a ruling, so it goes to calm-crab-645 to rule on, with C as the recommendation. If C is refused, the router has no admissible home in this repository and the lane stops."),
+    h2(text: "3. TLS and exposure"),
+    p(text: "The first live target is tailnet-only: TLS terminates at `tailscale serve` exactly as today, and nothing is exposed publicly. The listener therefore binds loopback only and needs no TLS of its own in the first iteration. Public TLS is a declared frontier with its trigger being a client outside the tailnet. It is not built speculatively. Client authentication is still required on the tailnet: a pool API key checked through `gunbc.auth.request_authentication` against `serving_key_grant`. No key material, endpoint or account detail appears in this repository."),
+    h2(text: "4. Changes, in dependency order"),
+    ol(items: [
+      li(text: "**This plan.** It needs a ruling on section 2."),
+      li(text: "**Streamed-response arm on the native door (gap 1).** Homes: `gunbc.native_serve`, `extdeps.http.server` (a streamed variant beside `ServeWireResponse`), `v1.compiler.emit_rust` (the rendered main and a streaming REST read), `std.compiler_entry`. A red fixture covers a severed upstream that still runs the end fold, plus a deadline-per-chunk refusal. The fixture rows sit beside `gunbc.instruments` `native_serve_fixture`."),
+      li(text: "**OpenAI-compatible wire (gap 2).** Extend `extdeps.llm.openai_rest` and `openai_compat_sse` with the request bodies for `/v1/completions` and `/v1/chat/completions` (the `stream` flag, `model`) and the chunk shape the router relays. The router does not rewrite chunks. It reads only what it needs to detect `[DONE]` versus a severed stream."),
+      li(text: "**Router serve entry (gap 3).** A new `gunbc.serving.serving_router` NativeServeDriver entry runs normalise, `harness_place_cli` semantics as a fold call (not a subprocess), front-door admit with the minted permit, a streamed proxy to the grant's endpoint, then stream_end and release. It has no score, no host choice and no ledger. A placement it cannot read refuses with 503 (`FabricatePlacementWhenUnreadable`). A witness names each `RouterCapability` arm the entry exercises and asserts that the forbidden ones are absent from its closure."),
+      li(text: "**Client pool key (gap 4)**, as described in section 3."),
+      li(text: "**Rent-to-enroll (gap 5).** Derive `rented_cohort_enrollments` from `rented_allocation_host_enrollment` readings and keep them in a durable compare-and-set slot (`gunbc.durable_cas_file_store`), not a hand list. This waits until #14879 has landed, because it touches the same carriers."),
+      li(text: "**Reclaim driver (gap 6).** Sequence the `rented_release` legs. Re-placing a session after its card is reclaimed is a modeling obligation with no home yet. It joins `gunbc.serving.replica_endpoint_launch`'s incarnation frontier and `gunbc.serving.replica_incarnation`. The re-placement asks placement again, so no failover outside placement is minted. `gunbc.fabric.fabric_storage_placement` is one placement, not a replica set, so no generic replica-failover abstraction is introduced."),
+      li(text: "**Live-deploy unit (gap 7).** A `gunbc.live_deploy.apply_legs` leg and an `emit` unit for the router binary. First live run: Vast, Apply on, a $50 cap, at most 2 cards, and only after #14879's destroy-target fix has landed."),
+    ]),
+    p(text: "Coordination: gaps 5 and 6 edit carriers that witty-lynx-354 owns in #14879, so neither starts until that PR lands or witty-lynx-354 hands the carriers over."),
+  ]
+}
+
+data fabric_serving_router_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fabric-serving-router",
+  title: "Fabric-native serving router",
+  body: fabric_serving_router_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Retires when a NativeServeDriver router entry in this repository serves streamed OpenAI-compatible requests to rented cards through placement, the front door and release, rented enrolment is derived rather than hand-listed, and reclaim runs the rented_release legs; at that point gunbc.serving.router_realization's comment that the router lives in ctrl is deleted.") }
+}
