@@ -175,6 +175,13 @@ data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
 }
 
+data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "where_refinements_retire_for_checked_constructors"),
+  decided: "2026-10-02",
+  section: "4",
+  provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -342,6 +349,7 @@ fn design_rulings() -> List<DesignRuling> {
     explicit_present_is_the_authoring_policy,
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
+    where_refinements_retire_for_checked_constructors,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
