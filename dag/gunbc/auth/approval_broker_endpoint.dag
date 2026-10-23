@@ -253,7 +253,7 @@ fn approval_broker_public_host_on(host: NonEmptyStr, domain: NonEmptyStr?) -> No
 // broker is installed on (gunbc.auth.approval_broker_placement, from the prod-role holder token the
 // spec carries), so the emitter binds the base URL into the process's environment: the broker unit's
 // Environment= line (gunbc.live_deploy.emit) and the enrolment verb's env prefix
-// (gunbc.auth.approval_device_enrolment_code_issue). The broker reads the value it was given -- no
+// (the retired enrolment-code verb). The broker reads the value it was given -- no
 // host-effect read, so its closure never reaches the instance roster (#13132) and there is one
 // authority for where it runs. An unset binding, or one that is not an https URL (the emitter's
 // refusal marker), refuses; it is never replaced by a host.

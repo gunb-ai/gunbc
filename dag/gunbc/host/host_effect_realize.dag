@@ -90,7 +90,7 @@ import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, Sli
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
 import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
+import gunbc.auth.approval_device_redemption { approval_device_store_directory, approval_jwks_cache_directory }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
@@ -100,8 +100,6 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
-  approval_broker_helper_snapshot_base,
-  approval_broker_helper_snapshot_locus,
   HelperLocus,
   HelperGrantSite,
   HelperRevisionReceipt,
@@ -110,17 +108,7 @@ import gunbc.live_deploy.release_locus {
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
   live_deploy_approval_broker_unit_file_on,
-  approval_broker_helper_sudoers_content,
-  approval_broker_helper_sudoers_mode,
-  approval_broker_helper_sudoers_path,
-  approval_broker_helper_sudoers_temp_path,
-  approval_broker_helper_sudoers_stage_name,
-  approval_broker_helper_sudoers_readback_stage_name,
-  approval_broker_helper_grant_admission,
-  approval_broker_helper_grant_refusal_text,
-  HelperGrantAdmitted,
-  HelperGrantWordRefused,
-  HelperGrantLocusWritableByGrantee,
+  helper_sudoers_grant_mode,
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
@@ -283,7 +271,7 @@ import gunbc.live_deploy.retract_legs {
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe, ObjectSourceServeDecideAtApplyPwd, observe_object_source_serve, object_source_serve_refusal_text }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
-  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
@@ -5658,7 +5646,7 @@ type DeployApplyPorts {
   command: fn(ArgvCommand) -> RunArgvTransportOutcome
   stdin: fn(ArgvCommand, String) -> RunArgvTransportOutcome
   ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
-  helper_grant: fn(ReleaseRevisionBinding) -> Optional<String>
+  state_directories: fn(ReleaseRevisionBinding) -> Optional<String>
   root_helper_grant: fn(HelperGrantSite, HelperRevisionReceipt, ReleaseRevisionBinding) -> Optional<String>
   broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
   dependency: fn(DeploymentDependencyStep) -> Optional<String>
@@ -5678,7 +5666,7 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
     command: fn(c) { run_argv_over_host_effect_transport(command: c, transport: transport) },
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
-    helper_grant: fn(r) { live_deploy_apply_helper_grant_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
     root_helper_grant: fn(site, receipt, r) { live_deploy_apply_root_helper_grant_on_host(site: site, receipt: receipt, revision: r, principal: principal, source_root: source_root, transport: transport) },
     broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
     dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
@@ -5730,16 +5718,16 @@ type DeployApplyRun
   = ApplyRunOk { legs_run: Int, reports: List<String> }
   | ApplyRunFailed { step: String, reason: String, legs_run: Int }
 
-// C3: THE HELPER GRANT, THROUGH THE SHARED STAGES. The same dark_helper_grant_install the dark install
-// runs; a DarkFailed becomes the leg's refusal naming its step.
-fn live_deploy_apply_helper_grant_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
-  match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+// THE BROKER'S STATE DIRECTORIES, through the stage the dark install runs; a DarkFailed becomes the leg's
+// refusal naming its step.
+fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match dark_state_directories_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
     DarkOk => Absent
-    DarkFailed { step: s, reason: r } => Present { value: join(["helper grant refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+    DarkFailed { step: s, reason: r } => Present { value: join(["broker state directories refused at step ", dark_install_step_name(step: s), ": ", r], "") }
   }
 }
 
-// A ROOT-OWNED HELPER GRANT OTHER THAN THE BROKER'S (the attempt launcher's), through the same site
+// A ROOT-OWNED HELPER GRANT (the attempt launcher's), through the same site
 // sequence the broker's helper grant runs, with the site's revision receipt.
 fn live_deploy_apply_root_helper_grant_on_host(site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
   match dark_helper_site_install(site: site, receipt: Present { value: receipt }, revision: revision, principal: principal, source_root: source_root, transport: transport) {
@@ -5868,7 +5856,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
         Absent => Absent
         Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
       }
-    ApplyLegHelperGrant { revision: r } => ports.helper_grant(r)
+    ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
     ApplyLegRootHelperGrant { site: g, receipt: rc, revision: r } => ports.root_helper_grant(g, rc, r)
     ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
     ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
@@ -5893,7 +5881,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
-    ApplyLegHelperGrant { revision: _ } => []
+    ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => []
     ApplyLegBrokerTree { revision: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
@@ -6392,7 +6380,6 @@ fn approval_broker_tree_receipt_write(
 type DarkInstallStep
   = DarkStepOwner
   | DarkStepDeviceStore
-  | DarkStepGrantAdmission
   | DarkStepSnapshot
   | DarkStepSnapshotReadback
   | DarkStepRevisionReceipt
@@ -6508,13 +6495,6 @@ fn tree_install_step_name(step: TreeInstallStep) -> String {
   }
 }
 
-// The helper snapshot's root-ownership readback: neither the base's ancestors nor anything in the
-// snapshot may be owned by another principal, writable by group/other, or be a symlink. Bare find (not
-// grantable); an unreadable entry is an observation failure and refuses.
-fn dark_snapshot_readback_legs(dir: String) -> List<DarkLeg> {
-  dark_snapshot_readback_legs_at(locus: approval_broker_helper_snapshot_locus(), dir: dir)
-}
-
 fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkLeg> {
   let root = locus.owner as String
   [
@@ -6527,28 +6507,6 @@ fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkL
       command: find_untrusted_entries_command(roots: [dir], top_only: false, owner: root),
     },
   ]
-}
-
-// The sudoers file, staged -> visudo -cf -> installed beside the final name -> policy-checked ->
-// renamed over it -> policy-checked again -> read back through the applying principal and hashed
-// against the staged bytes. `scratch` is the directory the caller acquired and will remove.
-fn dark_sudoers_legs(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
-  dark_sudoers_legs_at(site: approval_broker_helper_grant_site(revision: revision), principal: principal, scratch: scratch)
-}
-
-// The approval broker's helper grant as a site: its snapshot under the one root-owned base, its one
-// sudoers file.
-fn approval_broker_helper_grant_site(revision: ReleaseRevisionBinding) -> HelperGrantSite {
-  HelperGrantSite {
-    locus: approval_broker_helper_snapshot_locus(),
-    spine: [approval_broker_helper_snapshot_base],
-    sudoers_content: approval_broker_helper_sudoers_content(revision: revision),
-    sudoers_mode: approval_broker_helper_sudoers_mode,
-    sudoers_temp_path: approval_broker_helper_sudoers_temp_path as String,
-    sudoers_path: approval_broker_helper_sudoers_path as String,
-    stage_name: approval_broker_helper_sudoers_stage_name,
-    readback_name: approval_broker_helper_sudoers_readback_stage_name,
-  }
 }
 
 fn dark_sudoers_legs_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
@@ -6627,38 +6585,24 @@ fn approval_broker_dark_install(
       reason: join(["the dark install was reached with a deployment that does not own this host's broker unit; gunbc-approval-broker.service is a host singleton owned by the spec holding the prod role. instance=", spec.instance_id as String], ""),
     }
   } else {
-    match dark_helper_grant_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
+    match dark_state_directories_install(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport }) {
       DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
       DarkOk => dark_stage_broker_tree(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
     }
   }
 }
 
-// THE HELPER-GRANT STAGES, ONE SEQUENCE, TWO CALLERS: the dark install (approval_broker_dark_install)
-// and the live_deploy apply (the helper-grant leg's port). device store -> grant admission -> root-owned
-// snapshot tree -> sudoers (stage, visudo, install, rename, readback) -> retire of the superseded snapshot.
-// Each stage yields DarkOk or the typed DarkFailed naming its step; the first failure ends the sequence.
-fn dark_helper_grant_install(i: DarkInstallInputs) -> DarkState {
-  match dark_helper_device_store(i: i) {
+// THE BROKER'S STATE DIRECTORIES: the device store and the JWKS cache, each converged to its managed
+// declaration (owner, group, derived mode) before the broker's tree is staged.
+fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
+  match dark_managed_state_directory(i: i, d: approval_device_store_directory()) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-    DarkOk =>
-      match dark_helper_grant_admission(i: i) {
-        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-        DarkOk =>
-          dark_helper_site_install(
-            site: approval_broker_helper_grant_site(revision: i.revision),
-            receipt: Absent,
-            revision: i.revision,
-            principal: i.principal,
-            source_root: i.source_root,
-            transport: i.transport,
-          )
-      }
+    DarkOk => dark_managed_state_directory(i: i, d: approval_jwks_cache_directory())
   }
 }
 
-fn dark_helper_device_store(i: DarkInstallInputs) -> DarkState {
-  match managed_directory_admit(d: approval_device_store_directory()) {
+fn dark_managed_state_directory(i: DarkInstallInputs, d: ManagedDirectory) -> DarkState {
+  match managed_directory_admit(d: d) {
     ManagedDirectoryRefused { member: m, path: p, writer: w } =>
       DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
     ManagedDirectoryAdmitted { dir: d } =>
@@ -6667,16 +6611,6 @@ fn dark_helper_device_store(i: DarkInstallInputs) -> DarkState {
         command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
           mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
       })
-  }
-}
-
-fn dark_helper_grant_admission(i: DarkInstallInputs) -> DarkState {
-  match approval_broker_helper_grant_admission(revision: i.revision) {
-    HelperGrantAdmitted => DarkOk
-    HelperGrantWordRefused { word: w } =>
-      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
-    HelperGrantLocusWritableByGrantee { owner: o } =>
-      DarkFailed { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
   }
 }
 
@@ -6890,7 +6824,6 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
   match step {
     DarkStepOwner => "owner"
     DarkStepDeviceStore => "device-store"
-    DarkStepGrantAdmission => "helper-grant-admission"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
     DarkStepRevisionReceipt => "helper-revision-receipt"
@@ -10116,7 +10049,7 @@ fn microvm_controller_install_steps(
               microvm_controller_argv_step(
                 name: "dispatch grant install (pending)",
                 command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-                  mode: approval_broker_helper_sudoers_mode,
+                  mode: helper_sudoers_grant_mode,
                   owner: microvm_controller_owner,
                   group: microvm_controller_owner,
                   source: grant_stage,
