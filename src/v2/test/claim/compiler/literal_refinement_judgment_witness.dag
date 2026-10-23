@@ -1,7 +1,7 @@
 module v2.test.claim.compiler.literal_refinement_judgment_witness
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer }
+import v2.compiler.infer { infer, infer_entries_for_tree, infer_gather_for_tree }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations, infer_and_discharge }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
@@ -276,4 +276,19 @@ test fn lrj_locator_call_with_refined_typed_argument_infers_holds() -> Bool {
 
 test fn lrj_locator_predicate_called_directly_on_a_literal_infers_holds() -> Bool {
   lrj_infers(subject: "v2.test.lrj_predicate_call")
+}
+
+// LOCATOR 3: the MAIN gather fold alone (no post-pass) over lrj_one_arg, and the demands it collected.
+test fn lrj_locator_main_gather_alone_accepts_holds() -> Bool {
+  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } => match infer_entries_for_tree(tree: r) { Accepted { value: _, diagnostics: _ } => true  Rejected { diagnostics: _ } => false }
+  }
+}
+
+test fn lrj_locator_main_gather_collects_one_demand_holds() -> Bool {
+  match lrj_resolve(subject: "v2.test.lrj_one_arg") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: r, diagnostics: _ } => length(xs: infer_gather_for_tree(tree: r).demands) == 1
+  }
 }
