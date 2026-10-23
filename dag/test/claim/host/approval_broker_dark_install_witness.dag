@@ -26,12 +26,21 @@ import gunbc.host.host_effect_realize {
   DarkLegExpectEmpty,
   DarkLegSameHash,
   dark_run_legs,
+  dark_run_leg,
+  dark_expect_empty_state,
+  dark_same_hash_state,
   dark_sudoers_legs,
   dark_unit_legs,
   dark_slice_control_legs,
   dark_snapshot_readback_legs,
   approval_broker_dark_install,
+  DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
+  DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, dark_sidecar_readback_not_local, DarkInstallInputs,
 }
+import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
+import gunbc.host.host_effect_realize { Sha256Agreement, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved, Sha256Agrees, Sha256SideUnobserved, SourceSide, Sha256RunFailed }
+import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import std.algebra { list_map, non_empty_to_list }
@@ -110,20 +119,50 @@ test fn the_snapshot_readback_runs_two_bare_finds() -> Bool {
   count(dark_snapshot_readback_legs(dir: "/opt/gunbc/approval-broker-helpers/x")) == 2
 }
 
-// THE RED: the first leg fails (find on a root that does not exist), so the line stops there. The
-// later leg would itself fail at a DIFFERENT step, so the verdict naming the first step is the proof
-// that no later leg decided it.
+// SUPPLIED OUTCOMES: the pure steps dark_run_leg delegates to are driven with supplied outcomes, so no
+// transport runs. A failed state is absorbing (dark_run_leg returns it before any leg runs), so a later
+// leg cannot decide the verdict: the first failing step is the one named.
+fn failed_exit(code: Int) -> RunArgvTransportOutcome {
+  RunArgvTransportObserved { observed: ShellExecObserved { success: false, exit_code: code, stdout: "", stderr: "boom" } }
+}
+
 test fn a_failing_leg_stops_the_line_at_its_step() -> Bool {
-  let legs = [
-    DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root") },
-    DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" },
-  ]
-  step_of(s: dark_run_legs(legs: legs, transport: LocalShell)) == Present { value: DarkStepSnapshotReadback }
+  let first = dark_expect_empty_state(step: DarkStepSnapshotReadback, outcome: failed_exit(code: 1))
+  let after = dark_run_leg(state: first, leg: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }, transport: LocalShell)
+  step_of(s: first) == Present { value: DarkStepSnapshotReadback } && after == first
 }
 
 test fn an_unhashable_pair_fails_the_compare() -> Bool {
-  step_of(s: dark_run_legs(legs: [DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" }], transport: LocalShell))
+  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b",
+    agreement: Sha256SideUnobserved { side: SourceSide, cause: Sha256RunFailed { stderr: "no such file" } }))
     == Present { value: DarkStepSudoersCompare }
+}
+
+test fn an_agreeing_pair_and_an_empty_clean_run_are_ok() -> Bool {
+  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b", agreement: Sha256Agrees)) == none
+    && step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
+      outcome: RunArgvTransportObserved { observed: ShellExecObserved { success: true, exit_code: 0, stdout: "", stderr: "" } })) == none
+}
+
+// INHABITANCE ON THE REAL ROUTE (pairs the supplied-outcome controls above): from DarkOk, dark_run_leg
+// takes each leg through its real arm and the real transport dispatch. EmitArtifactThenThinRun refuses
+// typed argv without invoking a shell, so the route runs hermetically and the refusal must surface at
+// the leg's own step. Rewiring an arm (DarkOk unconditionally, wrong helper, dropped outcome) fails here.
+data refusing_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+fn refused_step(l: DarkLeg) -> DarkInstallStep? {
+  step_of(s: dark_run_leg(state: DarkOk, leg: l, transport: refusing_transport))
+}
+
+test fn dark_run_leg_routes_each_leg_through_the_transport_to_its_own_step() -> Bool {
+  let cmd = find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root")
+  refused_step(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
+    && refused_step(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
+    && refused_step(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
+    && refused_step(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
 }
 
 test fn an_empty_leg_list_is_ok() -> Bool {
@@ -178,6 +217,52 @@ test fn the_real_route_refuses_a_non_owning_spec_at_the_owner_step() -> Bool {
     transport: LocalShell,
   ) {
     DarkInstallRefused { step: s, reason: _ } => s == DarkStepOwner
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// ── THE SIDECAR PRECEDES THE BROKER SWAP (run 39545280023) ─────────────────────────────────────
+// The release locus has two executable members, enumerated once; a roster naming only gunbc is the defect.
+test fn the_broker_locus_enumerates_the_gunbc_and_sidecar_binaries() -> Bool {
+  approval_broker_release_locus_executables == [gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name]
+}
+
+fn sidecar_plan() -> List<DarkLeg> {
+  dark_sidecar_legs(spec: deployment_spec_srv1(), revision: rev(), digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+}
+
+fn inputs() -> DarkInstallInputs {
+  DarkInstallInputs { spec: deployment_spec_srv1(), revision: rev(), principal: fleet_posix_ci_runner_principal(), source_root: "/nonexistent-sidecar-source", transport: refusing_transport }
+}
+
+// POSITIVE CONTROL: the real sidecar plan is the sidecar sequence, and every one of its steps is ordered before the broker's unit legs.
+test fn the_real_sidecar_plan_precedes_every_broker_unit_leg() -> Bool {
+  let unit_steps = map(dark_unit_legs(spec: deployment_spec_srv1(), revision: rev()), l => leg_step(l: l))
+  map(sidecar_plan(), l => leg_step(l: l)) == [DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarDaemonReload, DarkStepSidecarEnable, DarkStepSidecarRestart]
+    && !any(unit_steps, u => any(map(sidecar_plan(), l => leg_step(l: l)), t => t == u))
+}
+
+// RED: a locus whose sidecar binary cannot be observed refuses at the sidecar digest, before any sidecar or broker leg.
+test fn a_locus_missing_the_sidecar_binary_refuses_before_any_leg() -> Bool {
+  match dark_stage_sidecar_digest(i: inputs(), tree_digest: "t") {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarDigest
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: with the sidecar digest in hand, the same transport is first reached at the sidecar's own first leg.
+test fn a_present_sidecar_binary_reaches_the_first_sidecar_leg() -> Bool {
+  match dark_stage_sidecar(i: inputs(), tree_digest: "t", deployed: "d") {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarEnv
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}
+
+// RED: the readback probes the evaluator's loopback, so a transport that is not LocalShell refuses at the readback step with no broker leg run.
+// (The legs run first over the transport; this stage is reached with them done, hence the direct stage call.)
+test fn a_non_local_transport_refuses_the_sidecar_readback() -> Bool {
+  match dark_sidecar_readback_not_local() {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarReadback
     DarkInstallConverged { broker_tree_digest: _ } => false
   }
 }

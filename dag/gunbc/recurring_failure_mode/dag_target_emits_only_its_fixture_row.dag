@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.dag_target_emits_only_its_fixture_row
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data dag_target_emits_only_its_fixture_row: RecurringFailureMode = RecurringFailureMode {
   identity: "dag_target_emits_only_its_fixture_row" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**the dag target cannot emit ordinary .dag source, so \"one grammar, read in both directions\" (DESIGN 4) holds for .dag only at its one fixture** (INVALID STATE: the dag TargetModel's emit side carries one relation row while its ingest side reads the whole grammar.) `v2.extdeps.languages.dag` `dag_translation_rules_node` enrolls exactly one row, the `fn add` fixture (`dag_add_grammar_relation_row_node`). No data-decl, brace, string-literal or `^dag_production_field_init_string_key` row is enrolled, and `dag_target_model`'s `token_class_emit_transforms` is empty. The `emit_row_*` functions (`emit_row_data_decl` and its siblings) have no consumer outside the module, and none exists for a brace or a string-keyed entry. On the value-expression route, `TargetValueExpressionKind` has no map or string-keyed-entry kind, and the dag projection's `int_literal_form` is `IntLiteralUnwired`.",

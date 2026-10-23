@@ -24,7 +24,9 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::type_realization_decision;
 pub use crate::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
-pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
+pub use crate::v1_compiler_emit_rust::{
+    emit_native_serve_driver_main_rs, function_value_params, is_host_text_carrier_type,
+};
 pub use crate::v1_compiler_infer::{build_emit_graph_info, declared_return_type_node};
 pub use crate::v1_compiler_infer_emit_info::{
     resolve_type_decl_routed, type_decl_routed_resolution_label, TypeDeclIndex,
@@ -51,7 +53,7 @@ use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
     type_reference_identity, type_reference_provenance, Connective, InferredNode, NewlineIndex,
-    Node, ParsedModuleItemKind,
+    Node, ParsedModuleItemKind, TextFile,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -775,6 +777,122 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
                 ))
             }
         }
+    }
+}
+
+pub fn crc_serve_before_bind(startup: bool) -> String {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            startup.clone(),
+            false,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"TcpListener::bind((".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(head) => head.clone(),
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn a_startup_entry_realizes_its_worker_before_it_binds_and_bounds_it_by_the_startup_deadline(
+) -> bool {
+    {
+        let head = crc_serve_before_bind(true);
+        (v1_rt::string_contains(
+            &head,
+            "realize_generation(&stuck, ready_within)".to_string(),
+        ) && v1_rt::string_contains(&head, "contract.startup_deadline".to_string()))
+    }
+}
+
+pub fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_request_deadline() -> bool
+{
+    {
+        let head = crc_serve_before_bind(false);
+        (!v1_rt::string_contains(&head, "realize_generation(&stuck".to_string())
+            && !v1_rt::string_contains(&head, "startup_deadline".to_string()))
+    }
+}
+
+pub fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> bool {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            true,
+            true,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"TcpListener::bind((".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .first()
+        .cloned()
+        {
+            Some(head) => {
+                (v1_rt::string_contains(
+                    &head,
+                    "second_count(native_serve_startup_bound())".to_string(),
+                ) && !v1_rt::string_contains(
+                    &head,
+                    "second_count(contract.startup_deadline.clone())".to_string(),
+                ))
+            }
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn crc_realize_generation_body(startup: bool) -> String {
+    {
+        let file = crate::v1_compiler_emit_rust::emit_native_serve_driver_main_rs(
+            "c".to_string(),
+            "m".to_string(),
+            Rc::new(vec![]),
+            startup.clone(),
+            false,
+        );
+        match Rc::new(
+            file.content
+                .clone()
+                .split(&"fn realize_generation(".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .last()
+        .cloned()
+        {
+            Some(tail) => tail.clone(),
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_state_after_the_wait(
+) -> bool {
+    {
+        let body = crc_realize_generation_body(true);
+        (((v1_rt::string_contains(
+            &body,
+            "started_rx.recv_timeout(ready_within).is_err()".to_string(),
+        ) && !v1_rt::string_contains(&body, "AtomicBool".to_string()))
+            && !v1_rt::string_contains(&body, "started.load".to_string()))
+            && !v1_rt::string_contains(&body, "started_flag".to_string()))
     }
 }
 

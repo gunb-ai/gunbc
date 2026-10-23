@@ -15,6 +15,7 @@ import extdeps.github.log_annotations {
 }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit, String, List }
+import std.measure { Second, second }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
@@ -413,6 +414,11 @@ type MissingFilesBehavior = Warn | ErrorOut | Ignore
 data max_job_timeout_minutes: Int = 360
 
 data default_job_timeout_minutes: Int = 360
+
+// GitHub's cancellation timeout: when a run is cancelled, always() steps get five minutes and are then
+// force-cancelled (docs.github.com/en/actions/reference/workflows-and-actions/expressions, status check
+// functions, "cancelled" / "always").
+data cancelled_job_always_step_timeout: Second = second(count: 300)
 
 data max_matrix_combinations: Int = 256
 

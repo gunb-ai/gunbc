@@ -31,7 +31,9 @@ import v2.compiler.dependency_demand {
   resource_set_of,
   ResourceSet
 }
-import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_ctx_with_reference_category, resolve_node }
+import std.occurrence_identity { OccurrenceCategory, TypeOccurrence }
 import v2.compiler.eval { eval_node_is_arrow, eval_transform_has_callee_reference }
 import v2.std.node_query { find_arrow_body_child }
 import v2.compiler.parse { parse_tree_projection_edge }
@@ -59,7 +61,7 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import std.types { Bool }
-import v2.std.node { positional_child_target_nodes, Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
+import v2.std.node { positional_child_target_nodes, Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_from_node, qualified_name_init, qualified_name_snoc, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
@@ -278,7 +280,18 @@ fn demand_fact_children(node: Node) -> List<Edge> {
   }
 }
 
+// A LIST INTRODUCTION IS NOT A CALL: its head is the compiler-generated reference to the free monoid's
+// declaration (v2.std.list_introduction), a type, so only its elements are mentioned. The reader is
+// the one eval uses, so every list introduction is excluded, not only a fn's parameter-order list.
 fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
+  match list_introduction_elements_optional(node: node) {
+    Present { value: elements } =>
+      fold(elements, init: w, f: fn(acc, e) { demand_fact_node(w: acc, position: position, node: e, resolved: resolved) })
+    Absent => demand_fact_reference_or_children(w: w, position: position, node: node, resolved: resolved)
+  }
+}
+
+fn demand_fact_reference_or_children(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   match declaration_reference_path_optional(node: node) {
     Present { value: target } =>
       DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: list_snoc_item(xs: w.current, item: target), value_call: w.value_call }
@@ -517,7 +530,6 @@ fn demand_census_requirement(arrow: Node) -> RequirementClass {
             Conj => demand_census_requirement_members(t: t)
             Disj => RequiresUndeclared
             Arrow => RequiresUndeclared
-            Occupancy => RequiresUndeclared
             Instantiation => RequiresUndeclared
           }
         ComputationNode { behavior: _ } => RequiresUndeclared
@@ -587,7 +599,7 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
       match body_lower_type_expr_lowered_optional(node: s) {
         Absent => AuthoredTypeUnresolved
         Present { value: lowered } =>
-          match resolve_node(ctx: ctx, n: lowered) {
+          match resolve_node(ctx: resolve_ctx_with_reference_category(ctx: ctx, category: TypeOccurrence), n: lowered) {
             Rejected { diagnostics: _ } => AuthoredTypeUnresolved
             Accepted { value: r, diagnostics: _ } =>
               match declaration_reference_path_optional(node: r) {
@@ -1138,7 +1150,6 @@ fn demand_census_node_kind_word(k: NodeKind) -> String {
     TypeNode { connective: Conj } => "conj"
     TypeNode { connective: Disj } => "disj"
     TypeNode { connective: Arrow } => "arrow"
-    TypeNode { connective: Occupancy } => "occupancy"
     TypeNode { connective: Instantiation } => "instantiation"
     ComputationNode { behavior: Value } => "value"
     ComputationNode { behavior: Transform } => "transform"

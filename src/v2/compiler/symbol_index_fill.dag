@@ -9,7 +9,7 @@ import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item, fold_list, 
 import v2.std.node_query { binder_node_parts }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Occupancy, Instantiation, Atom, Arrow, ComputationNode, Conj, Disj, Edge, FirstPositionalAbsent, FirstPositionalFound, Authored, Node, Positional, Symbol, TypeNode, arrow_first_positional_target, node_subtree_nodes, StructuralLabel, label_sort_key }
+import v2.std.node { Instantiation, Atom, Arrow, ComputationNode, Conj, Disj, Edge, FirstPositionalAbsent, FirstPositionalFound, Authored, Node, Positional, Symbol, TypeNode, arrow_first_positional_target, node_subtree_nodes, StructuralLabel, label_sort_key }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, symbol_index_mark_namespace_body, VariantArmPayload, symbol_index_bind_at, symbol_index_mark_module_root, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_insert, symbol_index_lookup, symbol_index_mark_declared_payload, symbol_index_mark_declared_resource, symbol_index_mark_primitive_contract, symbol_index_mark_declared_type_params }
 import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
@@ -342,7 +342,6 @@ fn symbol_index_fill_containment_node(
         arrow: node
       )
     TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
-    TypeNode { connective: Occupancy } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
     TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
     ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node, counts: counts, module_qn: module_qn)
   }
@@ -385,7 +384,6 @@ fn symbol_index_fill_arrow_domain(
             TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
-            TypeNode { connective: Occupancy } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
             ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain, counts: counts, module_qn: module_qn)
           }
@@ -425,7 +423,6 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
         TypeNode { connective: Atom { identity: _ } } => counts
         TypeNode { connective: Conj } => counts
         TypeNode { connective: Arrow } => counts
-        TypeNode { connective: Occupancy } => counts
         TypeNode { connective: Instantiation } => counts
         ComputationNode { behavior: _ } => counts
       }

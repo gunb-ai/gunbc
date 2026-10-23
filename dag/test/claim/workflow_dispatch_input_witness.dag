@@ -9,7 +9,7 @@ import extdeps.github.actions {
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
-  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
+  FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, fleet_converge_gcp_iam_bootstrap_job_id, fleet_converge_gcp_iam_bootstrap_request_job_id,
   fleet_converge_mode_step_if, fleet_converge_dashboard_deploy_step_if, fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job, fleet_converge_srv1_root_mutation_environment, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
@@ -256,7 +256,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // an edge row no rostered mode reaches, and a rostered mode's job with no edge row -- so a red names
 // its identities rather than two unequal lists.
 fn fleet_converge_expected_job_ids() -> List<String> {
-  concat([fleet_converge_plan_revision_job_id as String, fleet_converge_release_bins_job_id as String],
+  concat([fleet_converge_plan_revision_job_id as String, fleet_converge_release_bins_job_id as String, fleet_converge_gcp_iam_bootstrap_request_job_id as String, fleet_converge_gcp_iam_bootstrap_job_id as String],
     map(fleet_converge_workflow_modes, m => fleet_converge_mode_job_id(mode: m) as String))
 }
 
@@ -284,7 +284,10 @@ fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: Li
     } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
       e.needs == []
     } else {
-      e.needs == build
+      // THE BINARIES' SOURCE IS `build`; a job may also wait on another rostered job (the converge waits
+      // for gcp-iam-bootstrap), but never on one the roster does not name.
+      any(e.needs, n => n == (fleet_converge_release_bins_job_id as String))
+        && all(e.needs, n => n == (fleet_converge_release_bins_job_id as String) || (n != (e.id as String) && any(expected, x => x == n)))
     })
 }
 

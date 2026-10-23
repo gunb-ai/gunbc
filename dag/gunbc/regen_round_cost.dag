@@ -58,6 +58,7 @@ type RegenRoundPhase
   | Digest
   | Install
   | RebuildFromInstalled
+  | BuiltSeedRegen
   | Diff
 
 // A drained ledger row. `label` is the trace_mark label with its `.done` suffix removed (a plain
@@ -137,6 +138,7 @@ fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
     Digest => "digest"
     Install => "install"
     RebuildFromInstalled => "rebuild_from_installed"
+    BuiltSeedRegen => "built_seed_regen"
     Diff => "diff"
   }
 }
@@ -162,12 +164,13 @@ fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
     Digest => "regen.digest"
     Install => "round.install"
     RebuildFromInstalled => "round.rebuild_from_installed"
+    BuiltSeedRegen => "round.built_seed_regen"
     Diff => "round.diff"
   }
 }
 
 fn regen_round_phases() -> List<RegenRoundPhase> {
-  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, Diff]
+  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, BuiltSeedRegen, Diff]
 }
 
 fn regen_round_phase_of_label(label: String) -> RegenRoundPhaseAttribution {

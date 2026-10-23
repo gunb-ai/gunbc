@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.workspace_relative_corpus_key_handed_to_a_cwd_relative_reader
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data workspace_relative_corpus_key_handed_to_a_cwd_relative_reader: RecurringFailureMode = RecurringFailureMode {
   identity: "workspace_relative_corpus_key_handed_to_a_cwd_relative_reader" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**workspace-relative corpus key handed to a cwd-relative reader** (a path whose CONTRACT is relative to the workspace root the module index was keyed against -- an index key, a rostered authority entry -- is passed to a reader that opens its argument against the PROCESS CWD, so the read names the intended file only while the cwd happens to be the workspace root.",

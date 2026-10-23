@@ -1,0 +1,38 @@
+module gunbc.roadmap.roadmap_attempt_worktree_claim_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.managed_directory { DirectoryOwnerOnly }
+
+// THE WORKTREE CLAIM STORE'S ROOT (the store itself is gunbc.roadmap.roadmap_attempt_worktree_claim), kept in a
+// leaf module because the instance directory list must import its declaration and the claim store sits above
+// the belt, which the list's own importers reach.
+data worktree_claim_slots_dirname: String = "worktree-claims"
+
+fn worktree_claim_slots_root(records_dir: String) -> NonEmptyStr {
+  join([records_dir, "/", worktree_claim_slots_dirname], "") as NonEmptyStr
+}
+
+// THE ONE DERIVATION OF THE ROOT FOR AN INSTANCE: the declaration below and both belt consumer sites
+// (belt_worktree_claim_before_add, the settlement pass's claims_root) use this expression, so the path the
+// store is read under and the path the directory list creates are one expression, not two that happen to agree.
+fn worktree_claim_slots_root_of(instance: HostDashboardInstance) -> NonEmptyStr {
+  worktree_claim_slots_root(records_dir: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String)
+}
+
+// THE CLAIM STORE ROOT IS A DEMANDED DIRECTORY, declared beside the path it is and enrolled in the one instance
+// directory list (gunbc.roadmap.dashboard_instance_directories), the creator the corpus names for a store root
+// (gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory). The CAS slot store
+// (gunbc.durable_cas_file_store) refuses a root it cannot list rather than reading it as empty, so a root
+// nothing creates refuses the spawn step worktree-claim of EVERY executor: the srv1 lab's first dispatch past
+// #14235 did exactly that (2026-10-20, "the directory .../worktree-claims could not be listed"). Owner-only:
+// the claims record which attempt owns which tree.
+fn worktree_claim_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: worktree_claim_slots_dirname as NonEmptyStr,
+    path: worktree_claim_slots_root_of(instance: instance) as String as FilePath,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerOnly,
+  }
+}
