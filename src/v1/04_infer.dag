@@ -15215,24 +15215,8 @@ fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<Str
     }
   } else {
     let type_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)
-    // A VARIANT LITERAL AGAINST ITS OWNER'S APPLICATION solves the application's arguments from the
-    // variant's own payload: the owner declaration has no fields of its own (record_lit_expected_fields
-    // of a coproduct answers its variants), so walking it bound nothing and `Accepted { value: R }`
-    // offered to `Outcome<T>` left T unsolved. The variant's fields are instantiated from the formal's
-    // arguments, exactly as record_lit_instantiated_fields does for an expected type.
-    let variant_fields = match record_lit_expr_optional(expr: record) {
-      Present { value: record_lit } =>
-        let record_name = type_node_label(n: record_lit, source_indices: scope.type_env.source_indices)
-        if record_name != "" && record_name != type_name {
-          record_lit_instantiated_fields(type_name: Present { value: record_name }, expected: Present { value: formal }, scope: scope)
-        } else { none }
-      Absent => none
-    }
     unify_record_lit_field_walk(
-      struct_fields: match variant_fields {
-        Present { value: instantiated } => instantiated
-        Absent => record_lit_expected_fields(type_name: Present { value: type_name }, scope: scope)
-      },
+      struct_fields: record_lit_expected_fields(type_name: Present { value: type_name }, scope: scope),
       record: record,
       generic_names: generic_names,
       scope: scope,
