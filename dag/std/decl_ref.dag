@@ -64,27 +64,27 @@ fn citation_is_outside_index(coverage: CitationIndexCoverage) -> Bool {
   }
 }
 
-fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
+fn decl_ref(module_path: NonEmptyStr, decl_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
+    module_path: module_path,
+    decl_name: decl_name,
     field: WholeDeclaration,
   }
 }
 
-fn decl_field_ref(module_path: String, decl_name: String, field_name: String) -> DeclarationRef {
+fn decl_field_ref(module_path: NonEmptyStr, decl_name: NonEmptyStr, field_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: NamedField { field_name: field_name as NonEmptyStr },
+    module_path: module_path,
+    decl_name: decl_name,
+    field: NamedField { field_name: field_name },
   }
 }
 
-fn decl_type_parameter_ref(module_path: String, decl_name: String, parameter: String) -> DeclarationRef {
+fn decl_type_parameter_ref(module_path: NonEmptyStr, decl_name: NonEmptyStr, parameter: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: TypeParameter { name: parameter as NonEmptyStr },
+    module_path: module_path,
+    decl_name: decl_name,
+    field: TypeParameter { name: parameter },
   }
 }
 

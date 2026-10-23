@@ -1,0 +1,9 @@
+module gunbc.probekr.literal_into_non_empty
+
+import std.types { NonEmptyStr, String }
+
+fn take_non_empty(s: NonEmptyStr) -> NonEmptyStr { s }
+
+fn green_literal_argument() -> NonEmptyStr { take_non_empty(s: "x") }
+
+fn red_string_argument(s: String) -> NonEmptyStr { take_non_empty(s: s) }

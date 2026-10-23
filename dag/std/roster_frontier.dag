@@ -72,13 +72,13 @@ fn frontier_row_decl(ref: DeclarationRef, reason: String, dissolution: Dissoluti
 // shape, and a second private fold would have made "one shared reason mapped over decl names" a
 // concept with two authorities (review 65996). Both callers now consume this one.
 fn frontier_rows_for_decls(
-  module_path: String,
+  module_path: NonEmptyStr,
   decl_names: List<NonEmptyStr>,
   reason: String,
   dissolution: DissolutionCondition,
 ) -> List<FrontierRow> {
   map(decl_names, n => frontier_row_decl(
-    ref: decl_ref(module_path: module_path, decl_name: n as String),
+    ref: decl_ref(module_path: module_path, decl_name: n),
     reason: reason,
     dissolution: dissolution,
   ))
