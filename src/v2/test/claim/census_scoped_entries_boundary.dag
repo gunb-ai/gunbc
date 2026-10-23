@@ -1,0 +1,54 @@
+// THE ONE-BOUNDARY TRIPWIRE FOR THE SCOPED CENSUS POPULATION (quiet-carp-503, October 2026).
+//
+// WHY THIS MODULE IS ITS OWN FILE: the two claims below must EXECUTE to guard anything, and a claim
+// that cannot prepare is not a guard. In v2.test.claim.census_scoped_acquisition every member is
+// refused at prepare on the frontier wall (chain: resolve_reason_unbound_symbol @ dag/std/algebra.dag
+// bytes 5195..5204 "list_push" -> resolve_reason_declarer_refused; measured on main, run in the PR
+// receipt) because that module's door claims reach std.algebra's BODY through
+// acquire_census_closure_of, and std.algebra uses ambient list_push which no longer resolves outside
+// the contract rows neither acquisition path may load (v2 native ruling: ambient contracts retire;
+// list_push's one declared home is #14751). These two claims reach NOTHING but the identity function
+// they pin, so their declarer closure stays clean of the wall and they run -- which is the whole
+// point: an unexecuted check restates nothing (DESIGN section 5, "Done means a real consumer green by
+// execution").
+//
+// WHAT THEY GUARD: fn native_census_scoped_entries (v2.compiler.source_root_eval) is THE one boundary
+// where the scoped census decides which modules it loads. The resolver's ambient primitive-authority
+// tier (v2.compiler.resolve resolve_atom_primitive_authority) binds an unimported spelling iff its
+// contract row sits in the LOADED population's symbol index -- so the moment anyone appends a module
+// the subjects did not name (a contract roster, a convenience tier), the census starts binding through
+// something the native ROUTE refuses at. That is exactly how both closure attempts died, measured and
+// recorded in recurring_failure_mode: census_rows_read_the_loaded_population (append to the census:
+// instrument bound through rows the route refuses at; join onto the route: the route resolved through
+// a contract, reversed). The CLASS ITSELF IS OPEN -- the ledger row says so: identity makes the
+// population a function of the SUBJECTS, so same-subject runs agree; the fleet's base-vs-shard
+// comparison (1,948 vs 165 modules) still loads different populations and can still flip until Seat
+// 12's per-name dispositions land AT THIS BOUNDARY or one canonical population is used. These claims
+// are the regression tripwire on the boundary, not closure evidence.
+
+module v2.test.claim.census_scoped_entries_boundary
+
+import std.types { Bool, List, String }
+import v2.compiler.source_root_eval {
+  native_census_scoped_entries,
+}
+
+// Identity for every supplied population, in argv order, nothing appended -- including a population
+// that spells a contract module itself: the CALLER'S name rides in the CALLER'S position, never as an
+// authority the census injected. Plain equality on supplied values at the boundary; no filesystem, no
+// fold surface (reimplementing std.algebra helpers to dodge the wall was refused -- it would fork the
+// list ops, DESIGN section 3).
+test fn the_census_admits_no_ambient_resolution_authority() -> Bool {
+  native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
+    && native_census_scoped_entries(subjects: []) == []
+    && native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) == ["extdeps.git.versioning", "std.fermi"]
+}
+
+// The shape the reversed substrate fold existed to serve, now pinned to the opposite: a population
+// that never reaches the ambient tier still gets EXACTLY itself -- nothing "rides" it, and duplicates
+// the caller named are the caller's own, neither added to nor removed from.
+test fn a_subject_list_gets_exactly_itself_whatever_it_reaches() -> Bool {
+  native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
+    && native_census_scoped_entries(subjects: ["std.fermi", "std.primitives"]) == ["std.fermi", "std.primitives"]
+    && native_census_scoped_entries(subjects: ["std.primitives", "std.primitives"]) == ["std.primitives", "std.primitives"]
+}
