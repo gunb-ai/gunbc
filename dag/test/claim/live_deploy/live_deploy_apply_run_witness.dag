@@ -28,7 +28,7 @@ import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsure
 import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
-  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
   ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
 }
@@ -81,7 +81,7 @@ fn ports_serving(command_code: Int, stdin_code: Int, source: ObjectSourceServeAd
     command: fn(c) { observed(code: command_code, err: "cmd-boom") },
     stdin: fn(c, p) { observed(code: stdin_code, err: "stdin-boom") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
-    helper_grant: fn(r) { grant_boom() },
+    state_directories: fn(r) { grant_boom() },
     root_helper_grant: fn(g, rc, r) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
@@ -142,7 +142,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegInstallFile { step: _, command: _, payload: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
-        ApplyLegHelperGrant { revision: _ } => false
+        ApplyLegBrokerStateDirectories { revision: _ } => false
         ApplyLegObjectSource => false
         ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
         ApplyLegBrokerTree { revision: _ } => false
@@ -203,14 +203,14 @@ test fn a_mid_run_refusal_dispatches_no_later_leg() -> Bool {
   }
 }
 
-// The helper-grant leg reaches its port: the port's refusal stops the run at the leg named helper-grant,
+// The state-directories leg reaches its port: the port's refusal stops the run at the leg named broker-state-directories,
 // and the install leg before it still ran.
-test fn the_helper_grant_leg_reaches_its_port_and_stops_the_run() -> Bool {
+test fn the_state_directories_leg_reaches_its_port_and_stops_the_run() -> Bool {
   match deploy_apply_run_legs(
-    legs: [ApplyLegHelperGrant { revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha } }],
+    legs: [ApplyLegBrokerStateDirectories { revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha } }],
     ports: ports(command_code: 0, stdin_code: 0),
   ) {
-    ApplyRunFailed { step: s, reason: r, legs_run: n } => s == "helper-grant" && r == "grant-boom" && n == 0
+    ApplyRunFailed { step: s, reason: r, legs_run: n } => s == "broker-state-directories" && r == "grant-boom" && n == 0
     ApplyRunOk { legs_run: _, reports: _ } => false
   }
 }
@@ -323,7 +323,7 @@ fn ports_command_out(out: RunArgvTransportOutcome) -> DeployApplyPorts {
     command: fn(c) { out },
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
-    helper_grant: fn(r) { grant_boom() },
+    state_directories: fn(r) { grant_boom() },
     root_helper_grant: fn(g, rc, r) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
@@ -410,7 +410,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegReport { step: _, line: _ } => false
         ApplyLegEnsureDirectory { target: _ } => false
         ApplyLegRepairDirectoryEntries { command: _ } => false
-        ApplyLegHelperGrant { revision: _ } => false
+        ApplyLegBrokerStateDirectories { revision: _ } => false
         ApplyLegObjectSource => false
         ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => false
         ApplyLegBrokerTree { revision: _ } => false
@@ -502,7 +502,7 @@ test fn the_publication_upsert_runs_whole_and_stops_at_a_failing_leg() -> Bool {
     command: fn(c) { observed(code: 0, err: "") },
     stdin: fn(c, p) { observed(code: 0, err: "") },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
-    helper_grant: fn(r) { grant_boom() },
+    state_directories: fn(r) { grant_boom() },
     root_helper_grant: fn(g, rc, r) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },
@@ -531,7 +531,7 @@ fn env_ports(read_out: String) -> DeployApplyPorts {
     command: fn(c) { if any(c.arguments, a => a == "/locus/sidecar") { observed_out(code: 0, out: read_out) } else { observed(code: 1, err: "read another path") } },
     stdin: fn(c, p) { if p == "D=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\n" { observed(code: 0, err: "") } else { observed(code: 1, err: "wrong payload") } },
     ensure_directory: fn(t) { OwnedDirectoryEnsureRefused { target: t, reason: "ensure-refused" } },
-    helper_grant: fn(r) { grant_boom() },
+    state_directories: fn(r) { grant_boom() },
     root_helper_grant: fn(g, rc, r) { root_grant_boom() },
     broker_tree: fn(r) { broker_tree_boom() },
     dependency: fn(d) { dependency_boom() },

@@ -19,7 +19,7 @@ import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused,
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries,
-  ApplyLegHelperGrant, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
 }
@@ -166,7 +166,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegRepairDirectoryEntries { command: c } => command_within_grants(c: c)
     ApplyLegReport { step: _, line: _ } => true
     ApplyLegEnsureDirectory { target: _ } => true
-    ApplyLegHelperGrant { revision: _ } => true
+    ApplyLegBrokerStateDirectories { revision: _ } => true
     ApplyLegObjectSource => true
     ApplyLegDigestVerify { step: _, path: _, digest: _ } => true
     ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => true
@@ -256,7 +256,7 @@ fn grant_sudoers_path(legs: List<DeployApplyLeg>) -> String {
         ApplyLegRepairDirectoryEntries { command: _ } => grant_sudoers_path(legs: rest)
         ApplyLegReport { step: _, line: _ } => grant_sudoers_path(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => grant_sudoers_path(legs: rest)
-        ApplyLegHelperGrant { revision: _ } => grant_sudoers_path(legs: rest)
+        ApplyLegBrokerStateDirectories { revision: _ } => grant_sudoers_path(legs: rest)
         ApplyLegObjectSource => grant_sudoers_path(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => grant_sudoers_path(legs: rest)
         ApplyLegBrokerTree { revision: _ } => grant_sudoers_path(legs: rest)
@@ -318,7 +318,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
         ApplyLegRepairDirectoryEntries { command: _ } => env_binary(legs: rest)
         ApplyLegReport { step: _, line: _ } => env_binary(legs: rest)
         ApplyLegEnsureDirectory { target: _ } => env_binary(legs: rest)
-        ApplyLegHelperGrant { revision: _ } => env_binary(legs: rest)
+        ApplyLegBrokerStateDirectories { revision: _ } => env_binary(legs: rest)
         ApplyLegObjectSource => env_binary(legs: rest)
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => env_binary(legs: rest)
         ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => env_binary(legs: rest)
