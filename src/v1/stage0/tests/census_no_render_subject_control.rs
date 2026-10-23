@@ -31,9 +31,9 @@
 // how its REDs were established: each RED fails at the pre-fix head and only when run.
 use std::rc::Rc;
 use v1_compiler::cli_run::{compile_dag_diagnostic_census, CompileDiagnosticCensus};
-use v1_compiler::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 use v1_compiler::v1_compiler_compile::{
-    compile_to_resolved, emit_resolved_for_target, every_module_render_calls, SourceFile,
+    compile_to_resolved, emit_resolved_for_target, every_module_render_calls, RenderTarget,
+    RustModuleRenderSelection, SourceFile,
 };
 
 // The five RED fixtures, verbatim from the fleet witness `data` rows.
@@ -54,7 +54,7 @@ const GREEN_EACH_FIELD_ONCE: &str = "module probe_single_record_field\ntype DupP
 const GREEN_GEW_PLAIN_EFFECTFUL: &str = "module gew_wall_effectful\n\ntype GewNet2 {\n  id: Int\n}\n\nfn gew_plain_effectful(x: Int) -> Int\n  uses net: GewNet2\n{\n  net.id\n}\n";
 
 struct CensusObservation {
-    rows: Vec<(String, String, bool, u64)>,
+    rows: Vec<(String, String, bool, i64)>,
     render_calls_during: u64,
 }
 
@@ -76,7 +76,7 @@ fn observe_census(source: &str) -> CensusObservation {
     }
 }
 
-fn parse_error_rows(obs: &CensusObservation) -> Vec<(String, bool, u64)> {
+fn parse_error_rows(obs: &CensusObservation) -> Vec<(String, bool, i64)> {
     obs.rows
         .iter()
         .filter(|(class, _, _, _)| class == "ParseError")
