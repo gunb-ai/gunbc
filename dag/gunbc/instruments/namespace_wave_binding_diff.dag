@@ -311,6 +311,25 @@ fn formatter_control_failure() -> Optional<String> {
   }
 }
 
+// THE DECLARATION-ROW CONTROL: the census also prints `binding_declaration` rows (the declared callables a
+// module holds, for gunbc.instruments.ambient_operation_disposition_reading). This reader joins occurrences, so a
+// declaration row must neither reach the observation it forwards nor change the verdict: the same
+// target-changing pair, with declaration rows added to both sides, must refuse exactly as without them.
+fn declaration_row_control_failure() -> Optional<String> {
+  let decl = "binding_declaration\texamples.uses\thelper\tfn\t() -> Int\n"
+  let base_tree = "binding_module\texamples.uses\t1\t0\t0\t0\nbinding\texamples.uses\thelper\t0\tdeclared\texamples.a.helper\n" + decl
+  let head_tree = "binding_module\texamples.uses\t1\t0\t0\t0\nbinding\texamples.uses\thelper\t0\tdeclared\texamples.b.helper\n" + decl
+  let forwarded = census_observation_text(tree_stdout: base_tree)
+  let diff = binding_diff(base_stdout: forwarded, head_stdout: census_observation_text(tree_stdout: head_tree), rows: [])
+  if count(split(s: forwarded, delimiter: "binding_declaration")) != 1 {
+    optional_present(value: "a binding_declaration row reached the observation the diff reads")
+  } else if (count(diff.refused) != 1) || (count(diff.admitted) != 0) {
+    optional_present(value: "adding binding_declaration rows changed the diff's verdict on a target-changing pair")
+  } else {
+    optional_absent()
+  }
+}
+
 // THE VERDICT. An incomplete side never yields success: a census that answered 2 (a rewritten module
 // refused or unread, an incomplete subject run, an unreadable spelling) keeps that standing unless a
 // stronger refusal (a re-binding, exit 1) applies. Each side's own 2-rows are carried into the output.
@@ -368,7 +387,7 @@ fn binding_diff_standing(
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure()]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), declaration_row_control_failure(), incomplete_side_control_failure()]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           if (base_status != 0) && (base_status != 2) {

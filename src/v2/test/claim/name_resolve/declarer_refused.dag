@@ -17,9 +17,18 @@ import v2.std.diagnostic {
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
+  DeclarerRefused,
+  Suggested,
+  Unavailable,
+  UserInputBoundary,
+  AmbiguousIntent,
+  CorrectionNotModeled,
+  ExternalContractUnknown,
+  diagnostics_fatal,
   diagnostics_fatal_reason,
   diagnostics_list_has_reason
 }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.types { Bool }
@@ -182,5 +191,42 @@ test fn an_actual_declaring_provider_refusal_chain_survives() -> Bool {
     Present { value: vs } =>
       dr_refuses_with(v: vs.user, reason: ^resolve_reason_declarer_refused)
         && dr_chain_names_cause(v: vs.user, reason: ^resolve_cross_tree_import_denied)
+  }
+}
+
+// THE TYPED DECLARER (DESIGN section 6b: born where the resolver finds the refused provider). The
+// fatal diagnostic's correction names the refused declarer's module, so the census attributes by
+// identity. Every other correction, including the one an unbound name carries, reads as no declarer.
+fn dr_fatal_declarer(v: NativeModuleResolveVerdict) -> String {
+  match dr_refused_first(v: v) {
+    Absent => "none"
+    Present { value: d } =>
+      match diagnostics_fatal(d: d).correction {
+        Suggested { node: _ } => "other"
+        Unavailable { reason: r } =>
+          match r {
+            DeclarerRefused { declarer: q } => qualified_name_to_dotted_string(qn: q)
+            UserInputBoundary => "other"
+            AmbiguousIntent => "other"
+            ExternalContractUnknown => "other"
+            CorrectionNotModeled => "other"
+          }
+      }
+  }
+}
+
+test fn a_declarer_refused_diagnostic_carries_the_refused_declarer_module() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      dr_fatal_declarer(v: vs.user) == "v2.test.dr.decl"
+        && dr_fatal_declarer(v: vs.ctor_user) == "v2.test.dr.decl"
+  }
+}
+
+test fn an_unbound_name_carries_no_declarer() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } => dr_fatal_declarer(v: vs.missing) == "other"
   }
 }
