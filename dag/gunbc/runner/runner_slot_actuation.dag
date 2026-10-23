@@ -23,6 +23,9 @@ import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWo
 import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
+import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
+import extdeps.github.actions_runner { actions_runner_registration_file_name, actions_runner_registration_decode, ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable, ActionsRunnerRegistrationAgentName, AgentNameRead, AgentNameAbsent, AgentNameUnreadable }
 
 // THE TWO SLOT LIFECYCLE EFFECTS, AS ONE AUTHORITY FOR EVERY CALLER. ActivateRunnerSlot brings a slot
 // the model desires into service; DrainAndMaskRunnerSlot takes a slot out of service without ever
@@ -461,5 +464,110 @@ fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecution
           }
       }
     }
+  }
+}
+
+// ── THE NAME THIS SLOT'S CURRENT LISTENER REGISTERED UNDER, read from the host ───────────────────
+//
+// WHY THIS EXISTS AT ALL, and why the slot's own name cannot stand in for it. A fleet listener is
+// registered through a JIT mint (gunbc.runner.runner_jit_mint), and the mint SUFFIXES the slot's
+// prefix on every job: srv3-02 registers as srv3-02-1792728034-201414, the next job as something
+// else again. So the roster never carries "srv3-02"; joining the roster on the slot's bare name reads
+// every running listener as a registration that is not there. And no PREFIX of the slot's name fixes
+// that: an earlier mint shares the prefix, so "srv3-02-" would join a registration this host has
+// already replaced — a weaker second key that is worse than none, because it can say "idle" about a
+// name that no longer answers jobs while the name that does is unexamined. The identity must be READ,
+// and joined by exact equality.
+//
+// THE ONE AUTHORITY IS THE FILE THE RUNNER BINARY ITSELF WRITES, in the slot's own tree:
+// <actions_runner_base_dir>/<instance>/.runner, member AgentName. gunbc.runner.runner_unit_file
+// renders the unit with WorkingDirectory = RUNNER_DIR = that same directory (the one instance-dir
+// authority, shared with the provisioner's tree), Environment=RUNNER_NAME_PREFIX=%i, and ExecStart =
+// gunbc.runner.runner_lifecycle_jit_wrapper_path; the wrapper mints "${RUNNER_NAME_PREFIX}-<epoch>-<pid>"
+// and hands it to ./run.sh --jitconfig INSIDE the encoded config, writing no record of its own. The
+// runner binary then writes the decoded config to the per-instance path — extdeps.github.actions_runner
+// states this of the pinned release and cites its source: "Root is the base directory for the
+// config-written state files (.runner, .credentials)... The decoded JIT config is written to those same
+// files." So the file is the host's record of who registered, and it is per-instance: one slot's tree
+// cannot name another slot's mint (gunbc.runner.runner_host_unit_slot: the instance tree is the slot's
+// own working directory, and a shared path would be shared state between concurrent slots).
+//
+// READ OVER THE ROUTE THAT ALREADY EXISTS. One `cat` of that one path, through the same
+// ssh.Session.ExecPortableWords edge every other slot reading uses — no new transport, no shell (the
+// word alphabet there is what makes an argument inert), no elevation. Least privilege on purpose: this
+// is a read of an identity, not a write to a host, and a bracket that needed root to look at a slot
+// would be a bracket that could not be reasoned about next to the writes it gates.
+//
+// NO READABLE IDENTITY IS ITS OWN ANSWER, never a guess. Absent file, refused leg, non-zero exit,
+// undecodable bytes, or a file with no AgentName all come back as SlotRegistrationUnreadable NAMING THE
+// SLOT. What may not happen is a fallback to the bare name: that is the defect this exists to remove,
+// arriving again as a default. A slot whose current registration cannot be seen is a slot whose cap
+// cannot be written.
+type SlotRegistrationIdentity
+  = RegistrationIdentityRead { instance: NonEmptyStr, name: NonEmptyStr }
+  | SlotRegistrationUnreadable { instance: NonEmptyStr, cause: String }
+
+// The `cat` leg for one slot's registration file. The path is built by the SAME authority that
+// provisions the tree, so a slot whose tree moved cannot be read at its old address.
+fn slot_registration_file_command(instance: NonEmptyStr) -> List<String> {
+  ["cat", join([runner_slot_instance_dir(instance_name: instance) as String, "/", actions_runner_registration_file_name], "")]
+}
+
+fn slot_registration_unreadable(instance: NonEmptyStr, cause: String) -> SlotRegistrationIdentity {
+  // THE CAUSE NAMES THE SLOT IT FAILED ON, not merely the typed field. A reader that cannot say which slot
+  // it could not read leaves an operator with nothing to act on, and a §5 diagnostic has to be located:
+  // this string is what reaches the observe receipt and the bracket's withheld-cap verdict verbatim.
+  SlotRegistrationUnreadable { instance: instance, cause: join(["slot ", instance as String, ": ", cause], "") }
+}
+
+// THE ONE HOST READ of the current registration identity, over the administrator-over-fleet-SSH edge.
+// Every failure keeps the instance in the answer, because a refusal that cannot name the slot it failed
+// on is a refusal nobody can act on.
+fn read_slot_registration_over(target: SshTarget, context: FleetSshExecutionContext, instance: NonEmptyStr) -> SlotRegistrationIdentity
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_registration_file_command(instance: instance)) {
+    TypedArgvExecRefused { reason: why } => slot_registration_unreadable(instance: instance, cause: why)
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        slot_registration_unreadable(instance: instance, cause: join(["the command could not read the slot's registration file; exit ", to_string(r.exit_code)], ""))
+      } else {
+        match actions_runner_registration_decode(raw: r.stdout) {
+          ActionsRunnerRegistrationUnreadable { reason: why } => slot_registration_unreadable(instance: instance, cause: why)
+          ActionsRunnerRegistrationDecoded { registration: _, agent_name: an } => match an {
+            AgentNameRead { value: n } => RegistrationIdentityRead { instance: instance, name: n }
+            AgentNameAbsent => slot_registration_unreadable(instance: instance, cause: "the registration file carries no AgentName, so the host does not say which registration is this slot's")
+            AgentNameUnreadable { reason: why } => slot_registration_unreadable(instance: instance, cause: why)
+          }
+        }
+      }
+  }
+}
+
+// THE SAME READ, ADDRESSED BY UNIT, WHICH IS HOW EVERY READING IN THIS DOMAIN IS ADDRESSED. The slot is
+// named through its unit because the unit is what the bracket, the receipt and every refusal speak in; the
+// instance inside it is what addresses the registration file. An unparseable unit yields a refusal that
+// names the unit and costs NO leg: there is no slot whose tree to open, and no fallback name to join on.
+//
+// ONE AUTHORITY, SO A LATER CALLER CANNOT DERIVE A DIFFERENT SLOT. Today the fleet-converge observe receipt
+// is its only caller (gunbc.runner.runner_host_file_converge.runner_host_current_registration_text), and the
+// cap bracket does NOT yet call it: the bracket still joins the organization roster on the slot's bare name,
+// which is a defect tracked with this work and fixed in the follow-up change that introduces the bracket's
+// roster join on the CURRENT identity. When that change lands it must call THIS function rather than derive
+// the instance again, or the receipt could report an identity the bracket would not have joined on.
+type UnitRegistrationReading
+  = UnitRegistrationRead { unit: NonEmptyStr, instance: NonEmptyStr, name: NonEmptyStr }
+  | UnitRegistrationUnreadable { unit: NonEmptyStr, cause: String }
+
+fn slot_current_registration_over_unit(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> UnitRegistrationReading
+{
+  match read_runner_unit_name(observed: unit) {
+    NotARunnerUnit { observed: _ } => UnitRegistrationUnreadable { unit: unit, cause: "the unit is not a runner unit, so it names no registration" }
+    RunnerUnitInstanceMalformed { observed: _, cause: c } => UnitRegistrationUnreadable { unit: unit, cause: c as String }
+    RunnerUnitInstance { registration_name: instance } =>
+      match read_slot_registration_over(target: target, context: context, instance: instance) {
+        RegistrationIdentityRead { instance: i, name: n } => UnitRegistrationRead { unit: unit, instance: i, name: n }
+        SlotRegistrationUnreadable { instance: i, cause: c } =>
+          UnitRegistrationUnreadable { unit: unit, cause: join(["the host holds no readable current registration for ", i as String, ": ", c], "") }
+      }
   }
 }

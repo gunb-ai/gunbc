@@ -1,6 +1,5 @@
 module v2.test.claim.emit.rust_loop_emit
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
@@ -47,8 +46,7 @@ fn rust_loop_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_loop_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_loop_emit_facts_miss },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: rust_loop_emit_facts_miss }
   }
 }
 
