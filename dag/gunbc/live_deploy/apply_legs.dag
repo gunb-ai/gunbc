@@ -50,7 +50,9 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
-import gunbc.live_deploy.release_locus { release_revision_execstart_text, HelperGrantSite, HelperRevisionReceipt }
+import gunbc.live_deploy.release_locus { HelperLocus }
+import gunbc.live_deploy.retract_legs { retract_remove_files }
+import extdeps.sudo.visudo { visudo_check_command }
 import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
 import gunbc.live_deploy.emit {
@@ -58,21 +60,22 @@ import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
   attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
   attempt_unit_spool_answer_mode, publication_spool_request_mode,
+  AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_service_unit_file,
+  live_deploy_attempt_unit_drain_path_unit_file, retired_attempt_unit_sudo_route_paths,
 }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly }
 import gunbc.host.host_layout {
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus,
-  attempt_system_unit_launcher_revision_receipt_path, attempt_system_unit_sudoers_path,
-  attempt_system_unit_sudoers_body, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
   attempt_system_unit_launch_argv_refused_detail,
 }
 import gunbc.live_deploy.spec {
   deployment_systemd_unit_path, gunbc_attempt_worker_slice_unit_path,
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path, deployment_attempt_unit_drain_path_unit_name,
   gunbc_approval_broker_slice_unit_path, gunbc_approval_broker_unit_path, gunbc_approval_broker_unit_name,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv }
@@ -91,7 +94,7 @@ import gunbc.auth.tracker_web_oauth_client {
 }
 import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency, ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, AttemptUnitDrainPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping,
   ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
 }
@@ -151,11 +154,17 @@ type DeployApplyLeg
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
   | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
   | ApplyLegBrokerStateDirectories { revision: ReleaseRevisionBinding }
-  | ApplyLegRootHelperGrant { site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding }
+  | ApplyLegRootHelperSnapshot { locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction }
   | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
   | ApplyLegRetract { step: String, leg: DeployRetractLeg }
   | ApplyLegDependency { dep: DeploymentDependencyStep }
   | ApplyLegDigestEnvFile { step: String, binary: String, env_name: String, dest: String, owner: NonEmptyStr }
+
+// A root-owned release snapshot is installed before the units that name it and its superseded siblings are
+// retired after them, so the two halves are separate legs of one effect.
+type HelperSnapshotAction
+  = HelperSnapshotInstall
+  | HelperSnapshotRetireSuperseded
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -172,7 +181,10 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
     ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
     ApplyLegBrokerStateDirectories { revision: _ } => "broker-state-directories"
-    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => "attempt-launcher-grant"
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: a } => match a {
+      HelperSnapshotInstall => "attempt-unit-helper-snapshot"
+      HelperSnapshotRetireSuperseded => "attempt-unit-helper-snapshot-retire"
+    }
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
     ApplyLegRetract { step: st, leg: _ } => st
     ApplyLegDependency { dep: _ } => "dependency"
@@ -469,46 +481,65 @@ fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg>
     apply_root_directory_leg(step: "attempt-spool-request", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_request_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-claimed", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: attempt_unit_spool_claimed_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
-    apply_staged_leg(step: "attempt-spool-drain-lock", dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root), payload: ""),
+    apply_root_directory_leg(step: "attempt-spool-stalled", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_stalled_dir(instance_root: instance_root)),
   ]
 }
 
-fn attempt_launcher_grant_site(instance: HostDashboardInstance, sudoers_text: String) -> HelperGrantSite {
-  let locus = attempt_system_unit_launcher_locus(instance: instance)
-  let final_path = attempt_system_unit_sudoers_path(instance: instance)
-  let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String], "")
-  HelperGrantSite {
-    locus: locus,
-    spine: [attempt_system_unit_launcher_helpers_root, locus.base],
-    sudoers_content: sudoers_text,
-    sudoers_mode: "0440" as NonEmptyStr,
-    sudoers_temp_path: join([final_path, ".new"], ""),
-    sudoers_path: final_path,
-    stage_name: stage,
-    readback_name: join([stage, "-readback"], ""),
+// THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL, WITHOUT A SUDO GRANT. The requester writes its request into the
+// spool; a .path unit on the request directory starts the drain, a system oneshot (deploy_apply_attempt_drain_plan).
+// So the sandbox half installs the spool, removes the retired sudo route (the sudoers drop-in, the revision
+// receipt and the flock file), checks the sudoers policy still parses, and installs the root-owned release
+// snapshot the drain unit's ExecStart names. The superseded snapshots are retired by the drain plan, after
+// the units that name the new one stand.
+fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: id } =>
+      ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit drain has no HostDashboardInstance for instance ", id, ", so it will not install a snapshot for an unknown instance"], "") }
+    DashboardInstanceForId { instance: instance } =>
+      match retired_attempt_unit_sudo_route_paths(instance: instance) {
+        Empty => ApplyPlanRefused { step: "attempt-unit-sudo-route-retire", reason: "live-deploy apply refused: the retired sudo route names no path" }
+        Cons { head: h, tail: rest } =>
+          ApplyPlanReady { legs: concat(
+            deploy_apply_attempt_spool_legs(spec: spec),
+            [
+              ApplyLegRetract { step: "attempt-unit-sudo-route-retire", leg: retract_remove_files(head: h as NonEmptyStr, rest: map(rest, p => p as NonEmptyStr)) },
+              ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers") },
+              ApplyLegRootHelperSnapshot {
+                locus: attempt_system_unit_launcher_locus(instance: instance),
+                spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
+                revision: revision,
+                action: HelperSnapshotInstall,
+              },
+            ],
+          ) }
+      }
   }
 }
 
-fn deploy_apply_attempt_grant_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+// THE DRAIN: a system oneshot service and the path unit that starts it when the request directory is
+// non-empty, then the retire of the superseded snapshots. The retire is the LAST leg: the units that name
+// the new snapshot are installed and the path unit restarted before the old release is removed.
+fn deploy_apply_attempt_drain_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
   match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
     DashboardInstanceIdUnknown { instance_id: id } =>
-      ApplyPlanRefused { step: "attempt-launcher-grant", reason: join(["live-deploy apply refused: the attempt-system-unit sudoers grant has no HostDashboardInstance for instance ", id, ", so it will not install a host-global file or another instance's grant"], "") }
+      ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit drain has no HostDashboardInstance for instance ", id], "") }
     DashboardInstanceForId { instance: instance } =>
-      match attempt_system_unit_sudoers_body(instance: instance, revision: revision) {
-        AttemptSystemUnitSudoersRefused { cause: c } =>
-          ApplyPlanRefused { step: "attempt-launcher-grant", reason: join(["live-deploy apply refused: the attempt-system-unit launcher argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
-        AttemptSystemUnitSudoersReady { text: t } =>
-          ApplyPlanReady { legs: list_append(
-            left: deploy_apply_attempt_spool_legs(spec: spec),
-            right: [ApplyLegRootHelperGrant {
-              site: attempt_launcher_grant_site(instance: instance, sudoers_text: t),
-              receipt: HelperRevisionReceipt {
-                path: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
-                text: join([release_revision_execstart_text(binding: revision), "\n"], ""),
-              },
+      match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: instance, revision: revision) {
+        AttemptUnitDrainServiceRefused { cause: c } =>
+          ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit launch argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
+        AttemptUnitDrainServiceReady { file: service } =>
+          ApplyPlanReady { legs: concat(concat([
+            apply_staged_leg(step: "attempt-unit-drain-service-unit", dest: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: service))),
+            apply_staged_leg(step: "attempt-unit-drain-path-unit", dest: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec)))),
+            apply_root_leg(step: "attempt-unit-drain-reload", argv: systemctl_daemon_reload_argv()),
+          ], apply_enable_restart_legs(step: "attempt-unit-drain", unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))), [
+            ApplyLegRootHelperSnapshot {
+              locus: attempt_system_unit_launcher_locus(instance: instance),
+              spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
               revision: revision,
-            }],
-          ) }
+              action: HelperSnapshotRetireSuperseded,
+            },
+          ]) }
       }
   }
 }
@@ -526,7 +557,7 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
             AttemptWorkerSliceUnitFileReady { file: f } =>
               deploy_apply_chain(
                 first: ApplyPlanReady { legs: [apply_staged_leg(step: "attempt-worker-slice", dest: gunbc_attempt_worker_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))] },
-                rest: deploy_apply_attempt_grant_plan(spec: spec, revision: revision),
+                rest: deploy_apply_attempt_launcher_plan(spec: spec, revision: revision),
               )
           }
       }
@@ -744,6 +775,7 @@ fn deploy_apply_upsert_plan(kind: UpsertArtifactKind, path: NonEmptyStr, spec: D
     ServeBinary => deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root)
     PublicationHelperPathUnit => ApplyPlanReady { legs: deploy_apply_publication_legs(spec: spec, path: path) }
     BeltEventPathUnit => ApplyPlanReady { legs: deploy_apply_belt_legs(spec: spec, path: path) }
+    AttemptUnitDrainPathUnit => deploy_apply_attempt_drain_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
     DeployedTreeRemoteUnit => ApplyPlanReady { legs: deploy_apply_tree_remote_legs(spec: spec, path: path) }
     TailscaleServeMapping =>
       match deployment_tailnet_door_socket(names: spec.names) {
@@ -862,6 +894,7 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
           match uk {
             GunbcSourceTree => deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root)
             ServeBinary => deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root)
+            AttemptUnitDrainPathUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
             BeltEventPathUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
             TailscaleServeMapping => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
             DeployedTreeRemoteUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)

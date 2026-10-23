@@ -102,7 +102,6 @@ import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   HelperLocus,
   HelperGrantSite,
-  HelperRevisionReceipt,
   helper_locus_dir,
 }
 import gunbc.live_deploy.emit {
@@ -174,7 +173,6 @@ import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
-  retained_srvn,
 }
 import extdeps.ssh.session { ssh_session_exec_script }
 import gunbc.typed_argv_exec {
@@ -272,7 +270,7 @@ import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanSe
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
   ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
-  ApplyLegRootHelperGrant, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
+  ApplyLegRootHelperSnapshot, HelperSnapshotAction, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
 }
 import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -6012,7 +6010,7 @@ type DeployApplyPorts {
   stdin: fn(ArgvCommand, String) -> RunArgvTransportOutcome
   ensure_directory: fn(OwnedDirectoryTarget) -> OwnedDirectoryEnsureOutcome
   state_directories: fn(ReleaseRevisionBinding) -> Optional<String>
-  root_helper_grant: fn(HelperGrantSite, HelperRevisionReceipt, ReleaseRevisionBinding) -> Optional<String>
+  root_helper_snapshot: fn(HelperLocus, List<String>, ReleaseRevisionBinding, HelperSnapshotAction) -> Optional<String>
   broker_tree: fn(ReleaseRevisionBinding) -> Optional<String>
   dependency: fn(DeploymentDependencyStep) -> Optional<String>
   retract: DeployRetractPorts
@@ -6032,7 +6030,7 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
     stdin: fn(c, p) { run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport) },
     ensure_directory: fn(t) { live_deploy_apply_ensure_directory_on_host(target: t, transport: transport) },
     state_directories: fn(r) { live_deploy_apply_state_directories_on_host(spec: spec, revision: r, principal: principal, source_root: source_root, transport: transport) },
-    root_helper_grant: fn(site, receipt, r) { live_deploy_apply_root_helper_grant_on_host(site: site, receipt: receipt, revision: r, principal: principal, source_root: source_root, transport: transport) },
+    root_helper_snapshot: fn(locus, spine, r, action) { live_deploy_apply_root_helper_snapshot_on_host(locus: locus, spine: spine, revision: r, action: action, source_root: source_root, transport: transport) },
     broker_tree: fn(r) { live_deploy_apply_broker_tree_on_host(spec: spec, revision: r, source_root: source_root, transport: transport) },
     dependency: fn(d) { live_deploy_apply_dependency_on_host(dep: d, transport: transport, intent: intent) },
     retract: deploy_retract_ports_on_host(transport: transport),
@@ -6092,12 +6090,17 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
   }
 }
 
-// A ROOT-OWNED HELPER GRANT (the attempt launcher's), through the same site
-// sequence the broker's helper grant runs, with the site's revision receipt.
-fn live_deploy_apply_root_helper_grant_on_host(site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, source_root: String, transport: HostEffectTransport) -> Optional<String> {
-  match dark_helper_site_install(site: site, receipt: Present { value: receipt }, revision: revision, principal: principal, source_root: source_root, transport: transport) {
+// A ROOT-OWNED RELEASE SNAPSHOT, installed or retired through the same two stages the broker's helper
+// grant runs (dark_helper_snapshot_at, dark_helper_retire_at). The install and the retire are separate
+// legs because the units that name the snapshot are installed between them: the superseded snapshot is
+// retired only after the new units stand.
+fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  match (match action {
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
+    HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
+  }) {
     DarkOk => Absent
-    DarkFailed { step: s, reason: r } => Present { value: join(["root helper grant at ", site.locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
+    DarkFailed { step: s, reason: r } => Present { value: join(["root helper snapshot at ", locus.base, " refused at step ", dark_install_step_name(step: s), ": ", r], "") }
   }
 }
 
@@ -6222,7 +6225,7 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
         Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
       }
     ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
-    ApplyLegRootHelperGrant { site: g, receipt: rc, revision: r } => ports.root_helper_grant(g, rc, r)
+    ApplyLegRootHelperSnapshot { locus: l, spine: sp, revision: r, action: a } => ports.root_helper_snapshot(l, sp, r, a)
     ApplyLegBrokerTree { revision: r } => ports.broker_tree(r)
     ApplyLegRetract { step: _, leg: l } => deploy_apply_retract_leg_failure(leg: l, ports: ports.retract)
     ApplyLegDependency { dep: d } => ports.dependency(d)
@@ -6247,7 +6250,7 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegCommand { step: _, command: _ } => []
     ApplyLegInstallFile { step: _, command: _, payload: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
-    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => []
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { revision: _ } => []
     ApplyLegRetract { step: _, leg: _ } => []
     ApplyLegDependency { dep: _ } => []
@@ -6747,7 +6750,6 @@ type DarkInstallStep
   | DarkStepDeviceStore
   | DarkStepSnapshot
   | DarkStepSnapshotReadback
-  | DarkStepRevisionReceipt
   | DarkStepScratchAcquire
   | DarkStepSudoersStage
   | DarkStepSudoersCheck
@@ -6985,41 +6987,23 @@ fn dark_managed_state_directory(i: DarkInstallInputs, d: ManagedDirectory) -> Da
 
 fn dark_helper_site_install(
   site: HelperGrantSite,
-  receipt: Optional<HelperRevisionReceipt>,
   revision: ReleaseRevisionBinding,
   principal: GroundedPosixPrincipal,
   source_root: String,
   transport: HostEffectTransport,
 ) -> DarkState {
-  match dark_helper_snapshot_at(site: site, revision: revision, source_root: source_root, transport: transport) {
+  match dark_helper_snapshot_at(locus: site.locus, spine: site.spine, revision: revision, source_root: source_root, transport: transport) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
-      match dark_helper_revision_receipt(site: site, receipt: receipt, transport: transport) {
+      match dark_helper_sudoers_at(site: site, principal: principal, transport: transport) {
         DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-        DarkOk =>
-          match dark_helper_sudoers_at(site: site, principal: principal, transport: transport) {
-            DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-            DarkOk => dark_helper_retire_at(site: site, revision: revision, transport: transport)
-          }
+        DarkOk => dark_helper_retire_at(locus: site.locus, revision: revision, transport: transport)
       }
   }
 }
 
-fn dark_helper_revision_receipt(site: HelperGrantSite, receipt: Optional<HelperRevisionReceipt>, transport: HostEffectTransport) -> DarkState {
-  match receipt {
-    Absent => DarkOk
-    Present { value: rc } =>
-      dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegStdin {
-        step: DarkStepRevisionReceipt,
-        command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-          mode: install_file_shared_mode, owner: site.locus.owner, group: site.locus.owner, source: "/dev/stdin", dest: rc.path)),
-        payload: rc.text,
-      })
-  }
-}
-
-fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
-  let dir = helper_locus_dir(locus: site.locus, revision: revision)
+fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
     command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
@@ -7027,8 +7011,8 @@ fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBindi
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
       match approval_broker_tree_install_at(
-        owner: site.locus.owner,
-        spine: site.spine,
+        owner: locus.owner,
+        spine: spine,
         locus: dir,
         source_root: source_root,
         revision: revision,
@@ -7038,7 +7022,7 @@ fn dark_helper_snapshot_at(site: HelperGrantSite, revision: ReleaseRevisionBindi
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: site.locus, dir: dir), transport: transport)
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
       }
   }
 }
@@ -7074,11 +7058,11 @@ fn dark_helper_sudoers_at(site: HelperGrantSite, principal: GroundedPosixPrincip
 
 // The previous release's snapshot is removed after the rename took its grant away: the sweep is
 // confined to the root-owned base and keeps exactly this release's directory.
-fn dark_helper_retire_at(site: HelperGrantSite, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_retire_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
   dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepRetire,
     command: find_other_children_exec_command(
-      root: site.locus.base,
+      root: locus.base,
       keep_name: release_revision_execstart_text(binding: revision),
       exec_argv: sudo_elevate_argv(command: [fleet_rm_binary_path as String, coreutils_rm_force_recursive_flags as String, "--"]),
     ),
@@ -7191,7 +7175,6 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepDeviceStore => "device-store"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
-    DarkStepRevisionReceipt => "helper-revision-receipt"
     DarkStepScratchAcquire => "scratch-acquire"
     DarkStepSudoersStage => "sudoers-stage"
     DarkStepSudoersCheck => "sudoers-visudo-check"

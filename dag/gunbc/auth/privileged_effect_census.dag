@@ -1101,7 +1101,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_stall_rearm_at"),
     effect: PrivilegedEffect {
-      subject: "reset-failed and start the one belt-exit path unit the stalled exit spool tripped (operator release verb)" as NonEmptyStr,
+      subject: "reset-failed and start the one system path unit a stalled spool tripped: the belt-exit path unit (belt_exit_stall_release_cli) or the attempt-unit drain path unit (attempt_unit_stall_release_cli), one effect, one site" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

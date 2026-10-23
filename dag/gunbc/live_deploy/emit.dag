@@ -192,13 +192,16 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
 }
 import gunbc.roadmap.attempt_system_unit_launch {
-  attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
-  AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_launch_gunbc_argv_at,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
   attempt_system_unit_launch_argv_refused_detail,
-  attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
+  attempt_system_unit_launcher_locus,
 }
 import gunbc.live_deploy.lab_host_plan {
-  LabPlanReady, LabPlanRefused, SystemManagerLauncherSelected,
+  LabPlanReady,
+  LabPlanRefused,
+  lab_plan_worker_sandbox_choice,
+  SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
@@ -223,7 +226,7 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -238,6 +241,8 @@ import gunbc.live_deploy.spec {
   deployment_retired_belt_timer_unit_name,
   deployment_publication_service_unit_path,
   deployment_publication_path_unit_path,
+  deployment_attempt_unit_drain_service_unit_name, deployment_attempt_unit_drain_path_unit_name,
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path,
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
   deployment_fleet_converge_service_unit_name,
@@ -272,7 +277,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -910,6 +915,77 @@ data attempt_unit_spool_answer_mode: FileMode = FileMode {
   sticky: false,
 }
 
+// THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL IS A SYSTEM ONESHOT STARTED BY A .path UNIT, the publication
+// helper's shape (PublicationHelperPathUnit): a request was written, so the service runs the
+// launcher entry from the root-owned release and answers the spool. No requester holds a sudo grant
+// for it and none waits on it. systemd runs one activation of the service at a time, which is the
+// mutual exclusion the retired drain.lock flock provided; a request written while a drain runs
+// leaves requests/ non-empty, and the path unit starts the service again when it finishes.
+// TimeoutStartSec is the start path's own watchdog (belt_tick_run_bound): a start-wait request holds
+// the activation for one worker's whole lifetime.
+type AttemptUnitDrainServiceFile
+  = AttemptUnitDrainServiceReady { file: SystemdUnitFile }
+  | AttemptUnitDrainServiceRefused { cause: NamedArgumentAdmission }
+
+fn live_deploy_attempt_unit_drain_service_unit_file(
+  spec: DeploymentSpec,
+  instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
+) -> AttemptUnitDrainServiceFile {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptUnitDrainServiceRefused { cause: cause }
+    AttemptSystemUnitLaunchArgvReady { argv } =>
+      AttemptUnitDrainServiceReady { file: ServiceUnitFile {
+        unit: [
+          Description { text: "gunbc attempt-unit spool drain (starts the dashboard's attempt worker units as the system manager)" as NonEmptyStr },
+          Condition { kind: ConditionDirectoryNotEmpty, negated: true, argument: attempt_unit_spool_stalled_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+        ],
+        service: [
+          ServiceType { mode: OneshotMode },
+          TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+          // THE DEPLOYMENT SLICE, like every other service that runs gunbc: without Slice= the oneshot lands in
+          // system.slice, where gunbc refuses to run (user_work_scope: UncappedSystemSlice) and the .path
+          // unit then trips its start limit. Measured on the srv1 lab, 2026-10-21.
+          ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+          ExecStart { command: join(argv, " ") as NonEmptyStr },
+        ],
+        install: NotInstallable,
+      } }
+  }
+}
+
+fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [
+      Description { text: "gunbc attempt-unit spool drain: a start request was written" as NonEmptyStr },
+    ],
+    path: [
+      PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
+      TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+// THE RETIRED SUDO ROUTE, REMOVED FROM HOSTS THAT CONVERGED UNDER IT. Before the root drain was a path-triggered
+// oneshot, apply installed a per-instance sudoers drop-in for the launcher, an `installed-revision` receipt in the
+// helper locus, and the requester flocked `drain.lock` in the spool. This apply deletes all three (rm -f is
+// idempotent), so a host that held the grant does not keep a standing root-by-sudo route beside the new one
+// (DESIGN section 3: the old authority ends in one motion), then `visudo -cf /etc/sudoers` validates what remains.
+// SHAPE FOLLOWS leftover_systemd_timer_retire_steps (named retired-artifact rows, rm -f, then a readback that fails
+// the apply); the dissolution is attempt_unit_sudo_route_retire_dissolution.
+data attempt_unit_sudo_route_retire_dissolution: DissolutionCondition = unbound_dissolution(description: "delete retired_attempt_unit_sudo_route_paths and its apply step once every deployed instance's apply has run the removal and passed the sudoers check" as NonEmptyStr)
+
+fn retired_attempt_unit_sudo_route_paths(instance: HostDashboardInstance) -> List<String> {
+  [
+    join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], ""),
+    join([attempt_system_unit_launcher_locus(instance: instance).base, "/installed-revision"], ""),
+    join([attempt_unit_spool_root(instance_root: instance.instance_root as String), "/drain.lock"], ""),
+  ]
+}
+
 // THE BELT'S EVENT UNITS (dogfood intervention #4). Each service is one `gunbc run` entry of
 // gunbc.roadmap.roadmap_belt_tick_cli under the belt service's principal, slice and spawn root, so the two
 // event services resolve the same instance the belt service does and start obligation units in the
@@ -1117,6 +1193,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         TailscaleServeMapping => none
         DeployedTreeRemoteUnit => none
         PublicationHelperPathUnit => none
+        AttemptUnitDrainPathUnit => none
         ApprovalBrokerFrontDoor => none
       }
       ComposeOwned { kind: ck } => match ck {
