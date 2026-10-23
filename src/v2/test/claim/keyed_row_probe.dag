@@ -23,16 +23,31 @@ data kp_types_artifact: Artifact = Artifact {
 // control can be clean; without it Int is an ungrounded atom and every specimen carries the advisory.
 fn kp_types_witness() -> DagSourceReadWitness {
   DagSourceReadWitness {
-    source: Medium { carried: "module std.types\n\ntype Int\n\ntype Bool\n\ntype List<T>\n", fidelity: Lossless },
+    source: Medium { carried: "module std.types\n\ntype Int\n", fidelity: Lossless },
     artifact: kp_types_artifact,
     compilation_unit: ^keyed_row_probe_types_cu,
     source_root: V2Tree
   }
 }
 
+fn kp_seq_witness() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module std.probe_seq\n\ntype Seq<T> = | Nil\n", fidelity: Lossless },
+    artifact: kp_seq_artifact,
+    compilation_unit: ^keyed_row_probe_seq_cu,
+    source_root: V2Tree
+  }
+}
+
+data kp_seq_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^keyed_row_probe_seq_artifact,
+  file_path: "src/v2/pilot/keyed_row_probe_seq_pilot.dag"
+}
+
 fn kp_ingest(src: String) -> List<DagSourceReadWitness> {
   match tpb_src_ingest(src: src) {
-    Cons { head: h, tail: t } => Cons { head: h, tail: Cons { head: tpb_std_optional_witness(), tail: Cons { head: kp_types_witness(), tail: t } } }
+    Cons { head: h, tail: t } => Cons { head: h, tail: Cons { head: tpb_std_optional_witness(), tail: Cons { head: kp_types_witness(), tail: Cons { head: kp_seq_witness(), tail: t } } } }
     other => other
   }
 }
@@ -109,9 +124,9 @@ test fn kp_d_rejected() -> Bool { kp_rejected(src: kp_d) }
 test fn kp_d_advisory() -> Bool { kp_advisory(src: kp_d) }
 test fn kp_z_clean() -> Bool { kp_clean(src: kp_z) }
 
-data kp_e: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.types { Int, List }\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: List<R<K, V>>, hit: Int) -> Optional<R<K, V>> {\n  fold(rows, init: none, f: fn(acc, row) {\n    if hit == 1 {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
-data kp_e_absent: String = "module p\n\nimport std.optional { Optional, Present, Absent }\nimport std.types { Int, List }\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: List<R<K, V>>, hit: Int) -> Optional<R<K, V>> {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    if hit == 1 {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
-data kp_e_int: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.types { Int, List }\n\nfn f(rows: List<Int>, hit: Int) -> Optional<Int> {\n  fold(rows, init: none, f: fn(acc, row) {\n    if hit == 1 {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
+data kp_e: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.types { Int }\nimport std.probe_seq { Seq }\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: Seq<R<K, V>>, hit: Int) -> Optional<R<K, V>> {\n  fold(rows, init: none, f: fn(acc, row) {\n    if hit == 1 {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
+data kp_e_absent: String = "module p\n\nimport std.optional { Optional, Present, Absent }\nimport std.types { Int }\nimport std.probe_seq { Seq }\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: Seq<R<K, V>>, hit: Int) -> Optional<R<K, V>> {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    if hit == 1 {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
+data kp_e_int: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.types { Int }\nimport std.probe_seq { Seq }\n\nfn f(rows: Seq<Int>, hit: Int) -> Optional<Int> {\n  fold(rows, init: none, f: fn(acc, row) {\n    if hit == 1 {\n      Present { value: row }\n    } else {\n      acc\n    }\n  })\n}\n"
 
 test fn kp_e_rejected() -> Bool { kp_rejected(src: kp_e) }
 test fn kp_e_advisory() -> Bool { kp_advisory(src: kp_e) }
@@ -133,3 +148,6 @@ test fn kp_f_ctl_rejected() -> Bool { kp_rejected(src: kp_f_ctl) }
 test fn kp_f_ctl_advisory() -> Bool { kp_advisory(src: kp_f_ctl) }
 test fn kp_z_resolves() -> Bool { kp_resolved(src: kp_z) }
 test fn kp_a_ctl_resolves() -> Bool { kp_resolved(src: kp_a_ctl) }
+data kp_y: String = "module p\n\nimport std.types { Int }\nimport std.probe_seq { Seq }\n\nfn y(rows: Seq<Int>) -> Int {\n  1\n}\n"
+test fn kp_y_resolves() -> Bool { kp_resolved(src: kp_y) }
+test fn kp_y_clean() -> Bool { kp_clean(src: kp_y) }
