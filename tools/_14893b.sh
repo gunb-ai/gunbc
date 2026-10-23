@@ -46,7 +46,7 @@ echo "=== census (base, RFM row BelowCeiling restored): $(date -u +%H:%M:%S)Z"
 B=/tmp/w893b_b
 git worktree prune >/dev/null 2>&1 || true; rm -rf $B
 git worktree add -q --force --detach $B $HEAD_SHA || { echo WTB_FAIL; exit 9; }
-git show 6b25d3c90050 > $B/dag/gunbc/recurring_failure_mode/a_refusal_prints_and_the_line_continues.dag || { echo "BASE_BLOB_FAIL -- STOP"; exit 9; }
+cp $REPO/tools/stage893/a_refusal_prints_and_the_line_continues.base.dag $B/dag/gunbc/recurring_failure_mode/a_refusal_prints_and_the_line_continues.dag || { echo "BASE_BLOB_FAIL -- STOP"; exit 9; }
 grep -q 'BelowCeiling' $B/dag/gunbc/recurring_failure_mode/a_refusal_prints_and_the_line_continues.dag || { echo "RESTORE_NOOP -- STOP"; exit 9; }
 echo BASE_RESTORE_OK
 (cd $B && timeout 1200 $GUNBC test //gunbc/instruments:rfm-rung-census 2>/dev/null) | grep -aE 'case |roster |a_refusal_prints|Held|held|NOT|refus' | sed 's/^/  CB| /' | cut -c1-200

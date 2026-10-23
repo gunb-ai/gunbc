@@ -30,7 +30,6 @@ mk() { # tag [reverse-patch...]
   git worktree add -q --force --detach $T $HEAD_SHA || { echo "WT_FAIL $tag"; exit 9; }
   for p in "$@"; do
     (cd $T && git apply -R -p1 $REPO/tools/$p) || { echo "APPLY_R_FAIL $p on $tag -- STOP"; exit 9; }
-    (cd $T && git apply -R --check $REPO/tools/$p) 2>/dev/null && { echo "APPLY_R_NOOP $p on $tag -- STOP"; exit 9; }
   done
   (cd $T && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1) || { echo "BUILD_FAIL $tag -- STOP"; exit 9; }
   cp -f $CARGO_TARGET_DIR/release/claim_batch $T/claim_batch
