@@ -7483,14 +7483,15 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
 
 // A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table names no row into NonEmptyStr, and
 // validate_cast passes a source outside the table's domain unjudged, so `n as NonEmptyStr` over an Int,
-// Bool, Float, Unit or Nat compiled clean and re-typed a number as text;
-// test.claim.non_text_cast_into_text_wall_witness holds the five REDs, the GREENs, and the RED that a
+// Bool, Float or Unit compiled clean and re-typed a number as text;
+// test.claim.non_text_cast_into_text_wall_witness holds the four REDs, the GREENs, and the RED that a
 // user-declared type SPELLED Int is not the kernel Int.
 //
 // KEYED ON IDENTITY, NEVER ON SPELLING (DESIGN section 4). The four kernel sources are read by their
-// mint provenance (node_is_kernel_mint_named over the resolved node), Nat and the NonEmptyStr target by
-// the declaration their type reference resolves to (type_reference_declaration_reading). A corpus type
-// that happens to be named Int is CorpusDeclared, so it is not the kernel mint and is not refused here.
+// mint provenance (node_is_kernel_mint_named over the resolved node), the NonEmptyStr target by the
+// declaration its type reference resolves to (type_reference_declaration_reading). A corpus type is
+// not a kernel mint and is not refused here: a type that happens to be named Int, and std.nat Nat,
+// which is a Peano coproduct, both fall to the general out-of-domain question the stall below owns.
 // The check needs the TypeEnv, so it runs at the ExprCast arm beside validate_cast rather than inside it.
 //
 // WHY A LEAF HERE AND NOT A TABLE ROW (DESIGN section 6b, root generalization). The earliest
@@ -7513,7 +7514,6 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
 fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
   node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
     || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
-    || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
 }
 
 fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
