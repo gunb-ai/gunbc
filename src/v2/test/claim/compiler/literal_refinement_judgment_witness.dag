@@ -15,7 +15,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
-import std.algebra { Empty, length }
+import std.algebra { Cons, Empty, length }
 import std.types { Int }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -343,20 +343,6 @@ test fn lrj_locator_refinement_clause_has_a_sole_predicate_holds() -> Bool {
   }
 }
 
-// LOCATOR 6: the discharge verdict per fixture, read before any rendering. Each names the reason the first
-// diagnostic carries, so a failing end-to-end claim splits into undischargeable / violated / not refused at all.
-test fn lrj_probe_holds_fixture_is_undischargeable_holds() -> Bool {
-  lrj_end_to_end_reason_is(subject: "v2.test.lrj_holds", reason: ^refinement_obligation_undischargeable)
-}
-
-test fn lrj_probe_violated_fixture_is_undischargeable_holds() -> Bool {
-  lrj_end_to_end_reason_is(subject: "v2.test.lrj_violated", reason: ^refinement_obligation_undischargeable)
-}
-
-test fn lrj_probe_holds_fixture_is_violated_holds() -> Bool {
-  lrj_end_to_end_reason_is(subject: "v2.test.lrj_holds", reason: ^refinement_predicate_violated)
-}
-
 // LOCATOR 7: the pipeline's verdict as ONE exhaustive code per fixture. 0 resolve refused, 1 infer refused,
 // 2 discharged (admitted), 3 undischargeable, 4 violated, 5 refused for another reason.
 fn lrj_verdict_code(subject: String) -> Int {
@@ -385,3 +371,49 @@ test fn lrj_probe_holds_code_is_4_holds() -> Bool { lrj_verdict_code(subject: "v
 test fn lrj_probe_violated_code_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_violated") == 2 }
 test fn lrj_probe_violated_code_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_violated") == 3 }
 test fn lrj_probe_violated_code_is_4_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_violated") == 4 }
+
+// LOCATOR 8: WHICH evaluator refusal sits behind undischargeable (the diagnostic after the discharge head).
+fn lrj_behind_code(subject: String) -> Int {
+  match lrj_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: r, diagnostics: _ } =>
+      match infer(tree: r) {
+        Rejected { diagnostics: _ } => 1
+        Accepted { value: t, diagnostics: _ } =>
+          match discharge_refinement_obligations(t: t) {
+            Accepted { value: _, diagnostics: _ } => 2
+            Rejected { diagnostics: d } =>
+              match d.tail {
+                Empty => 3
+                Cons { head: b, tail: _ } =>
+                  if b.reason == ^infer_facts_lookup_miss { 10 }
+                  else if b.reason == ^eval_rejected_grounding_not_derived { 11 }
+                  else if b.reason == ^eval_rejected_grounding_node_mismatch { 12 }
+                  else if b.reason == ^eval_rejected_canonical_mismatch { 13 }
+                  else if b.reason == ^eval_rejected_callee_absent { 14 }
+                  else if b.reason == ^eval_rejected_unsupported_callee { 15 }
+                  else if b.reason == ^eval_rejected_type_node { 16 }
+                  else if b.reason == ^eval_rejected_runtime_binding_lookup_miss { 17 }
+                  else if b.reason == ^eval_rejected_pending_children { 18 }
+                  else if b.reason == ^eval_rejected_invalid_node { 19 }
+                  else if b.reason == ^eval_rejected_parameter_reference_unbound { 20 }
+                  else { 99 }
+              }
+          }
+      }
+  }
+}
+
+test fn lrj_behind_holds_is_3_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 3 }
+test fn lrj_behind_holds_is_10_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 10 }
+test fn lrj_behind_holds_is_11_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 11 }
+test fn lrj_behind_holds_is_12_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 12 }
+test fn lrj_behind_holds_is_13_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 13 }
+test fn lrj_behind_holds_is_14_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 14 }
+test fn lrj_behind_holds_is_15_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 15 }
+test fn lrj_behind_holds_is_16_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 16 }
+test fn lrj_behind_holds_is_17_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 17 }
+test fn lrj_behind_holds_is_18_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 18 }
+test fn lrj_behind_holds_is_19_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 19 }
+test fn lrj_behind_holds_is_20_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 20 }
+test fn lrj_behind_holds_is_99_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 99 }
