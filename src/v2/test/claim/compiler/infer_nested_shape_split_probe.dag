@@ -1,0 +1,93 @@
+module v2.test.claim.compiler.infer_nested_shape_split_probe
+
+// SEAT 16, SCRATCH (never-merge branch; claims only; nothing here lands). Round 7 per M3
+// msg_1cfd6f35: the positive control infer_nested_arrow_formal_type_variable_is_decided_not_counted_holds
+// FAILED its run at c8cc1df9c8d1 -- the nested shape (<T>(t: (Int) -> T))(1) does not
+// ACCEPT-without-counted as my expectation claimed. This module splits the conjunction and NAMES the
+// verdict in ONE run, importing the claim's OWN exported builders -- the tree below is byte-identically
+// THE claim's tree, so probe and claim cannot drift.
+//
+// STATE MATRIX (1 and 2 are complements; exactly one PASSes. 3 only matters under 1; 4-6 partition 2):
+//   1 PASS + 3 FAIL => Accepted, not counted: my expectation was right and the control's FAIL was an
+//                     environment/checkout artifact -- re-run the module before concluding anything.
+//   1 PASS + 3 PASS => Accepted WITH the counted reason: #14749's rigid-binder rule does NOT reach the
+//                     arrow-in-formal obligation; the honest control pins accepted+counted (the
+//                     pre-#14749 verdict survives in the nested shape).
+//   2 PASS + 4 PASS => Rejected at the inhabitance door: the obligation is DECIDED and decides REFUSED
+//                     -- plausible: the program is unsound (Int at a formal of type (Int) -> T has no
+//                     witness), and the pre-#14749 counted-accept was the fail-open artifact (T was
+//                     undecidable, so the door was skipped) that #14749 legitimately closed. The control
+//                     then pins THAT verdict by chain re-derivation -- not bent to match, decided.
+//   2 PASS + 5 PASS => Rejected with grounding_evidence_is_source: the mint repair is INCOMPLETE for
+//                     the nested shape -- a third layer of the shared-key class, my fixture bug.
+//   2 PASS + 6 PASS => Rejected with a reason outside the named candidates -- one more naming round
+//                     (the sweep/exact procedure extends to this tree).
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  inhabitance_arrow_formal_tree_minted_codomain,
+  inhabitance_generic_formal_tree_over
+}
+
+fn nst_fatal_sym(d: NonEmptyDiagnostics) -> String {
+  symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+}
+
+fn nst_reason() -> String {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: inhabitance_generic_formal_tree_over(
+        declared: inhabitance_arrow_formal_tree_minted_codomain()
+      )
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => nst_fatal_sym(d: d)
+  }
+}
+
+// 1: the verdict is ACCEPTED at all.
+test fn nst_is_accepted() -> Bool {
+  nst_reason() == "ACCEPTED"
+}
+
+// 2: the verdict is a refusal (complement of 1 by the match's two arms; the guard claim fails only
+// if infer minted a third outcome variant, which would itself be the finding).
+test fn nst_is_not_accepted() -> Bool {
+  nst_reason() != "ACCEPTED"
+}
+
+// 3: under ACCEPTED, is the counted generic-formal frontier reason PRESENT? Splits 1's world into
+// my expectation (absent) vs the pre-#14749 verdict surviving (present).
+test fn nst_accepted_counted_reason_present() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: inhabitance_generic_formal_tree_over(
+        declared: inhabitance_arrow_formal_tree_minted_codomain()
+      )
+    )
+  ) {
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// 4/5/6: under REJECTION, name the fatal against the two live candidates and the catch-all.
+test fn nst_fatal_is_inhabitance_door() -> Bool {
+  nst_reason() == "application_argument_does_not_inhabit"
+}
+
+test fn nst_fatal_is_grounding_self_evidence() -> Bool {
+  nst_reason() == "grounding_evidence_is_source"
+}
+
+test fn nst_fatal_is_something_else() -> Bool {
+  nst_reason() != "ACCEPTED"
+    && nst_reason() != "application_argument_does_not_inhabit"
+    && nst_reason() != "grounding_evidence_is_source"
+}
