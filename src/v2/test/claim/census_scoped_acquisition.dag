@@ -10,6 +10,7 @@ import v2.compiler.source_root_eval {
   native_census_substrate_entries,
   native_lane_candidate_entries,
 }
+import v2.std.primitive_contract_ref { primitive_contract_module_path }
 import v2.workflow.v2_native_route { native_route_live_control_module }
 import v2.compiler.module_acquisition {
   AcquiredModule,
@@ -318,7 +319,7 @@ test fn the_union_never_drops_or_reorders_the_named_subjects() -> Bool {
 test fn the_route_entries_carry_the_declared_substrate() -> Bool {
   let entries = native_lane_candidate_entries(pattern: whole_v2_pattern(), population: ["std.fermi"])
   all_names_in(entries: native_census_substrate_entries(), population: entries)
-    && count_item(entries: entries, name: "std.primitives") == 1
+    && count_item(entries: entries, name: primitive_contract_module_path()) == 1
 }
 
 // ONE JOIN, BOTH BUILDERS: the census entries are the join over the subjects; the route entries are the
@@ -333,8 +334,8 @@ test fn both_builders_join_the_same_substrate_once() -> Bool {
   )
   all_names_in(entries: native_census_substrate_entries(), population: census)
     && all_names_in(entries: native_census_substrate_entries(), population: route)
-    && count_item(entries: census, name: "std.primitives") == 1
-    && count_item(entries: route, name: "std.primitives") == 1
+    && count_item(entries: census, name: primitive_contract_module_path()) == 1
+    && count_item(entries: route, name: primitive_contract_module_path()) == 1
     // each builder keeps its own front: argv-order subjects on the census, the live control on the route
     && match census { Cons { head: h, tail: _ } => h == "std.fermi"  Empty => false }
     && match route { Cons { head: h, tail: _ } => h == native_route_live_control_module  Empty => false }
