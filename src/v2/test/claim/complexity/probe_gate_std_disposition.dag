@@ -1,0 +1,53 @@
+module v2.test.claim.complexity.probe_gate_std_disposition
+
+// TRIAGE PROBE (silent-bee-194, manager ruling msg_adddb844 item 2). The enrolled claim
+// roster_std_change_dag_zero_suspects_within_ratchet answers Bool and names nothing; this probe
+// asks the typed disposition directly, one claim per arm, so the executed verdict says WHICH arm
+// fires for dag/std/change.dag at ceiling 13. Delete after triage.
+
+import v2.lens.complexity_accumulator_copy.roster_gate {
+  GateClean,
+  GateNotEstablished,
+  GateRefusalBudgetExceeded,
+  GateSuspectObserved,
+  file_gate_disposition
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn probe_gate_std_is_clean() -> Bool {
+  match file_gate_disposition(path: "dag/std/change.dag", refusal_ceiling: 13) {
+    GateClean => true
+    GateSuspectObserved { suspects: _ } => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    GateNotEstablished { cause: _ } => false
+  }
+}
+
+test fn probe_gate_std_has_suspects() -> Bool {
+  match file_gate_disposition(path: "dag/std/change.dag", refusal_ceiling: 13) {
+    GateSuspectObserved { suspects: _ } => true
+    GateClean => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+    GateNotEstablished { cause: _ } => false
+  }
+}
+
+test fn probe_gate_std_exceeds_refusal_budget() -> Bool {
+  match file_gate_disposition(path: "dag/std/change.dag", refusal_ceiling: 13) {
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => true
+    GateClean => false
+    GateSuspectObserved { suspects: _ } => false
+    GateNotEstablished { cause: _ } => false
+  }
+}
+
+test fn probe_gate_std_not_established() -> Bool {
+  match file_gate_disposition(path: "dag/std/change.dag", refusal_ceiling: 13) {
+    GateNotEstablished { cause: _ } => true
+    GateClean => false
+    GateSuspectObserved { suspects: _ } => false
+    GateRefusalBudgetExceeded { refusals: _, ceiling: _ } => false
+  }
+}

@@ -656,6 +656,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("witness-deferral-freeze-population"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/witness_deferral_freeze_population.dag",
+                function: "witness_deferral_freeze_population_exit",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",

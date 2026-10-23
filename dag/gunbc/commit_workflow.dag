@@ -1414,19 +1414,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/ci_materialization_witness_test.dag",
-      check_fns: [
-        "ci_ladder_holds_on_live_workflow",
-        "ci_ladder_holds_without_sccache_single_build",
-        "ci_sccache_is_eligible_for_the_capacity_bounded_role"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness.dag",
       check_fns: [
         "ci_build_across_two_jobs_is_one_violation",
@@ -1476,7 +1463,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/floor_materialization_witness_test.dag",
+      entry: "dag/test/claim/floor/floor_materialization_witness.dag",
       check_fns: [
         "floor_index_build_share_is_shared_by_reference",
         "floor_index_build_has_plural_readers",
@@ -1564,24 +1551,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
-      check_fns: [],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
-      check_fns: [],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/long/emit_host_native_only_verdict.dag",
       check_fns: [
         "emit_host_native_only_verdict_stdout_match_mock_holds",
@@ -1605,15 +1574,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "ingested_classical_not_emit_source_arm_shape_holds"
       ],
       kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/manual/bind_demand_driven_eval.dag",
-      check_fns: [],
-      kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
     surfaces: [GithubActionsCiJob]
@@ -1690,15 +1650,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position.dag",
-      check_fns: [],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/host_language_transport_script/scanner/bare_string_literal.dag",
       check_fns: ["scanner_bare_string_literal_red_detects_holds"],
       kind: CorpusWitnessKind,
@@ -1710,15 +1661,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/host_language_transport_script/scanner/let_bound_literal.dag",
       check_fns: ["scanner_let_bound_literal_red_detects_holds"],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb.dag",
-      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -1757,15 +1699,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "meta_exec_roster_emptiness_wall_planted_row_red_holds",
         "meta_exec_roster_soundness_planted_stale_red_holds"
       ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "dag/test/claim/orchestration_if_emit.dag",
-      check_fns: [],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
