@@ -67,7 +67,7 @@ fn s18_p() -> List<Symbol> {
 }
 
 fn s18_src(clause: String) -> String {
-  concat(concat("module p\n\nfn unicode_scalar(code_point: Int) -> Bool = code_point >= 0\n\ntype Char = Int where unicode_scalar", clause), "\n\nfn f(c: Char) -> Int = c\n")
+  concat(concat("module p\n\nfn unicode_scalar(code_point: Int) -> Bool = code_point >= 0\n\ntype WherePredicateMarker = NominalBrand { name: String }\n\nfn brand(name: String) -> WherePredicateMarker {\n  NominalBrand { name: name }\n}\n\ntype Char = Int where unicode_scalar", clause), "\n\nfn f(c: Char) -> Int = c\n")
 }
 
 fn s18_branded() -> String {
