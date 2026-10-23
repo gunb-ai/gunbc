@@ -2149,7 +2149,7 @@ type RunnerHostCapPhase
   // that must agree. In apply mode this is the only place that identity reaches an operator: the
   // observe-only slot-registration line is deliberately absent here, because an apply must not ask the host
   // who is registered AFTER its own writes have landed.
-  | CapPhaseRan { files: List<RunnerHostFileResult>, reload: RunnerHostManagerReload, slots: List<SlotCapOutcome>, certified: List<String> }
+  | CapPhaseRan { files: List<RunnerHostFileResult>, reload: RunnerHostManagerReload, slots: List<SlotCapOutcome>, certified: List<CertifiedListener> }
 
 data runner_host_cap_phase_not_owed: RunnerHostCapPhase = CapPhaseNotOwed
 
@@ -2412,7 +2412,7 @@ fn run_runner_host_cap_bracket(
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
       match drain_until_quiescent_over(target: subject.target, context: context, observed: subject.desired_units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
-        BracketDrained { listeners: _, certified: certified } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified)
+        BracketDrained { certified: certified } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified)
         BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
         BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
         BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")

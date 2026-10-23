@@ -471,13 +471,14 @@ fn listener_roster_reading_of(reading: ListenerRegistrationReading, evidence: Or
           RosterUnread { cause: join([u as String, ": no current registration was read for this slot, so nothing may be joined on its behalf"], "") }
         ListenerRegistrationUnreadable { unit: u, cause: c } => RosterUnread { cause: concat(u as String, ": ", c) }
         ListenerRegistrationObserved { unit: u, instance: i, name: n } => {
-          let hits = filter(regs, g => (g.name as String) == n)
+          let hits = filter(regs, g => (g.name as String) == (n as String))
           if length(hits) == 0 {
-            RosterUnread { cause: join([u, ": the registration ", n, " that ", i, " is running under now is ABSENT from the roster, which is not an idle slot but a registration between mints, and the roster cannot exclude a re-mint landing a job on it"], "") }
+            RosterUnread { cause: join([u as String, ": the registration ", n as String, " that ", i as String, " is running under now is ABSENT from the roster, which is not an idle slot but a registration between mints, and the roster cannot exclude a re-mint landing a job on it"], "") }
           }
+          // The two admitting readings keep the TYPED identity, not the string rendering of it.
           else if all(hits, g => !g.busy) { RosterNotBusy { joined: n } }
           else if all(hits, g => g.busy) { RosterBusy { joined: n } }
-          else { RosterDisagrees { cause: concat("registrations of the name ", n, " disagree on busy") } }
+          else { RosterDisagrees { cause: concat("registrations of the name ", n as String, " disagree on busy") } }
         }
       }
   }
