@@ -2,13 +2,13 @@ module gunbc.roadmap.dispatch_unit_created_paths
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal, file_mode_class_bits }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.host.host_layout { attempt_exit_inbox_dir }
-import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode }
 import gunbc.managed_directory { declared_directory_mode }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
+import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_set_exit_root, dispatch_worker_set_stream_path }
 
 // A PATH THE SYSTEM MANAGER CREATES ON THE WORKER'S BEHALF MUST BE USABLE BY ITS CONSUMER. WRE-1 moved
 // workers from the user manager to system units with a foreign User=, which changed the identity of
@@ -42,19 +42,17 @@ type DispatchUnitCreatedPathVerdict
   = DispatchUnitCreatedPathConsumable
   | DispatchUnitCreatedPathUnconsumable { created: UnitCreatedPath }
 
-// The class POSIX applies to the principal: owner when the user matches, else group when the primary
-// group matches, else other (path_resolution(7)). Supplementary groups are not consulted: a consumer
-// that relies on one declares it as its group.
+// The class POSIX applies to the principal (extdeps.access.posix file_mode_class_bits). The principal is
+// a DECLARED account name pair, so owner is the user name and group is the declared primary group;
+// supplementary groups are not consulted here, a consumer that relies on one declares it as its group.
+// The traversal judge (gunbc.roadmap.dispatch_worker_traversal) answers the same two questions from
+// observed numeric ids because the worker's membership is observed; the class rule is the one shared.
 fn created_path_class_bits(created: UnitCreatedPath) -> PermissionBits {
-  if created.consumer_principal.user == created.created_owner.user {
-    created.created_mode.owner
-  } else {
-    if created.consumer_principal.group == created.created_owner.group {
-      created.created_mode.group
-    } else {
-      created.created_mode.other
-    }
-  }
+  file_mode_class_bits(
+    mode: created.created_mode,
+    caller_is_owner: created.consumer_principal.user == created.created_owner.user,
+    caller_in_group: created.consumer_principal.group == created.created_owner.group,
+  )
 }
 
 // Renaming a directory into another parent rewrites its ".." entry, so it needs write on the directory
@@ -124,11 +122,22 @@ fn created_path_mode_of_octal(text: String) -> FileMode {
 // The same path for both streams is one row.
 fn dispatch_worker_created_paths(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<UnitCreatedPath> {
   let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
-  let log_rows = [plan.stdout_path, plan.stderr_path]
+  // DERIVED FROM THE HANDED SET the unit is rendered from (gunbc.roadmap.dispatch_worker_handed_set),
+  // so a created path cannot be added beside it: the exit root and both stream targets are its roles.
+  let set = dispatch_worker_handed_set(
+    instance: instance,
+    working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
+  )
+  let stdout = dispatch_worker_set_stream_path(set: set, stdout: true)
+  let stderr = dispatch_worker_set_stream_path(set: set, stdout: false)
+  let log_rows = [stdout, stderr]
   concat(
     [
       UnitCreatedPath {
-        path: join([attempt_exit_inbox_dir(instance_root: instance.instance_root as String), "/", plan.node_id, "+", plan.attempt_key, "+worker+..."], ""),
+        path: join([dispatch_worker_set_exit_root(set: set), "/", plan.node_id, "+", plan.attempt_key, "+worker+..."], ""),
         is_directory: true,
         created_owner: instance.directory_owner,
         created_mode: declared_directory_mode(m: attempt_exit_record_mode),
@@ -138,7 +147,7 @@ fn dispatch_worker_created_paths(instance: HostDashboardInstance, plan: Dispatch
       },
     ],
     map(
-      if plan.stdout_path == plan.stderr_path { [plan.stdout_path] } else { log_rows },
+      if stdout == stderr { [stdout] } else { log_rows },
       p => UnitCreatedPath {
         path: p,
         is_directory: false,

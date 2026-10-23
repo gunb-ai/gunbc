@@ -17,8 +17,7 @@ import gunbc.roadmap.dispatch_unit_created_paths {
   dispatch_worker_created_paths,
   created_path_mode_of_octal,
 }
-import gunbc.managed_directory { declared_directory_mode }
-import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_mode, attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
 import gunbc.roadmap.roadmap_belt_actuate { belt_worker_created_paths_outcome }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerUnitPlan }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
@@ -41,7 +40,7 @@ fn exit_record(owner: PosixOwnerNames) -> UnitCreatedPath {
     path: "/i/attempt-exit-spool/inbox/n+k+worker+x",
     is_directory: true,
     created_owner: owner,
-    created_mode: declared_directory_mode(m: attempt_exit_record_mode),
+    created_mode: created_path_mode_of_octal(text: "0755"),
     consumer: "the belt exit drain",
     consumer_principal: service_user(),
     operation: ConsumerRenames,

@@ -32,6 +32,12 @@ import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
   alignment_chain_fingerprint,
 }
+import gunbc.roadmap.dispatch_worker_handed_set {
+  HandedEntry, HandedWorkingDirectory, HandedReadWrite, HandedReadOnly, HandedStdout, HandedStderr,
+  HandedExitRoot, HandedExecutable, dispatch_worker_source_roots, dispatch_worker_source_root_words,
+  dispatch_worker_set_working_directory, dispatch_worker_set_stream_wire,
+  dispatch_worker_set_read_write_wire, dispatch_worker_set_read_only_wire,
+}
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
   PipeEmitted,
@@ -2595,28 +2601,30 @@ fn gunbc_harness_spawn_argv(
   node_id: String,
   attempt_key: String,
 ) -> List<String> {
-  [
-    gunbc_program,
-    "run",
-    "--source-root", join([repo_root, "/dag"], ""),
-    "--source-root", join([repo_root, "/src/v2"], ""),
-    "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
-    "--function", function,
-    "--arg", join(["worktree=", worktree_path], ""),
-    "--arg", join(["brief=", brief], ""),
-    "--arg", join(["timeout_program=", timeout_program], ""),
-    "--arg", join(["request_scratch_path=", request_scratch_path], ""),
-    "--arg", join(["events_path=", events_path], ""),
-    "--arg", join(["repo_root=", repo_root], ""),
-    "--arg", join(["gunbc_program=", gunbc_program], ""),
-    "--arg", join(["attempt_identity=", attempt_identity], ""),
-    "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
-    "--arg", join(["supervision_prompt=", supervision_prompt], ""),
-    "--arg", join(["supervision_dir=", supervision_dir], ""),
-    "--arg", join(["handin_inbox=", handin_inbox], ""),
-    "--arg", join(["node_id=", node_id], ""),
-    "--arg", join(["attempt_key=", attempt_key], ""),
-  ]
+  concat(
+    [gunbc_program, "run"],
+    concat(
+      dispatch_worker_source_root_words(repo_root: repo_root),
+      [
+        "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
+        "--function", function,
+        "--arg", join(["worktree=", worktree_path], ""),
+        "--arg", join(["brief=", brief], ""),
+        "--arg", join(["timeout_program=", timeout_program], ""),
+        "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+        "--arg", join(["events_path=", events_path], ""),
+        "--arg", join(["repo_root=", repo_root], ""),
+        "--arg", join(["gunbc_program=", gunbc_program], ""),
+        "--arg", join(["attempt_identity=", attempt_identity], ""),
+        "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
+        "--arg", join(["supervision_prompt=", supervision_prompt], ""),
+        "--arg", join(["supervision_dir=", supervision_dir], ""),
+        "--arg", join(["handin_inbox=", handin_inbox], ""),
+        "--arg", join(["node_id=", node_id], ""),
+        "--arg", join(["attempt_key=", attempt_key], ""),
+      ],
+    ),
+  )
 }
 
 data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
@@ -3063,22 +3071,65 @@ fn dispatch_worker_unit_stream_properties(
   process_bounds: UnitProcessBounds,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
+  let set = dispatch_worker_handed_set(
+    instance: instance,
+    working_directory: working_directory,
+    attempt_worktree: attempt_worktree,
+    stdout_path: stdout_path,
+    stderr_path: stderr_path,
+  )
   concat(
     concat(
-      compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+      compute_grant_unit_properties(granted: granted, working_directory: dispatch_worker_set_working_directory(set: set), process_bounds: Present { value: process_bounds }),
       dispatch_model_driven_privilege_confinement_properties(),
     ),
     [
-      NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
-      NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
+      NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
+      NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
       NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
       NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
-      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_git_pointer_readonly_paths(instance: instance, attempt_worktree: attempt_worktree) as NonEmptyStr },
+      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
       NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
       NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
     ],
+  )
+}
+
+// THE HANDED SET, BUILT ONCE PER PLAN from the instance and the plan's own fields: the working
+// directory, the serve binary, the exit-record root, the writable and read-only carve-outs, both log
+// targets and the harness worker's module roots. Every renderer and the reach check read THIS value
+// (gunbc.roadmap.dispatch_worker_handed_set); the carve-out lists below are its sources and nothing
+// else consumes them as a second answer.
+fn dispatch_worker_handed_set(
+  instance: HostDashboardInstance,
+  working_directory: String,
+  attempt_worktree: String,
+  stdout_path: String,
+  stderr_path: String,
+) -> List<HandedEntry> {
+  concat(
+    concat(
+      [
+        HandedEntry { role: HandedWorkingDirectory, path: working_directory },
+        HandedEntry { role: HandedExecutable, path: instance.serve_binary as String },
+        HandedEntry { role: HandedExitRoot, path: attempt_exit_inbox_dir(instance_root: instance.instance_root as String) },
+        HandedEntry { role: HandedStdout, path: stdout_path },
+        HandedEntry { role: HandedStderr, path: stderr_path },
+      ],
+      dispatch_worker_source_roots(repo_root: instance.repo_root as String),
+    ),
+    concat(
+      map(
+        dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)),
+        p => HandedEntry { role: HandedReadWrite, path: p },
+      ),
+      map(
+        dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
+        p => HandedEntry { role: HandedReadOnly { missing_ok: false }, path: p },
+      ),
+    ),
   )
 }
 
