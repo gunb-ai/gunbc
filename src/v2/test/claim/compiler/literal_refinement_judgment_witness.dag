@@ -224,16 +224,6 @@ test fn lrj_string_violated_predicate_is_refused_undischargeable_never_admitted_
   lrj_verdict_code(subject: "v2.test.lrj_violated") == 3 && !lrj_end_to_end_admits(subject: "v2.test.lrj_violated")
 }
 
-// PROBE: which verdict the Int violated fixtures land on (0 resolve, 1 infer, 2 admitted, 3 undischargeable, 4 violated, 5 other).
-test fn lrj_probe_int_violated_code_is_0_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated") == 0 }
-test fn lrj_probe_int_violated_code_is_1_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated") == 1 }
-test fn lrj_probe_int_violated_code_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated") == 2 }
-test fn lrj_probe_int_violated_code_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated") == 3 }
+// The Int violated fixtures reach the VIOLATED verdict of the discharge step itself (code 4), read without the composed head.
 test fn lrj_probe_int_violated_code_is_4_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated") == 4 }
-test fn lrj_probe_int_violated_code_is_5_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated") == 5 }
-test fn lrj_probe_int_violated_field_code_is_0_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated_field") == 0 }
-test fn lrj_probe_int_violated_field_code_is_1_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated_field") == 1 }
-test fn lrj_probe_int_violated_field_code_is_2_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated_field") == 2 }
-test fn lrj_probe_int_violated_field_code_is_3_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated_field") == 3 }
 test fn lrj_probe_int_violated_field_code_is_4_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated_field") == 4 }
-test fn lrj_probe_int_violated_field_code_is_5_holds() -> Bool { lrj_verdict_code(subject: "v2.test.lrj_int_violated_field") == 5 }
