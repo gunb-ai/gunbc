@@ -6,7 +6,7 @@ import std.decimal { ExactDecimal }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import std.measure { Gigabyte, Gibibyte, Bandwidth, gigabyte, gibibyte, bandwidth }
+import std.measure { Gigabyte, Gibibyte, Mebibyte, Bandwidth, gigabyte, gibibyte, bandwidth }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // AMAZON EC2, THE CONTROL-PLANE CALLS THE FLEX LOOP USES, at EC2 API version 2016-11-15 (the Query API
@@ -349,29 +349,32 @@ type AwsEc2GpuDeviceInfo {
   name: NonEmptyStr
   manufacturer: NonEmptyStr
   count: Int
-  memory_size_in_mib: Int
+  memory_size_in_mib: Mebibyte
 }
 
 type AwsEc2DiskInfo {
-  size_in_gb: Int
+  size_in_gb: Gigabyte
   count: Int
   disk_type: NonEmptyStr
 }
 
 type AwsEc2InstanceStorageInfo {
-  total_size_in_gb: Int
+  total_size_in_gb: Gigabyte
   disks: List<AwsEc2DiskInfo>
   nvme_support: NonEmptyStr
 }
 
+// Sizes on this wire are integers in the unit the member name states (MiB, decimal GB); each is typed
+// with that std.measure carrier, so the live answer and the curated g7e table below hold one fact in one
+// form. Counts (vCPUs, GPUs, disks) stay Int.
 // InstanceTypeInfo, the members the screen reads. instance_storage is absent for an EBS-only type: the
 // /cache requirement (plan section 3) refuses such a type by this member, not by its name.
 type AwsEc2InstanceTypeInfo {
   instance_type: NonEmptyStr
   default_vcpus: Int
-  memory_size_in_mib: Int
+  memory_size_in_mib: Mebibyte
   gpus: List<AwsEc2GpuDeviceInfo>
-  total_gpu_memory_in_mib: Int?
+  total_gpu_memory_in_mib: Mebibyte?
   instance_storage_supported: Bool
   instance_storage: AwsEc2InstanceStorageInfo?
   supported_usage_classes: List<NonEmptyStr>
@@ -390,7 +393,7 @@ type AwsEc2DescribeInstanceTypesResponse {
 // ---- CreateLaunchTemplate --------------------------------------------------------------------------
 
 type AwsEc2EbsBlockDevice {
-  volume_size_gib: Int
+  volume_size_gib: Gibibyte
   volume_type: NonEmptyStr
   delete_on_termination: Bool
 }
