@@ -1,0 +1,72 @@
+module test.claim.cloud.aws_cli_projection_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, Int, List }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal, exact_decimal_equal }
+import std.measure { mebibyte_count, gigabyte_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.exec.command { argv_words }
+import extdeps.cloud.aws_ec2 { AwsEc2OptInNotRequired, AwsEc2NotOptedIn, AwsEc2Running, AwsEc2LifecycleSpot }
+import extdeps.cloud.aws_cli {
+  AwsCliReadOk, AwsCliReadRefused, aws_cli_read_regions, aws_cli_read_offerings, aws_cli_read_instance_types,
+  aws_cli_read_spot_prices, aws_cli_read_instances, aws_cli_read_service_quota, aws_cli_describe_spot_prices,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED VALUES AT ONE BOUNDARY: the AWS CLI v2 JSON documents below are written in the shape the CLI
+// prints for each operation (the API members in PascalCase). The account id is a placeholder of zeros.
+// THE PAIRED INHABITANCE CLAIM (DESIGN 3, a witness discriminates at one interface) is owed, not met:
+data aws_cli_projection_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "Dissolves when a Plan-mode flex pass on the custody host, with the flex AWS credential bound, runs each of these six operations through extdeps.cloud.aws_cli and every reader returns AwsCliReadOk on the real output, recorded as that pass receipt.")
+
+test fn the_six_projections_read_their_recorded_shapes() -> Bool {
+  (match aws_cli_read_regions(stdout: "\{\"Regions\":[\{\"Endpoint\":\"ec2.us-east-1.amazonaws.com\",\"RegionName\":\"us-east-1\",\"OptInStatus\":\"opt-in-not-required\"},\{\"Endpoint\":\"ec2.ap-east-1.amazonaws.com\",\"RegionName\":\"ap-east-1\",\"OptInStatus\":\"not-opted-in\"}]}") {
+    AwsCliReadOk { value: rs } => (length(rs) == 2) && match rs.first() { Present { value: r } => ((r.region_name as String) == "us-east-1") && match r.opt_in_status { AwsEc2OptInNotRequired => true  _ => false }  Absent => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_offerings(stdout: "\{\"InstanceTypeOfferings\":[\{\"InstanceType\":\"g7e.2xlarge\",\"LocationType\":\"availability-zone\",\"Location\":\"us-east-1a\"},\{\"InstanceType\":\"g7e.12xlarge\",\"LocationType\":\"availability-zone\",\"Location\":\"us-east-1b\"}]}") { AwsCliReadOk { value: os } => length(os) == 2  AwsCliReadRefused { cause: _ } => false })
+  && (match aws_cli_read_instance_types(stdout: "\{\"InstanceTypes\":[\{\"InstanceType\":\"g7e.12xlarge\",\"VCpuInfo\":\{\"DefaultVCpus\":48},\"MemoryInfo\":\{\"SizeInMiB\":524288},\"GpuInfo\":\{\"Gpus\":[\{\"Name\":\"RTX PRO 6000\",\"Manufacturer\":\"NVIDIA\",\"Count\":2,\"MemoryInfo\":\{\"SizeInMiB\":98304}}],\"TotalGpuMemoryInMiB\":196608},\"InstanceStorageSupported\":true,\"InstanceStorageInfo\":\{\"TotalSizeInGB\":3800,\"Disks\":[\{\"SizeInGB\":3800,\"Count\":1,\"Type\":\"ssd\"}],\"NvmeSupport\":\"required\"},\"SupportedUsageClasses\":[\"on-demand\",\"spot\"]}]}") {
+    AwsCliReadOk { value: ts } => match ts.first() {
+      Present { value: t } => (t.default_vcpus == 48) && (mebibyte_count(t.memory_size_in_mib) == 524288)
+        && (match t.gpus.first() { Present { value: g } => g.count == 2  Absent => false })
+        && (match t.instance_storage { Present { value: s } => gigabyte_count(s.total_size_in_gb) == 3800  Absent => false })
+      Absent => false
+    }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"1.234500\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") {
+    AwsCliReadOk { value: ps } => match ps.first() { Present { value: p } => exact_decimal_equal(a: p.spot_price, b: ExactDecimal { units: 12345, fraction_digits: 4 })  Absent => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceId\":\"i-0abc\",\"InstanceType\":\"g7e.2xlarge\",\"Placement\":\{\"AvailabilityZone\":\"us-east-1a\"},\"State\":\{\"Code\":16,\"Name\":\"running\"},\"InstanceLifecycle\":\"spot\",\"SpotInstanceRequestId\":\"sir-1\",\"LaunchTime\":\"2026-10-23T08:00:00+00:00\",\"Tags\":[\{\"Key\":\"gunbc-flex-owner\",\"Value\":\"gunbc-flex\"}]}]}]}") {
+    AwsCliReadOk { value: is } => match is.first() {
+      Present { value: i } => ((i.instance_id as String) == "i-0abc") && (match i.state.name { AwsEc2Running => true  _ => false })
+        && (match i.instance_lifecycle { Present { value: AwsEc2LifecycleSpot } => true  _ => false }) && (length(i.tags) == 1)
+      Absent => false
+    }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_service_quota(stdout: "\{\"Quota\":\{\"ServiceCode\":\"ec2\",\"QuotaCode\":\"L-3819A6DF\",\"QuotaName\":\"All G and VT Spot Instance Requests\",\"Value\":64.0,\"Unit\":\"None\",\"Adjustable\":true}}") {
+    AwsCliReadOk { value: q } => exact_decimal_equal(a: q.value, b: ExactDecimal { units: 64, fraction_digits: 0 }) && q.adjustable
+    AwsCliReadRefused { cause: _ } => false
+  })
+}
+
+// REDs, each asserting its reason: an answer the CLI did not finish paging, a price that is not a
+// decimal numeral, and an instance missing its id all refuse rather than read as fewer rows.
+test fn incomplete_or_malformed_answers_refuse_with_their_reason() -> Bool {
+  (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[],\"NextToken\":\"abc\"}") { AwsCliReadRefused { cause: c } => c.contains("NextToken")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"one dollar\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") { AwsCliReadRefused { cause: c } => c.contains("SpotPrice")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceType\":\"g7e.2xlarge\"}]}]}") { AwsCliReadRefused { cause: c } => c.contains("InstanceId")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_regions(stdout: "not json") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+}
+
+// The argv names the region explicitly and asks for JSON, and carries no credential, only its file path.
+test fn the_cli_argv_pins_the_region_and_carries_no_credential() -> Bool {
+  let words = argv_words(command: aws_cli_describe_spot_prices(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "eu-west-1", types: ["g7e.2xlarge"], product: "Linux/UNIX", now_iso8601: "2026-10-23T09:00:00Z"))
+  words.contains("--region") && words.contains("eu-west-1") && words.contains("json")
+    && words.contains("AWS_SHARED_CREDENTIALS_FILE=/etc/gunbc-flex/aws-credentials")
+    && !(join(words, " ").contains("AWS_SECRET_ACCESS_KEY="))
+    && !words.contains("--debug")
+}
