@@ -45,7 +45,6 @@ import extdeps.sudo.nopasswd_execute_probe {
 import gunbc.ci.ci_deploy_target_host {
   DeployTargetHostProof,
   deploy_target_proof,
-  deploy_target_host_preflight_block,
 }
 
 type PrivilegedCommand {
@@ -86,8 +85,6 @@ data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame
 data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
-
-data deploy_preflight_shell_header: String = "set -eu"
 
 data deploy_access_apt_get_binary_path: NonEmptyStr = fleet_apt_get_binary_path
 
@@ -207,14 +204,6 @@ fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> S
 
 fn deploy_target_proof_from_access(access: DeployAccess) -> DeployTargetHostProof {
   deploy_target_proof(host: access.host.identity, transport: access.transport)
-}
-
-fn deploy_target_host_preflight_script(access: DeployAccess) -> String {
-  let proof = deploy_target_proof_from_access(access: access)
-  concat(
-    concat(concat(deploy_preflight_shell_header, "\n"), deploy_target_host_preflight_block(proof: proof)),
-    ""
-  )
 }
 
 fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: NonEmptyStr) -> DeployAccess {

@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.a_typed_port_drops_a_precondition_leg_the_script_carried
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+data a_typed_port_drops_a_precondition_leg_the_script_carried: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_typed_port_drops_a_precondition_leg_the_script_carried" as NonEmptyStr,
+
+
+  // #14383 made the rung reading a required field; this row landed before it. Encoded from this row's own
+  // receipts. The ceiling receipt reads "CEILING 3, mechanically preventable", and its NUMBER and its NAME
+  // disagree: on the DESIGN section 4b ladder (1 = mitigatable, 2 = mechanically preventable, 3 = structurally
+  // guaranteed, 4 = structurally impossible) the NAME is authoritative, because the paragraph goes on to
+  // describe the wall as a dissolution artifact carrying an AUTHORED operation list that a gate checks -- an
+  // invalid state that stays writable while that mechanism stays enrolled, which is rung 2's definition and
+  // not rung 3's ("no `Accepted` program contains it"; rung 3 needs a refusal the COMPILER derives, and no such
+  // compiler-derived refusal exists -- grep for one finds only this row's prose). The first encoding read the
+  // digit and wrote ceiling: StructurallyGuaranteed, which is rung inflation (§4b meta-obligation 1): the field
+  // claimed a wall nothing enforces, so the class would never rank for climbing. Found-at stays rung 2 per
+  // "RUNG FOUND AT: 2 (mitigation, and the mitigation was main's claim, not the port's)", so current equals
+  // ceiling and the standing is AtCeiling, with the ceiling_reason carrying the receipt's own wording and the
+  // NEXT-RUNG TRIGGER paragraph remaining the tracked climb (a stall under meta-obligation 2, not a gap).
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: the wall is a dissolution artifact carrying the retired script's operation list as data, which a gate checks -- authored data, so the invalid state stays writable and safety depends on that mechanism executing and staying enrolled." as NonEmptyStr } },
+  receipts: [
+    "**a typed port drops a precondition leg the script carried** (a retained shell script is dissolved into typed effects, every arm of the new effect is well-typed and every refusal is preserved, and one operation that the script performed UNCONDITIONALLY BEFORE the interesting work is simply not in the new sequence. Nothing fails to compile, because the omitted operation left no type behind to go missing: a `curl` and a checksum comparison are commands, not declarations).",
+
+    "INVALID STATE: the ported effect performs the irreversible half of its job without the guard half. In the specimen the install branch extracted an archive that had never been downloaded and moved whatever came out of it into /usr/local/bin, with nothing anywhere comparing what landed against the pinned release digest -- while the module's own documentation still described a verified download, and a generic verified-download-plus-install effect existed in the tree with a witness of its own. The verification machinery was present, cited, and green; the site that was supposed to use it did not call it.",
+
+    "WHY IT SURVIVES REVIEW, and why a green witness suite does not catch it. A shell body is reviewed as a whole string: `set -e`, curl, digest check, tar, mv, chmod, and a reviewer reads the sequence. A typed effect is reviewed as a list of operations each of which is individually sensible, and the question 'what came before this operation in the script it replaces' is answerable only by someone holding the deleted string. Once the script is deleted in the same commit -- which the dissolution rules REQUIRE, so that no second actuation can survive -- the authority for that question is deleted with it. The port's own witnesses assert the legs it HAS; nothing asserts the legs it LOST, because a witness is written against the new shape.",
+
+    "SPECIMEN (gunbc, the build-cache daemon ensure, PR #14155, caught at head 4ff597213db and be47512e7a5 before merge). The retained installer body in extdeps.cache.sccache was: `set -e; curl -fsSL '<release url>' -o /tmp/sccache.tar.gz; <digest_shell_verify_line(digest:, file_path:)>; tar -xzf /tmp/sccache.tar.gz -C /tmp; sudo mv <extracted> /usr/local/bin/sccache; sudo chmod +x <dest>; rm -rf <staging>`. The port's install branch emitted only the last group -- the extraction, the move, the chmod and the cleanups, produced by gunbc.host.verified_binary_install.verified_binary_install_install_steps -- and MEASURED, `curl` and `sha256sum` occur ZERO times in gunbc.host.host.build_cache_daemon_ensure.dag. No caller anywhere outside the generic effect's own witness invoked verified_binary_install_fetch_step or verified_binary_install_verify_step, so the gate existed, was tested, and drove nothing.",
+
+    "WHAT CAUGHT IT WAS NOT MY WITNESS. It was a claim already on main, design_witness_install_is_cited_not_package_manager, written for a different reason (to prove the install route names a cited release download rather than a package manager). It renders the ensure plan and requires the release URL and version to appear; with the fetch and verify legs missing they did not, and the claim went RED. This is the strongest argument in the repository for keeping an independently-authored claim over a rendered effect rather than trusting the port's own coverage: the claim was written against the effect's CONTRACT and survived the port's rewrite of its IMPLEMENTATION.",
+
+    "THE ENABLING SHAPE, which is what makes the class mechanical rather than accidental: a plan assembled by APPENDING a group of legs from a helper (install steps) to a group of legs from another helper (unit writes). Each group is coherent and each helper is individually correct; the sequence's PREFIX -- the part that made the whole thing safe -- lived in the deleted string, not in either helper. A fold that iterates a list is not a guard against a missing element, and the fold preserving `set -e` says nothing about whether the list is the right list.",
+
+    "RECOGNITION RULE: before a `retained_srvn` call site dissolves, the deleted script body is transcribed as an ORDERED LIST OF OPERATIONS, and one claim is written per operation: 'the derived plan contains a leg whose command is X, at a position after A and before B'. A leg count is not that claim (a count is satisfied by the wrong legs), and a plan-shape claim written after deletion is not either (it asserts the new shape, which is what is in question). The claims are then run against the HEAD WITH THE SCRIPT STILL DELETED, and any leg with no claim is a leg nobody will notice missing.",
+
+    "RUNG FOUND AT: 2 (mitigation, and the mitigation was main's claim, not the port's). It is NOT rung 1: nothing in the review caught it, the port was drafted with the leg absent, and the claim that caught it was written for an unrelated purpose. It is not rung 3 because the class is not yet structurally prevented.",
+
+    "CEILING 3, mechanically preventable, and what is missing: a dissolution artifact that carries the deleted script's operation list as DATA -- one row per operation, bound to the plan leg that realises it -- so that deleting the script deletes nothing about its content, and a wall can refuse a dissolution whose leg list is not total over the retired body. The generic effect (gunbc.host.verified_binary_install) is the natural carrier: it already types a fetch, a read, an admission and an install group; what it lacks is a row that binds an effect's plan to the script it dissolved, so 'the port dropped a leg' becomes an exhaustiveness failure rather than a review miss.",
+
+    "NEXT-RUNG TRIGGER: that script-body-to-plan-leg binding, enrolled where dissolutions are validated (alongside the dissolution census). SUFFICIENT FOR: this port could not have landed -- curl and the digest read would have had no realising leg. Until then the affordable control, and the one actually taken here, is the per-operation claim set over the RENDERED plan plus a claim that the generic verified-download effect's fetch and verify steps have a live caller on the real route.",
+
+    "REVIEW TELL: a dissolution PR whose own witnesses describe only the new shape, with no claim whose text would have been true of the old one. Ask, for each command in the deleted string, which surviving claim would fail if it were removed from the plan. A leg with no such claim is unclaimed, and an unclaimed leg is exactly what got dropped here.",
+  ],
+
+  evidence: [],
+}
