@@ -1,0 +1,235 @@
+module v2.test.claim.compiler.infer_red_claims_fatal_namer
+
+// SEAT 16, SCRATCH NAMER (never-merge; claims only). WHY THIS EXISTS: claim_batch prints only
+// PASS/FAIL, so the != probe idiom cannot NAME an unknown fatal -- a PASS on a != claim is
+// consistent with ANY string that differs, and a probe whose five != candidates all PASS says
+// only 'the fatal is a sixth thing'. This module pins the fatal by ASSERTION instead: one == claim
+// per candidate reason in the closed set these trees can reach; the claim that PASSES names the
+// fatal. This is the accepted pattern (v2.test.claim.rigid_binder_leaf's rbl_reason_is_* claims).
+// Control: nam_*_fatal_is_in_the_set must PASS if some candidate matched (a FAIL there means the
+// candidate set is still too narrow -- widen, do not conclude).
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+import std.algebra { contains }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_type_atom_node
+}
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  inhabitance_generic_formal_tree,
+  inhabitance_generic_formal_tree_over,
+  inhabitance_named_conj_domain
+}
+
+// SEED RULE: annotated-parameter helper for every read on pattern-bound values (M3 msg_1e0159e5).
+fn nam_fatal_sym(d: NonEmptyDiagnostics) -> String {
+  symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+}
+
+// THE SAME TREES AS THE PROBE AND THE RED CLAIMS: identical builders, identical predicate
+// (diagnostics_fatal_reason -- the FATAL, not the head), so whatever names itself here is what the
+// claims themselves see. (M3's open question 'head vs fatal, Diagnostics vs NonEmpty, tree builder?'
+// -- all three are identical to the claims; the probe and the claims differ from each other only in
+// the != direction of the probe's label claims.)
+
+fn nam_a_tree() -> ResolvedTree {
+  claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())
+}
+
+fn nam_c_tree() -> ResolvedTree {
+  claim_resolved_tree_without_declarations(
+    root: inhabitance_generic_formal_tree_over(
+      declared: dag_arrow_with_body_node(
+        domain: inhabitance_named_conj_domain(
+          parameter: ^inhabitance_param_x,
+          declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+        ),
+        return_type_binding: ^inhabitance_type_param_t,
+        body: dag_int_literal_fixture_one()
+      )
+    )
+  )
+}
+
+fn nam_a_reason() -> String {
+  match infer(tree: nam_a_tree()) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => nam_fatal_sym(d: d)
+  }
+}
+
+fn nam_c_reason() -> String {
+  match infer(tree: nam_c_tree()) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => nam_fatal_sym(d: d)
+  }
+}
+
+// THE CLOSED SET. #14749 minted NO new reason symbols (measured: its diff adds none) -- the fatal of
+// these trees is an EXISTING reason whose path reordered. The set covers every reason reachable on a
+// hand-built generic-formal application tree: the inhabitance projection family, the grounding /
+// descent / facts family, the caller-admission family (the trees have no declarations --
+// claim_resolved_tree_without_declarations), the algebra-ref, and the operand-mismatch family.
+// Strings, not symbols: the namer compares the PRINTED fatal (symbol_lexeme), so the comparison is
+// on lexeme text and needs no interning.
+data nam_a_label: String = "application_argument_does_not_inhabit"
+
+data nam_candidate_set: List<String> = [
+  "application_argument_does_not_inhabit",
+  "inhabitance_undecidable_generic_formal",
+  "inhabitance_undecidable_argument_type_not_derived",
+  "inhabitance_undecidable_formal_unresolved",
+  "resolve_reason_unbound_symbol",
+  "infer_grounding_not_derived",
+  "infer_grounding_demanded_not_derived",
+  "infer_descent_not_derived",
+  "infer_facts_lookup_miss",
+  "infer_algebra_ref_ungrounded",
+  "infer_reason_caller_admission_module_unreadable",
+  "infer_reason_caller_admission_caller_unkeyed",
+  "infer_reason_caller_admission_callee_unresolved",
+  "infer_transform_operand_type_mismatch",
+  "ACCEPTED"
+]
+
+// MEMBERSHIP via the std algebra's contains with an ANNOTATED equality helper (M3 msg_1e0159e5 seed
+// rule: the comparison on the fold-bound candidate element happens inside a typed-parameter function,
+// never inline on a possibly-free value). No hand-rolled fold, no multi-line boolean chain (my own
+// precedent: single-line predicates per record_field_pun:139).
+fn nam_str_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn nam_in_set(x: String) -> Bool {
+  contains(xs: nam_candidate_set, item: x, eq: nam_str_eq)
+}
+
+test fn nam_a_fatal_is_the_label() -> Bool {
+  nam_a_reason() == nam_a_label
+}
+
+test fn nam_a_fatal_is_undecidable_generic_formal() -> Bool {
+  nam_a_reason() == "inhabitance_undecidable_generic_formal"
+}
+
+test fn nam_a_fatal_is_undecidable_argument_type_not_derived() -> Bool {
+  nam_a_reason() == "inhabitance_undecidable_argument_type_not_derived"
+}
+
+test fn nam_a_fatal_is_undecidable_formal_unresolved() -> Bool {
+  nam_a_reason() == "inhabitance_undecidable_formal_unresolved"
+}
+
+test fn nam_a_fatal_is_unbound_symbol() -> Bool {
+  nam_a_reason() == "resolve_reason_unbound_symbol"
+}
+
+test fn nam_a_fatal_is_grounding_not_derived() -> Bool {
+  nam_a_reason() == "infer_grounding_not_derived"
+}
+
+test fn nam_a_fatal_is_grounding_demanded_not_derived() -> Bool {
+  nam_a_reason() == "infer_grounding_demanded_not_derived"
+}
+
+test fn nam_a_fatal_is_descent_not_derived() -> Bool {
+  nam_a_reason() == "infer_descent_not_derived"
+}
+
+test fn nam_a_fatal_is_facts_lookup_miss() -> Bool {
+  nam_a_reason() == "infer_facts_lookup_miss"
+}
+
+test fn nam_a_fatal_is_algebra_ref_ungrounded() -> Bool {
+  nam_a_reason() == "infer_algebra_ref_ungrounded"
+}
+
+test fn nam_a_fatal_is_caller_admission_module_unreadable() -> Bool {
+  nam_a_reason() == "infer_reason_caller_admission_module_unreadable"
+}
+
+test fn nam_a_fatal_is_caller_admission_caller_unkeyed() -> Bool {
+  nam_a_reason() == "infer_reason_caller_admission_caller_unkeyed"
+}
+
+test fn nam_a_fatal_is_caller_admission_callee_unresolved() -> Bool {
+  nam_a_reason() == "infer_reason_caller_admission_callee_unresolved"
+}
+
+test fn nam_a_fatal_is_transform_operand_mismatch() -> Bool {
+  nam_a_reason() == "infer_transform_operand_type_mismatch"
+}
+
+// CONTROL: at least one candidate must match. FAIL here (with all == claims FAIL) => the set is
+// still too narrow -- report and widen, do not conclude 'no fatal'.
+test fn nam_a_fatal_is_in_the_candidate_set() -> Bool {
+  nam_in_set(x: nam_a_reason())
+}
+
+// ACCEPTED as a first-class name: PASS here + all nam_*_fatal_is_* FAIL means the tree is now
+// accepted (the regression-shaped world for (a)); with the probe's rp_a_is_not_accepted PASS it
+// cannot be, but the namer reads self-contained.
+test fn nam_a_reason_is_accepted() -> Bool {
+  nam_a_reason() == "ACCEPTED"
+}
+
+// (c) gets the same set (its counted-frontier disappearance suggests the judge now ANSWERS where it
+// once counted; whatever it answers must name itself).
+test fn nam_c_reason_is_accepted() -> Bool {
+  nam_c_reason() == "ACCEPTED"
+}
+
+test fn nam_c_fatal_is_the_label() -> Bool {
+  nam_c_reason() == nam_a_label
+}
+
+test fn nam_c_fatal_is_undecidable_generic_formal() -> Bool {
+  nam_c_reason() == "inhabitance_undecidable_generic_formal"
+}
+
+test fn nam_c_fatal_is_undecidable_argument_type_not_derived() -> Bool {
+  nam_c_reason() == "inhabitance_undecidable_argument_type_not_derived"
+}
+
+test fn nam_c_fatal_is_undecidable_formal_unresolved() -> Bool {
+  nam_c_reason() == "inhabitance_undecidable_formal_unresolved"
+}
+
+test fn nam_c_fatal_is_unbound_symbol() -> Bool {
+  nam_c_reason() == "resolve_reason_unbound_symbol"
+}
+
+test fn nam_c_fatal_is_grounding_not_derived() -> Bool {
+  nam_c_reason() == "infer_grounding_not_derived"
+}
+
+test fn nam_c_fatal_is_descent_not_derived() -> Bool {
+  nam_c_reason() == "infer_descent_not_derived"
+}
+
+test fn nam_c_fatal_is_facts_lookup_miss() -> Bool {
+  nam_c_reason() == "infer_facts_lookup_miss"
+}
+
+test fn nam_c_fatal_is_caller_admission_module_unreadable() -> Bool {
+  nam_c_reason() == "infer_reason_caller_admission_module_unreadable"
+}
+
+test fn nam_c_fatal_is_caller_admission_caller_unkeyed() -> Bool {
+  nam_c_reason() == "infer_reason_caller_admission_caller_unkeyed"
+}
+
+test fn nam_c_fatal_is_transform_operand_mismatch() -> Bool {
+  nam_c_reason() == "infer_transform_operand_type_mismatch"
+}
+
+test fn nam_c_fatal_is_in_the_candidate_set() -> Bool {
+  nam_in_set(x: nam_c_reason())
+}
