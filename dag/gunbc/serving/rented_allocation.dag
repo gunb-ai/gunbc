@@ -77,7 +77,8 @@ fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
 // gunbc.plans.flex_supplier_generalization) arrived, and the ask became the provider's extdeps anchor plus
 // the two facts a reconcile matches on, as the provider spells them: the ask the create named (Vast: the
 // offer id; EC2: the RunInstances client token) and the machine it sits on (Vast: the machine id; EC2: the
-// instance id). No supplier type enters this carrier, so it enumerates no supplier (DESIGN 3).
+// instance id). Reconciling a lost create matches the machine, never the contract, because a lost
+// create returned no contract. No supplier type enters this carrier, so it enumerates no supplier (DESIGN 3).
 type RentedProviderAsk {
   provider: DeclarationRef
   ask: NonEmptyStr

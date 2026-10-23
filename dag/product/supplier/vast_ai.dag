@@ -94,15 +94,6 @@ fn vast_ai_route(region: ProviderRegionObservation) -> ProviderRouteStanding {
   )
 }
 
-// WHAT A VAST CREATE WAS ASKED AGAINST, as the acquisition receipt keeps it: the ask (offer) id the create
-// PUT named and the machine it sits on. Reconciling a lost create matches the machine, never the contract,
-// because a lost create returned no contract. A Vast fact, so it lives in the Vast binding; the rented
-// allocation (gunbc.serving.rented_allocation RentedAllocationAcquired) carries it as its provider ask.
-type VastAiAskReceipt {
-  ask_id: Int
-  machine_id: Int
-}
-
 // An ask is one machine: it can be rented once. A marketplace fact, not a buyer choice.
 data vast_ai_offer_quantity_bound: Int = 1
 
