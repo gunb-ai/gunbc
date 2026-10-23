@@ -59,7 +59,7 @@ import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps, deployment_
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap.spool_stall { SpoolStallEntry }
 import gunbc.roadmap.attempt_system_unit_launch {
-  AttemptUnitDrainPass, attempt_unit_pass_retired, AttemptUnitAnswered, AttemptUnitAnswerUnwritten,
+  AttemptUnitDrainPass, attempt_unit_pass_of, AttemptUnitEntryOutcome, AttemptUnitEntryHandled, AttemptUnitEntryUnmovable, AttemptUnitEntrySkipped, AttemptUnitAnswered, AttemptUnitAnswerUnwritten,
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
   attempt_system_unit_start_admitted,
   attempt_system_unit_privileged_effect, attempt_system_unit_instance_for_root,
@@ -1063,35 +1063,54 @@ test fn the_drain_and_the_broker_helper_snapshots_live_in_disjoint_loci() -> Boo
     && !base_is_path_prefix_of(base: attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance()).base, other: attempt_system_unit_launcher_locus(instance: srv1_lab_dashboard_instance()).base)
 }
 
-fn fresh_drain_pass() -> AttemptUnitDrainPass {
-  AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
+fn answered(refusal: String?) -> AttemptUnitEntryOutcome {
+  AttemptUnitEntryHandled { handled: AttemptUnitAnswered { refusal: refusal } }
 }
 
 // A refusal is an answer: the pass counts it and its exit stays success. POSITIVE CONTROL: a started request.
 test fn a_refused_request_is_counted_and_does_not_fail_the_pass() -> Bool {
-  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: Present { value: "start request is truncated" } })
+  let pass = attempt_unit_pass_of(outcomes: [answered(refusal: Present { value: "start request is truncated" })])
   pass.refused == 1 && pass.retired == 1 && exit_is_success(e: pass.exit)
 }
 
 // RED: a refusal whose cause text is empty is still a refusal (presence is the fact, not the text).
 test fn a_refusal_with_empty_cause_text_is_still_counted() -> Bool {
-  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: Present { value: "" } })
+  let pass = attempt_unit_pass_of(outcomes: [answered(refusal: Present { value: "" })])
   pass.refused == 1 && pass.retired == 1
 }
 
 test fn a_started_request_is_retired_without_a_refusal() -> Bool {
-  let pass = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswered { refusal: Absent })
+  let pass = attempt_unit_pass_of(outcomes: [answered(refusal: Absent)])
   pass.refused == 0 && pass.retired == 1 && exit_is_success(e: pass.exit)
 }
 
 // RED: the drain failing at its job (no answer written) fails the pass, and stays failed past later refusals.
 test fn a_request_whose_answer_cannot_be_written_fails_the_pass() -> Bool {
-  let failed = attempt_unit_pass_retired(pass: fresh_drain_pass(), handled: AttemptUnitAnswerUnwritten { reason: "k: the answer could not be written" })
-  let later = attempt_unit_pass_retired(pass: failed, handled: AttemptUnitAnswered { refusal: Present { value: "x" } })
-  match later.exit {
-    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written") && later.refused == 1
+  let pass = attempt_unit_pass_of(outcomes: [
+    AttemptUnitEntryHandled { handled: AttemptUnitAnswerUnwritten { reason: "k: the answer could not be written" } },
+    answered(refusal: Present { value: "x" }),
+  ])
+  match pass.exit {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written") && pass.refused == 1
     ExitSuccess => false
   }
+}
+
+// The FIRST failure in entry order is the exit, and unmovable entries are listed in entry order and counted
+// apart from the retired ones; a skipped (already-claimed) entry changes nothing.
+test fn the_pass_keeps_the_first_failure_and_lists_unmovable_entries_in_order() -> Bool {
+  let pass = attempt_unit_pass_of(outcomes: [
+    AttemptUnitEntrySkipped,
+    AttemptUnitEntryUnmovable { entry: "a", step: "claim", cause: "c1" },
+    answered(refusal: Absent),
+    AttemptUnitEntryUnmovable { entry: "b", step: "claim", cause: "c2" },
+  ])
+  let names = map(pass.unmovable, u => u.entry)
+  pass.retired == 1 && count(pass.unmovable) == 2 && names == ["a", "b"]
+    && match pass.exit {
+      ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "a: unmovable at claim")
+      ExitSuccess => false
+    }
 }
 
 fn exit_is_success(e: ProcessExit) -> Bool {

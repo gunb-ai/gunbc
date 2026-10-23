@@ -994,62 +994,105 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
   if pass.retired == 0 && count(pass.unmovable) > 0 { AttemptUnitStalled { unmovable: pass.unmovable } } else { AttemptUnitNotStalled }
 }
 
-// `refused` counts the retired requests whose answer is a refusal: reported, never an exit failure.
-fn attempt_unit_pass_retired(pass: AttemptUnitDrainPass, handled: AttemptUnitHandled) -> AttemptUnitDrainPass {
+// THE PASS IS DERIVED FROM ONE OUTCOME PER ENTRY, never accumulated: each spool entry is mapped to what became
+// of it, and the counts, the first failure and the unmovable list are read off that list in one pass each, so
+// no step copies a growing list (DESIGN 6, a copied accumulator is always fixed).
+type AttemptUnitEntryOutcome
+  = AttemptUnitEntrySkipped
+  | AttemptUnitEntryHandled { handled: AttemptUnitHandled }
+  | AttemptUnitEntryUnmovable { entry: String, step: String, cause: String }
+
+fn attempt_unit_handled_failure(handled: AttemptUnitHandled) -> List<ProcessExit> {
   match handled {
-    AttemptUnitAnswered { refusal: cause } => {
-      let refusals = match cause {
-        Present { value: _ } => 1
-        Absent => 0
-      }
-      AttemptUnitDrainPass { exit: pass.exit, retired: pass.retired + 1, refused: pass.refused + refusals, unmovable: pass.unmovable }
-    }
-    AttemptUnitAnswerUnwritten { reason: why } =>
-      AttemptUnitDrainPass { exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: why)), retired: pass.retired + 1, refused: pass.refused, unmovable: pass.unmovable }
+    AttemptUnitAnswerUnwritten { reason: why } => [exit_failure(reason: why)]
+    AttemptUnitAnswered { refusal: _ } => [] as List<ProcessExit>
   }
 }
 
-fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: String, cause: String) -> AttemptUnitDrainPass {
+fn attempt_unit_handled_is_refusal(handled: AttemptUnitHandled) -> Bool {
+  match handled {
+    AttemptUnitAnswered { refusal: cause } =>
+      match cause {
+        Present { value: _ } => true
+        Absent => false
+      }
+    AttemptUnitAnswerUnwritten { reason: _ } => false
+  }
+}
+
+fn attempt_unit_outcome_failure(outcome: AttemptUnitEntryOutcome) -> List<ProcessExit> {
+  match outcome {
+    AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_failure(handled: h)
+    AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } =>
+      [exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))]
+    AttemptUnitEntrySkipped => [] as List<ProcessExit>
+  }
+}
+
+fn attempt_unit_first_failure(failures: List<ProcessExit>) -> ProcessExit {
+  match failures.first() {
+    Present { value: failure } => failure
+    Absent => ExitSuccess
+  }
+}
+
+fn attempt_unit_outcome_is_retired(outcome: AttemptUnitEntryOutcome) -> Bool {
+  match outcome {
+    AttemptUnitEntryHandled { handled: _ } => true
+    AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => false
+    AttemptUnitEntrySkipped => false
+  }
+}
+
+fn attempt_unit_outcome_is_refusal(outcome: AttemptUnitEntryOutcome) -> Bool {
+  match outcome {
+    AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_is_refusal(handled: h)
+    AttemptUnitEntryUnmovable { entry: _, step: _, cause: _ } => false
+    AttemptUnitEntrySkipped => false
+  }
+}
+
+fn attempt_unit_outcome_unmovable(outcome: AttemptUnitEntryOutcome) -> List<SpoolStallEntry> {
+  match outcome {
+    AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } => [SpoolStallEntry { entry: entry, step: step, cause: cause }]
+    AttemptUnitEntryHandled { handled: _ } => [] as List<SpoolStallEntry>
+    AttemptUnitEntrySkipped => [] as List<SpoolStallEntry>
+  }
+}
+
+// `refused` counts the retired requests whose answer is a refusal: reported, never an exit failure. The exit is
+// the FIRST failure in entry order, kept past later refusals.
+fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitDrainPass {
   AttemptUnitDrainPass {
-    exit: attempt_system_unit_keep_first_failure(acc: pass.exit, next: exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))),
-    retired: pass.retired,
-    refused: pass.refused,
-    unmovable: concat(pass.unmovable, [SpoolStallEntry { entry: entry, step: step, cause: cause }]),
+    exit: attempt_unit_first_failure(failures: flat_map(outcomes, o => attempt_unit_outcome_failure(outcome: o))),
+    retired: count(filter(outcomes, o => attempt_unit_outcome_is_retired(outcome: o))),
+    refused: count(filter(outcomes, o => attempt_unit_outcome_is_refusal(outcome: o))),
+    unmovable: flat_map(outcomes, o => attempt_unit_outcome_unmovable(outcome: o)),
+  }
+}
+
+fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
+  match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
+    AttemptSystemUnitAlreadyClaimed { entry: _ } => AttemptUnitEntrySkipped
+    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: "claim", cause: c }
+    AttemptSystemUnitClaimSymlink { entry: e } =>
+      AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink") }
+    AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
+      AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: why) }
+    AttemptSystemUnitClaimed { entry: e, path: p } =>
+      AttemptUnitEntryHandled {
+        handled: attempt_system_unit_handle_claimed(instance_root: instance_root, instance: instance, entry: e, path: p),
+      }
   }
 }
 
 fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
-  let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
-    AttemptSystemUnitRequestListRefused { reason } => attempt_unit_pass_unmovable(pass: empty, entry: "requests", step: "list-requests", cause: reason)
+    AttemptSystemUnitRequestListRefused { reason } =>
+      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: "list-requests", cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
-      fold(entries, init: empty, f: (acc, entry) =>
-        match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
-          AttemptSystemUnitAlreadyClaimed { entry: _ } => acc
-          AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => attempt_unit_pass_unmovable(pass: acc, entry: e, step: "claim", cause: c)
-          AttemptSystemUnitClaimSymlink { entry: e } =>
-            attempt_unit_pass_retired(
-              pass: acc,
-              handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink"),
-            )
-          AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
-            attempt_unit_pass_retired(
-              pass: acc,
-              handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: why),
-            )
-          AttemptSystemUnitClaimed { entry: e, path: p } =>
-            attempt_unit_pass_retired(
-              pass: acc,
-              handled: attempt_system_unit_handle_claimed(
-                instance_root: instance_root,
-                instance: instance,
-                entry: e,
-                path: p,
-              ),
-            )
-        }
-      )
+      attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)))
   }
 }
 
