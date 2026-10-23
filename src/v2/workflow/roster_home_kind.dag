@@ -1,6 +1,7 @@
 module v2.workflow.roster_home_kind
 
-import std.algebra { FreeMonoid, fold_list, length, take_prefix }
+import std.algebra { FreeMonoid, fold_list }
+import std.filesystem { path_parent_directory }
 import std.types { Bool, List, String }
 import std.occurrence_identity {
   LabelPosition,
@@ -259,14 +260,9 @@ fn roster_home_declaration_is_value(home: String, import_name: String) -> Bool {
 // THE POOL IS THE HOME'S STORAGE DIRECTORY (see the header): the directory of the one file the layout assigns <home>.
 fn roster_home_pool_roots(home: String) -> List<String> {
   match module_file(layout: repository_storage_layout(), name: home) {
-    ModuleFileDerived { file: f } => [roster_parent_directory(path: repository_path_of_module_file(file: f))]
+    ModuleFileDerived { file: f } => [path_parent_directory(path: repository_path_of_module_file(file: f))]
     ModuleNameUnderivable { name: _, cause: _ } => []
   }
-}
-
-fn roster_parent_directory(path: String) -> String {
-  let segments = split(s: path, delimiter: "/")
-  fold_list(xs: take_prefix(xs: segments, n: length(xs: segments) - 1), empty: "", cons: fn(acc, seg) { if acc == "" { seg } else { acc + "/" + seg } })
 }
 
 // The roots a home's census was read under, for a failure message: a home missing from its own directory is a
