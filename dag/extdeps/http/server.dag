@@ -434,6 +434,16 @@ fn serve_framing_header_names() -> List<String> {
   ["content-length", "content-type", "connection", "transfer-encoding"]
 }
 
+// The field-names a typed ServeResponseHeader arm owns: the wire projection spells each from these
+// rows, and the extension field-name refuses them, so one wire field has one authority.
+data serve_location_field_name: String = "Location"
+data serve_set_cookie_field_name: String = "Set-Cookie"
+data serve_cache_control_field_name: String = "Cache-Control"
+
+fn serve_typed_arm_header_names() -> List<String> {
+  [ascii_lowercase(s: serve_location_field_name), ascii_lowercase(s: serve_set_cookie_field_name), ascii_lowercase(s: serve_cache_control_field_name)]
+}
+
 fn serve_header_name_is_token(name: String) -> Bool {
   (name.chars() |> count) > 0 && all(name.chars(), c => header_field_name_code_point(c: c))
 }
@@ -443,9 +453,14 @@ fn serve_header_name_is_framing(name: String) -> Bool {
   (serve_framing_header_names() |> filter(n => n == folded) |> count) > 0
 }
 
+fn serve_header_name_is_typed_arm(name: String) -> Bool {
+  let folded = ascii_lowercase(s: name)
+  (serve_typed_arm_header_names() |> filter(n => n == folded) |> count) > 0
+}
+
 // AN HTTP EXTENSION FIELD-NAME, as a type rather than a checked String: `sole_constructor` makes
 // it constructible only inside this module, so the one way to hold one is http_extension_field_name,
-// which admits an RFC 9110 token and refuses a framing field the seed's accept loop owns. A
+// which admits an RFC 9110 token and refuses a framing field the seed's accept loop owns and a field a typed arm owns. A
 // ServeResponseHeaderField carries this type, so a framing header has no expression in the arm; a
 // literal, a cast or a raw String at the arm meets SoleConstructorViolation at compile. The type
 // names no product: which field a deployment sets is the consuming layer's spelling.
@@ -462,6 +477,8 @@ fn http_extension_field_name(label: String) -> HttpExtensionFieldNameAdmission {
     HttpExtensionFieldNameRefused { cause: "a header field-name is a nonempty RFC 9110 token" }
   } else if serve_header_name_is_framing(name: label) {
     HttpExtensionFieldNameRefused { cause: "a framing header is owned by the seed's accept loop and cannot be set by a handler" }
+  } else if serve_header_name_is_typed_arm(name: label) {
+    HttpExtensionFieldNameRefused { cause: "a field a typed ServeResponseHeader arm owns is set through that arm" }
   } else {
     HttpExtensionFieldNameAdmitted { name: HttpExtensionFieldName { label: label } }
   }
@@ -469,11 +486,11 @@ fn http_extension_field_name(label: String) -> HttpExtensionFieldNameAdmission {
 
 fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
   match header {
-    ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: "Location", value: l as String }
-    ServeResponseHeaderSetCookie { cookie: c } => ServeWireHeader { name: "Set-Cookie", value: set_cookie_value(cookie: c) }
-    ServeResponseHeaderNoStore => ServeWireHeader { name: "Cache-Control", value: "no-store" }
+    ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: serve_location_field_name, value: l as String }
+    ServeResponseHeaderSetCookie { cookie: c } => ServeWireHeader { name: serve_set_cookie_field_name, value: set_cookie_value(cookie: c) }
+    ServeResponseHeaderNoStore => ServeWireHeader { name: serve_cache_control_field_name, value: "no-store" }
     ServeResponseHeaderCacheImmutable { max_age_seconds: n } =>
-      ServeWireHeader { name: "Cache-Control", value: join(["public, max-age=", to_string(value: n), ", immutable"], "") }
+      ServeWireHeader { name: serve_cache_control_field_name, value: join(["public, max-age=", to_string(value: n), ", immutable"], "") }
     ServeResponseHeaderField { name: n, value: v } => ServeWireHeader { name: n.label, value: v }
   }
 }

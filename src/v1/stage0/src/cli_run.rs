@@ -18505,10 +18505,11 @@ fn serve_write_response(
 
 /// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
 /// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
-/// verbatim: this seam keeps no per-header table. A framing name never arrives, because
-/// `ServeWireHeader` is `sole_constructor` and its open arm carries the sealed
-/// `HttpExtensionFieldName`; a name that is not a token and a value carrying CR, LF or NUL are
-/// refused rather than written as a split header. None = wrong shape or refused name or value.
+/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
+/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
+/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
+/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
+/// value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18520,13 +18521,7 @@ fn serve_wire_header_line(
         return None;
     }
     let name = match ctx.field(fields, "name") {
-        Some(Value::Str(s))
-            if !s.is_empty()
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)) =>
-        {
-            s.to_string()
-        }
+        Some(Value::Str(s)) => s.to_string(),
         _ => return None,
     };
     let value = match ctx.field(fields, "value") {

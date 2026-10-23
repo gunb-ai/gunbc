@@ -544,5 +544,13 @@ test fn the_field_name_refuses_a_framing_field_and_a_non_token() -> Bool {
     HttpExtensionFieldNameAdmitted { name: _ } => false
     HttpExtensionFieldNameRefused { cause: _ } => true
   }
-  framing && folded && spaced && empty
+  let typed_arm = match http_extension_field_name(label: "set-cookie") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  let location = match http_extension_field_name(label: "Location") {
+    HttpExtensionFieldNameAdmitted { name: _ } => false
+    HttpExtensionFieldNameRefused { cause: _ } => true
+  }
+  framing && folded && spaced && empty && typed_arm && location
 }
