@@ -3436,6 +3436,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_emission_candidate_set_witness", function: "single_field_ambiguous_literal_emits_the_refusal" },
+      entry: "dag/test/claim/record_emission_candidate_set_witness.dag",
+      function: "single_field_ambiguous_literal_emits_the_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_emission_candidate_set_witness", function: "multi_field_ambiguous_literal_refuses_with_located_diagnostic" },
+      entry: "dag/test/claim/record_emission_candidate_set_witness.dag",
+      function: "multi_field_ambiguous_literal_refuses_with_located_diagnostic",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_fully_rendered_ledger_is_coherent" },
       entry: "dag/test/claim/ledger_row_coherence.dag",
       function: "a_fully_rendered_ledger_is_coherent",
