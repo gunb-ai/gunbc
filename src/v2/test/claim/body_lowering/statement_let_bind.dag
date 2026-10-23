@@ -1,13 +1,9 @@
 module v2.test.claim.body_lowering.statement_let_bind
 
 import v2.compiler.reference_conservation_admission {
-  ExplainedDrop,
-  StatementLetBinder,
   conservation_subject_of_text,
-  conserved_normalize,
-  no_explained_drops
+  conserved_normalize 
 }
-import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.std.type_binder { type_annotation_optional }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
@@ -36,13 +32,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not
 // retire when the capability lands; it is the standing control that the capability stayed honest.
 
-// A statement-form let's binder -- and, when it has one, its type annotation -- is lost by
-// lowering today, pinned by
-// v2.test.claim.namespace_xl0.reference_conservation a_statement_let_binder_is_reported_dropped_holds.
-fn let_binder_lost_at(start: Int, end: Int) -> ExplainedDrop {
-  ExplainedDrop { start: start, end: end, shape: StatementLetBinder }
-}
-
 data statement_let_then_reference_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  x\n}\n"
 
 data statement_let_chain_source: String = "module m.t\nfn f() -> Int {\n  let x = 1\n  let y = x\n  y\n}\n"
@@ -62,21 +51,21 @@ data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x
 data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
 
 test fn statement_let_then_reference_lowers_holds() -> Bool {
-  match conserved_normalize(subject: let_then_reference_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+  match conserved_normalize(subject: let_then_reference_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn statement_let_chain_lowers_holds() -> Bool {
-  match conserved_normalize(subject: let_chain_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 45, end: 46), tail: Empty } }) {
+  match conserved_normalize(subject: let_chain_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn unbound_statement_prefix_refuses_holds() -> Bool {
-  match conserved_normalize(subject: unbound_prefix_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: unbound_prefix_subject()) {
     Rejected { diagnostics: ds } =>
       symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
     Accepted { value: _, diagnostics: _ } => false
@@ -84,7 +73,7 @@ test fn unbound_statement_prefix_refuses_holds() -> Bool {
 }
 
 test fn single_statement_body_unchanged_holds() -> Bool {
-  match conserved_normalize(subject: single_statement_subject(), explained: no_explained_drops()) {
+  match conserved_normalize(subject: single_statement_subject()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -172,14 +161,14 @@ test fn statement_let_binds_the_literal_value_holds() -> Bool {
 }
 
 // A TYPED STATEMENT LET LOWERS WITH ITS ANNOTATION CARRIED. `let x: Int = 1` lowers to a Bind with
-// the v2.std.type_binder <type-annotation> edge -> Int beside its three positionals, and only the
-// binder is an explained drop: the annotation is NOT explained away, so reference conservation
-// holds only because `Int` reached the lowered tree. It retired the declared rung drop
+// the v2.std.type_binder <type-annotation> edge -> Int beside its three positionals, and the
+// binder and the annotation are both conserved: reference conservation holds only because `Int`
+// reached the lowered tree. It retired the declared rung drop
 // gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, under which this row
 // asserted the let refused at its annotation. A lowering that dropped the edge again fails both
 // halves: conservation refuses the dropped `Int`, and no Bind carries an annotation.
 test fn typed_statement_let_lowers_with_its_annotation_carried_holds() -> Bool {
-  match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
+  match conserved_normalize(subject: typed_let_subject()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {

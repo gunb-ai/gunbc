@@ -37,6 +37,7 @@ import v2.std.node {
   content_hash,
   symbol_identity_digest,
   canonicalize_node_for_content_hash,
+  NotADeclaration
 }
 
 import gunbc.scm.object_store {
@@ -97,7 +98,7 @@ fn atom_node(identity: Symbol) -> Node {
 }
 
 fn named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn program_a() -> Node {
@@ -168,7 +169,7 @@ fn canonicalize_tree(n: Node) -> Node {
     n: node_synthetic(
       kind: n.kind,
       children: fold(n.children, init: [], f: fn(acc, e) {
-        concat(acc, [Edge { label: e.label, target: canonicalize_tree(n: e.target) }])
+        concat(acc, [Edge { label: e.label, target: canonicalize_tree(n: e.target), declaration: e.declaration }])
       }),
     )
   )
@@ -517,7 +518,7 @@ test fn the_oracle_distinguishes_atoms_and_labels() -> Bool {
        )
     && !structurally_same(
          left: node_synthetic(kind: TypeNode { connective: Conj }, children: [named_edge(name: ^foo, target: atom_node(identity: ^A))]),
-         right: node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Positional, target: atom_node(identity: ^A) }]),
+         right: node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Positional, target: atom_node(identity: ^A), declaration: NotADeclaration }]),
        )
 }
 

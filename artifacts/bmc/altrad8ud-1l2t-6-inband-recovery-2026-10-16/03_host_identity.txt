@@ -1,0 +1,42 @@
+### dmidecode system
+	Manufacturer:                       
+	Product Name: ALTRAD8UD-1L2T
+	Serial Number:                       
+	UUID: <redacted-present>
+	SKU Number:                       
+	Family:                       
+### dmidecode baseboard
+	Manufacturer: ASRockRack
+	Product Name: ALTRAD8UD-1L2T
+	Version:                       
+	Serial Number: BR80S6102300077
+### cpu
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp ssbs
+nproc=80
+Architecture:                            aarch64
+Vendor ID:                               ARM
+Model name:                              Neoverse-N1
+Thread(s) per core:                      1
+Core(s) per socket:                      80
+Socket(s):                               1
+### mem
+               total        used        free      shared  buff/cache   available
+Mem:           250Gi       3.4Gi       244Gi       290Mi       4.6Gi       247Gi
+### disks
+loop0   149.7M 
+loop1   139.2M 
+loop2   764.2M 
+loop3   234.6M 
+loop4   149.7M 
+loop5   139.2M 
+loop6      69M 
+loop7    19.9M 
+loop8    43.5M 
+sda      29.3G Cruzer Blade
+nvme0n1 476.9G SAMSUNG MZVPV512HDGL-000H1
+### ipmitool fru 0 (board/product area)
+ Board Mfg Date        : Fri Mar 27 05:21:00 2026 UTC
+ Board Mfg             : ASRockRack
+ Board Product         : ALTRAD8UD-1L2T
+ Board Serial          : BR80S6102300077
+ Product Name          : ALTRAD8UD-1L2T
