@@ -563,7 +563,7 @@ import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
 }
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan, OwnedDirectoryEnsureOutcome,
@@ -4010,7 +4010,16 @@ fn build_cache_ensure_executed(
             // run, so there is no extraction, no move into /usr/local/bin and no chmod.
             first.executed
           } else {
-            let rest = build_cache_plan_remainder(all: ops, already_run: list_length(items: prefix))
+            // The count comes from the ONE list_length authority, named by module path rather than
+            // by bare name: the flat namespace now holds a second, site-local `list_length`
+            // (gunbc.site.aligned_columns, non-generic) alongside std.types.list_length, so a bare
+            // call here has no single established callee identity for the effect join.
+            // Authority: dag/std/types.dag `list_length`. Recurring failure mode:
+            // bare_name_resolved_only_by_the_flat_namespace.
+            let rest = build_cache_plan_remainder(
+              all: ops,
+              already_run: std.types.list_length(items: prefix)
+            )
             build_cache_run_ensure_ops(
               state: first,
               ops: rest,
