@@ -4,16 +4,14 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import extdeps.tools.gnu_coreutils { cat_command }
-import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, boot_medium_served_argv, boot_medium_served_join, BootMediumServedHeld, BootMediumServedUnreadable, BootMediumServedMeasureMalformed, BootMediumServedDiverged }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, boot_medium_served_path, boot_medium_served_argv, boot_medium_served_join, BootMediumServedHeld, BootMediumServedUnreadable, BootMediumServedMeasureMalformed, BootMediumServedDiverged }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, bmc_boot_image_export }
-import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualification, CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_census_image, CensusImage, CensusImageDerived, CensusImageRefused }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_record_path, seeded_install_media_build_key }
 
