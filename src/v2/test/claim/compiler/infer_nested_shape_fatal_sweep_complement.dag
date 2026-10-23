@@ -1,9 +1,9 @@
 module v2.test.claim.compiler.infer_nested_shape_fatal_sweep_complement
 
 // SEAT 16, SCRATCH (never-merge branch; claims only; nothing here lands). Round 9, the
-// COMPLEMENT SAFETY-NET to round 8 (c56fbe05e8e8, run pending with M3). Round 8's universe
-// harvested reason: ^... / cause: ^... LITERALS only -- but 19 mint sites in the same closure
-// pass a reason through a HELPER whose Symbol comes from a match arm elsewhere
+// COMPLEMENT SAFETY-NET to round 8 (infer_nested_shape_fatal_sweep, run pending with M3).
+// Round 8's universe harvested reason: ^... / cause: ^... LITERALS only -- but 19 mint sites in
+// the same closure pass a reason through a HELPER whose Symbol comes from a match arm elsewhere
 // (inhabitance_undecidable_reason_symbol, inhabitance_application_refusal_reason, the
 // application_parameter_order_*_reason pair, parse/resolve/tokenize refusal-symbol matchers),
 // so their lexemes reach diagnostics WITHOUT a reason:/cause: literal. This module takes the
@@ -44,6 +44,1390 @@ fn nsc_eq(a: String, b: String) -> Bool {
   a == b
 }
 
+data nsc_universe: List<String> = [
+  "0",
+  "10",
+  "127",
+  "2",
+  "3",
+  "32",
+  "62",
+  "63",
+  "8",
+  "9",
+  "a",
+  "aai_k",
+  "aai_neg",
+  "aai_pos",
+  "aai_pos2",
+  "abelian_group_field_group",
+  "admit_callers_clause_body",
+  "algebra",
+  "algebra_edge",
+  "algebra_signature_probe_carrier",
+  "approximate_field_field_add",
+  "approximate_field_field_compare",
+  "approximate_field_field_mul",
+  "approximate_field_field_negate",
+  "approximate_field_field_one",
+  "approximate_field_field_zero",
+  "ar_good",
+  "ar_outer",
+  "arrow_body_edge",
+  "arrow_effect_claims_edge",
+  "arrow_execution_mode_claim_edge",
+  "arrow_resource_requirements_edge",
+  "arrow_signature_order_edge",
+  "b",
+  "binder_default",
+  "block_evaluation_mode_statement_sequenced",
+  "block_evaluation_mode_value_producing",
+  "body_lowering_reason_list_literal_shape_unread",
+  "body_lowering_reason_statement_precedes_without_binding",
+  "bool_facts_field_encoding",
+  "bool_facts_field_width",
+  "bool_node_symbol",
+  "bool_spec_fact_encoding_classical_two_valued",
+  "bool_spec_fact_width_one_bit",
+  "boolean_algebra_field_bounded_lattice",
+  "boolean_algebra_field_complement",
+  "bounded_lattice_field_bottom",
+  "bounded_lattice_field_lattice",
+  "bounded_lattice_field_top",
+  "branch_arm",
+  "bx_good",
+  "byte_offset_proj_authority_edge",
+  "byte_offset_proj_boundary_edge",
+  "byte_offset_proj_byte_limb_edge",
+  "byte_offset_proj_ineligible_authority_edge",
+  "byte_offset_proj_key_eligible_edge",
+  "byte_offset_proj_key_ineligible_edge",
+  "byte_offset_proj_neg_edge",
+  "byte_offset_proj_out_of_ceiling_edge",
+  "byte_offset_proj_over_ceiling_edge",
+  "byte_offset_proj_pred_edge",
+  "byte_offset_proj_succ_edge",
+  "byte_offset_proj_within_ceiling_edge",
+  "canonical_operation_roster_member_add",
+  "canonical_operation_roster_member_and",
+  "canonical_operation_roster_member_coerce",
+  "canonical_operation_roster_member_div",
+  "canonical_operation_roster_member_eq",
+  "canonical_operation_roster_member_ge",
+  "canonical_operation_roster_member_gt",
+  "canonical_operation_roster_member_le",
+  "canonical_operation_roster_member_lt",
+  "canonical_operation_roster_member_mul",
+  "canonical_operation_roster_member_ne",
+  "canonical_operation_roster_member_negate",
+  "canonical_operation_roster_member_not",
+  "canonical_operation_roster_member_or",
+  "canonical_operation_roster_member_sub",
+  "canonical_operation_type_atom",
+  "canonical_tag_arrow",
+  "canonical_tag_atom",
+  "canonical_tag_bind",
+  "canonical_tag_branch",
+  "canonical_tag_byte_limb_out_of_range",
+  "canonical_tag_byte_offset_byte",
+  "canonical_tag_byte_offset_cache_digest_ineligible",
+  "canonical_tag_byte_offset_cache_key_eligible",
+  "canonical_tag_byte_offset_cache_key_ineligible",
+  "canonical_tag_byte_offset_neg",
+  "canonical_tag_byte_offset_out_of_ceiling",
+  "canonical_tag_byte_offset_overflow_peel_exhausted",
+  "canonical_tag_byte_offset_overflow_residual_discarded_high_band",
+  "canonical_tag_byte_offset_overflow_residual_discarded_high_truncated",
+  "canonical_tag_byte_offset_overflow_residual_discarded_high_zero",
+  "canonical_tag_byte_offset_overflow_residual_unrepresentable",
+  "canonical_tag_byte_offset_residual_quotient_limb_pair",
+  "canonical_tag_byte_offset_residual_quotient_magnitude",
+  "canonical_tag_byte_offset_zero",
+  "canonical_tag_computation_node",
+  "canonical_tag_conj",
+  "canonical_tag_core_marker_edge",
+  "canonical_tag_disj",
+  "canonical_tag_instantiation",
+  "canonical_tag_loop",
+  "canonical_tag_match",
+  "canonical_tag_named_edge",
+  "canonical_tag_positional_edge",
+  "canonical_tag_production_edge",
+  "canonical_tag_scalar_int_one",
+  "canonical_tag_scalar_int_succ",
+  "canonical_tag_scalar_int_zero",
+  "canonical_tag_transform",
+  "canonical_tag_type_node",
+  "canonical_tag_value",
+  "cardinality_measure_shape_unknown",
+  "cardinality_structural_node_size",
+  "char_kernel_type_atom",
+  "claim_empty_path",
+  "claim_int_literal_refused",
+  "claim_supplied_call",
+  "claim_supplied_projection",
+  "claim_supplied_site",
+  "coercion_cast_target_singleton_closed",
+  "coercion_homomorphism_evidence_candidate",
+  "coercion_homomorphism_evidence_find_witness",
+  "coercion_homomorphism_evidence_source",
+  "coercion_property_candidate_set_closedness",
+  "coercion_property_closed_candidate_set",
+  "collection_concat_shape",
+  "collection_filter_shape",
+  "collection_roster_carrier",
+  "collection_roster_element",
+  "commutative_monoid_field_monoid",
+  "commutative_ring_field_ring",
+  "commutative_semiring_field_semiring",
+  "concrete_syntax_token_field_binding",
+  "concrete_syntax_token_field_class",
+  "concrete_syntax_token_field_kind",
+  "concrete_syntax_token_kind_bound",
+  "concrete_syntax_token_kind_fixed",
+  "conditional_closed_by_token",
+  "conditional_self_delimiting",
+  "cons",
+  "constraint_property_being_canonical",
+  "constraint_property_candidate_set_closedness",
+  "coproduct_nullary_payload",
+  "coproduct_unresolved_payload",
+  "core_admit_callers_edge",
+  "core_arrow_effect_claims_edge",
+  "core_arrow_execution_mode_claim_edge",
+  "core_arrow_resource_requirements_edge",
+  "core_binder_default_edge",
+  "core_binder_structure_edge",
+  "core_binder_type_edge",
+  "core_body_term_lowered_edge",
+  "core_cast_target_edge",
+  "core_constant_member_edge",
+  "core_construct_tag_edge",
+  "core_construct_tag_elided_edge",
+  "core_declaration_reference_edge",
+  "core_field_projection_base_edge",
+  "core_field_projection_field_edge",
+  "core_lexical_reference_edge",
+  "core_map_literal_entries_edge",
+  "core_map_literal_entry_edge",
+  "core_match_arm_scope_exit_edge",
+  "core_parameter_reference_edge",
+  "core_type_alias_edge",
+  "core_type_annotation_edge",
+  "core_type_body_edge",
+  "core_type_params_edge",
+  "d",
+  "dag_bind_source_literal",
+  "dag_binding_bind_x",
+  "dag_binding_field_variant_value",
+  "dag_binding_fn_add",
+  "dag_binding_fn_get",
+  "dag_binding_fn_mk",
+  "dag_binding_fn_one",
+  "dag_binding_fn_one_or_two",
+  "dag_binding_param_a",
+  "dag_binding_param_b",
+  "dag_binding_param_r",
+  "dag_binding_param_x",
+  "dag_binding_param_y",
+  "dag_binding_pick_lit_",
+  "dag_binding_pick_lit_one",
+  "dag_binding_pick_lit_two",
+  "dag_binding_rec_lit_nine",
+  "dag_binding_rec_v",
+  "dag_binding_type_bool",
+  "dag_binding_type_int",
+  "dag_binding_type_rec",
+  "dag_binding_type_variant_holds",
+  "dag_binding_type_variant_true",
+  "dag_c3_surface_sugar_",
+  "dag_coercion_field_int_inhabitant_atom",
+  "dag_coercion_field_int_surface_spelling",
+  "dag_fidelity_disposition_field_feature",
+  "dag_fidelity_disposition_kind_declared_normalized",
+  "dag_fidelity_disposition_kind_fail_closed",
+  "dag_fidelity_disposition_kind_modeled",
+  "dag_fidelity_quotient_field_block_comment",
+  "dag_fidelity_quotient_field_line_comment",
+  "dag_fidelity_quotient_field_whitespace",
+  "dag_field_access_source_literal",
+  "dag_free_monoid_row_element",
+  "dag_grammar_surface_production_type_atom",
+  "dag_inhabitant_field_add_fn",
+  "dag_inhabitant_field_atom",
+  "dag_inhabitant_field_bind_fn",
+  "dag_inhabitant_field_int",
+  "dag_inhabitant_field_loop_fn",
+  "dag_inhabitant_field_pick_fn",
+  "dag_inhabitant_int",
+  "dag_int_literal_decode_port",
+  "dag_language_model_surface_id",
+  "dag_lex_mode_template_brace",
+  "dag_lex_mode_template_hole",
+  "dag_loop_measure_sym",
+  "dag_loop_source_literal",
+  "dag_match_source_literal",
+  "dag_pick_lit_",
+  "dag_pick_lit_one",
+  "dag_pick_lit_two",
+  "dag_pick_source_literal",
+  "dag_production_admit_callers_clause",
+  "dag_production_alias_decl",
+  "dag_production_arg",
+  "dag_production_arrow_lambda",
+  "dag_production_binary_expr",
+  "dag_production_block_expr",
+  "dag_production_capability",
+  "dag_production_data_decl",
+  "dag_production_default_value",
+  "dag_production_empty_block_body",
+  "dag_production_exit_block",
+  "dag_production_expr",
+  "dag_production_field_decl_block",
+  "dag_production_field_init",
+  "dag_production_field_init_pun",
+  "dag_production_field_init_string_key",
+  "dag_production_field_pattern",
+  "dag_production_fn_add",
+  "dag_production_fn_bind",
+  "dag_production_fn_body",
+  "dag_production_fn_decl",
+  "dag_production_fn_field_access",
+  "dag_production_fn_literal",
+  "dag_production_fn_loop",
+  "dag_production_fn_match",
+  "dag_production_fn_pick",
+  "dag_production_fn_rec",
+  "dag_production_fn_type",
+  "dag_production_generic_params",
+  "dag_production_if_expr",
+  "dag_production_import_block",
+  "dag_production_import_decl",
+  "dag_production_input_block",
+  "dag_production_lambda_let_stmt",
+  "dag_production_lambda_stmt_body",
+  "dag_production_let_expr",
+  "dag_production_loop_expr",
+  "dag_production_match_arm",
+  "dag_production_match_arm_stmt_body",
+  "dag_production_match_expr",
+  "dag_production_mock_reading_entry",
+  "dag_production_mock_response_block",
+  "dag_production_module",
+  "dag_production_module_header",
+  "dag_production_none_literal",
+  "dag_production_op_modifier",
+  "dag_production_op_modifier_hermetic",
+  "dag_production_op_modifier_idempotent",
+  "dag_production_op_modifier_readonly",
+  "dag_production_op_requires",
+  "dag_production_op_requires_none",
+  "dag_production_op_requires_opaque",
+  "dag_production_operation",
+  "dag_production_operation_body_entry",
+  "dag_production_output_block",
+  "dag_production_param_list",
+  "dag_production_pattern",
+  "dag_production_positional_variant_payload",
+  "dag_production_postfix_expr",
+  "dag_production_primary_expr",
+  "dag_production_qualified_name",
+  "dag_production_resource_acquire",
+  "dag_production_resource_body_entry",
+  "dag_production_resource_decl",
+  "dag_production_resource_expires",
+  "dag_production_resource_kind",
+  "dag_production_resource_mode",
+  "dag_production_resource_release",
+  "dag_production_response_block",
+  "dag_production_service_body_entry",
+  "dag_production_service_config",
+  "dag_production_service_config_field",
+  "dag_production_service_config_field_name_auth",
+  "dag_production_service_config_field_name_auth_input",
+  "dag_production_service_config_field_name_auth_source",
+  "dag_production_service_config_field_name_endpoint",
+  "dag_production_service_config_field_name_rate_limit",
+  "dag_production_service_decl",
+  "dag_production_status_expr_entry",
+  "dag_production_status_pattern",
+  "dag_production_status_pattern_class",
+  "dag_production_status_pattern_code",
+  "dag_production_status_pattern_name",
+  "dag_production_status_type_entry",
+  "dag_production_stmt",
+  "dag_production_stmt_seq",
+  "dag_production_string_template",
+  "dag_production_test_fn_decl",
+  "dag_production_top_level_item",
+  "dag_production_transport",
+  "dag_production_transport_kind_file",
+  "dag_production_transport_kind_local",
+  "dag_production_transport_kind_rest",
+  "dag_production_transport_kind_shell",
+  "dag_production_type_alias_rhs",
+  "dag_production_type_alias_rhs_lead",
+  "dag_production_type_decl",
+  "dag_production_type_expr",
+  "dag_production_type_variant",
+  "dag_production_unary_expr",
+  "dag_production_uses_clause",
+  "dag_production_uses_entry",
+  "dag_production_where_predicate",
+  "dag_production_where_refinement_clause",
+  "dag_rec_lit_nine",
+  "dag_rec_source_literal",
+  "dag_relation_rule_fn_add",
+  "dag_relation_rule_fn_bind",
+  "dag_relation_rule_fn_field_access",
+  "dag_relation_rule_fn_loop",
+  "dag_relation_rule_fn_match",
+  "dag_relation_rule_fn_pick",
+  "dag_relation_rule_fn_rec",
+  "dag_round_trip_axis_not_ready",
+  "dag_round_trip_axis_ready",
+  "dag_string_template",
+  "dag_surface_admit_callers_clause",
+  "dag_surface_alias_decl",
+  "dag_surface_alias_decl_binding",
+  "dag_surface_alias_decl_target",
+  "dag_surface_arg",
+  "dag_surface_arrow_lambda",
+  "dag_surface_binary_expr",
+  "dag_surface_block_expr",
+  "dag_surface_capability",
+  "dag_surface_data_decl",
+  "dag_surface_data_decl_expr",
+  "dag_surface_data_decl_name",
+  "dag_surface_data_decl_type",
+  "dag_surface_default_value",
+  "dag_surface_empty_block_body",
+  "dag_surface_exit_block",
+  "dag_surface_expr",
+  "dag_surface_field_decl_block",
+  "dag_surface_field_init",
+  "dag_surface_field_init_pun",
+  "dag_surface_field_init_string_key",
+  "dag_surface_field_pattern",
+  "dag_surface_fn_body",
+  "dag_surface_fn_decl",
+  "dag_surface_fn_literal",
+  "dag_surface_fn_type",
+  "dag_surface_fold_iteration_measure",
+  "dag_surface_generic_params",
+  "dag_surface_if_expr",
+  "dag_surface_import_block",
+  "dag_surface_import_decl",
+  "dag_surface_import_decl_block",
+  "dag_surface_import_decl_qualified_name",
+  "dag_surface_input_block",
+  "dag_surface_lambda_let_stmt",
+  "dag_surface_lambda_stmt_body",
+  "dag_surface_let_expr",
+  "dag_surface_loop_expr",
+  "dag_surface_match_arm",
+  "dag_surface_match_arm_stmt_body",
+  "dag_surface_match_expr",
+  "dag_surface_mock_reading_entry",
+  "dag_surface_mock_response_block",
+  "dag_surface_module",
+  "dag_surface_module_header",
+  "dag_surface_module_header_qualified_name",
+  "dag_surface_none_literal",
+  "dag_surface_op_modifier",
+  "dag_surface_op_modifier_hermetic",
+  "dag_surface_op_modifier_idempotent",
+  "dag_surface_op_modifier_readonly",
+  "dag_surface_op_requires",
+  "dag_surface_op_requires_none",
+  "dag_surface_op_requires_opaque",
+  "dag_surface_operation",
+  "dag_surface_operation_body_entry",
+  "dag_surface_operator_canonicalization_port",
+  "dag_surface_output_block",
+  "dag_surface_param_list",
+  "dag_surface_pattern",
+  "dag_surface_positional_variant_payload",
+  "dag_surface_postfix_expr",
+  "dag_surface_primary_expr",
+  "dag_surface_qualified_name",
+  "dag_surface_resource_acquire",
+  "dag_surface_resource_body_entry",
+  "dag_surface_resource_decl",
+  "dag_surface_resource_expires",
+  "dag_surface_resource_kind",
+  "dag_surface_resource_mode",
+  "dag_surface_resource_release",
+  "dag_surface_response_block",
+  "dag_surface_service_body_entry",
+  "dag_surface_service_config",
+  "dag_surface_service_config_field",
+  "dag_surface_service_config_field_name_auth",
+  "dag_surface_service_config_field_name_auth_input",
+  "dag_surface_service_config_field_name_auth_source",
+  "dag_surface_service_config_field_name_endpoint",
+  "dag_surface_service_config_field_name_rate_limit",
+  "dag_surface_service_decl",
+  "dag_surface_spelling_int",
+  "dag_surface_status_expr_entry",
+  "dag_surface_status_pattern",
+  "dag_surface_status_pattern_class",
+  "dag_surface_status_pattern_code",
+  "dag_surface_status_pattern_name",
+  "dag_surface_status_type_entry",
+  "dag_surface_stmt",
+  "dag_surface_stmt_seq",
+  "dag_surface_test_fn_decl",
+  "dag_surface_top_level_item",
+  "dag_surface_transport",
+  "dag_surface_transport_kind_file",
+  "dag_surface_transport_kind_local",
+  "dag_surface_transport_kind_rest",
+  "dag_surface_transport_kind_shell",
+  "dag_surface_type_alias_rhs",
+  "dag_surface_type_alias_rhs_lead",
+  "dag_surface_type_decl",
+  "dag_surface_type_expr",
+  "dag_surface_type_variant",
+  "dag_surface_unary_expr",
+  "dag_surface_uses_clause",
+  "dag_surface_uses_entry",
+  "dag_surface_where_predicate",
+  "dag_surface_where_refinement_clause",
+  "dag_token_and_and",
+  "dag_token_arrow",
+  "dag_token_bang",
+  "dag_token_caret",
+  "dag_token_colon",
+  "dag_token_comma",
+  "dag_token_dot",
+  "dag_token_eq",
+  "dag_token_eq_eq",
+  "dag_token_fat_arrow",
+  "dag_token_float_literal",
+  "dag_token_gt",
+  "dag_token_gte",
+  "dag_token_ident",
+  "dag_token_int_literal",
+  "dag_token_kw_alias",
+  "dag_token_kw_as",
+  "dag_token_kw_data",
+  "dag_token_kw_else",
+  "dag_token_kw_false",
+  "dag_token_kw_fn",
+  "dag_token_kw_if",
+  "dag_token_kw_import",
+  "dag_token_kw_in",
+  "dag_token_kw_is",
+  "dag_token_kw_let",
+  "dag_token_kw_loop",
+  "dag_token_kw_match",
+  "dag_token_kw_module",
+  "dag_token_kw_nominal_opaque",
+  "dag_token_kw_return",
+  "dag_token_kw_sole_constructor",
+  "dag_token_kw_then",
+  "dag_token_kw_true",
+  "dag_token_kw_type",
+  "dag_token_kw_where",
+  "dag_token_lbrace",
+  "dag_token_lbracket",
+  "dag_token_lparen",
+  "dag_token_lt",
+  "dag_token_lte",
+  "dag_token_match_scrutinee_nop",
+  "dag_token_minus",
+  "dag_token_neq",
+  "dag_token_or_or",
+  "dag_token_percent",
+  "dag_token_pipe",
+  "dag_token_pipe_gt",
+  "dag_token_plus",
+  "dag_token_question",
+  "dag_token_rbrace",
+  "dag_token_rbracket",
+  "dag_token_rparen",
+  "dag_token_slash",
+  "dag_token_star",
+  "dag_token_string_literal",
+  "dag_token_string_template_head",
+  "dag_token_string_template_middle",
+  "dag_token_string_template_tail",
+  "dag_trivia_feature_block_comment",
+  "dag_trivia_feature_line_comment",
+  "dag_trivia_feature_whitespace",
+  "decl_name",
+  "decl_ref",
+  "declared_return",
+  "element",
+  "emit_host_runtime_row_lookup_port",
+  "emit_host_runtime_row_parse_port",
+  "empty",
+  "entries",
+  "equality_predicate_is_equal",
+  "equality_predicate_is_not_equal",
+  "equality_predicate_type_atom",
+  "equivalence_field_eq",
+  "eval_rejected_parameter_reference_unbound",
+  "eval_rejected_runtime_binding_lookup_miss",
+  "exit",
+  "f",
+  "facts_field_std_projection",
+  "field_field_commutative_ring",
+  "field_field_reciprocal",
+  "field_reciprocal_nonzero_precondition",
+  "float_literal_lexeme_field",
+  "fn",
+  "fold",
+  "fold_accumulator_unread",
+  "fold_carrier",
+  "fold_elements",
+  "fold_list",
+  "fold_list_node_head",
+  "fold_list_node_tail",
+  "fold_list_right",
+  "fold_node",
+  "fold_template",
+  "formal_nonterminal_identity_node_projection",
+  "formal_production_lhs_node_projection",
+  "formal_production_rhs_node_projection",
+  "formal_symbol_nested_nonterminal_node_projection",
+  "formal_symbol_nested_unit_node_projection",
+  "formal_symbol_nonterminal_node_projection",
+  "formal_symbol_terminal_node_projection",
+  "formal_terminal_identity_node_projection",
+  "formal_terminal_occurrence_binding_node_projection",
+  "fraction_digits",
+  "free_monoid_field_concat",
+  "free_monoid_field_head",
+  "free_monoid_field_tail",
+  "free_monoid_structure_field_generator",
+  "free_monoid_structure_field_monoid",
+  "free_monoid_type_fixpoint",
+  "free_monoid_variant_cons",
+  "free_monoid_variant_empty",
+  "freemonoid_empty",
+  "from",
+  "grammar_after_line_break_element_node_projection",
+  "grammar_choice_left_node_projection",
+  "grammar_choice_right_node_projection",
+  "grammar_enumeration_deferred_4766",
+  "grammar_expect_element_node_projection",
+  "grammar_expect_reason_node_projection",
+  "grammar_free_name_slot",
+  "grammar_infix_associativity_node_projection",
+  "grammar_infix_binding_power_node_projection",
+  "grammar_infix_left_associative",
+  "grammar_infix_left_node_projection",
+  "grammar_infix_non_associative",
+  "grammar_infix_operator_node_projection",
+  "grammar_infix_right_node_projection",
+  "grammar_infix_table_guard_node_projection",
+  "grammar_infix_table_operand_node_projection",
+  "grammar_infix_table_operators_node_projection",
+  "grammar_lexeme_stamp_slot",
+  "grammar_nested_block_tokens",
+  "grammar_nested_block_unit",
+  "grammar_nonterminal_production_node_projection",
+  "grammar_not_predicate_element_node_projection",
+  "grammar_optional_element_node_projection",
+  "grammar_production_captured_node_projection",
+  "grammar_production_emitted_node_projection",
+  "grammar_production_expression_node_projection",
+  "grammar_production_identity_node_projection",
+  "grammar_production_name_node_projection",
+  "grammar_refuse_on_match_element_node_projection",
+  "grammar_refuse_on_match_reason_node_projection",
+  "grammar_relation_field_bodied_scaffold",
+  "grammar_relation_field_emitted",
+  "grammar_relation_field_production",
+  "grammar_relation_field_tokens",
+  "grammar_relation_rules_formal_productions",
+  "grammar_repeat_element_node_projection",
+  "grammar_root_productions_node_projection",
+  "grammar_root_start_production_node_projection",
+  "grammar_selection_predicate_backward_lhs_shape",
+  "grammar_selection_predicate_forward_rhs_frontier",
+  "grammar_sequence_left_node_projection",
+  "grammar_sequence_right_node_projection",
+  "grammar_terminal_binding_node_projection",
+  "grammar_terminal_literal_lexeme_node_projection",
+  "grammar_terminal_stamp_lexeme",
+  "grammar_terminal_stamp_lexeme_node_projection",
+  "grammar_terminal_token_class_node_projection",
+  "group_field_inverse",
+  "group_field_monoid",
+  "head",
+  "homomorphism_rule_exact_structural_equality",
+  "homomorphism_rule_refinement_declared_carrier",
+  "homomorphism_rule_refinement_widening",
+  "iaai_host_cu",
+  "iaai_host_read",
+  "iaai_optional_cu",
+  "iaai_optional_read",
+  "index",
+  "infer_gather_fold_failure",
+  "infer_reason_bound_value_does_not_inhabit_annotation",
+  "infer_reason_default_does_not_inhabit_binder_type",
+  "infer_reason_literal_homomorphism_duplicated",
+  "infer_reason_match_arms_do_not_cover_scrutinee",
+  "inhabitance_bound_value",
+  "inhabitance_declared_singleton_closed",
+  "inhabitance_default_value",
+  "inhabitance_field_a",
+  "inhabitance_optional_layer_depth_mismatch",
+  "inhabitance_optional_layer_wrapper_malformed",
+  "inhabitance_param_opt",
+  "inhabitance_param_t",
+  "inhabitance_param_x",
+  "inhabitance_produced_type",
+  "inhabitance_record",
+  "inhabitance_scrutinee",
+  "inhabitance_takes_int",
+  "inhabitance_type_list",
+  "inhabitance_type_param_t",
+  "inhabitance_undecidable_where_predicate_subject_unmodelled",
+  "inhabitant_edge",
+  "init",
+  "integer_bound_field_endpoint",
+  "integer_bound_field_kind",
+  "integer_bound_field_magnitude",
+  "integer_bound_field_sign",
+  "integer_bound_field_signedness",
+  "integer_division_port",
+  "integer_interval_field_inclusive_max",
+  "integer_interval_field_inclusive_min",
+  "integer_literal_magnitude_field",
+  "integer_modulo_port",
+  "integer_signed_i32_le_decode_invalid",
+  "integer_tag_bound_concrete",
+  "integer_tag_bound_negative",
+  "integer_tag_bound_nonnegative",
+  "integer_tag_bound_pointer_width",
+  "integer_tag_bound_zero",
+  "integer_tag_digit_0",
+  "integer_tag_digit_1",
+  "integer_tag_digit_2",
+  "integer_tag_digit_3",
+  "integer_tag_digit_4",
+  "integer_tag_digit_5",
+  "integer_tag_digit_6",
+  "integer_tag_digit_7",
+  "integer_tag_digit_8",
+  "integer_tag_digit_9",
+  "integer_tag_range_inclusive_max",
+  "integer_tag_range_inclusive_min",
+  "integer_tag_signed",
+  "integer_tag_unsigned",
+  "integer_type_decimal_digit",
+  "integer_type_decimal_digits",
+  "integer_value_set_field_interval",
+  "integer_value_set_field_kind",
+  "integer_value_set_kind_interval",
+  "integer_value_set_kind_unbounded",
+  "key",
+  "kind_type_denotation",
+  "kind_type_fact",
+  "language_model_field_canonical_symbols",
+  "language_model_field_core",
+  "language_model_field_grammar",
+  "language_model_field_language_identity",
+  "language_model_field_lex",
+  "lattice_field_join",
+  "lattice_field_meet",
+  "let_annotation",
+  "lex_void_lex_rules_evidence",
+  "line_comment",
+  "list_append",
+  "list_at_optional",
+  "list_flat_map",
+  "list_map",
+  "list_reverse",
+  "list_snoc_item",
+  "loop_bound_edge",
+  "loop_carrier_edge",
+  "loop_domain_edge",
+  "loop_realized_declaration_edge",
+  "m",
+  "magma_field_op",
+  "map_from_entries",
+  "match_arm",
+  "match_arm_body",
+  "match_arm_pattern",
+  "migrate_when_general_body_producer_lands",
+  "mock_response",
+  "model_core_law_field_algebra",
+  "model_core_law_field_kind",
+  "model_core_law_field_subject",
+  "module_path",
+  "monoid_field_identity",
+  "monoid_field_semigroup",
+  "n",
+  "name",
+  "namespace_graft_module_body",
+  "oar_alias_bad_cu",
+  "oar_alias_bad_read",
+  "oar_alias_ok_cu",
+  "oar_alias_ok_read",
+  "oar_arrow_arg_bad_cu",
+  "oar_arrow_arg_bad_read",
+  "oar_arrow_arg_ok_cu",
+  "oar_arrow_arg_ok_read",
+  "oar_arrow_domain_bad_cu",
+  "oar_arrow_domain_bad_read",
+  "oar_arrow_lambda_ok_cu",
+  "oar_arrow_lambda_ok_read",
+  "oar_arrow_named_ok_cu",
+  "oar_arrow_named_ok_read",
+  "oar_arrow_named_x_cu",
+  "oar_arrow_named_x_read",
+  "oar_arrow_nullary_cu",
+  "oar_arrow_nullary_read",
+  "oar_arrow_return_bad_cu",
+  "oar_arrow_return_bad_read",
+  "oar_call",
+  "oar_field_bad_cu",
+  "oar_field_bad_read",
+  "oar_field_bool_cu",
+  "oar_field_bool_read",
+  "oar_field_ok_cu",
+  "oar_field_ok_read",
+  "oar_lift_cu",
+  "oar_lift_read",
+  "oar_mk",
+  "oar_optional_cu",
+  "oar_optional_read",
+  "oar_return_bad_cu",
+  "oar_return_bad_read",
+  "oar_type_param_t",
+  "operation_input",
+  "optional_present_witness_port",
+  "ordered_ring_field_compare",
+  "ordered_ring_field_ring",
+  "ordering_predicate_is_greater",
+  "ordering_predicate_is_greater_or_equal",
+  "ordering_predicate_is_less",
+  "ordering_predicate_is_less_or_equal",
+  "ordering_predicate_type_atom",
+  "ordering_variant_equal",
+  "ordering_variant_greater",
+  "ordering_variant_less",
+  "parse_data_value_missing_after_eq",
+  "parse_declaration_marker_not_test",
+  "parse_fn_expression_body_missing_after_eq",
+  "parse_keyword_as_path_segment",
+  "parse_keyword_as_value_name",
+  "parse_layout_unknown_without_source",
+  "parse_let_in_expression_dropped",
+  "parse_newline_before_dual_role_operator",
+  "parse_non_associative_operator_chain",
+  "parse_refusal_without_a_token",
+  "parse_stage_locus_port",
+  "parse_stage_producer",
+  "parse_token_starts_not_increasing",
+  "parse_tokens_remain_reported_without_a_first_token",
+  "per_language_fact_bundle_insert_port",
+  "position_binder_default",
+  "position_declared_return",
+  "position_direct_call_argument",
+  "position_let_annotation",
+  "position_match_coverage",
+  "position_record_field",
+  "predicate",
+  "preservation_rule_constraint_satisfaction",
+  "preservation_rule_exact_structural_equality_zip_fold",
+  "preservation_rule_project_to_core",
+  "preservation_rule_refinement_widening",
+  "produced_decl_function_type",
+  "python_atom_realization_symbol",
+  "python_binding_fn_add",
+  "python_binding_param_x",
+  "python_binding_param_y",
+  "python_coercion_field_int_encoding",
+  "python_coercion_field_int_facts",
+  "python_coercion_field_int_inhabitant_atom",
+  "python_coercion_field_int_spelling",
+  "python_coercion_field_int_std_projection",
+  "python_emit_host_runtime_primitive_symbol",
+  "python_facts_field_component_machine_representation",
+  "python_facts_field_encoding",
+  "python_facts_field_machine_representation",
+  "python_facts_field_singleton_kind",
+  "python_facts_field_surface_spelling",
+  "python_formal_epsilon_shim_terminal",
+  "python_host_transport_identity",
+  "python_inhabitant_field_add_fn",
+  "python_inhabitant_field_atom",
+  "python_inhabitant_field_facts",
+  "python_inhabitant_field_float",
+  "python_inhabitant_field_int",
+  "python_inhabitant_float",
+  "python_inhabitant_int",
+  "python_language_model_surface_id",
+  "python_production_additive",
+  "python_production_additive_tail",
+  "python_production_assign_stmt",
+  "python_production_comparison",
+  "python_production_comparison_tail",
+  "python_production_fn_add",
+  "python_production_fn_def",
+  "python_production_if_stmt",
+  "python_production_primary",
+  "python_production_return_stmt",
+  "python_production_stmt",
+  "python_production_suite",
+  "python_relation_rule_fn_add",
+  "python_repr_bool_int_subtype",
+  "python_repr_complex_pair_machine_double_precision",
+  "python_repr_float_machine_double_precision",
+  "python_repr_int_arbitrary_precision",
+  "python_repr_singleton_sole_inhabitant",
+  "python_source_literal",
+  "python_std_projection_bool",
+  "python_std_projection_complex",
+  "python_std_projection_ellipsis",
+  "python_std_projection_float",
+  "python_std_projection_none",
+  "python_std_projection_notimplemented",
+  "python_surface_additive",
+  "python_surface_additive_tail",
+  "python_surface_assign_stmt",
+  "python_surface_comparison",
+  "python_surface_comparison_tail",
+  "python_surface_fn_item",
+  "python_surface_if_stmt",
+  "python_surface_primary",
+  "python_surface_return_stmt",
+  "python_surface_spelling_bool",
+  "python_surface_spelling_complex",
+  "python_surface_spelling_ellipsis",
+  "python_surface_spelling_float",
+  "python_surface_spelling_int",
+  "python_surface_spelling_none",
+  "python_surface_spelling_notimplemented",
+  "python_surface_stmt",
+  "python_surface_suite",
+  "python_token_colon",
+  "python_token_colon_if_suite_indent",
+  "python_token_comma",
+  "python_token_equal",
+  "python_token_greater",
+  "python_token_ident",
+  "python_token_int_literal",
+  "python_token_kw_def",
+  "python_token_kw_if",
+  "python_token_kw_return",
+  "python_token_lparen",
+  "python_token_newline_if_stmt",
+  "python_token_newline_return_inner",
+  "python_token_newline_return_outer",
+  "python_token_plus",
+  "python_token_rparen",
+  "python_token_rparen_suite_indent",
+  "python_witness_bool_boolean_algebra",
+  "python_witness_float_approximate_field",
+  "python_witness_int_ordered_ring_arbitrary_precision",
+  "q",
+  "rcf_alias_wrong_cu",
+  "rcf_alias_wrong_read",
+  "rcf_bad_cu",
+  "rcf_bad_read",
+  "rcf_bool_field_cu",
+  "rcf_bool_field_read",
+  "rcf_far_missing_cu",
+  "rcf_far_missing_read",
+  "rcf_far_value_cu",
+  "rcf_far_value_read",
+  "rcf_fs_box",
+  "rcf_fs_color_cu",
+  "rcf_fs_color_read",
+  "rcf_fs_conflict_cu",
+  "rcf_fs_conflict_read",
+  "rcf_fs_cons",
+  "rcf_fs_let_cu",
+  "rcf_fs_let_read",
+  "rcf_fs_list_cu",
+  "rcf_fs_list_read",
+  "rcf_fs_make",
+  "rcf_fs_position_cu",
+  "rcf_fs_position_read",
+  "rcf_fs_return_cu",
+  "rcf_fs_return_mismatch_cu",
+  "rcf_fs_return_mismatch_read",
+  "rcf_fs_return_read",
+  "rcf_generic_bad_cu",
+  "rcf_generic_bad_read",
+  "rcf_generic_good_cu",
+  "rcf_generic_good_read",
+  "rcf_good_cu",
+  "rcf_good_read",
+  "rcf_missing_cu",
+  "rcf_missing_read",
+  "rcf_nested_good_cu",
+  "rcf_nested_good_read",
+  "rcf_other_cu",
+  "rcf_other_read",
+  "rcf_pattern_cu",
+  "rcf_pattern_read",
+  "rcf_provider_cu",
+  "rcf_provider_read",
+  "rcf_unknown_cu",
+  "rcf_unknown_read",
+  "record_construct_field_bound_twice",
+  "record_literal_type_naming_omit",
+  "record_literal_type_naming_prepend",
+  "refinement_value_set_unknown",
+  "refinement_widening_field_candidate",
+  "refinement_widening_field_candidate_value_set",
+  "refinement_widening_field_source",
+  "refinement_widening_field_source_facts",
+  "refinement_widening_field_source_value_set",
+  "requirements_declared_none",
+  "requirements_opaque",
+  "resolve_diagnostic_port",
+  "resolve_reason_generated_reference_declaration_absent",
+  "response",
+  "ring_field_add",
+  "ring_field_mul",
+  "runtime_aggregate_fields_node_projection",
+  "runtime_aggregate_type_node_projection",
+  "runtime_bit_false_tag",
+  "runtime_bit_true_tag",
+  "runtime_byte_bits_node_projection",
+  "runtime_closure_equality_unavailable",
+  "runtime_field_value_field_node_projection",
+  "runtime_field_value_value_node_projection",
+  "runtime_match_unimplemented",
+  "runtime_primitive_bytes_node_projection",
+  "runtime_primitive_type_node_projection",
+  "runtime_value_structural_projection_unavailable",
+  "s",
+  "semigroup_field_magma",
+  "semiring_field_add",
+  "semiring_field_mul",
+  "service",
+  "snoc",
+  "sole_constructor",
+  "source_authority_port",
+  "span_index_lookup_port",
+  "std",
+  "std_projection_additive_numeric",
+  "string_literal_value_field",
+  "string_node_symbol",
+  "symbol_kernel_type_atom",
+  "symbol_literal_name_field",
+  "symbol_node_symbol",
+  "tail",
+  "target_atom_realization_field_constructor_form",
+  "target_atom_realization_field_display_name",
+  "target_atom_realization_field_source_carrier",
+  "target_atom_realization_field_target_model_bundle",
+  "target_atom_realization_field_type_form",
+  "target_atom_realization_field_value_form",
+  "target_bind_let_no_separator",
+  "target_bodied_arrow_scaffold_field_prefix",
+  "target_bodied_arrow_scaffold_field_suffix",
+  "target_canonical_operation_field_algebra_field",
+  "target_canonical_operation_field_binary_field",
+  "target_canonical_operation_field_compare_field",
+  "target_canonical_operation_field_eq_field",
+  "target_canonical_operation_field_homomorphism_rule",
+  "target_canonical_operation_field_inverse_field",
+  "target_canonical_operation_field_predicate",
+  "target_capability_eligibility_field_capability",
+  "target_capability_eligibility_field_kernel_atoms",
+  "target_carrier_algebra_inhabitance_decl",
+  "target_carrier_diagnostics",
+  "target_carrier_free_monoid",
+  "target_carrier_model_core",
+  "target_carrier_node",
+  "target_carrier_outcome",
+  "target_carrier_probe_heap",
+  "target_carrier_test_claim",
+  "target_carrier_use_site_verdict",
+  "target_collection_choice_field_representation_parameters",
+  "target_collection_choice_field_supplemental_generic_bound_contracts",
+  "target_collection_free_monoid_no_representation_port",
+  "target_collection_repr_field_apply",
+  "target_collection_repr_field_kind",
+  "target_collection_set_carrier",
+  "target_collection_set_no_representation_port",
+  "target_collection_witness_field_trait_name",
+  "target_collection_witness_field_type_param",
+  "target_constructor_template_constructor_absent",
+  "target_constructor_template_optional_absent",
+  "target_derive_supplemental_generic_bound_contract_field_authority",
+  "target_derive_supplemental_generic_bound_contract_field_derive_trait",
+  "target_derive_supplemental_generic_bound_contract_field_requirements",
+  "target_derive_supplemental_generic_bound_requirement_field_authority",
+  "target_derive_supplemental_generic_bound_requirement_field_representation_parameter",
+  "target_derive_supplemental_generic_bound_requirement_field_required_trait",
+  "target_external_authority_field_uri_locator",
+  "target_external_authority_field_uri_scheme",
+  "target_function_signature_realization_field_boundary_site",
+  "target_function_signature_realization_field_signature_type_form",
+  "target_function_signature_realization_field_source_carrier",
+  "target_function_signature_realization_field_target_model_bundle",
+  "target_import_render_port",
+  "target_model_edge_atom_realizations",
+  "target_model_edge_declared_inhabitants",
+  "target_model_edge_fidelity_quotient",
+  "target_model_edge_module_import_projection",
+  "target_model_edge_operator_realizations",
+  "target_model_edge_reference_layer_tokens",
+  "target_model_edge_refinement_declaration",
+  "target_model_edge_selection_policy",
+  "target_model_edge_signature_realizations",
+  "target_model_edge_translation_rules",
+  "target_model_edge_type_expression_projection",
+  "target_model_edge_use_site_ownership_realizations",
+  "target_model_edge_value_expression_projection",
+  "target_model_edge_value_semantics_carriers",
+  "target_module_import_field_from_token",
+  "target_module_import_field_import_token",
+  "target_module_import_field_name_ident_token",
+  "target_module_import_field_names_close",
+  "target_module_import_field_names_open",
+  "target_module_import_field_names_separator",
+  "target_module_import_field_path_close",
+  "target_module_import_field_path_open",
+  "target_module_import_field_path_segment_separator",
+  "target_module_import_field_path_segment_token",
+  "target_module_import_field_terminator",
+  "target_operator_realization_field_operation",
+  "target_operator_realization_field_shape",
+  "target_operator_realization_row_edge",
+  "target_operator_shape_field_token",
+  "target_reference_layer_tokens_field_box_head",
+  "target_reference_layer_tokens_field_box_new",
+  "target_reference_layer_tokens_field_rc_head",
+  "target_reference_layer_tokens_field_rc_new",
+  "target_type_expr_discipline_labeled",
+  "target_type_expr_discipline_no_edges",
+  "target_type_expr_discipline_positional",
+  "target_type_expr_discipline_positional_prefix_then_labeled",
+  "target_type_expr_field_arrow",
+  "target_type_expr_field_atom",
+  "target_type_expr_field_child_slot_discipline",
+  "target_type_expr_field_close",
+  "target_type_expr_field_codomain",
+  "target_type_expr_field_conj",
+  "target_type_expr_field_declaration_reference",
+  "target_type_expr_field_disj",
+  "target_type_expr_field_field_label_separator",
+  "target_type_expr_field_ident_token",
+  "target_type_expr_field_instantiation",
+  "target_type_expr_field_kind",
+  "target_type_expr_field_open",
+  "target_type_expr_field_optional_head",
+  "target_type_expr_field_optional_instantiation",
+  "target_type_expr_field_param_ident_token",
+  "target_type_expr_field_param_list_separator",
+  "target_type_expr_field_param_type_separator",
+  "target_type_expr_field_reference_module_joiner",
+  "target_type_expr_field_reference_root",
+  "target_type_expr_field_reference_scope_separator",
+  "target_type_expr_field_separator",
+  "target_type_expr_field_surface",
+  "target_type_expr_field_variant_separator",
+  "target_type_expr_projection_candidate_closedness",
+  "target_use_site_ownership_derived_row",
+  "target_use_site_ownership_field_reference_layer",
+  "target_use_site_ownership_field_source_carrier",
+  "target_use_site_ownership_field_source_projection",
+  "target_use_site_ownership_field_use_site",
+  "target_value_expr_effect_callee_row_edge",
+  "target_value_expr_field_assign_token",
+  "target_value_expr_field_bind_body",
+  "target_value_expr_field_bind_key",
+  "target_value_expr_field_bind_let",
+  "target_value_expr_field_bind_value",
+  "target_value_expr_field_binding",
+  "target_value_expr_field_binding_ref",
+  "target_value_expr_field_block_eval",
+  "target_value_expr_field_block_eval_kind",
+  "target_value_expr_field_block_eval_return_token",
+  "target_value_expr_field_block_eval_terminator",
+  "target_value_expr_field_body_close",
+  "target_value_expr_field_body_open",
+  "target_value_expr_field_bool_false_token",
+  "target_value_expr_field_bool_literal",
+  "target_value_expr_field_bool_true_token",
+  "target_value_expr_field_branch_condition",
+  "target_value_expr_field_branch_else_arm",
+  "target_value_expr_field_branch_then_arm",
+  "target_value_expr_field_callable_apply",
+  "target_value_expr_field_callable_arg",
+  "target_value_expr_field_callee",
+  "target_value_expr_field_close",
+  "target_value_expr_field_closure",
+  "target_value_expr_field_closure_body",
+  "target_value_expr_field_closure_param",
+  "target_value_expr_field_closure_value_close",
+  "target_value_expr_field_closure_value_open",
+  "target_value_expr_field_conditional",
+  "target_value_expr_field_conditional_close_token",
+  "target_value_expr_field_conditional_delimiting",
+  "target_value_expr_field_effect_apply",
+  "target_value_expr_field_effect_callee",
+  "target_value_expr_field_effect_kind",
+  "target_value_expr_field_else_token",
+  "target_value_expr_field_field_access",
+  "target_value_expr_field_field_access_base",
+  "target_value_expr_field_field_access_dot",
+  "target_value_expr_field_field_access_field",
+  "target_value_expr_field_fn_token",
+  "target_value_expr_field_ident_token",
+  "target_value_expr_field_if_token",
+  "target_value_expr_field_in_token",
+  "target_value_expr_field_int_literal",
+  "target_value_expr_field_int_literal_token",
+  "target_value_expr_field_let_token",
+  "target_value_expr_field_list_introduction",
+  "target_value_expr_field_loop",
+  "target_value_expr_field_loop_body",
+  "target_value_expr_field_loop_token",
+  "target_value_expr_field_match",
+  "target_value_expr_field_match_arm_separator",
+  "target_value_expr_field_match_close",
+  "target_value_expr_field_match_fat_arrow",
+  "target_value_expr_field_match_open",
+  "target_value_expr_field_match_scrutinee",
+  "target_value_expr_field_match_scrutinee_close",
+  "target_value_expr_field_match_scrutinee_open",
+  "target_value_expr_field_match_token",
+  "target_value_expr_field_open",
+  "target_value_expr_field_operand",
+  "target_value_expr_field_operation",
+  "target_value_expr_field_primitive_apply",
+  "target_value_expr_field_record_assign",
+  "target_value_expr_field_record_close",
+  "target_value_expr_field_record_construct",
+  "target_value_expr_field_record_names_type",
+  "target_value_expr_field_record_open",
+  "target_value_expr_field_record_separator",
+  "target_value_expr_field_record_type",
+  "target_value_expr_field_resolved_primitive",
+  "target_value_expr_field_separator",
+  "target_value_expr_field_then_token",
+  "target_value_expr_int_literal_unwired",
+  "target_value_expr_list_introduction_unwired",
+  "target_value_expression_bind_let_atom",
+  "target_value_expression_binding_ref_atom",
+  "target_value_expression_bool_false",
+  "target_value_expression_bool_literal_atom",
+  "target_value_expression_bool_true",
+  "target_value_expression_callable_apply_atom",
+  "target_value_expression_char_unicode_scalar_atom",
+  "target_value_expression_closure_atom",
+  "target_value_expression_conditional_atom",
+  "target_value_expression_effect_apply_atom",
+  "target_value_expression_field_access_atom",
+  "target_value_expression_field_codepoint",
+  "target_value_expression_field_identity",
+  "target_value_expression_field_inner",
+  "target_value_expression_field_value",
+  "target_value_expression_int_literal_atom",
+  "target_value_expression_list_introduction_atom",
+  "target_value_expression_loop_atom",
+  "target_value_expression_match_atom",
+  "target_value_expression_primitive_apply_atom",
+  "target_value_expression_record_construct_atom",
+  "target_value_expression_string_literal_atom",
+  "target_value_expression_symbol_identity_atom",
+  "target_value_expression_symbol_to_owned_string_atom",
+  "tokenize_lex_e5_mode_declared_twice",
+  "transport",
+  "ts_binding_field_id",
+  "ts_binding_field_status",
+  "ts_binding_field_title",
+  "ts_binding_fn_add",
+  "ts_binding_param_x",
+  "ts_binding_param_y",
+  "ts_binding_pr3_identity",
+  "ts_binding_sg2_foobar",
+  "ts_binding_sg2_x",
+  "ts_binding_sg2_y",
+  "ts_binding_task",
+  "ts_binding_type_task_id",
+  "ts_binding_type_task_status",
+  "ts_coercion_field_number_arithmetic",
+  "ts_coercion_field_number_bitwise",
+  "ts_coercion_field_number_facts",
+  "ts_coercion_field_number_ieee754",
+  "ts_coercion_field_number_inhabitant_atom",
+  "ts_coercion_field_number_spelling",
+  "ts_coercion_field_number_std_projection",
+  "ts_coercion_field_number_width",
+  "ts_effect_signature_pure_value",
+  "ts_emit_host_runtime_primitive_symbol",
+  "ts_facts_field_arithmetic_semantics",
+  "ts_facts_field_bitwise_semantics",
+  "ts_facts_field_encoding",
+  "ts_facts_field_ieee754_binary",
+  "ts_facts_field_operation_semantics",
+  "ts_facts_field_std_projection",
+  "ts_facts_field_surface_spelling",
+  "ts_facts_field_width",
+  "ts_host_transport_identity",
+  "ts_ieee754_binary64",
+  "ts_inhabitant_bigint",
+  "ts_inhabitant_boolean",
+  "ts_inhabitant_field_add_fn",
+  "ts_inhabitant_field_atom",
+  "ts_inhabitant_field_bigint",
+  "ts_inhabitant_field_boolean",
+  "ts_inhabitant_field_facts",
+  "ts_inhabitant_field_number",
+  "ts_inhabitant_field_string",
+  "ts_inhabitant_number",
+  "ts_inhabitant_string",
+  "ts_inhabitant_utf16_code_unit",
+  "ts_language_model_surface_id",
+  "ts_op_bigint_add",
+  "ts_op_bigint_compare",
+  "ts_op_bigint_div",
+  "ts_op_bigint_mul",
+  "ts_op_bigint_neg",
+  "ts_op_bigint_rem",
+  "ts_op_bigint_sub",
+  "ts_op_bool_and",
+  "ts_op_bool_not",
+  "ts_op_bool_or",
+  "ts_op_number_add",
+  "ts_op_number_compare",
+  "ts_op_number_div",
+  "ts_op_number_mul",
+  "ts_op_number_neg",
+  "ts_op_number_sub",
+  "ts_op_string_concat",
+  "ts_precondition_bigint_divisor_nonzero",
+  "ts_production_const_decl",
+  "ts_production_fn_add",
+  "ts_production_item",
+  "ts_production_let_decl",
+  "ts_production_pr3_array_type",
+  "ts_production_pr3_primary_type",
+  "ts_production_pr3_typed_fn_decl",
+  "ts_production_pr3_typed_param",
+  "ts_production_pr3_typed_params",
+  "ts_production_pr3_typed_params_opt",
+  "ts_production_record_field",
+  "ts_production_record_fields",
+  "ts_production_record_type",
+  "ts_production_type_alias_decl",
+  "ts_production_type_annotation",
+  "ts_production_type_boolean",
+  "ts_production_type_name",
+  "ts_production_type_number",
+  "ts_production_type_string",
+  "ts_production_type_void",
+  "ts_production_union_type",
+  "ts_relation_rule_fn_add",
+  "ts_relation_rule_pr3_identity",
+  "ts_relation_rule_type_alias_task",
+  "ts_repr_bigint_exact_unbounded",
+  "ts_repr_boolean_ecma_boolean",
+  "ts_repr_string_utf16_code_unit_sequence",
+  "ts_source_literal",
+  "ts_std_projection_bigint",
+  "ts_std_projection_bool",
+  "ts_std_projection_string",
+  "ts_surface_array_type",
+  "ts_surface_const_decl",
+  "ts_surface_fn_item",
+  "ts_surface_item",
+  "ts_surface_let_decl",
+  "ts_surface_primary_type",
+  "ts_surface_record_field",
+  "ts_surface_record_fields",
+  "ts_surface_record_type",
+  "ts_surface_spelling_bigint",
+  "ts_surface_spelling_boolean",
+  "ts_surface_spelling_number",
+  "ts_surface_spelling_string",
+  "ts_surface_spelling_symbol",
+  "ts_surface_type_alias_decl",
+  "ts_surface_type_annotation",
+  "ts_surface_type_arrow",
+  "ts_surface_type_atom",
+  "ts_surface_type_boolean",
+  "ts_surface_type_generic_apply",
+  "ts_surface_type_name",
+  "ts_surface_type_number",
+  "ts_surface_type_optional_instantiation",
+  "ts_surface_type_record",
+  "ts_surface_type_string",
+  "ts_surface_type_sum",
+  "ts_surface_type_void",
+  "ts_surface_typed_fn_decl",
+  "ts_surface_typed_param",
+  "ts_surface_typed_params",
+  "ts_surface_typed_params_opt",
+  "ts_surface_union_type",
+  "ts_tag_bigint_exact_unbounded",
+  "ts_tag_bits64",
+  "ts_tag_number_bitwise_int32_uint32",
+  "ts_tag_number_ieee754_binary64",
+  "ts_token_colon",
+  "ts_token_comma",
+  "ts_token_dot",
+  "ts_token_effect_read_callee",
+  "ts_token_effect_write_callee",
+  "ts_token_eq",
+  "ts_token_fat_arrow",
+  "ts_token_gt",
+  "ts_token_ident",
+  "ts_token_import_lbrace",
+  "ts_token_import_rbrace",
+  "ts_token_kw_const",
+  "ts_token_kw_false",
+  "ts_token_kw_from",
+  "ts_token_kw_function",
+  "ts_token_kw_import",
+  "ts_token_kw_let",
+  "ts_token_kw_return",
+  "ts_token_kw_true",
+  "ts_token_kw_type",
+  "ts_token_lbrace",
+  "ts_token_lbracket",
+  "ts_token_lparen",
+  "ts_token_lt",
+  "ts_token_minus",
+  "ts_token_module_path_segment",
+  "ts_token_module_path_sep",
+  "ts_token_module_quote",
+  "ts_token_num_lit",
+  "ts_token_pipe",
+  "ts_token_plus",
+  "ts_token_rbrace",
+  "ts_token_rbracket",
+  "ts_token_rparen",
+  "ts_token_semicolon",
+  "ts_token_star",
+  "ts_token_string_lit",
+  "ts_token_ternary_colon",
+  "ts_token_ternary_nop",
+  "ts_token_ternary_question",
+  "ts_token_ty_boolean",
+  "ts_token_ty_number",
+  "ts_token_ty_string",
+  "ts_token_ty_void",
+  "ts_token_unwired_bind_in",
+  "ts_token_unwired_loop",
+  "ts_token_unwired_match",
+  "ts_witness_bigint_ordered_ring",
+  "ts_witness_bool_boolean_algebra",
+  "ts_witness_number_approximate_field",
+  "ts_witness_string_free_monoid",
+  "types",
+  "uninterpretable",
+  "validate_grammar_port",
+  "value",
+  "x",
+  "xs"
+]
+
 data nsc_bucket_1: List<String> = [
   "0",
   "10",
@@ -54,11 +1438,11 @@ data nsc_bucket_1: List<String> = [
   "62",
   "63"
 ]
-fn nsc_bucket_1() -> Bool {
+fn nsc_hit_1() -> Bool {
   contains(xs: nsc_bucket_1, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_1_holds() -> Bool {
-  nsc_bucket_1()
+  nsc_hit_1()
 }
 
 data nsc_bucket_2: List<String> = [
@@ -71,11 +1455,11 @@ data nsc_bucket_2: List<String> = [
   "aai_pos2",
   "abelian_group_field_group"
 ]
-fn nsc_bucket_2() -> Bool {
+fn nsc_hit_2() -> Bool {
   contains(xs: nsc_bucket_2, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_2_holds() -> Bool {
-  nsc_bucket_2()
+  nsc_hit_2()
 }
 
 data nsc_bucket_3: List<String> = [
@@ -88,11 +1472,11 @@ data nsc_bucket_3: List<String> = [
   "approximate_field_field_mul",
   "approximate_field_field_negate"
 ]
-fn nsc_bucket_3() -> Bool {
+fn nsc_hit_3() -> Bool {
   contains(xs: nsc_bucket_3, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_3_holds() -> Bool {
-  nsc_bucket_3()
+  nsc_hit_3()
 }
 
 data nsc_bucket_4: List<String> = [
@@ -105,11 +1489,11 @@ data nsc_bucket_4: List<String> = [
   "arrow_execution_mode_claim_edge",
   "arrow_resource_requirements_edge"
 ]
-fn nsc_bucket_4() -> Bool {
+fn nsc_hit_4() -> Bool {
   contains(xs: nsc_bucket_4, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_4_holds() -> Bool {
-  nsc_bucket_4()
+  nsc_hit_4()
 }
 
 data nsc_bucket_5: List<String> = [
@@ -122,11 +1506,11 @@ data nsc_bucket_5: List<String> = [
   "body_lowering_reason_statement_precedes_without_binding",
   "bool_facts_field_encoding"
 ]
-fn nsc_bucket_5() -> Bool {
+fn nsc_hit_5() -> Bool {
   contains(xs: nsc_bucket_5, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_5_holds() -> Bool {
-  nsc_bucket_5()
+  nsc_hit_5()
 }
 
 data nsc_bucket_6: List<String> = [
@@ -139,11 +1523,11 @@ data nsc_bucket_6: List<String> = [
   "bounded_lattice_field_bottom",
   "bounded_lattice_field_lattice"
 ]
-fn nsc_bucket_6() -> Bool {
+fn nsc_hit_6() -> Bool {
   contains(xs: nsc_bucket_6, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_6_holds() -> Bool {
-  nsc_bucket_6()
+  nsc_hit_6()
 }
 
 data nsc_bucket_7: List<String> = [
@@ -156,11 +1540,11 @@ data nsc_bucket_7: List<String> = [
   "byte_offset_proj_ineligible_authority_edge",
   "byte_offset_proj_key_eligible_edge"
 ]
-fn nsc_bucket_7() -> Bool {
+fn nsc_hit_7() -> Bool {
   contains(xs: nsc_bucket_7, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_7_holds() -> Bool {
-  nsc_bucket_7()
+  nsc_hit_7()
 }
 
 data nsc_bucket_8: List<String> = [
@@ -173,11 +1557,11 @@ data nsc_bucket_8: List<String> = [
   "byte_offset_proj_within_ceiling_edge",
   "canonical_operation_roster_member_add"
 ]
-fn nsc_bucket_8() -> Bool {
+fn nsc_hit_8() -> Bool {
   contains(xs: nsc_bucket_8, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_8_holds() -> Bool {
-  nsc_bucket_8()
+  nsc_hit_8()
 }
 
 data nsc_bucket_9: List<String> = [
@@ -190,11 +1574,11 @@ data nsc_bucket_9: List<String> = [
   "canonical_operation_roster_member_le",
   "canonical_operation_roster_member_lt"
 ]
-fn nsc_bucket_9() -> Bool {
+fn nsc_hit_9() -> Bool {
   contains(xs: nsc_bucket_9, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_9_holds() -> Bool {
-  nsc_bucket_9()
+  nsc_hit_9()
 }
 
 data nsc_bucket_10: List<String> = [
@@ -207,11 +1591,11 @@ data nsc_bucket_10: List<String> = [
   "canonical_operation_type_atom",
   "canonical_tag_arrow"
 ]
-fn nsc_bucket_10() -> Bool {
+fn nsc_hit_10() -> Bool {
   contains(xs: nsc_bucket_10, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_10_holds() -> Bool {
-  nsc_bucket_10()
+  nsc_hit_10()
 }
 
 data nsc_bucket_11: List<String> = [
@@ -224,11 +1608,11 @@ data nsc_bucket_11: List<String> = [
   "canonical_tag_byte_offset_cache_key_eligible",
   "canonical_tag_byte_offset_cache_key_ineligible"
 ]
-fn nsc_bucket_11() -> Bool {
+fn nsc_hit_11() -> Bool {
   contains(xs: nsc_bucket_11, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_11_holds() -> Bool {
-  nsc_bucket_11()
+  nsc_hit_11()
 }
 
 data nsc_bucket_12: List<String> = [
@@ -241,11 +1625,11 @@ data nsc_bucket_12: List<String> = [
   "canonical_tag_byte_offset_overflow_residual_unrepresentable",
   "canonical_tag_byte_offset_residual_quotient_limb_pair"
 ]
-fn nsc_bucket_12() -> Bool {
+fn nsc_hit_12() -> Bool {
   contains(xs: nsc_bucket_12, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_12_holds() -> Bool {
-  nsc_bucket_12()
+  nsc_hit_12()
 }
 
 data nsc_bucket_13: List<String> = [
@@ -258,11 +1642,11 @@ data nsc_bucket_13: List<String> = [
   "canonical_tag_instantiation",
   "canonical_tag_loop"
 ]
-fn nsc_bucket_13() -> Bool {
+fn nsc_hit_13() -> Bool {
   contains(xs: nsc_bucket_13, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_13_holds() -> Bool {
-  nsc_bucket_13()
+  nsc_hit_13()
 }
 
 data nsc_bucket_14: List<String> = [
@@ -275,11 +1659,11 @@ data nsc_bucket_14: List<String> = [
   "canonical_tag_scalar_int_zero",
   "canonical_tag_transform"
 ]
-fn nsc_bucket_14() -> Bool {
+fn nsc_hit_14() -> Bool {
   contains(xs: nsc_bucket_14, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_14_holds() -> Bool {
-  nsc_bucket_14()
+  nsc_hit_14()
 }
 
 data nsc_bucket_15: List<String> = [
@@ -292,11 +1676,11 @@ data nsc_bucket_15: List<String> = [
   "claim_int_literal_refused",
   "claim_supplied_call"
 ]
-fn nsc_bucket_15() -> Bool {
+fn nsc_hit_15() -> Bool {
   contains(xs: nsc_bucket_15, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_15_holds() -> Bool {
-  nsc_bucket_15()
+  nsc_hit_15()
 }
 
 data nsc_bucket_16: List<String> = [
@@ -309,11 +1693,11 @@ data nsc_bucket_16: List<String> = [
   "coercion_property_candidate_set_closedness",
   "coercion_property_closed_candidate_set"
 ]
-fn nsc_bucket_16() -> Bool {
+fn nsc_hit_16() -> Bool {
   contains(xs: nsc_bucket_16, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_16_holds() -> Bool {
-  nsc_bucket_16()
+  nsc_hit_16()
 }
 
 data nsc_bucket_17: List<String> = [
@@ -326,11 +1710,11 @@ data nsc_bucket_17: List<String> = [
   "commutative_semiring_field_semiring",
   "concrete_syntax_token_field_binding"
 ]
-fn nsc_bucket_17() -> Bool {
+fn nsc_hit_17() -> Bool {
   contains(xs: nsc_bucket_17, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_17_holds() -> Bool {
-  nsc_bucket_17()
+  nsc_hit_17()
 }
 
 data nsc_bucket_18: List<String> = [
@@ -343,11 +1727,11 @@ data nsc_bucket_18: List<String> = [
   "cons",
   "constraint_property_being_canonical"
 ]
-fn nsc_bucket_18() -> Bool {
+fn nsc_hit_18() -> Bool {
   contains(xs: nsc_bucket_18, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_18_holds() -> Bool {
-  nsc_bucket_18()
+  nsc_hit_18()
 }
 
 data nsc_bucket_19: List<String> = [
@@ -360,11 +1744,11 @@ data nsc_bucket_19: List<String> = [
   "core_arrow_resource_requirements_edge",
   "core_binder_default_edge"
 ]
-fn nsc_bucket_19() -> Bool {
+fn nsc_hit_19() -> Bool {
   contains(xs: nsc_bucket_19, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_19_holds() -> Bool {
-  nsc_bucket_19()
+  nsc_hit_19()
 }
 
 data nsc_bucket_20: List<String> = [
@@ -377,11 +1761,11 @@ data nsc_bucket_20: List<String> = [
   "core_construct_tag_elided_edge",
   "core_declaration_reference_edge"
 ]
-fn nsc_bucket_20() -> Bool {
+fn nsc_hit_20() -> Bool {
   contains(xs: nsc_bucket_20, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_20_holds() -> Bool {
-  nsc_bucket_20()
+  nsc_hit_20()
 }
 
 data nsc_bucket_21: List<String> = [
@@ -394,11 +1778,11 @@ data nsc_bucket_21: List<String> = [
   "core_parameter_reference_edge",
   "core_type_alias_edge"
 ]
-fn nsc_bucket_21() -> Bool {
+fn nsc_hit_21() -> Bool {
   contains(xs: nsc_bucket_21, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_21_holds() -> Bool {
-  nsc_bucket_21()
+  nsc_hit_21()
 }
 
 data nsc_bucket_22: List<String> = [
@@ -411,11 +1795,11 @@ data nsc_bucket_22: List<String> = [
   "dag_binding_field_variant_value",
   "dag_binding_fn_add"
 ]
-fn nsc_bucket_22() -> Bool {
+fn nsc_hit_22() -> Bool {
   contains(xs: nsc_bucket_22, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_22_holds() -> Bool {
-  nsc_bucket_22()
+  nsc_hit_22()
 }
 
 data nsc_bucket_23: List<String> = [
@@ -428,11 +1812,11 @@ data nsc_bucket_23: List<String> = [
   "dag_binding_param_r",
   "dag_binding_param_x"
 ]
-fn nsc_bucket_23() -> Bool {
+fn nsc_hit_23() -> Bool {
   contains(xs: nsc_bucket_23, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_23_holds() -> Bool {
-  nsc_bucket_23()
+  nsc_hit_23()
 }
 
 data nsc_bucket_24: List<String> = [
@@ -445,11 +1829,11 @@ data nsc_bucket_24: List<String> = [
   "dag_binding_type_bool",
   "dag_binding_type_int"
 ]
-fn nsc_bucket_24() -> Bool {
+fn nsc_hit_24() -> Bool {
   contains(xs: nsc_bucket_24, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_24_holds() -> Bool {
-  nsc_bucket_24()
+  nsc_hit_24()
 }
 
 data nsc_bucket_25: List<String> = [
@@ -462,11 +1846,11 @@ data nsc_bucket_25: List<String> = [
   "dag_fidelity_disposition_field_feature",
   "dag_fidelity_disposition_kind_declared_normalized"
 ]
-fn nsc_bucket_25() -> Bool {
+fn nsc_hit_25() -> Bool {
   contains(xs: nsc_bucket_25, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_25_holds() -> Bool {
-  nsc_bucket_25()
+  nsc_hit_25()
 }
 
 data nsc_bucket_26: List<String> = [
@@ -479,11 +1863,11 @@ data nsc_bucket_26: List<String> = [
   "dag_free_monoid_row_element",
   "dag_grammar_surface_production_type_atom"
 ]
-fn nsc_bucket_26() -> Bool {
+fn nsc_hit_26() -> Bool {
   contains(xs: nsc_bucket_26, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_26_holds() -> Bool {
-  nsc_bucket_26()
+  nsc_hit_26()
 }
 
 data nsc_bucket_27: List<String> = [
@@ -496,11 +1880,11 @@ data nsc_bucket_27: List<String> = [
   "dag_inhabitant_int",
   "dag_int_literal_decode_port"
 ]
-fn nsc_bucket_27() -> Bool {
+fn nsc_hit_27() -> Bool {
   contains(xs: nsc_bucket_27, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_27_holds() -> Bool {
-  nsc_bucket_27()
+  nsc_hit_27()
 }
 
 data nsc_bucket_28: List<String> = [
@@ -513,11 +1897,11 @@ data nsc_bucket_28: List<String> = [
   "dag_pick_lit_",
   "dag_pick_lit_one"
 ]
-fn nsc_bucket_28() -> Bool {
+fn nsc_hit_28() -> Bool {
   contains(xs: nsc_bucket_28, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_28_holds() -> Bool {
-  nsc_bucket_28()
+  nsc_hit_28()
 }
 
 data nsc_bucket_29: List<String> = [
@@ -530,11 +1914,11 @@ data nsc_bucket_29: List<String> = [
   "dag_production_binary_expr",
   "dag_production_block_expr"
 ]
-fn nsc_bucket_29() -> Bool {
+fn nsc_hit_29() -> Bool {
   contains(xs: nsc_bucket_29, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_29_holds() -> Bool {
-  nsc_bucket_29()
+  nsc_hit_29()
 }
 
 data nsc_bucket_30: List<String> = [
@@ -547,11 +1931,11 @@ data nsc_bucket_30: List<String> = [
   "dag_production_field_decl_block",
   "dag_production_field_init"
 ]
-fn nsc_bucket_30() -> Bool {
+fn nsc_hit_30() -> Bool {
   contains(xs: nsc_bucket_30, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_30_holds() -> Bool {
-  nsc_bucket_30()
+  nsc_hit_30()
 }
 
 data nsc_bucket_31: List<String> = [
@@ -564,11 +1948,11 @@ data nsc_bucket_31: List<String> = [
   "dag_production_fn_decl",
   "dag_production_fn_field_access"
 ]
-fn nsc_bucket_31() -> Bool {
+fn nsc_hit_31() -> Bool {
   contains(xs: nsc_bucket_31, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_31_holds() -> Bool {
-  nsc_bucket_31()
+  nsc_hit_31()
 }
 
 data nsc_bucket_32: List<String> = [
@@ -581,11 +1965,11 @@ data nsc_bucket_32: List<String> = [
   "dag_production_generic_params",
   "dag_production_if_expr"
 ]
-fn nsc_bucket_32() -> Bool {
+fn nsc_hit_32() -> Bool {
   contains(xs: nsc_bucket_32, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_32_holds() -> Bool {
-  nsc_bucket_32()
+  nsc_hit_32()
 }
 
 data nsc_bucket_33: List<String> = [
@@ -598,11 +1982,11 @@ data nsc_bucket_33: List<String> = [
   "dag_production_loop_expr",
   "dag_production_match_arm"
 ]
-fn nsc_bucket_33() -> Bool {
+fn nsc_hit_33() -> Bool {
   contains(xs: nsc_bucket_33, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_33_holds() -> Bool {
-  nsc_bucket_33()
+  nsc_hit_33()
 }
 
 data nsc_bucket_34: List<String> = [
@@ -615,11 +1999,11 @@ data nsc_bucket_34: List<String> = [
   "dag_production_none_literal",
   "dag_production_op_modifier"
 ]
-fn nsc_bucket_34() -> Bool {
+fn nsc_hit_34() -> Bool {
   contains(xs: nsc_bucket_34, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_34_holds() -> Bool {
-  nsc_bucket_34()
+  nsc_hit_34()
 }
 
 data nsc_bucket_35: List<String> = [
@@ -632,11 +2016,11 @@ data nsc_bucket_35: List<String> = [
   "dag_production_operation",
   "dag_production_operation_body_entry"
 ]
-fn nsc_bucket_35() -> Bool {
+fn nsc_hit_35() -> Bool {
   contains(xs: nsc_bucket_35, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_35_holds() -> Bool {
-  nsc_bucket_35()
+  nsc_hit_35()
 }
 
 data nsc_bucket_36: List<String> = [
@@ -649,11 +2033,11 @@ data nsc_bucket_36: List<String> = [
   "dag_production_qualified_name",
   "dag_production_resource_acquire"
 ]
-fn nsc_bucket_36() -> Bool {
+fn nsc_hit_36() -> Bool {
   contains(xs: nsc_bucket_36, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_36_holds() -> Bool {
-  nsc_bucket_36()
+  nsc_hit_36()
 }
 
 data nsc_bucket_37: List<String> = [
@@ -666,11 +2050,11 @@ data nsc_bucket_37: List<String> = [
   "dag_production_response_block",
   "dag_production_service_body_entry"
 ]
-fn nsc_bucket_37() -> Bool {
+fn nsc_hit_37() -> Bool {
   contains(xs: nsc_bucket_37, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_37_holds() -> Bool {
-  nsc_bucket_37()
+  nsc_hit_37()
 }
 
 data nsc_bucket_38: List<String> = [
@@ -683,11 +2067,11 @@ data nsc_bucket_38: List<String> = [
   "dag_production_service_config_field_name_rate_limit",
   "dag_production_service_decl"
 ]
-fn nsc_bucket_38() -> Bool {
+fn nsc_hit_38() -> Bool {
   contains(xs: nsc_bucket_38, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_38_holds() -> Bool {
-  nsc_bucket_38()
+  nsc_hit_38()
 }
 
 data nsc_bucket_39: List<String> = [
@@ -700,11 +2084,11 @@ data nsc_bucket_39: List<String> = [
   "dag_production_stmt",
   "dag_production_stmt_seq"
 ]
-fn nsc_bucket_39() -> Bool {
+fn nsc_hit_39() -> Bool {
   contains(xs: nsc_bucket_39, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_39_holds() -> Bool {
-  nsc_bucket_39()
+  nsc_hit_39()
 }
 
 data nsc_bucket_40: List<String> = [
@@ -717,11 +2101,11 @@ data nsc_bucket_40: List<String> = [
   "dag_production_transport_kind_rest",
   "dag_production_transport_kind_shell"
 ]
-fn nsc_bucket_40() -> Bool {
+fn nsc_hit_40() -> Bool {
   contains(xs: nsc_bucket_40, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_40_holds() -> Bool {
-  nsc_bucket_40()
+  nsc_hit_40()
 }
 
 data nsc_bucket_41: List<String> = [
@@ -734,11 +2118,11 @@ data nsc_bucket_41: List<String> = [
   "dag_production_uses_clause",
   "dag_production_uses_entry"
 ]
-fn nsc_bucket_41() -> Bool {
+fn nsc_hit_41() -> Bool {
   contains(xs: nsc_bucket_41, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_41_holds() -> Bool {
-  nsc_bucket_41()
+  nsc_hit_41()
 }
 
 data nsc_bucket_42: List<String> = [
@@ -751,11 +2135,11 @@ data nsc_bucket_42: List<String> = [
   "dag_relation_rule_fn_field_access",
   "dag_relation_rule_fn_loop"
 ]
-fn nsc_bucket_42() -> Bool {
+fn nsc_hit_42() -> Bool {
   contains(xs: nsc_bucket_42, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_42_holds() -> Bool {
-  nsc_bucket_42()
+  nsc_hit_42()
 }
 
 data nsc_bucket_43: List<String> = [
@@ -768,11 +2152,11 @@ data nsc_bucket_43: List<String> = [
   "dag_surface_admit_callers_clause",
   "dag_surface_alias_decl"
 ]
-fn nsc_bucket_43() -> Bool {
+fn nsc_hit_43() -> Bool {
   contains(xs: nsc_bucket_43, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_43_holds() -> Bool {
-  nsc_bucket_43()
+  nsc_hit_43()
 }
 
 data nsc_bucket_44: List<String> = [
@@ -785,11 +2169,11 @@ data nsc_bucket_44: List<String> = [
   "dag_surface_capability",
   "dag_surface_data_decl"
 ]
-fn nsc_bucket_44() -> Bool {
+fn nsc_hit_44() -> Bool {
   contains(xs: nsc_bucket_44, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_44_holds() -> Bool {
-  nsc_bucket_44()
+  nsc_hit_44()
 }
 
 data nsc_bucket_45: List<String> = [
@@ -802,11 +2186,11 @@ data nsc_bucket_45: List<String> = [
   "dag_surface_expr",
   "dag_surface_field_decl_block"
 ]
-fn nsc_bucket_45() -> Bool {
+fn nsc_hit_45() -> Bool {
   contains(xs: nsc_bucket_45, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_45_holds() -> Bool {
-  nsc_bucket_45()
+  nsc_hit_45()
 }
 
 data nsc_bucket_46: List<String> = [
@@ -819,11 +2203,11 @@ data nsc_bucket_46: List<String> = [
   "dag_surface_fn_literal",
   "dag_surface_fn_type"
 ]
-fn nsc_bucket_46() -> Bool {
+fn nsc_hit_46() -> Bool {
   contains(xs: nsc_bucket_46, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_46_holds() -> Bool {
-  nsc_bucket_46()
+  nsc_hit_46()
 }
 
 data nsc_bucket_47: List<String> = [
@@ -836,11 +2220,11 @@ data nsc_bucket_47: List<String> = [
   "dag_surface_import_decl_qualified_name",
   "dag_surface_input_block"
 ]
-fn nsc_bucket_47() -> Bool {
+fn nsc_hit_47() -> Bool {
   contains(xs: nsc_bucket_47, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_47_holds() -> Bool {
-  nsc_bucket_47()
+  nsc_hit_47()
 }
 
 data nsc_bucket_48: List<String> = [
@@ -853,11 +2237,11 @@ data nsc_bucket_48: List<String> = [
   "dag_surface_match_expr",
   "dag_surface_mock_reading_entry"
 ]
-fn nsc_bucket_48() -> Bool {
+fn nsc_hit_48() -> Bool {
   contains(xs: nsc_bucket_48, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_48_holds() -> Bool {
-  nsc_bucket_48()
+  nsc_hit_48()
 }
 
 data nsc_bucket_49: List<String> = [
@@ -870,11 +2254,11 @@ data nsc_bucket_49: List<String> = [
   "dag_surface_op_modifier_hermetic",
   "dag_surface_op_modifier_idempotent"
 ]
-fn nsc_bucket_49() -> Bool {
+fn nsc_hit_49() -> Bool {
   contains(xs: nsc_bucket_49, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_49_holds() -> Bool {
-  nsc_bucket_49()
+  nsc_hit_49()
 }
 
 data nsc_bucket_50: List<String> = [
@@ -887,11 +2271,11 @@ data nsc_bucket_50: List<String> = [
   "dag_surface_operator_canonicalization_port",
   "dag_surface_output_block"
 ]
-fn nsc_bucket_50() -> Bool {
+fn nsc_hit_50() -> Bool {
   contains(xs: nsc_bucket_50, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_50_holds() -> Bool {
-  nsc_bucket_50()
+  nsc_hit_50()
 }
 
 data nsc_bucket_51: List<String> = [
@@ -904,11 +2288,11 @@ data nsc_bucket_51: List<String> = [
   "dag_surface_resource_acquire",
   "dag_surface_resource_body_entry"
 ]
-fn nsc_bucket_51() -> Bool {
+fn nsc_hit_51() -> Bool {
   contains(xs: nsc_bucket_51, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_51_holds() -> Bool {
-  nsc_bucket_51()
+  nsc_hit_51()
 }
 
 data nsc_bucket_52: List<String> = [
@@ -921,11 +2305,11 @@ data nsc_bucket_52: List<String> = [
   "dag_surface_service_body_entry",
   "dag_surface_service_config"
 ]
-fn nsc_bucket_52() -> Bool {
+fn nsc_hit_52() -> Bool {
   contains(xs: nsc_bucket_52, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_52_holds() -> Bool {
-  nsc_bucket_52()
+  nsc_hit_52()
 }
 
 data nsc_bucket_53: List<String> = [
@@ -938,11 +2322,11 @@ data nsc_bucket_53: List<String> = [
   "dag_surface_service_decl",
   "dag_surface_spelling_int"
 ]
-fn nsc_bucket_53() -> Bool {
+fn nsc_hit_53() -> Bool {
   contains(xs: nsc_bucket_53, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_53_holds() -> Bool {
-  nsc_bucket_53()
+  nsc_hit_53()
 }
 
 data nsc_bucket_54: List<String> = [
@@ -955,11 +2339,11 @@ data nsc_bucket_54: List<String> = [
   "dag_surface_stmt",
   "dag_surface_stmt_seq"
 ]
-fn nsc_bucket_54() -> Bool {
+fn nsc_hit_54() -> Bool {
   contains(xs: nsc_bucket_54, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_54_holds() -> Bool {
-  nsc_bucket_54()
+  nsc_hit_54()
 }
 
 data nsc_bucket_55: List<String> = [
@@ -972,11 +2356,11 @@ data nsc_bucket_55: List<String> = [
   "dag_surface_transport_kind_shell",
   "dag_surface_type_alias_rhs"
 ]
-fn nsc_bucket_55() -> Bool {
+fn nsc_hit_55() -> Bool {
   contains(xs: nsc_bucket_55, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_55_holds() -> Bool {
-  nsc_bucket_55()
+  nsc_hit_55()
 }
 
 data nsc_bucket_56: List<String> = [
@@ -989,11 +2373,11 @@ data nsc_bucket_56: List<String> = [
   "dag_surface_uses_entry",
   "dag_surface_where_predicate"
 ]
-fn nsc_bucket_56() -> Bool {
+fn nsc_hit_56() -> Bool {
   contains(xs: nsc_bucket_56, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_56_holds() -> Bool {
-  nsc_bucket_56()
+  nsc_hit_56()
 }
 
 data nsc_bucket_57: List<String> = [
@@ -1006,11 +2390,11 @@ data nsc_bucket_57: List<String> = [
   "dag_token_comma",
   "dag_token_dot"
 ]
-fn nsc_bucket_57() -> Bool {
+fn nsc_hit_57() -> Bool {
   contains(xs: nsc_bucket_57, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_57_holds() -> Bool {
-  nsc_bucket_57()
+  nsc_hit_57()
 }
 
 data nsc_bucket_58: List<String> = [
@@ -1023,11 +2407,11 @@ data nsc_bucket_58: List<String> = [
   "dag_token_ident",
   "dag_token_int_literal"
 ]
-fn nsc_bucket_58() -> Bool {
+fn nsc_hit_58() -> Bool {
   contains(xs: nsc_bucket_58, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_58_holds() -> Bool {
-  nsc_bucket_58()
+  nsc_hit_58()
 }
 
 data nsc_bucket_59: List<String> = [
@@ -1040,11 +2424,11 @@ data nsc_bucket_59: List<String> = [
   "dag_token_kw_if",
   "dag_token_kw_import"
 ]
-fn nsc_bucket_59() -> Bool {
+fn nsc_hit_59() -> Bool {
   contains(xs: nsc_bucket_59, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_59_holds() -> Bool {
-  nsc_bucket_59()
+  nsc_hit_59()
 }
 
 data nsc_bucket_60: List<String> = [
@@ -1057,11 +2441,11 @@ data nsc_bucket_60: List<String> = [
   "dag_token_kw_nominal_opaque",
   "dag_token_kw_return"
 ]
-fn nsc_bucket_60() -> Bool {
+fn nsc_hit_60() -> Bool {
   contains(xs: nsc_bucket_60, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_60_holds() -> Bool {
-  nsc_bucket_60()
+  nsc_hit_60()
 }
 
 data nsc_bucket_61: List<String> = [
@@ -1074,11 +2458,11 @@ data nsc_bucket_61: List<String> = [
   "dag_token_lbracket",
   "dag_token_lparen"
 ]
-fn nsc_bucket_61() -> Bool {
+fn nsc_hit_61() -> Bool {
   contains(xs: nsc_bucket_61, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_61_holds() -> Bool {
-  nsc_bucket_61()
+  nsc_hit_61()
 }
 
 data nsc_bucket_62: List<String> = [
@@ -1091,11 +2475,11 @@ data nsc_bucket_62: List<String> = [
   "dag_token_percent",
   "dag_token_pipe"
 ]
-fn nsc_bucket_62() -> Bool {
+fn nsc_hit_62() -> Bool {
   contains(xs: nsc_bucket_62, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_62_holds() -> Bool {
-  nsc_bucket_62()
+  nsc_hit_62()
 }
 
 data nsc_bucket_63: List<String> = [
@@ -1108,11 +2492,11 @@ data nsc_bucket_63: List<String> = [
   "dag_token_slash",
   "dag_token_star"
 ]
-fn nsc_bucket_63() -> Bool {
+fn nsc_hit_63() -> Bool {
   contains(xs: nsc_bucket_63, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_63_holds() -> Bool {
-  nsc_bucket_63()
+  nsc_hit_63()
 }
 
 data nsc_bucket_64: List<String> = [
@@ -1125,11 +2509,11 @@ data nsc_bucket_64: List<String> = [
   "dag_trivia_feature_whitespace",
   "decl_name"
 ]
-fn nsc_bucket_64() -> Bool {
+fn nsc_hit_64() -> Bool {
   contains(xs: nsc_bucket_64, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_64_holds() -> Bool {
-  nsc_bucket_64()
+  nsc_hit_64()
 }
 
 data nsc_bucket_65: List<String> = [
@@ -1142,11 +2526,11 @@ data nsc_bucket_65: List<String> = [
   "entries",
   "equality_predicate_is_equal"
 ]
-fn nsc_bucket_65() -> Bool {
+fn nsc_hit_65() -> Bool {
   contains(xs: nsc_bucket_65, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_65_holds() -> Bool {
-  nsc_bucket_65()
+  nsc_hit_65()
 }
 
 data nsc_bucket_66: List<String> = [
@@ -1159,11 +2543,11 @@ data nsc_bucket_66: List<String> = [
   "f",
   "facts_field_std_projection"
 ]
-fn nsc_bucket_66() -> Bool {
+fn nsc_hit_66() -> Bool {
   contains(xs: nsc_bucket_66, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_66_holds() -> Bool {
-  nsc_bucket_66()
+  nsc_hit_66()
 }
 
 data nsc_bucket_67: List<String> = [
@@ -1176,11 +2560,11 @@ data nsc_bucket_67: List<String> = [
   "fold_accumulator_unread",
   "fold_carrier"
 ]
-fn nsc_bucket_67() -> Bool {
+fn nsc_hit_67() -> Bool {
   contains(xs: nsc_bucket_67, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_67_holds() -> Bool {
-  nsc_bucket_67()
+  nsc_hit_67()
 }
 
 data nsc_bucket_68: List<String> = [
@@ -1193,11 +2577,11 @@ data nsc_bucket_68: List<String> = [
   "fold_template",
   "formal_nonterminal_identity_node_projection"
 ]
-fn nsc_bucket_68() -> Bool {
+fn nsc_hit_68() -> Bool {
   contains(xs: nsc_bucket_68, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_68_holds() -> Bool {
-  nsc_bucket_68()
+  nsc_hit_68()
 }
 
 data nsc_bucket_69: List<String> = [
@@ -1210,11 +2594,11 @@ data nsc_bucket_69: List<String> = [
   "formal_terminal_identity_node_projection",
   "formal_terminal_occurrence_binding_node_projection"
 ]
-fn nsc_bucket_69() -> Bool {
+fn nsc_hit_69() -> Bool {
   contains(xs: nsc_bucket_69, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_69_holds() -> Bool {
-  nsc_bucket_69()
+  nsc_hit_69()
 }
 
 data nsc_bucket_70: List<String> = [
@@ -1227,11 +2611,11 @@ data nsc_bucket_70: List<String> = [
   "free_monoid_type_fixpoint",
   "free_monoid_variant_cons"
 ]
-fn nsc_bucket_70() -> Bool {
+fn nsc_hit_70() -> Bool {
   contains(xs: nsc_bucket_70, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_70_holds() -> Bool {
-  nsc_bucket_70()
+  nsc_hit_70()
 }
 
 data nsc_bucket_71: List<String> = [
@@ -1244,11 +2628,11 @@ data nsc_bucket_71: List<String> = [
   "grammar_enumeration_deferred_4766",
   "grammar_expect_element_node_projection"
 ]
-fn nsc_bucket_71() -> Bool {
+fn nsc_hit_71() -> Bool {
   contains(xs: nsc_bucket_71, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_71_holds() -> Bool {
-  nsc_bucket_71()
+  nsc_hit_71()
 }
 
 data nsc_bucket_72: List<String> = [
@@ -1261,11 +2645,11 @@ data nsc_bucket_72: List<String> = [
   "grammar_infix_non_associative",
   "grammar_infix_operator_node_projection"
 ]
-fn nsc_bucket_72() -> Bool {
+fn nsc_hit_72() -> Bool {
   contains(xs: nsc_bucket_72, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_72_holds() -> Bool {
-  nsc_bucket_72()
+  nsc_hit_72()
 }
 
 data nsc_bucket_73: List<String> = [
@@ -1278,11 +2662,11 @@ data nsc_bucket_73: List<String> = [
   "grammar_nested_block_unit",
   "grammar_nonterminal_production_node_projection"
 ]
-fn nsc_bucket_73() -> Bool {
+fn nsc_hit_73() -> Bool {
   contains(xs: nsc_bucket_73, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_73_holds() -> Bool {
-  nsc_bucket_73()
+  nsc_hit_73()
 }
 
 data nsc_bucket_74: List<String> = [
@@ -1295,11 +2679,11 @@ data nsc_bucket_74: List<String> = [
   "grammar_production_name_node_projection",
   "grammar_refuse_on_match_element_node_projection"
 ]
-fn nsc_bucket_74() -> Bool {
+fn nsc_hit_74() -> Bool {
   contains(xs: nsc_bucket_74, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_74_holds() -> Bool {
-  nsc_bucket_74()
+  nsc_hit_74()
 }
 
 data nsc_bucket_75: List<String> = [
@@ -1312,11 +2696,11 @@ data nsc_bucket_75: List<String> = [
   "grammar_repeat_element_node_projection",
   "grammar_root_productions_node_projection"
 ]
-fn nsc_bucket_75() -> Bool {
+fn nsc_hit_75() -> Bool {
   contains(xs: nsc_bucket_75, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_75_holds() -> Bool {
-  nsc_bucket_75()
+  nsc_hit_75()
 }
 
 data nsc_bucket_76: List<String> = [
@@ -1329,11 +2713,11 @@ data nsc_bucket_76: List<String> = [
   "grammar_terminal_literal_lexeme_node_projection",
   "grammar_terminal_stamp_lexeme"
 ]
-fn nsc_bucket_76() -> Bool {
+fn nsc_hit_76() -> Bool {
   contains(xs: nsc_bucket_76, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_76_holds() -> Bool {
-  nsc_bucket_76()
+  nsc_hit_76()
 }
 
 data nsc_bucket_77: List<String> = [
@@ -1346,11 +2730,11 @@ data nsc_bucket_77: List<String> = [
   "homomorphism_rule_refinement_declared_carrier",
   "homomorphism_rule_refinement_widening"
 ]
-fn nsc_bucket_77() -> Bool {
+fn nsc_hit_77() -> Bool {
   contains(xs: nsc_bucket_77, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_77_holds() -> Bool {
-  nsc_bucket_77()
+  nsc_hit_77()
 }
 
 data nsc_bucket_78: List<String> = [
@@ -1363,11 +2747,11 @@ data nsc_bucket_78: List<String> = [
   "infer_reason_bound_value_does_not_inhabit_annotation",
   "infer_reason_default_does_not_inhabit_binder_type"
 ]
-fn nsc_bucket_78() -> Bool {
+fn nsc_hit_78() -> Bool {
   contains(xs: nsc_bucket_78, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_78_holds() -> Bool {
-  nsc_bucket_78()
+  nsc_hit_78()
 }
 
 data nsc_bucket_79: List<String> = [
@@ -1380,11 +2764,11 @@ data nsc_bucket_79: List<String> = [
   "inhabitance_optional_layer_depth_mismatch",
   "inhabitance_optional_layer_wrapper_malformed"
 ]
-fn nsc_bucket_79() -> Bool {
+fn nsc_hit_79() -> Bool {
   contains(xs: nsc_bucket_79, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_79_holds() -> Bool {
-  nsc_bucket_79()
+  nsc_hit_79()
 }
 
 data nsc_bucket_80: List<String> = [
@@ -1397,11 +2781,11 @@ data nsc_bucket_80: List<String> = [
   "inhabitance_takes_int",
   "inhabitance_type_list"
 ]
-fn nsc_bucket_80() -> Bool {
+fn nsc_hit_80() -> Bool {
   contains(xs: nsc_bucket_80, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_80_holds() -> Bool {
-  nsc_bucket_80()
+  nsc_hit_80()
 }
 
 data nsc_bucket_81: List<String> = [
@@ -1414,11 +2798,11 @@ data nsc_bucket_81: List<String> = [
   "integer_bound_field_magnitude",
   "integer_bound_field_sign"
 ]
-fn nsc_bucket_81() -> Bool {
+fn nsc_hit_81() -> Bool {
   contains(xs: nsc_bucket_81, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_81_holds() -> Bool {
-  nsc_bucket_81()
+  nsc_hit_81()
 }
 
 data nsc_bucket_82: List<String> = [
@@ -1431,11 +2815,11 @@ data nsc_bucket_82: List<String> = [
   "integer_signed_i32_le_decode_invalid",
   "integer_tag_bound_concrete"
 ]
-fn nsc_bucket_82() -> Bool {
+fn nsc_hit_82() -> Bool {
   contains(xs: nsc_bucket_82, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_82_holds() -> Bool {
-  nsc_bucket_82()
+  nsc_hit_82()
 }
 
 data nsc_bucket_83: List<String> = [
@@ -1448,11 +2832,11 @@ data nsc_bucket_83: List<String> = [
   "integer_tag_digit_2",
   "integer_tag_digit_3"
 ]
-fn nsc_bucket_83() -> Bool {
+fn nsc_hit_83() -> Bool {
   contains(xs: nsc_bucket_83, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_83_holds() -> Bool {
-  nsc_bucket_83()
+  nsc_hit_83()
 }
 
 data nsc_bucket_84: List<String> = [
@@ -1465,11 +2849,11 @@ data nsc_bucket_84: List<String> = [
   "integer_tag_range_inclusive_max",
   "integer_tag_range_inclusive_min"
 ]
-fn nsc_bucket_84() -> Bool {
+fn nsc_hit_84() -> Bool {
   contains(xs: nsc_bucket_84, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_84_holds() -> Bool {
-  nsc_bucket_84()
+  nsc_hit_84()
 }
 
 data nsc_bucket_85: List<String> = [
@@ -1482,11 +2866,11 @@ data nsc_bucket_85: List<String> = [
   "integer_value_set_kind_interval",
   "integer_value_set_kind_unbounded"
 ]
-fn nsc_bucket_85() -> Bool {
+fn nsc_hit_85() -> Bool {
   contains(xs: nsc_bucket_85, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_85_holds() -> Bool {
-  nsc_bucket_85()
+  nsc_hit_85()
 }
 
 data nsc_bucket_86: List<String> = [
@@ -1499,11 +2883,11 @@ data nsc_bucket_86: List<String> = [
   "language_model_field_language_identity",
   "language_model_field_lex"
 ]
-fn nsc_bucket_86() -> Bool {
+fn nsc_hit_86() -> Bool {
   contains(xs: nsc_bucket_86, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_86_holds() -> Bool {
-  nsc_bucket_86()
+  nsc_hit_86()
 }
 
 data nsc_bucket_87: List<String> = [
@@ -1516,11 +2900,11 @@ data nsc_bucket_87: List<String> = [
   "list_at_optional",
   "list_flat_map"
 ]
-fn nsc_bucket_87() -> Bool {
+fn nsc_hit_87() -> Bool {
   contains(xs: nsc_bucket_87, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_87_holds() -> Bool {
-  nsc_bucket_87()
+  nsc_hit_87()
 }
 
 data nsc_bucket_88: List<String> = [
@@ -1533,11 +2917,11 @@ data nsc_bucket_88: List<String> = [
   "loop_realized_declaration_edge",
   "m"
 ]
-fn nsc_bucket_88() -> Bool {
+fn nsc_hit_88() -> Bool {
   contains(xs: nsc_bucket_88, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_88_holds() -> Bool {
-  nsc_bucket_88()
+  nsc_hit_88()
 }
 
 data nsc_bucket_89: List<String> = [
@@ -1550,11 +2934,11 @@ data nsc_bucket_89: List<String> = [
   "mock_response",
   "model_core_law_field_algebra"
 ]
-fn nsc_bucket_89() -> Bool {
+fn nsc_hit_89() -> Bool {
   contains(xs: nsc_bucket_89, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_89_holds() -> Bool {
-  nsc_bucket_89()
+  nsc_hit_89()
 }
 
 data nsc_bucket_90: List<String> = [
@@ -1567,11 +2951,11 @@ data nsc_bucket_90: List<String> = [
   "name",
   "namespace_graft_module_body"
 ]
-fn nsc_bucket_90() -> Bool {
+fn nsc_hit_90() -> Bool {
   contains(xs: nsc_bucket_90, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_90_holds() -> Bool {
-  nsc_bucket_90()
+  nsc_hit_90()
 }
 
 data nsc_bucket_91: List<String> = [
@@ -1584,11 +2968,11 @@ data nsc_bucket_91: List<String> = [
   "oar_arrow_arg_ok_cu",
   "oar_arrow_arg_ok_read"
 ]
-fn nsc_bucket_91() -> Bool {
+fn nsc_hit_91() -> Bool {
   contains(xs: nsc_bucket_91, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_91_holds() -> Bool {
-  nsc_bucket_91()
+  nsc_hit_91()
 }
 
 data nsc_bucket_92: List<String> = [
@@ -1601,11 +2985,11 @@ data nsc_bucket_92: List<String> = [
   "oar_arrow_named_x_cu",
   "oar_arrow_named_x_read"
 ]
-fn nsc_bucket_92() -> Bool {
+fn nsc_hit_92() -> Bool {
   contains(xs: nsc_bucket_92, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_92_holds() -> Bool {
-  nsc_bucket_92()
+  nsc_hit_92()
 }
 
 data nsc_bucket_93: List<String> = [
@@ -1618,11 +3002,11 @@ data nsc_bucket_93: List<String> = [
   "oar_field_bad_read",
   "oar_field_bool_cu"
 ]
-fn nsc_bucket_93() -> Bool {
+fn nsc_hit_93() -> Bool {
   contains(xs: nsc_bucket_93, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_93_holds() -> Bool {
-  nsc_bucket_93()
+  nsc_hit_93()
 }
 
 data nsc_bucket_94: List<String> = [
@@ -1635,11 +3019,11 @@ data nsc_bucket_94: List<String> = [
   "oar_optional_cu",
   "oar_optional_read"
 ]
-fn nsc_bucket_94() -> Bool {
+fn nsc_hit_94() -> Bool {
   contains(xs: nsc_bucket_94, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_94_holds() -> Bool {
-  nsc_bucket_94()
+  nsc_hit_94()
 }
 
 data nsc_bucket_95: List<String> = [
@@ -1652,11 +3036,11 @@ data nsc_bucket_95: List<String> = [
   "ordered_ring_field_ring",
   "ordering_predicate_is_greater"
 ]
-fn nsc_bucket_95() -> Bool {
+fn nsc_hit_95() -> Bool {
   contains(xs: nsc_bucket_95, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_95_holds() -> Bool {
-  nsc_bucket_95()
+  nsc_hit_95()
 }
 
 data nsc_bucket_96: List<String> = [
@@ -1669,11 +3053,11 @@ data nsc_bucket_96: List<String> = [
   "ordering_variant_less",
   "parse_data_value_missing_after_eq"
 ]
-fn nsc_bucket_96() -> Bool {
+fn nsc_hit_96() -> Bool {
   contains(xs: nsc_bucket_96, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_96_holds() -> Bool {
-  nsc_bucket_96()
+  nsc_hit_96()
 }
 
 data nsc_bucket_97: List<String> = [
@@ -1686,11 +3070,11 @@ data nsc_bucket_97: List<String> = [
   "parse_newline_before_dual_role_operator",
   "parse_non_associative_operator_chain"
 ]
-fn nsc_bucket_97() -> Bool {
+fn nsc_hit_97() -> Bool {
   contains(xs: nsc_bucket_97, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_97_holds() -> Bool {
-  nsc_bucket_97()
+  nsc_hit_97()
 }
 
 data nsc_bucket_98: List<String> = [
@@ -1703,11 +3087,11 @@ data nsc_bucket_98: List<String> = [
   "position_binder_default",
   "position_declared_return"
 ]
-fn nsc_bucket_98() -> Bool {
+fn nsc_hit_98() -> Bool {
   contains(xs: nsc_bucket_98, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_98_holds() -> Bool {
-  nsc_bucket_98()
+  nsc_hit_98()
 }
 
 data nsc_bucket_99: List<String> = [
@@ -1720,11 +3104,11 @@ data nsc_bucket_99: List<String> = [
   "preservation_rule_exact_structural_equality_zip_fold",
   "preservation_rule_project_to_core"
 ]
-fn nsc_bucket_99() -> Bool {
+fn nsc_hit_99() -> Bool {
   contains(xs: nsc_bucket_99, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_99_holds() -> Bool {
-  nsc_bucket_99()
+  nsc_hit_99()
 }
 
 data nsc_bucket_100: List<String> = [
@@ -1737,11 +3121,11 @@ data nsc_bucket_100: List<String> = [
   "python_coercion_field_int_encoding",
   "python_coercion_field_int_facts"
 ]
-fn nsc_bucket_100() -> Bool {
+fn nsc_hit_100() -> Bool {
   contains(xs: nsc_bucket_100, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_100_holds() -> Bool {
-  nsc_bucket_100()
+  nsc_hit_100()
 }
 
 data nsc_bucket_101: List<String> = [
@@ -1754,11 +3138,11 @@ data nsc_bucket_101: List<String> = [
   "python_facts_field_machine_representation",
   "python_facts_field_singleton_kind"
 ]
-fn nsc_bucket_101() -> Bool {
+fn nsc_hit_101() -> Bool {
   contains(xs: nsc_bucket_101, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_101_holds() -> Bool {
-  nsc_bucket_101()
+  nsc_hit_101()
 }
 
 data nsc_bucket_102: List<String> = [
@@ -1771,11 +3155,11 @@ data nsc_bucket_102: List<String> = [
   "python_inhabitant_field_float",
   "python_inhabitant_field_int"
 ]
-fn nsc_bucket_102() -> Bool {
+fn nsc_hit_102() -> Bool {
   contains(xs: nsc_bucket_102, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_102_holds() -> Bool {
-  nsc_bucket_102()
+  nsc_hit_102()
 }
 
 data nsc_bucket_103: List<String> = [
@@ -1788,11 +3172,11 @@ data nsc_bucket_103: List<String> = [
   "python_production_comparison",
   "python_production_comparison_tail"
 ]
-fn nsc_bucket_103() -> Bool {
+fn nsc_hit_103() -> Bool {
   contains(xs: nsc_bucket_103, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_103_holds() -> Bool {
-  nsc_bucket_103()
+  nsc_hit_103()
 }
 
 data nsc_bucket_104: List<String> = [
@@ -1805,11 +3189,11 @@ data nsc_bucket_104: List<String> = [
   "python_production_suite",
   "python_relation_rule_fn_add"
 ]
-fn nsc_bucket_104() -> Bool {
+fn nsc_hit_104() -> Bool {
   contains(xs: nsc_bucket_104, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_104_holds() -> Bool {
-  nsc_bucket_104()
+  nsc_hit_104()
 }
 
 data nsc_bucket_105: List<String> = [
@@ -1822,11 +3206,11 @@ data nsc_bucket_105: List<String> = [
   "python_std_projection_bool",
   "python_std_projection_complex"
 ]
-fn nsc_bucket_105() -> Bool {
+fn nsc_hit_105() -> Bool {
   contains(xs: nsc_bucket_105, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_105_holds() -> Bool {
-  nsc_bucket_105()
+  nsc_hit_105()
 }
 
 data nsc_bucket_106: List<String> = [
@@ -1839,11 +3223,11 @@ data nsc_bucket_106: List<String> = [
   "python_surface_assign_stmt",
   "python_surface_comparison"
 ]
-fn nsc_bucket_106() -> Bool {
+fn nsc_hit_106() -> Bool {
   contains(xs: nsc_bucket_106, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_106_holds() -> Bool {
-  nsc_bucket_106()
+  nsc_hit_106()
 }
 
 data nsc_bucket_107: List<String> = [
@@ -1856,11 +3240,11 @@ data nsc_bucket_107: List<String> = [
   "python_surface_spelling_complex",
   "python_surface_spelling_ellipsis"
 ]
-fn nsc_bucket_107() -> Bool {
+fn nsc_hit_107() -> Bool {
   contains(xs: nsc_bucket_107, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_107_holds() -> Bool {
-  nsc_bucket_107()
+  nsc_hit_107()
 }
 
 data nsc_bucket_108: List<String> = [
@@ -1873,11 +3257,11 @@ data nsc_bucket_108: List<String> = [
   "python_token_colon",
   "python_token_colon_if_suite_indent"
 ]
-fn nsc_bucket_108() -> Bool {
+fn nsc_hit_108() -> Bool {
   contains(xs: nsc_bucket_108, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_108_holds() -> Bool {
-  nsc_bucket_108()
+  nsc_hit_108()
 }
 
 data nsc_bucket_109: List<String> = [
@@ -1890,11 +3274,11 @@ data nsc_bucket_109: List<String> = [
   "python_token_kw_if",
   "python_token_kw_return"
 ]
-fn nsc_bucket_109() -> Bool {
+fn nsc_hit_109() -> Bool {
   contains(xs: nsc_bucket_109, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_109_holds() -> Bool {
-  nsc_bucket_109()
+  nsc_hit_109()
 }
 
 data nsc_bucket_110: List<String> = [
@@ -1907,11 +3291,11 @@ data nsc_bucket_110: List<String> = [
   "python_token_rparen_suite_indent",
   "python_witness_bool_boolean_algebra"
 ]
-fn nsc_bucket_110() -> Bool {
+fn nsc_hit_110() -> Bool {
   contains(xs: nsc_bucket_110, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_110_holds() -> Bool {
-  nsc_bucket_110()
+  nsc_hit_110()
 }
 
 data nsc_bucket_111: List<String> = [
@@ -1924,11 +3308,11 @@ data nsc_bucket_111: List<String> = [
   "rcf_bad_read",
   "rcf_bool_field_cu"
 ]
-fn nsc_bucket_111() -> Bool {
+fn nsc_hit_111() -> Bool {
   contains(xs: nsc_bucket_111, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_111_holds() -> Bool {
-  nsc_bucket_111()
+  nsc_hit_111()
 }
 
 data nsc_bucket_112: List<String> = [
@@ -1941,11 +3325,11 @@ data nsc_bucket_112: List<String> = [
   "rcf_fs_color_cu",
   "rcf_fs_color_read"
 ]
-fn nsc_bucket_112() -> Bool {
+fn nsc_hit_112() -> Bool {
   contains(xs: nsc_bucket_112, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_112_holds() -> Bool {
-  nsc_bucket_112()
+  nsc_hit_112()
 }
 
 data nsc_bucket_113: List<String> = [
@@ -1958,11 +3342,11 @@ data nsc_bucket_113: List<String> = [
   "rcf_fs_list_read",
   "rcf_fs_make"
 ]
-fn nsc_bucket_113() -> Bool {
+fn nsc_hit_113() -> Bool {
   contains(xs: nsc_bucket_113, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_113_holds() -> Bool {
-  nsc_bucket_113()
+  nsc_hit_113()
 }
 
 data nsc_bucket_114: List<String> = [
@@ -1975,11 +3359,11 @@ data nsc_bucket_114: List<String> = [
   "rcf_generic_bad_cu",
   "rcf_generic_bad_read"
 ]
-fn nsc_bucket_114() -> Bool {
+fn nsc_hit_114() -> Bool {
   contains(xs: nsc_bucket_114, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_114_holds() -> Bool {
-  nsc_bucket_114()
+  nsc_hit_114()
 }
 
 data nsc_bucket_115: List<String> = [
@@ -1992,11 +3376,11 @@ data nsc_bucket_115: List<String> = [
   "rcf_nested_good_cu",
   "rcf_nested_good_read"
 ]
-fn nsc_bucket_115() -> Bool {
+fn nsc_hit_115() -> Bool {
   contains(xs: nsc_bucket_115, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_115_holds() -> Bool {
-  nsc_bucket_115()
+  nsc_hit_115()
 }
 
 data nsc_bucket_116: List<String> = [
@@ -2009,11 +3393,11 @@ data nsc_bucket_116: List<String> = [
   "rcf_unknown_cu",
   "rcf_unknown_read"
 ]
-fn nsc_bucket_116() -> Bool {
+fn nsc_hit_116() -> Bool {
   contains(xs: nsc_bucket_116, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_116_holds() -> Bool {
-  nsc_bucket_116()
+  nsc_hit_116()
 }
 
 data nsc_bucket_117: List<String> = [
@@ -2026,11 +3410,11 @@ data nsc_bucket_117: List<String> = [
   "refinement_widening_field_source",
   "refinement_widening_field_source_facts"
 ]
-fn nsc_bucket_117() -> Bool {
+fn nsc_hit_117() -> Bool {
   contains(xs: nsc_bucket_117, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_117_holds() -> Bool {
-  nsc_bucket_117()
+  nsc_hit_117()
 }
 
 data nsc_bucket_118: List<String> = [
@@ -2043,11 +3427,11 @@ data nsc_bucket_118: List<String> = [
   "ring_field_add",
   "ring_field_mul"
 ]
-fn nsc_bucket_118() -> Bool {
+fn nsc_hit_118() -> Bool {
   contains(xs: nsc_bucket_118, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_118_holds() -> Bool {
-  nsc_bucket_118()
+  nsc_hit_118()
 }
 
 data nsc_bucket_119: List<String> = [
@@ -2060,11 +3444,11 @@ data nsc_bucket_119: List<String> = [
   "runtime_field_value_field_node_projection",
   "runtime_field_value_value_node_projection"
 ]
-fn nsc_bucket_119() -> Bool {
+fn nsc_hit_119() -> Bool {
   contains(xs: nsc_bucket_119, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_119_holds() -> Bool {
-  nsc_bucket_119()
+  nsc_hit_119()
 }
 
 data nsc_bucket_120: List<String> = [
@@ -2077,11 +3461,11 @@ data nsc_bucket_120: List<String> = [
   "semiring_field_add",
   "semiring_field_mul"
 ]
-fn nsc_bucket_120() -> Bool {
+fn nsc_hit_120() -> Bool {
   contains(xs: nsc_bucket_120, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_120_holds() -> Bool {
-  nsc_bucket_120()
+  nsc_hit_120()
 }
 
 data nsc_bucket_121: List<String> = [
@@ -2094,11 +3478,11 @@ data nsc_bucket_121: List<String> = [
   "std_projection_additive_numeric",
   "string_literal_value_field"
 ]
-fn nsc_bucket_121() -> Bool {
+fn nsc_hit_121() -> Bool {
   contains(xs: nsc_bucket_121, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_121_holds() -> Bool {
-  nsc_bucket_121()
+  nsc_hit_121()
 }
 
 data nsc_bucket_122: List<String> = [
@@ -2111,11 +3495,11 @@ data nsc_bucket_122: List<String> = [
   "target_atom_realization_field_display_name",
   "target_atom_realization_field_source_carrier"
 ]
-fn nsc_bucket_122() -> Bool {
+fn nsc_hit_122() -> Bool {
   contains(xs: nsc_bucket_122, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_122_holds() -> Bool {
-  nsc_bucket_122()
+  nsc_hit_122()
 }
 
 data nsc_bucket_123: List<String> = [
@@ -2128,11 +3512,11 @@ data nsc_bucket_123: List<String> = [
   "target_canonical_operation_field_algebra_field",
   "target_canonical_operation_field_binary_field"
 ]
-fn nsc_bucket_123() -> Bool {
+fn nsc_hit_123() -> Bool {
   contains(xs: nsc_bucket_123, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_123_holds() -> Bool {
-  nsc_bucket_123()
+  nsc_hit_123()
 }
 
 data nsc_bucket_124: List<String> = [
@@ -2145,11 +3529,11 @@ data nsc_bucket_124: List<String> = [
   "target_capability_eligibility_field_kernel_atoms",
   "target_carrier_algebra_inhabitance_decl"
 ]
-fn nsc_bucket_124() -> Bool {
+fn nsc_hit_124() -> Bool {
   contains(xs: nsc_bucket_124, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_124_holds() -> Bool {
-  nsc_bucket_124()
+  nsc_hit_124()
 }
 
 data nsc_bucket_125: List<String> = [
@@ -2162,11 +3546,11 @@ data nsc_bucket_125: List<String> = [
   "target_carrier_test_claim",
   "target_carrier_use_site_verdict"
 ]
-fn nsc_bucket_125() -> Bool {
+fn nsc_hit_125() -> Bool {
   contains(xs: nsc_bucket_125, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_125_holds() -> Bool {
-  nsc_bucket_125()
+  nsc_hit_125()
 }
 
 data nsc_bucket_126: List<String> = [
@@ -2179,11 +3563,11 @@ data nsc_bucket_126: List<String> = [
   "target_collection_set_no_representation_port",
   "target_collection_witness_field_trait_name"
 ]
-fn nsc_bucket_126() -> Bool {
+fn nsc_hit_126() -> Bool {
   contains(xs: nsc_bucket_126, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_126_holds() -> Bool {
-  nsc_bucket_126()
+  nsc_hit_126()
 }
 
 data nsc_bucket_127: List<String> = [
@@ -2196,11 +3580,11 @@ data nsc_bucket_127: List<String> = [
   "target_derive_supplemental_generic_bound_requirement_field_authority",
   "target_derive_supplemental_generic_bound_requirement_field_representation_parameter"
 ]
-fn nsc_bucket_127() -> Bool {
+fn nsc_hit_127() -> Bool {
   contains(xs: nsc_bucket_127, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_127_holds() -> Bool {
-  nsc_bucket_127()
+  nsc_hit_127()
 }
 
 data nsc_bucket_128: List<String> = [
@@ -2213,11 +3597,11 @@ data nsc_bucket_128: List<String> = [
   "target_function_signature_realization_field_target_model_bundle",
   "target_import_render_port"
 ]
-fn nsc_bucket_128() -> Bool {
+fn nsc_hit_128() -> Bool {
   contains(xs: nsc_bucket_128, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_128_holds() -> Bool {
-  nsc_bucket_128()
+  nsc_hit_128()
 }
 
 data nsc_bucket_129: List<String> = [
@@ -2230,11 +3614,11 @@ data nsc_bucket_129: List<String> = [
   "target_model_edge_refinement_declaration",
   "target_model_edge_selection_policy"
 ]
-fn nsc_bucket_129() -> Bool {
+fn nsc_hit_129() -> Bool {
   contains(xs: nsc_bucket_129, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_129_holds() -> Bool {
-  nsc_bucket_129()
+  nsc_hit_129()
 }
 
 data nsc_bucket_130: List<String> = [
@@ -2247,11 +3631,11 @@ data nsc_bucket_130: List<String> = [
   "target_module_import_field_from_token",
   "target_module_import_field_import_token"
 ]
-fn nsc_bucket_130() -> Bool {
+fn nsc_hit_130() -> Bool {
   contains(xs: nsc_bucket_130, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_130_holds() -> Bool {
-  nsc_bucket_130()
+  nsc_hit_130()
 }
 
 data nsc_bucket_131: List<String> = [
@@ -2264,11 +3648,11 @@ data nsc_bucket_131: List<String> = [
   "target_module_import_field_path_segment_separator",
   "target_module_import_field_path_segment_token"
 ]
-fn nsc_bucket_131() -> Bool {
+fn nsc_hit_131() -> Bool {
   contains(xs: nsc_bucket_131, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_131_holds() -> Bool {
-  nsc_bucket_131()
+  nsc_hit_131()
 }
 
 data nsc_bucket_132: List<String> = [
@@ -2281,11 +3665,11 @@ data nsc_bucket_132: List<String> = [
   "target_reference_layer_tokens_field_box_new",
   "target_reference_layer_tokens_field_rc_head"
 ]
-fn nsc_bucket_132() -> Bool {
+fn nsc_hit_132() -> Bool {
   contains(xs: nsc_bucket_132, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_132_holds() -> Bool {
-  nsc_bucket_132()
+  nsc_hit_132()
 }
 
 data nsc_bucket_133: List<String> = [
@@ -2298,11 +3682,11 @@ data nsc_bucket_133: List<String> = [
   "target_type_expr_field_atom",
   "target_type_expr_field_child_slot_discipline"
 ]
-fn nsc_bucket_133() -> Bool {
+fn nsc_hit_133() -> Bool {
   contains(xs: nsc_bucket_133, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_133_holds() -> Bool {
-  nsc_bucket_133()
+  nsc_hit_133()
 }
 
 data nsc_bucket_134: List<String> = [
@@ -2315,11 +3699,11 @@ data nsc_bucket_134: List<String> = [
   "target_type_expr_field_ident_token",
   "target_type_expr_field_instantiation"
 ]
-fn nsc_bucket_134() -> Bool {
+fn nsc_hit_134() -> Bool {
   contains(xs: nsc_bucket_134, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_134_holds() -> Bool {
-  nsc_bucket_134()
+  nsc_hit_134()
 }
 
 data nsc_bucket_135: List<String> = [
@@ -2332,11 +3716,11 @@ data nsc_bucket_135: List<String> = [
   "target_type_expr_field_param_type_separator",
   "target_type_expr_field_reference_module_joiner"
 ]
-fn nsc_bucket_135() -> Bool {
+fn nsc_hit_135() -> Bool {
   contains(xs: nsc_bucket_135, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_135_holds() -> Bool {
-  nsc_bucket_135()
+  nsc_hit_135()
 }
 
 data nsc_bucket_136: List<String> = [
@@ -2349,11 +3733,11 @@ data nsc_bucket_136: List<String> = [
   "target_use_site_ownership_derived_row",
   "target_use_site_ownership_field_reference_layer"
 ]
-fn nsc_bucket_136() -> Bool {
+fn nsc_hit_136() -> Bool {
   contains(xs: nsc_bucket_136, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_136_holds() -> Bool {
-  nsc_bucket_136()
+  nsc_hit_136()
 }
 
 data nsc_bucket_137: List<String> = [
@@ -2366,11 +3750,11 @@ data nsc_bucket_137: List<String> = [
   "target_value_expr_field_bind_key",
   "target_value_expr_field_bind_let"
 ]
-fn nsc_bucket_137() -> Bool {
+fn nsc_hit_137() -> Bool {
   contains(xs: nsc_bucket_137, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_137_holds() -> Bool {
-  nsc_bucket_137()
+  nsc_hit_137()
 }
 
 data nsc_bucket_138: List<String> = [
@@ -2383,11 +3767,11 @@ data nsc_bucket_138: List<String> = [
   "target_value_expr_field_block_eval_terminator",
   "target_value_expr_field_body_close"
 ]
-fn nsc_bucket_138() -> Bool {
+fn nsc_hit_138() -> Bool {
   contains(xs: nsc_bucket_138, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_138_holds() -> Bool {
-  nsc_bucket_138()
+  nsc_hit_138()
 }
 
 data nsc_bucket_139: List<String> = [
@@ -2400,11 +3784,11 @@ data nsc_bucket_139: List<String> = [
   "target_value_expr_field_branch_then_arm",
   "target_value_expr_field_callable_apply"
 ]
-fn nsc_bucket_139() -> Bool {
+fn nsc_hit_139() -> Bool {
   contains(xs: nsc_bucket_139, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_139_holds() -> Bool {
-  nsc_bucket_139()
+  nsc_hit_139()
 }
 
 data nsc_bucket_140: List<String> = [
@@ -2417,11 +3801,11 @@ data nsc_bucket_140: List<String> = [
   "target_value_expr_field_closure_value_close",
   "target_value_expr_field_closure_value_open"
 ]
-fn nsc_bucket_140() -> Bool {
+fn nsc_hit_140() -> Bool {
   contains(xs: nsc_bucket_140, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_140_holds() -> Bool {
-  nsc_bucket_140()
+  nsc_hit_140()
 }
 
 data nsc_bucket_141: List<String> = [
@@ -2434,11 +3818,11 @@ data nsc_bucket_141: List<String> = [
   "target_value_expr_field_else_token",
   "target_value_expr_field_field_access"
 ]
-fn nsc_bucket_141() -> Bool {
+fn nsc_hit_141() -> Bool {
   contains(xs: nsc_bucket_141, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_141_holds() -> Bool {
-  nsc_bucket_141()
+  nsc_hit_141()
 }
 
 data nsc_bucket_142: List<String> = [
@@ -2451,11 +3835,11 @@ data nsc_bucket_142: List<String> = [
   "target_value_expr_field_in_token",
   "target_value_expr_field_int_literal"
 ]
-fn nsc_bucket_142() -> Bool {
+fn nsc_hit_142() -> Bool {
   contains(xs: nsc_bucket_142, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_142_holds() -> Bool {
-  nsc_bucket_142()
+  nsc_hit_142()
 }
 
 data nsc_bucket_143: List<String> = [
@@ -2468,11 +3852,11 @@ data nsc_bucket_143: List<String> = [
   "target_value_expr_field_match",
   "target_value_expr_field_match_arm_separator"
 ]
-fn nsc_bucket_143() -> Bool {
+fn nsc_hit_143() -> Bool {
   contains(xs: nsc_bucket_143, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_143_holds() -> Bool {
-  nsc_bucket_143()
+  nsc_hit_143()
 }
 
 data nsc_bucket_144: List<String> = [
@@ -2485,11 +3869,11 @@ data nsc_bucket_144: List<String> = [
   "target_value_expr_field_match_token",
   "target_value_expr_field_open"
 ]
-fn nsc_bucket_144() -> Bool {
+fn nsc_hit_144() -> Bool {
   contains(xs: nsc_bucket_144, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_144_holds() -> Bool {
-  nsc_bucket_144()
+  nsc_hit_144()
 }
 
 data nsc_bucket_145: List<String> = [
@@ -2502,11 +3886,11 @@ data nsc_bucket_145: List<String> = [
   "target_value_expr_field_record_names_type",
   "target_value_expr_field_record_open"
 ]
-fn nsc_bucket_145() -> Bool {
+fn nsc_hit_145() -> Bool {
   contains(xs: nsc_bucket_145, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_145_holds() -> Bool {
-  nsc_bucket_145()
+  nsc_hit_145()
 }
 
 data nsc_bucket_146: List<String> = [
@@ -2519,11 +3903,11 @@ data nsc_bucket_146: List<String> = [
   "target_value_expr_list_introduction_unwired",
   "target_value_expression_bind_let_atom"
 ]
-fn nsc_bucket_146() -> Bool {
+fn nsc_hit_146() -> Bool {
   contains(xs: nsc_bucket_146, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_146_holds() -> Bool {
-  nsc_bucket_146()
+  nsc_hit_146()
 }
 
 data nsc_bucket_147: List<String> = [
@@ -2536,11 +3920,11 @@ data nsc_bucket_147: List<String> = [
   "target_value_expression_closure_atom",
   "target_value_expression_conditional_atom"
 ]
-fn nsc_bucket_147() -> Bool {
+fn nsc_hit_147() -> Bool {
   contains(xs: nsc_bucket_147, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_147_holds() -> Bool {
-  nsc_bucket_147()
+  nsc_hit_147()
 }
 
 data nsc_bucket_148: List<String> = [
@@ -2553,11 +3937,11 @@ data nsc_bucket_148: List<String> = [
   "target_value_expression_int_literal_atom",
   "target_value_expression_list_introduction_atom"
 ]
-fn nsc_bucket_148() -> Bool {
+fn nsc_hit_148() -> Bool {
   contains(xs: nsc_bucket_148, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_148_holds() -> Bool {
-  nsc_bucket_148()
+  nsc_hit_148()
 }
 
 data nsc_bucket_149: List<String> = [
@@ -2570,11 +3954,11 @@ data nsc_bucket_149: List<String> = [
   "target_value_expression_symbol_to_owned_string_atom",
   "tokenize_lex_e5_mode_declared_twice"
 ]
-fn nsc_bucket_149() -> Bool {
+fn nsc_hit_149() -> Bool {
   contains(xs: nsc_bucket_149, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_149_holds() -> Bool {
-  nsc_bucket_149()
+  nsc_hit_149()
 }
 
 data nsc_bucket_150: List<String> = [
@@ -2587,11 +3971,11 @@ data nsc_bucket_150: List<String> = [
   "ts_binding_param_y",
   "ts_binding_pr3_identity"
 ]
-fn nsc_bucket_150() -> Bool {
+fn nsc_hit_150() -> Bool {
   contains(xs: nsc_bucket_150, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_150_holds() -> Bool {
-  nsc_bucket_150()
+  nsc_hit_150()
 }
 
 data nsc_bucket_151: List<String> = [
@@ -2604,11 +3988,11 @@ data nsc_bucket_151: List<String> = [
   "ts_coercion_field_number_arithmetic",
   "ts_coercion_field_number_bitwise"
 ]
-fn nsc_bucket_151() -> Bool {
+fn nsc_hit_151() -> Bool {
   contains(xs: nsc_bucket_151, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_151_holds() -> Bool {
-  nsc_bucket_151()
+  nsc_hit_151()
 }
 
 data nsc_bucket_152: List<String> = [
@@ -2621,11 +4005,11 @@ data nsc_bucket_152: List<String> = [
   "ts_effect_signature_pure_value",
   "ts_emit_host_runtime_primitive_symbol"
 ]
-fn nsc_bucket_152() -> Bool {
+fn nsc_hit_152() -> Bool {
   contains(xs: nsc_bucket_152, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_152_holds() -> Bool {
-  nsc_bucket_152()
+  nsc_hit_152()
 }
 
 data nsc_bucket_153: List<String> = [
@@ -2638,11 +4022,11 @@ data nsc_bucket_153: List<String> = [
   "ts_facts_field_surface_spelling",
   "ts_facts_field_width"
 ]
-fn nsc_bucket_153() -> Bool {
+fn nsc_hit_153() -> Bool {
   contains(xs: nsc_bucket_153, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_153_holds() -> Bool {
-  nsc_bucket_153()
+  nsc_hit_153()
 }
 
 data nsc_bucket_154: List<String> = [
@@ -2655,11 +4039,11 @@ data nsc_bucket_154: List<String> = [
   "ts_inhabitant_field_bigint",
   "ts_inhabitant_field_boolean"
 ]
-fn nsc_bucket_154() -> Bool {
+fn nsc_hit_154() -> Bool {
   contains(xs: nsc_bucket_154, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_154_holds() -> Bool {
-  nsc_bucket_154()
+  nsc_hit_154()
 }
 
 data nsc_bucket_155: List<String> = [
@@ -2672,11 +4056,11 @@ data nsc_bucket_155: List<String> = [
   "ts_language_model_surface_id",
   "ts_op_bigint_add"
 ]
-fn nsc_bucket_155() -> Bool {
+fn nsc_hit_155() -> Bool {
   contains(xs: nsc_bucket_155, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_155_holds() -> Bool {
-  nsc_bucket_155()
+  nsc_hit_155()
 }
 
 data nsc_bucket_156: List<String> = [
@@ -2689,11 +4073,11 @@ data nsc_bucket_156: List<String> = [
   "ts_op_bool_and",
   "ts_op_bool_not"
 ]
-fn nsc_bucket_156() -> Bool {
+fn nsc_hit_156() -> Bool {
   contains(xs: nsc_bucket_156, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_156_holds() -> Bool {
-  nsc_bucket_156()
+  nsc_hit_156()
 }
 
 data nsc_bucket_157: List<String> = [
@@ -2706,11 +4090,11 @@ data nsc_bucket_157: List<String> = [
   "ts_op_number_sub",
   "ts_op_string_concat"
 ]
-fn nsc_bucket_157() -> Bool {
+fn nsc_hit_157() -> Bool {
   contains(xs: nsc_bucket_157, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_157_holds() -> Bool {
-  nsc_bucket_157()
+  nsc_hit_157()
 }
 
 data nsc_bucket_158: List<String> = [
@@ -2723,11 +4107,11 @@ data nsc_bucket_158: List<String> = [
   "ts_production_pr3_primary_type",
   "ts_production_pr3_typed_fn_decl"
 ]
-fn nsc_bucket_158() -> Bool {
+fn nsc_hit_158() -> Bool {
   contains(xs: nsc_bucket_158, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_158_holds() -> Bool {
-  nsc_bucket_158()
+  nsc_hit_158()
 }
 
 data nsc_bucket_159: List<String> = [
@@ -2740,11 +4124,11 @@ data nsc_bucket_159: List<String> = [
   "ts_production_type_alias_decl",
   "ts_production_type_annotation"
 ]
-fn nsc_bucket_159() -> Bool {
+fn nsc_hit_159() -> Bool {
   contains(xs: nsc_bucket_159, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_159_holds() -> Bool {
-  nsc_bucket_159()
+  nsc_hit_159()
 }
 
 data nsc_bucket_160: List<String> = [
@@ -2757,11 +4141,11 @@ data nsc_bucket_160: List<String> = [
   "ts_relation_rule_fn_add",
   "ts_relation_rule_pr3_identity"
 ]
-fn nsc_bucket_160() -> Bool {
+fn nsc_hit_160() -> Bool {
   contains(xs: nsc_bucket_160, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_160_holds() -> Bool {
-  nsc_bucket_160()
+  nsc_hit_160()
 }
 
 data nsc_bucket_161: List<String> = [
@@ -2774,11 +4158,11 @@ data nsc_bucket_161: List<String> = [
   "ts_std_projection_bool",
   "ts_std_projection_string"
 ]
-fn nsc_bucket_161() -> Bool {
+fn nsc_hit_161() -> Bool {
   contains(xs: nsc_bucket_161, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_161_holds() -> Bool {
-  nsc_bucket_161()
+  nsc_hit_161()
 }
 
 data nsc_bucket_162: List<String> = [
@@ -2791,11 +4175,11 @@ data nsc_bucket_162: List<String> = [
   "ts_surface_record_field",
   "ts_surface_record_fields"
 ]
-fn nsc_bucket_162() -> Bool {
+fn nsc_hit_162() -> Bool {
   contains(xs: nsc_bucket_162, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_162_holds() -> Bool {
-  nsc_bucket_162()
+  nsc_hit_162()
 }
 
 data nsc_bucket_163: List<String> = [
@@ -2808,11 +4192,11 @@ data nsc_bucket_163: List<String> = [
   "ts_surface_type_alias_decl",
   "ts_surface_type_annotation"
 ]
-fn nsc_bucket_163() -> Bool {
+fn nsc_hit_163() -> Bool {
   contains(xs: nsc_bucket_163, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_163_holds() -> Bool {
-  nsc_bucket_163()
+  nsc_hit_163()
 }
 
 data nsc_bucket_164: List<String> = [
@@ -2825,11 +4209,11 @@ data nsc_bucket_164: List<String> = [
   "ts_surface_type_optional_instantiation",
   "ts_surface_type_record"
 ]
-fn nsc_bucket_164() -> Bool {
+fn nsc_hit_164() -> Bool {
   contains(xs: nsc_bucket_164, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_164_holds() -> Bool {
-  nsc_bucket_164()
+  nsc_hit_164()
 }
 
 data nsc_bucket_165: List<String> = [
@@ -2842,11 +4226,11 @@ data nsc_bucket_165: List<String> = [
   "ts_surface_typed_params_opt",
   "ts_surface_union_type"
 ]
-fn nsc_bucket_165() -> Bool {
+fn nsc_hit_165() -> Bool {
   contains(xs: nsc_bucket_165, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_165_holds() -> Bool {
-  nsc_bucket_165()
+  nsc_hit_165()
 }
 
 data nsc_bucket_166: List<String> = [
@@ -2859,11 +4243,11 @@ data nsc_bucket_166: List<String> = [
   "ts_token_dot",
   "ts_token_effect_read_callee"
 ]
-fn nsc_bucket_166() -> Bool {
+fn nsc_hit_166() -> Bool {
   contains(xs: nsc_bucket_166, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_166_holds() -> Bool {
-  nsc_bucket_166()
+  nsc_hit_166()
 }
 
 data nsc_bucket_167: List<String> = [
@@ -2876,11 +4260,11 @@ data nsc_bucket_167: List<String> = [
   "ts_token_import_rbrace",
   "ts_token_kw_const"
 ]
-fn nsc_bucket_167() -> Bool {
+fn nsc_hit_167() -> Bool {
   contains(xs: nsc_bucket_167, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_167_holds() -> Bool {
-  nsc_bucket_167()
+  nsc_hit_167()
 }
 
 data nsc_bucket_168: List<String> = [
@@ -2893,11 +4277,11 @@ data nsc_bucket_168: List<String> = [
   "ts_token_kw_true",
   "ts_token_kw_type"
 ]
-fn nsc_bucket_168() -> Bool {
+fn nsc_hit_168() -> Bool {
   contains(xs: nsc_bucket_168, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_168_holds() -> Bool {
-  nsc_bucket_168()
+  nsc_hit_168()
 }
 
 data nsc_bucket_169: List<String> = [
@@ -2910,11 +4294,11 @@ data nsc_bucket_169: List<String> = [
   "ts_token_module_path_sep",
   "ts_token_module_quote"
 ]
-fn nsc_bucket_169() -> Bool {
+fn nsc_hit_169() -> Bool {
   contains(xs: nsc_bucket_169, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_169_holds() -> Bool {
-  nsc_bucket_169()
+  nsc_hit_169()
 }
 
 data nsc_bucket_170: List<String> = [
@@ -2927,11 +4311,11 @@ data nsc_bucket_170: List<String> = [
   "ts_token_semicolon",
   "ts_token_star"
 ]
-fn nsc_bucket_170() -> Bool {
+fn nsc_hit_170() -> Bool {
   contains(xs: nsc_bucket_170, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_170_holds() -> Bool {
-  nsc_bucket_170()
+  nsc_hit_170()
 }
 
 data nsc_bucket_171: List<String> = [
@@ -2944,11 +4328,11 @@ data nsc_bucket_171: List<String> = [
   "ts_token_ty_string",
   "ts_token_ty_void"
 ]
-fn nsc_bucket_171() -> Bool {
+fn nsc_hit_171() -> Bool {
   contains(xs: nsc_bucket_171, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_171_holds() -> Bool {
-  nsc_bucket_171()
+  nsc_hit_171()
 }
 
 data nsc_bucket_172: List<String> = [
@@ -2961,11 +4345,11 @@ data nsc_bucket_172: List<String> = [
   "ts_witness_string_free_monoid",
   "types"
 ]
-fn nsc_bucket_172() -> Bool {
+fn nsc_hit_172() -> Bool {
   contains(xs: nsc_bucket_172, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_172_holds() -> Bool {
-  nsc_bucket_172()
+  nsc_hit_172()
 }
 
 data nsc_bucket_173: List<String> = [
@@ -2975,10 +4359,16 @@ data nsc_bucket_173: List<String> = [
   "x",
   "xs"
 ]
-fn nsc_bucket_173() -> Bool {
+fn nsc_hit_173() -> Bool {
   contains(xs: nsc_bucket_173, item: nsc_reason(), eq: nsc_eq)
 }
 test fn nsc_bucket_173_holds() -> Bool {
-  nsc_bucket_173()
+  nsc_hit_173()
 }
 
+test fn nsc_universe_holds() -> Bool {
+  contains(xs: nsc_universe, item: nsc_reason(), eq: nsc_eq)
+}
+test fn nsc_not_empty() -> Bool {
+  nsc_reason() != ""
+}

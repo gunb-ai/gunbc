@@ -3,15 +3,15 @@ module v2.test.claim.compiler.infer_nested_shape_fatal_sweep
 // SEAT 16, SCRATCH (never-merge branch; claims only; nothing here lands). Round 8 per M3
 // msg_3a18e142: round 7 at 148f53459210 measured the NESTED shape (<T>(t: (Int)->T))(1) REFUSED
 // by NEITHER application_argument_does_not_inhabit NOR grounding_evidence_is_source (nst_is_not_
-// accepted + nst_fatal_is_something_else PASS). One more naming round on the proven procedure:
+// accepted + nst_fatal_is_something_else PASS). One naming round on the proven procedure:
 // bucket membership over the REASON-LEXEME UNIVERSE of the tree route -- every lexeme emitted as
 // reason: ^... or cause: ^... in the transitive import closure of {v2.compiler.infer,
-// v2.compiler.resolve, v2.test.lens_common.infer_fixture, this sweep's witness module,
-// v2.std.constraints, v2.compiler.inhabitance} (94 files, 509 lexemes; a python closure walk at
-// this head -- the discovery procedure, cited by method). The TREE imports the CLAIM'S OWN
-// builders (byte-identical to c8cc1df9c8d1), so probe and claim cannot drift. Exactly one bucket
-// PASSes plus the universe guard, or the universe guard FAILs and the fatal is outside every
-// closure mint site -- the extraction itself is then the suspect, a bigger finding than the label.
+// v2.compiler.resolve, v2.test.lens_common.infer_fixture, the witness module, v2.std.constraints,
+// v2.compiler.inhabitance} (94 files, 509 lexemes; a python closure walk at this head -- the
+// discovery procedure, cited by method). The TREE imports the CLAIM'S OWN builders
+// (byte-identical to c8cc1df9c8d1), so probe and claim cannot drift. Exactly one bucket PASSes
+// plus the universe guard, or the universe guard FAILs and the fatal is outside every closure
+// mint site -- the extraction itself is then the suspect, a bigger finding than the label.
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
@@ -566,11 +566,11 @@ data nsw_bucket_1: List<String> = [
   "algebra_inhabitance_algebra_edge_missing",
   "algebra_inhabitance_inhabitant_edge_ambiguous"
 ]
-fn nsw_bucket_1() -> Bool {
+fn nsw_hit_1() -> Bool {
   contains(xs: nsw_bucket_1, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_1_holds() -> Bool {
-  nsw_bucket_1()
+  nsw_hit_1()
 }
 
 data nsw_bucket_2: List<String> = [
@@ -583,11 +583,11 @@ data nsw_bucket_2: List<String> = [
   "application_argument_label_unknown",
   "application_argument_slot_bound_twice"
 ]
-fn nsw_bucket_2() -> Bool {
+fn nsw_hit_2() -> Bool {
   contains(xs: nsw_bucket_2, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_2_holds() -> Bool {
-  nsw_bucket_2()
+  nsw_hit_2()
 }
 
 data nsw_bucket_3: List<String> = [
@@ -600,11 +600,11 @@ data nsw_bucket_3: List<String> = [
   "arrow_body_child_not_arrow",
   "arrow_body_does_not_inhabit_declared_return"
 ]
-fn nsw_bucket_3() -> Bool {
+fn nsw_hit_3() -> Bool {
   contains(xs: nsw_bucket_3, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_3_holds() -> Bool {
-  nsw_bucket_3()
+  nsw_hit_3()
 }
 
 data nsw_bucket_4: List<String> = [
@@ -617,11 +617,11 @@ data nsw_bucket_4: List<String> = [
   "body_lowering_reason_brace_key_kind_mismatch",
   "body_lowering_reason_call_argument_list_shape_unread"
 ]
-fn nsw_bucket_4() -> Bool {
+fn nsw_hit_4() -> Bool {
   contains(xs: nsw_bucket_4, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_4_holds() -> Bool {
-  nsw_bucket_4()
+  nsw_hit_4()
 }
 
 data nsw_bucket_5: List<String> = [
@@ -634,11 +634,11 @@ data nsw_bucket_5: List<String> = [
   "body_lowering_reason_if_navigation_refused",
   "body_lowering_reason_index_suffix_arity"
 ]
-fn nsw_bucket_5() -> Bool {
+fn nsw_hit_5() -> Bool {
   contains(xs: nsw_bucket_5, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_5_holds() -> Bool {
-  nsw_bucket_5()
+  nsw_hit_5()
 }
 
 data nsw_bucket_6: List<String> = [
@@ -651,11 +651,11 @@ data nsw_bucket_6: List<String> = [
   "body_lowering_reason_loop_navigation_refused",
   "body_lowering_reason_match_arm_navigation_refused"
 ]
-fn nsw_bucket_6() -> Bool {
+fn nsw_hit_6() -> Bool {
   contains(xs: nsw_bucket_6, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_6_holds() -> Bool {
-  nsw_bucket_6()
+  nsw_hit_6()
 }
 
 data nsw_bucket_7: List<String> = [
@@ -668,11 +668,11 @@ data nsw_bucket_7: List<String> = [
   "body_lowering_reason_operator_tail_unread",
   "body_lowering_reason_parameter_unlowered"
 ]
-fn nsw_bucket_7() -> Bool {
+fn nsw_hit_7() -> Bool {
   contains(xs: nsw_bucket_7, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_7_holds() -> Bool {
-  nsw_bucket_7()
+  nsw_hit_7()
 }
 
 data nsw_bucket_8: List<String> = [
@@ -685,11 +685,11 @@ data nsw_bucket_8: List<String> = [
   "body_lowering_reason_reserved_value_name_pun",
   "body_lowering_reason_resource_capability_realization_unconsumed"
 ]
-fn nsw_bucket_8() -> Bool {
+fn nsw_hit_8() -> Bool {
   contains(xs: nsw_bucket_8, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_8_holds() -> Bool {
-  nsw_bucket_8()
+  nsw_hit_8()
 }
 
 data nsw_bucket_9: List<String> = [
@@ -702,11 +702,11 @@ data nsw_bucket_9: List<String> = [
   "body_lowering_reason_service_io_block_repeated",
   "body_lowering_reason_service_member_unread"
 ]
-fn nsw_bucket_9() -> Bool {
+fn nsw_hit_9() -> Bool {
   contains(xs: nsw_bucket_9, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_9_holds() -> Bool {
-  nsw_bucket_9()
+  nsw_hit_9()
 }
 
 data nsw_bucket_10: List<String> = [
@@ -719,11 +719,11 @@ data nsw_bucket_10: List<String> = [
   "body_lowering_reason_type_annotation_not_carried",
   "body_lowering_reason_type_decl_member_uncarried"
 ]
-fn nsw_bucket_10() -> Bool {
+fn nsw_hit_10() -> Bool {
   contains(xs: nsw_bucket_10, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_10_holds() -> Bool {
-  nsw_bucket_10()
+  nsw_hit_10()
 }
 
 data nsw_bucket_11: List<String> = [
@@ -736,11 +736,11 @@ data nsw_bucket_11: List<String> = [
   "body_lowering_reason_value_unlowered",
   "body_lowering_reason_where_predicate_repeated"
 ]
-fn nsw_bucket_11() -> Bool {
+fn nsw_hit_11() -> Bool {
   contains(xs: nsw_bucket_11, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_11_holds() -> Bool {
-  nsw_bucket_11()
+  nsw_hit_11()
 }
 
 data nsw_bucket_12: List<String> = [
@@ -753,11 +753,11 @@ data nsw_bucket_12: List<String> = [
   "body_view_match_arms_absent",
   "body_view_match_scrutinee_absent"
 ]
-fn nsw_bucket_12() -> Bool {
+fn nsw_hit_12() -> Bool {
   contains(xs: nsw_bucket_12, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_12_holds() -> Bool {
-  nsw_bucket_12()
+  nsw_hit_12()
 }
 
 data nsw_bucket_13: List<String> = [
@@ -770,11 +770,11 @@ data nsw_bucket_13: List<String> = [
   "body_view_transform_head_not_callee",
   "body_view_unexpected_named_edge"
 ]
-fn nsw_bucket_13() -> Bool {
+fn nsw_hit_13() -> Bool {
   contains(xs: nsw_bucket_13, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_13_holds() -> Bool {
-  nsw_bucket_13()
+  nsw_hit_13()
 }
 
 data nsw_bucket_14: List<String> = [
@@ -787,11 +787,11 @@ data nsw_bucket_14: List<String> = [
   "coercion_mismatch_candidate_set_not_closed",
   "concrete_syntax_token_wire_malformed"
 ]
-fn nsw_bucket_14() -> Bool {
+fn nsw_hit_14() -> Bool {
   contains(xs: nsw_bucket_14, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_14_holds() -> Bool {
-  nsw_bucket_14()
+  nsw_hit_14()
 }
 
 data nsw_bucket_15: List<String> = [
@@ -804,11 +804,11 @@ data nsw_bucket_15: List<String> = [
   "dag_emit_string_literal_value_missing",
   "dag_emit_string_scalar_not_unicode"
 ]
-fn nsw_bucket_15() -> Bool {
+fn nsw_hit_15() -> Bool {
   contains(xs: nsw_bucket_15, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_15_holds() -> Bool {
-  nsw_bucket_15()
+  nsw_hit_15()
 }
 
 data nsw_bucket_16: List<String> = [
@@ -821,11 +821,11 @@ data nsw_bucket_16: List<String> = [
   "emit_declaration_reference_inferred_facts_absent",
   "emit_declaration_reference_not_nullary_coproduct_arm"
 ]
-fn nsw_bucket_16() -> Bool {
+fn nsw_hit_16() -> Bool {
   contains(xs: nsw_bucket_16, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_16_holds() -> Bool {
-  nsw_bucket_16()
+  nsw_hit_16()
 }
 
 data nsw_bucket_17: List<String> = [
@@ -838,11 +838,11 @@ data nsw_bucket_17: List<String> = [
   "find_witness_reason_invalid_witness",
   "find_witness_reason_no_candidate"
 ]
-fn nsw_bucket_17() -> Bool {
+fn nsw_hit_17() -> Bool {
   contains(xs: nsw_bucket_17, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_17_holds() -> Bool {
-  nsw_bucket_17()
+  nsw_hit_17()
 }
 
 data nsw_bucket_18: List<String> = [
@@ -855,11 +855,11 @@ data nsw_bucket_18: List<String> = [
   "fold_form_list_node_not_conj",
   "fold_form_list_tail_without_head"
 ]
-fn nsw_bucket_18() -> Bool {
+fn nsw_hit_18() -> Bool {
   contains(xs: nsw_bucket_18, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_18_holds() -> Bool {
-  nsw_bucket_18()
+  nsw_hit_18()
 }
 
 data nsw_bucket_19: List<String> = [
@@ -872,11 +872,11 @@ data nsw_bucket_19: List<String> = [
   "fold_lowering_step_form_unresolved",
   "generator_provenance_artifact_not_generated"
 ]
-fn nsw_bucket_19() -> Bool {
+fn nsw_hit_19() -> Bool {
   contains(xs: nsw_bucket_19, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_19_holds() -> Bool {
-  nsw_bucket_19()
+  nsw_hit_19()
 }
 
 data nsw_bucket_20: List<String> = [
@@ -889,11 +889,11 @@ data nsw_bucket_20: List<String> = [
   "grammar_emit_production_stamp_absent",
   "grammar_emit_production_unknown"
 ]
-fn nsw_bucket_20() -> Bool {
+fn nsw_hit_20() -> Bool {
   contains(xs: nsw_bucket_20, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_20_holds() -> Bool {
-  nsw_bucket_20()
+  nsw_hit_20()
 }
 
 data nsw_bucket_21: List<String> = [
@@ -906,11 +906,11 @@ data nsw_bucket_21: List<String> = [
   "grammar_relation_bodied_scaffold_missing",
   "grammar_relation_emitted_conj_slot_missing"
 ]
-fn nsw_bucket_21() -> Bool {
+fn nsw_hit_21() -> Bool {
   contains(xs: nsw_bucket_21, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_21_holds() -> Bool {
-  nsw_bucket_21()
+  nsw_hit_21()
 }
 
 data nsw_bucket_22: List<String> = [
@@ -923,11 +923,11 @@ data nsw_bucket_22: List<String> = [
   "grammar_relation_row_forward_production_not_found",
   "grounding_evidence_is_source"
 ]
-fn nsw_bucket_22() -> Bool {
+fn nsw_hit_22() -> Bool {
   contains(xs: nsw_bucket_22, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_22_holds() -> Bool {
-  nsw_bucket_22()
+  nsw_hit_22()
 }
 
 data nsw_bucket_23: List<String> = [
@@ -940,11 +940,11 @@ data nsw_bucket_23: List<String> = [
   "infer_branch_cond_not_bool",
   "infer_branch_shape_invalid"
 ]
-fn nsw_bucket_23() -> Bool {
+fn nsw_hit_23() -> Bool {
   contains(xs: nsw_bucket_23, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_23_holds() -> Bool {
-  nsw_bucket_23()
+  nsw_hit_23()
 }
 
 data nsw_bucket_24: List<String> = [
@@ -957,11 +957,11 @@ data nsw_bucket_24: List<String> = [
   "infer_literal_at_optional_is_not_present",
   "infer_loop_iteration_type_mismatch"
 ]
-fn nsw_bucket_24() -> Bool {
+fn nsw_hit_24() -> Bool {
   contains(xs: nsw_bucket_24, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_24_holds() -> Bool {
-  nsw_bucket_24()
+  nsw_hit_24()
 }
 
 data nsw_bucket_25: List<String> = [
@@ -974,11 +974,11 @@ data nsw_bucket_25: List<String> = [
   "infer_match_pattern_field_not_declared",
   "infer_match_pattern_not_bool_literal"
 ]
-fn nsw_bucket_25() -> Bool {
+fn nsw_hit_25() -> Bool {
   contains(xs: nsw_bucket_25, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_25_holds() -> Bool {
-  nsw_bucket_25()
+  nsw_hit_25()
 }
 
 data nsw_bucket_26: List<String> = [
@@ -991,11 +991,11 @@ data nsw_bucket_26: List<String> = [
   "infer_match_type_argument_arity_mismatch",
   "infer_no_arm_declares_a_type"
 ]
-fn nsw_bucket_26() -> Bool {
+fn nsw_hit_26() -> Bool {
   contains(xs: nsw_bucket_26, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_26_holds() -> Bool {
-  nsw_bucket_26()
+  nsw_hit_26()
 }
 
 data nsw_bucket_27: List<String> = [
@@ -1008,11 +1008,11 @@ data nsw_bucket_27: List<String> = [
   "infer_reason_bound_generator_disagrees",
   "infer_reason_caller_admission_callee_unreadable"
 ]
-fn nsw_bucket_27() -> Bool {
+fn nsw_hit_27() -> Bool {
   contains(xs: nsw_bucket_27, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_27_holds() -> Bool {
-  nsw_bucket_27()
+  nsw_hit_27()
 }
 
 data nsw_bucket_28: List<String> = [
@@ -1025,11 +1025,11 @@ data nsw_bucket_28: List<String> = [
   "infer_reason_declaration_identity_contested",
   "infer_reason_declaration_identity_unavailable"
 ]
-fn nsw_bucket_28() -> Bool {
+fn nsw_hit_28() -> Bool {
   contains(xs: nsw_bucket_28, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_28_holds() -> Bool {
-  nsw_bucket_28()
+  nsw_hit_28()
 }
 
 data nsw_bucket_29: List<String> = [
@@ -1042,11 +1042,11 @@ data nsw_bucket_29: List<String> = [
   "infer_reason_fold_member_formal_unread",
   "infer_reason_fold_step_body_type_not_derived"
 ]
-fn nsw_bucket_29() -> Bool {
+fn nsw_hit_29() -> Bool {
   contains(xs: nsw_bucket_29, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_29_holds() -> Bool {
-  nsw_bucket_29()
+  nsw_hit_29()
 }
 
 data nsw_bucket_30: List<String> = [
@@ -1059,11 +1059,11 @@ data nsw_bucket_30: List<String> = [
   "infer_reason_machine_width_compose_malformed",
   "infer_reason_machine_width_not_static"
 ]
-fn nsw_bucket_30() -> Bool {
+fn nsw_hit_30() -> Bool {
   contains(xs: nsw_bucket_30, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_30_holds() -> Bool {
-  nsw_bucket_30()
+  nsw_hit_30()
 }
 
 data nsw_bucket_31: List<String> = [
@@ -1076,11 +1076,11 @@ data nsw_bucket_31: List<String> = [
   "infer_reason_projection_receiver_declares_no_fields",
   "infer_reason_projection_receiver_type_arity_mismatch"
 ]
-fn nsw_bucket_31() -> Bool {
+fn nsw_hit_31() -> Bool {
   contains(xs: nsw_bucket_31, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_31_holds() -> Bool {
-  nsw_bucket_31()
+  nsw_hit_31()
 }
 
 data nsw_bucket_32: List<String> = [
@@ -1093,11 +1093,11 @@ data nsw_bucket_32: List<String> = [
   "infer_reason_type_argument_does_not_inhabit_bound",
   "infer_transform_operand_type_mismatch"
 ]
-fn nsw_bucket_32() -> Bool {
+fn nsw_hit_32() -> Bool {
   contains(xs: nsw_bucket_32, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_32_holds() -> Bool {
-  nsw_bucket_32()
+  nsw_hit_32()
 }
 
 data nsw_bucket_33: List<String> = [
@@ -1110,11 +1110,11 @@ data nsw_bucket_33: List<String> = [
   "inhabitance_undecidable_formal_unresolved",
   "inhabitance_undecidable_generic_formal"
 ]
-fn nsw_bucket_33() -> Bool {
+fn nsw_hit_33() -> Bool {
   contains(xs: nsw_bucket_33, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_33_holds() -> Bool {
-  nsw_bucket_33()
+  nsw_hit_33()
 }
 
 data nsw_bucket_34: List<String> = [
@@ -1127,11 +1127,11 @@ data nsw_bucket_34: List<String> = [
   "integer_value_set_interval_spec_malformed",
   "integer_value_set_kind_field_unresolved"
 ]
-fn nsw_bucket_34() -> Bool {
+fn nsw_hit_34() -> Bool {
   contains(xs: nsw_bucket_34, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_34_holds() -> Bool {
-  nsw_bucket_34()
+  nsw_hit_34()
 }
 
 data nsw_bucket_35: List<String> = [
@@ -1144,11 +1144,11 @@ data nsw_bucket_35: List<String> = [
   "named_child_not_a_binder",
   "namespace_graft_body_dissolved_refused"
 ]
-fn nsw_bucket_35() -> Bool {
+fn nsw_hit_35() -> Bool {
   contains(xs: nsw_bucket_35, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_35_holds() -> Bool {
-  nsw_bucket_35()
+  nsw_hit_35()
 }
 
 data nsw_bucket_36: List<String> = [
@@ -1161,11 +1161,11 @@ data nsw_bucket_36: List<String> = [
   "optional_absent_unwrap",
   "parse_e1_syntax_error"
 ]
-fn nsw_bucket_36() -> Bool {
+fn nsw_hit_36() -> Bool {
   contains(xs: nsw_bucket_36, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_36_holds() -> Bool {
-  nsw_bucket_36()
+  nsw_hit_36()
 }
 
 data nsw_bucket_37: List<String> = [
@@ -1178,11 +1178,11 @@ data nsw_bucket_37: List<String> = [
   "parse_grammar_undefined_nonterminal",
   "parse_tree_to_emitted_node_ambiguous_row"
 ]
-fn nsw_bucket_37() -> Bool {
+fn nsw_hit_37() -> Bool {
   contains(xs: nsw_bucket_37, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_37_holds() -> Bool {
-  nsw_bucket_37()
+  nsw_hit_37()
 }
 
 data nsw_bucket_38: List<String> = [
@@ -1195,11 +1195,11 @@ data nsw_bucket_38: List<String> = [
   "produced_decl_render_decl_not_conj",
   "produced_decl_render_decl_unnamed"
 ]
-fn nsw_bucket_38() -> Bool {
+fn nsw_hit_38() -> Bool {
   contains(xs: nsw_bucket_38, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_38_holds() -> Bool {
-  nsw_bucket_38()
+  nsw_hit_38()
 }
 
 data nsw_bucket_39: List<String> = [
@@ -1212,11 +1212,11 @@ data nsw_bucket_39: List<String> = [
   "produced_decl_render_type_param_kind_unrealized",
   "program_assembly_ingest_scope_non_structural"
 ]
-fn nsw_bucket_39() -> Bool {
+fn nsw_hit_39() -> Bool {
   contains(xs: nsw_bucket_39, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_39_holds() -> Bool {
-  nsw_bucket_39()
+  nsw_hit_39()
 }
 
 data nsw_bucket_40: List<String> = [
@@ -1229,11 +1229,11 @@ data nsw_bucket_40: List<String> = [
   "resolve_ambiguous_at_binding_position",
   "resolve_ambiguous_competing_declaration"
 ]
-fn nsw_bucket_40() -> Bool {
+fn nsw_hit_40() -> Bool {
   contains(xs: nsw_bucket_40, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_40_holds() -> Bool {
-  nsw_bucket_40()
+  nsw_hit_40()
 }
 
 data nsw_bucket_41: List<String> = [
@@ -1246,11 +1246,11 @@ data nsw_bucket_41: List<String> = [
   "resolve_anonymous_map_expected_type_not_map",
   "resolve_anonymous_map_key_kind_mismatch"
 ]
-fn nsw_bucket_41() -> Bool {
+fn nsw_hit_41() -> Bool {
   contains(xs: nsw_bucket_41, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_41_holds() -> Bool {
-  nsw_bucket_41()
+  nsw_hit_41()
 }
 
 data nsw_bucket_42: List<String> = [
@@ -1263,11 +1263,11 @@ data nsw_bucket_42: List<String> = [
   "resolve_cross_tree_import_ambiguous",
   "resolve_cross_tree_import_denied"
 ]
-fn nsw_bucket_42() -> Bool {
+fn nsw_hit_42() -> Bool {
   contains(xs: nsw_bucket_42, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_42_holds() -> Bool {
-  nsw_bucket_42()
+  nsw_hit_42()
 }
 
 data nsw_bucket_43: List<String> = [
@@ -1280,11 +1280,11 @@ data nsw_bucket_43: List<String> = [
   "resolve_reason_ambiguous_symbol",
   "resolve_reason_anonymous_parameter_referenced"
 ]
-fn nsw_bucket_43() -> Bool {
+fn nsw_hit_43() -> Bool {
   contains(xs: nsw_bucket_43, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_43_holds() -> Bool {
-  nsw_bucket_43()
+  nsw_hit_43()
 }
 
 data nsw_bucket_44: List<String> = [
@@ -1297,11 +1297,11 @@ data nsw_bucket_44: List<String> = [
   "resolve_reason_forwarded_parameter_unkinded",
   "resolve_reason_kernel_type_spelling_names_a_foreign_declaration"
 ]
-fn nsw_bucket_44() -> Bool {
+fn nsw_hit_44() -> Bool {
   contains(xs: nsw_bucket_44, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_44_holds() -> Bool {
-  nsw_bucket_44()
+  nsw_hit_44()
 }
 
 data nsw_bucket_45: List<String> = [
@@ -1314,11 +1314,11 @@ data nsw_bucket_45: List<String> = [
   "resolve_reason_optional_declaration_incompatible",
   "resolve_reason_optional_declaration_unavailable"
 ]
-fn nsw_bucket_45() -> Bool {
+fn nsw_hit_45() -> Bool {
   contains(xs: nsw_bucket_45, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_45_holds() -> Bool {
-  nsw_bucket_45()
+  nsw_hit_45()
 }
 
 data nsw_bucket_46: List<String> = [
@@ -1331,11 +1331,11 @@ data nsw_bucket_46: List<String> = [
   "resolve_reason_requirement_repeated",
   "resolve_reason_test_code_referenced"
 ]
-fn nsw_bucket_46() -> Bool {
+fn nsw_hit_46() -> Bool {
   contains(xs: nsw_bucket_46, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_46_holds() -> Bool {
-  nsw_bucket_46()
+  nsw_hit_46()
 }
 
 data nsw_bucket_47: List<String> = [
@@ -1348,11 +1348,11 @@ data nsw_bucket_47: List<String> = [
   "resolve_reason_unbound_symbol",
   "resolve_reason_where_predicate_unbound"
 ]
-fn nsw_bucket_47() -> Bool {
+fn nsw_hit_47() -> Bool {
   contains(xs: nsw_bucket_47, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_47_holds() -> Bool {
-  nsw_bucket_47()
+  nsw_hit_47()
 }
 
 data nsw_bucket_48: List<String> = [
@@ -1365,11 +1365,11 @@ data nsw_bucket_48: List<String> = [
   "service_realization_entry_malformed",
   "service_realization_entry_member_repeated"
 ]
-fn nsw_bucket_48() -> Bool {
+fn nsw_hit_48() -> Bool {
   contains(xs: nsw_bucket_48, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_48_holds() -> Bool {
-  nsw_bucket_48()
+  nsw_hit_48()
 }
 
 data nsw_bucket_49: List<String> = [
@@ -1382,11 +1382,11 @@ data nsw_bucket_49: List<String> = [
   "service_realization_projection_field_repeated",
   "service_realization_projection_malformed"
 ]
-fn nsw_bucket_49() -> Bool {
+fn nsw_hit_49() -> Bool {
   contains(xs: nsw_bucket_49, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_49_holds() -> Bool {
-  nsw_bucket_49()
+  nsw_hit_49()
 }
 
 data nsw_bucket_50: List<String> = [
@@ -1399,11 +1399,11 @@ data nsw_bucket_50: List<String> = [
   "service_realization_wire_key_not_of_transport",
   "source_authority_ast_mismatch"
 ]
-fn nsw_bucket_50() -> Bool {
+fn nsw_hit_50() -> Bool {
   contains(xs: nsw_bucket_50, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_50_holds() -> Bool {
-  nsw_bucket_50()
+  nsw_hit_50()
 }
 
 data nsw_bucket_51: List<String> = [
@@ -1416,11 +1416,11 @@ data nsw_bucket_51: List<String> = [
   "span_index_origin_chain_exhausted",
   "statement_sequenced_block_construct_unwired"
 ]
-fn nsw_bucket_51() -> Bool {
+fn nsw_hit_51() -> Bool {
   contains(xs: nsw_bucket_51, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_51_holds() -> Bool {
-  nsw_bucket_51()
+  nsw_hit_51()
 }
 
 data nsw_bucket_52: List<String> = [
@@ -1433,11 +1433,11 @@ data nsw_bucket_52: List<String> = [
   "target_atom_realization_target_model_bundle_mismatch",
   "target_binding_spelling_not_found"
 ]
-fn nsw_bucket_52() -> Bool {
+fn nsw_hit_52() -> Bool {
   contains(xs: nsw_bucket_52, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_52_holds() -> Bool {
-  nsw_bucket_52()
+  nsw_hit_52()
 }
 
 data nsw_bucket_53: List<String> = [
@@ -1450,11 +1450,11 @@ data nsw_bucket_53: List<String> = [
   "target_carriers_fidelity_quotient_malformed",
   "target_collection_free_monoid_no_representation"
 ]
-fn nsw_bucket_53() -> Bool {
+fn nsw_hit_53() -> Bool {
   contains(xs: nsw_bucket_53, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_53_holds() -> Bool {
-  nsw_bucket_53()
+  nsw_hit_53()
 }
 
 data nsw_bucket_54: List<String> = [
@@ -1467,11 +1467,11 @@ data nsw_bucket_54: List<String> = [
   "target_declaration_reference_form_absent",
   "target_declaration_reference_module_absent"
 ]
-fn nsw_bucket_54() -> Bool {
+fn nsw_hit_54() -> Bool {
   contains(xs: nsw_bucket_54, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_54_holds() -> Bool {
-  nsw_bucket_54()
+  nsw_hit_54()
 }
 
 data nsw_bucket_55: List<String> = [
@@ -1484,11 +1484,11 @@ data nsw_bucket_55: List<String> = [
   "target_function_signature_realization_target_model_bundle_mismatch",
   "target_import_names_empty"
 ]
-fn nsw_bucket_55() -> Bool {
+fn nsw_hit_55() -> Bool {
   contains(xs: nsw_bucket_55, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_55_holds() -> Bool {
-  nsw_bucket_55()
+  nsw_hit_55()
 }
 
 data nsw_bucket_56: List<String> = [
@@ -1501,11 +1501,11 @@ data nsw_bucket_56: List<String> = [
   "target_operator_shape_wire_malformed",
   "target_primitive_realization_ambiguous"
 ]
-fn nsw_bucket_56() -> Bool {
+fn nsw_hit_56() -> Bool {
   contains(xs: nsw_bucket_56, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_56_holds() -> Bool {
-  nsw_bucket_56()
+  nsw_hit_56()
 }
 
 data nsw_bucket_57: List<String> = [
@@ -1518,11 +1518,11 @@ data nsw_bucket_57: List<String> = [
   "target_type_expression_decode_invalid",
   "target_use_site_ownership_catalog_row_decode_invalid"
 ]
-fn nsw_bucket_57() -> Bool {
+fn nsw_hit_57() -> Bool {
   contains(xs: nsw_bucket_57, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_57_holds() -> Bool {
-  nsw_bucket_57()
+  nsw_hit_57()
 }
 
 data nsw_bucket_58: List<String> = [
@@ -1535,11 +1535,11 @@ data nsw_bucket_58: List<String> = [
   "target_value_expr_list_introduction_form_unwired",
   "target_value_expr_operand_wire_malformed"
 ]
-fn nsw_bucket_58() -> Bool {
+fn nsw_hit_58() -> Bool {
   contains(xs: nsw_bucket_58, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_58_holds() -> Bool {
-  nsw_bucket_58()
+  nsw_hit_58()
 }
 
 data nsw_bucket_59: List<String> = [
@@ -1552,11 +1552,11 @@ data nsw_bucket_59: List<String> = [
   "target_value_expr_reason_function_type_position_unrealized",
   "target_value_expr_reason_transform_shape_invalid"
 ]
-fn nsw_bucket_59() -> Bool {
+fn nsw_hit_59() -> Bool {
   contains(xs: nsw_bucket_59, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_59_holds() -> Bool {
-  nsw_bucket_59()
+  nsw_hit_59()
 }
 
 data nsw_bucket_60: List<String> = [
@@ -1569,11 +1569,11 @@ data nsw_bucket_60: List<String> = [
   "target_value_template_decode_invalid",
   "target_value_template_mismatch"
 ]
-fn nsw_bucket_60() -> Bool {
+fn nsw_hit_60() -> Bool {
   contains(xs: nsw_bucket_60, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_60_holds() -> Bool {
-  nsw_bucket_60()
+  nsw_hit_60()
 }
 
 data nsw_bucket_61: List<String> = [
@@ -1586,11 +1586,11 @@ data nsw_bucket_61: List<String> = [
   "tokenize_lex_e4_mode_unterminated",
   "translate_concrete_token_class_missing"
 ]
-fn nsw_bucket_61() -> Bool {
+fn nsw_hit_61() -> Bool {
   contains(xs: nsw_bucket_61, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_61_holds() -> Bool {
-  nsw_bucket_61()
+  nsw_hit_61()
 }
 
 data nsw_bucket_62: List<String> = [
@@ -1603,11 +1603,11 @@ data nsw_bucket_62: List<String> = [
   "translate_reason_generic_arrow_not_rendered",
   "translate_serialize_recursion_limit_exhausted"
 ]
-fn nsw_bucket_62() -> Bool {
+fn nsw_hit_62() -> Bool {
   contains(xs: nsw_bucket_62, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_62_holds() -> Bool {
-  nsw_bucket_62()
+  nsw_hit_62()
 }
 
 data nsw_bucket_63: List<String> = [
@@ -1620,11 +1620,11 @@ data nsw_bucket_63: List<String> = [
   "validate_grammar_lhs_not_in_nonterminals",
   "validate_grammar_rhs_symbol_not_in_alphabet"
 ]
-fn nsw_bucket_63() -> Bool {
+fn nsw_hit_63() -> Bool {
   contains(xs: nsw_bucket_63, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_63_holds() -> Bool {
-  nsw_bucket_63()
+  nsw_hit_63()
 }
 
 data nsw_bucket_64: List<String> = [
@@ -1634,11 +1634,11 @@ data nsw_bucket_64: List<String> = [
   "wrap_decision_position_disagreement",
   "wrap_decision_sg_rc_bundle_partial"
 ]
-fn nsw_bucket_64() -> Bool {
+fn nsw_hit_64() -> Bool {
   contains(xs: nsw_bucket_64, item: nsw_reason(), eq: nsw_eq)
 }
 test fn nsw_bucket_64_holds() -> Bool {
-  nsw_bucket_64()
+  nsw_hit_64()
 }
 
 test fn nsw_universe_holds() -> Bool {
