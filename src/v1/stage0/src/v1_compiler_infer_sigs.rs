@@ -698,29 +698,6 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     })
 }
 
-pub fn merge_remaining_declared(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v1_rt::map_values(&declared_sigs))
-        .iter()
-        .cloned()
-        .fold(
-            resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != std::option::Option::None) {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        dsig.name.clone(),
-                        declared_to_resolved(dsig.clone()),
-                    )
-                } else {
-                    acc.clone()
-                }
-            },
-        )
-}
-
 pub fn topo_resolve_loop(
     mut __tco_loop_remaining: Rc<Vec<String>>,
     mut __tco_loop_resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
@@ -762,12 +739,12 @@ pub fn topo_resolve_loop(
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
-                                    acc.clone(),
+                                    acc,
                                     dsig.name.clone(),
                                     declared_to_resolved(dsig.clone()),
                                 )
                             } else {
-                                acc.clone()
+                                acc
                             }
                         },
                     );
@@ -884,12 +861,12 @@ pub fn topo_resolve_loop(
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
-                                    acc.clone(),
+                                    acc,
                                     dsig.name.clone(),
                                     declared_to_resolved(dsig.clone()),
                                 )
                             } else {
-                                acc.clone()
+                                acc
                             }
                         },
                     );

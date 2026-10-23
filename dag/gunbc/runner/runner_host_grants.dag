@@ -58,7 +58,9 @@ import gunbc.fabric.fabric_allocation_store_substrate {
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_spec_of }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir, RunnerSlotMember }
+import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_host_has_deploy_slot }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
@@ -412,11 +414,34 @@ fn runner_slot_retirement_mask_operations(deploy: RunnerHostDeploy) -> List<Exec
     |> map(u => SystemdMaskNowUnit { unit: u })
 }
 
+// EACH SLOT DIRECTORY IS INSTALLED AS THE ACCOUNT ITS SLOT RUNS AS: the CI job user for a CI slot and
+// the deploy account for the deploy slot (gunbc.runner.runner_slot_job_role). The grant is the same
+// EnsureOwnedDirectory row the provisioner's install command renders, one line per directory, so
+// the owner a line names is the owner the unit's drop-in runs as.
+fn runner_slot_member_install_operations(deploy: RunnerHostDeploy, members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
+  flat_map(members, m => runner_slot_install_operations(
+    slot_dirs: [m.slot_dir],
+    slot_owner: runner_instance_job_user(host: deploy.host_label as HostIdentity, instance_name: m.instance_name, ci_job_user: deploy.job_user),
+  ))
+}
+
+// THE DEPLOY ACCOUNT'S GRANTS ARE PER-UNIT AND NOTHING ELSE (plan decision D5): the retirement mask
+// lines (#14390) and the fabric-cell slice set-property lines. No whole-binary entry of
+// fleet_posix_ci_runner_sudo_grants appears here, and the account is granted no install, visudo,
+// apt-get or systemctl as a binary. Empty on a host with no deploy slot.
+fn deploy_slot_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if runner_host_has_deploy_slot(host: deploy.host_label as HostIdentity) {
+    runner_slot_retirement_mask_operations(deploy: deploy)
+      + flat_map(fabric_cell_host_slots(deploy: deploy), s => fabric_cell_slice_operations(slot: s))
+  } else {
+    []
+  }
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  let job = deploy.job_user
-  let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
+  let members = desired_runner_slot_members(deploy: deploy)
   runner_slot_teardown_grant_operations(deploy: deploy)
-    + runner_slot_install_operations(slot_dirs: slot_dirs, slot_owner: job)
+    + runner_slot_member_install_operations(deploy: deploy, members: members)
     + runner_slot_activation_operations(deploy: deploy)
     + runner_slot_retirement_mask_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
@@ -530,13 +555,22 @@ fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> Runner
   }
 }
 
+fn runner_host_deploy_slot_sudoers_block(deploy: RunnerHostDeploy) -> String {
+  if runner_host_has_deploy_slot(host: deploy.host_label as HostIdentity) {
+    executor_privileged_operations_sudoers_body(grantee: deploy_slot_job_user, ops: deploy_slot_privileged_operations(deploy: deploy))
+  } else {
+    ""
+  }
+}
+
 fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {
   join([
     runner_host_sudoers_header(artifact_path: artifact_path),
     executor_privileged_operations_sudoers_body(
       grantee: deploy.job_user,
       ops: runner_host_privileged_operations(deploy: deploy),
-    )
+    ),
+    runner_host_deploy_slot_sudoers_block(deploy: deploy),
   ], "")
 }
 

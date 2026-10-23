@@ -1,14 +1,28 @@
 module v2.test.claim.compiler.infer_application_argument_inhabitance_witness
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.std.text { String }
 import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import std.algebra { Empty }
+import v2.test.claim.compiler.infer_optional_at_required_witness { oar_optional_source }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness { rcf_read_in }
+import std.nat { Succ, Zero }
+import v2.std.optional_layers { wrap_type_node_occupancy }
 import v2.std.inhabitance {
   DeclaredTypeObligation,
   InhabitanceRefused,
   Inhabits,
   declared_type_inhabitance,
   position_direct_call_argument,
-  inhabitance_occupancy_type,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_reason_symbol
 }
@@ -44,7 +58,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 
 fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
@@ -69,9 +84,10 @@ fn inhabitance_apply(domain: Node, arg: Node) -> Node {
           domain: domain,
           return_type_binding: ^dag_binding_type_int,
           body: dag_int_literal_fixture_one()
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: arg }
+      Edge { label: Positional, target: arg, declaration: NotADeclaration }
     ]
   )
 }
@@ -97,7 +113,8 @@ fn inhabitance_generic_formal_tree() -> Node {
       children: [
         Edge {
           label: Positional,
-          target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+          target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+          declaration: NotADeclaration
         }
       ]
     )
@@ -128,15 +145,17 @@ fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
                 children: type_binder_set_children(binders: [
                   Edge {
                     label: Authored { name: ^inhabitance_type_param_t },
-                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+                    declaration: NotADeclaration
                   }
                 ], source: dag_type_atom_node(identity: ^inhabitance_type_param_t))
               )
             )
           )
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -145,8 +164,9 @@ fn inhabitance_optional_formal_tree() -> Node {
   inhabitance_apply(
     domain: inhabitance_named_conj_domain(
       parameter: ^inhabitance_param_opt,
-      declared: inhabitance_occupancy_type(
-        inner: dag_type_atom_node(identity: ^dag_binding_type_int)
+      declared: wrap_type_node_occupancy(
+        base: dag_type_atom_node(identity: ^dag_binding_type_int),
+        depth: Succ { prev: Zero }
       )
     ),
     arg: dag_int_literal_fixture_one()
@@ -166,15 +186,18 @@ fn inhabitance_arity_unmodeled_tree() -> Node {
           ),
           return_type_binding: ^dag_binding_type_int,
           body: dag_int_literal_fixture_one()
-        )
+        ),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_int_literal_fixture_one()
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_int_literal_fixture_two()
+        target: dag_int_literal_fixture_two(),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -186,11 +209,13 @@ fn inhabitance_formal_unresolved_tree() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^inhabitance_takes_int)
+        target: dag_type_atom_node(identity: ^inhabitance_takes_int),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_int_literal_fixture_one()
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -267,33 +292,62 @@ test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -
   }
 }
 
-test fn inhabitance_occupancy_type_is_optional_carrier_holds() -> Bool {
-  match inhabitance_node_undecidable_reason(
-    n: inhabitance_occupancy_type(
-      inner: dag_type_atom_node(identity: ^dag_binding_type_int)
-    ),
-    type_variables: []
-  ) {
-    Absent => false
-    Present { value: reason } =>
-      inhabitance_undecidable_reason_symbol(reason: reason)
-        == ^inhabitance_undecidable_optional_carrier
+data iaai_host_source: String = "module v2.test.iaai_host\n\nfn iaai_noop() -> Bool { true }\n"
+
+data iaai_ingest: SourceRootIngest = [
+  rcf_read_in(tree: DagTree, source: oar_optional_source, id: ^iaai_optional_read, unit: ^iaai_optional_cu, path: "dag/std/optional.dag"),
+  rcf_read_in(tree: V2Tree, source: iaai_host_source, id: ^iaai_host_read, unit: ^iaai_host_cu, path: "src/v2/test/iaai_host.dag")
+]
+
+// The supplied formal tree is checked against an index that holds std.optional: the peer root is
+// ingested and resolved like any consumer's, and only the root is swapped for the hand-built tree.
+fn iaai_resolved_with_optional(root: Node) -> Outcome<ResolvedTree> {
+  match module_roots_from_source_root_ingest(ingest: iaai_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.iaai_host") },
+          imports: Empty
+        }
+      ).resolved {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: t, diagnostics: ds } =>
+          Accepted { value: ResolvedTree { root: root, symbol_index: t.symbol_index, resolved_declarations: t.resolved_declarations, occurrence_bindings: t.occurrence_bindings, duplicate_binding_records: t.duplicate_binding_records, module_outcomes: t.module_outcomes, outcome_index: t.outcome_index, member_kinds: t.member_kinds, type_declaration_modifiers: t.type_declaration_modifiers, constructing_module: t.constructing_module }, diagnostics: ds }
+      }
   }
 }
 
-// A formal declared `Int?` owes no descent: the Occupancy type connective is Bounded
-// (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
-// judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
-// infer_descent_not_derived.
-test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool {
-  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
+// A formal declared `Int?` owes no descent: it is an Instantiation of the std.optional Optional
+// declaration, whose connective is Bounded (v2.std.cardinality connective_multiplicity). Whatever
+// the application's verdict, it is never infer_descent_not_derived.
+test fn infer_optional_formal_owes_no_descent_holds() -> Bool {
+  match iaai_resolved_with_optional(root: inhabitance_optional_formal_tree()) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
-      diagnostics_has_reason(
-        d: d,
-        reason: ^inhabitance_undecidable_optional_carrier
-      )
-        && !diagnostics_has_reason(d: d, reason: ^infer_descent_not_derived)
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: nds } =>
+          !diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^infer_descent_not_derived)
+        Accepted { value: _, diagnostics: d } =>
+          !diagnostics_has_reason(d: d, reason: ^infer_descent_not_derived)
+      }
+  }
+}
+
+// The CUT'S SEMANTICS, not a fixture gap (std.optional is ingested above): a bare Int at an `Int?`
+// formal is an Int at an Instantiation of Optional, which does not inhabit it (the authoring policy
+// is explicit Present, gunbc.design_ruling explicit_present_is_the_authoring_policy). The old
+// Occupancy connective admitted it with the OptionalCarrier advisory; that admission is what the cut retires.
+test fn infer_bare_int_at_an_optional_formal_refuses_holds() -> Bool {
+  match iaai_resolved_with_optional(root: inhabitance_optional_formal_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: nds } =>
+          diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^application_argument_does_not_inhabit)
+        Accepted { value: _, diagnostics: _ } => false
+      }
   }
 }
 
@@ -346,11 +400,13 @@ fn inhabitance_collection_type_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+        target: dag_type_atom_node(identity: ^inhabitance_type_list),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        target: dag_type_atom_node(identity: ^dag_binding_type_int),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -562,9 +618,10 @@ fn aai_list_of(elem: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+        target: dag_type_atom_node(identity: ^inhabitance_type_list),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: elem }
+      Edge { label: Positional, target: elem, declaration: NotADeclaration }
     ]
   )
 }

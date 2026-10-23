@@ -296,11 +296,10 @@ pub struct PartialFunction<K, V> {
 #[derive(Clone)]
 pub struct FinitelySupportedFunction<K: std::cmp::Eq + std::hash::Hash, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
-    pub empty: Rc<FinitelySupportedFunction<K, V>>,
+    pub empty: Rc<HashMap<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
-    pub merge:
-        Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
+    pub insert: Rc<dyn Fn(K, V) -> Rc<HashMap<K, V>>>,
+    pub merge: Rc<dyn Fn(Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>>>,
     pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
     pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub map_has: Rc<dyn Fn(K) -> bool>,
@@ -1091,12 +1090,12 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
                     |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.method_surface.clone()) {
                             v1_rt::rc_map_insert(
-                                inner.clone(),
+                                inner,
                                 spelling.text.clone(),
                                 carrier.profile.clone(),
                             )
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1115,13 +1114,9 @@ pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
                     acc,
                     |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
-                            v1_rt::rc_map_insert(
-                                inner.clone(),
-                                spelling.text.clone(),
-                                carrier.name.clone(),
-                            )
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1140,13 +1135,9 @@ pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
                     acc,
                     |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
-                            v1_rt::rc_map_insert(
-                                inner.clone(),
-                                spelling.text.clone(),
-                                carrier.name.clone(),
-                            )
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), carrier.name.clone())
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1165,9 +1156,9 @@ pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
                     acc,
                     |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
-                            v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
+                            v1_rt::rc_map_insert(inner, spelling.text.clone(), true)
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1187,14 +1178,14 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
                     |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
                             v1_rt::rc_map_insert(
-                                inner.clone(),
+                                inner,
                                 spelling.text.clone(),
                                 algebra_type_param_names(carrier.profile.clone())
                                     .iter()
                                     .fold(0, |n: i64, _| v1_rt::int_add(n, 1)),
                             )
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -1284,12 +1275,12 @@ pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
                     |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
                         if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                             v1_rt::rc_map_insert(
-                                inner.clone(),
+                                inner,
                                 spelling.text.clone(),
                                 algebra_profile_equality_extensional(carrier.profile.clone()),
                             )
                         } else {
-                            inner.clone()
+                            inner
                         }
                     },
                 )
@@ -2313,7 +2304,7 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     }
 }
 
-pub fn all_algebra_profiles() -> Rc<Vec<AlgebraProfile>> {
+pub fn all_algebra_profiles() -> Rc<FreeMonoid<AlgebraProfile>> {
     Rc::new(vec![
         AlgebraProfile::OrderedRingProfile,
         AlgebraProfile::OrderedSemiringProfile,

@@ -9,7 +9,12 @@ import extdeps.languages.markdown { serialize_markdown_source }
 import extdeps.exec.command { argv_words }
 import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import gunbc.fabric.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
-import gunbc.cli_invoke { gunbc_run_all_claims_invocation_words, invocation_words_bare }
+import gunbc.cli_invoke {
+  gunbc_bin_name,
+  gunbc_run_all_claims_invocation_words,
+  invocation_words_bare,
+  release_bin_rel_path,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.witness.witness_floor_workflow { witness_floor_required_bins }
 import gunbc.instruments.docs_projection_agreement { docs_projection_regen_command }
@@ -244,7 +249,21 @@ fn onboarding_witness_command() -> String {
 // The one-witness recipe, path-addressed: the built binary, the witness roots, the entry, and
 // `--claim-run` with no `--function`, which runs every `test fn` the file declares in one process.
 fn onboarding_one_witness_command() -> String {
-  join(concat(["./target/release/gunbc"], invocation_words_bare(words: gunbc_run_all_claims_invocation_words(source_roots: witness_layer_roots, entry: "dag/test/claim/spark/pair_serving_authority_witness.dag"))), " ")
+  // The program word is cargo's default release layout (extdeps.rust.cargo, via gunbc.cli_invoke),
+  // not a re-spelled "target/release": the recipe a reader copies has to point where the build
+  // actually puts the binary.
+  join(
+    concat(
+      [concat("./", release_bin_rel_path(bin_name: gunbc_bin_name))],
+      invocation_words_bare(
+        words: gunbc_run_all_claims_invocation_words(
+          source_roots: witness_layer_roots,
+          entry: "dag/test/claim/spark/pair_serving_authority_witness.dag"
+        )
+      )
+    ),
+    " "
+  )
 }
 
 fn onboarding_build_lane_command() -> String {

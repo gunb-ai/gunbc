@@ -24,7 +24,10 @@ use crate::v1_std_core::TokenShape::{
     ShPipeArrow, ShPlus, ShQuestion, ShRBrace, ShRBracket, ShRParen, ShSlash, ShStar, ShStrBegin,
     ShStrEnd, ShStrMid, ShUnknown,
 };
-pub use crate::v1_std_core::{make_file_span, Token, TokenShape};
+pub use crate::v1_std_core::{
+    file_has_no_lexemes, make_file_span, render_span_location, render_span_location_of,
+    NewlineIndex, Token, TokenShape,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -243,6 +246,59 @@ pub fn source_scan_to_eol(mut __tco_loop_source: Rc<SourceRef>, mut __tco_loop_s
     }
 }
 
+pub fn is_trivia_shape(shape: TokenShape) -> bool {
+    match shape.clone() {
+        TokenShape::ShNewline => true,
+        TokenShape::ShEof => true,
+        _ => false,
+    }
+}
+
+pub fn last_code_token_end(tokens: Rc<Vec<Rc<Token>>>) -> Option<i64> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for t in tokens.iter().cloned() {
+            if !is_trivia_shape(t.shape.clone()) {
+                __result.push(t);
+            }
+        }
+        __result
+    })
+    .iter()
+    .cloned()
+    .fold(std::option::Option::None, |acc: _, t: Rc<Token>| {
+        Some(t.span.end.clone())
+    })
+}
+
+pub fn token_stream_has_no_lexemes(tokens: Rc<Vec<Rc<Token>>>) -> bool {
+    ((Rc::new({
+        let mut __result = Vec::new();
+        for t in tokens.iter().cloned() {
+            if !is_trivia_shape(t.shape.clone()) {
+                __result.push(t);
+            }
+        }
+        __result
+    })
+    .len() as i64)
+        == 0)
+}
+
+pub fn render_span_location_in_stream(
+    span: Rc<SourceSpan>,
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if token_stream_has_no_lexemes(tokens.clone()) {
+        crate::v1_std_core::render_span_location_of(crate::v1_std_core::file_has_no_lexemes(
+            span.file.clone(),
+        ))
+    } else {
+        crate::v1_std_core::render_span_location(span.clone(), source_indices.clone())
+    }
+}
+
 pub fn tokenize_artifact(
     source: String,
     file: String,
@@ -267,11 +323,13 @@ pub fn tokenize_artifact(
             v1_rt::int_add(source_len(src.clone()), 1),
             env.clone(),
         );
-        let eof_span = crate::v1_std_core::make_file_span(
-            src.file.clone(),
-            final_state.pos.clone(),
-            final_state.pos.clone(),
-        );
+        let eof_end = last_code_token_end(final_state.tokens.clone());
+        let eof_span = match eof_end.clone() {
+            Some(end) => {
+                crate::v1_std_core::make_file_span(src.file.clone(), end.clone(), end.clone())
+            }
+            std::option::Option::None => crate::v1_std_core::make_file_span(src.file.clone(), 0, 0),
+        };
         Rc::new(V1LexArtifact {
             tokens: v1_rt::rc_list_push(
                 final_state.tokens.clone(),
@@ -1535,9 +1593,9 @@ pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
         .cloned()
         .fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.0.clone() < v1_rt::int_sub(len.clone(), 1)) {
-                Rc::new(v1_rt::append(result.clone(), pair.1.clone()))
+                Rc::new(v1_rt::append(result, pair.1.clone()))
             } else {
-                result.clone()
+                result
             }
         })
     }
@@ -1553,10 +1611,24 @@ pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
 pub fn skip_spaces(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
     {
         let p = source_skip_ws(source.clone(), pos.pos.clone());
-        Rc::new(TokPos {
-            pos: p.clone(),
-            interp_depth: pos.interp_depth.clone(),
-        })
+        {
+            let __rb_0_0 = p.clone();
+            let __rb_1_0 = pos.interp_depth.clone();
+            let mut __rb_h = pos;
+            match Rc::get_mut(&mut __rb_h) {
+                Some(__rb_r) => {
+                    __rb_r.pos = __rb_0_0;
+                    __rb_r.interp_depth = __rb_1_0;
+                }
+                None => {
+                    __rb_h = Rc::new(TokPos {
+                        pos: __rb_0_0,
+                        interp_depth: __rb_1_0,
+                    });
+                }
+            }
+            __rb_h
+        }
     }
 }
 

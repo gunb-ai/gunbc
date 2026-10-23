@@ -1,0 +1,173 @@
+module v2.test.claim.emit.semantic_decl_members
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
+import extdeps.languages.rust.emit { rust_struct_derives }
+import v2.extdeps.languages.c { c_target_model }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault, TargetSemanticDeclMember }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, symbol_intern_lexeme, NotADeclaration }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS emit_semantic_type_decl WITH MEMBERS over each target's member-projection row. The type
+// nodes are supplied at that boundary; each golden is the exact text, so a row that placed a member in the
+// wrong position (or dropped it) reds here.
+
+data swift_member_golden: String = "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let version = \"V1\"\n}"
+
+fn sdm_atom_type(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn sdm_point_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ binder_edge(name: ^x, type_node: sdm_atom_type(name: ^dag_binding_type_int)) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdm_version() -> List<TargetSemanticDeclMember> {
+  [ TargetSemanticDeclMember { name: ^version, literal: ^V1 } ]
+}
+
+fn sdm_swift_text(members: List<TargetSemanticDeclMember>) -> Outcome<String> {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: members, name: ^Point, params: [], node: sdm_point_record(), target: swift_target_model(), realization_host: swift_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+test fn swift_member_prints_inside_the_type_body() -> Bool {
+  match sdm_swift_text(members: sdm_version()) {
+    Accepted { value: text, diagnostics: _ } => text == swift_member_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A MEMBER LITERAL CARRYING A LINE BREAK: Swift's single-line string literal admits no raw newline, so the
+// print must spell the break as the escape the language defines. Golden = the escaped spelling; the RED is the
+// same input without the escape row (the text would hold a raw break inside the quotes).
+data swift_newline_member_golden: String = "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let note = \"a\\nb\"\n}"
+
+data swift_carriage_return_member_golden: String = "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let note = \"a\\rb\"\n}"
+
+test fn swift_member_literal_newline_prints_as_the_escape() -> Bool {
+  match sdm_swift_text(members: [ TargetSemanticDeclMember { name: ^note, literal: symbol_intern_lexeme(lexeme: "a\nb") } ]) {
+    Accepted { value: text, diagnostics: _ } => text == swift_newline_member_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn swift_member_literal_carriage_return_prints_as_the_escape() -> Bool {
+  match sdm_swift_text(members: [ TargetSemanticDeclMember { name: ^note, literal: symbol_intern_lexeme(lexeme: "a\rb") } ]) {
+    Accepted { value: text, diagnostics: _ } => text == swift_carriage_return_member_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn swift_member_literal_with_backslash_and_quote_still_escapes_once() -> Bool {
+  match sdm_swift_text(members: [ TargetSemanticDeclMember { name: ^note, literal: symbol_intern_lexeme(lexeme: "a\\\"b") } ]) {
+    Accepted { value: text, diagnostics: _ } => text == "struct Point: Equatable, Sendable {\n    let x: Int32\n    static let note = \"a\\\\\\\"b\"\n}"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sdm_text(members: List<TargetSemanticDeclMember>, target: TargetModel) -> Outcome<String> {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: members, name: ^Point, params: [], node: sdm_point_record(), target: target, realization_host: target) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn sdm_rust_golden() -> String {
+  concat(rust_struct_derives, "\nstruct Point { x: i32 } impl Point { pub const VERSION: &str = \"V1\"; }")
+}
+
+test fn rust_member_prints_in_an_associated_impl_of_the_same_emission() -> Bool {
+  match sdm_text(members: [ TargetSemanticDeclMember { name: ^VERSION, literal: ^V1 } ], target: rust_semantic_decl_target_model_staging()) {
+    Accepted { value: text, diagnostics: _ } => text == sdm_rust_golden()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// RUST: a bare CR is invalid inside a string literal, and rustc normalizes source CRLF to LF before tokenizing,
+// so an unescaped CR-LF changes the value silently. The goldens are exact emitted text (a compile alone would
+// miss the value change); removing the Rust CR row fails both.
+fn sdm_rust_member_text(lexeme: String) -> Outcome<String> {
+  sdm_text(members: [ TargetSemanticDeclMember { name: ^NOTE, literal: symbol_intern_lexeme(lexeme: lexeme) } ], target: rust_semantic_decl_target_model_staging())
+}
+
+test fn rust_member_literal_bare_cr_prints_as_the_escape() -> Bool {
+  match sdm_rust_member_text(lexeme: "a\rb") {
+    Accepted { value: text, diagnostics: _ } => text == concat(rust_struct_derives, "\nstruct Point { x: i32 } impl Point { pub const NOTE: &str = \"a\\rb\"; }")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_member_literal_crlf_keeps_the_cr_as_the_escape() -> Bool {
+  match sdm_rust_member_text(lexeme: "a\r\nb") {
+    Accepted { value: text, diagnostics: _ } => text == concat(rust_struct_derives, "\nstruct Point { x: i32 } impl Point { pub const NOTE: &str = \"a\\r\nb\"; }")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn rust_without_members_prints_no_impl() -> Bool {
+  match sdm_text(members: [], target: rust_semantic_decl_target_model_staging()) {
+    Accepted { value: text, diagnostics: _ } => text == concat(rust_struct_derives, "\nstruct Point { x: i32 }")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn sdm_c_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ binder_edge(name: ^x, type_node: sdm_atom_type(name: ^Int)) ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn sdm_c_text(members: List<TargetSemanticDeclMember>) -> Outcome<String> {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: members, name: ^Point, params: [], node: sdm_c_record(), target: c_target_model(), realization_host: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// The positive control: the same C record WITHOUT members emits, so the refusal below is the member
+// projection row's and not an unrelated shape refusal.
+test fn c_without_members_still_emits() -> Bool {
+  match sdm_c_text(members: []) {
+    Accepted { value: text, diagnostics: _ } => text == concat("typedef struct ", "{ int x; } Point;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_with_members_refuses_unwired() -> Bool {
+  match sdm_c_text(members: sdm_version()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_members_unwired
+  }
+}
+
+test fn members_on_a_coproduct_refuse_located() -> Bool {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: sdm_version(), name: ^Flag, params: [], node: sdm_flag_coproduct(), target: swift_target_model(), realization_host: swift_target_model()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^emit_semantic_decl_members_on_coproduct_unwired
+  }
+}
+
+fn sdm_flag_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ Edge { label: Authored { name: ^On }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration } ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}

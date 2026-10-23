@@ -4,7 +4,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge,
   dag_surface_module_header_metadata_edge
 }
-import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode, NotADeclaration }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.namespace_graft {
   namespace_graft_is_metadata_edge,
@@ -58,7 +58,7 @@ fn zm_surface_edge(edge: Symbol) -> Edge {
 }
 
 fn zm_authored_edge(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: zm_target() }
+  Edge { label: Authored { name: name }, target: zm_target(), declaration: NotADeclaration }
 }
 
 // CONTROL (EdgeLabel coproduct, gunbc#12473): an AUTHORED name spelled exactly like each header

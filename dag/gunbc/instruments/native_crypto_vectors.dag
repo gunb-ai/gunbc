@@ -25,6 +25,7 @@ import extdeps.wycheproof.ecdsa_secp256r1_sha256_p1363 {
   wycheproof_p256_sha256_p1363_group1_public_key,
   wycheproof_p256_sha256_p1363_group1_cases,
 }
+import std.host_text { chars }
 
 // THE NATIVE CRYPTO INSTRUMENT'S PROGRAM: the emitted .dag verifiers executed over their published
 // vectors, as a NativeClaimDriver entry (std.compiler_entry). `gunbc test

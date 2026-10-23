@@ -250,20 +250,6 @@ fn v1_keyed_map_verdict_from_algebra(type_expr: Node, source_indices: Map<String
   }
 }
 
-fn v1_type_expr_is_keyed_map(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
-    KeyedMap => true
-    NotKeyedMap => false
-    KeyedMapUndecidable { name: _ } => false
-  }
-}
-
-// The KeyedMapUndecidable arm contributes no key head names, and that is a
-// fail-closed marker rather than a policy choice: an unrecognized container
-// spelling is refused by v1.compiler.normalize check_bare_containers before any
-// module reaches the derive walk, so no Accepted program can carry one here. The
-// arm exists so that a future path reaching this walk without passing that wall
-// announces itself as a distinct state instead of being read as "not a map".
 fn v1_map_key_head_type_exprs(
   type_expr: Node,
   source_indices: Map<String, NewlineIndex>
@@ -2082,8 +2068,8 @@ fn v1_type_expr_wf_needs_clone_param(
 // (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the
 // emitter has no native realization for it and renders its declared structure. `type Hash =
 // Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type
-// expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int =
-// AbelianGroup<GroupCompletion<Nat>>` and std.nat's `type Nat = Zero | Succ { prev: Nat }` DO have
+// expression and the map-key fixpoint reaches Fnv1a64Structural. std.integer's `type Int =
+// NonNegative { n: Nat } | Negative { pred: Nat }` and std.nat's `type Nat = Zero | Succ { prev: Nat }` DO have
 // checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below
 // contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at
 // map-key position) that sank the earlier attempt never recurs, because the gate is keyed on

@@ -67,7 +67,7 @@ fn int_binding_atom_derived(inferred: InferredTree, n: Node) -> Bool {
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => false
+        GroundingNotDerived { node: _, site: _ } => false
         DerivedGrounding { grounding: g } =>
           g.witness.structural.evidence == kind_node(kind: TypeDenotationKind)
       }
@@ -79,7 +79,7 @@ fn bare_operand_atom_stays_frontier(inferred: InferredTree, n: Node) -> Bool {
     Absent => false
     Present { value: facts } =>
       match facts.grounding {
-        GroundingNotDerived { node: _ } => true
+        GroundingNotDerived { node: _, site: _ } => true
         DerivedGrounding { grounding: _ } => false
       }
   }

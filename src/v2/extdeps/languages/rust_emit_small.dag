@@ -8,7 +8,7 @@ import v2.extdeps.languages.rust {
 import std.types { Map }
 import std.algebra { empty_map, map_insert }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules, VoidLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty,
@@ -27,6 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // target_compile_row maps observations. Neither operation reads the target.
 fn rust_emit_small_identity_target() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(children: []),
     lex: VoidLexRules,
@@ -55,6 +56,7 @@ fn rust_emit_small_serialization_target(
   bindings: Map<Symbol, String>
 ) -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(children: []),
     lex: lex,
@@ -133,6 +135,7 @@ fn rust_emit_small_add_translation_rules() -> Node {
 // that successful match. Preserve the production projection at the decode seam.
 fn rust_emit_small_add_translate_target() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(children: [
       target_model_named_edge(

@@ -20,8 +20,9 @@ import v2.std.node {
   node_synthetic,
   ArrowBodyEdge,
   core_edge,
+  NotADeclaration
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   TargetValueExpression,
@@ -50,11 +51,11 @@ fn probe_atom(id: Symbol) -> Node {
 }
 
 fn probe_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn probe_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn probe_bind(key: Symbol, value: Node, tail: Node) -> Node {
@@ -88,6 +89,7 @@ data bind_tail_probe_param: Node = probe_atom(id: ^dag_token_kw_true)
 
 fn probe_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: node_synthetic(
       kind: TypeNode { connective: Conj },

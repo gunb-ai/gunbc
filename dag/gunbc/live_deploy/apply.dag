@@ -118,7 +118,10 @@ import gunbc.live_deploy.tailnet_door_cutover_host {
 }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
+import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, device_crypto_gate, approval_device_crypto_realization }
+import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
+import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
@@ -140,7 +143,7 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
-  microvm_controller_vmm_receipt_path,
+  microvm_controller_vmm_receipt_path, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
   release_locus_tree_receipt_path,
@@ -982,6 +985,23 @@ fn approval_broker_liveness_poll(
   }
 }
 
+fn device_crypto_sidecar_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
+  let installed = device_crypto_sidecar_binary_path(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision })
+  match observe_executable(arm: OnTheHostItself, path: installed) {
+    MemberObserved { identity: ExecutableIdentity { digest: d } } =>
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d.hex) {
+        Absent => exit_failure(reason: "device-crypto sidecar readback: the broker's own realization is not bound, so it would answer 503 on every device route")
+        Present { value: expectation } =>
+          match device_crypto_sidecar_readback(expectation: expectation) {
+            SidecarReplied { answer: _, admission: _ } => ExitSuccess
+            SidecarReplyFailed { cause: c } =>
+              exit_failure(reason: join(["device-crypto sidecar readback: the running sidecar does not join the installed binary: ", c as String], ""))
+          }
+      }
+    other => exit_failure(reason: join(["device-crypto sidecar readback: the installed sidecar binary ", installed, " could not be observed"], ""))
+  }
+}
+
 fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
   let port = spec.approval_broker.listen.port
   let read = approval_broker_liveness_poll(
@@ -1008,10 +1028,10 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     tree_receipt: tree_receipt,
     expected_release: candidate.revision as String as NonEmptyStr,
   ) {
-    StageAdmitted { stage: _ } => ExitSuccess
+    StageAdmitted { stage: _ } => device_crypto_sidecar_readback_exit(spec: spec, candidate: candidate)
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([
-        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        "approval broker install: the unit was written but the release readback (prove-release) refuses: ",
         cutover_refusal_reason(c: c) as String,
       ], ""))
   }

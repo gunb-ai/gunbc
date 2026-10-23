@@ -5,6 +5,7 @@ import std.integer { UInt8, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower }
+import std.host_text { chars }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -239,7 +240,7 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   match parts |> get(position) {
     Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
     Present { value: raw } => {
-      let points = chars(s: raw)
+      let points = chars(text: raw)
       if list_length(items: points) != 2 {
         MacOctetErr {
           error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },

@@ -1,5 +1,6 @@
 module v2.test.claim.execution.c_type_decl_emit_host_run
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
@@ -23,7 +24,7 @@ import v2.std.host_transport {
   HostRuntimeRowAbsent,
   HostRuntimeRowPresent
 }
-import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, TypeNode, NotADeclaration }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
@@ -55,7 +56,7 @@ fn ctd_field_edge(name: Symbol, type_name: Symbol) -> Edge {
 }
 
 fn ctd_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: ctd_empty_conj() }
+  Edge { label: Authored { name: name }, target: ctd_empty_conj(), declaration: NotADeclaration }
 }
 
 fn ctd_point_record() -> Node {
@@ -78,9 +79,9 @@ fn ctd_bool_coproduct() -> Node {
 }
 
 fn ctd_emit_decl_source() -> Medium<String> {
-  match emit_semantic_type_decl(name: ^Point, params: Empty, node: ctd_point_record(), target: c_type_decl_target_model(), realization_host: c_type_decl_target_model()) {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: ^Point, params: Empty, node: ctd_point_record(), target: c_type_decl_target_model(), realization_host: c_type_decl_target_model()) {
     Accepted { value: point, diagnostics: _ } =>
-      match emit_semantic_type_decl(name: ^Bool, params: Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model(), realization_host: c_type_decl_target_model()) {
+      match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: ^Bool, params: Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model(), realization_host: c_type_decl_target_model()) {
         Accepted { value: bool_decl, diagnostics: _ } =>
           Medium {
             carried: concat(concat(point.carried, bool_decl.carried), "\n"),
