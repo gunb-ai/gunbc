@@ -1,0 +1,117 @@
+module gunbc.plans.fabric_native_serving_router
+
+// THE PLAN CARRIER FOR THE FABRIC-NATIVE SERVING ROUTER -- the replacement for the ctrl dashboard
+// router, which the operator ruled throwaway on 2026-10-23 (nothing may rely on it; its replica
+// ranking by running-request count is exactly what gunbc.serving.router_realization forbids).
+//
+// This is a PLAN, not a model. DESIGN section 2.2: a plan is a first-class `.dag` carrier and the
+// authority lives in the carrier, never in prose. It carries the gap list, the load-bearing
+// decision (where the streaming listener lives) and the srv1 co-hosting decision, each with the
+// evidence that settled it. It is registered as a roadmap plan node in gunbc.plan_registry_batch_g
+// and witnessed in test.claim.fabric_native_serving_router_plan_witness. It is not a model and not
+// a claim surface: no ban rule, no ledger, no realization lives here.
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn fabric_native_serving_router_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Status: plan authority for the serving router; work item node://adhoc-d8117af7-113; operator rulings of 2026-10-23 recorded in section 1.** The decision half already exists -- gunbc.serving.router_realization (the router's contract and its four forbidden acts), gunbc.serving.turn_admission serving_group_admission, gunbc.harness.harness_cli harness_place_cli and harness_release_cli, gunbc.serving.serving_front_door (front_door_admit_on_store, front_door_stream_end, front_door_recover, mint_serving_seat_permit), product.capacity (lease, pool_events, redemption), product.fabric.selection select_supply. What does not exist is the wire: nothing in this repository can answer a chunked or SSE request. This plan carries the gap list, the two decisions the brief calls load-bearing, and the evidence that settled them."),
+      p(text: "**Operator ruling, 2026-10-23.** The ctrl repository is throwaway: no carrier, no test, and no acceptance list may depend on it. The ctrl router's replica score (running-request count) is not adopted, quoted as a design, or reimplemented -- gunbc.serving.router_realization already refuses it, and the refusal is the reason the router is being moved here."),
+      p(text: "**Operator input, 2026-10-23 (srv1).** srv1 already runs the gunbc daily workspace (roadmap_dashboard_instance srv1_live_dashboard_instance, deployed by gunbc.live_deploy apply_legs and emit) and the operator offered it as the router's host process, indifferent to mechanism. Section 5 decides it."),
+    ]),
+
+    h2(text: "1. What the router is, and what it is not"),
+    p(text: "The router is a realization, and gunbc.serving.router_realization is its contract: normalize the request into a demand, ask placement for the demand, take the endpoint from the grant (never from anything else), proxy to it, and release. Its four forbidden acts are owned by carriers that already exist -- no own load score, no direct host choice, no own binding ledger, no invented placement, and no forwarding without a permit. Fabric storage is ONE placement, not a replica set (gunbc.fabric.fabric_storage_placement); nothing here mints a generic replica-failover abstraction, and there is no failover path outside placement."),
+    p(text: "The two facts that make this a construction and not a wiring job are both about the wire, and neither is a routing decision. A dashboard agent session is an OpenAI-compatible POST to /v1/completions or /v1/chat/completions with stream set, answered by server-sent events that must reach the client as they are produced. A single reply runs for minutes: the harness records a full Think Max answer taking 16 minutes to time out (curl exit 28) while the engine was still generating, at a measured decode floor of 8 tok/s (gunbc.harness.harness_cli lines 168-177). So the router must (a) keep a response open and flush increments, and (b) hold many such connections at once. Nothing in the repository does either today."),
+
+    h2(text: "2. THE LOAD-BEARING QUESTION: where the streaming listener lives"),
+    p(text: "Two seams answer HTTP today. Neither streams, and the reason is the same for both -- which is what settles the question. The framing of a response is owned by the accept loop, not by the program."),
+    h3(text: "2.1 The shared fact: framing is not in the program's hands"),
+    ul(items: [
+      li(text: "extdeps.http.server serve_framing_header_names (line 433) is the accept-loop-owned set -- content-length, content-type, connection, transfer-encoding -- and a handler cannot set them; its comment cites RFC 9110 8.3 and 8.6 and RFC 9112 6.1 and 9.6. Deliberate: a program that could set them could lie about the byte count of a body the loop is about to compute. That is a capability boundary, not a bug, and the streaming seam has to respect it -- the LOOP decides chunked framing, never the program."),
+      li(text: "ServeWireResponse carries `body: String` -- a whole body -- and the emitted accept loop writes `HTTP/1.1 code / Content-Type / Content-Length / Connection: close`. A program therefore CANNOT switch a response to chunked framing from inside, and a plan that asked for SSE through the existing handler would be asking the loop to compute a Content-Length over a stream."),
+      li(text: "Consequence stated plainly so no later reader mistakes this for a small patch: **streaming is a change to the serve door either way.** The choice below is not between streaming and no streaming; it is about which door carries the new seam, and who owns it."),
+    ]),
+    h3(text: "2.2 Option A -- extend the v1 seed's gunbc serve"),
+    p(text: "The seam is real and documented: src/v1/stage0/src/cli_run.rs run_native_serve_program, from line 17624. It is also load-bearing exactly as it is, and its own comments say so:"),
+    ul(items: [
+      li(text: "**Serial is a correctness property, not a latency choice.** The seam's own doc comment (line 17624): `Sequential by design: one request at a time serializes the belt's observe-before-spawn window by construction, so two concurrent dispatch clicks cannot both observe the session absent.` Making it concurrent to carry router streams would break the dispatch belt's guarantee that two clicks cannot both see an absent session. And the comment at 18059 records the operational cost of the same loop: before the deadline existed, `because the loop is serial the stuck request held the accept queue for every later one` -- a dashboard session holds a response for MINUTES (line 176 above), so on this seam one slow agent is a dashboard-wide outage even with the guard in place."),
+      li(text: "**No new routes, by the same seam's own accounting.** Line 17674: the evaluation budget is PROCESS-WIDE, `and this server has exactly one entry -- roadmap_serve_handle, named in its systemd unit -- so a process-wide value is sufficient here rather than merely convenient. A genuinely per-route policy needs either separate processes or a generated route-policy manifest read before evaluation; neither is built.` Adding the router's routes to this process would let a minutes-long proxy call consume the budget the dashboard's own dispatch entries are measured against -- and the budget is the guard that keeps the serial loop's accept queue from being held."),
+      li(text: "**No Content-Length-free body, no keep-alive, no TLS.** It is tailnet-only by that design, which is correct for a dashboard and not correct for a client pool."),
+      li(text: "**The admission gate is not a rubber stamp.** The path is gunbc.seed_growth_admission (which already carries native_serve_program_seed_growth_justification at line 335), and gunbc.v1.v1_maintenance_standing is an allow/refuse vocabulary whose five refused classes dominate its admissions -- a change that supports v1 rather than v2 fails the purpose test however pretty it is. Growing a feature in the seed to serve v2's product, when a v2-native door exists, is the shape those classes refuse."),
+    ]),
+    p(text: "Option A is rejected. It puts the router's hot path in the seed, which DESIGN section 3 and the standing carry as the tentpole to be dissolved rather than invested in; and it serializes exactly the concurrency the router exists to provide."),
+    h3(text: "2.3 Option B -- extend the native serve door (the recommendation)"),
+    p(text: "The v2-emitted door already exists, already runs concurrently, and is already deployed under systemd:"),
+    ul(items: [
+      li(text: "**The carrier:** std.compiler_entry data NativeServeDriver = CompilerEntryDriver, with program, worker_replace and program_generations. Its accept loop spawns a thread per connection (src/v1/stage0/src/v1_compiler_emit_rust.rs emit_native_serve_driver_main_rs, thread spawn at line 45686) and enforces a per-request deadline."),
+      li(text: "**The deployed proof.** gunbc.auth.approval_device_crypto_serve is a compiler_pipeline_entry of NativeServeDriver, its realization is NativeDeviceCryptoBound (approval_device_crypto_realization line 76), and gunbc.live_deploy.apply_legs brings the unit up (the device-crypto sidecar leg, line 587). This is not an experiment on a fixture; it is a resident sidecar."),
+      li(text: "**The precedent for growing the seam.** gunbc.native_serve_program_seed_growth exists for exactly this move -- its rule is that growth lands as a carrier beside the door it extends, with the same five-part SeedGrowthJustification shape, and it was authored for the native-serve accept loop."),
+    ]),
+    p(text: "The honest cost of Option B: the emitted loop is rendered by the seed's emitter, so this is also a seed change -- and the v1_maintenance_standing purpose test applies to it. That is survivable, and the reason is the reason the standing exists: the change serves the v2 program, not v1. The door is where the router belongs because it is the seam the product is moving toward, it already does concurrent connections, and its supervisor is already the restart mechanism."),
+    h3(text: "2.4 The decision"),
+    p(text: "**Option B.** One streaming seam, in the native serve door, owned by gunbc.native_serve_program_seed_growth with its own justification row -- not two doors, and not a private Rust HTTP server next to the two that exist (DESIGN section 2: one mechanism per job; no parallel implementation). The seed serve keeps its single route, stays serial, and hosts no router code. The router process is an emitted NativeServeDriver program that routes and nothing else."),
+    p(text: "**The obligation this exposes, named before the gap list.** The seam must become expressible before the router can stream. That is a chunked and SSE response shape on the serve door's response model plus the accept loop that writes it (the framing stays accept-loop-owned: the loop decides chunked, the program never names the header). DESIGN section 2.2: a capability the model cannot express is a model gap, and building the wire around the model is the trap DESIGN section 5 names. So this is the first PR, and the router lands after it -- not alongside it. Note also the upstream side of the same gap: the request side of a streamed model reply has to be readable incrementally too, and the harness builds its wire request as a fold over a typed post (gunbc.harness.harness_turn harness_hosted_round_post, lines 1162 to 1191) with the POST itself executed outside the program; the router follows that precedent -- the fold decides what to send and when, and the streaming transport executes it."),
+
+    h2(text: "3. The gap list, in dependency order"),
+    ol(items: [
+      li(text: "**The streaming seam (the obligation of 2.4).** A response shape that can be flushed incrementally (chunked framing and SSE), on the serve door's response model, written by the native door's accept loop, with the same per-request deadline and the same refusal when a program names a framing header. Witnessed by execution: a client that reads two increments before the upstream finishes, and a second client that is not made to wait for the first."),
+      li(text: "**The OpenAI-compatible wire model.** Check what exists before authoring: gunbc.extdeps.openrouter and gunbc.extdeps.llm (openai_compat_sse, openai_tool_calling, openai_reasoning_cache, openai_rest) are the candidates. The SSE carrier there parses chunks and its refusal is a typed reason, and its note says the chunk shape is a fact about the API, not about the model -- so it is reusable, and the missing pieces are the request model (prompt and messages, stop, max_tokens, stream) and the completion object. New carriers in this family are subject to gunbc.extdeps_scope_frontier: they must be declared in its scope_carrier_paths, and placement vocabulary in them is refused."),
+      li(text: "**The router realization.** Compose the halves that exist: harness_place_cli (placement), front_door_admit_on_store, capacity redemption, mint_serving_seat_permit, the proxy leg, front_door_stream_end, and release. No scoring, no host choice, no binding ledger, no failover outside placement -- the contract is already written in gunbc.serving.router_realization and this PR is its acceptance list. Its witness must be a red/green pair, per DESIGN section 5: the witness passes against the realization and FAILS against a router that picks a host, scores a replica, or forwards without a permit. A witness that passes against a stub proves nothing."),
+      li(text: "**Client-pool API keys and TLS.** gunbc.auth.request_authentication and gunbc.serving.serving_key_grant are the model side. The honest boundary for this repo: no public endpoint, no keys and no account details in a public repository. The first target is tailnet-only, which is also what keeps the TLS gap out of the first live step."),
+      li(text: "**Rent-to-enroll actuation.** rented_enrollment rented_cohort_enrollments is `data ... List<RentedEnrollment> = []` (line 38) -- a hand list, empty in production, with its own comment admitting that a card rented and never enrolled is the bug this carrier exists to make impossible. Derive it from rented_allocation_host_enrollment into durable state, and make the empty case observable rather than silent: an empty cohort over a non-empty rented_allocation must be a refusal or a reported gap, never a green roster."),
+      li(text: "**The reclaim driver** over gunbc.serving.rented_release's four legs (drain, revoke, clean, destroy -- all modeled, none realized, per its own comment), plus session re-placement onto a surviving card through placement. replica_endpoint_launch's replica_incarnation_unverified_obligation (line 62) is the join: reuse and replacement are not judged until an incarnation check exists, and today a card's identity is its process-start field alone."),
+      li(text: "**The live-deploy leg and unit** (gunbc.live_deploy.apply_legs, emit) for the router process, per section 5. The first live target is Vast with Apply on, at the USD 50 cap and at most two cards, and only after #14879's destroy-target safety fix lands."),
+    ]),
+
+    h2(text: "4. What must not be built here"),
+    ul(items: [
+      li(text: "A replica-failover abstraction. Fabric storage is one placement (gunbc.fabric.fabric_storage_placement); a session whose card dies goes back through placement, and that is the whole story. A second card is not a standby and does not become one because a router exists."),
+      li(text: "Any dependency on ctrl -- not a quote of its ranking, not its tests as an acceptance list. The refusal is in router_realization already and is not re-argued here."),
+      li(text: "A second listener in one process. One process, one door, one entry. If the router ever needs a second port, that is a second unit."),
+      li(text: "A new scheduler. Demand goes to placement; the router takes the endpoint from the grant. The lease, the fence and the ceiling are product.capacity's, and the router holds none of them."),
+    ]),
+
+    h2(text: "5. srv1: a separate unit on the same host, not the workspace process"),
+    p(text: "The operator offered srv1's existing workspace process as the router's host and is indifferent to mechanism. The evidence says the host is right and the co-hosting is not."),
+    h3(text: "5.1 What the workspace actually is today"),
+    ul(items: [
+      li(text: "roadmap_dashboard_instance srv1_live_dashboard_instance (line 1056) runs serve_binary /opt/gunbc/bin/gunbc (gunbc.host.host_layout line 63) with `serve_function: roadmap_serve_handle` (line 1084; gunbc.roadmap.roadmap_serve) on 127.0.0.1:8080 behind tailscale serve -- the INTERPRETED SEED BINARY, i.e. the Option-A loop: one connection at a time, one entry by design, Content-Length only (cli_run.rs 18167-18169: `No keep-alive, no chunked bodies, no TLS (tailscale serve ...)`; the response writes Content-Length and Connection: close at line 18602)."),
+      li(text: "It is an operator surface, not a workload: it reads the ledger the harness and the fleet write, and it is what the operator is looking at when something is on fire -- fleet_capacity_panel and the rest of the roadmap panels."),
+    ]),
+    h3(text: "5.2 The ruling"),
+    ul(items: [
+      li(text: "**The router runs on srv1, as its own emitted unit.** Same host, same tailnet, its own port, its own systemd unit, deployed by live_deploy over a live_deploy unit row. Its placement is a host decision made where hosts are facts; the router never chooses it."),
+      li(text: "**Not the workspace process.** Three reasons. (i) Blast radius: a router bug -- or an agent sending a pathological body -- must not take the operator's dashboard down, and a router that shares a process with the dashboard has no failure mode that is local. (ii) Restart coupling: the router's code changes as this plan lands, and every deploy restarts it; a workspace restart drops panels mid-session, including during the bring-ups the operator uses to observe this work. (iii) It would put a new route into the seed's serial loop after section 2 showed one stalled minutes-long session holds its accept queue behind the operator's own panels."),
+      li(text: "**One door, not two.** The workspace keeps the seed serve -- it is the right seam for a low-traffic tailnet dashboard, where a cold read of a large ledger is a latency bug and not a crash (the seed serve's comment records exactly that history). The router uses the native door. Co-hosting the two doors in one process would buy nothing and would make the router's restart the dashboard's restart."),
+    ]),
+
+    h2(text: "6. Boundaries, and the coordination this plan assumes"),
+    ul(items: [
+      li(text: "**Public repository.** No public endpoint, no API keys, no account details in any PR. The first live step is tailnet-only."),
+      li(text: "**First live target.** Vast, Apply on, USD 50 cap, at most two cards, and only after #14879 (session witty-lynx-354: rented carriers made supplier-agnostic, the Vast destroy moved into the Vast row) lands its destroy-target safety fix. Until then no destroy leg runs."),
+      li(text: "**Carrier ownership, so two sessions do not edit one carrier.** witty-lynx-354 owns the rented_allocation and rented_release carriers in #14879; the reclaim driver (gap 6) is written against its merged result, not alongside it. This plan touches neither."),
+      li(text: "**No merging.** Each PR is delivered for review."),
+    ]),
+
+    h2(text: "7. Deliberate omissions"),
+    ul(items: [
+      li(text: "A load score, in any form. Including a cheap one. It is the forbidden act, the contract already refuses it, and the reason the ctrl router is being replaced."),
+      li(text: "TLS in the first live step. It is gap 4, and the tailnet-only target is what lets it wait; pretending it is done would be the rung-inflation the standing refuses."),
+      li(text: "The upstream-side streaming transport, named as an obligation in 2.4 and NOT scoped as a PR here: it needs the same effect surface as the door seam, and scoping both in one plan is how a plan becomes a wish."),
+    ]),
+  ]
+}
+
+data fabric_native_serving_router_plan: Plan = Plan {
+  body: fabric_native_serving_router_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this document when an OpenAI-compatible streaming request reaches a dashboard agent session end to end on a flex-rented card through the native serve door -- placement, front-door admit, redeem, proxy, stream, release -- with the router holding no score, no host choice and no binding ledger, the rented cohort derived rather than hand-listed, and the reclaim legs run by a driver; at which point the gap map is a witnessed property of the carriers and this plan is redundant.") },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fabric-native-serving-router",
+  title: "Fabric-native serving router: the streaming seam belongs to the native serve door, and srv1 hosts the router as its own unit",
+}
