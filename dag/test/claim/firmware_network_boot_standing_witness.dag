@@ -3895,8 +3895,8 @@ test fn an_unread_unit_selects_the_first_refusal() -> Bool {
 }
 
 // THE RED: the old disagree shape written as fixture source. `Executable` carries one field, `route`,
-// so the old pair's field names are refused at the constructor; the control constructs the same arm
-// lawfully and is clean at that key.
+// so the old pair's field names are refused at the constructor;
+// the three positive tests above are the lawful constructions of each arm.
 data old_selection_shape_source: String = "module probe_old_selection\nimport std.optional { Absent }\nimport gunbc.firmware_network_boot_standing { AdmissibleRouteSelection, Executable }\nfn old_shape() -> AdmissibleRouteSelection {\n  Executable { executable: Absent, first_refusal: Absent }\n}\n"
 
 test fn the_old_disagree_shape_is_refused_by_the_compiler() -> Bool {
