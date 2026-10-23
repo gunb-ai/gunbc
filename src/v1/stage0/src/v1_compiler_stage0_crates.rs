@@ -928,13 +928,16 @@ pub fn render_stage0_layered_core_lib(
         let reexports = Rc::new({
             let mut __result = Vec::new();
             for ident in Rc::new({
-                let mut __sorted: Vec<_> = reexport_idents.iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|ident: String| ident.clone())(a.clone());
-                    let __kb = (|ident: String| ident.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
+                let mut __keyed: Vec<_> = reexport_idents
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|ident: String| ident.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
             })
             .iter()
             .cloned()
