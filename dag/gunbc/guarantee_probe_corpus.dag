@@ -38,8 +38,6 @@ import gunbc.compile_diagnostic_census {
   census_advisory_rows,
   census_rows_of_class,
   census_total_count,
-  census_blocking_rows_of_class,
-  census_blocking_rows_of_class_at_subject,
 }
 
 data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier. gunbc#7847 (call-missing-and-duplicate-wall, roadmap node rn_EXUHLON5V24YU7Z4XLJFWEZO33, duplicate-label slice) added call_duplicate_red_probe/call_duplicate_green_probe to the SAME call_label_surplus_class as #7519's mislabel/surplus rows — one seam (direct_call_shape_diags), a third refusal mode on it, not a new class. Its Rust dark-suite original is call_shape_duplicate_wall_witness, dispositioned below alongside call_shape_wall_witness."
@@ -937,34 +935,6 @@ fn probe_observation_from_accepted_infer_diagnostics(diagnostics: Diagnostics) -
 
 fn census_row_count(rows: List<CompileDiagnosticCensusRow>) -> Int {
   count(rows)
-}
-
-// THE COUNT OF THE SELECTED ROWS, where the SELECTION is the census module's -- see
-// census_blocking_rows_of_class / census_blocking_rows_of_class_at_subject there for why the
-// composition lives beside the row type. These selectors are those row functions folded to `Int?`,
-// nothing more.
-fn census_blocking_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int? {
-  match census {
-    CensusObserved { rows: rows } =>
-      Present { value: census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: wanted)) }
-    CensusNotRunnable { cause: _ } => none
-  }
-}
-
-fn census_blocking_count_for_subject(census: CompileDiagnosticCensus, wanted_class: String, wanted_subject: String) -> Int? {
-  match census {
-    CensusObserved { rows: rows } =>
-      Present { value: census_total_count(rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject)) }
-    CensusNotRunnable { cause: _ } => none
-  }
-}
-
-fn census_any_count_for_class(census: CompileDiagnosticCensus, wanted: String) -> Int? {
-  match census {
-    CensusObserved { rows: rows } =>
-      Present { value: census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted)) }
-    CensusNotRunnable { cause: _ } => none
-  }
 }
 
 fn observation_is_blocking_refusal(o: ProbeObservation, wanted: NonEmptyStr) -> Bool {

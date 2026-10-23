@@ -18618,10 +18618,12 @@ fn serve_write_response(
 }
 
 /// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
-/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
-/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
-/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
-/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+/// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
+/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
+/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
+/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
+/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
+/// value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18633,17 +18635,7 @@ fn serve_wire_header_line(
         return None;
     }
     let name = match ctx.field(fields, "name") {
-        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
-            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
-                "Location"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
-                "Set-Cookie"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
-                "Cache-Control"
-            } else {
-                return None;
-            }
-        }
+        Some(Value::Str(s)) => s.to_string(),
         _ => return None,
     };
     let value = match ctx.field(fields, "value") {
