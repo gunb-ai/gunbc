@@ -2,7 +2,7 @@ module gunbc.serving.flash_next_recipe_throughput_evidence
 
 import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { token_count_value, tokens_per_second_count }
+import std.measure { token_count_value, tokens_per_second_count, second_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.serving_recipe { serving_recipe_flash_next_lab_vllm, ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt, flash_next_maxq_run_2026_10_21 }
@@ -12,12 +12,12 @@ import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt, flas
 // generation rate and its mean decode concurrency are derived here, so the reading is superseded only by a measured row AT the
 // reading's concurrency, never by a rate taken at another one.
 fn lifetime_generation_deci_tokens_per_second(r: FlashNextMaxQRunReceipt) -> Nat {
-  token_count_value(t: r.generation_tokens) * 10 / r.uptime_seconds
+  token_count_value(t: r.generation_tokens) * 10 / second_count(s: r.uptime_seconds)
 }
 
 // Mean requests in decode (milli): summed per-request decode seconds over wall-clock uptime (Little's law).
 fn mean_decode_concurrency_milli(r: FlashNextMaxQRunReceipt) -> Nat {
-  r.decode_time_sum_seconds * 1000 / r.uptime_seconds
+  second_count(s: r.decode_time_sum_seconds) * 1000 / second_count(s: r.uptime_seconds)
 }
 
 type RecipeThroughputVerdict

@@ -3,7 +3,7 @@ module test.claim.flash_next_serving_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size_count, token_count_value, token_count }
+import std.measure { ByteSize, byte_size, byte_size_count, token_count_value, token_count, tokens_per_second, nanosecond, milli_tokens_per_second_count }
 import std.dissolution { dissolution_is_bound }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, CitedFigureStanding }
 import extdeps.gpu.types { TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
@@ -248,13 +248,13 @@ test fn w_declared_frontiers_are_open() -> Bool {
 // catalog and 143,771 MiB on the card.
 test fn w_observed_memory_is_consumed_not_vendor_figure() -> Bool {
   byte_size_count(b: nvidia_h200_nvl_catalog.memory.capacity) == 141000000000
-    && observed_memory_bytes(o: h200_nvl_observed_memory) == 143771 * 1048576
-    && observed_memory_bytes(o: b200_observed_memory) == 183359 * 1048576
+    && byte_size_count(b: observed_memory_bytes(o: h200_nvl_observed_memory)) == 143771 * 1048576
+    && byte_size_count(b: observed_memory_bytes(o: b200_observed_memory)) == 183359 * 1048576
     && card_memory_is(card: flash_next_h200_card, bytes: observed_memory_bytes(o: h200_nvl_observed_memory))
     && card_memory_is(card: flash_next_b200_fp4_card, bytes: observed_memory_bytes(o: b200_observed_memory))
 }
 
-fn card_memory_is(card: RooflineCard?, bytes: Nat) -> Bool {
+fn card_memory_is(card: RooflineCard?, bytes: ByteSize) -> Bool {
   match card {
     Present { value: c } => c.memory_bytes == bytes
     none => false
@@ -340,7 +340,7 @@ test fn w_warm_throughput_scoreable_only_under_warm_valid() -> Bool {
 test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Bool {
   let cell = quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 })
   match cell {
-    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1), indexer_bytes_per_token: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1)) {
+    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: byte_size(count: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1)), indexer_bytes_per_token: byte_size(count: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1))) {
       Present { value: b } => {
         let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 1, expert_parallel: false }, b: b)
         let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 1, expert_parallel: false }, b: b)
@@ -353,7 +353,7 @@ test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Boo
               TopologyFits { retained_tokens: r8, per_replica_tokens: _, weight_copies_bytes: w8 } => match tp8_idx {
                 TopologyFits { retained_tokens: ri, per_replica_tokens: _, weight_copies_bytes: _ } => match dp8 {
                   TopologyFits { retained_tokens: rd, per_replica_tokens: _, weight_copies_bytes: wd } =>
-                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1) == 384 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 2) == 768 && rd == p1 * 8 && wd == w8 * 8
+                    r1 == p1 && r2 > r1 && r8 > r2 && r8 < r2 * 4 && ri < r8 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 1) == 384 && flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: 2) == 768 && rd == p1 * 8 && byte_size_count(b: wd) == byte_size_count(b: w8) * 8
                   _ => false
                 }
                 _ => false
@@ -407,7 +407,10 @@ test fn w_sweep_levels_are_unadmitted_and_boundary_levels_are_flagged() -> Bool 
 }
 
 fn ceiling_for(v: ServingVariant, kv: KvDtype) -> Nat? {
-  decode_ceiling_deci(rows: flash_next_measured_ceilings, v: v, c: QuantCell { weights: WeightNvfp4LilQad, kv: kv })
+  match decode_ceiling_deci(rows: flash_next_measured_ceilings, v: v, c: QuantCell { weights: WeightNvfp4LilQad, kv: kv }) {
+    Present { value: m } => Present { value: milli_tokens_per_second_count(r: m) }
+    none => none
+  }
 }
 
 fn nat_greater(a: Nat?, b: Nat?) -> Bool {
@@ -440,9 +443,9 @@ test fn w_fork_pool_lookup() -> Bool {
 
 test fn w_fork_levels() -> Bool {
   let no_b8 = count(fork_levels |> filter(l => match l.outcome { ForkLevelDoesNotFit { cause: _ } => true, _ => false })) == 1
-  let collapse = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 16384, concurrency: 16) == Present { value: 363 }
+  let collapse = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 16384, concurrency: 16) == Present { value: tokens_per_second(count: 363) }
   let unmeasured_b8 = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 131072, concurrency: 8) == none
-  let no_gain = fork_level_aggregate(card: ForkServer600, topology: layout(tp: 1, dp: 1), context: 175000, concurrency: 3) == Present { value: 365 }
+  let no_gain = fork_level_aggregate(card: ForkServer600, topology: layout(tp: 1, dp: 1), context: 175000, concurrency: 3) == Present { value: tokens_per_second(count: 365) }
   no_b8 && collapse && unmeasured_b8 && no_gain
 }
 
@@ -453,7 +456,7 @@ test fn w_fork_rows_counts() -> Bool {
     && count(fork_open_loop_rows) == 7
     && tp2_175k_seat_bracket.measured_sustainable == 12 && tp2_175k_seat_bracket.upper_estimate == 20
     && count(tp2_unmeasured_seats) == 2
-    && two_card_pcie_interconnect.allreduce_floor_nanoseconds == 8800
+    && two_card_pcie_interconnect.allreduce_floor_nanoseconds == nanosecond(count: 8800)
     && count(fork_unobserved_layouts) == 2
     && count(fork_prefill_readings) == 4
     && !dissolution_is_bound(condition: flash_next_maxq_fork_measurements_frontier)

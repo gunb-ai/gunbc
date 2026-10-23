@@ -2,6 +2,7 @@ module gunbc.serving.flash_next_topology
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.serving.flash_next_quant_matrix { CellOutcome, CellMeasured }
 import gunbc.serving.flash_next_experiment_identity { host_ngram_table_copies }
@@ -20,29 +21,36 @@ fn topology_cards(t: ServingTopology) -> Nat {
 
 // What one card contributes, taken from a MEASURED matrix cell so overhead is derived, not assumed:
 //   overhead = utilization x memory - weights - kv   (everything the measured cell spent that is neither).
+// Review 84774 (flat-scalar unit fields): every byte figure is std.measure ByteSize; the per-token
+// terms name their denominator in the field, exactly as gunbc.econ.scm_serving_model carries
+// `stored_bytes_per_user_after_dedup: ByteSize`. utilization_basis_points stays Nat because it is a
+// dimensionless ratio, consumed by /10000 arithmetic beside these.
 type CardBudget {
-  memory_bytes: Nat
+  memory_bytes: ByteSize
   utilization_basis_points: Nat
-  weights_bytes: Nat
-  overhead_bytes: Nat
-  full_attention_bytes_per_token: Nat
-  indexer_bytes_per_token: Nat
-  gdn_amortized_bytes_per_token: Nat
+  weights_bytes: ByteSize
+  overhead_bytes: ByteSize
+  full_attention_bytes_per_token: ByteSize
+  indexer_bytes_per_token: ByteSize
+  gdn_amortized_bytes_per_token: ByteSize
 }
 
 fn gib_from_centi(centi: Nat) -> Nat {
   centi * 1073741824 / 100
 }
 
-fn card_budget_from_measured_cell(memory_bytes: Nat, cell: CellOutcome, full_attention_bytes_per_token: Nat, indexer_bytes_per_token: Nat) -> CardBudget? {
+fn card_budget_from_measured_cell(memory_bytes: ByteSize, cell: CellOutcome, full_attention_bytes_per_token: ByteSize, indexer_bytes_per_token: ByteSize) -> CardBudget? {
   match cell {
     CellMeasured { weights_centi_gib: Present { value: w }, kv_centi_gib: Present { value: k }, kv_tokens: Present { value: t }, gpu_memory_utilization_basis_points: u, throughput: _ } => {
-      let usable = memory_bytes * u / 10000
+      let memory = byte_size_count(b: memory_bytes)
+      let full_attention = byte_size_count(b: full_attention_bytes_per_token)
+      let indexer = byte_size_count(b: indexer_bytes_per_token)
+      let usable = memory * u / 10000
       let weights = gib_from_centi(centi: w)
       let kv = gib_from_centi(centi: k)
       let per_token = kv / t
-      if usable >= weights + kv && per_token >= full_attention_bytes_per_token + indexer_bytes_per_token {
-        Present { value: CardBudget { memory_bytes: memory_bytes, utilization_basis_points: u, weights_bytes: weights, overhead_bytes: usable - weights - kv, full_attention_bytes_per_token: full_attention_bytes_per_token, indexer_bytes_per_token: indexer_bytes_per_token, gdn_amortized_bytes_per_token: per_token - full_attention_bytes_per_token - indexer_bytes_per_token } }
+      if usable >= weights + kv && per_token >= full_attention + indexer {
+        Present { value: CardBudget { memory_bytes: memory_bytes, utilization_basis_points: u, weights_bytes: byte_size(count: weights), overhead_bytes: byte_size(count: usable - weights - kv), full_attention_bytes_per_token: full_attention_bytes_per_token, indexer_bytes_per_token: indexer_bytes_per_token, gdn_amortized_bytes_per_token: byte_size(count: per_token - full_attention - indexer) } }
       } else {
         none
       }
@@ -61,18 +69,18 @@ fn full_attention_rank_bytes(full: Nat, tp: Nat) -> Nat {
   if tp > 1 { full / 2 } else { full }
 }
 
-fn rank_bytes_per_token(b: CardBudget, tp: Nat) -> Nat {
-  full_attention_rank_bytes(full: b.full_attention_bytes_per_token, tp: tp) + b.indexer_bytes_per_token + b.gdn_amortized_bytes_per_token / tp
+fn rank_bytes_per_token(b: CardBudget, tp: Nat) -> ByteSize {
+  byte_size(count: full_attention_rank_bytes(full: byte_size_count(b: b.full_attention_bytes_per_token), tp: tp) + byte_size_count(b: b.indexer_bytes_per_token) + byte_size_count(b: b.gdn_amortized_bytes_per_token) / tp)
 }
 
 // Sensitivity control: the derived indexer bytes scaled (the per-block scale bytes are unknown), taken out of the GDN term.
 fn budget_with_indexer_scaled(b: CardBudget, permille: Nat) -> CardBudget {
-  let scaled = b.indexer_bytes_per_token * permille / 1000
-  CardBudget { memory_bytes: b.memory_bytes, utilization_basis_points: b.utilization_basis_points, weights_bytes: b.weights_bytes, overhead_bytes: b.overhead_bytes, full_attention_bytes_per_token: b.full_attention_bytes_per_token, indexer_bytes_per_token: scaled, gdn_amortized_bytes_per_token: b.gdn_amortized_bytes_per_token + b.indexer_bytes_per_token - scaled }
+  let scaled = byte_size_count(b: b.indexer_bytes_per_token) * permille / 1000
+  CardBudget { memory_bytes: b.memory_bytes, utilization_basis_points: b.utilization_basis_points, weights_bytes: b.weights_bytes, overhead_bytes: b.overhead_bytes, full_attention_bytes_per_token: b.full_attention_bytes_per_token, indexer_bytes_per_token: byte_size(count: scaled), gdn_amortized_bytes_per_token: byte_size(count: byte_size_count(b: b.gdn_amortized_bytes_per_token) + byte_size_count(b: b.indexer_bytes_per_token) - scaled) }
 }
 
 type TopologyCapacity
-  = TopologyFits { retained_tokens: Nat, per_replica_tokens: Nat, weight_copies_bytes: Nat }
+  = TopologyFits { retained_tokens: Nat, per_replica_tokens: Nat, weight_copies_bytes: ByteSize }
   | TopologyRefused { cause: NonEmptyStr }
 
 data weights_do_not_fit_cause: NonEmptyStr = "per-card weight shard plus overhead exceeds the utilization-scaled card memory" as NonEmptyStr
@@ -80,14 +88,14 @@ data weights_do_not_fit_cause: NonEmptyStr = "per-card weight shard plus overhea
 // Per-rank pool = utilization x memory - weights/TP - overhead; a replica's tokens = pool / per-rank bytes per token (every
 // rank holds the same tokens); aggregate = replicas x that.
 fn topology_capacity(t: ServingTopology, b: CardBudget) -> TopologyCapacity {
-  let usable = b.memory_bytes * b.utilization_basis_points / 10000
-  let shard = b.weights_bytes / t.tensor_parallel
-  if usable < shard + b.overhead_bytes {
+  let usable = byte_size_count(b: b.memory_bytes) * b.utilization_basis_points / 10000
+  let shard = byte_size_count(b: b.weights_bytes) / t.tensor_parallel
+  if usable < shard + byte_size_count(b: b.overhead_bytes) {
     TopologyRefused { cause: weights_do_not_fit_cause }
   } else {
-    let pool = usable - shard - b.overhead_bytes
-    let per_replica = pool / rank_bytes_per_token(b: b, tp: t.tensor_parallel)
-    TopologyFits { retained_tokens: per_replica * t.data_parallel, per_replica_tokens: per_replica, weight_copies_bytes: b.weights_bytes * t.data_parallel }
+    let pool = usable - shard - byte_size_count(b: b.overhead_bytes)
+    let per_replica = pool / byte_size_count(b: rank_bytes_per_token(b: b, tp: t.tensor_parallel))
+    TopologyFits { retained_tokens: per_replica * t.data_parallel, per_replica_tokens: per_replica, weight_copies_bytes: byte_size(count: byte_size_count(b: b.weights_bytes) * t.data_parallel) }
   }
 }
 

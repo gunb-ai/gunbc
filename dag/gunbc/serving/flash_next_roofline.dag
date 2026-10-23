@@ -3,7 +3,7 @@ module gunbc.serving.flash_next_roofline
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_cata, nat_min, nat_max }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { byte_size_count, token_count_value, bandwidth_count, basis_point_count, giga_tensor_operations_per_second_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Bandwidth, bandwidth, bandwidth_count, Microsecond, microsecond, microsecond_count, Second, second_count, token_count_value, basis_point_count, giga_tensor_operations_per_second_count }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
 import extdeps.qwen.qwen3_8_flash_next { FlashNextArchitecture, flash_next_qsa_kv_bytes_per_token, flash_next_params_per_routed_expert }
@@ -21,21 +21,25 @@ import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 // engine overhead outside weights and KV, and the engine's gpu-memory-utilization. A bandwidth the
 // catalog lacks (the B200 row carries none) is supplied as an explicit operator figure and keeps its
 // own standing; it is never defaulted.
+// Review 84774 (flat-scalar unit fields): byte figures carry std.measure ByteSize and the bandwidth
+// override carries Bandwidth (the same carrier the catalog row uses for memory_bandwidth), so a raw
+// count never stands for a unit. gpu_memory_utilization_bp stays Nat on purpose: it is a dimensionless
+// ratio consumed as /10000 arithmetic, not a quantity with a unit.
 type RooflineCard {
   catalog: GpuModelCatalogRow
-  bandwidth_override_bytes_per_second: Nat?
-  memory_bytes: Nat
-  weights_bytes: Nat
-  overhead_bytes: Nat
+  bandwidth_override: Bandwidth?
+  memory_bytes: ByteSize
+  weights_bytes: ByteSize
+  overhead_bytes: ByteSize
   gpu_memory_utilization_bp: Nat
-  main_kv_element_bytes: Nat
+  main_kv_element_bytes: ByteSize
   math_datatype: TensorDatatype
 }
 
-fn roofline_bandwidth(card: RooflineCard) -> Nat? {
+fn roofline_bandwidth(card: RooflineCard) -> Bandwidth? {
   match gpu_catalog_bandwidth_count(row: card.catalog) {
-    Present { value: b } => Present { value: b }
-    none => card.bandwidth_override_bytes_per_second
+    Present { value: b } => Present { value: bandwidth(count: b) }
+    none => card.bandwidth_override
   }
 }
 
@@ -60,8 +64,8 @@ fn ratio_permille(num: Nat, den: Nat) -> Nat? {
 // P1 -- KV CAPACITY FROM MEMORY: utilization x capacity, minus weights, minus overhead, over KV bytes per
 // token. Absent when the reserve consumes the budget or bytes per token is zero.
 fn kv_capacity_tokens(card: RooflineCard, kv_bytes_per_token: Nat) -> Nat? {
-  let budget = card.memory_bytes * card.gpu_memory_utilization_bp / 10000
-  let reserve = card.weights_bytes + card.overhead_bytes
+  let budget = byte_size_count(b: card.memory_bytes) * card.gpu_memory_utilization_bp / 10000
+  let reserve = byte_size_count(b: card.weights_bytes) + byte_size_count(b: card.overhead_bytes)
   if kv_bytes_per_token == 0 || reserve >= budget {
     none
   } else {
@@ -121,9 +125,9 @@ fn routed_weight_bytes(arch: FlashNextArchitecture) -> Nat {
 }
 
 type DecodeStepBytes {
-  routed_expert_bytes: Nat
-  non_routed_bytes: Nat
-  qsa_kv_read_bytes: Nat
+  routed_expert_bytes: ByteSize
+  non_routed_bytes: ByteSize
+  qsa_kv_read_bytes: ByteSize
 }
 
 // One decode step at `concurrent` requests each carrying draft_depth+1 rows, every request at
@@ -133,22 +137,23 @@ type DecodeStepBytes {
 fn decode_step_bytes(arch: FlashNextArchitecture, card: RooflineCard, concurrent: Nat, draft_depth: Nat, context_tokens: Nat) -> DecodeStepBytes {
   let rows = concurrent * (draft_depth + 1)
   let routed_total = routed_weight_bytes(arch: arch)
+  let weights = byte_size_count(b: card.weights_bytes)
   DecodeStepBytes {
-    routed_expert_bytes: arch.layer_count * unique_experts_per_layer(arch: arch, rows: rows) * expert_bytes(arch: arch),
-    non_routed_bytes: if card.weights_bytes > routed_total { card.weights_bytes - routed_total } else { 0 },
-    qsa_kv_read_bytes: concurrent * flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: card.main_kv_element_bytes) * nat_min(a: context_tokens, b: arch.indexer_budget_tokens),
+    routed_expert_bytes: byte_size(count: arch.layer_count * unique_experts_per_layer(arch: arch, rows: rows) * expert_bytes(arch: arch)),
+    non_routed_bytes: byte_size(count: if weights > routed_total { weights - routed_total } else { 0 }),
+    qsa_kv_read_bytes: byte_size(count: concurrent * flash_next_qsa_kv_bytes_per_token(arch: arch, element_bytes: byte_size_count(b: card.main_kv_element_bytes)) * nat_min(a: context_tokens, b: arch.indexer_budget_tokens)),
   }
 }
 
-fn decode_step_total(b: DecodeStepBytes) -> Nat {
-  b.routed_expert_bytes + b.non_routed_bytes + b.qsa_kv_read_bytes
+fn decode_step_total(b: DecodeStepBytes) -> ByteSize {
+  byte_size(count: byte_size_count(b: b.routed_expert_bytes) + byte_size_count(b: b.non_routed_bytes) + byte_size_count(b: b.qsa_kv_read_bytes))
 }
 
 // P3 CEILING -- bandwidth-bound time of one decode step, microseconds.
-fn decode_step_floor_us(arch: FlashNextArchitecture, card: RooflineCard, concurrent: Nat, draft_depth: Nat, context_tokens: Nat) -> Nat? {
+fn decode_step_floor_us(arch: FlashNextArchitecture, card: RooflineCard, concurrent: Nat, draft_depth: Nat, context_tokens: Nat) -> Microsecond? {
   match roofline_bandwidth(card: card) {
-    Present { value: bw } => if bw == 0 { none } else {
-      Present { value: decode_step_total(b: decode_step_bytes(arch: arch, card: card, concurrent: concurrent, draft_depth: draft_depth, context_tokens: context_tokens)) * 1000000 / bw }
+    Present { value: bw } => if bandwidth_count(b: bw) == 0 { none } else {
+      Present { value: microsecond(count: byte_size_count(b: decode_step_total(b: decode_step_bytes(arch: arch, card: card, concurrent: concurrent, draft_depth: draft_depth, context_tokens: context_tokens))) * 1000000 / bandwidth_count(b: bw)) }
     }
     none => none
   }
@@ -161,24 +166,24 @@ fn decode_step_floor_us(arch: FlashNextArchitecture, card: RooflineCard, concurr
 type PrefillBound = ComputeBound | BandwidthBound
 
 type PrefillChunkFloor {
-  compute_us: Nat
-  bandwidth_us: Nat
-  floor_us: Nat
+  compute_us: Microsecond
+  bandwidth_us: Microsecond
+  floor_us: Microsecond
   bound: PrefillBound
 }
 
 fn prefill_chunk_floor(arch: FlashNextArchitecture, card: RooflineCard, chunk_tokens: Nat) -> PrefillChunkFloor? {
   match roofline_math_rate_giga(card: card) {
     Present { value: rate } => match roofline_bandwidth(card: card) {
-      Present { value: bw } => if rate == 0 || bw == 0 { none } else {
+      Present { value: bw } => if rate == 0 || bandwidth_count(b: bw) == 0 { none } else {
         let giga_ops = 2 * arch.active_parameters_per_token * chunk_tokens / 1000000000
         let compute_us = giga_ops * 1000000 / rate
-        let bandwidth_us = card.weights_bytes * 1000000 / bw
+        let bandwidth_us = byte_size_count(b: card.weights_bytes) * 1000000 / bandwidth_count(b: bw)
         Present {
           value: PrefillChunkFloor {
-            compute_us: compute_us,
-            bandwidth_us: bandwidth_us,
-            floor_us: nat_max(a: compute_us, b: bandwidth_us),
+            compute_us: microsecond(count: compute_us),
+            bandwidth_us: microsecond(count: bandwidth_us),
+            floor_us: microsecond(count: nat_max(a: compute_us, b: bandwidth_us)),
             bound: if compute_us >= bandwidth_us { ComputeBound } else { BandwidthBound },
           }
         }
@@ -196,8 +201,8 @@ type CeilingRatio {
   spec_standing: CitedFigureStanding
 }
 
-fn speed_ratio_permille(baseline_us: Nat, card_us: Nat) -> Nat? {
-  ratio_permille(num: baseline_us, den: card_us)
+fn speed_ratio_permille(baseline_us: Microsecond, card_us: Microsecond) -> Nat? {
+  ratio_permille(num: microsecond_count(m: baseline_us), den: microsecond_count(m: card_us))
 }
 
 fn p4_ceiling_ratio(arch: FlashNextArchitecture, baseline: RooflineCard, card: RooflineCard, chunk_tokens: Nat) -> CeilingRatio? {
@@ -238,11 +243,13 @@ fn p3_ceiling_ratio(arch: FlashNextArchitecture, baseline: RooflineCard, card: R
 // permille. This composes ceilings or interval ends; it does not model queueing, which is the
 // registered P5 basis for exceeding it ("more KV removes queueing and preemption").
 fn p5_composed_permille(receipt: FlashNextMaxQRunReceipt, r3_permille: Nat, r4_permille: Nat) -> Nat? {
-  let total = receipt.prefill_time_sum_seconds + receipt.decode_time_sum_seconds
+  let prefill = second_count(s: receipt.prefill_time_sum_seconds)
+  let decode = second_count(s: receipt.decode_time_sum_seconds)
+  let total = prefill + decode
   if total == 0 || r3_permille == 0 || r4_permille == 0 {
     none
   } else {
-    let time_ppm = receipt.prefill_time_sum_seconds * 1000000 / total * 1000 / r4_permille + receipt.decode_time_sum_seconds * 1000000 / total * 1000 / r3_permille
+    let time_ppm = prefill * 1000000 / total * 1000 / r4_permille + decode * 1000000 / total * 1000 / r3_permille
     if time_ppm == 0 { none } else { Present { value: 1000000000 / time_ppm } }
   }
 }

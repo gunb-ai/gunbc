@@ -2,6 +2,7 @@ module gunbc.serving.flash_next_maxq_fork_measurements
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count, Nanosecond, nanosecond, nanosecond_count, Joule, joule, joule_count, Bandwidth, bandwidth, bandwidth_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.serving.flash_next_topology { ServingTopology }
 import gunbc.serving.flash_next_quant_matrix { WarmAdmission, WarmNotYetAdmitted, bench_v2_records_trigger, HypothesisStanding, HypothesisFalsified }
@@ -10,6 +11,12 @@ import gunbc.serving.flash_next_quant_matrix { WarmAdmission, WarmNotYetAdmitted
 // (CACHE_MODE=vram), max-num-seqs 64. A different stack from the upstream-0.32.0 rows of flash_next_quant_matrix, so it has its own
 // module; the layout is the existing ServingTopology. Throughput rows are not yet warm-admitted (same trigger as the matrix).
 // A level that does not fit or collapses is capacity evidence, never a zero.
+//
+// Review 84774 (flat-scalar unit fields): rates, durations, energies and byte-rates in this module
+// carry std.measure carriers instead of a bare Nat whose scale lives only in the field name. The
+// stored literals are the figures the operator relayed from the fork's logs; the mint helpers below
+// convert each print unit exactly (GB/s to bytes/s, seconds to the carrier's scale), so no figure is
+// renormalised and every unit lives in the type.
 type ForkCard = ForkMaxQ300 | ForkServer600
 
 fn fork_card_eq(a: ForkCard, b: ForkCard) -> Bool {
@@ -54,7 +61,7 @@ fn pool_ratio_milli(pool: Nat, single: Nat) -> Nat? {
 
 // 2. THROUGHPUT LEVELS: aggregate tok/s at a concurrency and context, or the reason there is no number.
 type ForkLevelOutcome
-  = ForkLevelMeasured { aggregate_tokens_per_second: Nat, collapsed: Bool }
+  = ForkLevelMeasured { aggregate_tokens_per_second: TokensPerSecond, collapsed: Bool }
   | ForkLevelDoesNotFit { cause: NonEmptyStr }
 
 type ForkLevel {
@@ -67,7 +74,7 @@ type ForkLevel {
 }
 
 fn level(card: ForkCard, topology: ServingTopology, context: Nat, concurrency: Nat?, agg: Nat, collapsed: Bool) -> ForkLevel {
-  ForkLevel { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, card: card, topology: topology, context_tokens: context, concurrency: concurrency, outcome: ForkLevelMeasured { aggregate_tokens_per_second: agg, collapsed: collapsed } }
+  ForkLevel { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, card: card, topology: topology, context_tokens: context, concurrency: concurrency, outcome: ForkLevelMeasured { aggregate_tokens_per_second: tokens_per_second(count: agg), collapsed: collapsed } }
 }
 
 data b8_does_not_fit_cause: NonEmptyStr = "eight 128k-context sessions exceed the single-card KV pool" as NonEmptyStr
@@ -92,7 +99,7 @@ data fork_levels: List<ForkLevel> = [
   level(card: ForkMaxQ300, topology: layout(tp: 1, dp: 2), context: 131072, concurrency: none, agg: 812, collapsed: false),
 ]
 
-fn fork_level_aggregate(card: ForkCard, topology: ServingTopology, context: Nat, concurrency: Nat) -> Nat? {
+fn fork_level_aggregate(card: ForkCard, topology: ServingTopology, context: Nat, concurrency: Nat) -> TokensPerSecond? {
   fold(fork_levels, init: none, f: (acc, l) =>
     if fork_card_eq(a: l.card, b: card) && topology_eq(a: l.topology, b: topology) && l.context_tokens == context && l.concurrency == Present { value: concurrency } {
       match l.outcome {
@@ -114,17 +121,17 @@ data collapse_open_cause: NonEmptyStr = "TP1 decode collapse above B8 at 16k con
 // 4. PREFILL AND FILL (tok/s; inter-token gap in microseconds). The fill test is flat: p50 3,400 us from 0 to 98 percent pool fill.
 type ForkPrefillReading {
   label: NonEmptyStr
-  tokens_per_second: Nat
+  tokens_per_second: TokensPerSecond
 }
 
 data fork_prefill_readings: List<ForkPrefillReading> = [
-  ForkPrefillReading { label: "warm prefill, 8k suffix" as NonEmptyStr, tokens_per_second: 7212 },
-  ForkPrefillReading { label: "warm prefill, 32k suffix" as NonEmptyStr, tokens_per_second: 7432 },
-  ForkPrefillReading { label: "cold prefill, 32k" as NonEmptyStr, tokens_per_second: 11864 },
-  ForkPrefillReading { label: "cold prefill, 128k" as NonEmptyStr, tokens_per_second: 9838 },
+  ForkPrefillReading { label: "warm prefill, 8k suffix" as NonEmptyStr, tokens_per_second: tokens_per_second(count: 7212) },
+  ForkPrefillReading { label: "warm prefill, 32k suffix" as NonEmptyStr, tokens_per_second: tokens_per_second(count: 7432) },
+  ForkPrefillReading { label: "cold prefill, 32k" as NonEmptyStr, tokens_per_second: tokens_per_second(count: 11864) },
+  ForkPrefillReading { label: "cold prefill, 128k" as NonEmptyStr, tokens_per_second: tokens_per_second(count: 9838) },
 ]
 
-data fork_fill_flat_gap_microseconds: Nat = 3400
+data fork_fill_flat_gap_microseconds: Microsecond = microsecond(count: 3400)
 
 // 5. OPEN-LOOP SEATS at 175k context: S sessions resident, duty cycle in basis points, then what the fleet delivers.
 // An oversubscribed pool is a boundary row (no aggregate), not a throughput.
@@ -133,26 +140,26 @@ type OpenLoopRow {
   topology: ServingTopology
   seats: Nat
   duty_basis_points: Nat
-  aggregate_tokens_per_second: Nat?
-  ttft_p50_milliseconds: Nat?
-  ttft_p95_milliseconds: Nat?
+  aggregate_tokens_per_second: TokensPerSecond?
+  ttft_p50_milliseconds: Millisecond?
+  ttft_p95_milliseconds: Millisecond?
   ttft_p95_is_upper_bound: Bool
-  itl_p95_milliseconds: Nat?
+  itl_p95_milliseconds: Millisecond?
   gpu_hit_basis_points: Nat?
-  joules_per_turn: Nat?
+  joules_per_turn: Joule?
   oversubscribed: Bool
 }
 
 fn open_loop(topology: ServingTopology, seats: Nat, duty: Nat, agg: Nat, ttft_p95_upper: Nat) -> OpenLoopRow {
-  OpenLoopRow { card: ForkMaxQ300, topology: topology, seats: seats, duty_basis_points: duty, aggregate_tokens_per_second: Present { value: agg }, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: ttft_p95_upper }, ttft_p95_is_upper_bound: true, itl_p95_milliseconds: none, gpu_hit_basis_points: none, joules_per_turn: none, oversubscribed: false }
+  OpenLoopRow { card: ForkMaxQ300, topology: topology, seats: seats, duty_basis_points: duty, aggregate_tokens_per_second: Present { value: tokens_per_second(count: agg) }, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: millisecond(count: ttft_p95_upper) }, ttft_p95_is_upper_bound: true, itl_p95_milliseconds: none, gpu_hit_basis_points: none, joules_per_turn: none, oversubscribed: false }
 }
 
 fn tp2_open_loop(seats: Nat, duty: Nat, agg: Nat, p50: Nat, p95: Nat, itl: Nat, hit: Nat, joules: Nat) -> OpenLoopRow {
-  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: seats, duty_basis_points: duty, aggregate_tokens_per_second: Present { value: agg }, ttft_p50_milliseconds: Present { value: p50 }, ttft_p95_milliseconds: Present { value: p95 }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: Present { value: itl }, gpu_hit_basis_points: Present { value: hit }, joules_per_turn: Present { value: joules }, oversubscribed: false }
+  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: seats, duty_basis_points: duty, aggregate_tokens_per_second: Present { value: tokens_per_second(count: agg) }, ttft_p50_milliseconds: Present { value: millisecond(count: p50) }, ttft_p95_milliseconds: Present { value: millisecond(count: p95) }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: Present { value: millisecond(count: itl) }, gpu_hit_basis_points: Present { value: hit }, joules_per_turn: Present { value: joule(count: joules) }, oversubscribed: false }
 }
 
 fn tp2_eviction_cascade(duty: Nat, p95: Nat) -> OpenLoopRow {
-  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: 25, duty_basis_points: duty, aggregate_tokens_per_second: none, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: p95 }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: none, gpu_hit_basis_points: none, joules_per_turn: none, oversubscribed: true }
+  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: 25, duty_basis_points: duty, aggregate_tokens_per_second: none, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: millisecond(count: p95) }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: none, gpu_hit_basis_points: none, joules_per_turn: none, oversubscribed: true }
 }
 
 data fork_open_loop_rows: List<OpenLoopRow> = [
@@ -184,19 +191,21 @@ fn oversubscribed_rows(rows: List<OpenLoopRow>) -> Nat {
 }
 
 // 6. THE TWO-CARD INTERCONNECT (PCIe, NODE topology, P2P on): the fork uses its B12X_PCIE all-reduce for TP.
+// The PCIe figures the operator relayed print as GB/s (decimal); the Bandwidth carrier holds bytes
+// per second exactly, so the mint converts the print unit once, here.
 type InterconnectReading {
-  copy_gigabytes_per_second: Nat
-  allreduce_floor_nanoseconds: Nat
-  allreduce_1mib_nanoseconds: Nat
-  busbw_64mib_gigabytes_per_second: Nat
+  copy_bandwidth: Bandwidth
+  allreduce_floor_nanoseconds: Nanosecond
+  allreduce_1mib_nanoseconds: Nanosecond
+  busbw_64mib_bandwidth: Bandwidth
   p2p_enabled: Bool
 }
 
 data two_card_pcie_interconnect: InterconnectReading = InterconnectReading {
-  copy_gigabytes_per_second: 55,
-  allreduce_floor_nanoseconds: 8800,
-  allreduce_1mib_nanoseconds: 44000,
-  busbw_64mib_gigabytes_per_second: 37,
+  copy_bandwidth: bandwidth(count: 55 * 1000000000),
+  allreduce_floor_nanoseconds: nanosecond(count: 8800),
+  allreduce_1mib_nanoseconds: nanosecond(count: 44000),
+  busbw_64mib_bandwidth: bandwidth(count: 37 * 1000000000),
   p2p_enabled: true,
 }
 

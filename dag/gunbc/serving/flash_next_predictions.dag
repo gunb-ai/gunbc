@@ -3,7 +3,7 @@ module gunbc.serving.flash_next_predictions
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size_count, Bandwidth, bandwidth, gibibyte, gibibyte_to_byte_size }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16 }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_max_q_catalog, nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog }
@@ -57,17 +57,17 @@ data flash_next_registered_predictions: List<PredictionRow> = [
 // Weights: the Max-Q's observed 71.86 GiB; H200 and B200 the registered ~76 GiB (non-CSF scales).
 // Overhead: the registered 6-8 GiB, taken at its midpoint 7 GiB. Main-KV width comes from the image
 // observation of that arch, not from the Max-Q.
-fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, bandwidth_override: Nat?, weights_bytes: Nat, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
+fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, bandwidth_override: Bandwidth?, weights_bytes: ByteSize, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
   match image_main_kv_element_bytes(rows: flash_next_image_observations, arch: arch) {
     Present { value: w } => Present {
       value: RooflineCard {
         catalog: catalog,
         memory_bytes: observed_memory_bytes(o: observed),
-        bandwidth_override_bytes_per_second: bandwidth_override,
+        bandwidth_override: bandwidth_override,
         weights_bytes: weights_bytes,
-        overhead_bytes: byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 7))),
+        overhead_bytes: gibibyte_to_byte_size(g: gibibyte(count: 7)),
         gpu_memory_utilization_bp: 9600,
-        main_kv_element_bytes: w,
+        main_kv_element_bytes: byte_size(count: w),
         math_datatype: math,
       }
     }
@@ -75,13 +75,19 @@ fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, ban
   }
 }
 
-data flash_next_other_card_weights_bytes: Nat = byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 76)))
+data flash_next_other_card_weights_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 76))
 
-data flash_next_maxq_card: RooflineCard? = flash_next_card(catalog: nvidia_rtx_pro_6000_max_q_catalog, observed: max_q_observed_memory, bandwidth_override: none, weights_bytes: byte_size_count(b: flash_next_maxq_run_2026_10_21.weights_bytes), arch: Sm120, math: TensorFp4)
+// The Max-Q row carries its own bandwidth, so no override is supplied. Declared as data with its
+// type spelled, because a bare `none` at call-argument position loses the Measure payload's type.
+data no_bandwidth_override: Bandwidth? = none
 
-data flash_next_h200_card: RooflineCard? = flash_next_card(catalog: nvidia_h200_nvl_catalog, observed: h200_nvl_observed_memory, bandwidth_override: none, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm90, math: TensorBf16)
+data flash_next_maxq_card: RooflineCard? = flash_next_card(catalog: nvidia_rtx_pro_6000_max_q_catalog, observed: max_q_observed_memory, bandwidth_override: no_bandwidth_override, weights_bytes: flash_next_maxq_run_2026_10_21.weights_bytes, arch: Sm120, math: TensorFp4)
 
-data flash_next_b200_bandwidth_operator_figure: Nat = 8000000000000
+data flash_next_h200_card: RooflineCard? = flash_next_card(catalog: nvidia_h200_nvl_catalog, observed: h200_nvl_observed_memory, bandwidth_override: no_bandwidth_override, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm90, math: TensorBf16)
+
+// The B200's 8 TB/s HBM3e rate, the operator figure the catalog row does not carry; carried as
+// std.measure Bandwidth (bytes per second), the same carrier roofline_bandwidth answers in (review 84774).
+data flash_next_b200_bandwidth_operator_figure: Bandwidth = bandwidth(count: 8000000000000)
 
 data flash_next_b200_fp4_card: RooflineCard? = flash_next_card(catalog: nvidia_b200_sxm_catalog, observed: b200_observed_memory, bandwidth_override: Present { value: flash_next_b200_bandwidth_operator_figure }, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm100, math: TensorFp4)
 
@@ -103,7 +109,7 @@ fn p1_registered_basis_tokens(card: RooflineCard) -> Nat? {
 }
 
 fn p1_image_path_tokens(card: RooflineCard) -> Nat? {
-  p1_tokens_at_width(card: card, element_bytes: card.main_kv_element_bytes)
+  p1_tokens_at_width(card: card, element_bytes: byte_size_count(b: card.main_kv_element_bytes))
 }
 
 fn p2_image_path_sessions(card: RooflineCard) -> Nat? {

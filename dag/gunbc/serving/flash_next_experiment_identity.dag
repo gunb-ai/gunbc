@@ -2,6 +2,7 @@ module gunbc.serving.flash_next_experiment_identity
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { Milliwatt }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // EXPERIMENT IDENTITY (operator review of #14718): every materially different serving path is its own variant and a
@@ -126,7 +127,10 @@ type ServingRunReceipt {
   gpu_name: NonEmptyStr
   gpu_uuid: NonEmptyStr
   vbios: NonEmptyStr
-  power_limit_deci_watts: Nat
+  // The operator's snapshot records the cap at deci-watt print precision ("500.0 W"); it travels as
+  // the existing std.measure Milliwatt, whose finer resolution holds that figure exactly, instead of
+  // a bare count beside the unit its name asserts (review 84774).
+  power_limit_milliwatts: Milliwatt
   driver_version: NonEmptyStr
   image_digest: NonEmptyStr
   model_config_sha256: NonEmptyStr
