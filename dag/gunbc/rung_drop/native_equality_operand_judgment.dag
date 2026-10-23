@@ -1,0 +1,24 @@
+module gunbc.rung_drop.native_equality_operand_judgment
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+
+// DECLARED 2026-10-23 with the Edge == guard (gunbc#14662). The seed refuses == on an Edge-bearing
+// operand (EqualityOnInadmissibleType); the native v2 compiler has no equality operand judgment, so
+// an Edge == Edge written in v2 source is not refused there.
+data native_equality_operand_judgment_population: FreeSemigroup<String> = FreeSemigroup { head: "v2 source == whose operand type reaches v2.std.node Edge: judged by the v1 seed only; the native v2 compiler judges no == operand", tail: [] }
+
+data native_equality_operand_judgment: RungDrop = RungDrop {
+  identity: "native_equality_operand_judgment" as NonEmptyStr,
+  subject: "Rejection of == on an Edge-bearing operand (Edge.declaration is outside content_hash) in native v2 compilation",
+  declared: "2026-10-23",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "the seed's equality_operand_admission refuses the inadmissible declaration identities in the seed-inferred path; the native path has no equivalent" },
+    population: Enumerated { members: native_equality_operand_judgment_population },
+    restoration_trigger: "native v2 == operand judgment: the native compiler reads the same inadmissible-declaration rows and refuses == on an operand type that is or reaches one, executed by a discriminating red (Edge == Edge refused) beside a positive control (a structural record == admitted)",
+  } }
+}

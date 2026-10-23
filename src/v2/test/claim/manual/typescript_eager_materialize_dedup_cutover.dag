@@ -1,5 +1,7 @@
 module v2.test.claim.manual.typescript_eager_materialize_dedup_cutover
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ts_arc1_eager_row_round_trip_holds() -> Bool {
@@ -37,9 +39,9 @@ fn ts_arc1_surplus_conj_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
-      Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_type_annotation_task_record_emitted(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

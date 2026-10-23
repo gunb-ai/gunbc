@@ -1009,84 +1009,30 @@ pub fn parse_context_with_intern_table(
 }
 
 pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
-    {
-        let __rb_0_0 = node.occurrence_identity.clone();
-        let __rb_1_0 = node.name.clone();
-        let __rb_2_0 = Some(ident.clone());
-        let __rb_3_0 = node.span.clone();
-        let __rb_4_0 = node.ident_span.clone();
-        let __rb_5_0 = node.children.clone();
-        let __rb_6_0 = node.connective.clone();
-        let __rb_7_0 = node.params.clone();
-        let __rb_8_0 = node.inferred.clone();
-        let __rb_9_0 = node.return_cardinality.clone();
-        let __rb_10_0 = node.uses.clone();
-        let __rb_11_0 = node.body.clone();
-        let __rb_12_0 = node.transport.clone();
-        let __rb_13_0 = node.properties.clone();
-        let __rb_14_0 = node.type_annotation.clone();
-        let __rb_15_0 = node.is_self_recursive.clone();
-        let __rb_16_0 = node.has_non_tail_self_call.clone();
-        let __rb_17_0 = node.match_pattern.clone();
-        let __rb_18_0 = node.module_item_kind.clone();
-        let __rb_19_0 = node.declaration_marker.clone();
-        let __rb_20_0 = node.declaration.clone();
-        let __rb_21_0 = node.expr_data.clone();
-        let mut __rb_h = node;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.occurrence_identity = __rb_0_0;
-                __rb_r.name = __rb_1_0;
-                __rb_r.ident = __rb_2_0;
-                __rb_r.span = __rb_3_0;
-                __rb_r.ident_span = __rb_4_0;
-                __rb_r.children = __rb_5_0;
-                __rb_r.connective = __rb_6_0;
-                __rb_r.params = __rb_7_0;
-                __rb_r.inferred = __rb_8_0;
-                __rb_r.return_cardinality = __rb_9_0;
-                __rb_r.uses = __rb_10_0;
-                __rb_r.body = __rb_11_0;
-                __rb_r.transport = __rb_12_0;
-                __rb_r.properties = __rb_13_0;
-                __rb_r.type_annotation = __rb_14_0;
-                __rb_r.is_self_recursive = __rb_15_0;
-                __rb_r.has_non_tail_self_call = __rb_16_0;
-                __rb_r.match_pattern = __rb_17_0;
-                __rb_r.module_item_kind = __rb_18_0;
-                __rb_r.declaration_marker = __rb_19_0;
-                __rb_r.declaration = __rb_20_0;
-                __rb_r.expr_data = __rb_21_0;
-            }
-            None => {
-                __rb_h = Rc::new(Node {
-                    occurrence_identity: __rb_0_0,
-                    name: __rb_1_0,
-                    ident: __rb_2_0,
-                    span: __rb_3_0,
-                    ident_span: __rb_4_0,
-                    children: __rb_5_0,
-                    connective: __rb_6_0,
-                    params: __rb_7_0,
-                    inferred: __rb_8_0,
-                    return_cardinality: __rb_9_0,
-                    uses: __rb_10_0,
-                    body: __rb_11_0,
-                    transport: __rb_12_0,
-                    properties: __rb_13_0,
-                    type_annotation: __rb_14_0,
-                    is_self_recursive: __rb_15_0,
-                    has_non_tail_self_call: __rb_16_0,
-                    match_pattern: __rb_17_0,
-                    module_item_kind: __rb_18_0,
-                    declaration_marker: __rb_19_0,
-                    declaration: __rb_20_0,
-                    expr_data: __rb_21_0,
-                });
-            }
-        }
-        __rb_h
-    }
+    Rc::new(Node {
+        occurrence_identity: node.occurrence_identity.clone(),
+        name: node.name.clone(),
+        ident: Some(ident.clone()),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: node.children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: node.uses.clone(),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: node.match_pattern.clone(),
+        module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
+        expr_data: node.expr_data.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -15776,6 +15722,104 @@ pub fn is_variant_pattern_start(name: String) -> bool {
     }
 }
 
+pub fn parse_is_arm_test(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    lhs: Rc<Node>,
+    lhs_from: Rc<TokenStream>,
+    span: Rc<SourceSpan>,
+) -> Rc<PostfixResult> {
+    {
+        let r = parse_dotted_ident(token_stream_advance(tokens.clone(), 1), ctx.env.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(PostfixResult {
+                expr: lhs.clone(),
+                changed: false,
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let name = r.name.clone();
+        if !is_variant_pattern_start(name.clone()) {
+            return Rc::new(PostfixResult {
+                expr: lhs.clone(),
+                changed: false,
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: Some(parse_error(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "`is` must name a constructor (an uppercase arm spelling), got '"
+                                .to_string(),
+                            name.clone(),
+                        ),
+                        "'".to_string(),
+                    ),
+                    r.span.clone(),
+                )),
+            });
+        }
+        let at = Rc::new(ParsedExtentAt::ConsumedWindow {
+            from: lhs_from.clone(),
+            to: r.tokens.clone(),
+        });
+        let yes_mint = mint_parsed_node_identity(ctx.clone(), at.clone());
+        let yes_arm_mint = mint_parsed_node_identity(yes_mint.ctx.clone(), at.clone());
+        let no_mint = mint_parsed_node_identity(yes_arm_mint.ctx.clone(), at.clone());
+        let no_arm_mint = mint_parsed_node_identity(no_mint.ctx.clone(), at.clone());
+        let match_mint = mint_parsed_node_identity(no_arm_mint.ctx.clone(), at.clone());
+        let yes_arm = crate::v1_std_core::make_arm_node(
+            yes_arm_mint.identity.clone(),
+            Rc::new(MatchPattern::VariantPattern {
+                name: name.clone(),
+                parent_enum: std::option::Option::None,
+                field_bindings: Rc::new(vec![]),
+                parent_identity: Rc::new(VariantParentIdentity::VariantParentBeforeInference),
+            }),
+            std::option::Option::None,
+            crate::v1_std_core::make_expr_node(
+                yes_mint.identity.clone(),
+                Rc::new(ExprData::ExprLiteral {
+                    value: Rc::new(LiteralValue::LitBool { value: true }),
+                }),
+                Rc::new(vec![]),
+                std::option::Option::None,
+                span.clone(),
+            ),
+            span.clone(),
+        );
+        let no_arm = crate::v1_std_core::make_arm_node(
+            no_arm_mint.identity.clone(),
+            Rc::new(MatchPattern::Wildcard),
+            std::option::Option::None,
+            crate::v1_std_core::make_expr_node(
+                no_mint.identity.clone(),
+                Rc::new(ExprData::ExprLiteral {
+                    value: Rc::new(LiteralValue::LitBool { value: false }),
+                }),
+                Rc::new(vec![]),
+                std::option::Option::None,
+                span.clone(),
+            ),
+            span.clone(),
+        );
+        Rc::new(PostfixResult {
+            expr: crate::v1_std_core::make_expr_node(
+                match_mint.identity.clone(),
+                Rc::new(ExprData::ExprMatch),
+                Rc::new(vec![lhs.clone(), yes_arm.clone(), no_arm.clone()]),
+                std::option::Option::None,
+                span.clone(),
+            ),
+            changed: true,
+            tokens: r.tokens.clone(),
+            ctx: match_mint.ctx.clone(),
+            err: std::option::Option::None,
+        })
+    }
+}
+
 pub fn try_postfix(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -15896,13 +15940,33 @@ pub fn try_postfix(
                         }
                     }
                 } else {
-                    Rc::new(PostfixResult {
-                        expr: lhs.clone(),
-                        changed: false,
-                        tokens: tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: std::option::Option::None,
-                    })
+                    if (tok.clone().unwrap().text.clone() == "is".to_string()) {
+                        if (13 < min_bp.clone()) {
+                            Rc::new(PostfixResult {
+                                expr: lhs.clone(),
+                                changed: false,
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: std::option::Option::None,
+                            })
+                        } else {
+                            parse_is_arm_test(
+                                tokens.clone(),
+                                ctx.clone(),
+                                lhs.clone(),
+                                lhs_from.clone(),
+                                span.clone(),
+                            )
+                        }
+                    } else {
+                        Rc::new(PostfixResult {
+                            expr: lhs.clone(),
+                            changed: false,
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: std::option::Option::None,
+                        })
+                    }
                 }
             }
             Some(TokenShape::ShLBracket) => {
