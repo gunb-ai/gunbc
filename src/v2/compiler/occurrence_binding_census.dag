@@ -224,7 +224,11 @@ fn occurrence_binding_declaration_params(arrow: Node) -> String {
 }
 
 fn occurrence_binding_params_text(members: List<Edge>) -> String {
-  join(filter(map(members, m => occurrence_binding_param_text(edge: m)), t => t != ""), ", ")
+  fold_list(xs: members, empty: "", cons: fn(acc, m) { occurrence_binding_params_join(acc: acc, text: occurrence_binding_param_text(edge: m)) })
+}
+
+fn occurrence_binding_params_join(acc: String, text: String) -> String {
+  if text == "" { acc } else if acc == "" { text } else { acc + ", " + text }
 }
 
 fn occurrence_binding_param_text(edge: Edge) -> String {
