@@ -45,9 +45,9 @@ import gunbc.instruments.ambient_name_census_reading {
 // (exact spelling) outside std.primitives; the signature is printed as evidence but is rendered by the type
 // census's own reference text, which prints an applied type as `<structural>`, so argument types
 // can NOT be relied on to confirm the match. A collection-roster row is different in kind: its target is a
-// roster template (AlgebraFieldTemplate), not a callable declaration, so it is A only when
-// declared_callable_candidates names a declared callable for the spelling and B when it names none; that
-// table is the manager's ruling and the basis says so. B's evidence is exactly "none in the N7 closure": a statement about the closure the
+// roster template (AlgebraFieldTemplate), not a callable declaration, so it is A when
+// declared_callable_candidates names a declared callable for the spelling (verified when the census printed
+// that declaration, otherwise A on manager direction and labelled UNVERIFIED) and B when it names none. B's evidence is exactly "none in the N7 closure": a statement about the closure the
 // census read, never about the corpus. A declaration outside the closure is invisible to this reading.
 
 type AmbientOperationClaim {
@@ -75,7 +75,7 @@ fn claim_change_text(c: AmbientOperationClaim) -> String {
 // THE DECLARED-CALLABLE CANDIDATES for a collection-roster spelling. A roster row (AlgebraFieldTemplate) is a
 // template, not a callable declaration, so a roster spelling is class A only when a declared callable already
 // implements it, and class B when none does (manager ruling, tidy-ant-251, on the declared-callable reading).
-// The table names the candidate by declaration identity and the parameter labels the call would rename; it is
+// The table names the candidate by declaration identity only; it is
 // a manager-named candidate, not a derivation: the census prints the declaration row when the module
 // contributes, and the column says when it did not. A spelling absent from the table has no candidate.
 // TRIGGER (manager direction, tidy-ant-251): derive the candidates from declaration rows when std.algebra resolves
@@ -84,13 +84,12 @@ type DeclaredCandidate {
   spelling: String
   module: String
   name: String
-  relabel: String
 }
 
 data declared_callable_candidates: List<DeclaredCandidate> = [
-  DeclaredCandidate { spelling: "fold", module: "std.algebra", name: "fold_list", relabel: "init->empty, f->cons; needs the host-realized seam first" },
-  DeclaredCandidate { spelling: "map", module: "std.algebra", name: "list_map", relabel: "none" },
-  DeclaredCandidate { spelling: "all", module: "std.algebra", name: "for_all", relabel: "head rename all->for_all" }
+  DeclaredCandidate { spelling: "fold", module: "std.algebra", name: "fold_list" },
+  DeclaredCandidate { spelling: "map", module: "std.algebra", name: "list_map" },
+  DeclaredCandidate { spelling: "all", module: "std.algebra", name: "for_all" }
 ]
 
 type DispositionClass
@@ -118,7 +117,7 @@ fn disposition_basis_text(basis: DispositionBasis) -> String {
     BasisGeneratedSource => "generated-source"
     BasisEgressEvidence => "egress-evidence"
     BasisBindingIdentity => "binding-identity"
-    BasisDeclaredCandidate => "declared-callable-candidate (manager ruling tidy-ant-251; no design_ruling recorded)"
+    BasisDeclaredCandidate => "declared-callable-candidate (declaration row printed; name from the manager table, HEURISTIC)"
     BasisHeuristicNameMatch => "HEURISTIC-name-match"
     BasisHeuristicNoNameMatch => "HEURISTIC-no-name-match"
   }
@@ -202,8 +201,8 @@ fn candidate_text(spelling: String, source: String, decls: List<String>) -> Stri
       Absent => "none"
       Present { value: c } =>
         match declaration_at_path(decls: decls, path: c.module + "." + c.name) {
-          Present { value: d } => declaration_evidence(decl: d) + " (relabel: " + c.relabel + ")"
-          Absent => c.module + "." + c.name + " (declaration row not printed by the census; signature unread; relabel: " + c.relabel + ")"
+          Present { value: d } => declaration_evidence(decl: d)
+          Absent => c.module + "." + c.name + " (UNVERIFIED: declaration row not printed by the census; signature unread)"
         }
     }
   } else {
@@ -241,7 +240,11 @@ fn classify_unclaimed_row(spelling: String, source: String, target: String, decl
 fn classify_declared_row(spelling: String, source: String, target: String, decls: List<String>) -> DispositionVerdict {
   if source == "ambient:collection_roster" {
     match candidate_named(spelling: spelling) {
-      Present { value: c } => verdict(class: DispositionA, basis: BasisDeclaredCandidate, evidence: "the roster row " + target + " is a template, not a callable; the declared callable " + c.module + "." + c.name + " implements the spelling")
+      Present { value: c } =>
+        match declaration_at_path(decls: decls, path: c.module + "." + c.name) {
+          Present { value: d } => verdict(class: DispositionA, basis: BasisDeclaredCandidate, evidence: "the roster row " + target + " is a template, not a callable; the printed declaration " + declaration_evidence(decl: d) + " is the candidate (name from the manager's table; argument types not compared)")
+          Absent => verdict(class: DispositionA, basis: BasisManagerDirection, evidence: "UNVERIFIED: " + c.module + "." + c.name + " is named by manager direction as the declared callable, but the census printed no declaration row for it (" + c.module + " is a refused declarer), so no executed evidence confirms it; trigger: derive the candidate when " + c.module + " resolves")
+        }
       Absent => verdict(class: DispositionB, basis: BasisDeclaredCandidate, evidence: "none in the N7 closure: the roster row " + target + " is a template, not a callable declaration")
     }
   } else {
