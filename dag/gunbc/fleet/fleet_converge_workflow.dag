@@ -750,8 +750,8 @@ data fleet_converge_fleet_identity_step_if: String = concat(concat("!(", fleet_c
 //     shredded on every path, for curl;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
 //     no credential.
-//   - AND, SINCE CENSUS STAGE 0D, gunbc.machine_intake.mtcollins1_census_medium_readback
-//     census_medium_readback -- sha256sum over the served census image on srv2 through
+//   - AND, SINCE CENSUS STAGE 0D, gunbc.host.boot_medium_served_readback
+//     boot_medium_served_readback -- sha256sum over the served boot image on srv2 through
 //     typed_argv_exec_over_fleet_ssh as the fleet principal, before the signed subject is minted.
 //     That one leg is why the Mt. Collins boot CONSUMES the fleet key: the publication receipt in
 //     the medium row is publication-time evidence, and the bytes the BMC will mount over NFS are
