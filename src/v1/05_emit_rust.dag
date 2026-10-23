@@ -16542,7 +16542,7 @@ fn ambiguous_anonymous_record_literal_diagnostics(n: Node, type_summaries: TypeS
 // SAME function (the one authority) at every position that carries a type -- the node's resolved type and
 // its declared annotation, with their type arguments -- so a refusal that would surface at rustc becomes a
 // typed, located SharedLayerRefused before any file exists. The renderer's answer and this one are computed
-// twice until the renderers consume this table (gunbc.rung_drop shared_layer_refusal_render_floor).
+// twice until the renderers consume this table (gunbc.rung_drop emitter_shared_layer_refusal_floor_is_render_time).
 // Only the identity-disagreement causes are judged here: a leaf that several declarations share and the
 // target realizes at different layers. TypeDeclNotDeclared and TypeDeclNotResolved need the enclosing
 // generic scope to tell a type parameter from an unresolved name, which this walk does not carry, so those

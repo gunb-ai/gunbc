@@ -5234,6 +5234,23 @@ fn shared_type_census_termination(
     }
 }
 
+/// THE RENDER-TIME FLOOR MARKER. The renderers keep a compile_error! arm for a refused shared layer
+/// as an unreachable floor (gunbc.rung_drop emitter_shared_layer_refusal_floor_is_render_time); the
+/// typed pre-pass owns the refusal, so no emission the census builds may carry the marker.
+const SHARED_LAYER_FLOOR_MARKER: &str = "compile_error!(\"shared layer refused for '";
+
+fn text_carries_shared_layer_floor_marker(text: &str) -> bool {
+    text.contains(SHARED_LAYER_FLOOR_MARKER)
+}
+
+fn emit_carries_shared_layer_floor_marker(
+    emit: &crate::v1_compiler_emit_core_support::EmitResult,
+) -> bool {
+    emit.files
+        .iter()
+        .any(|f| text_carries_shared_layer_floor_marker(&f.content))
+}
+
 fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
     use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
     use crate::v1_compiler_emit_rust::emit_rust;
@@ -5278,6 +5295,11 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
     ) -> Result<Rc<census::SubjectBuild>, String> {
         let emit = emit_rust(graph);
+        if emit_carries_shared_layer_floor_marker(&emit) {
+            return Err(format!(
+                "{entry}: emitted Rust carries the shared-layer compile_error! floor marker"
+            ));
+        }
         match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
             Err(cause) => Err(cause),
             Ok(verdict) => shared_type_census_subject_build_from_cargo_verdict(&verdict),
@@ -5391,10 +5413,25 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     .iter()
     .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
     let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
-    let completed_nonzero_control =
-        census::build_is_refused_finding(independent_report.build.clone())
-            && census::build_is_reportable_finding(independent_report.build.clone())
-            && census::observation_held(held, false);
+    let nonzero_build =
+        shared_type_census_subject_build_from_cargo_verdict(&CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: "error[E0204]: bounded-control".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        });
+    let completed_nonzero_control = match nonzero_build {
+        Ok(build) => {
+            census::build_is_refused_finding(build.clone())
+                && census::build_is_reportable_finding(build)
+                && census::observation_held(held, false)
+        }
+        Err(_) => false,
+    };
     println!(
         "{PREFIX}: {}",
         census::control_line(
@@ -5409,7 +5446,21 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
             completed_nonzero_control,
         )
     );
-    let mapping_controls_hold = unobserved_live_control && completed_nonzero_control;
+    // The marker detector is shown to fire on the floor's own spelling and to stay quiet on
+    // ordinary text, so a green marker census is not a detector that never fires.
+    let floor_marker_detector_control =
+        text_carries_shared_layer_floor_marker(
+            "compile_error!(\"shared layer refused for 'W': TypeDeclLeafAmbiguous\")",
+        ) && !text_carries_shared_layer_floor_marker("pub struct Word { pub n: i64 }");
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "floor_marker_detector_discriminates".to_string(),
+            floor_marker_detector_control,
+        )
+    );
+    let mapping_controls_hold =
+        unobserved_live_control && completed_nonzero_control && floor_marker_detector_control;
 
     let mut subjects: Vec<(String, String)> = Vec::new();
     for (label, producer) in instrument_registry() {
