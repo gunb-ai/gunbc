@@ -319,7 +319,7 @@ test fn probe_accepted_fixture_control_refuses_the_label() -> Bool {
 test fn probe_shape_mismatch_chain_contains_the_label() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_has_reason(d: d, reason: ^application_argument_does_not_inhabit)
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
   }
 }
 
