@@ -61,7 +61,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
+import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -644,7 +644,7 @@ fn infer_formation_child_evidence_edges(
                   optional_present(
                     value: list_snoc_item(
                       xs: evidence_edges,
-                      item: Edge { label: edge.label, target: child_evidence }
+                      item: Edge { label: edge.label, target: child_evidence, declaration: edge.declaration }
                     )
                   )
               }
@@ -1505,9 +1505,9 @@ fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: Qualified
       Node {
         kind: TypeNode { connective: Instantiation },
         children: Cons {
-          head: Edge { label: Positional, target: head },
+          head: Edge { label: Positional, target: head, declaration: NotADeclaration },
           tail: list_map(xs: params, f: fn(p) {
-            Edge { label: Positional, target: infer_open_type_param_atom(name: fresh_constructor_use_variable(use_id: use_id.value, label: p)) }
+            Edge { label: Positional, target: infer_open_type_param_atom(name: fresh_constructor_use_variable(use_id: use_id.value, label: p)), declaration: NotADeclaration }
           })
         },
         occurrence_id: OccurrenceSynthetic
@@ -2231,7 +2231,7 @@ fn infer_declared_type_children_instantiated(
         Present { value: c2 } =>
           match infer_declared_type_children_instantiated(children: rest, instances: instances) {
             Present { value: rest2 } =>
-              optional_present(value: Cons { head: Edge { label: c.label, target: c2 }, tail: rest2 })
+              optional_present(value: Cons { head: Edge { label: c.label, target: c2, declaration: c.declaration }, tail: rest2 })
             Absent => Absent
           }
         Absent => Absent
@@ -4129,7 +4129,7 @@ fn infer_declared_type_denotation(declared: Node) -> Node {
       step: fn(acc, edge, sub) {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub }),
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub, declaration: edge.declaration }),
           occurrence_id: acc.occurrence_id
         }
       }
@@ -4480,7 +4480,7 @@ fn infer_type_alias_normalized_at(t: Node, bodies: SymbolIndex, bindings: Symbol
               Node {
                 kind: t.kind,
                 children: fold(t.children, init: Empty, f: fn(acc, e) {
-                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized_at(t: e.target, bodies: bodies, bindings: bindings) })
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized_at(t: e.target, bodies: bodies, bindings: bindings), declaration: e.declaration })
                 }),
                 occurrence_id: t.occurrence_id
               }
@@ -4916,7 +4916,7 @@ fn infer_type_instantiated(t: Node, instances: List<TypeVariableInstance>) -> No
       step: fn(acc, edge, sub) {
         Node {
           kind: acc.kind,
-          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub }),
+          children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: sub, declaration: edge.declaration }),
           occurrence_id: acc.occurrence_id
         }
       }
@@ -6040,8 +6040,8 @@ fn infer_freemonoid_type_of(element_type: Node) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: canonicalize_node_strip_provenance(n: element_type) }
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: canonicalize_node_strip_provenance(n: element_type), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -7647,7 +7647,7 @@ fn infer_record_construct_refusal(reason: Symbol, at: Node, record: Node, field:
       node: Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Authored { name: ^inhabitance_record }, target: record },
+          Edge { label: Authored { name: ^inhabitance_record }, target: record, declaration: NotADeclaration },
           field
         ],
         occurrence_id: at.occurrence_id
@@ -7737,7 +7737,7 @@ fn infer_record_construct_binding_refusal(
           reason: reason,
           at: node,
           record: record,
-          field: Edge { label: Authored { name: missing.parameter_identity }, target: missing.declared }
+          field: Edge { label: Authored { name: missing.parameter_identity }, target: missing.declared, declaration: NotADeclaration }
         )
       Absent => application_parameter_order_diagnostic(application: node, reason: application_parameter_order_malformed_reason())
     }
@@ -7816,7 +7816,7 @@ fn infer_record_construct_type(
     } else {
       match fold(
         type_params,
-        init: optional_present(value: [Edge { label: Positional, target: reference }]),
+        init: optional_present(value: [Edge { label: Positional, target: reference, declaration: NotADeclaration }]),
         f: fn(acc, binder) {
           match acc {
             Absent => acc
@@ -7827,7 +7827,7 @@ fn infer_record_construct_type(
                   optional_present(
                     value: list_snoc_item(
                       xs: edges,
-                      item: Edge { label: Positional, target: canonicalize_node_strip_provenance(n: instance) }
+                      item: Edge { label: Positional, target: canonicalize_node_strip_provenance(n: instance), declaration: NotADeclaration }
                     )
                   )
               }
