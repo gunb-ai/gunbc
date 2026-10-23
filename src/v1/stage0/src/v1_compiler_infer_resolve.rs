@@ -22,9 +22,10 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, symbol_index_lookup, type_declaration_in_own_scope_with_spelling,
-    type_ref_measure_binding_authority, width_resolution_declaration, TypeBinding, TypeEnv,
-    UnitVariantContribution, UnitVariantPhantomLookup,
+    lookup_unit_variant_phantom_type, symbol_index_lookup,
+    type_declaration_in_own_scope_with_spelling, type_ref_measure_binding_authority,
+    width_resolution_declaration, TypeBinding, TypeEnv, UnitVariantContribution,
+    UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
