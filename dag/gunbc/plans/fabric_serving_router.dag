@@ -9,7 +9,7 @@ import gunbc.design_ruling { project_documentation_projections_are_not_checkout_
 fn fabric_serving_router_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [
-      p(text: "**Status: plan for review; one operator decision is open (section 2).** No code lands before it is decided. Operator ruling 2026-10-23, relayed by calm-crab-645: the ctrl repository is throwaway and nothing may rely on it. That makes the router realization `gunbc.serving.router_realization` describes this repository's to build, not ctrl's. Its own annotation still says the realization lives in ctrl, and slice R3 corrects that annotation in the same change that adds the realization."),
+      p(text: "**Status: plan for review; the section 2 decision is taken (Option C, calm-crab-645, 2026-10-23).** Operator ruling 2026-10-23, relayed by calm-crab-645: the ctrl repository is throwaway and nothing may rely on it. That makes the router realization `gunbc.serving.router_realization` describes this repository's to build, not ctrl's. Its own annotation still says the realization lives in ctrl, and slice R3 corrects that annotation in the same change that adds the realization."),
       p(text: "**Goal.** Dashboard agent sessions speak OpenAI-compatible `/v1/completions` and `/v1/chat/completions`, streaming, to one pool endpoint. Each request is placed by the fabric onto a flex-rented card (Vast first, AWS EC2 later), admitted by the group's front door, proxied, and released when the stream ends. The router does no scoring and no failover outside placement."),
     ]),
 
@@ -45,7 +45,14 @@ fn fabric_serving_router_body() -> List<MarkdownBlock> {
     ]),
     p(text: "What makes C right rather than convenient: it adds no Rust, so the purpose test is not engaged. Every decision stays in `.dag` and in the existing door. The proxy is consumed by the terminal architecture unchanged: when v2 later hosts the callout handlers (Option B's work, done for its own reasons), the proxy and its emitted configuration survive, and only the callout host changes. The tells DESIGN section 6 lists (a hand-authored deployment script, a second path) are avoided only if the configuration is emitted and the proxy is the only route to the engines. Both are acceptance conditions of R3."),
     p(text: "**What C must establish before R3, stated as the falsifier.** The candidate proxy must (a) take its upstream from the authorization response instead of choosing one, and (b) deliver a stream-end callout reliably for every forwarded request, including client disconnect and upstream reset. Envoy (an HTTP-mode `ext_authz` filter, and a completion hook) and OpenResty (`auth_request`, and log-phase completion) are the two candidates. The choice between them is an extdeps-modeling step in R1, made by citing each upstream's documented behavior for (a) and (b), not by preference. If neither meets (b) without a hand-authored script, C fails and the question returns to A or B."),
-    p(text: "**Who decides.** The choice adds a deployed upstream and sets which runtime the serving path depends on, so it goes to calm-crab-645 with C recommended. Until it is decided only R1 proceeds, because R1 is common to all three options."),
+    h3(text: "Decision: C (calm-crab-645, 2026-10-23), with four conditions"),
+    p(text: "A fails the purpose test. B stays the terminal realization: it is this plan's named later trigger, reached when v2 hosts a socket effect runtime for its own reasons, and it is not a fallback toggle. The conditions are acceptance criteria of R3:"),
+    ol(items: [
+      li(text: "**The proxy is a transport realization bound to `router_realization`.** It takes its upstream ONLY from the authorization answer: no static upstream list, no proxy-side load balancing, no retries and no health-based routing. Each is disabled explicitly in the emitted configuration, and a witness reads the emitted configuration to confirm it."),
+      li(text: "**The falsifier is proven before placement is wired.** Stream-end release fires on a normal end, a client disconnect mid-stream, an upstream reset and a proxy restart. A lost callback is recovered by `front_door_recover` or lease expiry and never leaks a seat. This is measured on a real proxy against a fake upstream, and the measurement is written down."),
+      li(text: "**Envoy versus OpenResty is chosen on that evidence**: Envoy `ext_authz` plus `ext_proc`, against OpenResty access and log phases. The winner is version-pinned in its own extdeps module."),
+      li(text: "**Fail closed.** An unreachable authorization callout refuses the request and never passes it through."),
+    ]),
 
     h2(text: "3. Slices (each its own PR, in order)"),
     ol(items: [
