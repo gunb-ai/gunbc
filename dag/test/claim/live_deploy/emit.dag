@@ -176,8 +176,6 @@ import gunbc.live_deploy.emit {
   git_subtree_group_rootless_poison,
   dashboard_git_worker_repository_premise_gate_command_text,
   dashboard_git_worker_premise_abs_git_dir_var,
-  dashboard_git_worker_premise_head_ref_var,
-  dashboard_git_worker_premise_head_commit_var,
   host_script_step_marker,
   host_script_trace_steps,
   HostScriptProceed,
@@ -2550,46 +2548,40 @@ test fn wre3_an_unknown_instance_poisons_the_tree_group_instead_of_running_git_a
     && !string_contains(s: text, pattern: "rev-parse --absolute-git-dir")
 }
 
-// THE GATE TEXT ITSELF IS WELL-FORMED, WITHOUT EXECUTION. This is the DRY half of the three defects the
-// srv1 wet run found at 67aef94c (the executed half is the wet witness). It renders the single gate
+// THE GATE TEXT ITSELF IS WELL-FORMED, WITHOUT EXECUTION. This is the DRY half of the two render defects
+// the srv1 wet run found at 67aef94c (the executed half is the wet witness). It renders the single gate
 // command string from the SAME authority the apply and the wet claim use
 // (dashboard_git_worker_repository_premise_gate_command_text) and pins, against the exact bytes the
 // manager's broken run logged, the two things that made that gate misgrade: a hand-laid argv that put
-// the trusted `-c`/`-C` words BEFORE the program word, and a BARE command substitution used as a bracket
-// operand (which collapses to a parse error bash reads as false). The assertions are the project's own
-// blessed render spellings -- the compiler-gate stamp witness (#14318, pre-existing on main) asserts the
-// same `NAME=$('prog'` capture and `'[' '-z' "$VAR" ']'` bracket shape for the sibling guard, so these
-// patterns come from the serializer's documented grammar, not from re-typing bytes I hope it produces.
-// Discriminating: on the 67aef94c head the capture opened `$('-c'` (defect 1) and the head test opened
-// `'-z' $(` (defect 2), so each NEGATIVE below was RED there and each POSITIVE was absent.
+// the trusted `-c`/`-C` words BEFORE the program word (the substitution ran `-c`, printed nothing, and
+// the comparison never saw git), and a BARE command substitution used as a bracket operand (an EMPTY one
+// collapses `[ $(cmd) != x ]` to `[ != x ]`, a parse error bash reports as false). The assertions are the
+// project's own blessed render spellings -- the compiler-gate stamp witness (#14318, pre-existing on
+// main) asserts the same `NAME=$('prog'` capture and `'[' op "$VAR" ']'` bracket shape for the sibling
+// guard, so these patterns come from the serializer's documented grammar, not from re-typing bytes I hope
+// it produces. Discriminating: on the 67aef94c head the capture opened `$('-c'` (defect 1) and the operand
+// was `$( ` not `"$VAR"` (defect 2), so each NEGATIVE below was RED there and each POSITIVE was absent.
 test fn wre3_the_premise_gate_renders_program_word_first_and_over_quoted_variables() -> Bool {
   let repo = "/srv/gunbc-lab/codex-provider-feedback-v0/source"
   let text = dashboard_git_worker_repository_premise_gate_command_text(repo: repo)
   let abs = dashboard_git_worker_premise_abs_git_dir_var()
-  let href = dashboard_git_worker_premise_head_ref_var()
-  let hcommit = dashboard_git_worker_premise_head_commit_var()
-  // (1) DEFECT 1, program word FIRST in every trusted capture: each VAR=$( ... ) opens with the git
-  // program word. Built from git_program_word (the model's single owner of that word) so the word cannot
-  // drift in the claim either -- the committed fleet-converge.yml shows the same `VAR=$('git' '-C' ...)`
-  // render for a trusted-args capture, which is the shape asserted here.
+  // (1) DEFECT 1, program word FIRST in the trusted capture: VAR=$( ... ) opens with the git program
+  // word. Built from git_program_word (the model's single owner of that word) so the word cannot drift in
+  // the claim either -- the committed fleet-converge.yml shows the same `VAR=$('git' '-C' ...)` render for
+  // a trusted-args capture, which is the shape asserted here.
   let git_open = concat("'", concat(git_program_word, "'"))
   let program_word_first = string_contains(s: text, pattern: concat(concat(abs, "=$("), git_open))
-    && string_contains(s: text, pattern: concat(concat(href, "=$("), git_open))
-    && string_contains(s: text, pattern: concat(concat(hcommit, "=$("), git_open))
   // (1b) and the trusted words never OPEN the substitution: the broken render was `VAR=$('-c' ...`.
   let trusted_not_first = !string_contains(s: text, pattern: "$('-c'")
     && !string_contains(s: text, pattern: "$('-C'")
-  // (2) DEFECT 2, the bracket operands are VARIABLE words, which the serializer renders DOUBLE-QUOTED
+  // (2) DEFECT 2, the bracket operand is the VARIABLE word, which the serializer renders DOUBLE-QUOTED
   // ("$VAR") -- a well-formed empty operand, never a vanished word.
   let operands_are_variables = string_contains(s: text, pattern: concat(concat("\"$", abs), "\""))
-    && string_contains(s: text, pattern: concat(concat("\"$", href), "\""))
-    && string_contains(s: text, pattern: concat(concat("\"$", hcommit), "\""))
   // (2b) and NO bare command substitution is ever a bracket operand: the broken render put `$('` right
-  // after `'['` and after `'-z'`.
+  // after `'['`.
   let no_bare_subst_operand = !string_contains(s: text, pattern: "'[' $('")
-    && !string_contains(s: text, pattern: "'-z' $('")
-  // (3) errexit-safe capture: every read is `|| 'true'`-guarded (the blessed stamp-witness spelling),
-  // so a failing git contributes "" instead of aborting inside the substitution.
+  // (3) errexit-safe capture: the read is `|| 'true'`-guarded (the blessed stamp-witness spelling), so a
+  // failing git (a non-repository exits 128) contributes "" instead of aborting inside the substitution.
   let guarded = string_contains(s: text, pattern: "|| 'true'")
   program_word_first && trusted_not_first && operands_are_variables && no_bare_subst_operand && guarded
 }

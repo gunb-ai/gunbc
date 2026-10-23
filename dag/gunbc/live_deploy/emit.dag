@@ -2487,18 +2487,22 @@ fn is_dashboard_git_worker_directory_demand(t: OwnedDirectoryTarget) -> Bool {
 // standing, group-adopted ownership this group establishes. None of that may run against a directory
 // that is not a repository. The premise is established through the MODELED GIT TOOL, not a test -d:
 // a fabricated .git/objects+refs+logs skeleton with no HEAD passes a directory test and is not a
-// repository (the exact skeleton the old pre-position fabricated). So the gate runs git rev-parse
+// repository (the exact skeleton the old pre-position fabricated), while git's own discovery accepts a
+// directory as a .git only when it holds a valid HEAD. So the gate runs git rev-parse
 // --absolute-git-dir inside trusted-repository scope and requires the answer to be exactly
 // <repo>/.git. A real repository and a freshly bootstrapped git init (HEAD unborn) both pass; an
-// absent directory, a plain directory, and a HEAD-less skeleton all fail. The gate FAILS CLOSED: on
-// failure it prints a refusal naming the read and the path, then false -- and set -euo pipefail
+// absent directory, a plain directory, and a HEAD-less skeleton all fail -- observed on the
+// qualification host (srv1, git 2.43.0): the skeleton makes rev-parse --absolute-git-dir exit 128
+// ("not a git repository"), the capture is empty, and the comparison refuses. The gate FAILS CLOSED:
+// on failure it prints a refusal naming the read and the path, then false -- and set -euo pipefail
 // aborts the apply before any member mutates anything.
 // THE REFUSAL AS A TYPED THEN-BRANCH: the sentence goes to STDOUT and the branch ends in `false`, so
 // the whole if exits nonzero. The sentence stays on stdout (operator convention: the thing a refusal
 // says belongs on the thing it says it). A claim that must read it reads the RAW observation
 // (run_shell_command_observe), which keeps stdout even on a failed exit -- run_shell_command_capture
 // discards stdout on nonzero, which is right for reading a value but would make this refusal silent to
-// an assertion. Each refusal names WHICH premise failed, so a decomposed run points straight at the state.
+// an assertion. The refusal names the read that failed and the path, so a decomposed run points
+// straight at the state.
 fn dashboard_git_worker_repository_premise_refusal_branch(sentence: String) -> List<Node> {
   [
     bash_build_command_with_words(words: [
@@ -2510,12 +2514,11 @@ fn dashboard_git_worker_repository_premise_refusal_branch(sentence: String) -> L
   ]
 }
 
-// The trusted `<git> -c safe.directory=<repo> -C <repo> <verbs...>` words for one premise read,
+// The trusted `<git> -c safe.directory=<repo> -C <repo> <verbs...>` words for the premise read,
 // mapped to bash word literals. The WHOLE argv comes from ONE builder -- extdeps.git
 // git_in_trusted_repository_argv -- so the program word cannot be placed before or after the trusted
 // `-c`/`-C` words by hand at this site. An earlier version concatenated the trusted args BEFORE the
 // program word, which ran `-c` as the program (it prints nothing), so the comparison never saw git.
-// Both the path premise and the HEAD premise read git the same way, so the argv still has one owner.
 fn dashboard_git_worker_premise_trusted_git_words(repo: String, verbs: List<String>) -> List<Node> {
   map(git_in_trusted_repository_argv(repo: repo as NonEmptyStr, verbs: verbs), w => bash_build_word_lit(text: w))
 }
@@ -2535,22 +2538,22 @@ fn dashboard_git_worker_premise_capture(name: String, read: Node) -> Node {
       right: bash_build_command_from_lits(lits: ["true"]))))
 }
 
-// One premise git read, captured INTO A NAMED VARIABLE: `name=$( <trusted git words> <verbs> 2>/dev/null
+// The premise git read, captured INTO A NAMED VARIABLE: `name=$( <trusted git words> <verbs> 2>/dev/null
 // || true )`. This is the project's blessed capture idiom, spelled exactly as the instrument-dispatch
 // memory guard spells its `machine=$(free -b | ... || ...)` reads (instrument_dispatch_workflow.dag) and
 // as the compiler-gate stamp guard spells `STAMP_TREE=$(awk ... || true)`: a command substitution inside
-// `bash_build_or_else(_, right: true)` so a FAILING git contributes "" instead of tripping the script's
-// errexit inside the substitution -- the EMPTY RESULT, not the exit status, is what the premise tests.
-// stderr is redirected to null so git's own "not a git repository" text never reaches stdout.
+// `bash_build_or_else(_, right: true)` so a FAILING git (a non-repository exits 128) contributes ""
+// instead of tripping the script's errexit inside the substitution -- the EMPTY RESULT, not the exit
+// status, is what the premise tests. stderr is redirected to null so git's own "not a git repository"
+// text never reaches stdout: an ADMITTED gate writes nothing, and the refusal owns the only stdout line.
 // WHY a variable and not the substitution directly in the test: the serializer renders a VARIABLE word
 // DOUBLE-QUOTED ("$name", asserted by the stamp witness: "'[' '-z' \"$STAMP_TREE\" ']'"), so an empty
 // capture is the explicit word "" and every bracket test stays well-formed. The earlier form put the bare
 // `$( ... )` straight into the [ ] operand, so an EMPTY capture COLLAPSED the operand: `[ $(cmd) != x ]`
 // became `[ != x ]`, bash's "unary operator expected" (exit 2), which `if` reads as FALSE. The gate's
-// verdict then depended on the bash parse error, not the repository -- every non-empty state read as
-// ADMIT (the admits wrongly failed) and only the prefix-asserting skeleton claim passed by accident.
-// Hoisting all three reads into variables up front removes that hazard class: no bare command
-// substitution is ever an operand. Not a directory test; --absolute-git-dir and the two HEAD reads.
+// verdict then depended on the bash parse error, not the repository -- every non-repository read as
+// ADMIT (the refuses wrongly passed). Hoisting the read into a variable removes that hazard class: no
+// bare command substitution is ever an operand. Not a directory test; the read is --absolute-git-dir.
 fn dashboard_git_worker_premise_capture_git(repo: String, name: String, verbs: List<String>) -> Node {
   dashboard_git_worker_premise_capture(
     name: name,
@@ -2559,11 +2562,16 @@ fn dashboard_git_worker_premise_capture_git(repo: String, name: String, verbs: L
       redir: ^bash_production_fold_redir_stderr_null))
 }
 
-// The PATH PREMISE as a test over the captured variable word: `[ "$abs_git_dir" != "<repo>/.git" ]`.
-// Empty (git refused: a plain directory) or a foreign git dir (a nested checkout resolving to an
-// enclosing repository) both differ from <repo>/.git, so the test is TRUE and the path premise refuses.
-// A real repository's own git dir equals <repo>/.git, the test is FALSE, and the gate falls through to
-// the HEAD premise.
+// THE PREMISE as a test over the captured variable word: `[ "$abs_git_dir" != "<repo>/.git" ]`.
+// This single comparison decides every state, because git's OWN discovery rules what counts as a
+// repository (observed on the qualification host, git 2.43.0):
+//   EMPTY capture -- git said "not a git repository" (exit 128): an absent path, a plain directory, and
+//     the HEAD-less fabricated skeleton (objects/refs/logs, no HEAD) all land here, since git accepts a
+//     directory as a .git only when it holds a valid HEAD. Empty differs from <repo>/.git, so the gate
+//     refuses. The fabrication cannot walk past this gate as a repository.
+//   A FOREIGN git dir -- a nested checkout resolving to an enclosing repository: differs, refuses.
+//   <repo>/.git exactly -- a real repository, and a freshly bootstrapped git init with HEAD unborn
+//     (git init writes .git/HEAD): the test is FALSE and the gate admits, writing nothing to stdout.
 fn dashboard_git_worker_premise_path_mismatch_test(repo: String, abs_var: String) -> Node {
   bash_build_test_bracket(words: [
     bash_build_word_var(name: abs_var),
@@ -2572,69 +2580,29 @@ fn dashboard_git_worker_premise_path_mismatch_test(repo: String, abs_var: String
   ])
 }
 
-// THE HEAD PREMISE, VERSION-INDEPENDENT, over the two captured variable words:
-//   [ -z "$head_ref" -a -z "$head_commit" ]
-// Refuse only when NEITHER read resolved (both captures empty).
-//   git symbolic-ref -q HEAD       succeeds on an unborn repository and on any branch (prints the refname)
-//   git rev-parse --verify -q HEAD succeeds on a DETACHED HEAD (prints the resolved commit)
-// A working tree pinned to a revision (not a branch) is real and must NOT be refused, so a
-// symbolic-ref-only premise is wrong -- it fails on a detached HEAD and would take the whole deploy
-// down. The HEAD-less fabrication has neither a branch nor a commit, so BOTH reads printed nothing and
-// the emptiness test is true. Both operands are variable words (double-quoted "$VAR"), so an empty
-// capture is "" and `[ -z "" -a -z "" ]` is well-formed rather than a collapsed operand the parser reads
-// as false. A successful read is captured, not echoed, so an ADMITTED gate writes NOTHING to stdout --
-// which the admit-state claims assert. Not a directory test.
-fn dashboard_git_worker_premise_head_is_unresolvable_test(head_ref_var: String, head_commit_var: String) -> Node {
-  bash_build_test_bracket(words: [
-    bash_build_word_lit(text: "-z"),
-    bash_build_word_var(name: head_ref_var),
-    bash_build_word_lit(text: "-a"),
-    bash_build_word_lit(text: "-z"),
-    bash_build_word_var(name: head_commit_var),
-  ])
-}
-
-// The three captures, named once here so the gate's tests and its captures cannot drift apart.
+// The capture's variable, named once here so the gate's test and its capture cannot drift apart.
 fn dashboard_git_worker_premise_abs_git_dir_var() -> String { "gunbc_premise_abs_git_dir" }
-fn dashboard_git_worker_premise_head_ref_var() -> String { "gunbc_premise_head_ref" }
-fn dashboard_git_worker_premise_head_commit_var() -> String { "gunbc_premise_head_commit" }
 
-// The three captures and the decision, as a FLAT STATEMENT LIST -- the same shape the blessed instrument
-// guard emits (instrument_dispatch_memory_guard_statements: `VAR=$(...)` assigns followed by the guard,
-// serialized by bash_emit_stmts over a flat List<Node>). Each element is one top-level statement: three
-// command-substitution assigns, then the decision if/else. NOT wrapped in an outer
-// bash_build_stmt_list_from_nodes compound: the fold grammar serializes a flat program of statements, and
-// a stmt-list COMPOUND sitting at program top-level is what the serializer refuses -- the earlier
-// wrapping turned the whole gate into the refusal marker. The three reads run before the tests; they are
-// cheap and keep the tests free of side effects.
+// The capture and the decision, as a FLAT STATEMENT LIST -- the same shape the blessed instrument guard
+// emits (instrument_dispatch_memory_guard_statements: `VAR=$(...)` assigns followed by the guard,
+// serialized over a flat List<Node>). Each element is one top-level statement: the command-substitution
+// assign, then the decision if/else. NOT wrapped in an outer bash_build_stmt_list_from_nodes compound:
+// the fold grammar serializes a flat program of statements, and a stmt-list COMPOUND sitting at program
+// top-level is what the serializer refuses -- the earlier wrapping turned the whole gate into the
+// refusal marker. The inner then/else bodies DO keep their wrappers, which is where they belong.
 fn dashboard_git_worker_repository_premise_gate_stmt_list(repo: String) -> List<Node> {
   [
     dashboard_git_worker_premise_capture_git(
       repo: repo, name: dashboard_git_worker_premise_abs_git_dir_var(), verbs: ["rev-parse", "--absolute-git-dir"]),
-    dashboard_git_worker_premise_capture_git(
-      repo: repo, name: dashboard_git_worker_premise_head_ref_var(), verbs: ["symbolic-ref", "-q", "HEAD"]),
-    dashboard_git_worker_premise_capture_git(
-      repo: repo, name: dashboard_git_worker_premise_head_commit_var(), verbs: ["rev-parse", "--verify", "-q", "HEAD"]),
     bash_build_if_else(
       cond: dashboard_git_worker_premise_path_mismatch_test(
         repo: repo, abs_var: dashboard_git_worker_premise_abs_git_dir_var()),
       then_body: bash_build_stmt_list_from_nodes(
         stmts: dashboard_git_worker_repository_premise_refusal_branch(
           sentence: dashboard_git_worker_repository_premise_refusal_sentence(repo: repo))),
-      // SAME git dir: fall through to the HEAD premise. --absolute-git-dir is GIT-VERSION-SENSITIVE:
-      // git 2.43 (srv1) resolves it against a HEAD-less .git with exit 0, so the path premise alone
-      // ADMITS the fabrication. The head test decides it on any git: an unresolvable HEAD (neither a
-      // branch nor a commit) is a fabricated tree; a resolvable one is an established repository, on a
-      // branch, unborn, or detached. Not a directory test.
-      else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_if_else(
-        cond: dashboard_git_worker_premise_head_is_unresolvable_test(
-          head_ref_var: dashboard_git_worker_premise_head_ref_var(),
-          head_commit_var: dashboard_git_worker_premise_head_commit_var()),
-        then_body: bash_build_stmt_list_from_nodes(
-          stmts: dashboard_git_worker_repository_premise_refusal_branch(
-            sentence: dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: repo))),
-        else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
-      )]),
+      // Same git dir: an established repository (on a branch, unborn, or detached). The empty branch
+      // writes nothing; the admit-state claims assert exactly that silence.
+      else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
     ),
   ]
 }
@@ -2655,20 +2623,13 @@ fn dashboard_git_worker_repository_premise_gate_step(repo: String) -> PipelineSt
 }
 
 // The refusal names the read that failed and the path it failed at, so the reader can act on it.
+// It is the ONLY refusal the gate has: the one read decides every state, so there is exactly one
+// named cause to print -- no second sentence to keep in sync.
 fn dashboard_git_worker_repository_premise_refusal_sentence(repo: String) -> String {
   concat(
     "gunbc-deploy-refused: repository premise: git rev-parse --absolute-git-dir at ",
     concat(repo, " is not ", concat(repo, "/.git -- the deployment tree step must establish the repository first"))
   )
-}
-
-// The HEAD premise's refusal, naming itself distinctly from the path premise's. Two named causes, so a
-// decomposed run and an operator both know WHICH premise the tree failed. A HEAD-less .git is the
-// fabrication the old standing step left behind (objects/refs/logs present, no HEAD).
-fn dashboard_git_worker_repository_premise_headless_refusal_sentence(repo: String) -> String {
-  concat(
-    "gunbc-deploy-refused: repository premise: git symbolic-ref HEAD at ",
-    concat(repo, " failed -- .git has no HEAD; a fabricated tree (objects/refs/logs but no HEAD) is not an established repository"))
 }
 
 // Does this spec carry the step that establishes the repository tree? The group moves only for that
