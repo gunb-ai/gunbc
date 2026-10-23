@@ -208,7 +208,7 @@ pub fn emitted_workspace_unit_rows(
                     crate_dir: emitted_workspace_crate_dir(package.clone()),
                     kind: Stage0PartitionCrateKind::Stage0LayeredCoreCrate,
                     modules: Rc::new({
-                        let mut __sorted: Vec<_> = Rc::new({
+                        let mut __keyed: Vec<_> = Rc::new({
                             let mut __result = Vec::new();
                             for m in Rc::new({
                                 let mut __result = Vec::new();
@@ -231,13 +231,13 @@ pub fn emitted_workspace_unit_rows(
                         })
                         .iter()
                         .cloned()
+                        .map(|__e: String| {
+                            let __k = (|m: String| m.clone())(__e.clone());
+                            (__k, __e)
+                        })
                         .collect();
-                        __sorted.sort_by(|a: &String, b: &String| {
-                            let __ka = (|m: String| m.clone())(a.clone());
-                            let __kb = (|m: String| m.clone())(b.clone());
-                            v1_rt::canonical_key_cmp(&__ka, &__kb)
-                        });
-                        __sorted
+                        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
                     }),
                     reexport_packages: Rc::new(vec![]),
                     carries_non_empty_wrappers: false,
@@ -321,14 +321,18 @@ pub fn emitted_workspace_derived_rows(
                                 v1_rt::concat(
                                     Rc::new(vec![emitted_workspace_runtime_package()]),
                                     Rc::new({
-                                        let mut __sorted: Vec<_> =
-                                            packages.iter().cloned().collect();
-                                        __sorted.sort_by(|a: &String, b: &String| {
-                                            let __ka = (|p: String| p.clone())(a.clone());
-                                            let __kb = (|p: String| p.clone())(b.clone());
-                                            v1_rt::canonical_key_cmp(&__ka, &__kb)
+                                        let mut __keyed: Vec<_> = packages
+                                            .iter()
+                                            .cloned()
+                                            .map(|__e: String| {
+                                                let __k = (|p: String| p.clone())(__e.clone());
+                                                (__k, __e)
+                                            })
+                                            .collect();
+                                        __keyed.sort_by(|__x, __y| {
+                                            v1_rt::canonical_key_cmp(&__x.0, &__y.0)
                                         });
-                                        __sorted
+                                        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
                                     }),
                                 ),
                             ),
