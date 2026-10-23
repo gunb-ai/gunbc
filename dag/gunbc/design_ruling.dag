@@ -280,6 +280,13 @@ data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
   provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
 }
 
+data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
+  decided: "2026-10-23",
+  section: "3",
+  provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
+}
+
 data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
@@ -350,6 +357,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
+    approval_enrolment_is_google_sign_in,
   ]
 }
 
