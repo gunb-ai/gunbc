@@ -7148,6 +7148,26 @@ mod emitted_build_not_clean_cause_tests {
 /// child's stdout is relayed line for line and its status is returned unjudged.
 pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
+    // PROBE (temporary, not for merge): run the same binary over each root set in PROBE_CENSUS_ROOT_SETS.
+    if let Ok(sets) = std::env::var("PROBE_CENSUS_ROOT_SETS") {
+        for set in sets.split(';').filter(|x| !x.trim().is_empty()) {
+            let mut a = vec![verb.to_string()];
+            a.extend(set.split_whitespace().map(String::from));
+            let started = std::time::Instant::now();
+            let out = Command::new(&preparation.binary_path)
+                .args(&a)
+                .output()
+                .map_err(|e| format!("probe spawn: {e}"))?;
+            println!("[probe-set] roots=[{set}] wall_s={} status={:?}", started.elapsed().as_secs(), out.status.code());
+            for line in String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.starts_with("[probe]") || l.contains("resolve_refused") || l.contains("observed") ).take(40) {
+                println!("{line}");
+            }
+            for line in String::from_utf8_lossy(&out.stderr).lines().take(5) {
+                println!("[probe-stderr] {line}");
+            }
+        }
+        return Ok(0);
+    }
     let mut args = vec![verb.to_string()];
     args.extend(source_roots.iter().cloned());
     let output = Command::new(&preparation.binary_path)

@@ -3090,6 +3090,13 @@ type NativeDemandCensusWalk {
   operations: List<OperationFact>
   audited: List<QualifiedName>
   standings: List<DemandCensusModuleStanding>
+  t_resolve: Int
+  t_outcomes: Int
+  t_refused: Int
+  t_facts: Int
+  t_readings: Int
+  n_ok: Int
+  n_refused: Int
 }
 
 // The module's root scope, as resolution itself built it for the module just resolved: the namespace
@@ -3118,14 +3125,15 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
     Rejected { diagnostics: _ } => w
     Accepted { value: module_qn, diagnostics: _ } =>
       let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let c0 = observed_thread_cpu_nanos("probe-resolve-start")
       let step = native_test_resolve_module(context: w.context, module: module_qn)
+      let c1 = observed_thread_cpu_nanos("probe-resolve-finish")
       let outcomes = native_demand_census_closure_outcomes(context: step.context)
+      let c2 = observed_thread_cpu_nanos("probe-outcomes-finish")
       match step.resolved {
         Rejected { diagnostics: d } =>
-          // A Rejected module always files the refused standing, even when every census-authored
-          // function is declaration_available (empty split.refused). Omitting it undercounts
-          // resolve_refused_modules. Available authored still get DemandModuleResolved beside it.
           let split = native_demand_census_split_authored(mine: mine, outcomes: outcomes)
+          let c3 = observed_thread_cpu_nanos("probe-split-finish")
           let with_refused = list_snoc_item(
             xs: w.standings,
             item: native_demand_census_resolve_refused(
@@ -3135,6 +3143,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
               d: d
             )
           )
+          let c4 = observed_thread_cpu_nanos("probe-refused-finish")
           NativeDemandCensusWalk {
             context: step.context,
             functions: w.functions,
@@ -3151,11 +3160,19 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
                   })
                 })
               false => with_refused
-            }
+            },
+            t_resolve: w.t_resolve + (c1 - c0),
+            t_outcomes: w.t_outcomes + (c2 - c1),
+            t_refused: w.t_refused + (c4 - c2),
+            t_facts: w.t_facts,
+            t_readings: w.t_readings,
+            n_ok: w.n_ok,
+            n_refused: w.n_refused + 1
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
-          NativeDemandCensusWalk {
+          let c3 = observed_thread_cpu_nanos("probe-facts-finish")
+          let nw = NativeDemandCensusWalk {
             context: step.context,
             functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
             operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
@@ -3167,32 +3184,76 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
                   readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
                 })
               })
-            })
+            }),
+            t_resolve: w.t_resolve + (c1 - c0),
+            t_outcomes: w.t_outcomes + (c2 - c1),
+            t_refused: w.t_refused,
+            t_facts: w.t_facts + (c3 - c2),
+            t_readings: w.t_readings,
+            n_ok: w.n_ok + 1,
+            n_refused: w.n_refused
+          }
+          let c4 = observed_thread_cpu_nanos("probe-readings-finish")
+          NativeDemandCensusWalk {
+            context: nw.context,
+            functions: nw.functions,
+            operations: nw.operations,
+            audited: nw.audited,
+            standings: nw.standings,
+            t_resolve: nw.t_resolve,
+            t_outcomes: nw.t_outcomes,
+            t_refused: nw.t_refused,
+            t_facts: nw.t_facts,
+            t_readings: nw.t_readings + (c4 - c3),
+            n_ok: nw.n_ok,
+            n_refused: nw.n_refused
           }
       }
   }
 }
 
-fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensusReport> {
+type NativeDemandCensusTimed {
+  report: DemandCensusReport
+  probe: List<String>
+}
+
+fn native_probe_ms(label: String, nanos: Int) -> String {
+  concat("[probe] ", concat(label, concat(" ms=", int_to_decimal_string(value: nanos / 1000000))))
+}
+
+fn native_demand_census_report_timed(ingest: SourceRootIngest) -> Outcome<NativeDemandCensusTimed> {
+  let t0 = observed_thread_cpu_nanos("probe-start")
   bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
     bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let t1 = observed_thread_cpu_nanos("probe-prepare-finish")
       let folded = fold_list(
         xs: ingest,
         empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
+      let t2 = observed_thread_cpu_nanos("probe-ingest-fold-finish")
+      let ctx0 = native_test_context_finish(state: folded.context, front: front, ingest: ingest)
+      let t3 = observed_thread_cpu_nanos("probe-context-finish")
       let walked = fold_list(
         xs: folded.context.roots,
         empty: NativeDemandCensusWalk {
-          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          context: ctx0,
           functions: Empty,
           operations: Empty,
           audited: Empty,
-          standings: Empty
+          standings: Empty,
+          t_resolve: 0,
+          t_outcomes: 0,
+          t_refused: 0,
+          t_facts: 0,
+          t_readings: 0,
+          n_ok: 0,
+          n_refused: 0
         },
         cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: folded.authored) }
       )
-      outcome_accepted(value: demand_census_report(
+      let t4 = observed_thread_cpu_nanos("probe-walk-finish")
+      let report = demand_census_report(
         uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
         functions: walked.functions,
         operations: walked.operations,
@@ -3201,9 +3262,31 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
         file_refused: folded.file_refused,
         file_refusals: length(xs: folded.context.file_refusals),
         unreadable: folded.unreadable
-      ))
+      )
+      let t5 = observed_thread_cpu_nanos("probe-report-finish")
+      outcome_accepted(value: NativeDemandCensusTimed {
+        report: report,
+        probe: [
+          concat("[probe] files=", concat(int_to_decimal_string(value: length(xs: ingest)), concat(" roots=", concat(int_to_decimal_string(value: length(xs: folded.context.roots)), concat(" file_refusals=", int_to_decimal_string(value: length(xs: folded.context.file_refusals))))))),
+          concat("[probe] walk_ok=", concat(int_to_decimal_string(value: walked.n_ok), concat(" walk_refused=", int_to_decimal_string(value: walked.n_refused)))),
+          native_probe_ms(label: "prepare", nanos: t1 - t0),
+          native_probe_ms(label: "ingest_fold(tokenize+parse+strip+normalize+absorb)", nanos: t2 - t1),
+          native_probe_ms(label: "context_finish", nanos: t3 - t2),
+          native_probe_ms(label: "walk_total", nanos: t4 - t3),
+          native_probe_ms(label: "walk.resolve", nanos: walked.t_resolve),
+          native_probe_ms(label: "walk.closure_outcomes", nanos: walked.t_outcomes),
+          native_probe_ms(label: "walk.refused_standing(split+attribution)", nanos: walked.t_refused),
+          native_probe_ms(label: "walk.facts", nanos: walked.t_facts),
+          native_probe_ms(label: "walk.readings+append", nanos: walked.t_readings),
+          native_probe_ms(label: "report_fold", nanos: t5 - t4)
+        ]
+      })
     })
   })
+}
+
+fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensusReport> {
+  bind_outcome(o: native_demand_census_report_timed(ingest: ingest), f: fn(t) { outcome_accepted(value: t.report) })
 }
 
 // THE VERB'S WHOLE ANSWER: the lines to print and the exit, decided by
@@ -3216,13 +3299,13 @@ type NativeDemandCensusOutput {
 }
 
 fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
-  match native_demand_census_report(ingest: ingest) {
+  match native_demand_census_report_timed(ingest: ingest) {
     Rejected { diagnostics: d } =>
       NativeDemandCensusOutput { lines: [concat("[demand-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
-    Accepted { value: report, diagnostics: _ } =>
+    Accepted { value: timed, diagnostics: _ } =>
       NativeDemandCensusOutput {
-        lines: demand_census_lines(r: report),
-        exit: demand_census_exit(r: report)
+        lines: list_append(left: timed.probe, right: demand_census_lines(r: timed.report)),
+        exit: demand_census_exit(r: timed.report)
       }
   }
 }
