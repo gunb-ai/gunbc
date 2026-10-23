@@ -60,10 +60,15 @@ run() { local tag=$1 tree=$2 entry=$3; shift 3
   cd $REPO || exit 9
 }
 echo "=== F/C fleet arms (names enumerated from head blob at run time): $(date -u +%H:%M:%S)Z"
-FFNAMES=$(grep -oE '^test fn [a-z_0-9]+' /tmp/w805h/$FF | awk '{print $3}' | paste -sd, -)
-echo "  fleet claims: $FFNAMES"
+HNAMES=$(grep -oE '^test fn [a-z_0-9]+' /tmp/w805h/$FF | awk '{print $3}')
+BNAMES=$(grep -oE '^test fn [a-z_0-9]+' /tmp/w805b/$FF | awk '{print $3}')
+FFNAMES=$(comm -12 <(echo "$HNAMES" | sort) <(echo "$BNAMES" | sort) | paste -sd, -)
+HEADONLY=$(comm -23 <(echo "$HNAMES" | sort) <(echo "$BNAMES" | sort) | paste -sd' ' -)
+echo "  fleet common claims: $FFNAMES"
+echo "  fleet HEAD-ONLY (Int?-removal REDs, expected: a_census_that_cannot_run_is_unobserved_not_clean): $HEADONLY"
 run ff_head_clean /tmp/w805h $FF $FFNAMES
 run ff_base_clean /tmp/w805b $FF $FFNAMES
+for n in $HEADONLY; do run ff_head_only_$n /tmp/w805h $FF $n; done
 # fail-open pair: plant unterm string in the broken fixture source (escaped \n, witness parse survives)
 python3 - /tmp/w805b/$FF <<'PY' || exit 9
 import sys
