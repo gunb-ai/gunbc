@@ -5308,7 +5308,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
       ArrowCarriedSlot =>
         child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, bindings: [] })
       ArrowResourceRequirementsSlot =>
-        child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope), requirements: e.target))
+        child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_type_role(ctx: inner_ctx, scope: slot_scope), requirements: e.target))
       ArrowBodyOrNamedSlot =>
         child_walk_step(
           w: acc,
