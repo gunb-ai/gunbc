@@ -87,6 +87,7 @@ import v2.std.node {
   Symbol,
   symbol_intern_lexeme,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
@@ -356,7 +357,7 @@ fn semantic_decl_lex_rules_catalog(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: row }
+          item: Edge { label: Positional, target: row, declaration: NotADeclaration }
         )
       }
     )
@@ -518,7 +519,7 @@ fn semantic_decl_binding_spellings_catalog(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: row }
+          item: Edge { label: Positional, target: row, declaration: NotADeclaration }
         )
       }
     )
@@ -834,7 +835,7 @@ fn semantic_decl_count_node(n: Int) -> Node {
     target_model_type_atom_node(identity: ^semantic_decl_count_negative)
   } else {
     target_model_type_conj_node(
-      children: if n == 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit) }]) }
+      children: if n == 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit), declaration: NotADeclaration }]) }
     )
   }
 }
@@ -898,7 +899,7 @@ fn semantic_decl_emit_transform_node(t: TokenClassEmitTransform) -> Node {
               children: fold_list(
                 xs: es,
                 empty: Empty,
-                cons: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_escape_node(e: e) }) }
+                cons: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_escape_node(e: e), declaration: NotADeclaration }) }
               )
             )
           )
@@ -925,7 +926,7 @@ fn semantic_decl_emit_transform_rows_catalog(rows: List<TargetSemanticDeclEmitTr
       xs: rows,
       empty: Empty,
       cons: fn(acc, row) {
-        list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_transform_row(row: row) })
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_transform_row(row: row), declaration: NotADeclaration })
       }
     )
   )
@@ -1165,7 +1166,8 @@ fn semantic_decl_decoration_lines_catalog_from_lines(
           xs: acc,
           item: Edge {
             label: Positional,
-            target: semantic_decl_decoration_line_row(line: line)
+            target: semantic_decl_decoration_line_row(line: line),
+            declaration: NotADeclaration
           }
         )
       }
@@ -1256,7 +1258,8 @@ fn semantic_decl_coproduct_decoration_rules_catalog(
           xs: acc,
           item: Edge {
             label: Positional,
-            target: semantic_decl_coproduct_decoration_rule_row(rule: rule)
+            target: semantic_decl_coproduct_decoration_rule_row(rule: rule),
+            declaration: NotADeclaration
           }
         )
       }
@@ -1884,7 +1887,7 @@ fn semantic_decl_emission_from_target(target: TargetModel) -> Outcome<TargetSema
 }
 
 fn target_semantic_decl_surface_pos(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn target_semantic_decl_surface_conj(children: List<Edge>) -> Node {

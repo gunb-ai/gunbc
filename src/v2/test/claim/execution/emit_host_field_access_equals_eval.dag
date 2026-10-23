@@ -1,6 +1,5 @@
 module v2.test.claim.execution.emit_host_field_access_equals_eval
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -55,6 +54,7 @@ import v2.std.node { positional_child_target_nodes,
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -126,15 +126,18 @@ fn rust_field_access_emit_host_wrong_field_body() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_param_r)
+        target: dag_type_atom_node(identity: ^dag_binding_param_r),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
+        target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -145,8 +148,7 @@ fn emit_field_eval_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: PartialFunction { lookup: emit_field_eval_composed_facts },
-      arm_resolutions: constructed_root_arm_resolutions()
+      facts: PartialFunction { lookup: emit_field_eval_composed_facts }
     }
   )
 }
@@ -155,8 +157,7 @@ fn emit_field_eval_alt_descent_producer_tree() -> Outcome<InferredTree> {
   outcome_accepted(
     value: InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
-      facts: PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts },
-      arm_resolutions: constructed_root_arm_resolutions()
+      facts: PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts }
     }
   )
 }

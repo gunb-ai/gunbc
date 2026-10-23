@@ -1,6 +1,5 @@
 module v2.program
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { Int, List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -59,6 +58,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -390,8 +390,7 @@ fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
 fn program_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: program_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: program_facts_lookup }
   }
 }
 
@@ -435,7 +434,7 @@ fn program_branch_effect_io_holds() -> Witness<Bool> {
 fn program_pick_if_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: callee }],
+    children: [Edge { label: Positional, target: callee, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -451,8 +450,7 @@ fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
 fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
   InferredTree {
     root: callee,
-    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: program_pick_if_arrow_facts_lookup }
   }
 }
 
