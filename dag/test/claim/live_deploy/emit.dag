@@ -200,9 +200,6 @@ import gunbc.live_deploy.emit {
   compose_host_script_standing,
   approval_broker_helper_sudoers_stage_name,
   approval_broker_helper_sudoers_readback_stage_name,
-  dashboard_git_worker_premise_capture_git,
-  dashboard_git_worker_premise_head_is_unresolvable_test,
-  dashboard_git_worker_premise_path_mismatch_test,
 }
 import extdeps.git { git_program_word }
 import gunbc.live_deploy.release_locus {
@@ -2596,48 +2593,6 @@ test fn wre3_the_premise_gate_renders_program_word_first_and_over_quoted_variabl
   let guarded = string_contains(s: text, pattern: "|| 'true'")
   program_word_first && trusted_not_first && operands_are_variables && no_bare_subst_operand && guarded
 }
-
-// TEMP DIAGNOSTICS (decompose the false; not shipped). Distinguish H1 (gate_command_text is the
-// serialization POISON string -- nothing renders) from H2 (a real script whose bytes differ from my
-// patterns), then localize WHICH sub-node refuses. The lone negative passing while every positive fails
-// already implies H1; these confirm it and name the node.
-test fn wre3_DIAG_poison_marker_present() -> Bool {
-  string_contains(s: dashboard_git_worker_repository_premise_gate_command_text(repo: "/r/x"), pattern: "__GUNBC_BASH_EMIT_REFUSED__")
-}
-test fn wre3_DIAG_has_git_loose() -> Bool {
-  string_contains(s: dashboard_git_worker_repository_premise_gate_command_text(repo: "/r/x"), pattern: "git")
-}
-test fn wre3_DIAG_capture_node_poison() -> Bool {
-  string_contains(
-    s: shell_command_text_of_node(stmt: dashboard_git_worker_premise_capture_git(repo: "/r/x", name: "v", verbs: ["rev-parse", "--absolute-git-dir"])),
-    pattern: "__GUNBC_BASH_EMIT_REFUSED__")
-}
-test fn wre3_DIAG_headtest_node_poison() -> Bool {
-  string_contains(
-    s: shell_command_text_of_node(stmt: dashboard_git_worker_premise_head_is_unresolvable_test(head_ref_var: "a", head_commit_var: "b")),
-    pattern: "__GUNBC_BASH_EMIT_REFUSED__")
-}
-test fn wre3_DIAG_pathtest_node_poison() -> Bool {
-  string_contains(
-    s: shell_command_text_of_node(stmt: dashboard_git_worker_premise_path_mismatch_test(repo: "/r/x", abs_var: "a")),
-    pattern: "__GUNBC_BASH_EMIT_REFUSED__")
-}
-test fn wre3_DIAG_capture_renders_git() -> Bool {
-  string_contains(
-    s: shell_command_text_of_node(stmt: dashboard_git_worker_premise_capture_git(repo: "/r/x", name: "v", verbs: ["rev-parse", "--absolute-git-dir"])),
-    pattern: "'git'")
-}
-test fn wre3_DIAG_capture_renders_safedir() -> Bool {
-  string_contains(
-    s: shell_command_text_of_node(stmt: dashboard_git_worker_premise_capture_git(repo: "/r/x", name: "v", verbs: ["rev-parse", "--absolute-git-dir"])),
-    pattern: "safe.directory")
-}
-test fn wre3_DIAG_capture_renders_orelse() -> Bool {
-  string_contains(
-    s: shell_command_text_of_node(stmt: dashboard_git_worker_premise_capture_git(repo: "/r/x", name: "v", verbs: ["rev-parse", "--absolute-git-dir"])),
-    pattern: "true")
-}
-
 
 
 
