@@ -1,0 +1,28 @@
+diff --git a/src/v1/stage0/src/bin/claim_batch.rs b/src/v1/stage0/src/bin/claim_batch.rs
+index a58a1e2a13..c113fe2afd 100644
+--- a/src/v1/stage0/src/bin/claim_batch.rs
++++ b/src/v1/stage0/src/bin/claim_batch.rs
+@@ -358,6 +358,23 @@ fn report_outcome(
+         // per-smoke verdict line out to printf because this path could only print bare FAIL
+         // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
+         // narration op is deleted, and this arm prints what the claim itself returned.
++        // CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION" (DESIGN: 0 held, 1 did not hold, 2 no
++        // observation). A claim that returns `ExitFailure` with code 2 says it observed nothing,
++        // so printing FAIL and exiting 1 reads a subject that was never reached as a subject that
++        // answered no. It is the typed `ObservationUnrepresentable` of the terminal ledger.
++        ClaimOutcome::ExitFailure { code: 2, reason } => {
++            match reason {
++                Some(r) => println!(
++                    "UNOBSERVED {} (returned ProcessExit::ExitFailure, code 2: {})",
++                    function, r
++                ),
++                None => println!(
++                    "UNOBSERVED {} (returned ProcessExit::ExitFailure, code 2, no reason given)",
++                    function
++                ),
++            }
++            *any_unobserved = true;
++        }
+         ClaimOutcome::ExitFailure { code, reason } => {
+             match reason {
+                 Some(r) => println!(
