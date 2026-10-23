@@ -3,7 +3,7 @@ module test.claim.namespace_migration_kit_list_push
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { optional_present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes, ExistingDeclaration, PrimitiveAuthorityTable }
 import gunbc.namespace_cut.migration_kit { kit_binding_finding, kit_ambient_route_count, kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -20,11 +20,14 @@ fn list_push_row() -> AmbientNameHome {
   }
 }
 
-// THE ROW'S DISPOSITION is the one datum a wave flips. Every claim below asserts the reading that disposition entails,
+// THE DISPOSITION IS DERIVED from the namespace authority: list_push is migrated iff ambient_name_homes() carries its row,
+// so the wave's one row edit flips the tree and this expectation together (no claim-local copy). Every claim below asserts the reading that disposition entails,
 // so each is GREEN on both sides of the migration and RED when the tree disagrees with the row (an expecting-red
 // reading that becomes the permanent regression control, DESIGN 4b). On main list_push is not migrated: it resolves
 // ambiently, its contract is rostered, and no declaration is emitted.
-data list_push_migrated: Bool = false
+fn list_push_migrated() -> Bool {
+  count(ambient_name_homes() |> filter(h => h.name == "list_push")) > 0
+}
 
 fn is_migrated(f: KitFinding) -> Bool { match f { KitMigrated => true  _ => false } }
 
@@ -59,8 +62,8 @@ test fn judge_unbound_is_unbound_and_no_row_is_not_reached() -> Bool {
 // stays) must NOT be broken, so an import-shape failure cannot pass as "absent".
 test fn list_push_contract_matches_the_row_disposition() -> Bool {
   match kit_contract_finding(row: list_push_row(), control_contract: "concat_contract") {
-    ContractAbsent => list_push_migrated
-    ContractStillPresent => !list_push_migrated
+    ContractAbsent => list_push_migrated()
+    ContractStillPresent => !list_push_migrated()
     _ => false
   }
 }
@@ -86,7 +89,7 @@ test fn identity_verdict_other_home_does_not_clear() -> Bool {
 // CHECK 4 (host_symbol per the Rust realization of list_push, v1_rt::rc_list_push; self path crate::std_algebra::list_push(
 // per the emitted path convention in resolved_call_emission_identity_witness).
 test fn list_push_emission_matches_the_row_disposition() -> Bool {
-  kit_emit_identity_holds(row: list_push_row(), host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(") == list_push_migrated
+  kit_emit_identity_holds(row: list_push_row(), host_symbol: "v1_rt::rc_list_push(", self_path: "crate::std_algebra::list_push(") == list_push_migrated()
 }
 
 test fn list_push_unimported_does_not_select_the_declaration_path() -> Bool {
