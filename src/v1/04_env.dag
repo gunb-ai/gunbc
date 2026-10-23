@@ -1259,7 +1259,9 @@ type UnitVariantPhantomLookup
 // that spelling impossible to reach the emitter.
 fn type_declaration_visible_with_spelling(env: TypeEnv, name: String) -> Bool {
   match lookup_binding_by_name(env: env, name: name) {
-    Present { value: binding } => binding_declares_name(binding: binding, name: name, source_indices: env.source_indices)
+    Present { value: binding } =>
+      binding.resolved.module_item_kind == ModuleItemTypeDeclaration
+        && binding_declares_name(binding: binding, name: name, source_indices: env.source_indices)
     Absent => false
   }
 }
