@@ -175,3 +175,12 @@ fn kit_emit_unimported_does_not_select_declaration(row: AmbientNameHome, self_pa
     [self_path]
   )
 }
+
+// CHECK 6, NO SECOND ROUTE: over the census lines of the real population (the ambient-name-census stdout the wave diff
+// reads), no occurrence of the spelling may bind through a stopgap table. Counted at occurrence grain, any module.
+// RESIDUE, named not claimed: the template-row and rt-bridge-row routes are DATA rows (extdeps.languages.rust.emit
+// rt_function_registry, gunbc.primitive_egress evidence rows) that legitimately remain as the host realization; a grep
+// over them censuses shapes, not facts, and no producer decides which of them is a binding route.
+fn kit_ambient_route_count(stdout: String, spelling: String) -> Int {
+  length(xs: binding_lines(stdout: stdout) |> filter(l => (field_at(line: l, index: 2) == spelling) && starts_with(s: field_at(line: l, index: 4), prefix: "ambient:")))
+}

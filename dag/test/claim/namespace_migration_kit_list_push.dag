@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.optional { optional_present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
-import gunbc.namespace_cut.migration_kit { kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable, kit_import_differential }
+import gunbc.namespace_cut.migration_kit { kit_ambient_route_count, kit_emit_identity_holds, kit_emit_unimported_does_not_select_declaration, ContractFinding, ContractAbsent, ContractStillPresent, ContractControlBroken, kit_contract_finding, binding_reading, reading_is_unbound, reading_is_bound_to, KitFinding, KitMigrated, KitNoImportDoesNotRefuse, KitImportDoesNotClear, KitNotRunnable, kit_import_differential }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -91,4 +91,18 @@ test fn list_push_emits_host_realization_by_declaration_identity() -> Bool {
 
 test fn list_push_unimported_does_not_select_the_declaration_path() -> Bool {
   kit_emit_unimported_does_not_select_declaration(row: list_push_row(), self_path: "crate::std_algebra::list_push(")
+}
+
+// CHECK 6 on supplied census lines: an ambient row for the spelling is a second route; a declared one is not; and the
+// count is taken per spelling, so another name's ambient row does not satisfy or break it.
+test fn no_ambient_route_when_only_declared_rows() -> Bool {
+  kit_ambient_route_count(stdout: judge_declared, spelling: "list_push") == 0
+}
+
+test fn an_ambient_row_is_counted_as_a_second_route() -> Bool {
+  kit_ambient_route_count(stdout: judge_ambient + judge_declared, spelling: "list_push") == 1
+}
+
+test fn another_spellings_ambient_row_is_not_this_names_route() -> Bool {
+  kit_ambient_route_count(stdout: judge_ambient, spelling: "map_lookup") == 0
 }
