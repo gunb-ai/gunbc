@@ -1588,3 +1588,36 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
     diagnostics: concat(collision_diags, alias_cycle_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
   }
 }
+
+fn is_declaration_body(n: Node) -> Bool {
+  n.module_item_kind == ModuleItemTypeDeclaration
+}
+
+fn is_applied_declaration_carrier(n: Node) -> Bool {
+  n.connective == NoConnective && n.declaration != none && (n.children |> count) > 0 && !is_declaration_body(n: n)
+}
+
+fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
+  let carries_resolved_target = match n.inferred {
+    Present { value: Resolved { node: _ } } => is_applied_declaration_carrier(n: n)
+    Present { value: ArgumentsResolved } => is_applied_declaration_carrier(n: n)
+    _ => false
+  }
+  if carries_resolved_target && is_user_generic_use_site(n: n, env: env) {
+    let type_name = authored_name(env: env, node: n)
+    let decl = resolve_generic_use_decl(env: env, n: n)
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) {
+      node_with_inferred(n: n, inferred: none)
+    } else {
+      let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+        match n.children |> skip(pair.first) |> first {
+          Present { value: arg } => map_insert(acc, authored_name_at(source_indices: env.source_indices, node: pair.second), arg)
+          Absent => acc
+        }
+      )
+      generic_declaration_application(n: n, decl: decl, type_name: type_name, resolved_args: n.children, slot_bindings: slot_bindings, env: env)
+    }
+  } else { n }
+}
+

@@ -177,7 +177,7 @@ import std.termination {
   OneStep
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
-import v1.compiler.infer_resolve {
+import v1.compiler.infer_resolve { is_declaration_body, is_applied_declaration_carrier, generic_application_reapplied,
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
@@ -11156,38 +11156,6 @@ fn alias_chain_carrier(n: Node) -> Node {
 // A declaration body (the declaration itself, or an application's expansion) has the declaration's
 // MEMBERS as children, not type arguments: pairing a formal's arguments with them binds a parameter to a
 // field (SortKeyed<T, K> against a body of two fields bound T to `key`), so the descent never pairs them.
-fn is_declaration_body(n: Node) -> Bool {
-  n.module_item_kind == ModuleItemTypeDeclaration
-}
-
-fn is_applied_declaration_carrier(n: Node) -> Bool {
-  n.connective == NoConnective && n.declaration != none && (n.children |> count) > 0 && !is_declaration_body(n: n)
-}
-
-fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
-  let carries_resolved_target = match n.inferred {
-    Present { value: Resolved { node: _ } } => is_applied_declaration_carrier(n: n)
-    Present { value: ArgumentsResolved } => is_applied_declaration_carrier(n: n)
-    _ => false
-  }
-  if carries_resolved_target && is_user_generic_use_site(n: n, env: env) {
-    let type_name = authored_name(env: env, node: n)
-    let decl = resolve_generic_use_decl(env: env, n: n)
-    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
-    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) {
-      node_with_inferred(n: n, inferred: none)
-    } else {
-      let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-        match n.children |> skip(pair.first) |> first {
-          Present { value: arg } => map_insert(acc, authored_name_at(source_indices: env.source_indices, node: pair.second), arg)
-          Absent => acc
-        }
-      )
-      generic_declaration_application(n: n, decl: decl, type_name: type_name, resolved_args: n.children, slot_bindings: slot_bindings, env: env)
-    }
-  } else { n }
-}
-
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   let application = generic_application_reapplied(n: n, env: env)
   let peel_result = if needs_alias_field_expansion(n: application, env: env) {
