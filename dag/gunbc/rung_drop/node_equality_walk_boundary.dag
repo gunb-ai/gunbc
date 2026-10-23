@@ -3,7 +3,7 @@ module gunbc.rung_drop.node_equality_walk_boundary
 import std.types { List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
-import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 
 // DECLARED 2026-10-23 with the Edge == guard (gunbc#14662). Node is a walk boundary: the guard does
 // not descend through Node, so an Edge reachable only through a Node child is compared by == with
@@ -68,7 +68,7 @@ data node_equality_walk_boundary: RungDrop = RungDrop {
   declared: "2026-10-23",
   standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
-    temporary: Mitigatable,
+    temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "equality_walk_boundary_declaration_identities stops the guard at Node until its == sites move to the erasure route" },
     population: Enumerated { members: node_equality_walk_boundary_population },
     restoration_trigger: "every listed Node == site compares through the erasure route (node_for_structural_equality or content_hash), after which Node joins the inadmissible-declaration rows and equality_walk_boundary_declaration_identities is deleted",
