@@ -14,7 +14,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, positional_child_target_nodes }
 import std.algebra { Cons, Empty, length }
 import std.types { Int }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -417,3 +417,35 @@ test fn lrj_behind_holds_is_18_holds() -> Bool { lrj_behind_code(subject: "v2.te
 test fn lrj_behind_holds_is_19_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 19 }
 test fn lrj_behind_holds_is_20_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 20 }
 test fn lrj_behind_holds_is_99_holds() -> Bool { lrj_behind_code(subject: "v2.test.lrj_holds") == 99 }
+
+// LOCATOR 9: the callee of the first recorded obligation's application, in the facts discharge will read.
+// 0 resolve/infer refused, 1 no obligation, 2 callee not first child, 3 callee has no facts entry,
+// 4 entry carries no denotation, 5 entry carries a denotation.
+fn lrj_callee_facts_code(subject: String) -> Int {
+  match lrj_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: r, diagnostics: _ } =>
+      match infer(tree: r) {
+        Rejected { diagnostics: _ } => 0
+        Accepted { value: t, diagnostics: _ } =>
+          match t.obligations {
+            Empty => 1
+            Cons { head: o, tail: _ } =>
+              match positional_child_target_nodes(node: o.application) {
+                Empty => 2
+                Cons { head: callee, tail: _ } =>
+                  match t.facts.lookup(callee) {
+                    Absent => 3
+                    Present { value: f } => match f.denotation { Absent => 4  Present { value: _ } => 5 }
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn lrj_callee_facts_is_1_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 1 }
+test fn lrj_callee_facts_is_2_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 2 }
+test fn lrj_callee_facts_is_3_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 3 }
+test fn lrj_callee_facts_is_4_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 4 }
+test fn lrj_callee_facts_is_5_holds() -> Bool { lrj_callee_facts_code(subject: "v2.test.lrj_holds") == 5 }
