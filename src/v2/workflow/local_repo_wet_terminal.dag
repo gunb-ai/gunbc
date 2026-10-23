@@ -3460,6 +3460,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "an_exit_failure_with_code_2_exits_2_and_prints_unobserved" },
+      entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
+      function: "an_exit_failure_with_code_2_exits_2_and_prints_unobserved",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "an_exit_failure_with_code_1_still_exits_1_and_prints_fail" },
+      entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
+      function: "an_exit_failure_with_code_1_still_exits_1_and_prints_fail",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "a_held_claim_exits_0_and_prints_pass" },
+      entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
+      function: "a_held_claim_exits_0_and_prints_pass",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "v2.test.claim.body_lowering.map_literal", function: "ml_the_key_law_names_both_occurrences_holds" },
       entry: "src/v2/test/claim/body_lowering/map_literal.dag",
       function: "ml_the_key_law_names_both_occurrences_holds",
