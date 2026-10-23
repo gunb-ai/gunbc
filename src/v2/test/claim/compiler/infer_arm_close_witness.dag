@@ -108,6 +108,9 @@ test fn rb_b2_infer_accepts() -> Bool { ers_infer_accepted(o: rb_b2()) }
 fn rb_if_alias() -> Outcome<ResolvedTree> { ers_assemble(body: "type MyInt = Int\n\nfn t(a: MyInt, b: Int) -> Int {\n  if true { a } else { b }\n}\n") }
 test fn rb_if_alias_arm_equals_underlying_arm_accepts() -> Bool { ers_infer_accepted(o: rb_if_alias()) }
 
+fn rb_match_alias() -> Outcome<ResolvedTree> { ers_assemble(body: "type MyInt = Int\n\ntype S =\n  | P\n  | Q\n  | R\n\nfn t(s: S, a: MyInt, b: Int) -> Int {\n  match s {\n    P => a\n    Q => b\n    R => b\n  }\n}\n") }
+test fn rb_match_alias_coproduct_arms_equal_underlying_accepts() -> Bool { ers_infer_accepted(o: rb_match_alias()) }
+
 fn rb_b6() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Present { value: 1 } }\n\nfn t() -> Int? {\n  if true { mk() } else { Present { value: 2 } }\n}\n") }
 test fn rb_b6_application_arm_equals_constructor_arm_accepts() -> Bool { ers_infer_accepted(o: rb_b6()) }
 
