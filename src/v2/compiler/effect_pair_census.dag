@@ -474,6 +474,7 @@ type EffectReachTable {
   reasons: Map<QualifiedName, ReachReason>
   known: Map<QualifiedName, Bool>
   unclassified: List<QualifiedName>
+  ambiguous_rows: Int
 }
 
 // The semantics join: operation declaration -> primitive slug (std.primitive_projection roster) ->
@@ -481,23 +482,43 @@ type EffectReachTable {
 type OperationSemanticsIndex {
   slug_of_declaration: Map<String, String>
   semantics_of_slug: Map<String, PrimitiveExecutionSemantics>
+  ambiguous: Map<String, Bool>
+  ambiguous_rows: Int
 }
 
+// Both keys are DECLARED rows compared by exact identity: the roster row's declaration path
+// (module_path.decl_name) and the classification's PrimitiveIdentity slug. A key declared by more than
+// one row is AMBIGUOUS: it is promoted to nothing (the operation stays Unknown) and is counted.
 fn operation_semantics_index() -> OperationSemanticsIndex {
-  OperationSemanticsIndex {
-    slug_of_declaration: fold_list(xs: primitive_projection_roster(), empty: empty_map(), cons: fn(m, row) {
-      map_insert(m: m, key: concat(row.declaration.module_path as String, ".", row.declaration.decl_name as String), value: row.primitive.slug as String)
-    }),
-    semantics_of_slug: fold_list(xs: effect_demand_operation_classifications, empty: empty_map(), cons: fn(m, c) {
-      map_insert(m: m, key: c.operation.slug as String, value: c.semantics)
-    })
-  }
+  let by_declaration = fold_list(xs: primitive_projection_roster(), empty: OperationSemanticsIndex { slug_of_declaration: empty_map(), semantics_of_slug: empty_map(), ambiguous: empty_map(), ambiguous_rows: 0 }, cons: fn(ix, row) {
+    let key = concat(row.declaration.module_path as String, ".", row.declaration.decl_name as String)
+    match map_lookup(m: ix.slug_of_declaration, key: key) {
+      Present { value: _ } => OperationSemanticsIndex { slug_of_declaration: ix.slug_of_declaration, semantics_of_slug: ix.semantics_of_slug, ambiguous: map_insert(m: ix.ambiguous, key: key, value: true), ambiguous_rows: ix.ambiguous_rows + 1 }
+      Absent => OperationSemanticsIndex { slug_of_declaration: map_insert(m: ix.slug_of_declaration, key: key, value: row.primitive.slug as String), semantics_of_slug: ix.semantics_of_slug, ambiguous: ix.ambiguous, ambiguous_rows: ix.ambiguous_rows }
+    }
+  })
+  fold_list(xs: effect_demand_operation_classifications, empty: by_declaration, cons: fn(ix, c) {
+    let key = c.operation.slug as String
+    match map_lookup(m: ix.semantics_of_slug, key: key) {
+      Present { value: _ } => OperationSemanticsIndex { slug_of_declaration: ix.slug_of_declaration, semantics_of_slug: ix.semantics_of_slug, ambiguous: map_insert(m: ix.ambiguous, key: key, value: true), ambiguous_rows: ix.ambiguous_rows + 1 }
+      Absent => OperationSemanticsIndex { slug_of_declaration: ix.slug_of_declaration, semantics_of_slug: map_insert(m: ix.semantics_of_slug, key: key, value: c.semantics), ambiguous: ix.ambiguous, ambiguous_rows: ix.ambiguous_rows }
+    }
+  })
 }
 
 fn operation_semantics(index: OperationSemanticsIndex, path: QualifiedName) -> Optional<PrimitiveExecutionSemantics> {
-  match map_lookup(m: index.slug_of_declaration, key: qualified_name_to_dotted_string(qn: path)) {
-    Absent => Absent
-    Present { value: slug } => map_lookup(m: index.semantics_of_slug, key: slug)
+  let key = qualified_name_to_dotted_string(qn: path)
+  match map_lookup(m: index.ambiguous, key: key) {
+    Present { value: _ } => Absent
+    Absent =>
+      match map_lookup(m: index.slug_of_declaration, key: key) {
+        Absent => Absent
+        Present { value: slug } =>
+          match map_lookup(m: index.ambiguous, key: slug) {
+            Present { value: _ } => Absent
+            Absent => map_lookup(m: index.semantics_of_slug, key: slug)
+          }
+      }
   }
 }
 
@@ -570,7 +591,7 @@ fn effect_reach_table(functions: List<FunctionFact>, operations: List<OperationF
       Absent => list_snoc_item(xs: acc, item: op.path)
     }
   })
-  EffectReachTable { reasons: with_ops, known: known, unclassified: unclassified }
+  EffectReachTable { reasons: with_ops, known: known, unclassified: unclassified, ambiguous_rows: index.ambiguous_rows }
 }
 
 // A callee with no fact row at all is outside the closure and reaches by definition.
@@ -597,9 +618,9 @@ fn use_edges_of(deps: ValueUseDependencies) -> List<UseEdge> {
 fn not_derived_word(r: NotDerivedReason) -> String {
   match r {
     NotDerivedStanding { standing: _ } => "binder_standing_has_no_value"
-    ValuedUseNotLocated { value: _, why: _ } => "valued_use_not_located"
+    ValuedUseNotLocated { value: _value, why: _ } => "valued_use_not_located"
     ValuedBinderSiteUnkeyed { value: _ } => "valued_binder_site_unkeyed"
-    ValuedBinderNotLocated { value: _, why: _ } => "valued_binder_not_located"
+    ValuedBinderNotLocated { value: _value, why: _ } => "valued_binder_not_located"
     RecordAbsent => "record_absent"
   }
 }
@@ -640,6 +661,7 @@ type EffectPairCensusReport {
   roots: List<UnobservedRoot>
   unobserved_modules: Int
   unclassified_operations: Int
+  ambiguous_semantics_rows: Int
   file_refusals: Int
   unreadable_files: Int
 }
@@ -717,6 +739,7 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
     " modules_observed=", to_string(length(xs: r.modules)),
     " modules_unobserved=", to_string(r.unobserved_modules),
     " unclassified_operations=", to_string(r.unclassified_operations),
+    " ambiguous_semantics_rows=", to_string(r.ambiguous_semantics_rows),
     " file_refusals=", to_string(r.file_refusals),
     " unreadable_files=", to_string(r.unreadable_files),
     " bodies_scanned=", to_string(t.bodies_scanned),
