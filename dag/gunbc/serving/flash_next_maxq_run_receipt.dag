@@ -38,7 +38,9 @@ type FlashNextMaxQRunReceipt {
   weights_bytes: ByteSize
   power_draw_milliwatts: Milliwatt
   power_limit_watts: Watt
-  sm_clock_mhz: Hertz
+  // The clock the run held under load (review 84973): Hertz carrier; the _mhz in the
+  // name described the print figure, not the type's scale.
+  sm_clock: Hertz
   speculative_draft_depth: Nat
   standing: CitedFigureStanding
 }
@@ -65,7 +67,7 @@ data flash_next_maxq_run_2026_10_21: FlashNextMaxQRunReceipt = FlashNextMaxQRunR
   weights_bytes: mebibyte_to_byte_size(m: mebibyte(count: 73585)),
   power_draw_milliwatts: milliwatt(count: 278900),
   power_limit_watts: watt(count: 275),
-  sm_clock_mhz: hertz(count: 1620000000),
+  sm_clock: hertz(count: 1620000000),
   speculative_draft_depth: 3,
   standing: TranscribedUncited { read_obligation: maxq_run_read_obligation },
 }

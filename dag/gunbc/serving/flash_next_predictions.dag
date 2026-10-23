@@ -3,7 +3,7 @@ module gunbc.serving.flash_next_predictions
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { ByteSize, byte_size, byte_size_count, Bandwidth, bandwidth, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count, Bandwidth, bandwidth, gibibyte, gibibyte_to_byte_size, BasisPoint, basis_point, Permille, permille_count }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16 }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_max_q_catalog, nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog }
@@ -66,7 +66,7 @@ fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, ban
         bandwidth_override: bandwidth_override,
         weights_bytes: weights_bytes,
         overhead_bytes: gibibyte_to_byte_size(g: gibibyte(count: 7)),
-        gpu_memory_utilization_bp: 9600,
+        gpu_memory_utilization: basis_point(count: 9600),
         main_kv_element_bytes: w,
         math_datatype: math,
       }
@@ -133,12 +133,12 @@ fn interval_position(row: PredictionRow, value: Nat) -> IntervalPosition {
 // about the transcribed specs or the Max-Q's efficiency. The ceiling carries its spec standing.
 type CeilingVerdict
   = CeilingNotScored
-  | IntervalAboveCeiling { ceiling_permille: Nat, spec_standing: CitedFigureStanding }
-  | IntervalReachableUnderCeiling { ceiling_permille: Nat, spec_standing: CitedFigureStanding }
+  | IntervalAboveCeiling { ceiling_permille: Permille, spec_standing: CitedFigureStanding }
+  | IntervalReachableUnderCeiling { ceiling_permille: Permille, spec_standing: CitedFigureStanding }
 
 fn ceiling_verdict(row: PredictionRow, ceiling: CeilingRatio?) -> CeilingVerdict {
   match ceiling {
-    Present { value: c } => if c.permille < row.low {
+    Present { value: c } => if permille_count(p: c.permille) < row.low {
       IntervalAboveCeiling { ceiling_permille: c.permille, spec_standing: c.spec_standing }
     } else {
       IntervalReachableUnderCeiling { ceiling_permille: c.permille, spec_standing: c.spec_standing }
@@ -200,9 +200,9 @@ fn prediction_verdict(row: PredictionRow, readings: List<MeasuredReading>) -> Pr
 
 // P5 interval composed from the registered P3 and P4 ends, in requests per hour at the receipt's
 // 727 req/h, for the consistency reading "does P5 follow from P3 and P4".
-fn p5_composed_interval_ends(receipt_requests_per_hour: Nat, p3_permille: Nat, p4_permille: Nat) -> Nat? {
-  match p5_composed_permille(receipt: flash_next_maxq_run_2026_10_21, r3_permille: p3_permille, r4_permille: p4_permille) {
-    Present { value: r } => Present { value: receipt_requests_per_hour * r / 1000 }
+fn p5_composed_interval_ends(receipt_requests_per_hour: Nat, p3: Permille, p4: Permille) -> Nat? {
+  match p5_composed_permille(receipt: flash_next_maxq_run_2026_10_21, r3: p3, r4: p4) {
+    Present { value: r } => Present { value: receipt_requests_per_hour * permille_count(p: r) / 1000 }
     none => none
   }
 }

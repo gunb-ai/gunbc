@@ -3,7 +3,7 @@ module gunbc.serving.flash_next_roofline
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_cata, nat_min, nat_max }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { ByteSize, byte_size, byte_size_count, Bandwidth, bandwidth, bandwidth_count, Microsecond, microsecond, microsecond_count, Second, second_count, token_count_value, basis_point_count, giga_tensor_operations_per_second_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Bandwidth, bandwidth, bandwidth_count, Microsecond, microsecond, microsecond_count, Second, second_count, token_count_value, BasisPoint, basis_point_count, Permille, permille, permille_count, giga_tensor_operations_per_second_count }
 import extdeps.external_authority { CitedFigureStanding }
 import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
 import extdeps.qwen.qwen3_8_flash_next { FlashNextArchitecture, flash_next_qsa_kv_bytes_per_token, flash_next_params_per_routed_expert }
@@ -23,15 +23,15 @@ import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 // own standing; it is never defaulted.
 // Review 84774 (flat-scalar unit fields): byte figures carry std.measure ByteSize and the bandwidth
 // override carries Bandwidth (the same carrier the catalog row uses for memory_bandwidth), so a raw
-// count never stands for a unit. gpu_memory_utilization_bp stays Nat on purpose: it is a dimensionless
-// ratio consumed as /10000 arithmetic, not a quantity with a unit.
+// count never stands for a unit. gpu_memory_utilization rides std.measure's BasisPoint (review
+// 84973: a dimensionless ratio still has a print scale, and std.measure's ratio family covers it).
 type RooflineCard {
   catalog: GpuModelCatalogRow
   bandwidth_override: Bandwidth?
   memory_bytes: ByteSize
   weights_bytes: ByteSize
   overhead_bytes: ByteSize
-  gpu_memory_utilization_bp: Nat
+  gpu_memory_utilization: BasisPoint
   main_kv_element_bytes: ByteSize
   math_datatype: TensorDatatype
 }
@@ -57,8 +57,8 @@ fn roofline_math_standing(card: RooflineCard) -> CitedFigureStanding? {
   }
 }
 
-fn ratio_permille(num: Nat, den: Nat) -> Nat? {
-  if den == 0 { none } else { Present { value: num * 1000 / den } }
+fn ratio_permille(num: Nat, den: Nat) -> Permille? {
+  if den == 0 { none } else { Present { value: permille(count: num * 1000 / den) } }
 }
 
 // P1 -- KV CAPACITY FROM MEMORY: utilization x capacity, minus weights, minus overhead, over KV bytes per
@@ -66,7 +66,7 @@ fn ratio_permille(num: Nat, den: Nat) -> Nat? {
 // (review 84955: kv_bytes_per_token rides std.measure's ByteSize — the one byte quantity this fn consumed
 // as bare Nat. Its return is a token count, which the 84774 verdict leaves as plain Nat.)
 fn kv_capacity_tokens(card: RooflineCard, kv_bytes_per_token: ByteSize) -> Nat? {
-  let budget = byte_size_count(b: card.memory_bytes) * card.gpu_memory_utilization_bp / 10000
+  let budget = byte_size_count(b: card.memory_bytes) * basis_point_count(bp: card.gpu_memory_utilization) / 10000
   let reserve = byte_size_count(b: card.weights_bytes) + byte_size_count(b: card.overhead_bytes)
   if byte_size_count(b: kv_bytes_per_token) == 0 || reserve >= budget {
     none
@@ -202,11 +202,11 @@ fn prefill_chunk_floor(arch: FlashNextArchitecture, card: RooflineCard, chunk_to
 // A CEILING RATIO against the Max-Q baseline, in permille (1000 = parity), carrying the standing of the
 // math-rate figure it stands on so a consumer cannot read a TranscribedUncited spec as a cited law.
 type CeilingRatio {
-  permille: Nat
+  permille: Permille
   spec_standing: CitedFigureStanding
 }
 
-fn speed_ratio_permille(baseline_us: Microsecond, card_us: Microsecond) -> Nat? {
+fn speed_ratio_permille(baseline_us: Microsecond, card_us: Microsecond) -> Permille? {
   ratio_permille(num: microsecond_count(m: baseline_us), den: microsecond_count(m: card_us))
 }
 
@@ -247,15 +247,17 @@ fn p3_ceiling_ratio(arch: FlashNextArchitecture, baseline: RooflineCard, card: R
 // share_prefill / r4 + share_decode / r3 of the baseline time. Returns the request-rate ratio in
 // permille. This composes ceilings or interval ends; it does not model queueing, which is the
 // registered P5 basis for exceeding it ("more KV removes queueing and preemption").
-fn p5_composed_permille(receipt: FlashNextMaxQRunReceipt, r3_permille: Nat, r4_permille: Nat) -> Nat? {
+fn p5_composed_permille(receipt: FlashNextMaxQRunReceipt, r3: Permille, r4: Permille) -> Permille? {
   let prefill = second_count(s: receipt.prefill_time_sum_seconds)
   let decode = second_count(s: receipt.decode_time_sum_seconds)
   let total = prefill + decode
+  let r3_permille = permille_count(p: r3)
+  let r4_permille = permille_count(p: r4)
   if total == 0 || r3_permille == 0 || r4_permille == 0 {
     none
   } else {
     let time_ppm = prefill * 1000000 / total * 1000 / r4_permille + decode * 1000000 / total * 1000 / r3_permille
-    if time_ppm == 0 { none } else { Present { value: 1000000000 / time_ppm } }
+    if time_ppm == 0 { none } else { Present { value: permille(count: 1000000000 / time_ppm) } }
   }
 }
 

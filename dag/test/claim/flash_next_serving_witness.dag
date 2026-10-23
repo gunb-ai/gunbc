@@ -3,7 +3,7 @@ module test.claim.flash_next_serving_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count, token_count_value, token_count, tokens_per_second, nanosecond, milli_tokens_per_second_count }
+import std.measure { ByteSize, byte_size, byte_size_count, token_count_value, token_count, tokens_per_second, nanosecond, milli_tokens_per_second_count, basis_point, basis_point_count, Permille, permille, permille_count, concurrent_request_thousandths_count }
 import std.dissolution { dissolution_is_bound }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, CitedFigureStanding }
 import extdeps.gpu.types { TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
@@ -17,16 +17,16 @@ import gunbc.serving.flash_next_experiment_identity {
   H200ObservedCurrentStack, B200ObservedCurrentStack, B200PredictedNativeStack, H200UpstreamV032, B200UpstreamV032,
   VariantPlanned, host_ngram_table_copies, Pro6000MaxQNative, VariantRefused,
   VariantUnobserved, VariantObserved, VariantHypothesis, VariantStatus, flash_next_variant_rows, variant_status,
-  flash_next_experiment_identity_frontier, kv_arithmetic_capacity, serving_variant_eq,
+  flash_next_experiment_identity_frontier, kv_arithmetic_capacity, serving_variant_eq, current_stack_kv_figure,
 }
 import gunbc.serving.flash_next_quant_matrix {
   QuantCell, QuantMatrixRow, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
-  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, flash_next_unretrieved_results, long_context_reported_pools, crash_int32_overflow_hypothesis, hypothesized_threshold_tokens, HypothesisFalsified, flash_next_measured_ceilings, decode_ceiling_deci, crash_open_candidates, flash_next_quant_matrix, quant_matrix_outcome,
-  flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_centi_gib,
+  CellRefusedWeightsExceedUsableMemory, CellRefusedOther, CellUnobserved, ConcurrencyReading, upstream_defect_observations, flash_next_unretrieved_results, long_context_reported_pools, crash_int32_overflow_hypothesis, hypothesized_threshold_tokens, HypothesisFalsified, flash_next_measured_ceilings, decode_ceiling, crash_open_candidates, flash_next_quant_matrix, quant_matrix_outcome,
+  flash_next_quant_matrix_frontier, upstream_v032_run_observations, fp8_checkpoint_safetensors_bytes,
   WarmAdmissionStanding, WarmNotYetAdmitted, throughput_scoreable, bench_v2_records_trigger,
 }
 import gunbc.serving.flash_next_maxq_fork_measurements {
-  ForkMaxQ300, ForkServer600, fork_kv_pool, pool_ratio_milli, fork_level_aggregate, fork_levels, ForkLevelDoesNotFit,
+  ForkMaxQ300, ForkServer600, fork_kv_pool, pool_ratio_permille, fork_level_aggregate, fork_levels, ForkLevelDoesNotFit,
   collapse_capture_size_hypothesis, fork_open_loop_rows, oversubscribed_rows, tp2_175k_seat_bracket, tp2_unmeasured_seats,
   two_card_pcie_interconnect, fork_unobserved_layouts, fork_prefill_readings, layout, flash_next_maxq_fork_measurements_frontier,
 }
@@ -37,7 +37,7 @@ import gunbc.serving.flash_next_topology {
 }
 import gunbc.serving.flash_next_recipe_throughput_evidence {
   ReceiptConcurrencyBelowReading, flash_next_recipe_throughput_verdict, flash_next_recipe_throughput_frontier,
-  lifetime_generation_deci_tokens_per_second,
+  lifetime_generation_tokens_per_second,
 }
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21, flash_next_maxq_run_consumer_frontier }
 import gunbc.serving.flash_next_image_capability_observation {
@@ -74,6 +74,10 @@ fn between_bytes(v: ByteSize?, lo: Nat, hi: Nat) -> Bool {
 
 fn between(v: Nat?, lo: Nat, hi: Nat) -> Bool {
   match v { Present { value: x } => x >= lo && x <= hi, none => false }
+}
+
+fn between_permille(v: Permille?, lo: Nat, hi: Nat) -> Bool {
+  match v { Present { value: x } => permille_count(p: x) >= lo && permille_count(p: x) <= hi, none => false }
 }
 
 fn below(v: Nat?, lo: Nat) -> Bool {
@@ -192,7 +196,7 @@ test fn w_p3_ceiling_tracks_bandwidth() -> Bool {
   match flash_next_maxq_card {
     Present { value: m } => match flash_next_h200_card {
       Present { value: h } => match p3_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h, concurrent: 4, draft_depth: 3, context_tokens: 110000) {
-        Present { value: c } => c.permille > 2000 && c.permille < 3000
+        Present { value: c } => permille_count(p: c.permille) > 2000 && permille_count(p: c.permille) < 3000
         none => false
       }
       none => false
@@ -211,9 +215,9 @@ test fn w_unique_experts_saturate_with_rows() -> Bool {
 
 test fn w_p5_composition_is_parity_at_parity_and_monotone() -> Bool {
   let r = flash_next_maxq_run_2026_10_21
-  between(p5_composed_permille(receipt: r, r3_permille: 1000, r4_permille: 1000), 995, 1005)
-    && between(p5_composed_permille(receipt: r, r3_permille: 2680, r4_permille: 490), 1500, 1900)
-    && (match p5_composed_permille(receipt: r, r3_permille: 0, r4_permille: 1000) { Present { value: _ } => false, none => true })
+  between_permille(p5_composed_permille(receipt: r, r3: permille(count: 1000), r4: permille(count: 1000)), 995, 1005)
+    && between_permille(p5_composed_permille(receipt: r, r3: permille(count: 2680), r4: permille(count: 490)), 1500, 1900)
+    && (match p5_composed_permille(receipt: r, r3: permille(count: 0), r4: permille(count: 1000)) { Present { value: _ } => false, none => true })
 }
 
 // THE JOIN: empty readings are NotMeasured (never a pass); one reading is placed against the registered
@@ -312,7 +316,8 @@ test fn w_quant_matrix_refuses_bf16_weights_and_never_zeroes_unrun_cells() -> Bo
   let fp8w = QuantCell { weights: WeightFp8Qwen128Blocks, kv: KvBf16 }
   count(flash_next_quant_matrix) == 18
     && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: H200UpstreamV032, c: fp8) {
-         Present { value: CellMeasured { weights_centi_gib: Present { value: w }, kv_centi_gib: _, kv_tokens: Present { value: t }, gpu_memory_utilization_basis_points: u, throughput: tp } } => w == 7339 && t == 2626530 && u == 8500 && count(tp) == 5
+         Present { value: CellMeasured { weights_bytes: Present { value: w }, kv_bytes: _, kv_tokens: Present { value: t }, gpu_memory_utilization: u, throughput: tp } } =>
+           byte_size_count(b: w) == 7339 * 1073741824 / 100 && t == 2626530 && basis_point_count(bp: u) == 8500 && count(tp) == 5
          _ => false
        }
     && match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: bf16w) {
@@ -328,7 +333,7 @@ test fn w_quant_matrix_refuses_bf16_weights_and_never_zeroes_unrun_cells() -> Bo
          _ => false
        }
     && count(upstream_v032_run_observations) == 2
-    && fp8_checkpoint_safetensors_centi_gib == 17280
+    && byte_size_count(b: fp8_checkpoint_safetensors_bytes) == 17280 * 1073741824 / 100
 }
 
 // A throughput row without an admitted warm standing, or one over capacity, is not scoreable.
@@ -381,10 +386,46 @@ test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Boo
 // concurrency and ~227 tok/s lifetime generation, so only a row at 16 can supersede the reading.
 test fn w_recipe_throughput_reading_is_not_superseded_by_a_rate_at_another_concurrency() -> Bool {
   match flash_next_recipe_throughput_verdict {
-    ReceiptConcurrencyBelowReading { receipt_mean_decode_concurrency_milli: m, reading_concurrency: c, receipt_deci_tokens_per_second: d, reading_tokens_per_second: t } =>
-      m > 3000 && m < 3500 && c == 16 && d > 2200 && d < 2350 && t == 900
+    ReceiptConcurrencyBelowReading { receipt_mean_decode_concurrency: m, reading_concurrency: c, receipt_tokens_per_second: d, reading_tokens_per_second: t } =>
+      concurrent_request_thousandths_count(c: m) > 3000 && concurrent_request_thousandths_count(c: m) < 3500 && c == 16
+        && milli_tokens_per_second_count(r: d) > 220000 && milli_tokens_per_second_count(r: d) < 235000 && tokens_per_second_count(r: t) == 900
     _ => false
   }
+}
+
+// Review 84973 (the milli/deci value audit, run on VALUES not just types): the MaxQ matrix cell
+// and the production run receipt are two records of the same physical run, so the cell's printed
+// centi-GiB figures — now ByteSize — must land inside the receipt's MiB print precision. The cell
+// says 7186 centi-GiB of weights; the receipt scrape logged 73585 MiB; 7186*GiB/100 = 77159087472
+// and 73585*MiB = 77159464960, differing by 0.00005% (the screenshot rounds to two GiB decimals).
+// The KV pool pins EXACTLY: both records say 773026 tokens, so a 100x scale error on either side
+// of this comparison fails the claim, which is what the milli-carrier audit asked for.
+test fn w_maxq_matrix_cell_pins_against_the_run_receipt() -> Bool {
+  let r = flash_next_maxq_run_2026_10_21
+  match quant_matrix_outcome(rows: flash_next_quant_matrix, v: Pro6000MaxQNative, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 }) {
+    Present { value: CellMeasured { weights_bytes: Present { value: w }, kv_bytes: Present { value: k }, kv_tokens: Present { value: t }, gpu_memory_utilization: u, throughput: _ } } =>
+      let weights = byte_size_count(b: w)
+      let kv = byte_size_count(b: k)
+      let receipt_weights = byte_size_count(b: r.weights_bytes)
+      let receipt_kv = byte_size_count(b: r.kv_cache_bytes)
+      // weights agree within 1% (rounding of two independently printed figures)
+      weights * 100 >= receipt_weights * 99 && weights * 100 <= receipt_weights * 101
+        // the KV pool is one fact recorded twice: exact, then 1% for the print scales involved
+        && t == token_count_value(t: r.kv_cache_tokens)
+        && kv * 100 >= receipt_kv * 99 && kv * 100 <= receipt_kv * 101
+        // the utilization the cell printed (96.00%) is the MaxQ operator's own figure
+        && basis_point_count(bp: u) == 9600
+    _ => false
+  }
+}
+
+// s3c consumption: the current-stack KV capacity figure is a stated experiment fact, and this
+// claim is its executing route — a per-token figure carried on ByteSize with the operator's
+// utilization on BasisPoint, both read back through std.measure's own extractors.
+test fn w_current_stack_kv_figure_carries_its_units() -> Bool {
+  let figure = current_stack_kv_figure(variant: Pro6000MaxQNative, tokens: 773026, utilization: basis_point(count: 9600))
+  figure.value == 773026
+    && basis_point_count(bp: figure.gpu_memory_utilization) == 9600
 }
 
 // Every relayed throughput level is unadmitted (none has passed gpu_bench_warm_run_admission), the preempting and collapsed
@@ -393,7 +434,7 @@ data sweep_count_seed: Nat = 0
 
 fn matrix_level_count(rows: List<QuantMatrixRow>, boundary_only: Bool, scoreable_only: Bool) -> Nat {
   fold(rows, init: sweep_count_seed, f: (acc, r) => match r.outcome {
-    CellMeasured { weights_centi_gib: _, kv_centi_gib: _, kv_tokens: _, gpu_memory_utilization_basis_points: _, throughput: tp } =>
+    CellMeasured { weights_bytes: _, kv_bytes: _, kv_tokens: _, gpu_memory_utilization: _, throughput: tp } =>
       acc + count(tp |> filter(l => (!boundary_only || l.capacity_boundary) && (!scoreable_only || throughput_scoreable(a: l.admission))))
     _ => acc
   })
@@ -411,7 +452,7 @@ test fn w_sweep_levels_are_unadmitted_and_boundary_levels_are_flagged() -> Bool 
 }
 
 fn ceiling_for(v: ServingVariant, kv: KvDtype) -> Nat? {
-  match decode_ceiling_deci(rows: flash_next_measured_ceilings, v: v, c: QuantCell { weights: WeightNvfp4LilQad, kv: kv }) {
+  match decode_ceiling(rows: flash_next_measured_ceilings, v: v, c: QuantCell { weights: WeightNvfp4LilQad, kv: kv }) {
     Present { value: m } => Present { value: milli_tokens_per_second_count(r: m) }
     none => none
   }
@@ -434,10 +475,10 @@ test fn w_fork_pools_ratio() -> Bool {
   let one = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1))
   let two = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 2, dp: 1))
   let ratio = match one {
-    Present { value: a } => match two { Present { value: b } => pool_ratio_milli(pool: b, single: a), none => none }
+    Present { value: a } => match two { Present { value: b } => pool_ratio_permille(pool: b, single: a), none => none }
     none => none
   }
-  match ratio { Present { value: r } => r > 6600 && r < 6700, none => false }
+  match ratio { Present { value: r } => permille_count(p: r) > 6600 && permille_count(p: r) < 6700, none => false }
 }
 
 test fn w_fork_pool_lookup() -> Bool {

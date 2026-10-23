@@ -2,7 +2,7 @@ module gunbc.serving.flash_next_maxq_fork_measurements
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count, Nanosecond, nanosecond, nanosecond_count, Joule, joule, joule_count, Bandwidth, bandwidth, bandwidth_count }
+import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, Permille, permille, permille_count, BasisPoint, basis_point, basis_point_count, Millisecond, millisecond, millisecond_count, Microsecond, microsecond, microsecond_count, Nanosecond, nanosecond, nanosecond_count, Joule, joule, joule_count, Bandwidth, bandwidth, bandwidth_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.serving.flash_next_topology { ServingTopology }
 import gunbc.serving.flash_next_quant_matrix { WarmAdmission, WarmNotYetAdmitted, bench_v2_records_trigger, HypothesisStanding, HypothesisFalsified }
@@ -54,9 +54,10 @@ fn fork_kv_pool(card: ForkCard, topology: ServingTopology) -> Nat? {
     if fork_card_eq(a: p.card, b: card) && topology_eq(a: p.topology, b: topology) { Present { value: p.pool_tokens_per_replica } } else { acc })
 }
 
-// The pool of a layout as a multiple of the single-card pool, in thousandths.
-fn pool_ratio_milli(pool: Nat, single: Nat) -> Nat? {
-  if single == 0 { none } else { Present { value: pool * 1000 / single } }
+// The pool of a layout as a multiple of the single-card pool (a ratio, so it rides
+// std.measure's Permille beside Percent/BasisPoint/PartsPerMillion — review 84973).
+fn pool_ratio_permille(pool: Nat, single: Nat) -> Permille? {
+  if single == 0 { none } else { Present { value: permille(count: pool * 1000 / single) } }
 }
 
 // 2. THROUGHPUT LEVELS: aggregate tok/s at a concurrency and context, or the reason there is no number.
@@ -139,27 +140,27 @@ type OpenLoopRow {
   card: ForkCard
   topology: ServingTopology
   seats: Nat
-  duty_basis_points: Nat
+  duty: BasisPoint
   aggregate_tokens_per_second: TokensPerSecond?
   ttft_p50_milliseconds: Millisecond?
   ttft_p95_milliseconds: Millisecond?
   ttft_p95_is_upper_bound: Bool
   itl_p95_milliseconds: Millisecond?
-  gpu_hit_basis_points: Nat?
+  gpu_hit: BasisPoint?
   joules_per_turn: Joule?
   oversubscribed: Bool
 }
 
 fn open_loop(topology: ServingTopology, seats: Nat, duty: Nat, agg: Nat, ttft_p95_upper: Nat) -> OpenLoopRow {
-  OpenLoopRow { card: ForkMaxQ300, topology: topology, seats: seats, duty_basis_points: duty, aggregate_tokens_per_second: Present { value: tokens_per_second(count: agg) }, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: millisecond(count: ttft_p95_upper) }, ttft_p95_is_upper_bound: true, itl_p95_milliseconds: none, gpu_hit_basis_points: none, joules_per_turn: none, oversubscribed: false }
+  OpenLoopRow { card: ForkMaxQ300, topology: topology, seats: seats, duty: basis_point(count: duty), aggregate_tokens_per_second: Present { value: tokens_per_second(count: agg) }, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: millisecond(count: ttft_p95_upper) }, ttft_p95_is_upper_bound: true, itl_p95_milliseconds: none, gpu_hit: none, joules_per_turn: none, oversubscribed: false }
 }
 
 fn tp2_open_loop(seats: Nat, duty: Nat, agg: Nat, p50: Nat, p95: Nat, itl: Nat, hit: Nat, joules: Nat) -> OpenLoopRow {
-  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: seats, duty_basis_points: duty, aggregate_tokens_per_second: Present { value: tokens_per_second(count: agg) }, ttft_p50_milliseconds: Present { value: millisecond(count: p50) }, ttft_p95_milliseconds: Present { value: millisecond(count: p95) }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: Present { value: millisecond(count: itl) }, gpu_hit_basis_points: Present { value: hit }, joules_per_turn: Present { value: joule(count: joules) }, oversubscribed: false }
+  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: seats, duty: basis_point(count: duty), aggregate_tokens_per_second: Present { value: tokens_per_second(count: agg) }, ttft_p50_milliseconds: Present { value: millisecond(count: p50) }, ttft_p95_milliseconds: Present { value: millisecond(count: p95) }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: Present { value: millisecond(count: itl) }, gpu_hit: Present { value: basis_point(count: hit) }, joules_per_turn: Present { value: joule(count: joules) }, oversubscribed: false }
 }
 
 fn tp2_eviction_cascade(duty: Nat, p95: Nat) -> OpenLoopRow {
-  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: 25, duty_basis_points: duty, aggregate_tokens_per_second: none, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: millisecond(count: p95) }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: none, gpu_hit_basis_points: none, joules_per_turn: none, oversubscribed: true }
+  OpenLoopRow { card: ForkMaxQ300, topology: layout(tp: 2, dp: 1), seats: 25, duty: basis_point(count: duty), aggregate_tokens_per_second: none, ttft_p50_milliseconds: none, ttft_p95_milliseconds: Present { value: millisecond(count: p95) }, ttft_p95_is_upper_bound: false, itl_p95_milliseconds: none, gpu_hit: none, joules_per_turn: none, oversubscribed: true }
 }
 
 data fork_open_loop_rows: List<OpenLoopRow> = [

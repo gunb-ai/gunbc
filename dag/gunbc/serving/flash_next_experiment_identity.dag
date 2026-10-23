@@ -2,7 +2,7 @@ module gunbc.serving.flash_next_experiment_identity
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Milliwatt }
+import std.measure { Milliwatt, BasisPoint, basis_point }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // EXPERIMENT IDENTITY (operator review of #14718): every materially different serving path is its own variant and a
@@ -80,13 +80,13 @@ type VariantFigure {
   kind: FigureKind
   quantity: NonEmptyStr
   value: Nat
-  gpu_memory_utilization_basis_points: Nat
+  gpu_memory_utilization: BasisPoint
 }
 
 // The BF16-KV capacity figures the roofline computes for the CurrentStack variants are model output, not revised
 // predictions: P1 and P2 stay frozen as registered, for the stack they were registered for.
-fn current_stack_kv_figure(variant: ServingVariant, tokens: Nat, utilization_bp: Nat) -> VariantFigure {
-  VariantFigure { variant: variant, kind: ModelOutput, quantity: "kv_capacity_tokens_bf16_kv" as NonEmptyStr, value: tokens, gpu_memory_utilization_basis_points: utilization_bp }
+fn current_stack_kv_figure(variant: ServingVariant, tokens: Nat, utilization: BasisPoint) -> VariantFigure {
+  VariantFigure { variant: variant, kind: ModelOutput, quantity: "kv_capacity_tokens_bf16_kv" as NonEmptyStr, value: tokens, gpu_memory_utilization: utilization }
 }
 
 // CAPACITY IS SIX QUANTITIES, never one. Each is a distinct field; none derives from another without a stated model.
