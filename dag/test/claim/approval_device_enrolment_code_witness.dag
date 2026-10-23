@@ -29,7 +29,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import std.measure { byte_size_count }
-import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high }
+import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high, live_deploy_slice_memory_swap_max }
 import gunbc.fleet.fleet_converge_workflow {
   ApprovalDeviceEnrolmentCodeIssue, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes, fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyConsumed,
 }
@@ -101,7 +101,7 @@ fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReadi
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
       let joined = join(sudo_elevate_words(command: command), " ")
-      string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max)) + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high)) + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/" + rev + " " + (approval_broker_base_url_env_name as String) + "=" + base_url + " /opt/gunbc/approval-broker/releases/" + rev + "/gunbc run ")
+      string_contains(s: joined, pattern: "/usr/bin/sudo -n systemd-run --scope --property=MemoryMax=" + to_string(byte_size_count(b: approval_broker_slice_memory_max)) + " --property=MemoryHigh=" + to_string(byte_size_count(b: approval_broker_slice_memory_high)) + " --property=MemorySwapMax=" + to_string(byte_size_count(b: live_deploy_slice_memory_swap_max)) + " -- setpriv --reuid=" + op + " --regid=" + op + " --init-groups -- /usr/bin/env " + gunbc_workspace_root_env_name + "=/opt/gunbc/approval-broker/releases/" + rev + " " + (approval_broker_base_url_env_name as String) + "=" + base_url + " /opt/gunbc/approval-broker/releases/" + rev + "/gunbc run ")
         && !string_contains(s: joined, pattern: "--uid=")
         && string_contains(s: joined, pattern: "/releases/" + rev + "/gunbc run ")
         && string_contains(s: joined, pattern: "--entry /opt/gunbc/approval-broker/releases/" + rev + "/dag/gunbc/auth/approval_device_enrolment_code.dag --function issue_device_enrolment_code --arg revision=" + rev)

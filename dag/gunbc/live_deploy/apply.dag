@@ -989,7 +989,7 @@ fn device_crypto_sidecar_readback_exit(spec: DeploymentSpec, candidate: Candidat
   let installed = device_crypto_sidecar_binary_path(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision })
   match observe_executable(arm: OnTheHostItself, path: installed) {
     MemberObserved { identity: ExecutableIdentity { digest: d } } =>
-      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d as NonEmptyStr) {
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d.hex) {
         Absent => exit_failure(reason: "device-crypto sidecar readback: the broker's own realization is not bound, so it would answer 503 on every device route")
         Present { value: expectation } =>
           match device_crypto_sidecar_readback(expectation: expectation) {
@@ -1031,7 +1031,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     StageAdmitted { stage: _ } => device_crypto_sidecar_readback_exit(spec: spec, candidate: candidate)
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([
-        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        "approval broker install: the unit was written but the release readback (prove-release) refuses: ",
         cutover_refusal_reason(c: c) as String,
       ], ""))
   }

@@ -6,6 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -51,9 +52,8 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
-  DependencyDemandCensusProducer,
-  DeclRefCensusProducer,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -314,6 +314,14 @@ fn type_declaration_use_census_label() -> Label {
 // receipt, not transcribed into committed prose (DESIGN section 6).
 fn ambient_name_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "ambient-name-census" } }
+}
+
+// THE AMBIENT-OPERATION DISPOSITION CENSUS: the ambient-name census's own run, read by
+// gunbc.instruments.ambient_operation_disposition_reading for which disposition each ambient primitive
+// spelling takes (existing declaration, missing declaration, compiler-generated, host substrate). It
+// measures and rules nothing. `gunbc test //gunbc/instruments:ambient-operation-disposition-census`.
+fn ambient_operation_disposition_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "ambient-operation-disposition-census" } }
 }
 
 // THE NAMESPACE-WAVE BINDING DIFF (gunbc.instruments.namespace_wave_binding_diff): a wave's PR, read
@@ -829,11 +837,11 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 }
 
 fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
 }
 
 fn decl_ref_census_binding() -> TargetBinding {
-  TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
+  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {
@@ -870,6 +878,25 @@ fn roster_import_sweep_controls_function() -> String {
 
 fn roster_import_sweep_controls_binding() -> TargetBinding {
   TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
+}
+
+fn append_chain_ladder_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "append-chain-ladder" } }
+}
+
+fn append_chain_ladder_entry() -> String {
+  "dag/gunbc/instruments/append_chain_ladder.dag"
+}
+
+fn append_chain_ladder_function() -> String {
+  "append_chain_ladder_wire"
+}
+
+// THE INSTRUMENT gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear
+// cites, as a label rather than a command in a comment. Non-gating measurement; the threshold fold
+// over its timing rows extends this same label (one instrument, not two).
+fn append_chain_ladder_binding() -> TargetBinding {
+  TargetBinding { target: append_chain_ladder_label() producer: CliWireProgramProducer { entry: append_chain_ladder_entry() function: append_chain_ladder_function() } }
 }
 
 fn claim_coverage_census_label() -> Label {
@@ -1097,6 +1124,10 @@ fn type_declaration_use_census_binding() -> TargetBinding {
   TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
 }
 
+fn ambient_operation_disposition_census_binding() -> TargetBinding {
+  TargetBinding { target: ambient_operation_disposition_census_label() producer: V2NativeCensusProducer { reading: AmbientOperationDispositionReading } }
+}
+
 fn ambient_name_census_binding() -> TargetBinding {
   TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceBindingReading } }
 }
@@ -1250,7 +1281,7 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), ambient_name_census_label(), namespace_wave_binding_diff_label(), native_process_memory_census_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), ambient_name_census_label(), ambient_operation_disposition_census_label(), namespace_wave_binding_diff_label(), native_process_memory_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
@@ -1259,7 +1290,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1272,7 +1303,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), ambient_name_census_binding(), namespace_wave_binding_diff_binding(), native_process_memory_census_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), ambient_name_census_binding(), ambient_operation_disposition_census_binding(), namespace_wave_binding_diff_binding(), native_process_memory_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
@@ -1281,7 +1312,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

@@ -1,6 +1,5 @@
 module v2.test.claim.manual.bash_emit_command
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
@@ -76,7 +75,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, NotADeclaration }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -97,7 +96,8 @@ fn bash_arrow_emitted_red_fixture() -> Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -105,7 +105,8 @@ fn bash_arrow_emitted_red_fixture() -> Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -113,7 +114,8 @@ fn bash_arrow_emitted_red_fixture() -> Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -139,8 +141,7 @@ data bash_emit_inferred_tree: InferredTree = InferredTree {
   root: bash_emitted_command,
   facts: PartialFunction {
     lookup: bash_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn anchor_bash_emit_accepts() -> Outcome<Medium<String>> {
@@ -194,8 +195,7 @@ data bash_bound_words_emit_inferred_tree: InferredTree = InferredTree {
   root: bash_bound_words_emitted_command,
   facts: PartialFunction {
     lookup: bash_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn anchor_bash_bound_words_emit() -> Outcome<Medium<String>> {
@@ -216,8 +216,7 @@ data bash_embedded_quote_emit_inferred_tree: InferredTree = InferredTree {
   root: bash_embedded_quote_emitted_command,
   facts: PartialFunction {
     lookup: bash_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn anchor_bash_embedded_quote_emit() -> Outcome<Medium<String>> {
@@ -241,8 +240,7 @@ fn bash_emit_slice4_holds(
 ) -> Bool {
   let tree = InferredTree {
     root: emitted,
-    facts: PartialFunction { lookup: bash_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } => (source.carried == source_text) && (d == None)
@@ -345,8 +343,7 @@ test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
 fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
   let tree = InferredTree {
     root: bash_pipe_and_or_brace_grouped_emitted,
-    facts: PartialFunction { lookup: bash_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: bash_facts_lookup }
   }
   match emit(tree: tree, target: bash_pipe_and_or_flat_wrong_target_model()) {
     Accepted { value: source, diagnostics: d } =>
