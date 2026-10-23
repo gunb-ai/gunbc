@@ -8957,7 +8957,7 @@ fn chain2_class(t: Node, scope: InferScope) -> String {
   else if (match text_representation_by_identity(n: t, env: scope.type_env) { NotText => false  _ => true }) { "" }
   else if (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
       || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
-      && cast_source_is_declared_nominal(source_node: t, source_indices: scope.type_env.source_indices, env: scope.type_env) { "nominal" }
+      && cast_source_is_declared_nominal(source_node: t, source_indices: scope.type_env.source_indices, env: scope.type_env) { concat("nominal:", name, ":", match text_representation_by_identity(n: t, env: scope.type_env) { NotText => "NotText"  _ => "x" }, ":", concat(t.children |> length |> int_to_decimal_string)) }
   else { "" }
 }
 
