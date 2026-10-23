@@ -79,8 +79,8 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // human reads when a kind is not enough to find the entry on a console -- and it is never
 // consulted by a decision.
 // BOOT ORDER AND BOOT OPTIONS ARE DIFFERENT READS OF THE SAME THING, AND UNTIL THIS CHANGE THE
-// SEAM COULD NOT TELL THEM APART -- both were List<BootEntry>, each entry carrying its own `kind`
-//. That single shape is what produced the false Ready: the fold filtered
+// SEAM COULD NOT TELL THEM APART -- both were List<BootEntry>, each entry carrying its own `kind`.
+// That single shape is what produced the false Ready: the fold filtered
 // a list down to the network-kind entries and took the head, so a BootOrder of [Hdd, Pxe] reported
 // the head as Pxe and answered Ready, when the firmware's own first entry says it boots the disk.
 // And a BootOrder of [Pxe] against options [UefiHttp] reported Ready while quoting a target the
@@ -657,7 +657,7 @@ data firmware_network_boot_console_authority: CitedFigureStanding = TranscribedU
   read_obligation: "Re-derive per unit from the board vendor manual's boot-menu section; the ALTRAD8UD-1L2T prompt key has never been transcribed into this corpus, which is why HumanConsole rows are uncited and stay that way until someone reads the manual."
 }
 
-// THE CATALOG: the mechanisms the fleet actually drives, one entry per it
+// THE CATALOG: the mechanisms the fleet actually drives, one entry per mechanism it
 // knows how to drive. A row is a route, not a pointer to one -- so there is nothing to mis-pair and
 // nothing to look up twice. Rows are keyed on the BLOCKER and on nothing unit-shaped: this table
 // says which mechanisms the fleet knows how to drive and says nothing about which unit needs which
