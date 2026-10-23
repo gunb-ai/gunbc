@@ -34,7 +34,7 @@ import gunbc.auth.approval_device_redemption {
   enrolment_record_kind_generation, enrolment_record_kind_wire, enrolment_record_kind_of_wire, enrolment_record_kind_expectation,
   IssuedCodeRecord, EnrolledRecord, RevokedRecord, enrolment_readback_of,
 }
-import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations }
+import gunbc.auth.approval_device_crypto_realization { DeviceCryptoAdmission, DeviceCryptoHandlerReceipt, device_crypto_receipt_admission, device_crypto_obligations }
 import gunbc.auth.approval_device_crypto_client { SidecarAnswered, SidecarFailed, SidecarResult, assertion_from_answer, attestation_from_answer }
 import gunbc.auth.approval_device_crypto_wire { DeviceCryptoAnswer, CryptoVerified, AssertedPayload, AttestedPayload, device_crypto_arm_assertion_verified, device_crypto_arm_attestation_verified }
 import gunbc.auth.approval_device_wire {
@@ -538,7 +538,7 @@ fn fx_sidecar_answer(key_id: String) -> DeviceCryptoAnswer {
 }
 
 fn fx_sidecar_admission() -> DeviceCryptoAdmission {
-  device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations } })
+  device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt { handler_identity: "fixture", exact_revision: "0000000", covered: device_crypto_obligations }, required: device_crypto_obligations)
 }
 
 fn fx_sidecar_assertion() -> AssertionVerification

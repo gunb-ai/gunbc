@@ -16,8 +16,8 @@ import extdeps.uri_path {
 }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
-import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
-import v2.std.template { Template, TemplateHolePart, TemplateLiteralPart, TemplatePart, template_holes }
+import std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
+import std.template { Template, TemplateHolePart, TemplateLiteralPart, TemplatePart, template_holes }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.node_query { binder_node_parts }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
@@ -45,7 +45,6 @@ import v2.std.node {
   NotFound,
   Arrow,
   Atom,
-  Occupancy,
   Bind,
   Branch,
   ComputationNode,
@@ -83,7 +82,7 @@ import v2.std.node {
 //   LEAF  = Conj { Run -> ENTRY, ..., <realization-config> -> CONFIG? }
 //   ENTRY = Conj { <realization-transport> -> TRANSPORT, <status-arms> -> ARMS?, <mock-arms> -> ARMS?, <projection> -> ROWS? }
 //
-// The mirror keys an entry by the operation's path structurally -- the path v2.std.operation_argv
+// The mirror keys an entry by the operation's path structurally -- the path std.operation_argv
 // OperationRef names at run time -- so no second identity is minted. Its prefix bodies are the spine's
 // marked namespace bodies, so services sharing a prefix merge through the spine's one merge rule. The
 // root is unspellable, so no source can name an entry, and v2.compiler.symbol_index_fill indexes nothing
@@ -183,7 +182,6 @@ fn realization_connective_shape(c: Connective) -> RealizationNodeShape {
     Conj => ShapeConj
     Arrow => ShapeArrow
     Disj => ShapeOther
-    Occupancy => ShapeOther
     Instantiation => ShapeOther
   }
 }
@@ -274,7 +272,7 @@ fn status_code_int_optional(pat: Node) -> Optional<Int> {
   }
 }
 
-// `argv` carries the shared argv vocabulary's cause (v2.std.operation_argv ArgvRefusalCause) when the
+// `argv` carries the shared argv vocabulary's cause (std.operation_argv ArgvRefusalCause) when the
 // refusal is a shell argv's, and is Absent otherwise.
 type RealizationRefusal {
   reason: Symbol
@@ -559,7 +557,7 @@ fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: St
   }
 }
 
-// A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (v2.std.operation_argv). It is a list literal whose
+// A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (std.operation_argv). It is a list literal whose
 // executable position (argv[0]) is a string literal -- a declared input may never decide which program
 // runs -- and whose every other element is a Template<OperationInputName> (XL-2 3b-ii, gunbc#13405):
 // a string literal, a string-template concat of literals and name holes, or a bare declared-input

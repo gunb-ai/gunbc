@@ -26,6 +26,6 @@ data gcp_iam_bootstrap_trust_root_wall_in_code: RungDrop = RungDrop {
       "account iam-converge@gunbai-secrets.iam.gserviceaccount.com", "account iam-observe@gunbai-secrets.iam.gserviceaccount.com",
       "account iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com",
     ],
-    restoration_trigger: "the gunbc-trust-root tag is bound on the three accounts and a tag-conditioned deny refuses iam-bootstrap serviceAccounts.setIamPolicy/actAs/getAccessToken on them, observed by readback"
+    restoration_trigger: "every one of the following observed by readback in one ceremony: the gunbc-trust-root value bound on each of the three accounts by an exact row (that parent, that value); the wall policy present with its exact tag condition, refusing iam-bootstrap serviceAccounts.setIamPolicy/update/delete/disable/enable/undelete on them; actAs/getAccessToken/getOpenIdToken/implicitDelegation/signBlob/signJwt and key creation refused to iam-bootstrap on them by the unconditioned boundary deny; and iam-bootstrap's effective tag-detach authority absent, read as iam-bootstrap: no iam.serviceAccounts.deleteTagBinding on any of the three accounts AND no resourcemanager.tagValueBindings.delete on the trust-root value (both MET-by-probe: the ceremony's privilege readback probes each as iam-bootstrap against an operator-held control; the drop still retires only on that live readback)"
   }
 }

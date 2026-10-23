@@ -21,7 +21,7 @@ module gunbc.firmware_network_boot_standing
 // row below owns which routes exist. A unit identity is carried through as data so a receipt can
 // name what it covers, and no match in this module is ever on it.
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 import std.algebra { length, fold_list, list_append, contains, list_map, string_concat_join, Cons, Empty }
 import std.optional { Optional, Present, Absent, optional_prefer_first_present }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
@@ -85,12 +85,15 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // question), AuthenticationRequired means someone must establish credentials (a human or a
 // secret store), and ReplyShapeUnrecognized means the reply did not match the schema (a
 // toolchain/version problem, and a fact worth recording because it usually means the BMC
-// firmware drifted). Four different next actions, so four arms. A family row can be checked
+// firmware drifted), and AuthorizationDenied means credentials were accepted and the account lacks the
+// privilege (HTTP 403; a role grant, not a login). UnexpectedHttpStatus carries any other non-success status verbatim. Six different next actions, so six arms. A family row can be checked
 // against this union; it cannot be checked against prose.
 type FirmwareReadRefusal
   = VendorCommandRejected { detail: NonEmptyStr }
   | ResourceNotFound { detail: NonEmptyStr }
   | AuthenticationRequired { detail: NonEmptyStr }
+  | AuthorizationDenied { detail: NonEmptyStr }
+  | UnexpectedHttpStatus { status: HttpStatus, detail: NonEmptyStr }
   | ReplyShapeUnrecognized { detail: NonEmptyStr }
 
 // BootOrder is the firmware's own list of what it will try. A network stack in this list is the
@@ -1611,7 +1614,7 @@ type UnansweredAxis
 // not serve, an operator policy, and a unit that is not there. A refusal with no cause is not in
 // the set, because an uncaused refusal cannot be acted on and so cannot be reported usefully.
 type FirmwareNetworkBootRefusal
-  = TransportRefusedVendorCommand { refusal: FirmwareReadRefusal }
+  = FirmwareReadRefused { refusal: FirmwareReadRefusal }
   | FirmwareModeUnsupportedByEdge { why: NonEmptyStr }
   | RefusedByOperatorPolicy { policy: NonEmptyStr }
   // THE UNIT HAS NO NETWORK INTERFACE AT ALL (review 81893). This used to be `NoSuchUnit`, which sent
@@ -1877,7 +1880,7 @@ fn firmware_network_boot_standing(
     if length(xs: gaps) > 0 {
       match first_refusal(gaps: gaps) {
         Present { value: refusal } =>
-          Refused { cause: TransportRefusedVendorCommand { refusal: refusal }, gaps: gaps }
+          Refused { cause: FirmwareReadRefused { refusal: refusal }, gaps: gaps }
         Absent => Unobserved { unanswered: gaps }
       }
     } else {
@@ -2191,25 +2194,25 @@ fn decide(
   // Unobserved instead of a fabricated Ready.
   match observation.boot_order {
     BootOrderRefused { refusal: f } =>
-      Refused { cause: TransportRefusedVendorCommand { refusal: f }, gaps: axis_gaps(observation: observation) }
+      Refused { cause: FirmwareReadRefused { refusal: f }, gaps: axis_gaps(observation: observation) }
     BootOrderUnobserved { reason: r } =>
       Unobserved { unanswered: [BootOrderAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
     BootOrderObserved { devices: devices } =>
       match observation.boot_options {
         BootOptionsRefused { refusal: f } =>
-          Refused { cause: TransportRefusedVendorCommand { refusal: f }, gaps: axis_gaps(observation: observation) }
+          Refused { cause: FirmwareReadRefused { refusal: f }, gaps: axis_gaps(observation: observation) }
         BootOptionsUnobserved { reason: r } =>
           Unobserved { unanswered: [BootOptionsAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
         BootOptionsObserved { options: options } =>
           match observation.nics {
             NicsRefused { refusal: f } =>
-              Refused { cause: TransportRefusedVendorCommand { refusal: f }, gaps: axis_gaps(observation: observation) }
+              Refused { cause: FirmwareReadRefused { refusal: f }, gaps: axis_gaps(observation: observation) }
             NicsUnobserved { reason: r } =>
               Unobserved { unanswered: [NetworkInterfaceAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
             NicsObserved { nics: nics } =>
               match observation.secure_boot {
                 SecureBootRefused { refusal: f } =>
-                  Refused { cause: TransportRefusedVendorCommand { refusal: f }, gaps: axis_gaps(observation: observation) }
+                  Refused { cause: FirmwareReadRefused { refusal: f }, gaps: axis_gaps(observation: observation) }
                 SecureBootUnobserved { reason: r } =>
                   Unobserved { unanswered: [SecureBootAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
                 SecureBootEnabled =>
@@ -2246,7 +2249,7 @@ fn decide(
                 SecureBootDisabled =>
                   match observation.bios_version {
                     BiosVersionRefused { refusal: f } =>
-                      Refused { cause: TransportRefusedVendorCommand { refusal: f }, gaps: axis_gaps(observation: observation) }
+                      Refused { cause: FirmwareReadRefused { refusal: f }, gaps: axis_gaps(observation: observation) }
                     BiosVersionUnobserved { reason: r } =>
                       Unobserved { unanswered: [BiosAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
                     // THE VERSION IS READ, NOT JUST CHECKED FOR PRESENCE (merry-fox-82 blocker 3).

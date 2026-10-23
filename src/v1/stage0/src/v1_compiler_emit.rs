@@ -206,80 +206,6 @@ pub struct TcoReassignInput {
     pub depth: i64,
 }
 
-pub fn derive_module_imports(
-    items: Rc<Vec<Rc<Node>>>,
-    import_rules: Rc<Vec<Rc<ImportRule>>>,
-    target: RenderTarget,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    {
-        let has_async = {
-            let mut __found = false;
-            for item in items.iter().cloned() {
-                if ((item.uses.clone().len() as i64) > 0) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let type_names = collect_type_names_from_items(items.clone(), source_indices.clone());
-        Rc::new({
-            let mut __result = Vec::new();
-            for path in Rc::new({
-                let mut __result = Vec::new();
-                for rule in Rc::new({
-                    let mut __result = Vec::new();
-                    for rule in import_rules.iter().cloned() {
-                        if match (*rule.trigger.clone()).clone() {
-                            ImportTrigger::TypeUsageTrigger { type_name: t, .. } => {
-                                let mut __found = false;
-                                for n in type_names.iter().cloned() {
-                                    if (n.clone() == t.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            }
-                            ImportTrigger::TraitImplTrigger { trait_name: _, .. } => false,
-                            ImportTrigger::DeriveMacroTrigger { macro_name: _, .. } => false,
-                            ImportTrigger::ContainerUsageTrigger { container: c, .. } => {
-                                let mut __found = false;
-                                for n in type_names.iter().cloned() {
-                                    if (n.clone() == c.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            }
-                            ImportTrigger::AsyncUsageTrigger => has_async.clone(),
-                        } {
-                            __result.push(rule);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(rule.import_path.clone());
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                if (path.clone() != "".to_string()) {
-                    __result.push(path);
-                }
-            }
-            __result
-        })
-    }
-}
-
 pub fn collect_type_names_from_items(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1407,30 +1333,6 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
                 .source_file_extension
                 .clone(),
         )
-    }
-}
-
-pub fn reserved_prefix(target: RenderTarget) -> String {
-    match (*crate::v1_compiler_emit_core_support::language_spec(target.clone())
-        .reserved_words
-        .strategy
-        .clone())
-    .clone()
-    {
-        ReservedWordStrategy::PrefixEscape { prefix: prefix, .. } => prefix.clone(),
-        _ => "".to_string(),
-    }
-}
-
-pub fn reserved_suffix(target: RenderTarget) -> String {
-    match (*crate::v1_compiler_emit_core_support::language_spec(target.clone())
-        .reserved_words
-        .strategy
-        .clone())
-    .clone()
-    {
-        ReservedWordStrategy::SuffixEscape { suffix: suffix, .. } => suffix.clone(),
-        _ => "".to_string(),
     }
 }
 
@@ -3969,28 +3871,6 @@ pub enum FuncBodyShape {
     },
 }
 
-pub fn classify_func_body(
-    body: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FuncBodyShape> {
-    match (*body.expr_data.clone()).clone() {
-        ExprData::ExprLet => {
-            let n = crate::v1_std_core::let_binding_name_at(body.clone(), source_indices.clone());
-            let v = crate::v1_std_core::let_value(body.clone());
-            let rest = crate::v1_std_core::let_body(body.clone());
-            Rc::new(FuncBodyShape::FuncBodyLet {
-                name: n.clone(),
-                value: v.clone(),
-                rest: rest.clone(),
-            })
-        }
-        ExprData::ExprBlock => Rc::new(FuncBodyShape::FuncBodyBlock {
-            stmts: body.children.clone(),
-        }),
-        _ => Rc::new(FuncBodyShape::FuncBodyExpr { expr: body.clone() }),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TcoExprShape {
@@ -4018,63 +3898,6 @@ pub enum TcoExprShape {
     TcoOther {
         expr: Rc<Node>,
     },
-}
-
-pub fn classify_tco_expr(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TcoExprShape> {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => Rc::new(TcoExprShape::TcoCall {
-            func: crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
-            args: texpr.children.clone(),
-        }),
-        ExprData::ExprIf => {
-            let c = crate::v1_std_core::if_condition(texpr.clone());
-            let t = crate::v1_std_core::if_then_branch(texpr.clone());
-            let e = crate::v1_std_core::if_else_branch(texpr.clone());
-            Rc::new(TcoExprShape::TcoIf {
-                condition: c.clone(),
-                then_branch: t.clone(),
-                else_branch: e.clone(),
-            })
-        }
-        ExprData::ExprMatch => {
-            let scrut = crate::v1_std_core::match_scrutinee(texpr.clone());
-            let arm_list = crate::v1_std_core::match_arm_nodes(texpr.clone());
-            Rc::new(TcoExprShape::TcoMatch {
-                scrutinee: scrut.clone(),
-                arms: arm_list.clone(),
-            })
-        }
-        ExprData::ExprLet => {
-            let n = crate::v1_std_core::let_binding_name_at(texpr.clone(), source_indices.clone());
-            let v = crate::v1_std_core::let_value(texpr.clone());
-            let bd = crate::v1_std_core::let_body(texpr.clone());
-            Rc::new(TcoExprShape::TcoLet {
-                name: n.clone(),
-                value: v.clone(),
-                body: bd.clone(),
-            })
-        }
-        ExprData::ExprBlock => Rc::new(TcoExprShape::TcoBlock {
-            stmts: texpr.children.clone(),
-        }),
-        _ => Rc::new(TcoExprShape::TcoOther {
-            expr: texpr.clone(),
-        }),
-    }
-}
-
-pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
-    if ((stmts.clone().len() as i64) <= 1) {
-        Rc::new(vec![])
-    } else {
-        Rc::new(v1_rt::list_take(
-            &stmts.clone(),
-            v1_rt::int_sub((stmts.clone().len() as i64), 1),
-        ))
-    }
 }
 
 pub fn is_tco_eligible(
@@ -5847,24 +5670,6 @@ pub fn child_from_key(
             _ => std::option::Option::None,
         },
         std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    {
-        let is_product = crate::v1_compiler_infer_types::is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == std::option::Option::None))
-            && ((n.children.clone().len() as i64) == 1))
-        {
-            match n.children.clone().first().cloned() {
-                Some(field_node) => {
-                    crate::v1_compiler_infer_types::resolved_type(field_node.clone())
-                }
-                std::option::Option::None => n.clone(),
-            }
-        } else {
-            n.clone()
-        }
     }
 }
 

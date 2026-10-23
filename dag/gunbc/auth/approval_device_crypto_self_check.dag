@@ -37,7 +37,7 @@ import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, Or
 // THE DEVICE-CRYPTO SERVICE'S STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function).
 // Before the verifier binds a port it executes every obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations on the real folds, mints a
-// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_admission whether that receipt
+// DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_receipt_admission whether that receipt
 // covers the whole population. The receipt's exact_revision is the SHA-256 of the running executable's own
 // octets (the host only reads those bytes; extdeps.crypto.sha2 computes the digest here), so a receipt names the
 // binary that produced it and is re-minted at every start. A refusal is a refused start: the process never

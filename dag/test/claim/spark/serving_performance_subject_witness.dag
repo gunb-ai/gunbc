@@ -1,4 +1,4 @@
-module test.claim.spark.serving_performance_subject_witness_test
+module test.claim.spark.serving_performance_subject_witness
 
 import std.types { Bool, NonEmptyStr, Int }
 import std.optional { Present, Absent }

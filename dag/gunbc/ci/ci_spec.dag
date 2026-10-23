@@ -91,8 +91,9 @@ import gunbc.live_deploy.apply_receipt {
 }
 
 import gunbc.ci.ci_release_bins {
-  ci_floor_required_artifact_names
+  ci_floor_required_artifact_names, EmittedReleaseBin, ci_emitted_release_bins
 }
+import gunbc.repo.repo_self_emitted_build { repo_self_emitted_crate_build_command }
 
 import gunbc.ci.ci_gate {
   Gate,
@@ -573,6 +574,35 @@ fn ci_release_build_line() -> String {
       init: "",
       f: (acc, name) => concat(acc, concat(" --bin ", name))
     )
+  )
+}
+
+// THE BUILD OF ONE EMITTED RELEASE BIN (gunbc.ci.ci_release_bins EmittedReleaseBin), run after the
+// cargo bins exist because it needs the gunbc this job just built: emit the entry's Rust closure,
+// build the emitted crate under gunbc.repo.repo_self_emitted_build (the flag set the seed's probe
+// build also runs), and install the one executable at target/release/<name>. The executable's name
+// is read from the emitted crate's own manifest, never assumed to be the probe's package name.
+// The line is a shell-transport spelling, like ci_release_build_line beside it: it dissolves onto extdeps.rust.cargo_build
+// (and a typed read of cargo's own executable record in place of the sed over its JSON stream) when the ci emit seam can
+// bind a typed cargo operation instead of a hand-spelled argv line. Failure is loud on both uses: the job script runs each
+// bin as its own statement under the workflow's `set -e`, and an unreadable executable path leaves cp with an empty source.
+// ci_release_pack_build_line joins the lines with " ; " only as the TEXT the pack key names; it is never executed.
+fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
+  let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
+  let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  join([
+    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+  ], "")
+}
+
+// The whole build the fleet pack's key names: the cargo bins, then each emitted release bin.
+fn ci_release_pack_build_line() -> String {
+  fold(
+    ci_emitted_release_bins(),
+    init: ci_release_build_line(),
+    f: (acc, bin) => join([acc, " ; ", ci_emitted_release_build_line(bin: bin)], "")
   )
 }
 
@@ -1636,7 +1666,7 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
 // prelude that interpolates a credential into a command string — these bodies are hand-authored
-// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them.
+// shell text, not declared operation argv, so std.operation_argv's binding wall cannot see them.
 // The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
 // modeled as declared inputs whose type the binder can refuse.
 //

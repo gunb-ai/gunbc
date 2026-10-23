@@ -6,7 +6,7 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { declaration_ref_eq }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import v2.std.decl_ref_resolution {
+import v2.std.decl_ref_resolution_host {
   resolve_declaration_ref_live,
   DeclarationRefResolved,
   DeclarationRefModuleAbsent,

@@ -35,6 +35,7 @@ import gunbc.live_deploy.release_locus {
   release_locus_dir,
   release_locus_releases_dir,
   release_locus_binary_path,
+  release_locus_member_path,
   release_locus_tree_receipt_path,
   release_locus_tree_subdirs,
   approval_broker_helper_root_principal,
@@ -212,6 +213,7 @@ import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
+  gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
@@ -255,7 +257,9 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
+import gunbc.auth.approval_device_crypto_client { approval_device_crypto_sidecar_port, approval_device_crypto_sidecar_host }
+import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   tracker_web_oidc_env_assignment, tracker_web_oidc_deploy_now_epoch,
@@ -920,8 +924,8 @@ fn live_deploy_approval_broker_unit_file_on(
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
-      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
+      After { target: join(["network-online.target tailscaled.service ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
+      Wants { target: join(["network-online.target ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
     ],
     service: [
       ServiceType { mode: SimpleMode },
@@ -929,6 +933,7 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
+      EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: release_dir),
       approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
@@ -945,6 +950,94 @@ fn live_deploy_approval_broker_unit_file_on(
     ],
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
+}
+
+// THE SIDECAR IS THE BROKER'S DEPENDENCY, SO ITS UNIT IS THE BROKER'S LOCUS-MEMBER: same service user, same release
+// directory, a native binary installed beside gunbc. The bind is the typed Port row the broker's client dials
+// (approval_device_crypto_sidecar_port), never a literal, so moving the port moves both ends.
+fn live_deploy_device_crypto_sidecar_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  let svc = spec.approval_broker
+  let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc device-crypto verifier sidecar (native serve entry)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: SimpleMode },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
+      WorkingDirectory { path: release_dir as NonEmptyStr },
+      ExecStart { command: join([
+        device_crypto_sidecar_binary_path(spec: spec, revision: revision),
+        " --host ", approval_device_crypto_sidecar_host as String,
+        " --port ", to_string(approval_device_crypto_sidecar_port as Int),
+        " --release-revision ", release_revision_execstart_text(binding: revision),
+      ], "") as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+fn device_crypto_sidecar_binary_path(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+  release_locus_member_path(root: spec.approval_broker.repo_root as String, revision: revision, name: approval_device_crypto_serve_release_bin_name)
+}
+
+data device_crypto_deployed_digest_env_file_name: String = "device-crypto-deployed-digest.env"
+
+fn device_crypto_deployed_digest_env_file_path(root: String, revision: ReleaseRevisionBinding) -> String {
+  release_locus_member_path(root: root, revision: revision, name: device_crypto_deployed_digest_env_file_name)
+}
+
+fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
+}
+
+// THE DEPLOYED DIGEST IS READ OFF THE INSTALLED BYTES, never off the packed artifact or a constant: the env file the
+// broker loads is written from sha256sum of the sidecar binary AS INSTALLED in the locus, so the broker's expectation
+// is the digest of exactly what the sidecar unit executes. The sidecar's own receipt names sha256 of /proc/self/exe;
+// the broker joins the two (gunbc.auth.approval_device_crypto_realization device_crypto_echo_join) and refuses a
+// disagreement.
+// FAIL-CLOSED: the digest is taken by assignment (a sha256sum failure fails the && chain, no pipe to mask it) and must be
+// exactly 64 characters before anything is written, so an empty NAME= can never reach the env file. The shell transport
+// is a scaffold dissolved when the typed observe_executable digest (as device_crypto_sidecar_readback_exit uses) has a
+// staged-write route that takes a runtime value, i.e. the orchestration-to-shell bash-emit capability; until then this
+// step is the only runtime-valued write. SCAFFOLD operator-approved on gunbc#14570 (relayed by wise-bat-528).
+fn device_crypto_sidecar_install_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let svc = spec.approval_broker
+  let owner = svc.service_user
+  let installed = device_crypto_sidecar_binary_path(spec: spec, revision: revision)
+  [
+    deploy_raw(command: install_file_owned_command(
+      mode: install_executable_shared_mode,
+      owner: owner,
+      group: owner,
+      source: join(["target/release/", approval_device_crypto_serve_release_bin_name], ""),
+      dest: installed,
+    )),
+    deploy_raw(command: join([
+      "d=$(", sha256sum_program().invocation as String, " ", installed, ") && d=$\{d%% *} && test $\{#d} -eq 64 && ",
+      printf_program().invocation as String, " '", approval_device_crypto_deployed_digest_env_name as String, "=%s\\n' \"$d\" | ",
+      join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
+        device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision)]), " "),
+    ], "")),
+  ]
+}
+
+fn device_crypto_sidecar_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: gunbc_device_crypto_sidecar_unit_name as String,
+      content: render(doc: emit_device_crypto_sidecar_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: gunbc_device_crypto_sidecar_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_device_crypto_sidecar_unit_path() as String,
+    )),
+  ]
 }
 
 fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
@@ -2733,7 +2826,10 @@ fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: Releas
   if deployment_owns_the_host_approval_broker(spec: spec) {
     concat(
       approval_broker_dark_install_release_steps(spec: spec, revision: revision),
-      approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
+      concat(
+        device_crypto_sidecar_unit_write_steps(spec: spec, revision: revision),
+        approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
+      ),
     )
   } else {
     []
@@ -2746,6 +2842,8 @@ fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: Releas
 fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
     [
+      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_device_crypto_sidecar_unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_device_crypto_sidecar_unit_name)),
       deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
     ]
@@ -4500,7 +4598,7 @@ fn apply_object_source_pwd_config_classify(tail: List<String>, set_standing: Par
   bash_build_if_else(
     cond: git_in_apply_pwd_command(tail: tail),
     then_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(standing: set_standing)),
-    else_body: bash_build_if_else(
+    else_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_if_else(
       cond: bash_build_test_bracket(words: [
         bash_build_word_var(name: "?"),
         bash_build_word_lit(text: "-eq"),
@@ -4510,7 +4608,7 @@ fn apply_object_source_pwd_config_classify(tail: List<String>, set_standing: Par
       else_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_standing(
         standing: PartialCloneUnreadable { detail: unreadable_detail },
       )),
-    ),
+    )]),
   )
 }
 
@@ -4865,7 +4963,10 @@ fn approval_device_store_fragments() -> List<HostScriptFragment> {
 }
 
 fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  approval_broker_tree_copy_steps(spec: spec, revision: revision)
+  concat(
+    approval_broker_tree_copy_steps(spec: spec, revision: revision),
+    device_crypto_sidecar_install_steps(spec: spec, revision: revision),
+  )
 }
 
 // The additive broker install (stage 1 of the cutover) is typed in gunbc.host.host_effect_realize

@@ -7459,8 +7459,18 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
     let blocking: usize = emissions
         .iter()
         .map(|emission| {
-            v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+            // THE 1-ARG NAME IS GONE, so this counted caller uses the located renderer too. It only
+            // takes `.len()` -- the count is identical either way, since the located renderer emits
+            // one line per blocking diagnostic -- but it must still pass an index rather than a
+            // fabricated one, and `PipelineResult` carries the indices the compile actually built.
+            // Each `NewlineIndex` names its OWN file, so the keys are read from the index itself.
+            let mut source_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+            for index in emission.result.newline_indices.iter() {
+                source_indices.insert(index.file.clone(), index.clone());
+            }
+            v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
                 emission.result.diagnostics.clone(),
+                Rc::new(source_indices),
             )
             .len()
         })
@@ -13482,12 +13492,28 @@ fn finish_resolved_graph_assembly(
     }
     resolve_stage_slot_add(|s| s.assembly_diagnostics += diagnostics_started.elapsed().as_nanos());
     let rewire_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let rewire_index = modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<v1_compiler_infer::TypedModule>>(),
+        |acc, m| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                m.clone(),
+            )
+        },
+    );
+    let modules = v1_compiler_infer::rewire_type_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
     let rewire3_started = std::time::Instant::now();
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_func_env_parent_links(
+        modules.clone(),
+        rewire_index.clone(),
+        source_indices.clone(),
+    );
     resolve_stage_slot_add(|s| s.assembly_rewire_func_env += rewire3_started.elapsed().as_nanos());
     resolve_stage_slot_add(|s| s.assembly_rewire += rewire_started.elapsed().as_nanos());
     // NO EmitGraphInfo IS BUILT HERE (v1.compiler.infer_items ResolvedGraph): emission builds its
@@ -14248,7 +14274,7 @@ fn reconcile_with_typed_cache(
                     Rc::new(im::Vector::new())
                 } else {
                     let parent_envs_started = std::time::Instant::now();
-                    let parent_result = v1_compiler_infer::collect_parent_envs(
+                    let parent_diagnostics = v1_compiler_infer::missing_parent_env_diagnostics(
                         resolved.clone(),
                         module_index.clone(),
                         source_indices.clone(),
@@ -14256,7 +14282,7 @@ fn reconcile_with_typed_cache(
                     resolve_stage_slot_add(|s| {
                         s.parent_envs += parent_envs_started.elapsed().as_nanos()
                     });
-                    parent_result.diagnostics.clone()
+                    parent_diagnostics.clone()
                 };
                 let tc_result = match cached {
                     Some(hit) => hit,
@@ -14472,14 +14498,26 @@ fn reconcile_with_typed_cache(
     )
 }
 
+/// THE ONE HOST ENTRY TO THE SPAN AUTHORITY. Every reader-facing `file:line:col` this file prints
+/// goes through here, and this function now contains NO formatting of its own: it hands the span and
+/// the index to the function emitted from the seed's span authority (`src/v1/00_core.dag`) and prints
+/// what comes back. The located shape is unchanged (`m.dag:67:20`) -- claims such as
+/// dag/test/claim/frontend_eval_witness.dag assert `x.dag:67:20: error: …` and keep passing -- and
+/// what CHANGED is the arm this function could not express before: a span with no index used to
+/// return the bare path, which reads as a location with the position missing. It now comes back as
+/// the authority's typed unlocated line, `<file>: (no position: <cause>)`, naming the file and
+/// saying why there is no position. A second `format!("{}:{}:{}", …)` written in host Rust is the
+/// fork this removes (DESIGN 6b).
 fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
-    match si.get(file) {
-        Some(idx) => {
-            let lc = byte_to_line_col(idx.clone(), start);
-            format!("{}:{}:{}", file, lc.line, lc.col)
-        }
-        None => file.to_string(),
-    }
+    let span = Rc::new(crate::v1_std_core::SourceSpan {
+        file: file.to_string(),
+        start,
+        // A caller hands over ONE coordinate -- the site an author is sent to. The end is the same
+        // boundary; the authority's start arm is what is printed, and the authority (not this
+        // number) decides whether a position exists at all.
+        end: start,
+    });
+    crate::v1_std_core::render_span_location(span, Rc::new(si.clone()))
 }
 
 fn format_error_node(
@@ -15257,26 +15295,77 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     // fault. A typed, LOCATED diagnostic rendered as untyped prose is the
                     // opposite of what DESIGN section 5 requires of a refusal.
                     //
-                    // The index is built from the same `content` the parse consumed, and
-                    // `byte_to_line_col` reads CHAR offsets -- which is what spans carry, since
-                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are
-                    // char positions. A synthetic span (`no_span()`, file `<synthetic>`) names
-                    // no position in this file, so it renders as the path alone rather than as
-                    // a fabricated `1:1`.
-                    let index = crate::v1_std_core::build_newline_index(path_str.clone(), content);
+                    // The index is built from the same `content` the parse consumed, and the
+                    // authority reads CHAR offsets -- which is what spans carry, since
+                    // `build_newline_index` indexes `chars()` and the tokenizer's positions are char
+                    // positions. A synthetic span (`no_span()`, file `<synthetic>`) or a span whose
+                    // file is not the text this index was built from comes back from the authority as
+                    // a TYPED unlocated line, not as a position -- previously this site guessed, and
+                    // its only unlocated shape was the bare path.
+                    let index =
+                        crate::v1_std_core::build_newline_index(path_str.clone(), content.clone());
+                    // THE STREAM IS BUILT ONCE, BESIDE THE INDEX -- not once per diagnostic. The
+                    // stream depends only on `content` and `path_str`, neither of which moves inside
+                    // the loop below, so deriving it per iteration is a proven cost-shape defect
+                    // (DESIGN 6: a proven cost-shape defect is always fixed regardless of realized n
+                    // -- "n is small here" is not time-stable), and the real case this site exists
+                    // for is 52 refusals in one file: 52 full tokenizations of the same text.
+                    // `tokenize` returns `Rc<Vec<Rc<Token>>>`, so the N renderings below share ONE
+                    // stream by pointer -- `.clone()` is a refcount bump, not a re-lex.
+                    //
+                    // WHY NOT CARRY THE PARSE'S OWN STREAM, which would be better still (the parse
+                    // did lex this file): its result type -- `compile.dag`
+                    // `ParsedRevisionDeclarations` -- carries `modules`, `newline_indices`,
+                    // `diagnostics` and `occurrence_transport`, and NOT the token stream, so carrying
+                    // it means adding a field to a seed result type that `namespace_baseline::base_records`
+                    // also consumes. That is a model change with its own consumers, not a printer
+                    // change, and it is named here as the follow-up rather than done half-way or
+                    // skipped in silence. This hoist removes the per-iteration cost, which is the
+                    // defect; carrying would remove the second tokenization outright.
+                    let tokens = crate::v1_compiler_tokenize::tokenize(
+                        content.clone(),
+                        path_str.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                    );
                     let mut lock = errors.lock().expect("parse error lock");
                     for d in fill.diagnostics.iter() {
                         let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());
-                        let located = if span.file == path_str {
-                            let lc =
-                                crate::v1_std_core::byte_to_line_col(index.clone(), span.start);
-                            format!("{path_str}:{}:{}", lc.line, lc.col)
-                        } else {
-                            path_str.clone()
-                        };
+                        // THE LOCATION IS THE AUTHORITY'S. This site used to decide the shape of a
+                        // location itself -- `format!("{path_str}:{}:{}", lc.line, lc.col)` -- and to
+                        // special-case the one span shape it knew about (a synthetic span rendering
+                        // as the bare path). That is a third renderer in host Rust: it could only
+                        // ever answer "located" or "the path", never "this refusal has no position,
+                        // and here is why". It now CALLS the function emitted from the span
+                        // authority in `src/v1/00_core.dag`, which owns `file:line:col` AND the
+                        // typed unlocated arms, so the CLI, the compile lane, the module index and
+                        // this sweep all answer in the same units.
+                        //
+                        // The index is keyed by the span's OWN file, and only when the span names the
+                        // file being swept: a diagnostic may point somewhere else, and locating it
+                        // against text it was not derived from would be a fabricated position. When
+                        // the index is not in this map, the authority answers with its typed
+                        // `NoSourceIndex` cause -- which keeps the file name -- instead of a guess.
+                        // The map is the SEED'S map type (`im::HashMap`), which is what the generated
+                        // signature takes -- see cli_run/pool_acquire.rs for the same hand-off.
+                        let mut source_indices: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+                        if span.file == path_str {
+                            source_indices.insert(span.file.clone(), index.clone());
+                        }
+                        // THE STREAM ENTRY, NOT THE SPAN ENTRY. A file of pure trivia -- comments
+                        // only, whitespace, or empty -- has an index and a real offset for its EOF
+                        // marker, so the span entry locates it `path:1:1`: arithmetic nobody disputes
+                        // and a position the file does not have, which is the fabricated position this
+                        // PR exists to remove. The caller here holds the file's text, so it can hold
+                        // the stream too: `render_span_location_in_stream` asks the tokeniser's own
+                        // predicate whether any lexeme exists, and a file with none comes back
+                        // `<path>: (no position: file has no lexemes)` -- typed, keeping the name.
                         lock.push(format!(
                             "{}: {}",
-                            located,
+                            crate::v1_compiler_tokenize::render_span_location_in_stream(
+                                span.clone(),
+                                tokens.clone(),
+                                Rc::new(source_indices),
+                            ),
                             crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
                         ));
                     }
@@ -29893,7 +29982,7 @@ pub fn parse_extdeps_module_items(
 /// inputs the operation itself declares (name + optional default expression).
 ///
 /// This is the single authority the generic argv materializer binds against
-/// (`v2.std.operation_argv`): the binding vocabulary is the operation's own
+/// (`std.operation_argv`): the binding vocabulary is the operation's own
 /// `input { .. }` block, never a fixed list the seed happens to know.
 pub struct OperationArgvDeclaration {
     pub argv: Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
@@ -30111,7 +30200,7 @@ pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter:
 /// yet: `extdeps.git` `git.Core.DiffUnified0` argv[3] is an `ExprCall`, so a hard refusal
 /// here stops `corpus_git_policy_leak_defused_holds`, and that red is NOT closable by the
 /// author who causes it -- the same seven operations are already typed and counted debt on
-/// the MATERIALIZATION side (`v2.std.operation_argv` `ArgvRowExpressionResidue`, pinned in
+/// the MATERIALIZATION side (`std.operation_argv` `ArgvRowExpressionResidue`, pinned in
 /// `test.claim.operation_argv_corpus_witness`), owned by the argv-evaluation lane.
 ///
 /// So the two readings of one corpus disagree and this comment is where that is recorded:

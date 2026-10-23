@@ -1146,10 +1146,15 @@ fn compile_dag_candidate_resolved_call_edges_uncached(
         crate::cli_run::ResolvedCallEdgeCensus,
     > {
         match resolved {
-            Ok((graph, _)) => {
-                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                    graph.diagnostics.clone(),
-                );
+            // THE INDEX WAS ALREADY HERE and thrown away with `_`. The refusal lines this census
+            // carries to the terminal are reader-facing, so they go through the located renderer
+            // rather than the 1-arg name that formats `{file}:{start}-{end}`.
+            Ok((graph, source_indices)) => {
+                let blocking =
+                    crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                        graph.diagnostics.clone(),
+                        source_indices,
+                    );
                 if !blocking.is_empty() {
                     let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
                     return Err(ResolvedCallEdgeCensus::Refused {
@@ -1487,9 +1492,13 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
     v1_rt::trace_mark("primitive-call-edges.walk.begin".to_string());
     let Some(graph) = resolved.graph.clone() else {
-        let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-            resolved.diagnostics.clone(),
-        );
+        // `resolved` CARRIES THE INDEX (`ResolvedPipelineResult::source_indices`); the 1-arg call
+        // below just never passed it, so this refusal arrived as `{file}:{start}-{end}`.
+        let blocking =
+            crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                resolved.diagnostics.clone(),
+                resolved.source_indices.clone(),
+            );
         return PrimitiveCallEdgeCensus::Refused {
             cause: format!(
                 "primitive call edges: the corpus did not resolve to a graph: {}",
@@ -1501,9 +1510,11 @@ fn compile_dag_primitive_call_edges_on_this_thread(
     let mut blocked_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for d in resolved.diagnostics.iter() {
         if crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-            let message = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-                Rc::new(vec![d.clone()].into()),
-            )
+            let message =
+                crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages_with_source_indices(
+                    Rc::new(vec![d.clone()].into()),
+                    resolved.source_indices.clone(),
+                )
             .iter()
             .next()
             .cloned()

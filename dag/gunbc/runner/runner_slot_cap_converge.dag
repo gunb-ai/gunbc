@@ -324,6 +324,21 @@ fn slot_cap_outcome_wire(o: SlotCapOutcome) -> String {
   }
 }
 
+// THE OBSERVED STANDING'S WIRE. Observe mode reports what a read FOUND, never what a mode decided:
+// this renders the live standing of one unit (AtDesired / the owed detail / the readings disagree /
+// unread with its cause / stopped) directly from SlotCapStanding, so an unread cap never renders as a
+// settled no. It exists because the apply outcomes above answer "what did the phase DO"; observe does
+// nothing, and its answer is the standing itself.
+fn slot_cap_standing_wire(unit: NonEmptyStr, s: SlotCapStanding) -> String {
+  match s {
+    SlotCapsAtDesired => join(["caps ", unit as String, " observed-at-desired"], "")
+    SlotCapsNeedRestart { detail: d } => join(["caps ", unit as String, " OBSERVED-OWED ", d], "")
+    SlotCapsReadingsDisagree { detail: d } => join(["caps ", unit as String, " OBSERVED-DISAGREE ", d], "")
+    SlotCapsUnread { cause: c } => join(["caps ", unit as String, " OBSERVED-UNREAD ", c], "")
+    SlotCapsStopped => join(["caps ", unit as String, " observed-stopped-no-control-group"], "")
+  }
+}
+
 // ── The live reading ────────────────────────────────────────────────────────────────────────────
 
 data slot_cap_show_properties: List<SystemdUnitProperty> = [MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup]
@@ -391,55 +406,101 @@ type SlotCapRead
   = SlotCapReadOk { live: SlotCapLive }
   | SlotCapReadRefused { reason: String }
 
-// THE PROCESS OUTCOME IS KEPT: a refused exec or a nonzero exit is a failed read, decided before any
-// stdout is looked at, so a grep that printed rows and then failed can never read as a standing.
-type SlotCapCgroupRead
-  = SlotCapCgroupReadStdout { stdout: String }
-  | SlotCapCgroupReadFailed { reason: String }
+// THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's RemoteAnswer shape):
+// what the exec EFFECT answers -- refused (never attempted), or a result. Splitting exec from judgement
+// is what makes the REAL route controllable: read_slot_cap_live_over and the scripted controls both
+// pass their exec answers through slot_cap_read_of_answers -- ONE decision core -- so a scripted
+// control and the live route cannot drift apart (§6b: script the world the route reads, never the
+// judgement it makes).
+type SlotCapExecAnswer
+  = SlotCapExecRefused { reason: String }
+  | SlotCapExecRan { success: Bool, exit_code: Int, stdout: String, stderr: String }
 
-fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotCapRead
-{
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties)) {
-    TypedArgvExecRefused { reason: why } => SlotCapReadRefused { reason: why }
-    TypedArgvExecConverged { result: shown } =>
-      if !shown.success {
-        SlotCapReadRefused { reason: join(["systemctl show exit=", to_string(shown.exit_code), " ", trim(s: shown.stderr)], "") }
+fn slot_cap_exec_answer_of(outcome: TypedArgvExecOutcome) -> SlotCapExecAnswer {
+  match outcome {
+    TypedArgvExecRefused { reason: r } => SlotCapExecRefused { reason: r }
+    TypedArgvExecConverged { result: r } => SlotCapExecRan { success: r.success, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  }
+}
+
+// THE DECISION CORE both routes run: it resolves every refusal with a NAMED cause BEFORE stdout is
+// looked at (a leg that printed and then failed can never read as a standing), honours the "no
+// ControlGroup means no cgroup directory was read" rule, and hands the bytes to slot_cap_live_of_show.
+// `cgroup` is Absent exactly when the unit has no ControlGroup and the leg was (correctly) not fired; a
+// non-empty ControlGroup whose leg is Absent is a typed refusal, never a silent gap.
+fn slot_cap_read_of_answers(show: SlotCapExecAnswer, cgroup: SlotCapExecAnswer?) -> SlotCapRead {
+  match show {
+    SlotCapExecRefused { reason: why } => SlotCapReadRefused { reason: why }
+    SlotCapExecRan { success: ok, exit_code: ec, stdout: sout, stderr: serr } =>
+      if !ok {
+        SlotCapReadRefused { reason: join(["systemctl show exit=", to_string(ec), " ", trim(s: serr)], "") }
       } else {
-        let cg = match slot_cap_show_value(lines: map(split(s: shown.stdout, delimiter: "\n"), l => trim(s: l)), property: ControlGroup) {
+        let cg = match slot_cap_show_value(lines: map(split(s: sout, delimiter: "\n"), l => trim(s: l)), property: ControlGroup) {
           Absent => ""
           Present { value: v } => v
         }
-        // An inactive unit has an empty ControlGroup and no cgroup directory: nothing to read, and its
-        // cgroup readings stay absent, which is NeedsRestart rather than a fabricated value.
-        let cgroup_stdout = if trim(s: cg) == "" { SlotCapCgroupReadStdout { stdout: "" } } else {
-          match typed_argv_exec_over_fleet_ssh(
-            target: target,
-            context: context,
-            argv: grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: cg) as NonEmptyStr),
-          ) {
-            TypedArgvExecRefused { reason: why } => SlotCapCgroupReadFailed { reason: why }
-            TypedArgvExecConverged { result: g } =>
-              if g.success { SlotCapCgroupReadStdout { stdout: g.stdout } } else { SlotCapCgroupReadFailed { reason: join(["cgroup grep exit=", to_string(g.exit_code), " ", trim(s: g.stderr)], "") } }
+        if trim(s: cg) == "" {
+          match slot_cap_live_of_show(show_stdout: sout, cgroup_stdout: "") {
+            Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
+            Present { value: live } => SlotCapReadOk { live: live }
           }
-        }
-        match cgroup_stdout {
-          SlotCapCgroupReadFailed { reason: why } => SlotCapReadRefused { reason: why }
-          SlotCapCgroupReadStdout { stdout: out } =>
-            match slot_cap_live_of_show(show_stdout: shown.stdout, cgroup_stdout: out) {
-              Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
-              Present { value: live } => SlotCapReadOk { live: live }
-            }
+        } else {
+          match cgroup {
+            Absent => SlotCapReadRefused { reason: join(["the unit has cgroup ", cg, " but no cgroup leg was attempted"], "") }
+            Present { value: SlotCapExecRefused { reason: why } } => SlotCapReadRefused { reason: why }
+            Present { value: SlotCapExecRan { success: gok, exit_code: gec, stdout: gout, stderr: gerr } } =>
+              if !gok {
+                SlotCapReadRefused { reason: join(["cgroup grep exit=", to_string(gec), " ", trim(s: gerr)], "") }
+              } else {
+                match slot_cap_live_of_show(show_stdout: sout, cgroup_stdout: gout) {
+                  Absent => SlotCapReadRefused { reason: "systemctl show returned no complete cap block for the unit" }
+                  Present { value: live } => SlotCapReadOk { live: live }
+                }
+              }
+          }
         }
       }
   }
 }
 
-fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapStanding
+// THE LIVE READ: both exec legs fire through typed_argv_exec_over_fleet_ssh (admission at the exec
+// boundary, §4b); the cgroup leg fires only when the show leg reached a non-empty ControlGroup, exactly
+// as before. The judgement is the shared core below.
+fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotCapRead
 {
-  match read_slot_cap_live_over(target: target, context: context, unit: unit) {
+  let show = slot_cap_exec_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties)))
+  // An inactive unit has an empty ControlGroup and no cgroup directory: nothing to read, and its
+  // cgroup readings stay absent, which is NeedsRestart rather than a fabricated value.
+  let cgroup = match show {
+    SlotCapExecRan { success: true, exit_code: _, stdout: sout, stderr: _ } =>
+      match slot_cap_show_value(lines: map(split(s: sout, delimiter: "\n"), l => trim(s: l)), property: ControlGroup) {
+        Absent => none
+        Present { value: cg } =>
+          if trim(s: cg) == "" {
+            none
+          } else {
+            Present { value: slot_cap_exec_answer_of(outcome: typed_argv_exec_over_fleet_ssh(
+              target: target,
+              context: context,
+              argv: grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: cg) as NonEmptyStr),
+            )) }
+          }
+      }
+    _ => none
+  }
+  slot_cap_read_of_answers(show: show, cgroup: cgroup)
+}
+
+fn slot_cap_standing_over_from_read(read: SlotCapRead, desired: RunnerSlotDesired) -> SlotCapStanding {
+  match read {
     SlotCapReadRefused { reason: why } => SlotCapsUnread { cause: why }
     SlotCapReadOk { live: live } => slot_cap_standing(live: live, desired: desired)
   }
+}
+
+fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapStanding
+{
+  slot_cap_standing_over_from_read(read: read_slot_cap_live_over(target: target, context: context, unit: unit), desired: desired)
 }
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────

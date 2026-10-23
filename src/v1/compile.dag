@@ -7,6 +7,7 @@ import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
+  render_span_location,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
   diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
   NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
@@ -1567,7 +1568,18 @@ fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget,
   )
 }
 
-fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
+// THE COMPILE LANE'S REFUSAL LINE. The location inside the parentheses is rendered by the ONE
+// AUTHORITY in 00_core.dag, in the units the author reads -- not by this site. This line and the
+// emitted CLI's `error[file:line:col]:` block describe the SAME diagnostic, and they used to
+// disagree: measured at the head, this printed `(m.dag:133-134)` while the CLI printed
+// `error[m.dag:9:5]` for one call-shape refusal. Same place, two units, and the author reading the
+// lane line (the CLI block is the part that gets truncated) cannot open the file where the refusal
+// says to. `source_indices` is threaded from the caller, which already holds it on the
+// PipelineResult; it is not rebuilt here, so there is one index and one renderer.
+fn interpreter_blocking_diagnostic_messages_with_source_indices(
+  diagnostics: List<ErrorNode>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
   diagnostics
     |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
     |> map(d => {
@@ -1575,22 +1587,31 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> Lis
       concat(
         diagnostic_to_message(d: d.diagnostic),
         " (",
-        span.file,
-        ":",
-        to_string(value: span.start),
-        "-",
-        to_string(value: span.end),
+        render_span_location(span: span, source_indices: source_indices),
         ")"
       )
     })
 }
 
+// THE PRE-EXISTING EXPORTED NAME, BODY UNCHANGED FROM origin/main -- byte-for-byte, so this commit
+// degrades NOTHING for its current callers. It is the offset-formatting renderer the five PRINTING
+// host sites still call today (cli_run/emit_host.rs three sites, target_invocation_host.rs two
+// sites): their lines look exactly as they did before this PR. THE TRUTH OF THAT CLAIM IS THIS
+// PARAGRAPH, not a promise: the located name below has no host caller at this commit.
+//
+// NO RUNG-DROP ROW IS CITED HERE, BECAUSE NO SUCH ROW EXISTS, and inventing one would be the worst
+// kind of citation: the fleet counts what is declared, and a cite to a row nobody declared counts
+// nothing. The debt is the ordinary kind a two-step landing leaves behind -- one exported name with
+// no host caller yet -- and its witness is this branch's own claim rows, which go green only when
 // The SUBJECT is the caller's fact, never this function's. Both arms once hardcoded
 // "v2 self-compile" while the generic compile path reached them, so a user compiling
 // their own fixture was told a compile they never ran had failed -- a false subject
 // costs the next reader's search, the stale-citation harm class.
 fn stage0_self_compile_refusal_message(subject: String, result: PipelineResult) -> String? {
-  let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
+  let hard_messages = interpreter_blocking_diagnostic_messages_with_source_indices(
+    diagnostics: result.diagnostics,
+    source_indices: fold(result.newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+  )
   if hard_messages |> count > 0 {
     Present {
       value: concat(
