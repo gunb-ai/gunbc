@@ -1,10 +1,22 @@
 module gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data declaration_reference_cites_a_declaration_nothing_resolved: RecurringFailureMode = RecurringFailureMode {
   identity: "declaration_reference_cites_a_declaration_nothing_resolved" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      trigger_capability: "a fixture-root parameter on the decl-ref-census label that adds a fixtures directory to the census roots, after which the four dispatch-only fixtures (invented reference, bare head, alias of the reference type, invented prose span) are enrolled with a positive control; the further ceiling step needs substrate construction that refuses an unresolvable DeclarationRef literal",
+    },
+  },
 
   receipts: [
     "**a DeclarationRef literal, or a backtick symbol in ledger prose, names a module or declaration that does not exist, and nothing refuses it** (module_path, decl_name and field are three unchecked strings at construction, so an invented or stale citation is as writable as a real one).",

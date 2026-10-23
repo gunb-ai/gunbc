@@ -25,12 +25,11 @@ data v1_integration_tests_deleted_from_the_unit_lane: RungDrop = RungDrop {
   identity: "v1_integration_tests_deleted_from_the_unit_lane" as NonEmptyStr,
   subject: "the behaviours the deleted v1 integration tests exercised (required-floor runner, reach-base standings, regen and emit hosts, compile-clean, entry-resolve censuses, interpreter depth walkers) are exposed by an enrolled test on a required lane",
   declared: "2026-10-06",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: v1_integration_tests_deleted_from_the_unit_lane_population },
     restoration_trigger: "THE CAPABILITY: each behaviour a deleted test exercised is exposed again by an enrolled claim on a required lane, with a discriminating red -- by a v2 witness or floor claim over the same subject, or because the v1 host code it tested has itself been deleted (a behaviour with no remaining realization needs no test). WHAT THAT MUST BE SUFFICIENT FOR: no behaviour this population covered can regress with every required lane green. Restoring the tests to the v1 unit lane is not the route the owner ruling admits; re-adding any one test, or covering the subject areas in aggregate rather than per behaviour, does not retire this row."
-  }
+  } }
 }

@@ -9,7 +9,7 @@ import std.algebra { list_append, length, empty_map, map_insert }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
+import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom, NotADeclaration }
 
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.witness { Holds, Violates }
@@ -397,7 +397,7 @@ fn swift_row_rules(row: Node) -> Node {
 }
 
 fn swl_named_conj(name: Symbol, target: Node) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: name }, target: target }], occurrence_id: OccurrenceSynthetic }
+  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }], occurrence_id: OccurrenceSynthetic }
 }
 
 // ── Emission ──────────────────────────────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ fn swl_atom(s: Symbol) -> Node {
 fn swl_node(tag: Symbol, slots: List<Node>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: map(list_append(left: [swl_atom(s: tag)], right: slots), n => Edge { label: Positional, target: n }),
+    children: map(list_append(left: [swl_atom(s: tag)], right: slots), n => Edge { label: Positional, target: n, declaration: NotADeclaration }),
     occurrence_id: OccurrenceSynthetic
   }
 }

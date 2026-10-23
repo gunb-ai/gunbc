@@ -420,10 +420,9 @@ test fn the_declared_stall_agrees_with_the_executed_refusal() -> Bool {
       },
   )
   match runner_activation_reachability_stall.blocker {
-    AwaitsOneGrounding { grounding: g } =>
-      string_contains(s: g, pattern: "no host observation transaction exists")
+    AwaitsOneGrounding { grounding: _ } =>
+      string_contains(s: runner_activation_reachability_stall.next_rung_trigger.capability, pattern: "host observation transaction")
         && string_contains(s: cause, pattern: "no host observation transaction exists")
-        && string_contains(s: g, pattern: "CompilePoolInRunnerSlots")
         && !string_contains(s: cause, pattern: "CompilePoolInRunnerSlots")
     ClimbableButUnbuilt => false
   }
