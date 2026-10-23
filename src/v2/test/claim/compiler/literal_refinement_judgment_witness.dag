@@ -12,7 +12,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Empty, length }
 import std.types { Int }
@@ -100,13 +100,9 @@ fn lrj_end_to_end_reason_is(subject: String, reason: Symbol) -> Bool {
   match lrj_resolve(subject: subject) {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      match infer(tree: r) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: t, diagnostics: _ } =>
-          match discharge_refinement_obligations(t: t) {
-            Accepted { value: _, diagnostics: _ } => false
-            Rejected { diagnostics: d } => d.head.reason == reason
-          }
+      match infer_and_discharge(tree: r) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
       }
   }
 }
