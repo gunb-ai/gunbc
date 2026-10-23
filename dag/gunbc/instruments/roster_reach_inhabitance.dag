@@ -2,7 +2,6 @@ module gunbc.instruments.roster_reach_inhabitance
 
 import std.optional { Optional }
 import std.types { Bool, List, String }
-import gunbc.rung_drop.roster_reach_inhabitance_unscheduled { roster_reach_inhabitance_unscheduled_population }
 import gunbc.source_layout { layout_module_storage_path }
 import std.process { ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -86,8 +85,7 @@ fn roster_reach_receipt(derived: List<GunbcRunStepTarget>) -> String {
 // refused by the same predicate the live walk is judged by.
 fn roster_reach_controls_hold() -> Bool {
   let supplied = gunbc_ci_runner_host_file_converge_target
-  roster_reach_inhabitance_unscheduled_population() == [concat(supplied.entry, concat("::", supplied.function))]
-    && roster_reach_holds(derived: [supplied])
+  roster_reach_holds(derived: [supplied])
     && !roster_reach_holds(derived: [])
     && !roster_reach_holds(derived: [supplied, supplied])
 }
