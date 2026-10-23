@@ -1,0 +1,28 @@
+module fixture.sub.we
+
+import std.types { List, brand, Map }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.text { String, Char }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome, outcome_accepted, outcome_rejected, None }
+import v2.std.node { Node, Symbol }
+import v2.std.compilers.target_model { TargetPrimitiveArgumentFold, TargetPrimitiveRealization, TargetValueExpressionProjection, TargetRealizationCatalog, TargetValueExpression, TargetPrimitiveArgument, ConcreteSyntaxToken, FixedToken, target_primitive_argument_prefix_tokens, target_value_expression_to_concrete_tokens, target_primitive_realization_arity_diagnostic }
+
+type IntFold {
+  tokens: List<Int>,
+  pending: List<Int>,
+  count: Int
+}
+
+fn sub_probe(args: List<Int>, row: List<Int>) -> Outcome<List<Int>> {
+  bind_outcome(
+    o: fold(args, init: Accepted { value: IntFold { tokens: Empty, pending: row, count: 0 }, diagnostics: None }, f: fn(acc, e) {
+      bind_outcome(o: acc, f: fn(state) {
+        match state.pending {
+          Empty => outcome_accepted(state)
+          Cons { head: _, tail: rest } => outcome_accepted(IntFold { tokens: state.tokens, pending: rest, count: state.count + 1 })
+        }
+      })
+    }),
+    f: fn(state) { outcome_accepted(state.tokens) }
+  )
+}

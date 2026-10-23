@@ -15222,7 +15222,7 @@ fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<Str
     // arguments, exactly as record_lit_instantiated_fields does for an expected type.
     let variant_fields = match record_lit_expr_optional(expr: record) {
       Present { value: record_lit } =>
-        let record_name = record_lit.name
+        let record_name = type_node_label(n: record_lit, source_indices: scope.type_env.source_indices)
         if record_name != "" && record_name != type_name {
           record_lit_instantiated_fields(type_name: Present { value: record_name }, expected: Present { value: formal }, scope: scope)
         } else { none }
