@@ -6,7 +6,8 @@ import extdeps.http.server {
   ServedRouteTable,
   ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route,
+  serve_select_route, serve_response_header_field, serve_response_header_wire,
+  ServeResponseHeaderFieldAdmitted, ServeResponseHeaderFieldRefused,
 }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
@@ -512,4 +513,36 @@ test fn a_json_body_is_served_untouched_with_exactly_one_marker_header() -> Bool
     BrokerBodyMarked { body: b, headers: hs } => b == "{}" && hs.length() == 1
     BrokerMarkerRefused { reason: _ } => false
   }
+}
+
+// The extension arm's construction route: a token name is admitted and rides the wire as that name.
+test fn the_field_arm_admits_a_token_name_and_the_wire_carries_it_verbatim() -> Bool {
+  match serve_response_header_field(name: "X-Served-By", value: "t") {
+    ServeResponseHeaderFieldAdmitted { header: h } => {
+      let w = serve_response_header_wire(header: h)
+      w.name == "X-Served-By" && w.value == "t"
+    }
+    ServeResponseHeaderFieldRefused { reason: _ } => false
+  }
+}
+
+// RED controls: a framing header (any case) and a non-token name are refused.
+test fn the_field_arm_refuses_a_framing_header_and_a_non_token_name() -> Bool {
+  let framing = match serve_response_header_field(name: "Content-Length", value: "1") {
+    ServeResponseHeaderFieldAdmitted { header: _ } => false
+    ServeResponseHeaderFieldRefused { reason: _ } => true
+  }
+  let folded = match serve_response_header_field(name: "tRaNsFeR-eNcOdInG", value: "x") {
+    ServeResponseHeaderFieldAdmitted { header: _ } => false
+    ServeResponseHeaderFieldRefused { reason: _ } => true
+  }
+  let spaced = match serve_response_header_field(name: "X Bad: y", value: "x") {
+    ServeResponseHeaderFieldAdmitted { header: _ } => false
+    ServeResponseHeaderFieldRefused { reason: _ } => true
+  }
+  let empty = match serve_response_header_field(name: "", value: "x") {
+    ServeResponseHeaderFieldAdmitted { header: _ } => false
+    ServeResponseHeaderFieldRefused { reason: _ } => true
+  }
+  framing && folded && spaced && empty
 }
