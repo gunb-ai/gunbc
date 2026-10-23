@@ -3,7 +3,7 @@ module extdeps.gpu.types
 import std.types { Int, NonEmptyStr, String, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.measure { Frequency, Giga, measure_count, ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count, Micrometer }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count, Micrometer, GigaTensorOperationsPerSecond }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -109,24 +109,16 @@ type GpuPackageForm
 // read no throughput, never a fabricated zero (execution_lane_count's rule). Each entry carries its own
 // CitedFigureStanding because one datasheet routinely states some datatypes and not others.
 //
-// The unit is giga-operations per second on the Frequency axis at Giga scale (Tera would floor 835.5 TFLOPS), exactly as TokensPerSecond
-// and PacketRate sit on it: an operation is one multiply or one add, so a fused multiply-add counts as
-// two, which is how NVIDIA's "FLOPS" headlines count. 1.75 petaFLOPS is 1,750,000.
+// The unit is giga-operations per second, carried as std.measure's GigaTensorOperationsPerSecond --
+// the Frequency-axis sibling of TokensPerSecond, minted where every other unit is minted (DESIGN s3:
+// an extdeps module holds upstream facts, not units; review 84774 caught this alias minted here).
+// Giga scale rather than Tera because Tera would floor a published 835.5 TFLOPS to 835 and lose the
+// figure. 1.75 petaFLOPS is 1,750,000.
 type TensorDatatype = TensorFp4 | TensorFp8 | TensorInt8 | TensorBf16
-
-type TensorOpsPerSecond = Measure<Frequency, Giga, Nat>
-
-fn tensor_ops_per_second(giga: Nat) -> TensorOpsPerSecond {
-  Measure { count: giga }
-}
-
-fn tensor_ops_per_second_giga(r: TensorOpsPerSecond) -> Nat {
-  measure_count(r)
-}
 
 type DenseTensorThroughput {
   datatype: TensorDatatype
-  rate: TensorOpsPerSecond
+  rate: GigaTensorOperationsPerSecond
   standing: CitedFigureStanding
 }
 

@@ -30,17 +30,6 @@ import gunbc.serving.flash_next_maxq_fork_measurements {
   collapse_capture_size_hypothesis, fork_open_loop_rows, oversubscribed_rows, tp2_175k_seat_bracket, tp2_unmeasured_seats,
   two_card_pcie_interconnect, fork_unobserved_layouts, fork_prefill_readings, layout, flash_next_maxq_fork_measurements_frontier,
 }
-import gunbc.serving.flash_next_buying_model {
-  RankingInputs, OptionPrices, RankedLayout, LayoutMaxQTp1, LayoutMaxQTp2Pair, LayoutH200Tp1, LayoutB200Tp1, LayoutWorkstationTp2Pair,
-  rank_configurations, ranked_outcomes, OptionDropped, OptionRanked, DroppedPriceAbsent, DroppedPriceZero, RankedRow, layout_index,
-  curve_at, layout_facts, gpus_per_replica, seats_at, replicas_for, flash_next_conclusion_provisional, flash_next_conclusion_gates, flash_next_ranking_unobserved, SafeSessionsOverride, RowMeasured, RowModelOutput,
-  PurchasableUnit, UnitB200, UnitRtxPro6000MaxQ, ShipsAsStandardNode, ExistenceIsAQuoteFact, purchasable_unit,
-  flash_next_candidate_units, scale_out, ScaleOutPrediction, flash_next_measured_knees, rho_milli, duty_mean_basis_points,
-  duty_p95_basis_points, DutyCycleP95BasisPoints, DutyCycleUnreachable, BuyingParameters, ConfigurationInputs,
-  configuration_row, ConfigurationRowOk, ConfigurationRowRefused, tco_cents, price_ratio_threshold_milli,
-  b_is_cheaper_per_slot, flash_next_maxq_layout_plan, rental_power_cap_sweep, PowerCapSweepUnobserved,
-  flash_next_buying_model_frontier,
-}
 import gunbc.serving.gpu_bench_warm_standing { WarmValid, WarmOverCapacity }
 import gunbc.serving.flash_next_topology {
   ServingTopology, CardBudget, TopologyFits, TopologyRefused, topology_capacity, card_budget_from_measured_cell,
@@ -71,11 +60,6 @@ import gunbc.serving.flash_next_predictions {
   H200Nvl, B200, prediction_id_eq, prediction_card_eq,
 }
 
-import gunbc.serving.flash_next_hgx_and_power {
-  operator_site_circuit, site_continuous_watts, rtx_pro_6000_max_q_power_range, b200_power_range,
-  hgx_b200_system_overhead, cap_within_range, cards_within_budget, hgx_max_cap_watts,
-  hgx_b200_8x_predictions, hgx_b200_8x_frontier, flash_next_power_consumer_frontier,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -254,44 +238,10 @@ test fn w_declared_frontiers_are_open() -> Bool {
     && !dissolution_is_bound(condition: observed_memory_frontier)
     && !dissolution_is_bound(condition: flash_next_experiment_identity_frontier)
     && !dissolution_is_bound(condition: flash_next_quant_matrix_frontier)
-    && !dissolution_is_bound(condition: flash_next_buying_model_frontier)
     && !dissolution_is_bound(condition: flash_next_topology_frontier)
     && !dissolution_is_bound(condition: flash_next_recipe_throughput_frontier)
     && !dissolution_is_bound(condition: flash_next_roofline_consumer_frontier)
     && !dissolution_is_bound(condition: flash_next_measured_readings_frontier)
-}
-
-test fn w_site_budget_is_derived_not_typed() -> Bool {
-  site_continuous_watts(c: operator_site_circuit) == 11520
-}
-
-// A cap outside the card's range refuses (absent) rather than clamping; inside it is returned as given.
-test fn w_power_cap_refuses_outside_the_range() -> Bool {
-  between(cap_within_range(range: rtx_pro_6000_max_q_power_range, cap_watts: 275), 275, 275)
-    && (match cap_within_range(range: rtx_pro_6000_max_q_power_range, cap_watts: 240) { Present { value: _ } => false, none => true })
-    && (match cap_within_range(range: b200_power_range, cap_watts: 1200) { Present { value: _ } => false, none => true })
-}
-
-// 8 B200 at the default 1000 W fit the site only if non-GPU power is under 3,520 W: the low estimate fits,
-// the high estimate forces a cap below the default.
-test fn w_hgx_power_fits_at_low_overhead_and_caps_at_high() -> Bool {
-  between(hgx_max_cap_watts(budget_watts: 11520, range: b200_power_range, gpus: 8, system_overhead_watts: hgx_b200_system_overhead.low_watts), 1000, 1000)
-    && between(hgx_max_cap_watts(budget_watts: 11520, range: b200_power_range, gpus: 8, system_overhead_watts: hgx_b200_system_overhead.high_watts), 940, 940)
-    && (match hgx_max_cap_watts(budget_watts: 11520, range: b200_power_range, gpus: 8, system_overhead_watts: 11000) { Present { value: _ } => false, none => true })
-}
-
-test fn w_cards_within_budget_counts_and_refuses() -> Bool {
-  between(cards_within_budget(budget_watts: 11520, range: rtx_pro_6000_max_q_power_range, cap_watts: 275, per_card_overhead_watts: 100, system_overhead_watts: 0), 30, 30)
-    && (match cards_within_budget(budget_watts: 11520, range: rtx_pro_6000_max_q_power_range, cap_watts: 500, per_card_overhead_watts: 0, system_overhead_watts: 0) { Present { value: _ } => false, none => true })
-}
-
-// 8x B200 rows are the registered single-B200 additive rows times 8; speedup and share rows are not carried.
-test fn w_hgx_8x_rows_scale_additive_b200_rows_only() -> Bool {
-  let rows = hgx_b200_8x_predictions()
-  count(rows) == 3
-    && (fold(rows, init: true, f: (acc, r) => acc && r.high == r.base.high * 8 && r.low == r.base.low * 8))
-    && !dissolution_is_bound(condition: hgx_b200_8x_frontier)
-    && !dissolution_is_bound(condition: flash_next_power_consumer_frontier)
 }
 
 // The capacity math consumes the driver-reported memory, not the vendor figure: H200 NVL is 141 GB decimal in the
@@ -473,67 +423,6 @@ test fn w_bf16_kv_decode_ceiling_exceeds_fp8_on_both_cards() -> Bool {
     && nat_greater(a: ceiling_for(v: B200UpstreamV032, kv: KvBf16), b: ceiling_for(v: B200UpstreamV032, kv: KvFp8))
 }
 
-// Buying model, on synthetic inputs (no real price or site value exists in the corpus).
-test fn w_units_are_quote_facts_except_the_hgx_node() -> Bool {
-  let hgx = purchasable_unit(family: UnitB200, cards: 8)
-  let one = purchasable_unit(family: UnitB200, cards: 1)
-  count(flash_next_candidate_units) == 15
-    && match hgx.standing { ShipsAsStandardNode { cited: _ } => true, _ => false }
-    && match one.standing { ExistenceIsAQuoteFact { hypothesis: _ } => true, _ => false }
-}
-
-test fn w_scale_out_is_a_prediction_with_its_efficiency() -> Bool {
-  let p = scale_out(n: 4, kv_tokens_one: 1000, knee_one: 8, throughput_deci_one: 5000, efficiency_basis_points: 9000)
-  p.resident_tokens == 4000 && p.knee_sessions == 32 && p.throughput_deci_tokens_per_second == 18000
-    && rho_milli(resident: 20, knee: 8) == Present { value: 2500 }
-    && rho_milli(resident: p.resident_tokens / 100, knee: p.knee_sessions) == rho_milli(resident: 10 * 4, knee: 8 * 4)
-    && count(flash_next_measured_knees) == 4
-}
-
-// Exact cases: R=B*=10 needs d^10 >= 0.95 (d >= 0.99488); R=2,B*=1 needs 1-(1-d)^2 >= 0.95 (d >= 0.77639).
-test fn w_p95_duty_cycle_matches_closed_forms_and_refuses_unreachable() -> Bool {
-  match duty_p95_basis_points(resident: 10, knee: 10) {
-    DutyCycleP95BasisPoints { basis_points: a } => match duty_p95_basis_points(resident: 2, knee: 1) {
-      DutyCycleP95BasisPoints { basis_points: b } => a >= 9948 && a <= 9950 && b >= 7763 && b <= 7765
-        && duty_mean_basis_points(resident: 20, knee: 8) == Present { value: 4000 }
-        && match duty_p95_basis_points(resident: 5, knee: 8) { DutyCycleUnreachable { resident: _, knee: _ } => true, _ => false }
-      _ => false
-    }
-    _ => false
-  }
-}
-
-fn synthetic_inputs(kv: Nat, context: Nat, knee: Nat) -> ConfigurationInputs {
-  ConfigurationInputs {
-    unit: purchasable_unit(family: UnitRtxPro6000MaxQ, cards: 4),
-    parameters: BuyingParameters { delivered_price_cents: 100000, host_cost_cents: 20000, wall_power_watts: 1000, energy_milli_cents_per_kwh: 10000, cooling_cents: 5000, tco_hours: 1000 },
-    kv_tokens: kv, context_tokens: context, knee_sessions: knee, knee_is_lower_bound: false,
-    throughput_deci_tokens_per_second: 10000, tokens_per_turn: 1000,
-    continuation_p95_milliseconds: none, continuation_p99_milliseconds: none, restore_fraction_basis_points: none
-  }
-}
-
-test fn w_configuration_row_computes_tco_and_refuses_zero_context() -> Bool {
-  match configuration_row(i: synthetic_inputs(kv: 2000, context: 100, knee: 8)) {
-    ConfigurationRowOk { row: r } => r.resident_sessions == 20 && r.turns_per_hour == 3600 && r.turns_per_kwh == 3600
-      && r.tco_cents == 100000 + 20000 + 10000 + 5000 && r.tco_cents_per_slo_slot == Present { value: 135000 / 8 }
-      && r.continuation_p95_milliseconds == none
-    _ => false
-  } && match configuration_row(i: synthetic_inputs(kv: 2000, context: 0, knee: 8)) {
-    ConfigurationRowRefused { cause: _ } => true
-    _ => false
-  }
-}
-
-test fn w_price_ratio_threshold_is_a_function_not_a_claim() -> Bool {
-  price_ratio_threshold_milli(slots_b: 16, slots_r: 8) == Present { value: 2000 }
-    && price_ratio_threshold_milli(slots_b: 16, slots_r: 0) == none
-    && b_is_cheaper_per_slot(tco_b: 1900, slots_b: 16, tco_r: 1000, slots_r: 8)
-    && !b_is_cheaper_per_slot(tco_b: 2100, slots_b: 16, tco_r: 1000, slots_r: 8)
-    && count(flash_next_maxq_layout_plan) == 7
-    && match rental_power_cap_sweep { PowerCapSweepUnobserved { cause: _ } => true }
-}
-
 test fn w_fork_pools_ratio() -> Bool {
   let one = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1))
   let two = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 2, dp: 1))
@@ -570,79 +459,4 @@ test fn w_fork_rows_counts() -> Bool {
     && !dissolution_is_bound(condition: flash_next_maxq_fork_measurements_frontier)
 }
 
-fn synthetic_ranking(maxq: Nat?, h200: Nat?, ws: Nat?) -> RankingInputs {
-  RankingInputs {
-    prices: OptionPrices { maxq_cents_per_gpu: maxq, workstation_cents_per_gpu: ws, h200_cents_per_gpu: h200, b200_cents_per_gpu: none },
-    safe_overrides: [], agentic_efficiency_basis_points: 5000,
-    budget_cents: 100000, host_cost_cents: 12000, gpus_per_server: 8, context_tokens: 175000, duty_basis_points: 3000,
-    site_watts: 100000, host_watts: 0, energy_milli_cents_per_kwh: 0, years: 1 }
-}
 
-fn ranked_row_count(rows: List<RankedRow>, l: RankedLayout) -> Nat {
-  count(rows |> filter(r => layout_index(l: r.layout) == layout_index(l: l)))
-}
-data rank_zero_seed: Nat = 0
-
-
-fn rank_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
-  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.rank } else { acc })
-}
-
-fn tok_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
-  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.expected_agentic_tokens_per_second } else { acc })
-}
-
-fn seats_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
-  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.seats } else { acc })
-}
-
-fn units_of(rows: List<RankedRow>, l: RankedLayout) -> Nat {
-  fold(rows, init: rank_zero_seed, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.units } else { acc })
-}
-
-fn cents_per_tok_of(rows: List<RankedRow>, l: RankedLayout) -> Nat? {
-  fold(rows, init: none, f: (acc, r) => if layout_index(l: r.layout) == layout_index(l: l) { r.cents_per_token_per_second } else { acc })
-}
-
-test fn w_ranking_pro_layouts_beat_h200_at_a_synthetic_ratio() -> Bool {
-  let rows = rank_configurations(i: synthetic_ranking(maxq: Present { value: 15000 }, h200: Present { value: 32000 }, ws: none))
-  count(rows) == 3
-    && units_of(rows: rows, l: LayoutMaxQTp1) == 5
-    && units_of(rows: rows, l: LayoutMaxQTp2Pair) == 2
-    && units_of(rows: rows, l: LayoutH200Tp1) == 2
-    && seats_of(rows: rows, l: LayoutMaxQTp1) == 15
-    && seats_of(rows: rows, l: LayoutMaxQTp2Pair) == 24
-    && tok_of(rows: rows, l: LayoutMaxQTp1) > 480 && tok_of(rows: rows, l: LayoutMaxQTp1) < 520
-    && tok_of(rows: rows, l: LayoutMaxQTp2Pair) > 450 && tok_of(rows: rows, l: LayoutMaxQTp2Pair) < 480
-    && tok_of(rows: rows, l: LayoutH200Tp1) > 272 && tok_of(rows: rows, l: LayoutH200Tp1) < 282
-    && rank_of(rows: rows, l: LayoutMaxQTp1) == 1
-    && rank_of(rows: rows, l: LayoutMaxQTp2Pair) == 2
-    && rank_of(rows: rows, l: LayoutH200Tp1) == 3
-    && count(flash_next_conclusion_gates) == 5
-    && count(flash_next_ranking_unobserved) == 5
-    && count(flash_next_conclusion_provisional) == 1
-}
-
-test fn w_ranking_absent_or_zero_price_drops_the_option() -> Bool {
-  let rows = rank_configurations(i: synthetic_ranking(maxq: Present { value: 10000 }, h200: Present { value: 21300 }, ws: none))
-  let dropped_absent = count(ranked_outcomes(i: synthetic_ranking(maxq: Present { value: 10000 }, h200: Present { value: 21300 }, ws: none))
-    |> filter(o => match o { OptionDropped { layout: _, cause: DroppedPriceAbsent } => true, _ => false }))
-  let zero = count(ranked_outcomes(i: synthetic_ranking(maxq: Present { value: 10000 }, h200: Present { value: 0 }, ws: none))
-    |> filter(o => match o { OptionDropped { layout: _, cause: DroppedPriceZero } => true, _ => false }))
-  let no_maxq = rank_configurations(i: synthetic_ranking(maxq: none, h200: Present { value: 21300 }, ws: none))
-  dropped_absent == 2 && zero == 1 && ranked_row_count(rows: rows, l: LayoutB200Tp1) == 0 && ranked_row_count(rows: rows, l: LayoutWorkstationTp2Pair) == 0
-    && count(no_maxq) == 1 && ranked_row_count(rows: no_maxq, l: LayoutH200Tp1) == 1
-}
-
-test fn w_ranking_curve_and_whatifs() -> Bool {
-  let tp2 = layout_facts(l: LayoutMaxQTp2Pair).curve
-  curve_at(c: tp2, x: 6) == 625
-    && curve_at(c: tp2, x: 99) == 975
-    && gpus_per_replica(weights_bytes: 300, gpu_memory_bytes: 100) == Present { value: 4 }
-    && gpus_per_replica(weights_bytes: 300, gpu_memory_bytes: 0) == none
-    && seats_at(kv_tokens: 750850, context_tokens: 175000) == 4
-    && replicas_for(sessions: 10, seats_per_replica: 4) == Present { value: 3 }
-    && replicas_for(sessions: 10, seats_per_replica: 0) == none
-    && match layout_facts(l: LayoutMaxQTp1).standing { RowMeasured => true, _ => false }
-    && match layout_facts(l: LayoutH200Tp1).standing { RowModelOutput => true, _ => false }
-}

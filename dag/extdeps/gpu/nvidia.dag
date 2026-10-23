@@ -1,14 +1,14 @@
 module extdeps.gpu.nvidia
 
 import extdeps.gpu.types {
-  DenseTensorThroughput, TensorFp4, TensorFp8, TensorInt8, TensorBf16, tensor_ops_per_second,
+  DenseTensorThroughput, TensorFp4, TensorFp8, TensorInt8, TensorBf16,
   GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda,
   cuda_compute_capabilities_authority, PcieAddInCard, SxmModule,
 }
 import extdeps.memory.types { MemoryFacts, Dram, Hbm }
 import extdeps.storage.types { PcieLink, PcieGeneration }
 import extdeps.vendor.nvidia { nvidia }
-import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size, giga_tensor_operations_per_second }
 
 import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { decl_field_ref }
@@ -512,12 +512,12 @@ data b200_dense_obligation: NonEmptyStr = "Read the B200 dense FP4 and BF16 thro
 data rtx_pro_6000_max_q_dense_tensor_throughput: List<DenseTensorThroughput> = [
   DenseTensorThroughput {
     datatype: TensorFp4,
-    rate: tensor_ops_per_second(giga: 1755500),
+    rate: giga_tensor_operations_per_second(count: 1755500),
     standing: TranscribedUncited { read_obligation: max_q_fp4_dense_obligation },
   },
   DenseTensorThroughput {
     datatype: TensorBf16,
-    rate: tensor_ops_per_second(giga: 440000),
+    rate: giga_tensor_operations_per_second(count: 440000),
     standing: TranscribedUncited { read_obligation: max_q_bf16_dense_obligation },
   },
 ]
@@ -525,12 +525,12 @@ data rtx_pro_6000_max_q_dense_tensor_throughput: List<DenseTensorThroughput> = [
 data nvidia_b200_sxm_dense_tensor_throughput: List<DenseTensorThroughput> = [
   DenseTensorThroughput {
     datatype: TensorFp4,
-    rate: tensor_ops_per_second(giga: 9000000),
+    rate: giga_tensor_operations_per_second(count: 9000000),
     standing: TranscribedUncited { read_obligation: b200_dense_obligation },
   },
   DenseTensorThroughput {
     datatype: TensorBf16,
-    rate: tensor_ops_per_second(giga: 2250000),
+    rate: giga_tensor_operations_per_second(count: 2250000),
     standing: TranscribedUncited { read_obligation: b200_dense_obligation },
   },
 ]
@@ -599,17 +599,17 @@ data nvidia_h200_nvl_figure_citations: List<FactCitation> = [
 data nvidia_h200_nvl_dense_tensor_throughput: List<DenseTensorThroughput> = [
   DenseTensorThroughput {
     datatype: TensorFp8,
-    rate: tensor_ops_per_second(giga: 1670500),
+    rate: giga_tensor_operations_per_second(count: 1670500),
     standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
   },
   DenseTensorThroughput {
     datatype: TensorInt8,
-    rate: tensor_ops_per_second(giga: 1670500),
+    rate: giga_tensor_operations_per_second(count: 1670500),
     standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
   },
   DenseTensorThroughput {
     datatype: TensorBf16,
-    rate: tensor_ops_per_second(giga: 835500),
+    rate: giga_tensor_operations_per_second(count: 835500),
     standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
   },
 ]

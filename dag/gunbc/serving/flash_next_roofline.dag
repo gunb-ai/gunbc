@@ -3,9 +3,9 @@ module gunbc.serving.flash_next_roofline
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_cata, nat_min, nat_max }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { byte_size_count, token_count_value, bandwidth_count, basis_point_count }
+import std.measure { byte_size_count, token_count_value, bandwidth_count, basis_point_count, giga_tensor_operations_per_second_count }
 import extdeps.external_authority { CitedFigureStanding }
-import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count, tensor_ops_per_second_giga }
+import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
 import extdeps.qwen.qwen3_8_flash_next { FlashNextArchitecture, flash_next_qsa_kv_bytes_per_token, flash_next_params_per_routed_expert }
 import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 
@@ -41,7 +41,7 @@ fn roofline_bandwidth(card: RooflineCard) -> Nat? {
 
 fn roofline_math_rate_giga(card: RooflineCard) -> Nat? {
   match gpu_dense_tensor_throughput(row: card.catalog, datatype: card.math_datatype) {
-    Present { value: t } => Present { value: tensor_ops_per_second_giga(r: t.rate) }
+    Present { value: t } => Present { value: giga_tensor_operations_per_second_count(r: t.rate) }
     none => none
   }
 }

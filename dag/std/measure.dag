@@ -1574,6 +1574,24 @@ fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
   measure_count(r)
 }
 
+// GIGA OPERATIONS PER SECOND — a per-second rate of arithmetic OPERATIONS on the Frequency axis at
+// Giga, the sibling of TokensPerSecond and MilliRequestsPerSecond and for the same reason those
+// exist: a count answers "how many", a rate answers "how fast", and minting the rate alias inside a
+// vendor module mints a unit nobody else can see. An operation is ONE multiply or one add, so a
+// fused multiply-add counts as two, which is how NVIDIA's "FLOPS" headlines count. Giga scale, not
+// Tera, because Tera would floor a published 835.5 TFLOPS to 835 and lose the figure.
+// First consumer: extdeps.gpu.types.DenseTensorThroughput, whose per-datatype dense tensor-core
+// rate this replaced when review 84774 caught the alias minted outside this module.
+type GigaTensorOperationsPerSecond = Measure<Frequency, Giga, Nat>
+
+fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerSecond {
+  Measure { count: count }
+}
+
+fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
+  measure_count(r)
+}
+
 // An offered REQUEST arrival rate at Milli (vllm bench serve `--request-rate`). Frequency axis like
 // its token sibling, a different thing counted: a request is not a token. First consumer:
 // extdeps.vllm.bench_serve PoissonProcess.
