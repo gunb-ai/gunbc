@@ -163,10 +163,6 @@ test fn onc_bool_value_at_a_bool_annotation_accepts() -> Bool {
   onc_none_infer_accepted(body: "fn f(b: Bool) -> Bool {\n  let z: Bool = b\n  z\n}\n")
 }
 
-test fn onc_bare_none_through_a_generic_read_as_bool_refuses_unsolved() -> Bool {
-  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n"))
-}
-
 // Positive control: a declared Optional position closes the same none, so it is the unsolved variable that refuses and not the generic.
 test fn onc_none_through_a_generic_at_a_declared_optional_accepts() -> Bool {
   onc_none_infer_accepted(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int? { id(x: none) }\n")
@@ -191,9 +187,14 @@ fn onc_none_fatal_reason(body: String) -> Symbol {
   }
 }
 
-// probe: the reason a generic none read as Bool is refused with, against the reason none at a non-optional position gives.
-test fn probe_generic_none_as_bool_reason_equals_none_at_int() -> Bool {
+// Derived: the Bool use closes the generic's T at Bool, so the refusal is none at a non-optional position, the same reason as `fn mk() -> Int { none }`; the open variable is not what refuses.
+test fn onc_generic_none_read_as_bool_refuses_as_none_at_a_non_optional_position() -> Bool {
   onc_none_fatal_reason(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Bool {\n  let c = id(x: none)\n  let z: Bool = c\n  z\n}\n") == onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") && onc_none_fatal_reason(body: "fn mk() -> Int { none }\n") != ^infer_accepted
+}
+
+// Not laundered: with no use to close T, the open variable survives the generic and the unannotated let is refused at its value.
+test fn onc_generic_none_in_an_unused_let_is_the_unsolved_refusal() -> Bool {
+  onc_infer_refusal_reason_is_unsolved(assembled: onc_none_assemble(body: "fn id<T>(x: T) -> T { x }\n\nfn f() -> Int {\n  let c = id(x: none)\n  1\n}\n"))
 }
 
 test fn onc_none_at_a_non_optional_position_refuses() -> Bool {
