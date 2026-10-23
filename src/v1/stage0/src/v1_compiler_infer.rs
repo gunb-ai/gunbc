@@ -10852,6 +10852,15 @@ pub fn categorized_error(
     )
 }
 
+pub fn cast_source_is_solver_unit_placeholder(source_node: Rc<Node>) -> bool {
+    match (*source_node.occurrence_identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => {
+            (source_node.ident_span.clone() == unit_type().ident_span.clone())
+        }
+        _ => false,
+    }
+}
+
 pub fn cast_source_is_declared_nominal(
     source_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -10862,7 +10871,7 @@ pub fn cast_source_is_declared_nominal(
         source_indices.clone(),
         env.clone(),
     ) {
-        std::option::Option::None => true,
+        std::option::Option::None => !cast_source_is_solver_unit_placeholder(source_node.clone()),
         Some(d) => {
             (!{
                 let mut __found = false;
