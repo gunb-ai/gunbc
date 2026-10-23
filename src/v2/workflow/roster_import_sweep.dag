@@ -33,7 +33,8 @@ import std.occurrence_identity {
   OccurrenceMinted,
   OccurrencePending,
   OccurrenceProjected,
-  OccurrenceSynthetic
+  OccurrenceSynthetic,
+  ValuePosition
 }
 import std.types { List, Bool, GitRef }
 import extdeps.git
@@ -895,9 +896,19 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
     root: normalized_root,
     imported: list_map(xs: imported, f: fn(b) { b.binding })
   ).sites
-  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) && roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: roster_symbol_imported(imported: imported, row: row)) { n + 1 } else { n } })
-  let heads = roster_primary_heads(parse_root: parse_root, call: row.call)
-  if length(xs: heads) != free {
+  let from_home = roster_symbol_imported(imported: imported, row: row)
+  let free = fold_list(xs: sites, empty: 0, cons: fn(n, st) { if roster_spelling_site_is_free(sides: sides, site: st, row: row, imported_from_home: from_home) { n + 1 } else { n } })
+  // THE HEAD SITES: every mention of the spelling at a value position, bound or free, in the collector's walk order. A
+  // primary-expression head the parse tree shows is one of these; a BOUND one (a parameter or local used as `chars` or
+  // called as `chars(..)`) is a head the parse tree counts and the free count must not, so the two are compared at the
+  // head sites and the free ones alone are edited. Counting free sites against all heads refused a free call beside a
+  // parameter of the same spelling (recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call).
+  let head_sites = fold_list(xs: sites, empty: [], cons: fn(acc, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) && st.position == ValuePosition { list_snoc_item(xs: acc, item: st) } else { acc } })
+  let free_heads_total = fold_list(xs: head_sites, empty: 0, cons: fn(n, st) { if roster_spelling_site_is_free(sides: sides, site: st, row: row, imported_from_home: from_home) { n + 1 } else { n } })
+  let all_heads = roster_primary_heads(parse_root: parse_root, call: row.call)
+  let heads = roster_free_heads(heads: all_heads, head_free: list_map(xs: head_sites, f: fn(st) { roster_spelling_site_is_free(sides: sides, site: st, row: row, imported_from_home: from_home) }))
+  // A free site that is no value-position head (a type-position mention of a type home) still has no call to relabel.
+  if length(xs: all_heads) != length(xs: head_sites) || free != free_heads_total {
     LabelsAmbiguous
   } else {
     fold_list(xs: heads, empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
@@ -969,6 +980,24 @@ fn roster_site_is_free(sides: List<RosterHomeSide>, site: ScopedReferenceSite, r
     side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: row.home), import_name: row.import_name),
     imported_from_home: imported_from_home
   )
+}
+
+fn roster_spelling_site_is_free(sides: List<RosterHomeSide>, site: ScopedReferenceSite, row: RosterHeadRow, imported_from_home: Bool) -> Bool {
+  roster_spelling_is(qn: site.site.spelling, call: row.call) && roster_site_is_free(sides: sides, site: site, row: row, imported_from_home: imported_from_home)
+}
+
+// The heads that pair with a free head site, in order: the parse tree and the collector both walk the module in document
+// order, so the i-th primary head is the i-th value-position site of its spelling (roster_label_plan checks the lengths agree).
+fn roster_free_heads(heads: List<Node>, head_free: List<Bool>) -> List<Node> {
+  match heads {
+    Empty => []
+    Cons { head: h, tail: rest } =>
+      match head_free {
+        Empty => []
+        Cons { head: f, tail: more } =>
+          if f { Cons { head: h, tail: roster_free_heads(heads: rest, head_free: more) } } else { roster_free_heads(heads: rest, head_free: more) }
+      }
+  }
 }
 
 // Every primary-expression capture whose head (the sequence's left atom) is spelled `call`: a bare `call(...)` or a bare
@@ -1581,14 +1610,20 @@ fn roster_d4_tag_subject(with_import: Bool) -> String {
 // the free call (gunbc.recurring_failure_mode a_roster_sweep_counts_a_bound_or_label_spelling_as_an_unbound_call). One binder
 // form per control, each paired with a free call in a sibling function so Clean cannot be satisfied by an inert row: a
 // parameter, a `let` (whose declaring occurrence is no site), and a match-arm record pun (UNDECIDED by design, never counted).
-// OPEN, PINNED AT ITS CURRENT TYPED REFUSAL (not a pass of the intended behavior): with the guard gone a parameter named like a
-// row plus a free call elsewhere refuses label-sites-ambiguous, where it used to refuse home-name-locally-bound. Both are loud
-// and located; the intended answer (the import for the free call) is the parameter cell's remaining work, named in the
-// recurring_failure_mode row. A change to this reading is deliberate or this control goes red.
+// The parameter cell: the free call gets the import AND its label edit, and the bound `chars` used as a value in the sibling
+// function is a head the label plan pairs with a bound site and leaves alone. The bound CALL is pinned in both orders so the
+// pairing of the i-th parse head with the i-th collector site is discriminated: a mispairing relabels the parameter's call.
 fn roster_control_free_call_beside_param(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_sweep_text(path: "control/free-call-beside-param.dag", text: "module c.guard\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", prepared: prepared, lex: lex) {
-    RosterRefused { reason: RefusalLabelSitesAmbiguous } => ""
-    _ => "CONTROL-FAIL free-call-beside-param: the pinned label-sites-ambiguous refusal changed; decide the parameter cell deliberately\n"
+  roster_control_free_call_beside_param_text(name: "free-call-beside-param", text: "module c.guard\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: Int) -> Int {\n  h(s: chars)\n}\n", prepared: prepared, lex: lex)
+    + roster_control_free_call_beside_param_text(name: "bound-call-after-free-call", text: "module c.guardafter\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n\nfn g(chars: fn(String) -> Int, y: String) -> Int {\n  chars(s: y)\n}\n", prepared: prepared, lex: lex)
+    + roster_control_free_call_beside_param_text(name: "bound-call-before-free-call", text: "module c.guardbefore\n\nfn g(chars: fn(String) -> Int, y: String) -> Int {\n  chars(s: y)\n}\n\nfn f(x: String) -> Int {\n  chars(s: x)\n}\n", prepared: prepared, lex: lex)
+}
+
+fn roster_control_free_call_beside_param_text(name: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_applied(before: text, outcome: roster_sweep_text(path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex)) {
+    RosterApplyWritten { content: c } =>
+      if string_contains(s: c, pattern: "import std.host_text { chars }") && string_contains(s: c, pattern: "chars(text: x)") && !string_contains(s: c, pattern: "chars(text: y)") { "" } else { "CONTROL-FAIL " + name + ": the free call did not get the import and its label, or the bound call was relabelled: [" + c + "]\n" }
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + "; a parameter of the row's name must not refuse a free call\n"
   }
 }
 
