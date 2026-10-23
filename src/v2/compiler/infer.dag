@@ -3386,17 +3386,22 @@ type InferArmTypesJoin
 fn infer_join_arm_types(first: Node, second: Node, expected: Optional<Node>, resolved: ResolvedTree) -> InferArmTypesJoin {
   let first_open = infer_type_is_open(t: first)
   let second_open = infer_type_is_open(t: second)
-  let declaring = infer_join_declaring_at_expected(declaring: infer_declaring_among(types: [first, second]), any_open: first_open || second_open, expected: expected)
-  match declaring {
-    Absent => if first_open || second_open { ArmTypesNoneDeclare } else { ArmTypesJoined { joined: first } }
-    Present { value: _ } =>
-      let a = infer_arm_type_closed_at(t: first, declaring: declaring, resolved: resolved)
-      let b = infer_arm_type_closed_at(t: second, declaring: declaring, resolved: resolved)
-      if infer_closed_arm_types_agree(a: a, b: b, resolved: resolved) {
-        ArmTypesJoined { joined: a }
-      } else {
-        ArmTypesConflict
-      }
+  let any_open = first_open || second_open
+  let declaring = infer_join_declaring_at_expected(declaring: infer_declaring_among(types: [first, second]), any_open: any_open, expected: expected)
+  if infer_match_no_arm_declares(any_open: any_open, declaring: declaring) {
+    ArmTypesNoneDeclare
+  } else {
+    match declaring {
+      Absent => ArmTypesJoined { joined: first }
+      Present { value: _ } =>
+        let a = infer_arm_type_closed_at(t: first, declaring: declaring, resolved: resolved)
+        let b = infer_arm_type_closed_at(t: second, declaring: declaring, resolved: resolved)
+        if infer_closed_arm_types_agree(a: a, b: b, resolved: resolved) {
+          ArmTypesJoined { joined: a }
+        } else {
+          ArmTypesConflict
+        }
+    }
   }
 }
 
@@ -3429,7 +3434,7 @@ fn infer_coproduct_any_open(rows: List<InferCoproductArmRow>, entries: Map<Node,
   })
 }
 
-// The coproduct match's NoneDeclare: some arm is open and no arm (nor the expected type) declares a type, the same verdict infer_join_arm_types gives a Bool match.
+// THE ONE NoneDeclare TEST: some arm is open and no arm (nor the expected type) declares a type. The two-arm join and the coproduct match both consume it.
 fn infer_match_no_arm_declares(any_open: Bool, declaring: Optional<Node>) -> Bool {
   any_open && match declaring {
     Absent => true
