@@ -3,12 +3,12 @@ module v2.test.claim.compiler.infer_generic_formal_shape_mismatch_reason_witness
 // SEAT 16, DEFECT B -- NEVER-MERGE WITNESS. Scratch branch, provisional by construction: this
 // records what a defect does TODAY; it is not a landed contract and carries no floor claim.
 //
-// THE DEFECT. v2.compiler.infer infer_judge_generic_formal (infer.dag:4927) asks its matcher whether
+// THE DEFECT. v2.compiler.infer infer_judge_generic_formal (infer.dag:5190) asks its matcher whether
 // a generic formal's SHAPE admits the argument's derived type. When the answer is
 // InferFormalShapeMismatch it mints the refusal with a HARDCODED cause:
-//     find_witness_reason: ^find_witness_reason_no_candidate        (infer.dag:4959)
+//     find_witness_reason: ^find_witness_reason_no_candidate        (infer.dag:5222)
 // The enclosing judge calls neither find_witness nor declared_type_inhabitance on that arm (the
-// Matched arm at :4962 is the only one that reaches infer_judge_declared_position), so no candidate
+// Matched arm at :5225 is the only one that reaches infer_judge_declared_position), so no candidate
 // set is enumerated and no preservation predicate runs -- yet v2.std.inhabitance
 // application_argument_does_not_inhabit_diagnostic (:797) projects that constant, at a call
 // argument, to application_argument_does_not_inhabit via inhabitance_application_refusal_reason
@@ -35,7 +35,8 @@ import v2.extdeps.languages.dag {
 import v2.std.diagnostic {
   Accepted,
   Rejected,
-  diagnostics_fatal_reason
+  diagnostics_fatal_reason,
+  diagnostics_has_reason
 }
 import std.algebra { Empty, list_snoc_item }
 import std.optional { Absent }
@@ -53,6 +54,7 @@ import v2.std.inhabitance {
 import v2.std.node {
   Authored,
   ComputationNode,
+  NotADeclaration,
   Conj,
   Edge,
   Instantiation,
@@ -85,6 +87,7 @@ fn aai_generic_application(declared: Node, argument: Node) -> Node {
     children: [
       Edge {
         label: Positional,
+        declaration: NotADeclaration,
         target: node_synthetic(
           kind: arrow.kind,
           children: list_snoc_item(
@@ -95,7 +98,8 @@ fn aai_generic_application(declared: Node, argument: Node) -> Node {
                 children: type_binder_set_children(binders: [
                   Edge {
                     label: Authored { name: ^aai_type_param_t },
-                    target: dag_type_atom_node(identity: ^aai_type_param_t)
+                    target: dag_type_atom_node(identity: ^aai_type_param_t),
+                    declaration: NotADeclaration
                   }
                 ], source: dag_type_atom_node(identity: ^aai_type_param_t))
               )
@@ -103,7 +107,7 @@ fn aai_generic_application(declared: Node, argument: Node) -> Node {
           )
         )
       },
-      Edge { label: Positional, target: argument }
+      Edge { label: Positional, target: argument, declaration: NotADeclaration }
     ]
   )
 }
@@ -112,20 +116,21 @@ fn aai_generic_application(declared: Node, argument: Node) -> Node {
 // its one formal is `x: T<-->', an Instantiation headed by the declared variable -- the shape the
 // ACCEPTED claim v2.test.claim.compiler.infer_application_argument_inhabitance_witness builds in
 // inhabitance_generic_formal_tree (:107, via inhabitance_generic_formal_tree_over :121) and asserts
-// at :253 refuses with application_argument_does_not_inhabit; that accepted claim is the standing
+// at :263 refuses with application_argument_does_not_inhabit; that accepted claim is the standing
 // witness that this fixture reaches the arm on the native lane. The instance-less formal is not a
-// bare variable Atom, so infer_judge_formals (:5001-5006) sends it to infer_judge_generic_formal
+// bare variable Atom, so infer_judge_formals routing (:5239 region callers; the dispatch
+// that sends an Instantiation formal still mentioning a declared variable to infer_judge_generic_formal) sends it to infer_judge_generic_formal
 // rather than deciding it (a BARE Atom T would bind an instance instead -- the Instantiation wrapper
 // is what keeps it on the generic route). The argument is the Int literal 1, whose derived type is
-// the Int Atom (infer_literal_value_type, DagCanonicalIntLiteral => dag_binding_type_int). In
-// infer_match_generic_formal (:4302): :4303 cannot fire (infer_type_variable_binder :4289 demands
-// kind Atom with no children; the formal is an Instantiation); :4311 fires, the produced is an Atom,
-// so :4330 (`TypeNode { connective: _ }` produced against an Instantiation formal) is the arm --
-// :4316/:4318/:4320 need an Instantiation produced. refinement_declared_carrier
-// (infer_match_generic_formal_or_carrier :4501) offers nothing for a plain Int Atom over the empty
+// the Int Atom (infer_literal_value_type :1892, DagCanonicalIntLiteral => dag_binding_type_int). In
+// infer_match_generic_formal (:4537): :4538 cannot fire (infer_type_variable_binder infer_type_variable_binder :4524 demands
+// kind Atom with no children; the formal is an Instantiation); the Instantiation arm at :4546 fires, the produced is an Atom,
+// so :4565 (`TypeNode { connective: _ }` produced against an Instantiation formal) is the arm --
+// the two-Instantiation arms :4551/:4555 need an Instantiation produced. refinement_declared_carrier
+// (infer_match_generic_formal_or_carrier :4736) offers nothing for a plain Int Atom over the empty
 // index. So this refusal is the SHAPE arm's and nothing else. THE ONE THING THIS FIXTURE MUST NOT
 // DO: name a head that is not a type parameter and not a resolvable declaration. The judge
-// alias-normalizes formal and produced at :4954 BEFORE matching; an unresolvable head is refused
+// alias-normalizes formal and produced at :5217 BEFORE matching; an unresolvable head is refused
 // upstream and the fatal never reaches the arm -- that is what an earlier version of this claim,
 // headed `Box<T>`, measured: (A) failed while (B)/(C)/(D), which never traverse that normalizer,
 // passed.
@@ -138,11 +143,11 @@ fn aai_shape_mismatch_tree() -> Node {
 
 // THE FORMAL AS WRITTEN: an Instantiation of the declared variable -- exactly the declaration the
 // ACCEPTED claim v2.test.claim.compiler.infer_application_argument_inhabitance_witness
-// (inhabitance_generic_formal_tree :107) puts on this arm and whose refusal it asserts at :253; the
+// (inhabitance_generic_formal_tree :109) puts on this arm and whose refusal it asserts at :263; the
 // head is the type parameter itself, which is what makes it resolvable on this route. The mint's
-// declared field is built FROM THIS NODE at infer.dag:4958 (infer_declared_type_denotation of
+// declared field is built FROM THIS NODE at infer.dag:5221 (infer_declared_type_denotation of
 // infer_type_instantiated(formal.declared, instances)), and both rewrites are children-preserving
-// (infer_declared_type_denotation :4111 rebuilds each node's kind with its children; no instance
+// (infer_declared_type_denotation :4346 rebuilds each node's kind with its children; no instance
 // touches T) -- so the obligation's declared and this node are the same tree, and (B) measures the
 // refusal's own pair because both read this one constructor.
 fn aai_declared_formal() -> Node {
@@ -151,7 +156,8 @@ fn aai_declared_formal() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^aai_type_param_t)
+        target: dag_type_atom_node(identity: ^aai_type_param_t),
+        declaration: NotADeclaration
       }
     ]
   )
@@ -161,8 +167,8 @@ fn aai_box_of(operand: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^aai_type_box) },
-      Edge { label: Positional, target: operand }
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^aai_type_box), declaration: NotADeclaration },
+      Edge { label: Positional, target: operand, declaration: NotADeclaration }
     ]
   )
 }
@@ -175,12 +181,12 @@ test fn generic_formal_shape_mismatch_refuses_application_argument_does_not_inha
   }
 }
 
-// THE PAIR THE REFUSAL REPORTS, AS AN OBLIGATION. declared:the `T<0>` instantiation comes from
+// THE PAIR THE REFUSAL REPORTS, AS AN OBLIGATION. declared: the T-headed Instantiation comes from
 // infer_declared_type_denotation applied to infer_type_instantiated(formal.declared, instances)
-// (infer.dag:4958) -- no instance touches T, so it is the formal as written; produced is the
+// (infer.dag:5221) -- no instance touches T, so it is the formal as written; produced is the
 // literal's derived Int Atom; produced_declared_carrier is Absent exactly as
-// infer_declared_type_obligation (:4547) computes it for an unrefined produced type over the empty
-// index; type_variables is the callee's [T] (:4958, type_params).
+// infer_declared_type_obligation (:4782) computes it for an unrefined produced type over the empty
+// index; type_variables is the callee's [T] (:5221, type_params).
 fn aai_shape_obligation() -> DeclaredTypeObligation {
   DeclaredTypeObligation {
     position: PositionDirectCallArgument,
@@ -198,7 +204,7 @@ fn aai_shape_obligation() -> DeclaredTypeObligation {
 // inhabitance_pair_undecidable_reason (:289). Heads do NOT decide it -- neither side denotes a
 // declaration (an unbound variable under an unmarked Atom head, a kernel-bound Int atom), so
 // inhabitance_declaration_heads_differ (:278) answers false -- and the declared side mentions the
-// unbound T (:225), so the answer is Undecidable (UndecidableGenericFormal), NOT Refused. A
+// unbound T (inhabitance_node_mentions_type_variable :226), so the answer is Undecidable (UndecidableGenericFormal), NOT Refused. A
 // candidate test over THIS pair could not have emitted no_candidate: the pair refutes nothing, it is
 // undecidable while T stays unbound. The reason the infer arm stamps is a cause that path cannot
 // have earned.
@@ -245,7 +251,7 @@ test fn a_variable_free_mismatch_is_a_real_candidate_refusal_holds() -> Bool {
 // call argument; in that position the word itself asserts that a candidate enumeration failed -- the
 // assertion (B) shows was never made. THE FIX, DRAFTED NOT BUILT: the shape arm gets a reason of its
 // own projected through the SIBLING of inhabitance_no_candidate_reason -- what each of its six
-// position names already is -- never a per-site string at infer.dag:4959 (DESIGN 6b: an ambient
+// position names already is -- never a per-site string at infer.dag:5222 (DESIGN 6b: an ambient
 // operation demanded at a consumer is the boundary-violation class that gets rejected).
 test fn the_emitted_label_is_the_projection_of_the_no_candidate_constant_holds() -> Bool {
   inhabitance_application_refusal_reason(
@@ -268,7 +274,7 @@ test fn probe_shape_mismatch_fixture_is_refused_at_all() -> Bool {
   }
 }
 
-// PROBE 2 -- THE UNDECIDABLE-ARGUMENT EXIT. infer_judge_generic_formal :4947-4952: when the
+// PROBE 2 -- THE UNDECIDABLE-ARGUMENT EXIT. infer_judge_generic_formal the :5210-5215 Absent arm: when the
 // argument's derived type is NOT in the entries map (lookup absent, or inferred_facts_resolved_type
 // Violates), the judge ACCEPTS the obligation carrying
 // inhabitance_undecidable_argument_type_not_derived and never reaches the matcher. If infer()
@@ -282,7 +288,7 @@ test fn probe_shape_mismatch_fatal_is_undecidable_argument_type_not_derived() ->
 }
 
 // PROBE 3 -- AN UPSTREAM UNBOUND SYMBOL. ^aai_type_box names nothing in the empty index; if the
-// alias normalizer at :4954 (infer_type_alias_normalized_at over formal.declared) or an earlier pass
+// alias normalizer at :5217 (infer_type_alias_normalized_at over formal.declared) or an earlier pass
 // refuses on it, the fatal is the resolve reason and the arm is never reached. True = an upstream
 // unbound-symbol refusal answered first.
 test fn probe_shape_mismatch_fatal_is_resolve_unbound_symbol() -> Bool {
@@ -295,7 +301,7 @@ test fn probe_shape_mismatch_fatal_is_resolve_unbound_symbol() -> Bool {
 // PROBE 4 -- THE ACCEPTED FIXTURE, IN THIS MODULE'S OWN RUN, AS THE CONTROL. This imports the
 // accepted claim module's fixture constructor verbatim
 // (v2.test.claim.compiler.infer_application_argument_inhabitance_witness
-// inhabitance_generic_formal_tree :107) and asserts exactly what its claim at :253 asserts. If this
+// inhabitance_generic_formal_tree :109) and asserts exactly what its claim at :263 asserts. If this
 // passes while (A) fails, the DIFFERENCE BETWEEN THE TWO FIXTURES is the clue -- mine differs by the
 // formal's binder name (^aai_param_x vs ^inhabitance_param_t) and the argument arity (two formals
 // vs one); read the two trees against each other before changing anything else.
@@ -303,5 +309,26 @@ test fn probe_accepted_fixture_control_refuses_the_label() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
+  }
+}
+
+// PROBE 5 -- IS THE LABEL THERE AT ALL, JUST NOT LAST? diagnostics_fatal is the LAST link
+// (diagnostic.dag:274 folds the tail over the head), so (A) can fail with the arm's label present as
+// a non-final link and a LATER diagnostic (e.g. an advisory) taking the fatal slot. If this passes
+// while (A) fails, the refusal IS the arm's and the only question is which link rode after it.
+test fn probe_shape_mismatch_chain_contains_the_label() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: d, reason: ^application_argument_does_not_inhabit)
+  }
+}
+
+// PROBE 6 -- THE GENERIC-FORMAL UNDECIDABLE AS FATAL. inhabitance.dag:728 projects
+// UndecidableGenericFormal to ^inhabitance_undecidable_generic_formal; if some path in this route
+// promotes it to fatal rather than counting it, (A) would see it. True = that promotion answered.
+test fn probe_shape_mismatch_fatal_is_undecidable_generic_formal() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: aai_shape_mismatch_tree())) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^inhabitance_undecidable_generic_formal
   }
 }
