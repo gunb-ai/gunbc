@@ -1,6 +1,5 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.compile {
   compile,
@@ -67,8 +66,7 @@ fn compile_eval_thesis_inferred(root: Node) -> InferredTree {
     root: root,
     facts: PartialFunction {
       lookup: compile_eval_thesis_facts_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 

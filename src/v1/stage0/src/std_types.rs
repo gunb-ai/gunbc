@@ -180,7 +180,7 @@ pub type List<Element> = Vec<Element>;
 
 pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
+pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))

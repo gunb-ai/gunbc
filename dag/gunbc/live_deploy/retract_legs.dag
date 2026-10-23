@@ -14,9 +14,10 @@ import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentStep, DeploymentArtifactStep, ArtifactStep, Dependency,
   ComposeOwned, UpsertOwned,
   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, TailnetDoorServeUnit, OidcConfigArtifact,
-  ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, ApprovalBrokerFrontDoor,
+  ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, ApprovalBrokerFrontDoor, AttemptUnitDrainPathUnit,
   deployment_fabric_storage_door_socket, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   deployment_tailnet_door_unit_name, deployment_fabric_storage_unit_name,
+  deployment_attempt_unit_drain_path_unit_name, deployment_attempt_unit_drain_service_unit_path,
   deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_credential_recovery_timer_unit_name,
   deployment_retired_belt_timer_unit_name, deployment_retired_belt_timer_unit_path,
   deployment_belt_answer_path_unit_path, deployment_belt_exit_drain_service_unit_path, deployment_belt_discovery_service_unit_path,
@@ -169,6 +170,14 @@ fn deploy_retract_artifact_plan(art: DeploymentArtifactStep, spec: DeploymentSpe
             retract_remove_files(head: art.path, rest: [deployment_publication_service_unit_path(names: spec.names)]),
             RetractDaemonReload,
           ],
+        ),
+      }
+    UpsertOwned { kind: AttemptUnitDrainPathUnit } =>
+      RetractPlanReady {
+        legs: retract_unit_teardown(
+          units: [deployment_attempt_unit_drain_path_unit_name(names: spec.names)],
+          head: art.path,
+          rest: [deployment_attempt_unit_drain_service_unit_path(names: spec.names)],
         ),
       }
     UpsertOwned { kind: DeployedTreeRemoteUnit } =>
