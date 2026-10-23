@@ -141,7 +141,7 @@ test fn an_acquired_allocation_derives_the_same_endpoint_as_an_imported_one() ->
       owner: "gunbc-flex" as NonEmptyStr,
       asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
-      provider_ask: RentedProviderAsk { provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), ask: "77" as NonEmptyStr, machine: "42" as NonEmptyStr },
+      provider_ask: RentedProviderAsk { ask: "77" as NonEmptyStr, machine: "42" as NonEmptyStr },
     },
     contract: imported.contract, card: imported.card, end: imported.end, engine: imported.engine,
     artifact: imported.artifact, host: imported.host, route: imported.route,

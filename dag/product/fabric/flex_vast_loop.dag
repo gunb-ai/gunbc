@@ -468,7 +468,6 @@ fn flex_acquired_allocation(
       asked_at: asked_at,
       asked_rate: request.bid,
       provider_ask: RentedProviderAsk {
-        provider: flex_provider_declaration,
         ask: int_to_decimal_string(value: request.offer_id) as NonEmptyStr,
         machine: int_to_decimal_string(value: request.machine_id) as NonEmptyStr,
       },

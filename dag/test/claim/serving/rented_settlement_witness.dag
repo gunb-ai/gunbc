@@ -1,6 +1,5 @@
 module test.claim.serving.rented_settlement_witness
 
-import std.decl_ref { decl_ref }
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
@@ -61,7 +60,7 @@ fn w_acquired() -> RentedServingAllocation {
       owner: "gunbc-flex" as NonEmptyStr,
       asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
-      provider_ask: RentedProviderAsk { provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), ask: "77" as NonEmptyStr, machine: "42" as NonEmptyStr },
+      provider_ask: RentedProviderAsk { ask: "77" as NonEmptyStr, machine: "42" as NonEmptyStr },
     },
     contract: i.contract, card: i.card, end: i.end, engine: i.engine,
     artifact: i.artifact, host: i.host, route: i.route,

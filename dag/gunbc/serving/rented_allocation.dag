@@ -74,13 +74,12 @@ fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
 // create (flex_created_outcome); a lost create whose reconcile finds the instance held is built by
 // flex_reconciled_allocation, which only the next pass's entry will call (flex_run_pass_caller_frontier); it never constructs on a refused
 // create. THE PROVIDER ASK IS PROVIDER-KEYED, NOT PROVIDER-TYPED: a second acquiring supplier (AWS EC2,
-// gunbc.plans.flex_supplier_generalization) arrived, and the ask became the provider's extdeps anchor plus
-// the two facts a reconcile matches on, as the provider spells them: the ask the create named (Vast: the
-// offer id; EC2: the RunInstances client token) and the machine it sits on (Vast: the machine id; EC2: the
-// instance id). Reconciling a lost create matches the machine, never the contract, because a lost
+// gunbc.plans.flex_supplier_generalization) arrived, and the ask became the two facts a reconcile matches
+// on, as the provider spells them: the ask the create named (Vast: the offer id; EC2: the RunInstances
+// client token) and the machine it sits on (Vast: the machine id; EC2: the instance id). WHICH provider
+// spells them is the allocation identity's provider (rented_allocation_identity), not restated here. Reconciling a lost create matches the machine, never the contract, because a lost
 // create returned no contract. No supplier type enters this carrier, so it enumerates no supplier (DESIGN 3).
 type RentedProviderAsk {
-  provider: DeclarationRef
   ask: NonEmptyStr
   machine: NonEmptyStr
 }
