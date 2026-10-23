@@ -4011,9 +4011,13 @@ fn build_cache_ensure_executed(
             first.executed
           } else {
             // The count comes from the ONE list_length authority, named by module path rather than
-            // by bare name: the flat namespace now holds a second, site-local `list_length`
-            // (gunbc.site.aligned_columns, non-generic) alongside std.types.list_length, so a bare
-            // call here has no single established callee identity for the effect join.
+            // by bare name. A site-local `list_length` in gunbc.site.aligned_columns was an exact
+            // re-mint of std.types.list_length<T>; it broke the bare call here (the whole-corpus
+            // effect census refused it: no established callee identity) and was deleted at the root
+            // in the same commit, aligned_columns retargeted to this same authority. The
+            // qualification STAYS even with the fork gone: a bare name in the flat namespace is
+            // green only by ambient coverage that any later re-mint silently breaks — the callee
+            // identity is named, not assumed.
             // Authority: dag/std/types.dag `list_length`. Recurring failure mode:
             // bare_name_resolved_only_by_the_flat_namespace.
             let rest = build_cache_plan_remainder(
