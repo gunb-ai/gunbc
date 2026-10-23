@@ -66,7 +66,6 @@ fn rdt_obligated(body: Node) -> Optional<ObligatedInferredTree> {
       optional_present(value: ObligatedInferredTree {
         root: t.root,
         facts: t.facts,
-        arm_resolutions: t.arm_resolutions,
         obligations: [RefinementObligation {
           site: app,
           application: app,
@@ -147,7 +146,6 @@ fn rdt_discharged_unevaluable(body: Node) -> Optional<Outcome<InferredTree>> {
       optional_present(value: discharge_refinement_obligations(t: ObligatedInferredTree {
         root: t.root,
         facts: t.facts,
-        arm_resolutions: t.arm_resolutions,
         obligations: [RefinementObligation {
           site: app,
           application: app,

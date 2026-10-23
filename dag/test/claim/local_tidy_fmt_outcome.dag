@@ -18,10 +18,7 @@ import gunbc.githooks.githooks_pre_push_plan {
   pre_push_fmt_outcome_blocks,
   pre_push_fmt_spawn_refusal_recipe,
 }
-import gunbc.githooks.githooks_pre_push_emit {
-  expected_githooks_pre_push_sh,
-  githooks_pre_push_emit_medium_disposition_note,
-}
+import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.githooks.githooks_pre_push_fmt_transport_scaffold {
   githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger,
@@ -182,11 +179,14 @@ test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
   githooks_pre_push_fmt_transport_test_discriminator == "witness_unavailable_recipe_never_says_drift"
 }
 
-test fn witness_pre_push_emit_states_its_own_medium_disposition() -> Bool {
-  has(s: githooks_pre_push_emit_medium_disposition_note, p: "dissolve-on")
-    && has(s: githooks_pre_push_emit_medium_disposition_note, p: "GrammarRelationRow")
-    && has(s: githooks_pre_push_emit_medium_disposition_note, p: "githooks_pre_push_emit_scaffold")
-}
+// witness_pre_push_emit_states_its_own_medium_disposition — DELETED with
+// githooks_pre_push_emit_medium_disposition_note (review 82496 finding 1): the String note
+// duplicated the typed trigger row and could drift from it. Its readers live where the subject
+// is read now: test.claim.githooks_pre_push_emit.witness_carrier_reader_reads_the_row executes
+// dissolution_description on gunbc.githooks.githooks_pre_push_emit
+// .githooks_pre_push_emit_concat_body_dissolution, and test.claim
+// .githooks_pre_push_emit_residual_census.witness_concat_body_is_counted_residual runs
+// gunbc.census_closure_frontier.census_closure_frontier_rows() and counts the row once.
 
 test fn witness_hooks_no_longer_conflate_absence_with_drift() -> Bool {
   let push = expected_githooks_pre_push_sh()
