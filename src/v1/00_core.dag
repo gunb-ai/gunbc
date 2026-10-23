@@ -427,6 +427,10 @@ type CompilerDiagnostic
   | UnlistedVariantValueUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
+  // A TYPE REFERENCE WHOSE SHARING LAYER NO ONE DECLARATION DECIDES. The leaf names several declarations
+  // (candidate_identities, each declaring_module.leaf) that the target realizes at different layers, and
+  // the position carries no declaration identity to pick one; wrap, deref and Copy would each guess.
+  | SharedLayerRefused { leaf: String, cause: String, candidate_identities: List<String>, span: SourceSpan }
   | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EmittedSymbolCollision { symbol: String, identities: List<String>, span: SourceSpan }
@@ -676,6 +680,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     UnlistedVariantValueUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
+    SharedLayerRefused { leaf: _, cause: _, candidate_identities: _, span: s } => s
     EffectfulSelfRecursionUnrealized { name: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EmittedSymbolCollision { symbol: _, identities: _, span: s } => s
@@ -785,6 +790,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("the provider of '", n, "' is present but its export could not be established: module '", rm, "' references the name, the registry maps it to '", p, "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold")
     UnlistedVariantValueUse { name: n, span: _ } => concat("unlisted variant value use '", n, "' (a coproduct arm referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    SharedLayerRefused { leaf: l, cause: c, candidate_identities: ids, span: _ } => concat("shared layer refused for '", l, "' (", c, "): the declarations ", join(ids, separator: ", "), " are realized at different layers and this position names no declaration identity")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
@@ -933,6 +939,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     UnlistedVariantValueUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     AmbiguousReference { name: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    SharedLayerRefused { leaf: _, cause: _, candidate_identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EmittedSymbolCollision { symbol: _, identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

@@ -59,7 +59,7 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, SharedLayerRefused, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -4027,6 +4027,7 @@ type EmitRustContext {
   registry: Map<String, ItemInfo>
   data_items: Map<String, Node>
   anonymous_record_diags: List<ErrorNode>
+  shared_layer_diags: List<ErrorNode>
   effectful_recursion_diags: List<ErrorNode>
   svc_module_map: Map<String, String>
   test_projections: List<TestProjection>
@@ -4090,6 +4091,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   }
   let registry = typed.item_registry
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
+  let shared_layer_guard = shared_layer_guard_leaves(type_decl_items: emit_info.type_decl_items, source_indices: closure_source_indices)
+  let shared_layer_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => shared_layer_refusal_diagnostics(n: item, shared_types: emit_info.shared_types, guard_leaves: shared_layer_guard, type_decl_items: emit_info.type_decl_items, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
   let effectful_recursion_diags = typed.modules |> flat_map(tm => effectful_self_recursion_diagnostics(tm: tm, registry: registry))
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
@@ -4106,6 +4109,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     registry: registry,
     data_items: data_items,
     anonymous_record_diags: anonymous_record_diags,
+    shared_layer_diags: shared_layer_diags,
     effectful_recursion_diags: effectful_recursion_diags,
     svc_module_map: svc_module_map,
     test_projections: test_projections,
@@ -4186,6 +4190,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let anonymous_record_diags = ctx.anonymous_record_diags
   if anonymous_record_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: anonymous_record_diags, emitted_edges: [], rust_crates: [] }
+  }
+  let shared_layer_diags = ctx.shared_layer_diags
+  if shared_layer_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: shared_layer_diags, emitted_edges: [], rust_crates: [] }
   }
   let effectful_recursion_diags = ctx.effectful_recursion_diags
   if effectful_recursion_diags |> count > 0 {
@@ -16527,6 +16535,64 @@ fn ambiguous_anonymous_record_literal_diagnostics(n: Node, type_summaries: TypeS
     )
   )
   concat(current, concat(direct, concat(indirect, optional_nodes)))
+}
+
+// THE PRE-EMISSION ANSWER TO THE SHARING QUESTION. Every renderer asks shared_layer_of_type_expr at its own
+// position and, on a refusal, emits the compile_error! floor (shared_layer_refuse_expr). This walk asks the
+// SAME function (the one authority) at every position that carries a type -- the node's resolved type and
+// its declared annotation, with their type arguments -- so a refusal that would surface at rustc becomes a
+// typed, located SharedLayerRefused before any file exists. The renderer's answer and this one are computed
+// twice until the renderers consume this table (gunbc.rung_drop shared_layer_refusal_render_floor).
+// Only the identity-disagreement causes are judged here: a leaf that several declarations share and the
+// target realizes at different layers. TypeDeclNotDeclared and TypeDeclNotResolved need the enclosing
+// generic scope to tell a type parameter from an unresolved name, which this walk does not carry, so those
+// two stay at the render floor and the row names them.
+fn shared_layer_guard_leaves(type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> Set<String> {
+  let ambiguous = map_keys(type_decl_items.identities_by_leaf)
+    |> filter(leaf => match map_get(type_decl_items.identities_by_leaf, leaf) { Present { value: ids } => (ids |> count) > 1  Absent => false })
+    |> fold(init: empty_set(), f: (acc, leaf) => set_insert(acc, leaf))
+  map_keys(type_decl_items.by_identity) |> fold(init: ambiguous, f: (acc, identity) =>
+    match map_get(type_decl_items.by_identity, identity) {
+      Present { value: item } =>
+        if is_type_alias_item(item: item, source_indices: source_indices) && set_contains(ambiguous, rust_fn_sig_leaf_name(source_indices: source_indices, n: resolved_type(n: item))) {
+          set_insert(acc, qualified_last_segment(name: identity))
+        } else { acc }
+      Absent => acc
+    }
+  )
+}
+
+fn shared_layer_cause_is_identity_disagreement(cause: String) -> Bool {
+  cause == "TypeDeclLeafAmbiguous" || cause == "TypeDeclKernelSpellingUndecided candidates disagree on layer"
+}
+
+fn shared_layer_type_refusals(t: Node, shared_types: Set<String>, guard_leaves: Set<String>, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>, module_name: String) -> List<ErrorNode> {
+  let own = if set_contains(guard_leaves, rust_fn_sig_leaf_name(source_indices: source_indices, n: t)) {
+    match shared_layer_of_type_expr(shared_types: shared_types, type_expr: t, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: []) {
+      SharedLayerRefuse { leaf: leaf, cause: cause } =>
+        if shared_layer_cause_is_identity_disagreement(cause: cause) {
+          [make_error_node(diagnostic: SharedLayerRefused { leaf: leaf, cause: cause, candidate_identities: type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf), span: t.span }, module_name: module_name)]
+        } else { [] }
+      _ => []
+    }
+  } else { [] }
+  concat(own, t.children |> flat_map(c => shared_layer_type_refusals(t: c, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)))
+}
+
+fn shared_layer_refusal_diagnostics(n: Node, shared_types: Set<String>, guard_leaves: Set<String>, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>, module_name: String) -> List<ErrorNode> {
+  let judged = match n.inferred {
+    Present { value: Resolved { node: rt } } => shared_layer_type_refusals(t: rt, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)
+    _ => []
+  }
+  let annotated = match n.type_annotation {
+    Present { value: t } => shared_layer_type_refusals(t: t, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)
+    Absent => []
+  }
+  let optional_nodes = concat(
+    match n.body { Present { value: b } => shared_layer_refusal_diagnostics(n: b, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)  Absent => [] },
+    match n.transport { Present { value: t } => shared_layer_refusal_diagnostics(n: t, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)  Absent => [] }
+  )
+  concat(concat(judged, annotated), concat(concat(n.children |> flat_map(c => shared_layer_refusal_diagnostics(n: c, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)), n.params |> flat_map(c => shared_layer_refusal_diagnostics(n: c, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name))), concat(n.properties |> flat_map(c => shared_layer_refusal_diagnostics(n: c, shared_types: shared_types, guard_leaves: guard_leaves, type_decl_items: type_decl_items, source_indices: source_indices, module_name: module_name)), optional_nodes)))
 }
 
 fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: TypeSummaryIndex) -> String? {
