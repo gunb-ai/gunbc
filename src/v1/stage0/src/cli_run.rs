@@ -18526,6 +18526,8 @@ fn serve_wire_header_line(
                 "Set-Cookie"
             } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
                 "Cache-Control"
+            } else if ctx.sym_eq(*variant_name, "WireHeaderServedBy") {
+                "X-Served-By"
             } else {
                 return None;
             }

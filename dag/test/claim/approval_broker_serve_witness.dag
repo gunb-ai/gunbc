@@ -10,9 +10,10 @@ import extdeps.http.server {
 }
 import extdeps.uri_path { path_param_value }
 import gunbc.auth.approval_broker_marker {
-  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_body,
+  ApprovalBrokerMarker, approval_broker_marker_token, approval_broker_marker_in_response, approval_broker_marker_in_text,
+  approval_broker_marked_body, BrokerBodyMarked, BrokerMarkerRefused,
   ObservedMarker, NoMarkerInBody, MarkerObserved,
-  ConfirmHandlerObserved, BrokerNoRouteMatched,
+  ConfirmHandlerObserved, BrokerNoRouteMatched, DeviceEnrolHandlerObserved,
   approval_broker_served_token, approval_serving_process_token,
 }
 import gunbc.auth.approval_broker_serve {
@@ -29,7 +30,8 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission_under, approval_writer_authority, approval_writer_process,
 }
-import extdeps.http.server { ServeHttpResponse }
+import extdeps.http.server { ServeHttpResponse, serve_wire_response, application_json_utf8 }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -218,7 +220,11 @@ test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bo
     tailscale_identity: "",
   )
   r.status == 404
-    && string_contains(s: r.body, pattern: approval_broker_marker_token(m: BrokerNoRouteMatched) as String)
+    && (match approval_broker_marker_in_response(headers: serve_wire_response(r: r).headers, body: r.body) {
+      MarkerObserved { process: p, marker: m } =>
+        approval_broker_served_token(p: p, m: m) == approval_broker_served_token(p: BrokerProcess, m: BrokerNoRouteMatched)
+      NoMarkerInBody => false
+    })
 }
 
 // AND THE READER AGREES WITH THE WRITER ON ONE SPELLING. The two claims above establish that the
@@ -232,7 +238,7 @@ test fn the_marker_reader_recovers_the_fold_the_real_entry_used() -> Bool {
     body: "",
     tailscale_identity: "",
   )
-  match approval_broker_marker_in_body(body: r.body) {
+  match approval_broker_marker_in_response(headers: serve_wire_response(r: r).headers, body: r.body) {
     MarkerObserved { process: p, marker: m } =>
       approval_broker_served_token(p: p, m: m)
         == approval_broker_served_token(p: BrokerProcess, m: ConfirmHandlerObserved)
@@ -273,11 +279,11 @@ test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool 
     tailscale_identity: "",
     process: RoadmapProcess,
   )
-  let seen_broker = match approval_broker_marker_in_body(body: by_broker.body) {
+  let seen_broker = match approval_broker_marker_in_response(headers: serve_wire_response(r: by_broker).headers, body: by_broker.body) {
     MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
-  let seen_roadmap = match approval_broker_marker_in_body(body: by_roadmap.body) {
+  let seen_roadmap = match approval_broker_marker_in_response(headers: serve_wire_response(r: by_roadmap).headers, body: by_roadmap.body) {
     MarkerObserved { process: p, marker: _ } => approval_serving_process_token(p: p) as String
     NoMarkerInBody => "none"
   }
@@ -445,4 +451,65 @@ test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
     body: "",
   )
   r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
+}
+
+// ── A JSON ANSWER IS STILL JSON, AND STILL MARKED ──────────────────────────────────────────────
+// THE DEFECT: approval_broker_marked_body appended `x-approval-broker: <token>` to the body of every
+// subtype without comment syntax, so POST /approve/device/enrol answered `{...}x-approval-broker: ...`
+// and the phone app's strict decoder could read no device route. These claims run the REAL entry
+// (the pairing obligation: a supplied hypothesis about the boundary is a reading only once the
+// producer has run) on a device route whose request body the route refuses before any store effect.
+fn device_enrol_refusal_through_the_real_entry() -> ServeHttpResponse {
+  approval_broker_respond(
+    method_label: "POST",
+    path: "/approve/device/enrol",
+    body: "not json",
+    tailscale_identity: "",
+  )
+}
+
+test fn a_device_route_json_body_parses_as_json_with_no_marker_in_it() -> Bool {
+  let r = device_enrol_refusal_through_the_real_entry()
+  r.content_type == application_json_utf8
+    && !string_contains(s: r.body, pattern: "approval-broker/")
+    && !string_contains(s: r.body, pattern: "x-approval-broker")
+    && (match parse_json_document(s: r.body) {
+      JsonDocumentParsed { value: _ } => true
+      JsonDocumentUnreadable { gap: _ } => false
+    })
+}
+
+test fn a_device_route_json_marker_is_in_the_header_the_reader_looks_in() -> Bool {
+  let r = device_enrol_refusal_through_the_real_entry()
+  let seen = approval_broker_marker_in_response(headers: serve_wire_response(r: r).headers, body: r.body)
+  let body_only = approval_broker_marker_in_text(body: r.body)
+  (match seen {
+    MarkerObserved { process: p, marker: m } =>
+      approval_broker_served_token(p: p, m: m)
+        == approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved)
+    NoMarkerInBody => false
+  }) && (match body_only {
+    NoMarkerInBody => true
+    MarkerObserved { process: _, marker: _ } => false
+  })
+}
+
+// RED CONTROL: the old arm, spelled out, on the same JSON. If this parses, the parse claim above
+// discriminates nothing.
+test fn the_old_body_appended_marker_does_not_parse_as_json() -> Bool {
+  let r = device_enrol_refusal_through_the_real_entry()
+  let old = join([r.body, "x-approval-broker: ", approval_broker_served_token(p: BrokerProcess, m: DeviceEnrolHandlerObserved) as String, "\n"], "")
+  match parse_json_document(s: old) {
+    JsonDocumentParsed { value: _ } => false
+    JsonDocumentUnreadable { gap: _ } => true
+  }
+}
+
+// The producer's own arm: a JSON body comes back byte-identical and the marker is one header.
+test fn a_json_body_is_served_untouched_with_exactly_one_marker_header() -> Bool {
+  let j = approval_broker_marked_body(content_type: application_json_utf8, body: "{}", m: DeviceEnrolHandlerObserved, process: BrokerProcess)
+  match j {
+    BrokerBodyMarked { body: b, headers: hs } => b == "{}" && hs.length() == 1
+    BrokerMarkerRefused { reason: _ } => false
+  }
 }
