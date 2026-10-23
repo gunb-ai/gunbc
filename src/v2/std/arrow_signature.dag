@@ -28,6 +28,7 @@ import v2.std.node { positional_child_target_nodes,
   ArrowSignatureOrderEdge,
   core_edge_label,
   StructuralLabel,
+  NotADeclaration
 }
 import v2.std.node_query { binder_edge, pattern_wildcard_name }
 
@@ -49,7 +50,8 @@ fn signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
         ))
       }),
       source: source
-    )
+    ),
+    declaration: NotADeclaration
   }
 }
 
@@ -68,7 +70,8 @@ fn declared_signature(params: List<Edge>, source: Node) -> DeclaredSignatureEdge
   DeclaredSignatureEdges {
     domain: Edge {
       label: Positional,
-      target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: minted.edges, occurrence_id: source.occurrence_id)
+      target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: minted.edges, occurrence_id: source.occurrence_id),
+      declaration: NotADeclaration
     },
     order: signature_order_edge(order: minted.order, source: source)
   }
@@ -101,7 +104,7 @@ fn declared_signature_arrow(params: List<Edge>, codomain: Node, source: Node) ->
   let signature = declared_signature(params: params, source: source)
   node_with_occurrence_id(
     kind: TypeNode { connective: Arrow },
-    children: [signature.domain, Edge { label: Positional, target: codomain }, signature.order],
+    children: [signature.domain, Edge { label: Positional, target: codomain, declaration: NotADeclaration }, signature.order],
     occurrence_id: source.occurrence_id
   )
 }

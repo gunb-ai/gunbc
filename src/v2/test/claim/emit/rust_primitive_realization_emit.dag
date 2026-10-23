@@ -25,7 +25,7 @@ import v2.std.compilers.target_model { PrimitivePassByValue, PrimitivePassByShar
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
-import v2.std.node { Node, Symbol, Edge, Authored, Positional, StructuralLabel }
+import v2.std.node { Node, Symbol, Edge, Authored, Positional, StructuralLabel, NotADeclaration }
 import v2.std.node_query { child_lookup_step, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
 import std.algebra { list_append }
 import std.decl_ref { DeclarationRef, NamedField }
@@ -209,7 +209,7 @@ fn rust_primitive_marker_edges(wire: Node) -> List<Edge> {
       Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_resolved_primitive, target: e.target)
     }
   }) {
-    NamedChildFound { target: t } => [Edge { label: Authored { name: ^target_value_expr_field_resolved_primitive }, target: t }]
+    NamedChildFound { target: t } => [Edge { label: Authored { name: ^target_value_expr_field_resolved_primitive }, target: t, declaration: NotADeclaration }]
     NamedChildMissing => []
     NamedChildAmbiguous => []
   }

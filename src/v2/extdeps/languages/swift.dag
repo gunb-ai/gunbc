@@ -129,6 +129,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert, map_contains_key }
@@ -394,7 +395,7 @@ fn swift_atom(id: Symbol) -> Node {
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {

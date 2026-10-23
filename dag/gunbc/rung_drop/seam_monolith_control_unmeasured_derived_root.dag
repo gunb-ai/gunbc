@@ -30,13 +30,11 @@ data seam_monolith_control_unmeasured_derived_root: RungDrop = RungDrop {
 
   declared: "2026-09-13",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: Enumerated { members: seam_monolith_control_unmeasured_derived_root_population },
     restoration_trigger: "THE MONOLITH CONTROL EXECUTES AGAIN ON ITS SUBJECT: either M is re-expressed at --entry grain against the seam it actually tests, so that an unsharded compile of the importer's closure over the mutated tree reds naming the seam class; or a measured-demand row for derived roots is recorded per base, keyed on the derived root's identity at that base and measured once with its receipt, so that whole-root admission admits M on a row. Never by a per-source or per-byte coefficient, and never by a bigger budget or a placement that skips admission",
-  }
+  } }
 }
