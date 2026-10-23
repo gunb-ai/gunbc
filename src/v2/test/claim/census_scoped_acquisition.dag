@@ -253,21 +253,21 @@ test fn a_denied_request_does_not_block_a_later_permitted_read() -> Bool {
   shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry_denied_first"]))
 }
 
-// ---- THE SCOPED CENSUS ADMITS NO AMBIENT RESOLUTION AUTHORITY (census hermeticity, reversed) ----
+// ---- THE SCOPED CENSUS ADMITS NO AMBIENT RESOLUTION AUTHORITY (tripwire, not closure) ----
 //
-// The resolver's ambient primitive-authority tier binds an unimported spelling to a contract row read
-// from the LOADED POPULATION's symbol index. Two readings of "hermetic" were measured and one was
-// executed wrong (October 2026): adding the contract module to every population made the census bind
-// names the ROUTE cannot bind -- at the join head the parse-label route's first fatal moved from
-// list_push @ dag/std/algebra.dag bytes 5195..5204 to Map @ bytes 73768..73771, i.e. the instrument
-// resolved THROUGH a contract the real route refuses at. The ruling (v2 native, seat 12 era): neither
-// acquisition path admits the ambient primitive contracts as a resolution authority; the census matches
-// THE ROUTE. So the boundary claim is identity, not inclusion: fn native_census_scoped_entries must
-// return the subjects EXACTLY -- same names, same argv order, nothing appended. If anyone re-adds a
-// module the subjects did not name (a contract roster, a convenience tier), these claims RED, because
-// that appended module is precisely how the census would start binding through something the route
-// can't. The executed half of the same fact is not a claim: it is the census's first fatal being
-// byte-identical to the route's on the same subject (the PR receipt carries the run IDs).
+// These two claims are a REGRESSION TRIPWIRE at one named boundary (fn native_census_scoped_entries,
+// v2.compiler.source_root_eval), not evidence that the population-dependence class is closed -- it is
+// OPEN, and its ledger row (recurring_failure_mode: census_rows_read_the_loaded_population) says so with
+// both executed closure attempts recorded. The resolver's ambient primitive-authority tier binds an
+// unimported spelling iff its contract row is in the loaded population's symbol index, so the moment
+// anyone appends a module the subjects did not name -- a contract roster, a convenience tier -- the
+// census starts binding through something the ROUTE refuses at, which is exactly how both reversed
+// attempts failed (measured: the route's parse-label first fatal moved from list_push @
+// dag/std/algebra.dag bytes 5195..5204 to Map @ bytes 73768..73771 once the roster joined the route,
+// #14832). They read only supplied VALUES at the boundary (no filesystem, no fold surface -- Manager 1
+// forbade reimplementing std.algebra helpers here; probe scratch/qc503-claims-only @ 4741a1f271c9 showed
+// a claim walking std.algebra's BODY cannot prepare once the contracts stop loading), so they hold with
+// zero ambient-contract authority and RED the instant the boundary is widened by anyone.
 
 // Identity for every supplied population -- including one that spells a contract module itself, which
 // must ride as the CALLER'S name in the CALLER'S position, not as an authority the census injected:
