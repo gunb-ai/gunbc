@@ -11149,12 +11149,15 @@ fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeE
     match lookup_type_by_name(env: env, name: carrier_name) {
       Present { value: target } =>
         let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-        if alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
+        // A parameterless alias applied to arguments binds them to nothing: the arguments are dropped, and the
+        // alias's own arity (zero) is the one the application is judged against, not the arity of the declaration it expands to.
+        let is_paramless_alias = target.params |> count == 0 && target.children |> count == 0 && target.connective == NoConnective && target.inferred != none
+        if is_paramless_alias || alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
           [make_error_node(
             diagnostic: TypeArgumentArityMismatch {
               type_name: carrier_name,
               supplied: type_args |> count,
-              declared: decl.params |> count,
+              declared: if is_paramless_alias { 0 } else { decl.params |> count },
               span: carrier.span
             },
             module_name: module_name
