@@ -21255,6 +21255,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "\n",
       "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "\n",
       "            \"raven_fatal\": native_census_infer_fatal_probe(step.outcome.clone()),", "\n",
+      "            \"raven_chain\": native_census_infer_chain_probe(step.outcome.clone()),", "\n",
+      "            \"raven_loci_rows\": native_census_infer_loci_rows(step.outcome.clone()),", "\n",
       "        \}));", "\n",
       "    \}", "\n",
       "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",
