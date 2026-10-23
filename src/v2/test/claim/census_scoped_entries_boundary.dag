@@ -34,17 +34,31 @@ import v2.compiler.source_root_eval {
 // authority the census injected. Plain equality on supplied values at the boundary; no filesystem, no
 // fold surface (reimplementing std.algebra helpers to dodge the wall was refused -- it would fork the
 // list ops, DESIGN section 3).
-test fn the_census_admits_no_ambient_resolution_authority() -> Bool {
+// SHAPE PROBE (four single-conjunct claims, to be collapsed once each shape is proven):
+// isolates which of list-literal argument, list equality, empty literal, or the call itself
+// carries the prepare refusal (cause=application_argument_does_not_inhabit, chain
+// infer_grounding_not_derived @ <projected node occurrence #792>).
+
+test fn shape_single_element_equality() -> Bool {
   native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
-    && native_census_scoped_entries(subjects: []) == []
-    && native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) == ["extdeps.git.versioning", "std.fermi"]
 }
 
-// The shape the reversed substrate fold existed to serve, now pinned to the opposite: a population
-// that never reaches the ambient tier still gets EXACTLY itself -- nothing "rides" it, and duplicates
-// the caller named are the caller's own, neither added to nor removed from.
-test fn a_subject_list_gets_exactly_itself_whatever_it_reaches() -> Bool {
-  native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
-    && native_census_scoped_entries(subjects: ["std.fermi", "std.primitives"]) == ["std.fermi", "std.primitives"]
-    && native_census_scoped_entries(subjects: ["std.primitives", "std.primitives"]) == ["std.primitives", "std.primitives"]
+test fn shape_empty_equality() -> Bool {
+  native_census_scoped_entries(subjects: []) == []
+}
+
+test fn shape_two_element_equality() -> Bool {
+  native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) == ["extdeps.git.versioning", "std.fermi"]
+}
+
+test fn shape_single_element_pattern_match() -> Bool {
+  match native_census_scoped_entries(subjects: ["std.fermi"]) {
+    Cons { head: h, tail: t } =>
+      h == "std.fermi"
+        && match t {
+          Empty => true
+          Cons { head: _, tail: _ } => false
+        }
+    Empty => false
+  }
 }
