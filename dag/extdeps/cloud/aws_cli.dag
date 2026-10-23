@@ -114,10 +114,13 @@ fn aws_cli_describe_instance_types(credentials_file: FilePath, region: NonEmptyS
     arguments: concat(["--instance-types"], map(types, t => t as String)))
 }
 
-// The current price in each zone: a start time of now answers the price in effect at that instant.
-fn aws_cli_describe_spot_prices(credentials_file: FilePath, region: NonEmptyStr, types: List<NonEmptyStr>, product: NonEmptyStr, now_iso8601: NonEmptyStr) -> ArgvCommand {
+// The current price in each zone: a start time of now answers the price in effect at that instant. The
+// instant is passed as Unix epoch seconds, which the CLI's timestamp input parser accepts beside ISO 8601
+// (a BET, confirmed by the first live read: test.claim.cloud.aws_cli_projection_witness
+// aws_cli_projection_inhabitance_frontier); no epoch-to-ISO formatter exists in the corpus to avoid it.
+fn aws_cli_describe_spot_prices(credentials_file: FilePath, region: NonEmptyStr, types: List<NonEmptyStr>, product: NonEmptyStr, now_epoch_seconds: Int) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-spot-price-history" as NonEmptyStr,
-    arguments: concat(concat(["--instance-types"], map(types, t => t as String)), ["--product-descriptions", product as String, "--start-time", now_iso8601 as String]))
+    arguments: concat(concat(["--instance-types"], map(types, t => t as String)), ["--product-descriptions", product as String, "--start-time", to_string(now_epoch_seconds)]))
 }
 
 fn aws_cli_describe_owned_instances(credentials_file: FilePath, region: NonEmptyStr, tag_key: NonEmptyStr, owner: NonEmptyStr) -> ArgvCommand {

@@ -1,0 +1,95 @@
+module test.claim.fabric.flex_aws_row_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal }
+import std.measure { mebibyte, gigabyte }
+import extdeps.cloud.aws_ec2 {
+  AwsEc2InstanceTypeOffering, AwsEc2LocationAvailabilityZone, AwsEc2InstanceTypeInfo, AwsEc2GpuDeviceInfo,
+  AwsEc2InstanceStorageInfo, AwsEc2DiskInfo, AwsEc2SpotPrice,
+}
+import product.fabric.flex_vast_shadow { flex_serving_recipe }
+import product.fabric.flex_aws_row {
+  FlexAwsRegionObserved, FlexAwsCandidate, FlexAwsGpuNameRow, FlexAwsSpot, FlexAwsOnDemand,
+  FlexAwsQuotaBelowVcpus, FlexAwsNoLocalNvme, FlexAwsHostRamBelowFloor, FlexAwsGpuNameUnmapped,
+  FlexAwsSpotPriceUnobserved, FlexAwsOnDemandPriceUnobserved,
+  flex_aws_candidates, flex_aws_wall_wire, flex_aws_floor_int,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED: one region's observation in the shapes the CLI projection yields (the readers are witnessed
+// in test.claim.cloud.aws_cli_projection_witness). The 2xlarge figures are the g7e page's; the GPU name
+// is a stand-in, because the real one is unread (product.fabric.flex_aws_row flex_aws_gpu_names).
+fn w_type(name: String, vcpus: Int, ram_mib: Int, gpus: Int, nvme_gb: Int?) -> AwsEc2InstanceTypeInfo {
+  AwsEc2InstanceTypeInfo {
+    instance_type: name as NonEmptyStr,
+    default_vcpus: vcpus,
+    memory_size_in_mib: mebibyte(count: ram_mib),
+    gpus: [AwsEc2GpuDeviceInfo { name: "RTX PRO 6000 Server" as NonEmptyStr, manufacturer: "NVIDIA" as NonEmptyStr, count: gpus, memory_size_in_mib: mebibyte(count: 98304) }],
+    total_gpu_memory_in_mib: none,
+    instance_storage_supported: match nvme_gb { Present { value: _ } => true  Absent => false },
+    instance_storage: match nvme_gb {
+      Present { value: g } => Present { value: AwsEc2InstanceStorageInfo { total_size_in_gb: gigabyte(count: g), disks: [AwsEc2DiskInfo { size_in_gb: gigabyte(count: g), count: 1, disk_type: "ssd" as NonEmptyStr }], nvme_support: "required" as NonEmptyStr } }
+      Absent => none
+    },
+    supported_usage_classes: ["on-demand" as NonEmptyStr, "spot" as NonEmptyStr],
+  }
+}
+
+fn w_offer(t: String) -> AwsEc2InstanceTypeOffering {
+  AwsEc2InstanceTypeOffering { instance_type: t as NonEmptyStr, location_type: AwsEc2LocationAvailabilityZone, location: "us-east-1a" as NonEmptyStr }
+}
+
+data w_names: List<FlexAwsGpuNameRow> = [FlexAwsGpuNameRow { aws_gpu_name: "RTX PRO 6000 Server" as NonEmptyStr, catalog_identity: "rtx-pro-6000-blackwell" as NonEmptyStr }]
+
+fn w_candidates(names: List<FlexAwsGpuNameRow>) -> List<FlexAwsCandidate> {
+  flex_aws_candidates(
+    observation: FlexAwsRegionObserved {
+      region: "us-east-1" as NonEmptyStr,
+      offerings: [w_offer(t: "g7e.2xlarge"), w_offer(t: "x.small")],
+      types: [w_type(name: "g7e.2xlarge", vcpus: 8, ram_mib: 65536, gpus: 1, nvme_gb: Present { value: 1900 }), w_type(name: "x.small", vcpus: 4, ram_mib: 16384, gpus: 1, nvme_gb: none)],
+      prices: [AwsEc2SpotPrice { availability_zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, product_description: "Linux/UNIX" as NonEmptyStr, spot_price: ExactDecimal { units: 12345, fraction_digits: 4 }, timestamp: "2026-10-23T09:00:00+00:00" }],
+      spot_quota_vcpus: 64,
+      on_demand_quota_vcpus: 0,
+      owned: [],
+    },
+    recipe: flex_serving_recipe,
+    names: names,
+  )
+}
+
+fn w_find(cs: List<FlexAwsCandidate>, t: String, spot: Bool) -> FlexAwsCandidate? {
+  cs |> filter(c => ((c.instance_type as String) == t) && (match c.market { FlexAwsSpot => spot  FlexAwsOnDemand => !spot })) |> first()
+}
+
+fn w_walls(c: FlexAwsCandidate?) -> String {
+  match c { Present { value: x } => join(map(x.walls, w => flex_aws_wall_wire(w: w)), ",")  Absent => "MISSING" }
+}
+
+// Every offered (zone, size) is two candidates, spot and on-demand, each against its own quota.
+test fn each_offering_is_a_spot_and_an_on_demand_candidate() -> Bool {
+  length(w_candidates(names: w_names)) == 4
+}
+
+// The 2xlarge on spot clears every wall and is priced per GPU, rounded up to the micro.
+test fn a_conforming_spot_size_is_clear_and_priced_per_gpu() -> Bool {
+  match w_find(cs: w_candidates(names: w_names), t: "g7e.2xlarge", spot: true) {
+    Present { value: c } => (length(c.walls) == 0) && (match c.per_gpu_hour_micros { Present { value: m } => m == 1234500  Absent => false })
+    Absent => false
+  }
+}
+
+// REDs, each by its named wall: the same size on-demand meets a zero quota and an unread price; a size
+// with no local NVMe and too little RAM is walled on both; an unmapped GPU name walls a conforming size.
+test fn every_unmet_constraint_is_a_named_wall() -> Bool {
+  (w_walls(c: w_find(cs: w_candidates(names: w_names), t: "g7e.2xlarge", spot: false)) == "quota-below-vcpus quota=0 needs=8,on-demand-price-unobserved")
+    && (w_walls(c: w_find(cs: w_candidates(names: w_names), t: "x.small", spot: true)) == "no-local-nvme,host-ram-below-floor mib=16384,spot-price-unobserved")
+    && (w_walls(c: w_find(cs: w_candidates(names: []), t: "g7e.2xlarge", spot: true)) == "gpu-name-unmapped names=RTX PRO 6000 Server")
+}
+
+test fn a_fractional_quota_floors() -> Bool {
+  (flex_aws_floor_int(d: ExactDecimal { units: 640, fraction_digits: 1 }) == 64)
+    && (flex_aws_floor_int(d: ExactDecimal { units: 6450, fraction_digits: 2 }) == 64)
+}
