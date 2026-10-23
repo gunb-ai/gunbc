@@ -1,0 +1,9 @@
+module gunbc.s10_pos_unit_as_unit
+
+import std.types { String, Bool, List, Int, Unit }
+import std.optional { Optional, Present, Absent }
+
+fn probe(u: Unit) -> Unit {
+  let z: Unit = u
+  z
+}

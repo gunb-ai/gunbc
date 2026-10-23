@@ -1,0 +1,14 @@
+module gunbc.s10_red_unit_as_bool
+
+import std.types { String, Bool, List, Int, Unit }
+import std.optional { Optional, Present, Absent }
+
+fn probe(u: Unit) -> Bool {
+  let z: Bool = u
+  z
+}
+
+fn zz_control_after(x: Int) -> Bool {
+  let n: Bool = x
+  n
+}

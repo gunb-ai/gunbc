@@ -1,0 +1,14 @@
+module gunbc.s10_pos_none_binder_string
+
+import std.types { String, Bool, List, Int, Unit }
+import std.optional { Optional, Present, Absent }
+
+fn probe(xs: List<String>) -> String {
+  let r = fold(xs, init: none, f: (acc, c) => Present { value: c })
+  match r {
+    Absent => ""
+    Present { value: c } =>
+      let z: String = c
+      z
+  }
+}
