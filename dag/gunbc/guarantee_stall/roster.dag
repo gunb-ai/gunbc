@@ -24,6 +24,7 @@ import gunbc.guarantee_stall.generated_artifact_registry_membership_stall { gene
 import gunbc.guarantee_stall.authority_target_same_expression_equivalence_stall { authority_target_same_expression_equivalence_stall }
 import gunbc.guarantee_stall.import_eligibility_resolution_stall { import_eligibility_resolution_stall }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
+import gunbc.guarantee_stall.removal_tombstone_commit_resolution_stall { removal_tombstone_commit_resolution_stall }
 import gunbc.guarantee_stall.heterogeneous_child_list_stall { heterogeneous_child_list_stall }
 import gunbc.guarantee_stall.doc_graph_orphan_population_stall { doc_graph_orphan_population_stall }
 import gunbc.guarantee_stall.doc_graph_dangling_link_population_stall { doc_graph_dangling_link_population_stall }
@@ -200,6 +201,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   authority_target_same_expression_equivalence_stall,
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
+  removal_tombstone_commit_resolution_stall,
   heterogeneous_child_list_stall,
   doc_graph_orphan_population_stall,
   doc_graph_dangling_link_population_stall,

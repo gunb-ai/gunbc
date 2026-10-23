@@ -7,7 +7,7 @@ import v2.compiler.normalized_tree { no_record_declarations, no_resource_declara
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, fold_list_node }
+import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Symbol, TypeNode, fold_list_node, NotADeclaration }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
 import v2.std.symbol_index {
@@ -56,10 +56,11 @@ fn leak_type_edge(type_sym: Symbol, variants: List<Symbol>) -> Edge {
     target: Node {
       kind: TypeNode { connective: Disj },
       children: fold(variants, init: [], f: fn(acc, variant_sym) {
-        concat(acc, [Edge { label: Authored { name: variant_sym }, target: leak_atom(name: variant_sym) }])
+        concat(acc, [Edge { label: Authored { name: variant_sym }, target: leak_atom(name: variant_sym), declaration: NotADeclaration }])
       }),
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 

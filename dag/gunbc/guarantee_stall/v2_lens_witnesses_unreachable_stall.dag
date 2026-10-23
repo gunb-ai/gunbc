@@ -2,7 +2,8 @@ module gunbc.guarantee_stall.v2_lens_witnesses_unreachable_stall
 
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // The v2 lens witnesses read declared fields through the node_query binder shape. The decl_facts
 // marshal migration (gunbc#14431) changes that shape, and no route reachable from a session or a
@@ -25,7 +26,7 @@ data v2_lens_witnesses_unreachable_stall: GuaranteeStall = GuaranteeStall {
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "a route whose resolver binds implicit-scope v2 modules and joins their effect summaries, so a v2.test.claim witness executes to a verdict"
+    grounding: GroundingUndeclared
   },
   population: BoundedPopulation {
     members: Cons {
