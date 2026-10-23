@@ -1,7 +1,8 @@
 module gunbc.rung_drop.unify_generics_rebind_unenforced_on_emitted_and_required_paths
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
 // THE DECLARED RUNG DROP for v1 infer's generic actuals (DESIGN 4b meta-obligation 3), landed
@@ -82,9 +83,7 @@ data unify_generics_rebind_unenforced_on_emitted_and_required_paths: RungDrop = 
 
   declared: "2026-10-16",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     // NO DROP HAPPENED HERE, and the row says so rather than recording a rung the class never
     // held (review 81163 finding 2; DESIGN section 4b meta-obligation 1, "rung inflation is
     // worse than sitting low"). On main the class sat BELOW the ladder: the deleted row this
@@ -98,10 +97,7 @@ data unify_generics_rebind_unenforced_on_emitted_and_required_paths: RungDrop = 
     reason: ReplacementStaged {
       replacement: "two arms, both needed, and neither alone retires this row. (A) THE MIRROR GATE ON A JOB: run the already-authored `claim_executor --required-ci --required-lane build` on a required lane, so a hand edit to the shipped unify_generics mirror is caught by execution rather than by a session choosing to regenerate. (B) THE CONTROLS ON A REQUIRED LANE: the discriminating controls moved onto a lane the required aggregate actually runs. Two candidate routes, and the choice is not free -- the .dag claim rows in dag/test/claim/cross_coproduct_generic_locate.dag are the enrolled kind and the floor's own claim execution can reach them, but they must first be made discriminating: they assert a census count, and the census module warns that its row set is the whole compile's (imported closure included), so a bare blocking count is satisfied by any unrelated blocking row and is not evidence the fixture refused for the claimed reason; the exact form that same module prescribes is a count scoped on class AND subject_name. The Rust controls cannot be restored as-is into the old lane either, because that lane's own restoration trigger forbids widening `cargo test --release -p v1-compiler --lib` to the whole workspace, and my tests are in a different package (v1-compiler-tests) which needs its own newly authored lane, as ci_v1_compiler_tests_compile_gate_note already anticipates."
     },
-    population: [
-      "the shipped mirror of the fold: src/v1/stage0/src/v1_compiler_infer.rs, which is the emitter's output and is compared by no job (inherited from gunbc.rung_drop v1_required_lanes_withdrawn, whose population names the mirror-equality gate as run by nothing)",
-      "the controls that discriminate the fold: src/v1/tests/src/cross_coproduct_generic_locate_test.rs and src/v1/tests/src/cross_coproduct_probe_discharge_test.rs, in the v1-compiler-tests package, which no workflow under .github/workflows builds or runs -- the gate that used to run them says so itself, in gunbc.ci ci_v1_compiler_tests_compile_gate_note",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "the shipped mirror of the fold: src/v1/stage0/src/v1_compiler_infer.rs, which is the emitter's output and is compared by no job (inherited from gunbc.rung_drop v1_required_lanes_withdrawn, whose population names the mirror-equality gate as run by nothing)", tail: ["the controls that discriminate the fold: src/v1/tests/src/cross_coproduct_generic_locate_test.rs and src/v1/tests/src/cross_coproduct_probe_discharge_test.rs, in the v1-compiler-tests package, which no workflow under .github/workflows builds or runs -- the gate that used to run them says so itself, in gunbc.ci ci_v1_compiler_tests_compile_gate_note"] } },
     restoration_trigger: "THE CAPABILITY, not an artifact, and per arm. (A) The mirror-equality gate runs on a required lane and a hand-edited mirror turns it red, so regeneration is no longer the only thing standing between an edited seed and a green merge. (B) A red in the rebind controls turns a required check red on the change that introduced it, by execution rather than by a session running cargo on a runner; for the .dag route this requires the claim rows to be scoped on diagnostic_class AND subject_name rather than on a bare blocking count, because until they discriminate they cannot serve as the enrolled control even once the gate runs them."
-  },
+  } }
 }
