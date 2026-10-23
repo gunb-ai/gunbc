@@ -3354,7 +3354,7 @@ fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZ
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
           if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !inner |> any(m => m.name == vname)
+            && !(inner |> any(m => m.name == vname))
             && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
             concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
           } else { inner }
@@ -14224,14 +14224,15 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
 
   let sharing = language_spec(target: Rust).sharing
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
-  let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
-  let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
-  let closure_params = if elem_type_str == "_" {
-    "|a, b|"
+  let e_clone = apply_type_template1(template: sharing.clone_value, arg0: "__e")
+  let decorate_param = if elem_type_str == "_" {
+    "|__e|"
   } else {
-    concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
+    concat("|__e: ", elem_type_str, "|")
   }
-  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }"))
+  // Decorate, stable sort on the stored key, undecorate: the supplied selector runs once per
+  // element (it is pure), not twice per comparison; canonical_key_cmp and the tie order are unchanged.
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __keyed: Vec<_> = ", iter_str, ".map(", decorate_param, " { let __k = (", sort_key_fn, ")(", e_clone, "); (__k, __e) }).collect(); __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0)); __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>() }"))
 }
 
 // The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
@@ -20707,7 +20708,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
       "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,", "\n",
-      "    native_demand_census_output, native_decl_ref_census_output,", "\n",
+      "    native_census_verb_output, NativeCensusVerbWord,", "\n",
       "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,", "\n",
       "    NativeCensusScope, NativeCensusScoped,", "\n",
       "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,", "\n",
@@ -21069,33 +21070,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    );", "\n",
       "\}", "\n",
       "\n",
-      "// THE FOURTH MODE: D13's DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output).", "\n",
-      "// The fold decides every line and the exit -- 0 held, 1 a census whose rows do not account for", "\n",
-      "// every uses fn, 2 no observation -- and this function only reads the ingest, prints and exits.", "\n",
-      "fn run_demand_census(source_roots: &[String]) \{", "\n",
+      "// THE NATIVE CENSUS VERBS (the words of `gunbc.native_census_verb`): ONE run function.", "\n",
+      "// v2.compiler.source_root_eval native_census_verb_output decides every line and the exit from the verb", "\n",
+      "// word; this function only reads the ingest, prints and exits.", "\n",
+      "fn run_census_verb(verb: &NativeCensusVerbWord, source_roots: &[String]) \{", "\n",
       "    if source_roots.is_empty() \{", "\n",
       "        eprintln!(\"REFUSED: no source roots given\");", "\n",
       "        std::process::exit(2);", "\n",
       "    \}", "\n",
       "    let reads = read_census_ingest(source_roots);", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
-      "    let output = native_demand_census_output(ingest);", "\n",
-      "    for line in output.lines.iter() \{", "\n",
-      "        println!(\"{}\", line);", "\n",
-      "    \}", "\n",
-      "    std::process::exit(output.exit as i32);", "\n",
-      "\}", "\n",
-      "", "\n",
-      "// THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (v2.compiler.source_root_eval native_decl_ref_census_output).", "\n",
-      "// The fold decides every line and the exit; this function only reads the ingest, prints and exits.", "\n",
-      "fn run_decl_ref_census(source_roots: &[String]) \{", "\n",
-      "    if source_roots.is_empty() \{", "\n",
-      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
-      "        std::process::exit(2);", "\n",
-      "    \}", "\n",
-      "    let reads = read_census_ingest(source_roots);", "\n",
-      "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
-      "    let output = native_decl_ref_census_output(ingest);", "\n",
+      "    let output = native_census_verb_output(verb.clone(), ingest);", "\n",
       "    for line in output.lines.iter() \{", "\n",
       "        println!(\"{}\", line);", "\n",
       "    \}", "\n",
@@ -22058,8 +22043,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensus \{ .. \} => run_census(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverDeclRefCensus \{ .. \} => run_decl_ref_census(&source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverCensusVerb \{ verb, .. \} => run_census_verb(verb, &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",

@@ -88,6 +88,7 @@ import v2.std.node { positional_child_target_nodes,
   ArrowBodyEdge,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.node_query { pattern_wildcard_name, binder_edge }
 import v2.std.runtime {
@@ -246,11 +247,12 @@ fn add_arrow_eval_lazy_arm_branch_node() -> Node {
             kind: ComputationNode { behavior: Branch },
             occurrence_id: OccurrenceSynthetic,
             children: [
-              Edge { label: Positional, target: two_lit },
-              Edge { label: Positional, target: five_lit },
+              Edge { label: Positional, target: two_lit, declaration: NotADeclaration },
+              Edge { label: Positional, target: five_lit, declaration: NotADeclaration },
               Edge {
                 label: Positional,
-                target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal)
+                target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal),
+                declaration: NotADeclaration
               }
             ]
           }
@@ -374,9 +376,9 @@ fn add_arrow_eval_add_call_optional(
               kind: ComputationNode { behavior: Transform },
               occurrence_id: OccurrenceSynthetic,
               children: [
-                Edge { label: Positional, target: callee },
-                Edge { label: Positional, target: left },
-                Edge { label: Positional, target: right }
+                Edge { label: Positional, target: callee, declaration: NotADeclaration },
+                Edge { label: Positional, target: left, declaration: NotADeclaration },
+                Edge { label: Positional, target: right, declaration: NotADeclaration }
               ]
             }
           }
@@ -391,8 +393,8 @@ fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^add_arrow_eval_actual }, target: call },
-      Edge { label: Authored { name: ^add_arrow_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^add_arrow_eval_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^add_arrow_eval_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }
@@ -516,9 +518,9 @@ fn add_arrow_swapped_operand_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x), declaration: NotADeclaration }
     ]
   }
 }
@@ -539,9 +541,9 @@ fn add_arrow_swapped_add_arrow() -> Node {
     occurrence_id: OccurrenceSynthetic,
     children: [
       signature.domain,
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int), declaration: NotADeclaration },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_swapped_operand_body() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_swapped_operand_body(), declaration: NotADeclaration }
     ]
   }
 }
@@ -553,9 +555,9 @@ fn add_arrow_excess_signature_arrow() -> Node {
     occurrence_id: OccurrenceSynthetic,
     children: [
       signature.domain,
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int), declaration: NotADeclaration },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_eval_canonical_body() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_eval_canonical_body(), declaration: NotADeclaration }
     ]
   }
 }
@@ -565,9 +567,9 @@ fn add_arrow_eval_canonical_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y), declaration: NotADeclaration }
     ]
   }
 }
@@ -579,9 +581,9 @@ fn add_arrow_excess_body_arrow() -> Node {
     occurrence_id: OccurrenceSynthetic,
     children: [
       signature.domain,
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int), declaration: NotADeclaration },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_excess_body() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: add_arrow_excess_body(), declaration: NotADeclaration }
     ]
   }
 }
@@ -591,10 +593,10 @@ fn add_arrow_excess_body() -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) },
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) }
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y), declaration: NotADeclaration },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x), declaration: NotADeclaration }
     ]
   }
 }
@@ -609,10 +611,10 @@ fn add_arrow_excess_actual_call_optional(callee: Node) -> Optional<Node> {
               kind: ComputationNode { behavior: Transform },
               occurrence_id: OccurrenceSynthetic,
               children: [
-                Edge { label: Positional, target: callee },
-                Edge { label: Positional, target: two_lit },
-                Edge { label: Positional, target: three_lit },
-                Edge { label: Positional, target: two_lit }
+                Edge { label: Positional, target: callee, declaration: NotADeclaration },
+                Edge { label: Positional, target: two_lit, declaration: NotADeclaration },
+                Edge { label: Positional, target: three_lit, declaration: NotADeclaration },
+                Edge { label: Positional, target: two_lit, declaration: NotADeclaration }
               ]
             }
           }
@@ -839,10 +841,11 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
     kind: ComputationNode { behavior: Loop },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },
+      Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: add_arrow_eval_atom(s: ^add_arrow_eval_loop_measure_literal)
+        target: add_arrow_eval_atom(s: ^add_arrow_eval_loop_measure_literal),
+        declaration: NotADeclaration
       }
     ]
   }

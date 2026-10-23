@@ -2,7 +2,7 @@ module v2.test.claim.namespace_graft_reconstructed_forest
 
 import v2.compiler.namespace_graft { namespace_graft_reconstruct_declaration_forest }
 import v2.std.list_introduction { list_introduction_elements_optional }
-import v2.std.node { Authored, Conj, Edge, Node, TypeNode }
+import v2.std.node { Authored, Conj, Edge, Node, TypeNode, NotADeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present }
@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ngrf_unit_a: Node = Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 data ngrf_unit_b: Node = Node {
   kind: TypeNode { connective: Conj },
-  children: [Edge { label: Authored { name: ^ngrf_marker }, target: ngrf_unit_a }],
+  children: [Edge { label: Authored { name: ^ngrf_marker }, target: ngrf_unit_a, declaration: NotADeclaration }],
   occurrence_id: OccurrenceSynthetic
 }
 

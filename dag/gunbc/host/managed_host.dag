@@ -15,7 +15,8 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
+import gunbc.rung_drop { RungDrop, Standing, Retired }
+import gunbc.rung_drop.standing { standing_rung_drops }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
@@ -233,15 +234,12 @@ type ManagedHostMembership sole_constructor
 // admit any host whose name happens to appear in a sentence.
 fn covering_drop_is_standing(drop: RungDrop) -> Bool {
   match drop.standing {
-    Retired { trigger_fired: _ } => false
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-    // main's #14181 Dissolved law, adopted into the value classifier: an ADMISSIBLE dissolution
-    // erases the drop from live accounting, so it cannot qualify a subject; an INADMISSIBLE one
-    // (non-empty typed population, or AuthoredProse) FAILS CLOSED -- the row is still standing,
-    // counted live and outstanding, and still covers. Same law as drop_is_standing_citation had;
-    // no identity comparison here -- coverage is the record's cited fact, not a lookup.
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: drop) == false
-    Standing => true
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    // A dissolution erases the drop from live accounting, so it cannot qualify a subject; coverage is
+    // the record's cited fact, not a lookup, so a standing drop covers with no identity comparison.
+    Dissolved { removal: _, declaration: _ } => false
+    Standing { declaration: _ } => true
   }
 }
 

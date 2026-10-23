@@ -1,0 +1,50 @@
+module gunbc.guarantee_stall.v2_lens_witnesses_unreachable_stall
+
+import std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// The v2 lens witnesses read declared fields through the node_query binder shape. The decl_facts
+// marshal migration (gunbc#14431) changes that shape, and no route reachable from a session or a
+// required lane executes these files, so the migrated readers are unexecuted. Measured on the
+// #14431 head and on a main-built seed alike: `gunbc run --source-root src --source-root dag --entry
+// <file> --claim-run` refuses grounding_lens ("effect summary incomplete: call to
+// candidates_over_decls has no established callee identity") and concept_index_enumeration ("no
+// field concept on type QualifiedConcept"); with roots dag + src/v2 the implicit-scope modules
+// refuse "unresolved type Symbol". No required job evaluates a witness (DESIGN, Building & checks).
+// Current is Mitigatable and not a dropped rung: the migrated readers were never executed, so no
+// held rung is recorded as lost for the migrated readers. grounding_lens and concept_index_enumeration
+// DID run in July on a lane since withdrawn; that lost lane is already covered by `gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`. FINDING at main 7c8300f438e6 (the base of gunbc#14431, seed built from it): both
+// refuse on the native claim route there (candidates_over_decls callee identity; QualifiedConcept
+// field concept), so they are broken on main independently of this change. v1-runnable twins of concept_index_enumeration live in
+// test.claim.decl_facts_field_binder_witness and cover the record, defaulted-record and
+// coproduct-arm reads.
+data v2_lens_witnesses_unreachable_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2 lens witnesses that consume decl_facts fields through the node_query binder shape and execute on no reachable route",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: GroundingUndeclared
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "src/v2/test/claim/grounding_lens.dag",
+      tail: Cons {
+        head: "src/v2/test/claim/concept_index_enumeration/concept_index_enumeration.dag",
+        tail: Cons {
+          head: "src/v2/test/claim/enforcement_live_witness.dag",
+          tail: Cons {
+            head: "src/v2/test/claim/enforcement/cost_coverage_witness.dag",
+            tail: Cons {
+              head: "src/v2/test/claim/enforcement/grammar_coverage_witness.dag",
+              tail: Empty {}
+            }
+          }
+        }
+      }
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "a route executes the five named v2.test.claim lens witnesses to a verdict, at which point each is run against the binder-shaped decl_facts reading and this row retires")
+}

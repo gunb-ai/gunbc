@@ -1,6 +1,7 @@
 module gunbc.instruments.host_prelude
 
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_release_dir }
 import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
@@ -28,7 +29,10 @@ fn witness_bin(var_name: String, bin_name: String) -> WitnessBin {
 }
 
 fn witness_bin_release_path(root: String, bin_name: String) -> String {
-  concat(root, concat("/target/release/", bin_name))
+  // The release artifact lives under cargo's DEFAULT output tree for the repo build (the build
+  // below runs without --target-dir, so cargo decides the location) -- the join is the fn's, not
+  // spelled here, so build side and read-back side derive from one convention.
+  join([cargo_default_release_dir(build_root: root), "/", bin_name], "")
 }
 
 fn witness_bin_build_args(bin: WitnessBin) -> List<String> {

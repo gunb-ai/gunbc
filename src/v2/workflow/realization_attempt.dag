@@ -21,7 +21,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme, NotADeclaration }
 import std.optional { Optional, Present, Absent }
 import std.algebra { Cons, Empty, fold_list, length, list_at_optional }
 import std.types { Int, List, NonEmptyStr, String }
@@ -142,7 +142,7 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
           Present { value: arrow } =>
             concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Authored { name: decl_name }, target: arrow }]
+              children: [Edge { label: Authored { name: decl_name }, target: arrow, declaration: NotADeclaration }]
             )])
           Absent => inner
         }
@@ -247,7 +247,7 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
           match first_arrow_in(root: e.target) {
             Present { value: _ } => concat(inner, [node_synthetic(
               kind: TypeNode { connective: Conj },
-              children: [Edge { label: Authored { name: n }, target: e.target }]
+              children: [Edge { label: Authored { name: n }, target: e.target, declaration: NotADeclaration }]
             )])
             Absent => inner
           }
