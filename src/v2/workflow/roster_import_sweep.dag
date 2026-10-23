@@ -897,17 +897,24 @@ fn roster_label_plan(sides: List<RosterHomeSide>,
     imported: list_map(xs: imported, f: fn(b) { b.binding })
   ).sites
   let imported_from_home = roster_symbol_imported(imported: imported, row: row)
-  let spelled = fold_list(xs: sites, empty: [], cons: fn(acc, st) { if roster_spelling_is(qn: st.site.spelling, call: row.call) { list_snoc_item(xs: acc, item: st) } else { acc } })
-  let free_off_value = fold_list(xs: spelled, empty: 0, cons: fn(n, st) {
-    match st.position {
-      ValuePosition => n
-      _ => if roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { n + 1 } else { n }
+  let free_off_value = fold_list(xs: sites, empty: 0, cons: fn(n, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: row.call) {
+      match st.position {
+        ValuePosition => n
+        _ => if roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home) { n + 1 } else { n }
+      }
+    } else {
+      n
     }
   })
-  let value_flags = fold_list(xs: spelled, empty: [], cons: fn(acc, st) {
-    match st.position {
-      ValuePosition => list_snoc_item(xs: acc, item: roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home))
-      _ => acc
+  let value_flags = fold_list(xs: sites, empty: [], cons: fn(acc, st) {
+    if roster_spelling_is(qn: st.site.spelling, call: row.call) {
+      match st.position {
+        ValuePosition => list_snoc_item(xs: acc, item: roster_site_is_free(sides: sides, site: st, row: row, imported_from_home: imported_from_home))
+        _ => acc
+      }
+    } else {
+      acc
     }
   })
   let all_heads = roster_primary_heads(parse_root: parse_root, call: row.call)
