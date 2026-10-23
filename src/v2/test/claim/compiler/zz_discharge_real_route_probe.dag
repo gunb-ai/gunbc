@@ -2,7 +2,7 @@ module v2.test.claim.compiler.zz_discharge_real_route_probe
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
-import v2.compiler.inferred_tree { ObligatedInferredTree, RefinementObligation }
+import v2.compiler.inferred_tree { ObligatedInferredTree, RefinementObligation, InferredFacts, DerivedGrounding, GroundingNotDerived, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
 import v2.std.cross_tree.resolution { source_root_index_empty }
@@ -13,11 +13,12 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, dag_type_atom_node }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Diagnostics, Diagnostic }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.node { Node, ComputationNode, Transform, positional_child_target_nodes, node_subtree_nodes }
+import v2.std.node { Symbol, Node, ComputationNode, Transform, positional_child_target_nodes, node_subtree_nodes }
 import std.algebra { Cons, Empty, FreeMonoid }
+import std.types { Int }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
@@ -133,3 +134,155 @@ test fn zz_real_route_false_predicate_refuses_undischargeable() -> Bool {
     Present { value: t } => match discharge_refinement_obligations(t: t) { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: d } => d.head.reason == ^refinement_obligation_undischargeable }
   }
 }
+
+// Each node's grounding as a code: 0 absent entry, 1 derived, 2+i the i-th NotDerivedSite.
+fn zz_site_code(site: NotDerivedSite) -> Int {
+  match site {
+    BinderTypeNodeUnfacted => 2
+    BinderTypeUnjudged => 3
+    DeclarationWrapperEvidenceEdgesAbsent => 4
+    ProductEvidenceEdgesAbsent => 5
+    LexicalReferenceValued => 6
+    LexicalReferenceUntyped => 7
+    LiteralTypeUnknown => 8
+    RosterMemberTypeAbsent => 9
+    ProjectionReceiverUnderived => 10
+    ReferenceRejectedGrounding => 11
+    DeclarationReferenceWithoutPath => 12
+    ReferenceLookupMiss => 13
+    VariantArmValueNotDerived => 14
+    CallableEvidenceAbsent => 15
+    MatchFrontier => 16
+    ComparisonNotDerived => 17
+    LiteralPayloadMember => 18
+    ConstructFieldsUnbound => 19
+    ConstructFormalsAuthored => 20
+    ConstructTypeAbsent => 21
+  }
+}
+
+fn zz_facts_code(t: ObligatedInferredTree, node: Node) -> Int {
+  match t.facts.lookup(node) {
+    Absent => 0
+    Present { value: f } =>
+      match f.grounding {
+        DerivedGrounding { grounding: _ } => 1
+        GroundingNotDerived { node: _, site: s } => zz_site_code(site: s)
+      }
+  }
+}
+
+fn zz_code_at(subject: String, which: Int) -> Int {
+  match zz_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: r, diagnostics: _ } =>
+      match zz_call(tree: r) {
+        Absent => -2
+        Present { value: app } =>
+          match zz_obligated(subject: subject) {
+            Absent => -3
+            Present { value: t } =>
+              match positional_child_target_nodes(node: app) {
+                Cons { head: callee, tail: rest } =>
+                  if which == 0 { zz_facts_code(t: t, node: app) }
+                  else if which == 1 { zz_facts_code(t: t, node: callee) }
+                  else {
+                    match rest {
+                      Cons { head: arg, tail: _ } => zz_facts_code(t: t, node: arg)
+                      Empty => -4
+                    }
+                  }
+                Empty => -5
+              }
+          }
+      }
+  }
+}
+
+fn zz_tail_has(subject: String, reason: Symbol) -> Bool {
+  match zz_obligated(subject: subject) {
+    Absent => false
+    Present { value: t } =>
+      match discharge_refinement_obligations(t: t) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          fold(d.tail, init: d.head.reason == reason, f: fn(acc, x) { acc || x.reason == reason })
+      }
+  }
+}
+
+test fn zz_tail_has_eval_rejected_grounding_not_derived() -> Bool { zz_tail_has(subject: "v2.test.zzpd_t", reason: ^eval_rejected_grounding_not_derived) }
+
+test fn zz_tail_has_eval_rejected_grounding_node_mismatch() -> Bool { zz_tail_has(subject: "v2.test.zzpd_t", reason: ^eval_rejected_grounding_node_mismatch) }
+
+test fn zz_tail_has_eval_rejected_canonical_mismatch() -> Bool { zz_tail_has(subject: "v2.test.zzpd_t", reason: ^eval_rejected_canonical_mismatch) }
+
+test fn zz_tail_has_eval_rejected_type_node() -> Bool { zz_tail_has(subject: "v2.test.zzpd_t", reason: ^eval_rejected_type_node) }
+
+test fn zz_tail_has_eval_rejected_invalid_node() -> Bool { zz_tail_has(subject: "v2.test.zzpd_t", reason: ^eval_rejected_invalid_node) }
+test fn zz_code_app_is_0() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 0 }
+test fn zz_code_app_is_1() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 1 }
+test fn zz_code_app_is_2() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 2 }
+test fn zz_code_app_is_3() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 3 }
+test fn zz_code_app_is_4() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 4 }
+test fn zz_code_app_is_5() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 5 }
+test fn zz_code_app_is_6() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 6 }
+test fn zz_code_app_is_7() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 7 }
+test fn zz_code_app_is_8() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 8 }
+test fn zz_code_app_is_9() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 9 }
+test fn zz_code_app_is_10() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 10 }
+test fn zz_code_app_is_11() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 11 }
+test fn zz_code_app_is_12() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 12 }
+test fn zz_code_app_is_13() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 13 }
+test fn zz_code_app_is_14() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 14 }
+test fn zz_code_app_is_15() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 15 }
+test fn zz_code_app_is_16() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 16 }
+test fn zz_code_app_is_17() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 17 }
+test fn zz_code_app_is_18() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 18 }
+test fn zz_code_app_is_19() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 19 }
+test fn zz_code_app_is_20() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 20 }
+test fn zz_code_app_is_21() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 0) == 21 }
+test fn zz_code_callee_is_0() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 0 }
+test fn zz_code_callee_is_1() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 1 }
+test fn zz_code_callee_is_2() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 2 }
+test fn zz_code_callee_is_3() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 3 }
+test fn zz_code_callee_is_4() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 4 }
+test fn zz_code_callee_is_5() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 5 }
+test fn zz_code_callee_is_6() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 6 }
+test fn zz_code_callee_is_7() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 7 }
+test fn zz_code_callee_is_8() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 8 }
+test fn zz_code_callee_is_9() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 9 }
+test fn zz_code_callee_is_10() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 10 }
+test fn zz_code_callee_is_11() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 11 }
+test fn zz_code_callee_is_12() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 12 }
+test fn zz_code_callee_is_13() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 13 }
+test fn zz_code_callee_is_14() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 14 }
+test fn zz_code_callee_is_15() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 15 }
+test fn zz_code_callee_is_16() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 16 }
+test fn zz_code_callee_is_17() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 17 }
+test fn zz_code_callee_is_18() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 18 }
+test fn zz_code_callee_is_19() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 19 }
+test fn zz_code_callee_is_20() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 20 }
+test fn zz_code_callee_is_21() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 1) == 21 }
+test fn zz_code_arg_is_0() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 0 }
+test fn zz_code_arg_is_1() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 1 }
+test fn zz_code_arg_is_2() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 2 }
+test fn zz_code_arg_is_3() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 3 }
+test fn zz_code_arg_is_4() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 4 }
+test fn zz_code_arg_is_5() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 5 }
+test fn zz_code_arg_is_6() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 6 }
+test fn zz_code_arg_is_7() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 7 }
+test fn zz_code_arg_is_8() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 8 }
+test fn zz_code_arg_is_9() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 9 }
+test fn zz_code_arg_is_10() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 10 }
+test fn zz_code_arg_is_11() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 11 }
+test fn zz_code_arg_is_12() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 12 }
+test fn zz_code_arg_is_13() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 13 }
+test fn zz_code_arg_is_14() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 14 }
+test fn zz_code_arg_is_15() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 15 }
+test fn zz_code_arg_is_16() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 16 }
+test fn zz_code_arg_is_17() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 17 }
+test fn zz_code_arg_is_18() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 18 }
+test fn zz_code_arg_is_19() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 19 }
+test fn zz_code_arg_is_20() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 20 }
+test fn zz_code_arg_is_21() -> Bool { zz_code_at(subject: "v2.test.zzpd_t", which: 2) == 21 }
