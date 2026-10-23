@@ -162,7 +162,7 @@ test fn w_homonym_chars_keeps_authored_body() -> Bool {
 // row, and is NOT emitted as a self-recursive call to itself.
 test fn w_algebra_list_push_reaches_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.algebra_list_push_probe\nimport std.types { Int }\nimport std.algebra { list_push }\nfn probe() -> List<Int> { list_push([1], 2) }\n",
+    "module test.claim.algebra_list_push_probe\nimport std.types { Int, List }\nimport std.algebra { list_push }\nfn probe() -> List<Int> { list_push(xs: [1], item: 2) }\n",
     "src/test_claim_algebra_list_push_probe.rs",
     ["v1_rt::rc_list_push("],
     []
