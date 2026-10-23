@@ -301,6 +301,20 @@ data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
   provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
 }
 
+// THE DRAIN BOUND IS DERIVED, NOT RATIFIED AS A NUMBER (2026-10-23). The row at
+// gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy carried a ratified literal
+// (wait_bound 2700s) on the premise that 'no source declares the longest job'. The premise is false:
+// the fleet-targeted generated workflows declare job timeouts (gunbc.witness.compiler_gate_workflow
+// compiler_gate_emit_build_timeout_minutes = 90, and a v2-bootstrap job runs ~55 minutes), and the
+// literal bit srv3 cap converge run 39961292233 — every cap withheld on 'the drain bound of 2700s
+// was exceeded' while honest work ran.
+data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts"),
+  decided: "2026-10-23",
+  section: "Self-hosting and the fleet",
+  provenance: "Operator ruling 2026-10-23, relayed by sleek-owl-397: wait_bound in gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy is DERIVED from the declared job timeouts of the fleet-targeted generated workflows (90 min today, plus the poll interval); it replaces the 2700s literal. The population rule was ruled by clever-crane-830 the same day: a job is in the fold iff its runner selects the fleet pool AND its workflow's modeled trigger set holds an autonomous trigger (push, pull_request, schedule, merge_group, workflow_call, workflow_run) — the work GitHub can park on a slot with no operator at the keyboard. Dispatch-only fleet jobs (instrument-dispatch 240, fleet-converge build 95) are excluded by the same predicate, with the residual declared: if one is running when a drain starts it can exceed the bound and the bracket refuses typed (caps withheld), fail-closed, the dispatching operator owning the sequencing. The fold lives at gunbc.runner.runner_fleet_job_timeout_census; the control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if a population member's declared timeout exceeds the bound.",
+}
+
 data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
@@ -374,6 +388,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
     approval_enrolment_is_google_sign_in,
+    drain_wait_bound_is_derived_from_declared_job_timeouts,
   ]
 }
 
