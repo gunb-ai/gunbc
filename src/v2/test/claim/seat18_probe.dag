@@ -1,0 +1,91 @@
+module v2.test.claim.seat18_probe
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+
+data s18_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^seat18_probe_artifact,
+  file_path: "src/v2/pilot/seat18_probe_pilot.dag"
+}
+
+data s18_std_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^seat18_probe_std_artifact,
+  file_path: "src/v2/pilot/seat18_probe_std_pilot.dag"
+}
+
+fn s18_assemble(src: String, subject: List<Symbol>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n", fidelity: Lossless },
+        artifact: s18_std_artifact,
+        compilation_unit: ^seat18_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: src, fidelity: Lossless },
+          artifact: s18_artifact,
+          compilation_unit: ^seat18_probe_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn s18_reason(src: String, subject: List<Symbol>) -> String {
+  match s18_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: d } => concat("assemble:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+        Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+      }
+  }
+}
+
+fn s18_p() -> List<Symbol> {
+  Cons { head: ^p, tail: Empty }
+}
+
+fn s18_src(clause: String) -> String {
+  concat(concat("module p\n\nfn unicode_scalar(code_point: Int) -> Bool = code_point >= 0\n\ntype Char = Int where unicode_scalar", clause), "\n\nfn f(c: Char) -> Int = c\n")
+}
+
+fn s18_branded() -> String {
+  s18_reason(src: s18_src(clause: ", brand(\"Char\")"), subject: s18_p())
+}
+
+fn s18_unbranded() -> String {
+  s18_reason(src: s18_src(clause: ""), subject: s18_p())
+}
+
+fn s18_receipt() -> String {
+  concat(concat("branded=", s18_branded()), concat(" unbranded=", s18_unbranded()))
+}
+
+test fn seat18_unbranded_char_is_judged() -> Bool {
+  s18_unbranded() == "ACCEPTED"
+}
+
+test fn seat18_branded_char_is_not_judged() -> Bool {
+  s18_branded() != "ACCEPTED"
+}
