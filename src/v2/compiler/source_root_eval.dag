@@ -370,6 +370,11 @@ import v2.std.integer {
 }
 import v2.std.diagnostic {
   UserInputBoundary,
+  AmbiguousIntent,
+  CorrectionNotModeled,
+  Correction,
+  DeclarerRefused,
+  Suggested,
   Accepted,
   Diagnostic,
   Diagnostics,
@@ -3939,6 +3944,9 @@ type NativeCensusClosureIndex
   = NativeCensusClosureIndexRead {
       importers_of: Map<String, List<String>>
       imports_of: Map<String, List<String>>
+      // The roster's module-to-path map, read once with the graph: a declarer-attributed resolve
+      // cascade (native_census_declarer_cascade) names its root by module and files it by path.
+      module_paths: Map<String, Symbol>
       modules: Int
       refused_modules: Int
     }
@@ -3998,6 +4006,7 @@ fn native_census_closure_index(
         NativeCensusClosureIndexRead {
           importers_of: read.importers_of,
           imports_of: read.imports_of,
+          module_paths: native_census_module_paths(modules: modules),
           modules: length(xs: modules),
           refused_modules: fold_list(xs: context.file_refusals, empty: 0, cons: fn(n, r) {
             match r.module {
@@ -4022,7 +4031,7 @@ fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTe
 fn native_census_closure_fan_out_of(index: NativeCensusClosureIndex, root: Optional<QualifiedName>) -> NativeCensusClosureFanOut {
   match index {
     NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusClosureFanOutUnavailable { reason: r }
-    NativeCensusClosureIndexRead { importers_of: importers_of, imports_of: _, modules: modules, refused_modules: refused_modules } =>
+    NativeCensusClosureIndexRead { importers_of: importers_of, imports_of: _, module_paths: _, modules: modules, refused_modules: refused_modules } =>
       match root {
         Absent => NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_root_declares_no_module }
         Present { value: qn } =>
@@ -4143,7 +4152,8 @@ fn native_census_cause_groups_add_cascade_member(
   groups: NativeCensusCauseGroups,
   entry: NativeCensusModule,
   root: Symbol,
-  root_reason: Symbol
+  root_reason: Symbol,
+  head_reason: Symbol
 ) -> NativeCensusCauseGroups {
   let added = native_census_cause_groups_add(
     groups: groups,
@@ -4152,7 +4162,7 @@ fn native_census_cause_groups_add_cascade_member(
       stage: NativeCensusCauseResolve,
       path: entry.path,
       module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
-      head_reason: ^native_prepare_reason_import_target_file_refused,
+      head_reason: head_reason,
       at: FileRefusalAtUnresolvedNode,
       occurrence: optional_absent(),
       cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason }
@@ -4230,6 +4240,105 @@ fn native_census_cause_groups_add_module(
   }
 }
 
+// A RESOLVE REFUSAL IS A DECLARER CASCADE WHEN EVERY ONE OF ITS CHAINS ENDS AT A REFUSED DECLARER, AND THE
+// ROOT IS THAT DECLARER BY IDENTITY, never by reading the chain's reasons. The identity is the
+// DeclarerRefused correction the resolver minted where the refused provider was found
+// (v2.compiler.resolve declarer_refused_diagnostic). A chain is the provider's own chain followed by the
+// referencing site's fatal, so a declarer that itself refused on ITS declarer carries the innermost
+// correction first: the first DeclarerRefused in the first chain names the module that refused on its
+// own account, the root, and the diagnostic before it is that root's fatal. A module with any chain
+// that is not declarer-attributed refused on its own account too, so it stays a root. Chains that
+// name different declarers are filed under the first chain's root; the others are roots themselves,
+// each counted on its own row, so no root is lost by this filing.
+fn native_census_declarer_cascade(
+  closure: NativeCensusClosureIndex,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>
+) -> NativeCensusCascade {
+  if native_census_chain_ends_at_declarer(chain: first) && fold_list(xs: rest, empty: true, cons: fn(all, c) { all && native_census_chain_ends_at_declarer(chain: c) }) {
+    match native_census_innermost_declarer(chain: first) {
+      Absent => NativeCensusCascadeNone
+      Present { value: found } =>
+        match closure {
+          NativeCensusClosureIndexUnavailable { reason: _ } =>
+            NativeCensusCascadeUnattributed { reason: ^native_census_declarer_closure_unavailable }
+          NativeCensusClosureIndexRead { importers_of: _, imports_of: _, module_paths: module_paths, modules: _, refused_modules: _ } =>
+            match map_lookup(module_paths, qualified_name_to_dotted_string(qn: found.declarer)) {
+              Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_not_censused }
+              Present { value: root_path } => NativeCensusCascadeMemberOf { root: root_path, root_reason: found.root_reason }
+            }
+        }
+    }
+  } else {
+    if native_census_any_chain_declarer_refused_without_declarer(first: first, rest: rest) {
+      NativeCensusCascadeUnattributed { reason: ^native_census_declarer_missing }
+    } else {
+      NativeCensusCascadeNone
+    }
+  }
+}
+
+// A chain whose fatal reason is declarer_refused but whose correction names no declarer was not minted by
+// v2.compiler.resolve declarer_refused_diagnostic: it is filed Unattributed, never as a root of its own.
+fn native_census_any_chain_declarer_refused_without_declarer(first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> Bool {
+  fold_list(xs: Cons { head: first, tail: rest }, empty: false, cons: fn(any, c) {
+    any || (diagnostics_fatal_reason(d: c) == ^resolve_reason_declarer_refused && !native_census_chain_ends_at_declarer(chain: c))
+  })
+}
+
+// THE ONE READER OF THE CORRECTION'S DECLARER: every arm of both coproducts is named, so a new
+// correction shape refuses to compile here instead of reading as "not a declarer".
+fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
+  match c {
+    Suggested { node: _ } => optional_absent()
+    Unavailable { reason: r } =>
+      match r {
+        DeclarerRefused { declarer: q } => optional_present(value: q)
+        UserInputBoundary => optional_absent()
+        AmbiguousIntent => optional_absent()
+        ExternalContractUnknown => optional_absent()
+        CorrectionNotModeled => optional_absent()
+      }
+  }
+}
+
+fn native_census_chain_ends_at_declarer(chain: NonEmptyDiagnostics) -> Bool {
+  match native_census_correction_declarer(c: diagnostics_fatal(d: chain).correction) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+type NativeCensusDeclarerRoot {
+  declarer: QualifiedName
+  root_reason: Symbol
+}
+
+type NativeCensusDeclarerScan {
+  previous: Symbol
+  found: Optional<NativeCensusDeclarerRoot>
+}
+
+fn native_census_innermost_declarer(chain: NonEmptyDiagnostics) -> Optional<NativeCensusDeclarerRoot> {
+  fold_list(
+    xs: chain.tail,
+    empty: native_census_declarer_scan_step(scan: NativeCensusDeclarerScan { previous: chain.head.reason, found: optional_absent() }, d: chain.head),
+    cons: fn(scan, d) { native_census_declarer_scan_step(scan: scan, d: d) }
+  ).found
+}
+
+fn native_census_declarer_scan_step(scan: NativeCensusDeclarerScan, d: Diagnostic) -> NativeCensusDeclarerScan {
+  match scan.found {
+    Present { value: _ } => scan
+    Absent =>
+      match native_census_correction_declarer(c: d.correction) {
+        Present { value: q } =>
+          NativeCensusDeclarerScan { previous: d.reason, found: optional_present(value: NativeCensusDeclarerRoot { declarer: q, root_reason: scan.previous }) }
+        Absent => NativeCensusDeclarerScan { previous: d.reason, found: optional_absent() }
+      }
+  }
+}
+
 fn native_census_cause_groups_add_resolve_refused(
   groups: NativeCensusCauseGroups,
   positions: NativeCensusPositionTable,
@@ -4241,9 +4350,18 @@ fn native_census_cause_groups_add_resolve_refused(
 ) -> NativeCensusCauseGroups {
   match cascade {
     NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
-      native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason)
+      native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^native_prepare_reason_import_target_file_refused)
     NativeCensusCascadeNone =>
-      native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
+      match native_census_declarer_cascade(closure: closure, first: first, rest: rest) {
+        NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
+          native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^resolve_reason_declarer_refused)
+        NativeCensusCascadeUnattributed { reason: r } =>
+          native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: NativeCensusCascadeUnattributed { reason: r }, cascade: NativeCensusCascadeUnattributed { reason: r })
+        NativeCensusCascadeNone =>
+          native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
+        NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
+          native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
+      }
     NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
       native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
     NativeCensusCascadeUnattributed { reason: _ } =>
@@ -4551,7 +4669,7 @@ fn native_census_subject_closure(
             Present { value: subject } =>
               match index {
                 NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusSubjectClosureUnavailable { reason: r }
-                NativeCensusClosureIndexRead { importers_of: _, imports_of: imports_of, modules: n, refused_modules: _ } =>
+                NativeCensusClosureIndexRead { importers_of: _, imports_of: imports_of, module_paths: _, modules: n, refused_modules: _ } =>
                   match native_lane_module_reachable(
                     index: imports_of,
                     frontier: [subject.module],
