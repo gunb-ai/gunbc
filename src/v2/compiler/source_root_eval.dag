@@ -3524,6 +3524,7 @@ type NativeNfrState {
   ambient: Map<String, Bool>
   ambient_list: List<String>
   refused: List<String>
+  refusal_causes: Map<String, String>
   classified: List<String>
   unread: List<String>
 }
@@ -3535,11 +3536,12 @@ type NativeNfrHeadRead {
 }
 
 fn native_nfr_state_with_alloc(s: NativeNfrState, alloc: OccurrenceIdAllocator) -> NativeNfrState {
-  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread }
 }
 
-fn native_nfr_refuse(s: NativeNfrState, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeNfrState {
-  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: symbol_lexeme(sym: read.compilation_unit)), classified: s.classified, unread: s.unread }
+fn native_nfr_refuse(s: NativeNfrState, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator, cause: String) -> NativeNfrState {
+  let file = symbol_lexeme(sym: read.compilation_unit)
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: file), refusal_causes: map_insert(s.refusal_causes, file, cause), classified: s.classified, unread: s.unread }
 }
 
 // The module root of a declaring module, normalized once.
@@ -3552,10 +3554,10 @@ fn native_nfr_module_root(s: NativeNfrState, plan: NativeDeclRefCensusPlan, fron
         Present { value: read } =>
           let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
           match result.produced {
-            Rejected { diagnostics: _ } => NativeNfrModuleRead { state: native_nfr_refuse(s: s, read: read, alloc: result.alloc), root: Absent }
+            Rejected { diagnostics: d } => NativeNfrModuleRead { state: native_nfr_refuse(s: s, read: read, alloc: result.alloc, cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d))), root: Absent }
             Accepted { value: tree, diagnostics: _ } =>
               NativeNfrModuleRead {
-                state: NativeNfrState { alloc: result.alloc, roots: map_insert(s.roots, module, tree.root), verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread },
+                state: NativeNfrState { alloc: result.alloc, roots: map_insert(s.roots, module, tree.root), verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread },
                 root: Present { value: tree.root }
               }
           }
@@ -3587,7 +3589,7 @@ fn native_nfr_head_read(s: NativeNfrState, plan: NativeDeclRefCensusPlan, front:
               Present { value: root } =>
                 let v = declares_coproduct_named(root: root, name: head)
                 NativeNfrHeadRead {
-                  state: NativeNfrState { alloc: read.state.alloc, roots: read.state.roots, verdicts: map_insert(read.state.verdicts, key, v), sites: read.state.sites, site_keys: read.state.site_keys, rows: read.state.rows, row_keys: read.state.row_keys, duplicates: read.state.duplicates, ambient: read.state.ambient, ambient_list: read.state.ambient_list, refused: read.state.refused, classified: read.state.classified, unread: read.state.unread },
+                  state: NativeNfrState { alloc: read.state.alloc, roots: read.state.roots, verdicts: map_insert(read.state.verdicts, key, v), sites: read.state.sites, site_keys: read.state.site_keys, rows: read.state.rows, row_keys: read.state.row_keys, duplicates: read.state.duplicates, ambient: read.state.ambient, ambient_list: read.state.ambient_list, refused: read.state.refused, refusal_causes: read.state.refusal_causes, classified: read.state.classified, unread: read.state.unread },
                   closed: v,
                   ambient: false
                 }
@@ -3600,21 +3602,21 @@ fn native_nfr_head_read(s: NativeNfrState, plan: NativeDeclRefCensusPlan, front:
 fn native_nfr_add_site(s: NativeNfrState, key: String, head: String) -> NativeNfrState {
   match map_lookup(m: s.sites, key: key) {
     Present { value: _ } => s
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, head), site_keys: list_snoc_item(xs: s.site_keys, item: key), rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, head), site_keys: list_snoc_item(xs: s.site_keys, item: key), rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread }
   }
 }
 
 fn native_nfr_add_ambient(s: NativeNfrState, head: String) -> NativeNfrState {
   match map_lookup(m: s.ambient, key: head) {
     Present { value: _ } => s
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: map_insert(s.ambient, head, true), ambient_list: list_snoc_item(xs: s.ambient_list, item: head), refused: s.refused, classified: s.classified, unread: s.unread }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: map_insert(s.ambient, head, true), ambient_list: list_snoc_item(xs: s.ambient_list, item: head), refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread }
   }
 }
 
 fn native_nfr_add_row(s: NativeNfrState, key: String) -> NativeNfrState {
   match map_lookup(m: s.rows, key: key) {
-    Present { value: _ } => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: list_snoc_item(xs: s.duplicates, item: key), ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: map_insert(s.rows, key, true), row_keys: list_snoc_item(xs: s.row_keys, item: key), duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+    Present { value: _ } => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: list_snoc_item(xs: s.duplicates, item: key), ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: map_insert(s.rows, key, true), row_keys: list_snoc_item(xs: s.row_keys, item: key), duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread }
   }
 }
 
@@ -3629,7 +3631,7 @@ fn native_nfr_count_of(xs: List<String>, want: String) -> Int {
 fn native_nfr_add_judged(s: NativeNfrState, key: String, cause: String) -> NativeNfrState {
   match map_lookup(m: s.sites, key: key) {
     Present { value: _ } => s
-    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, cause), site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, cause), site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: s.unread }
   }
 }
 
@@ -3640,17 +3642,17 @@ fn native_nfr_key_under_refused_file(refused: List<String>, key: String) -> Bool
 }
 
 fn native_nfr_add_classified(s: NativeNfrState, item: String) -> NativeNfrState {
-  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: list_snoc_item(xs: s.classified, item: item), unread: s.unread }
+  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: list_snoc_item(xs: s.classified, item: item), unread: s.unread }
 }
 
 fn native_nfr_add_unread(s: NativeNfrState, item: String) -> NativeNfrState {
-  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: list_snoc_item(xs: s.unread, item: item) }
+  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, refusal_causes: s.refusal_causes, classified: s.classified, unread: list_snoc_item(xs: s.unread, item: item) }
 }
 
 fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan: NativeDeclRefCensusPlan, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
   let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
   match result.produced {
-    Rejected { diagnostics: _ } => native_nfr_refuse(s: s, read: read, alloc: result.alloc)
+    Rejected { diagnostics: d } => native_nfr_refuse(s: s, read: read, alloc: result.alloc, cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
     Accepted { value: tree, diagnostics: _ } =>
       let pairs = import_pairs_of(rows: normalized_tree_import_bindings(tree: tree))
       let file = symbol_lexeme(sym: read.compilation_unit)
@@ -3679,7 +3681,7 @@ fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan
 fn native_nfr_scan_holder(s: NativeNfrState, read: DagSourceReadWitness, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
   let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
   match result.produced {
-    Rejected { diagnostics: _ } => native_nfr_refuse(s: s, read: read, alloc: result.alloc)
+    Rejected { diagnostics: d } => native_nfr_refuse(s: s, read: read, alloc: result.alloc, cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
     Accepted { value: tree, diagnostics: _ } =>
       fold_list(
         xs: roster_join_keys(file: symbol_lexeme(sym: read.compilation_unit), root: tree.root),
@@ -3708,7 +3710,7 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
           let candidates = fold_list(xs: wild, empty: [], cons: fn(acc, r) { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } })
           let holders = fold_list(xs: ingest, empty: [], cons: fn(acc, r) { if string_contains(s: r.source.carried, pattern: "non_fold_residue_frontier") { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } } else { acc } })
           let excluded = length(xs: wild) - length(xs: candidates)
-          let start = NativeNfrState { alloc: occurrence_id_allocator_initial(), roots: empty_map(), verdicts: empty_map(), sites: empty_map(), site_keys: [], rows: empty_map(), row_keys: [], duplicates: [], ambient: empty_map(), ambient_list: [], refused: [], classified: [], unread: [] }
+          let start = NativeNfrState { alloc: occurrence_id_allocator_initial(), roots: empty_map(), verdicts: empty_map(), sites: empty_map(), site_keys: [], rows: empty_map(), row_keys: [], duplicates: [], ambient: empty_map(), ambient_list: [], refused: [], refusal_causes: empty_map(), classified: [], unread: [] }
           let scanned = fold_list(xs: candidates, empty: start, cons: fn(acc, r) { native_nfr_scan_candidate(s: acc, read: r, plan: plan, front: front, ingest_scope: ingest_scope) })
           let done = fold_list(xs: holders, empty: scanned, cons: fn(acc, r) { native_nfr_scan_holder(s: acc, read: r, front: front, ingest_scope: ingest_scope) })
           let unrostered = fold_list(xs: done.site_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.rows, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
@@ -3728,7 +3730,7 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
                   right: list_append(
                     left: fold_list(xs: done.duplicates, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] duplicate ", k)) }),
                     right: list_append(
-                      left: fold_list(xs: done.refused, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] refused ", k)) }),
+                      left: fold_list(xs: done.refused, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] refused ", k, " ", match map_lookup(m: done.refusal_causes, key: k) { Present { value: c } => c  Absent => "unattributed" })) }),
                       right: list_append(
                         left: fold_list(xs: done.unread, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unread ", k)) }),
                         right: list_append(
