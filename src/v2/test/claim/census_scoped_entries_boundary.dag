@@ -25,6 +25,7 @@
 module v2.test.claim.census_scoped_entries_boundary
 
 import std.types { Bool, List, String }
+import std.algebra { Cons, Empty }
 import v2.compiler.source_root_eval {
   native_census_scoped_entries,
 }
@@ -34,23 +35,46 @@ import v2.compiler.source_root_eval {
 // authority the census injected. Plain equality on supplied values at the boundary; no filesystem, no
 // fold surface (reimplementing std.algebra helpers to dodge the wall was refused -- it would fork the
 // list ops, DESIGN section 3).
-// SHAPE PROBE (four single-conjunct claims, to be collapsed once each shape is proven):
-// isolates which of list-literal argument, list equality, empty literal, or the call itself
-// carries the prepare refusal (cause=application_argument_does_not_inhabit, chain
-// infer_grounding_not_derived @ <projected node occurrence #792>).
+// SHAPE PROBE ROUND 2 (to be collapsed once proven): all four round-1 claims (every one built on
+// `==` over list literals) refused at prepare with the SAME cause=application_argument_does_not_inhabit
+// at ONE shared occurrence -> the refusal is carried by the shared shape, list equality, not by any
+// conjunct. This round follows the precedent of the claims that executed green at the pre-reversal
+// head (the_union_never_drops_or_reorders_the_named_subjects): positional identity read through
+// nested matches on the returned list, with `==` used ONLY on Strings. No list equality anywhere.
 
-test fn shape_single_element_equality() -> Bool {
-  native_census_scoped_entries(subjects: ["std.fermi"]) == ["std.fermi"]
+// Baseline sanity: the module itself prepares and a String `==` executes.
+test fn probe_string_equality_prepares() -> Bool {
+  "std.fermi" == "std.fermi"
 }
 
-test fn shape_empty_equality() -> Bool {
-  native_census_scoped_entries(subjects: []) == []
+// One-subject identity read positionally: exactly one element, and it is the subject.
+test fn probe_single_subject_positional_identity() -> Bool {
+  match native_census_scoped_entries(subjects: ["std.fermi"]) {
+    Cons { head: only, tail: after } =>
+      only == "std.fermi"
+        && match after {
+          Empty => true
+          Cons { head: _, tail: _ } => false
+        }
+    Empty => false
+  }
 }
 
-test fn shape_two_element_equality() -> Bool {
-  native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) == ["extdeps.git.versioning", "std.fermi"]
-}
-
-test fn shape_call_vs_call_equality() -> Bool {
-  native_census_scoped_entries(subjects: ["std.fermi"]) == native_census_scoped_entries(subjects: ["std.fermi"])
+// Two-subject identity reads argv ORDER positionally (the anti-reorder half) and nothing appended
+// (the anti-append half): head, then second, then Empty.
+test fn probe_two_subject_positional_identity() -> Bool {
+  match native_census_scoped_entries(subjects: ["extdeps.git.versioning", "std.fermi"]) {
+    Cons { head: first, tail: rest } =>
+      first == "extdeps.git.versioning"
+        && match rest {
+          Cons { head: second, tail: after } =>
+            second == "std.fermi"
+              && match after {
+                Empty => true
+                Cons { head: _, tail: _ } => false
+              }
+          Empty => false
+        }
+    Empty => false
+  }
 }
