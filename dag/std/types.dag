@@ -365,7 +365,7 @@ type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
 type GitRef       = String where string_non_empty
 
 type TopologyNodeKind = Pure | Transport | SubDag | Env
-type DocSourceKind    = Template | Generated | Static
+type DocSourceKind    = TemplateSource | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
