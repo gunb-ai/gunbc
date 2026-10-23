@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.approve_ios_swift_join_live_off_the_merge_path_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // A STANDING DEFICIT, NOT A DROP: the join of the real apps/approve-ios Swift tree to registered
 // artifacts or retained rows is born in the change that declares it and has never run as a gate, so
@@ -14,7 +15,7 @@ data approve_ios_swift_join_live_off_the_merge_path_stall: GuaranteeStall = Guar
   subject: "the join of the real apps/approve-ios Swift tree to registered generated artifacts or retained rows: unaccounted by any required-path step",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
-  blocker: AwaitsOneGrounding { grounding: "a required-path step that evaluates witnesses over git-observed input (the floor reading git for the live report)" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   population: BoundedPopulation { members: [
       "gunbc.approve_ios_swift_join_live::approve_ios_swift_join_live_report"
     ] },

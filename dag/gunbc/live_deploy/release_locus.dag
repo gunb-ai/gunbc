@@ -120,6 +120,24 @@ type HelperLocus {
   owner: NonEmptyStr
 }
 
+// A ROOT-OWNED HELPER GRANT'S SITE: the snapshot locus and the parents it is installed under, and the
+// sudoers file that grants it, with its staged and readback names. One shape for every grant the
+// snapshot-then-sudoers sequence installs (the approval broker's helpers, the attempt launcher's), so
+// the sequence is written once and each grant is a row.
+// The revision a grant's locus records beside its snapshots, and where.
+type HelperRevisionReceipt { path: String, text: String }
+
+type HelperGrantSite {
+  locus: HelperLocus
+  spine: List<String>
+  sudoers_content: String
+  sudoers_mode: NonEmptyStr
+  sudoers_temp_path: String
+  sudoers_path: String
+  stage_name: String
+  readback_name: String
+}
+
 fn approval_broker_helper_snapshot_locus() -> HelperLocus {
   HelperLocus { base: approval_broker_helper_snapshot_base, owner: approval_broker_helper_root_principal }
 }

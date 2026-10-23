@@ -848,17 +848,13 @@ fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> Pri
   }
 }
 
-// OPEN POLICY QUESTION, deliberately NOT census rows. These steps declare FleetOnce and mint host-root
-// reach, so select_authorization_pattern leaves the approved capability and the administrator edge
-// incomparable (SelectionNeedsPolicy). A row would be SiteNotDecidable, and every_census_site_is_decidable
-// holds the roster at zero, so the effects are listed here for the claim that pins the open question:
-// it goes RED the day a policy lands, at which point they become rows with a reason.
-fn open_policy_srv1_root_step_effects() -> List<PrivilegedEffect> {
-  [
-    manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
-    manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
-    manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
-  ]
+// THE srv1 ROOT STEPS THE OPERATOR RUNS BY HAND AND THE PER-DISPATCH ENVIRONMENT GATE. Operator ruling
+// 2026-10-22 (gunbc.design_ruling one_approval_route_for_every_privileged_action): host-root reach that a
+// human can attend is approved through the broker route alone, so each row selects
+// OperatorApprovedCapability and diverges because the realization is a person or a GitHub click.
+data srv1_root_step_by_hand_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the effect is a host-root write on srv1 that the operator performs by hand over ssh from rendered instructions; the operator ruling of 2026-10-22 names the approval broker route as its only approval, and no authority adapter requests a capability for it, so the instruction text is the only record that it happened" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the step's entry point files an access_request (gunbc.auth.access_request) for its re-derived effect and the host-root write executes only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability) delivered by the iOS approval app, with post-apply readback. NOT satisfied by modeling the instruction or by the administrator edge" as NonEmptyStr),
 }
 
 fn manual_operator_api_effect(subject: NonEmptyStr, step: HumanIntervention, cause: NonEmptyStr, reach: MintedCredentialReach) -> PrivilegedEffect {
@@ -895,6 +891,41 @@ fn manual_physical_effect(subject: NonEmptyStr, step: HumanIntervention) -> Priv
 }
 
 data privileged_effect_census: List<PrivilegedEffectSite> = [
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_account_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_account_intervention(), subject: "create the gunbc-ntfy system account on srv1 (operator runs the rendered command over ssh)" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_server_install_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_server_install_intervention(), subject: "install the ntfy server binary and its systemd unit on srv1 and configure listen, base-url, cache and upstream relay (the approval notification path itself)" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_ntfy_deployment", decl_name: "approval_ntfy_subscriber_grant_intervention"),
+    effect: manual_srv1_root_effect(step: approval_ntfy_subscriber_grant_intervention(), subject: "set the ntfy server default access to deny and grant write-only to the publisher and read-only to the operator on the approval topic" as NonEmptyStr),
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: srv1_root_step_by_hand_beside_the_broker_route },
+  },
+  // The per-dispatch gate: each fleet-converge dispatch of a srv1 root-mutation job waits on a reviewer
+  // click in the srv1-production environment. A human attends it, so it recurs per operator request.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_srv1_root_mutation_environment"),
+    effect: PrivilegedEffect {
+      subject: "on every dispatch of a srv1 root-mutation job (dashboard deploy, approval broker dark install, microvm controller install), a required reviewer approves the whole job in the srv1-production GitHub environment" as NonEmptyStr,
+      frequency: EveryOperatorRequest,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "no cloud workload identity names a root write on a fleet host; the identity that reaches it is the administrator principal over SSH" as NonEmptyStr },
+      minted_reach: MintsHostRootReach,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedHumanStep,
+    divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
+  },
   PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_approval",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
@@ -902,7 +933,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
 
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
+    site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "live_deploy_apply_helper_grant_on_host"),
     effect: PrivilegedEffect {
       subject: "on every broker release, install one exact NOPASSWD grant letting the operator's account run that release's root-owned ntfy runtime-observe helper as gunbc-ntfy, replacing the previous release's grant" as NonEmptyStr,
       frequency: EveryProvision,
