@@ -389,13 +389,27 @@ test fn infer_applied_generic_arrow_type_variable_is_counted_frontier_holds() ->
 // POSITIVE CONTROL FOR THE SUPERSEDED SHAPE. The ORIGINAL subject of the counted-frontier claim was
 // the arrow NESTED inside a generic callable's formal -- (<T>(t: (Int) -> T))(1), i.e.
 // inhabitance_generic_formal_tree_over(declared: <the minted-codomain arrow>) -- the same fixture
-// repair (minted T positions) applied to it. #14749's rigid-binder rule makes that shape DECIDABLE:
-// the formal's T-headed type is known, T compares as itself, nothing is counted. This claim PINS that
-// decided verdict, so a future change that makes the nested shape counted again (or refused) goes red
+// repair (minted T positions) applied to it. Its verdict was measured, not assumed: scratch probes
+// on the never-merge witness branch split the conjunction and named the fatal by bucket sweep then
+// exact round, all on this fixture's own exported builders.
+// THE MEASURED VERDICT: REJECTED at the inner arrow's OWN declared-return obligation. The walk
+// settles the inner Arrow as a node, and v2.compiler.infer infer_arrow_declared_return_check judges
+// its body at the declared return -- here the minted in-scope T atom. The body is the literal Int;
+// Int inhabits no rigid T, the witness search finds no candidate, and v2.std.inhabitance mints the
+// exact refusal for that position (inhabitance_no_candidate_return_reason, reached through
+// inhabitance_application_refusal_reason at the position_declared_return position).
+// CHAIN RE-DERIVATION (§6b), decided NOT a #14749 regression: #14749 made the obligation DECIDABLE,
+// and a decidable door that RUNS may decide REFUSED. Here the refusal is correct -- a function
+// literal whose body is Int at declared return T is malformed (no value of a rigid T is
+// constructible), so no well-formed body-bearing arrow with a rigid T codomain exists; the
+// pre-#14749 counted-accept was the fail-open artifact (T undecidable meant the door was skipped).
+// This claim PINS that decided-and-refused verdict: Rejected, the fatal is the declared-return door
+// label, and the counted generic-formal reason is NOT what refused it. A future change that flips
+// this verdict -- accepts the malformed literal, counts it, or refuses it elsewhere -- goes red
 // HERE instead of silently unwatching the shape the re-target abandoned. Measured by claim_batch on
-// this module; it is the counterpart, not a duplicate, of the claim above: same obligation, two
-// positions, two pinned verdicts.
-test fn infer_nested_arrow_formal_type_variable_is_decided_not_counted_holds() -> Bool {
+// this module; the counterpart, not a duplicate, of the claim above: same obligation, two positions,
+// two pinned verdicts.
+test fn infer_nested_body_bearing_arrow_formal_is_decided_and_refused_holds() -> Bool {
   match infer(
     tree: claim_resolved_tree_without_declarations(
       root: inhabitance_generic_formal_tree_over(
@@ -403,9 +417,13 @@ test fn infer_nested_arrow_formal_type_variable_is_decided_not_counted_holds() -
       )
     )
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
-      !diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+    Rejected { diagnostics: nds } =>
+      (diagnostics_fatal_reason(d: nds) == ^arrow_body_does_not_inhabit_declared_return)
+        && !diagnostics_has_reason(
+          d: Some { diagnostics: nds },
+          reason: ^inhabitance_undecidable_generic_formal
+        )
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
