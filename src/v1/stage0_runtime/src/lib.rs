@@ -2,7 +2,7 @@
 //!
 //! Foundation crate for the derived ~8-crate stage0 partition.
 //!
-//! Module bodies remain generated into `src/v1/stage0/src`. The root
+//! Module bodies remain generated into `src/v1/stage0/src/`. The root
 //! `NonEmpty*` wrappers are mirrored here because generated modules address
 //! them as `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`.
 
