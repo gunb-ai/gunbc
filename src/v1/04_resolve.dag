@@ -1599,15 +1599,15 @@ fn is_applied_declaration_carrier(n: Node) -> Bool {
 
 fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
   let carries_resolved_target = match n.inferred {
-    Present { value: Resolved { node: _ } } => is_applied_declaration_carrier(n: n)
-    Present { value: ArgumentsResolved } => is_applied_declaration_carrier(n: n)
+    Present { value: Resolved { node: _ } } => n.connective == NoConnective && (n.children |> count) > 0
+    Present { value: ArgumentsResolved } => n.connective == NoConnective && (n.children |> count) > 0
     _ => false
   }
   if carries_resolved_target && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
     let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
-    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) {
+    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) || is_declaration_body(n: n) {
       node_with_inferred(n: n, inferred: none)
     } else {
       let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
