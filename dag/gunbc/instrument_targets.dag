@@ -6,6 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -52,8 +53,7 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
-  DependencyDemandCensusProducer,
-  DeclRefCensusProducer,
+  NativeCensusVerbProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -829,11 +829,11 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 }
 
 fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
 }
 
 fn decl_ref_census_binding() -> TargetBinding {
-  TargetBinding { target: decl_ref_census_label() producer: DeclRefCensusProducer {} }
+  TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
 }
 
 fn generic_identity_census_binding() -> TargetBinding {
@@ -870,6 +870,25 @@ fn roster_import_sweep_controls_function() -> String {
 
 fn roster_import_sweep_controls_binding() -> TargetBinding {
   TargetBinding { target: roster_import_sweep_controls_label() producer: CliWireProgramProducer { entry: roster_import_sweep_controls_entry() function: roster_import_sweep_controls_function() } }
+}
+
+fn append_chain_ladder_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "append-chain-ladder" } }
+}
+
+fn append_chain_ladder_entry() -> String {
+  "dag/gunbc/instruments/append_chain_ladder.dag"
+}
+
+fn append_chain_ladder_function() -> String {
+  "append_chain_ladder_wire"
+}
+
+// THE INSTRUMENT gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear
+// cites, as a label rather than a command in a comment. Non-gating measurement; the threshold fold
+// over its timing rows extends this same label (one instrument, not two).
+fn append_chain_ladder_binding() -> TargetBinding {
+  TargetBinding { target: append_chain_ladder_label() producer: CliWireProgramProducer { entry: append_chain_ladder_entry() function: append_chain_ladder_function() } }
 }
 
 fn claim_coverage_census_label() -> Label {
@@ -1280,7 +1299,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1302,7 +1321,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

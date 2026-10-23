@@ -65,6 +65,7 @@ import v2.std.node {
   core_edge,
   content_hash,
   node_rebuild,
+  NotADeclaration
 }
 import std.optional { Absent, Optional, optional_absent }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
@@ -144,7 +145,7 @@ fn translate_mixed_tree_root() -> Node {
     n: rust_add_emitted_root,
     children: list_snoc_item(
       xs: rust_add_emitted_root.children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: Edge { label: Positional, target: translate_underived_value_specimen, declaration: NotADeclaration }
     )
   )
 }
@@ -184,7 +185,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
     n: python_emitted_add_fn_node(),
     children: list_snoc_item(
       xs: python_emitted_add_fn_node().children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: Edge { label: Positional, target: translate_underived_value_specimen, declaration: NotADeclaration }
     )
   )
 }
@@ -223,7 +224,8 @@ fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
             xs: arrow.children,
             item: Edge {
               label: Positional,
-              target: translate_underived_value_specimen
+              target: translate_underived_value_specimen,
+              declaration: NotADeclaration
             }
           )
         )
@@ -290,7 +292,7 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Positional, target: arrow }
+            Edge { label: Positional, target: arrow, declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
         }

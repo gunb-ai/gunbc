@@ -314,8 +314,11 @@ pub enum TargetProducer {
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
-    DependencyDemandCensus,
-    DeclRefCensus,
+    /// `NativeCensusVerbProducer { verb }`: a whole-corpus census is a verb of the emitted compiler,
+    /// so a further census is a registry row naming its verb, never another variant.
+    NativeCensusVerb {
+        verb: &'static str,
+    },
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -590,11 +593,15 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         ),
         (
             instrument_label("dependency-demand-census"),
-            TargetProducer::DependencyDemandCensus,
+            TargetProducer::NativeCensusVerb {
+                verb: "demand-census",
+            },
         ),
         (
             instrument_label("decl-ref-census"),
-            TargetProducer::DeclRefCensus,
+            TargetProducer::NativeCensusVerb {
+                verb: "decl-ref-census",
+            },
         ),
         (
             instrument_label("generic-identity-census"),
@@ -621,6 +628,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "src/v2/workflow/roster_import_sweep.dag",
                 function: "roster_import_sweep_controls_wire",
+            },
+        ),
+        (
+            instrument_label("append-chain-ladder"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/append_chain_ladder.dag",
+                function: "append_chain_ladder_wire",
             },
         ),
         (
@@ -1060,7 +1074,7 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
 
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
 /// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
-fn run_producer(producer: TargetProducer) -> InvocationOutcome {
+fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
     match producer {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
@@ -1130,16 +1144,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "primitive_egress_census_seed_exit",
         ),
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::DependencyDemandCensus => run_census_verb(
-            "demand-census",
-            "dependency-demand-census",
-            &self_host_source_roots(),
-        ),
-        TargetProducer::DeclRefCensus => run_census_verb(
-            "decl-ref-census",
-            "decl-ref-census",
-            &self_host_source_roots(),
-        ),
+        TargetProducer::NativeCensusVerb { verb } => {
+            run_census_verb(verb, label, &self_host_source_roots())
+        }
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -4570,7 +4577,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: invocation_refusal_rendered(&refusal),
             }
         }
-        Some((_, producer)) => run_producer(producer),
+        Some((bound, producer)) => run_producer(producer, &bound.target),
     }
 }
 

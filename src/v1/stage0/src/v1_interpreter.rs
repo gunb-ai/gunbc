@@ -13846,9 +13846,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
             Value::Str(ref s) => Ok(Value::Str(s.clone())),
-            // Corpus wire/debug casts for structured values — not the blanket Display
-            // fallback that silently stringified List/Map (§5 fabricated plausible output).
-            Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
             v => Err(refused(&v, "String")),
         },
         t => Err(refused(&val, t)),
