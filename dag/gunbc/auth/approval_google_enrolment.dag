@@ -1,0 +1,276 @@
+module gunbc.auth.approval_google_enrolment
+
+import std.types { NonEmptyStr, String, Timestamp, Bool, List }
+import std.error_primitives { pure_dag_seam_unreachable_string }
+import std.encoding { base64_encode, base64_octets, UrlSafe }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.crypto.signature { VerifyingKey }
+import extdeps.auth.jwt { JwtBareString, NumericDate, jwt_string_or_uri_wire }
+import extdeps.auth.oidc { OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal, OidcIdTokenVerdictPolicy }
+import extdeps.apple.app_attest { AttestKeyId, AttestationVerification, AttestationVerified, AttestationRefused, AttestationRefusal }
+import gunbc.auth.google_workspace_login { google_workspace_issuer, gunb_ai_hosted_domain }
+import gunbc.auth.approval_device_wire { MobilePlatform, MobileIos, MobileAndroid, platform_wire, framed }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
+import gunbc.auth.approval_decision_store { approval_google_approver_emails }
+import gunbc.auth.approval_device_redemption { VerifiedPlatformEvidence, IosAttestedAppInstance, AndroidAttestedDecisionKey }
+
+// ── GOOGLE SIGN-IN IS ENROLMENT (ruling gunbc.design_ruling approval_enrolment_is_google_sign_in) ──
+// The phone signs in with Google once. In the same step it creates its Secure-Enclave decision key
+// and its App Attest key, and one POST registers both under the verified Google identity. There is
+// no code, no second step, and no state the phone must recover: the POST is idempotent, so an
+// unanswered POST is resent, and a failed sign-in is "sign in again". The plan carrier is
+// gunbc.plans.approval_google_enrolment; this module is the authority for what admits an enrolment.
+//
+// Every check is a fact an earlier authority already owns, and this module joins them:
+//   - the ID token's verdict is extdeps.auth.oidc verify_oidc_id_token, its signature the
+//     production JWKS realization gunbc.auth.oidc_id_token_verification;
+//   - issuer and hosted domain are gunbc.auth.google_workspace_login's (hd == gunb.ai);
+//   - the audience is the approve-ios OAuth client, one row here (an iOS-type client: a web client
+//     cannot serve a native redirect, and admitting the dashboard client's audience would let a
+//     dashboard login token enrol a device);
+//   - who may enrol is the approver roster below, matched on the verified Workspace email, and
+//     the Google subject is pinned on the first enrolment;
+//   - the App Attest verdict is extdeps.apple.app_attest's, kept as VerifiedPlatformEvidence.
+
+// ── THE TRANSCRIPT, AND WHY THE NONCE IS ITS HASH ──────────────────────────────────────────────
+// The app builds the transcript BEFORE sign-in from the keys it just created, and passes
+// nonce = base64url(sha256(transcript)) to Google. The server rebuilds the transcript from the
+// submitted keys, so the token's nonce commits Google's assertion to exactly these keys. A token
+// replayed beside a different decision key or attest key yields a different transcript and refuses
+// at the verdict's nonce arm; no server-side nonce store exists, because the nonce is DERIVED, never
+// issued. The App Attest attestation is made over the same transcript, so the two proofs name one
+// set of keys.
+data approval_google_enrolment_protocol: NonEmptyStr = "gunbc.approval-google-enrolment.v1" as NonEmptyStr
+
+fn google_enrolment_transcript(platform: MobilePlatform, decision_key: VerifyingKey, attest_key_id: AttestKeyId) -> NonEmptyStr {
+  framed(fields: [
+    approval_google_enrolment_protocol as String,
+    platform_wire(p: platform) as String,
+    decision_key.point_b64url as String,
+    attest_key_id as String,
+  ])
+}
+
+// sha256's output is 32 in-range octets, so the qualifying refusal arm is unreachable, and it
+// diverges rather than fabricating a digest.
+fn sha256_b64url(text: NonEmptyStr) -> NonEmptyStr {
+  match base64_octets(values: sha256(message: bytes_octets(b: utf8_encode_bytes(s: text as String)))) {
+    QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: UrlSafe) as NonEmptyStr
+    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string() as NonEmptyStr
+  }
+}
+
+fn google_enrolment_nonce(transcript: NonEmptyStr) -> NonEmptyStr {
+  sha256_b64url(text: transcript)
+}
+
+// ── THE AUDIENCE AND THE ROSTER ────────────────────────────────────────────────────────────────
+// The audience is gunbc.auth.tracker_web_oauth_client approve_ios_oauth_client, the iOS client the
+// operator registered; the roster is gunbc.auth.approval_decision_store approval_google_approver_emails.
+// Matching on email (not on a subject the operator would have to look up) is safe only together
+// with hd == gunb.ai and email_verified, both enforced by the verdict: the address is in a domain
+// the operator administers. The subject is then pinned per email by the first enrolment
+// (ApproverSubjectPin), so a deleted and recreated account under the same address is refused.
+
+// THE VERDICT POLICY: the workspace login policy's issuer and hosted domain, this client's audience,
+// and the transcript-derived nonce. The audience is read from the registration, never passed in, so
+// no caller can admit another client.
+fn approval_google_enrolment_policy(transcript: NonEmptyStr, observed_at: NumericDate) -> OidcIdTokenVerdictPolicy {
+  OidcIdTokenVerdictPolicy {
+    expected_issuer: google_workspace_issuer(),
+    admitted_audiences: [JwtBareString { value: approve_ios_oauth_client.client_id }],
+    expected_hosted_domain: gunb_ai_hosted_domain,
+    expected_nonce: Present { value: google_enrolment_nonce(transcript: transcript) },
+    observed_at: observed_at,
+  }
+}
+
+// ── THE ENROLMENT AND ITS IDENTITY ─────────────────────────────────────────────────────────────
+// enrollment_id = hash(subject, decision key): the same Google subject with the same key is the
+// same enrolment, so a resent POST lands on the same slot and is answered from it. A new key under
+// the same subject is a new device, which is exactly what notifies the operator.
+fn google_enrollment_id(subject: NonEmptyStr, decision_key: VerifyingKey) -> NonEmptyStr {
+  let digest = sha256_b64url(text: framed(fields: [approval_google_enrolment_protocol as String, subject as String, decision_key.point_b64url as String]))
+  join(["genr-", digest as String], "") as NonEmptyStr
+}
+
+type GoogleDeviceEnrollment sole_constructor {
+  enrollment_id: NonEmptyStr
+  google_subject: NonEmptyStr
+  google_email: NonEmptyStr
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  evidence: VerifiedPlatformEvidence
+  enrolled_at: Timestamp
+}
+
+// The per-email subject pin: written create-once by the first enrolment for that email.
+type ApproverSubjectPin
+  = SubjectPinAbsent
+  | SubjectPinned { subject: NonEmptyStr }
+  | SubjectPinUnreadable { detail: NonEmptyStr }
+
+// The enrolment slot, keyed by enrollment_id: absent, enrolled (gen 1), or revoked (gen 2).
+type GoogleEnrolmentSlot
+  = GoogleEnrolmentAbsent
+  | GoogleEnrolmentActive { enrollment: GoogleDeviceEnrollment }
+  | GoogleEnrolmentRevoked { enrollment: GoogleDeviceEnrollment, revoked_at: Timestamp }
+  | GoogleEnrolmentUnreadable { detail: NonEmptyStr }
+
+// ── THE SUBMISSION AND THE ONE ADMISSION FOLD ──────────────────────────────────────────────────
+// The route has already run the two verifiers (the ID token verdict under
+// approval_google_enrolment_policy, the attestation over the transcript) and the store reads; this
+// fold decides from their results and writes nothing.
+type GoogleEnrolmentSubmission {
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  attest_key_id: AttestKeyId
+  id_token: OidcIdTokenVerdict
+  attestation: AttestationVerification
+}
+
+type GoogleEnrolmentRefusal
+  = GoogleEnrolmentTokenRefused { cause: OidcIdTokenRefusal }
+  | GoogleEnrolmentEmailAbsent
+  | GoogleEnrolmentNotAnApprover { email: NonEmptyStr }
+  | GoogleEnrolmentSubjectMismatch { email: NonEmptyStr }
+  | GoogleEnrolmentAttestationRefused { cause: AttestationRefusal }
+  | GoogleEnrolmentAttestationForOtherBytes
+  | GoogleEnrolmentAttestKeyMismatch
+  | GoogleEnrolmentAndroidUnrealized
+  | GoogleEnrolmentRevokedKey
+  | GoogleEnrolmentStoreUnreadable { detail: NonEmptyStr }
+
+// THREE OUTCOMES. Write: a new enrolment (and, if the email had no pin, the pin with it) -- the
+// route then publishes the new-device notification. Replay: the identical enrolment already exists,
+// answered from the store with no write and no notification. Refused: one located cause.
+type GoogleEnrolmentAdmission
+  = GoogleEnrolmentWrites { enrollment: GoogleDeviceEnrollment, pins_subject: Bool }
+  | GoogleEnrolmentReplays { enrollment: GoogleDeviceEnrollment }
+  | GoogleEnrolmentRefused { cause: GoogleEnrolmentRefusal }
+
+fn email_on_roster(email: NonEmptyStr, roster: List<NonEmptyStr>) -> Bool {
+  any(roster, e => (e as String) == (email as String))
+}
+
+fn google_enrolment_admission(
+  roster: List<NonEmptyStr>,
+  s: GoogleEnrolmentSubmission,
+  pin: ApproverSubjectPin,
+  slot: GoogleEnrolmentSlot,
+  observed_at: Timestamp,
+) -> GoogleEnrolmentAdmission {
+  match s.id_token {
+    OidcIdTokenRefused { cause: c } => GoogleEnrolmentRefused { cause: GoogleEnrolmentTokenRefused { cause: c } }
+    OidcIdTokenVerified { claims: claims } =>
+      match claims.standard.email {
+        Absent => GoogleEnrolmentRefused { cause: GoogleEnrolmentEmailAbsent }
+        Present { value: email_value } =>
+          let email = email_value as NonEmptyStr
+          let subject = jwt_string_or_uri_wire(value: claims.subject)
+          if !email_on_roster(email: email, roster: roster) {
+            GoogleEnrolmentRefused { cause: GoogleEnrolmentNotAnApprover { email: email } }
+          } else {
+            match pin {
+              SubjectPinUnreadable { detail: d } => GoogleEnrolmentRefused { cause: GoogleEnrolmentStoreUnreadable { detail: d } }
+              SubjectPinned { subject: pinned } =>
+                if (pinned as String) != (subject as String) {
+                  GoogleEnrolmentRefused { cause: GoogleEnrolmentSubjectMismatch { email: email } }
+                } else {
+                  google_enrolment_past_identity(s: s, subject: subject, email: email, pins_subject: false, slot: slot, observed_at: observed_at)
+                }
+              SubjectPinAbsent =>
+                google_enrolment_past_identity(s: s, subject: subject, email: email, pins_subject: true, slot: slot, observed_at: observed_at)
+            }
+          }
+      }
+  }
+}
+
+// The production admission: the one roster row. Witnesses supply their own roster to the fold above.
+fn approval_google_enrolment_admission(s: GoogleEnrolmentSubmission, pin: ApproverSubjectPin, slot: GoogleEnrolmentSlot, observed_at: Timestamp) -> GoogleEnrolmentAdmission {
+  google_enrolment_admission(roster: approval_google_approver_emails, s: s, pin: pin, slot: slot, observed_at: observed_at)
+}
+
+// PAST IDENTITY: the platform evidence, then the slot. The token's nonce has already bound it to
+// this transcript (the route built the policy from it), and the attestation must be over the same
+// transcript and name the same attest key.
+fn google_enrolment_past_identity(
+  s: GoogleEnrolmentSubmission,
+  subject: NonEmptyStr,
+  email: NonEmptyStr,
+  pins_subject: Bool,
+  slot: GoogleEnrolmentSlot,
+  observed_at: Timestamp,
+) -> GoogleEnrolmentAdmission {
+  match s.platform {
+    MobileAndroid => GoogleEnrolmentRefused { cause: GoogleEnrolmentAndroidUnrealized }
+    MobileIos =>
+      match s.attestation {
+        AttestationRefused { cause: r } => GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestationRefused { cause: r } }
+        AttestationVerified { verified: v } =>
+          if (v.key_id as String) != (s.attest_key_id as String) {
+            GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestKeyMismatch }
+          } else if v.client_data != google_enrolment_transcript(platform: MobileIos, decision_key: s.decision_key, attest_key_id: s.attest_key_id) {
+            GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestationForOtherBytes }
+          } else {
+            match slot {
+              GoogleEnrolmentUnreadable { detail: d } => GoogleEnrolmentRefused { cause: GoogleEnrolmentStoreUnreadable { detail: d } }
+              GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => GoogleEnrolmentRefused { cause: GoogleEnrolmentRevokedKey }
+              GoogleEnrolmentActive { enrollment: e } => GoogleEnrolmentReplays { enrollment: e }
+              GoogleEnrolmentAbsent =>
+                GoogleEnrolmentWrites {
+                  enrollment: GoogleDeviceEnrollment {
+                    enrollment_id: google_enrollment_id(subject: subject, decision_key: s.decision_key),
+                    google_subject: subject,
+                    google_email: email,
+                    platform: MobileIos,
+                    decision_key: s.decision_key,
+                    evidence: IosAttestedAppInstance { attest_key_id: v.key_id, attest_public_key_b64url: v.public_key_point_b64url, receipt_b64: v.receipt_b64 },
+                    enrolled_at: observed_at,
+                  },
+                  pins_subject: pins_subject,
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── WHO MAY DECIDE, AND REVOCATION ─────────────────────────────────────────────────────────────
+// Only an ACTIVE slot answers an enrolment to the redemption path. Revocation is one CAS from
+// generation 1 to 2, issued by an authenticated dashboard session of a rostered approver; a revoked
+// key cannot re-enrol (GoogleEnrolmentRevokedKey), so the phone must create a new key, sign in
+// again, and the operator is notified of that device.
+fn deciding_google_enrollment(slot: GoogleEnrolmentSlot) -> GoogleDeviceEnrollment? {
+  match slot {
+    GoogleEnrolmentActive { enrollment: e } => Present { value: e }
+    GoogleEnrolmentAbsent => none
+    GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => none
+    GoogleEnrolmentUnreadable { detail: _ } => none
+  }
+}
+
+// THE NEW-DEVICE NOTICE: emitted only on GoogleEnrolmentWrites, never on a replay, so one device
+// notifies once however often its POST is resent.
+type NewDeviceNotice {
+  enrollment_id: NonEmptyStr
+  google_email: NonEmptyStr
+  attest_key_id: AttestKeyId
+  enrolled_at: Timestamp
+}
+
+fn new_device_notice(a: GoogleEnrolmentAdmission) -> NewDeviceNotice? {
+  match a {
+    GoogleEnrolmentWrites { enrollment: e, pins_subject: _ } =>
+      match e.evidence {
+        IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } =>
+          Present { value: NewDeviceNotice { enrollment_id: e.enrollment_id, google_email: e.google_email, attest_key_id: k, enrolled_at: e.enrolled_at } }
+        AndroidAttestedDecisionKey => none
+      }
+    GoogleEnrolmentReplays { enrollment: _ } => none
+    GoogleEnrolmentRefused { cause: _ } => none
+  }
+}
