@@ -182,6 +182,13 @@ data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRul
   provenance: "Operator ruling, previously recorded only in the v2.compiler.infer comment above infer_where_predicate_set_edge: where-refinements are being deleted from the language, replaced by checked constructors returning Optional, so no infer judgment for a where-refinement's predicate calls is coming. Retirement trigger: where-refinement clauses are removed in favour of checked constructors returning Optional, sufficient for no where-predicate call to reach infer; the infer arm and its reason are then deleted with the clause.",
 }
 
+data interim_carrier_grounding_admits_non_literal_crossings: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "interim_carrier_grounding_admits_non_literal_crossings"),
+  decided: "2026-10-23",
+  section: "4",
+  provenance: "Operator decision, 2026-10-23, default-approved on the Manager 3 escalation of the std.decl_ref first root (the recommendation it approved: at a declared TYPE position, `T where p` grounds to its carrier T for inference with NO predicate judgment -- the 2026-10-02 retirement ruling above stands and this judges nothing; every NON-LITERAL value crossing into such a position is accepted with one counted, located advisory, never silently, so the population is a census row; LITERALS keep refusing with the position's own reason, because no general refinement-literal judgment exists yet; a refinement-declaration MISS keeps today's refusal untouched). Bounded population, prior rung, reason and restoration trigger: gunbc.rung_drop non_literal_crossings_ground_to_the_refinement_carrier. Dissolution with the NonEmptyStr structural cut of the refinement-deletion program.",
+}
+
 data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
@@ -350,6 +357,7 @@ fn design_rulings() -> List<DesignRuling> {
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
     where_refinements_retire_for_checked_constructors,
+    interim_carrier_grounding_admits_non_literal_crossings,
     native_first_complete_cuts,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
