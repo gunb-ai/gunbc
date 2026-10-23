@@ -43,7 +43,7 @@ fn bootstrap_scratch(populated: Bool) -> BootstrapScratch? {
   let root = dir.path as String
   let source = concat(root, "/source")
   let repo = concat(root, "/repo")
-  let init = git.Core.InitInRepo(repo: source as FilePath)
+  let init = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", source])
   let email = git.Core.ConfigLocalSetInRepo(repo: source as FilePath, key: "user.email", value: "witness@example.invalid")
   let name = git.Core.ConfigLocalSetInRepo(repo: source as FilePath, key: "user.name", value: "witness")
   let wrote = Filesystem.Write(path: concat(source, "/tracked"), content: "candidate-bytes")
@@ -52,7 +52,7 @@ fn bootstrap_scratch(populated: Bool) -> BootstrapScratch? {
   let head = git.Core.RevParseInRepo(repo: source as FilePath, target: "HEAD" as GitRef)
   let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", repo])
   let stray = if populated { Filesystem.Write(path: concat(repo, "/stray-file"), content: "stray").success } else { true }
-  if dir.success && init.success && email.success && name.success && wrote.success && added.exit_code == 0 && committed.exit_code == 0 && head.exit_code == 0 && made.exit_code == 0 && stray {
+  if dir.success && init.exit_code == 0 && email.success && name.success && wrote.success && added.exit_code == 0 && committed.exit_code == 0 && head.exit_code == 0 && made.exit_code == 0 && stray {
     Present { value: BootstrapScratch { root: root, repo: repo, source: source, candidate: trim(s: head.revision) } }
   } else { none }
 }
