@@ -65,6 +65,7 @@ import gunbc.live_deploy.member_identity {
   DirectoryRoot, DirectoryRootIdentity, RootAt, DirectoryRootStanding, RootConverged, RootModeRepairable, MemberRefusedOnHost,
   EffectDerivation, EffectsDerived, EffectsRefused, derive_member_plan, effect_labels, plan_mutation_count,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // THE HOST'S SIDE OF THE RECONCILE, read by the evaluator that plans the deploy so the decision and
 // the mutation are one evaluation (operator direction, 2026-09-06: one semantic evaluation per
@@ -233,7 +234,7 @@ fn observe_executable(arm: ObservationArm, path: String) -> ObservedMember {
 // The emitter verifies the source against this digest again immediately before the copy, so a build
 // that changes between planning and actuation stops the line rather than installing under a stale
 // identity (gunbc.live_deploy.emit emit_release_member_effects).
-data release_executable_source_path: String = "target/release/gunbc"
+data release_executable_source_path: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 fn desired_executable() -> ObservedMember {
   observe_executable(arm: OnTheHostItself, path: release_executable_source_path)

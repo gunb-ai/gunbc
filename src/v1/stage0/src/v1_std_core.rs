@@ -694,6 +694,10 @@ pub enum CompilerDiagnostic {
         name: String,
         span: Rc<SourceSpan>,
     },
+    TypeAliasCycle {
+        members: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     DuplicateDeclaration {
         module_name: String,
         name: String,
@@ -1041,6 +1045,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeAliasCycle { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateDeclaration { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingAnnotation { span: s, .. } => s.clone(),
         CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
@@ -1122,6 +1127,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
+    CompilerDiagnostic::TypeAliasCycle { members: ms, .. } => v1_rt::concat("type alias cycle: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateDeclaration { module_name: m, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("duplicate declaration '".to_string(), n.clone()), "' in module '".to_string()), m.clone()), "' -- a second declaration of one name silently replaced the first".to_string()),
     CompilerDiagnostic::MissingAnnotation { fn_name: f, what: w, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("function '".to_string(), f.clone()), "' requires ".to_string()), w.clone()), " annotation".to_string()),
     CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
@@ -1313,6 +1319,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::DuplicateModule { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::TypeAliasCycle { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),

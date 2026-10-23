@@ -2,60 +2,18 @@ module test.claim.live_deploy.apply_no_refused_marker_witness
 
 import std.types { Bool, String, List }
 import std.algebra { string_contains }
-import gunbc.live_deploy.desired { selected_deployment_spec, srv1_production_desired_deployment }
-import gunbc.live_deploy.emit {
-  apply_intent_fragments, compose_host_script_decide_steps, compose_host_script_mutate_steps,
-  apply_object_source_pwd_serve_decide_command,
-}
 import gunbc.shell_command_text { shell_command_text_of_node }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
-import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
-import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import v2.extdeps.languages.bash_build {
   bash_build_if_else, bash_build_stmt_list_from_nodes, bash_build_command_from_lits,
 }
-import test.claim.live_deploy.apply_emission_projection {
-  pipeline_steps_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve,
-}
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 
 data refused_marker: String = "__GUNBC_BASH_EMIT_REFUSED__"
 
-// THE LIVE SRV1 SPEC'S WHOLE APPLY, through the real apply emission with the host observation supplied
-// (an empty host; the object source supplied as servable, which selects the same Decide fragment the
-// wet apply's $PWD decide selects). The refusal of a command intent by the bash serializer is not
-// valid shell, so one such marker anywhere in the script makes the host step fail at parse time:
-// a lab deploy failed closed at line 14 on exactly this, in the object-source Decide step. RED
-// when any step of the live spec's complete apply (Decide and Mutate halves) carries the marker.
-test fn the_live_apply_script_contains_no_refused_bash_marker() -> Bool {
-  let spec = selected_deployment_spec(row: srv1_production_desired_deployment())
-  let fragments = apply_intent_fragments(
-    spec: spec,
-    effects: apply_empty_host_effects(spec: spec),
-    access: ci_deploy_srv1_access,
-    plan: deploy_witness_full_install_plan(spec: spec),
-    cap_authorization: CapConvergeWithheld { cause: "apply refused-marker witness" },
-    oidc_now: claim_oidc_now(),
-    object_source_serve: apply_complete_object_source_serve(),
-  )
-  !string_contains(s: pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments)), pattern: refused_marker)
-    && !string_contains(s: pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: fragments)), pattern: refused_marker)
-}
-
-// THE OBJECT-SOURCE DECIDE STEP ALONE: the construct that was refused (a bare `if` as the else body,
-// where the grammar's else body is a statement LIST), taken at the unit that builds it.
-test fn the_object_source_decide_step_serializes_without_the_marker() -> Bool {
-  let cmd = apply_object_source_pwd_serve_decide_command()
-  !string_contains(s: cmd, pattern: refused_marker) && string_contains(s: cmd, pattern: "rev-parse")
-}
-
-// NOTHING IS DROPPED: the config probes' nested unreadable-config refusal (exit neither 0 nor 1) must
-// survive serialization. A serializer that keeps a prefix of children emits no marker and loses it.
-test fn the_object_source_decide_step_keeps_the_unreadable_config_refusal() -> Bool {
-  let cmd = apply_object_source_pwd_serve_decide_command()
-  string_contains(s: cmd, pattern: "exited neither 0 nor 1")
-}
+// The three apply-emission claims that stood here (the live srv1 apply script, and the object-source
+// Decide step alone) were deleted with the bash apply emitter they read (gunbc#14660): the typed apply
+// builds no bash for that step. The serializer claims below are #14586's repair and stay enrolled.
 
 // THE REFUSAL NAMES ITS CAUSE: the old shape (an `if` node standing as else body, not wrapped in a
 // statement list) is refused by the serializer, and the text the caller embeds carries the located

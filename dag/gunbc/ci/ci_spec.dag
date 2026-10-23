@@ -1,6 +1,7 @@
 module gunbc.ci.ci_spec
 
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+import gunbc.claim_executor_cli { claim_executor_relative_path }
 
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
@@ -72,6 +73,7 @@ import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_image_publish { mtcollins1_census_image_receipt_path }
+import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 
@@ -137,6 +139,7 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_token_refused_message
 }
 import extdeps.github.app { GitHubAppInstallationId }
+import gunbc.fleet.organization_runner_roster_read_credential { organization_runner_roster_read_token_request_body }
 import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -169,6 +172,7 @@ import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
+import extdeps.rust.cargo { cargo_default_release_dir }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -576,10 +580,13 @@ fn ci_release_build_line() -> String {
 fn ci_emitted_release_build_line(bin: EmittedReleaseBin) -> String {
   let dir = join(["\"$ROOT/target/emitted/", bin.name, "\""], "")
   let stream = join(["\"$ROOT/target/emitted/", bin.name, ".cargo.json\""], "")
+  // The release dir comes from cargo's default-layout home, as in ci_release_artifact_word; with the
+  // shell var as build_root the emitted text is byte-identical, so the fleet pack key does not move.
+  let release_dir = cargo_default_release_dir(build_root: "$ROOT")
   join([
-    "rm -rf ", dir, " && \"$ROOT/target/release/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
+    "rm -rf ", dir, " && \"", release_dir, "/gunbc\" compile --source-root dag --source-root src/v1 --source-root src/v2 --entry ", bin.entry,
     " --output-dir ", dir, " --target rust && ( cd ", dir, " && ", repo_self_emitted_crate_build_command(cargo: "\"$CARGO_BIN\""), " ) > ", stream,
-    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"$ROOT/target/release/", bin.name, "\"",
+    " && cp \"$(sed -n 's/.*\"executable\":\"\\([^\"]*\\)\".*/\\1/p' ", stream, " | tail -n 1)\" \"", release_dir, "/", bin.name, "\"",
   ], "")
 }
 
@@ -650,7 +657,12 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
 fn ci_release_artifact_word(name: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [
     bash_build_word_var(name: "ROOT"),
-    bash_build_word_lit(text: concat("/target/release/", name)),
+    // The literal is derived from cargo's default-layout home (extdeps.rust.cargo), not
+    // re-spelled: this word is where the CI release-artifact check reads its binaries from, so a
+    // hand-written join here is the one leaf that could compile green while pointing the floor's
+    // verify at a directory cargo no longer uses. The bash-word medium keeps ROOT as a var node;
+    // only the constant segment comes from the fn (empty build_root -> "/target").
+    bash_build_word_lit(text: concat(cargo_default_release_dir(build_root: ""), concat("/", name))),
   ])
 }
 
@@ -1155,6 +1167,11 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = Gunbc
   function: "mtcollins1_census_image_publish_wet",
 }
 
+data gunbc_ci_mtcollins1_runner_image_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_medium_publish.dag",
+  function: "mtcollins1_runner_image_publish_wet",
+}
+
 data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
   function: "mtcollins1_census_member_readback_wet",
@@ -1441,6 +1458,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
+    gunbc_ci_mtcollins1_runner_image_publish_target,
     gunbc_ci_mtcollins1_census_member_readback_target,
     gunbc_ci_mtcollins1_census_qemu_host_observe_target,
     gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,
@@ -2535,7 +2553,7 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
   )
 }
 
-fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+fn org_installation_token_mint(request_body: String?, scope_note: String) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "org-admin",
     key_secret: gunbai_ci_app_pem_secret,
@@ -2556,15 +2574,32 @@ fn org_admin_app_token_mint() -> AppInstallationTokenMint {
       gunbai_ci_declared.slug as String,
       " installation ",
       to_string(gunbai_ci_declared_installation_id.value),
-      " (one-hour lifetime; key wiped; token held in this step's environment only)"
+      " (", scope_note, "one-hour lifetime; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: none,
+    request_body: request_body,
     observation_record: none
   }
 }
 
+fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+  org_installation_token_mint(request_body: none, scope_note: "")
+}
+
+// THE ROSTER READER'S MINT: the same implementation, down-scoped at the mint to
+// organization_self_hosted_runners read (gunbc.fleet.organization_runner_roster_read_credential).
+fn org_roster_read_app_token_mint() -> AppInstallationTokenMint {
+  org_installation_token_mint(
+    request_body: Present { value: organization_runner_roster_read_token_request_body(installation: gunbai_ci_declared_installation_id) },
+    scope_note: "organization_self_hosted_runners read only; "
+  )
+}
+
 fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
   github_app_installation_token_prelude(spec: org_admin_app_token_mint())
+}
+
+fn gunbc_ci_org_roster_read_app_token_prelude() -> List<PipelineStep> {
+  github_app_installation_token_prelude(spec: org_roster_read_app_token_mint())
 }
 
 // THE APP-KEY VERSION VERIFIER, as two steps: a mint over the EXACT version the dispatch names,
@@ -3073,8 +3108,11 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
 data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
 data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
 
+// THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
+// org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
@@ -3203,6 +3241,17 @@ fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> String {
     function: gunbc_ci_mtcollins1_census_image_publish_target.function,
     claim_run: false,
     receipt_rel: mtcollins1_census_image_receipt_path
+  )
+}
+
+// The runner image publish is the census publish's sibling: fleet SSH to srv2, no controller, no prelude.
+fn gunbc_ci_mtcollins1_runner_image_publish_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_runner_image_publish_target.entry,
+    function: gunbc_ci_mtcollins1_runner_image_publish_target.function,
+    claim_run: false,
+    receipt_rel: mtcollins1_runner_image_receipt_path
   )
 }
 
@@ -4054,7 +4103,7 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
 // run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  "target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2"
+  concat(claim_executor_relative_path(), " --regen-round-cost --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
