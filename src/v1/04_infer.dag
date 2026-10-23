@@ -15276,7 +15276,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
           Absent => "none"
         }
         Node {
-          occurrence_identity: OccurrenceSynthetic, name: concat("DUMP[", type_node_label(n: n, source_indices: source_indices), " inf=", kind, " decl=", if n.declaration == none { "n" } else { "y" }, " mk=", if n.declaration_marker == none { "n" } else { "y" }, "]"), span: n.span, ident_span: n.ident_span,
+          occurrence_identity: OccurrenceSynthetic, name: concat("DUMP[", type_node_label(n: n, source_indices: source_indices), " inf=", kind, " decl=", if n.declaration == none { "n" } else { "y" }, "]"), span: n.span, ident_span: n.ident_span,
           children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
           return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
           properties: n.properties, type_annotation: n.type_annotation,
