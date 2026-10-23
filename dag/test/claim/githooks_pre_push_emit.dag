@@ -1,6 +1,12 @@
 module test.claim.githooks_pre_push_emit
 
-import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
+import gunbc.githooks.githooks_pre_push_emit {
+  expected_githooks_pre_push_sh,
+  githooks_pre_push_emit_concat_body_dissolution
+}
+import gunbc.local_tidy_spec { githooks_pre_push_emit_scaffold }
+import std.disposition { Scaffold, RealizationDispatch, SingleAuthority, SubstrateMandatoryTag }
+import std.dissolution { dissolution_description }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -71,4 +77,43 @@ test fn witness_no_tree_mutation() -> Bool {
     && !has(s: sh, p: "chore: regenerate committed projections")
     && !has(s: sh, p: "git add")
     && !has(s: sh, p: "git commit")
+}
+
+// THE CONCAT BODY IS COUNTED, NOT SILENT — the typed reader (the §3c consumer of the carrier).
+// Carrier: DissolutionCondition, chosen over rung_drop (nothing is withdrawn from a gate — the
+// artifact and its behavior persist while git keeps executing the hook) and over
+// gunbc.retained_shell_script (Charter 2 exits that roster empty; zesty-tern-692 is deleting
+// bridges there). The Scaffold registration for this surface stays the single authority in
+// gunbc.local_tidy_spec (githooks_pre_push_emit_scaffold); this module adds only the dissolution
+// row naming the capability, mirroring the sibling
+// gunbc.githooks.githooks_repo_local_git_config_emit converge-block carrier.
+// The row is CONSUMED here, not just declared: dissolution_description is called on it and the
+// named trigger capability must survive in its text — the eight emitter forms the cutover waits
+// on, the grammar module that owes them, and the scaffold's bound declaration. Perturbing the
+// trigger text to drop any named form reddens this witness with every module compiling. The
+// deletion control (row removed, all modules still compiling) is the sibling claim module
+// test.claim.githooks_pre_push_emit_residual_census: it runs the production fold
+// gunbc.census_closure_frontier.census_closure_frontier_rows() and counts exactly one row whose
+// subject is expected_githooks_pre_push_sh, importing neither githooks module — so deleting the
+// FrontierRow or dropping the registration from the fold reddens that claim without breaking
+// compilation.
+test fn witness_carrier_reader_reads_the_row() -> Bool {
+  let d = dissolution_description(condition: githooks_pre_push_emit_concat_body_dissolution)
+  has(s: d, p: "gunbc.languages.bash")
+    && has(s: d, p: "shebang")
+    && has(s: d, p: "comment")
+    && has(s: d, p: "set -euo pipefail")
+    && has(s: d, p: "while-read")
+    && has(s: d, p: "case/esac")
+    && has(s: d, p: "[[ ]]")
+    && has(s: d, p: "$(( ))")
+    && has(s: d, p: ">&2")
+    && (match githooks_pre_push_emit_scaffold {
+        Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+          (b.module_path as String) == "gunbc.githooks.githooks_pre_push_emit"
+            && (b.decl_name as String) == "expected_githooks_pre_push_sh"
+        Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+        Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+        Terminal { reason: _ } => false
+      })
 }
