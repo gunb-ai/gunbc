@@ -361,7 +361,6 @@ type SignalKey    = NonEmptyStr where brand("SignalKey")
 type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
 type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
 type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
-type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
 
 type GitRef       = String where string_non_empty
 

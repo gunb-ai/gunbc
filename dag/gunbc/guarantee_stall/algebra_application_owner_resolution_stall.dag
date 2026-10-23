@@ -3,7 +3,7 @@ module gunbc.guarantee_stall.algebra_application_owner_resolution_stall
 import std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // The algebra application wall is useful evidence, but cannot yet carry the owner identity
 // through the dominant declared container-alias spelling to variant_reference_inferred_node.
@@ -13,7 +13,7 @@ data algebra_application_owner_resolution_stall: GuaranteeStall = GuaranteeStall
   current: OutsideTheLadder,
   ceiling: StructurallyImpossible,
   blocker: AwaitsOneGrounding {
-    grounding: "the variant-reference boundary carries the declared container alias's resolved owner identity through to variant_reference_inferred_node"
+    grounding: GroundingUndeclared
   },
   population: BoundedPopulation {
     members: Cons {

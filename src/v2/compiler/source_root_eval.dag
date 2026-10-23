@@ -18,6 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -370,6 +371,11 @@ import v2.std.integer {
 }
 import v2.std.diagnostic {
   UserInputBoundary,
+  AmbiguousIntent,
+  CorrectionNotModeled,
+  Correction,
+  DeclarerRefused,
+  Suggested,
   Accepted,
   Diagnostic,
   Diagnostics,
@@ -1539,8 +1545,7 @@ type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
-  | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
-  | NativeDriverDeclRefCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusVerb { verb: NativeCensusVerbWord, source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
@@ -1557,9 +1562,9 @@ data native_driver_verb_census_resolve: String = "census-resolve"
 // stay part 1's (docs/plans/census-part-2-inference-design.md section 2a).
 data native_driver_verb_census_infer: String = "census-infer"
 
-data native_driver_verb_demand_census: String = "demand-census"
-
-data native_driver_verb_decl_ref_census: String = "decl-ref-census"
+// THE CENSUS VERBS ARE ROWS, NOT VARIANTS: one plan (NativeDriverCensusVerb), one parse state and one
+// emitted run function serve every verb here, and native_census_verb_output is the single dispatch from a
+// verb to its fold. The closed verb type and its spelling are gunbc.native_census_verb.
 
 data native_driver_verb_census_scoped: String = "census-scoped"
 
@@ -1607,8 +1612,7 @@ type NativeDriverParseState
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
-  | DriverDemandCensusRoots { roots: FreeMonoid<String> }
-  | DriverDeclRefCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusVerbRoots { verb: NativeCensusVerbWord, roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
   | DriverCensusScopedAfterSubject { subject: String, rest: List<String> }
   | DriverCensusScopedSeekAgainst { subject: String }
@@ -1622,7 +1626,11 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census or decl-ref-census"
+    fold_list(
+      xs: native_census_verbs,
+      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped",
+      cons: fn(acc, v) { concat(concat(acc, ", "), native_census_verb_word(v: v)) }
+    )
   )
 }
 
@@ -1640,18 +1648,18 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusResolveRoots { roots: [] }
       } else if word == native_driver_verb_census_infer {
         DriverCensusInferRoots { roots: [] }
-      } else if word == native_driver_verb_demand_census {
-        DriverDemandCensusRoots { roots: [] }
-      } else if word == native_driver_verb_decl_ref_census {
-        DriverDeclRefCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
         DriverAdjudicateSeekFacts
       } else {
-        DriverParseRefused {
-          reason: ^native_driver_unknown_verb,
-          detail: native_driver_unknown_verb_detail(word: word)
+        match native_census_verb_of_word(word: word) {
+          Present { value: v } => DriverCensusVerbRoots { verb: v, roots: [] }
+          Absent =>
+            DriverParseRefused {
+              reason: ^native_driver_unknown_verb,
+              detail: native_driver_unknown_verb_detail(word: word)
+            }
         }
       }
     DriverCensusRoots { roots: roots } =>
@@ -1660,10 +1668,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusInferRoots { roots: roots } =>
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
-    DriverDemandCensusRoots { roots: roots } =>
-      DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
-    DriverDeclRefCensusRoots { roots: roots } =>
-      DriverDeclRefCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusVerbRoots { verb: verb, roots: roots } =>
+      DriverCensusVerbRoots { verb: verb, roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusScopedSeekSubject =>
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
@@ -1747,10 +1753,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
     DriverCensusInferRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
-    DriverDemandCensusRoots { roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
-    DriverDeclRefCensusRoots { roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverDeclRefCensus { source_roots: roots } }
+    DriverCensusVerbRoots { verb: verb, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusVerb { verb: verb, source_roots: roots } }
     DriverCensusScopedSeekSubject =>
       NativeDriverPlanRefused {
         reason: ^native_driver_census_scoped_without_subject,
@@ -1803,8 +1807,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
-        NativeDriverDemandCensus { source_roots: roots } => roots
-        NativeDriverDeclRefCensus { source_roots: roots } => roots
+        NativeDriverCensusVerb { verb: _, source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
@@ -3939,6 +3942,9 @@ type NativeCensusClosureIndex
   = NativeCensusClosureIndexRead {
       importers_of: Map<String, List<String>>
       imports_of: Map<String, List<String>>
+      // The roster's module-to-path map, read once with the graph: a declarer-attributed resolve
+      // cascade (native_census_chain_cascade) names its root by module and files it by path.
+      module_paths: Map<String, Symbol>
       modules: Int
       refused_modules: Int
     }
@@ -3998,6 +4004,7 @@ fn native_census_closure_index(
         NativeCensusClosureIndexRead {
           importers_of: read.importers_of,
           imports_of: read.imports_of,
+          module_paths: native_census_module_paths(modules: modules),
           modules: length(xs: modules),
           refused_modules: fold_list(xs: context.file_refusals, empty: 0, cons: fn(n, r) {
             match r.module {
@@ -4022,7 +4029,7 @@ fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTe
 fn native_census_closure_fan_out_of(index: NativeCensusClosureIndex, root: Optional<QualifiedName>) -> NativeCensusClosureFanOut {
   match index {
     NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusClosureFanOutUnavailable { reason: r }
-    NativeCensusClosureIndexRead { importers_of: importers_of, imports_of: _, modules: modules, refused_modules: refused_modules } =>
+    NativeCensusClosureIndexRead { importers_of: importers_of, imports_of: _, module_paths: _, modules: modules, refused_modules: refused_modules } =>
       match root {
         Absent => NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_root_declares_no_module }
         Present { value: qn } =>
@@ -4143,7 +4150,8 @@ fn native_census_cause_groups_add_cascade_member(
   groups: NativeCensusCauseGroups,
   entry: NativeCensusModule,
   root: Symbol,
-  root_reason: Symbol
+  root_reason: Symbol,
+  head_reason: Symbol
 ) -> NativeCensusCauseGroups {
   let added = native_census_cause_groups_add(
     groups: groups,
@@ -4152,7 +4160,7 @@ fn native_census_cause_groups_add_cascade_member(
       stage: NativeCensusCauseResolve,
       path: entry.path,
       module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
-      head_reason: ^native_prepare_reason_import_target_file_refused,
+      head_reason: head_reason,
       at: FileRefusalAtUnresolvedNode,
       occurrence: optional_absent(),
       cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason }
@@ -4230,6 +4238,135 @@ fn native_census_cause_groups_add_module(
   }
 }
 
+// A CHAIN IS A DECLARER CASCADE ROW WHEN ITS FATAL DIAGNOSTIC CARRIES THE DeclarerRefused CORRECTION, AND THE
+// ROOT IS THAT DECLARER BY IDENTITY, never by reading the chain's reasons. The identity is minted where the
+// refused provider is found (v2.compiler.resolve declarer_refused_diagnostic). A chain is the provider's own
+// chain followed by the referencing site's fatal, so a declarer that itself refused on ITS declarer carries
+// the innermost correction first: the first DeclarerRefused in the chain names the module that refused on its
+// own account, the root, and the diagnostic before it is that root's fatal. None is a chain refused on the
+// module's own account. A chain whose fatal reason is declarer_refused but carries no declarer was not minted
+// by the resolver: Unattributed, never a root.
+fn native_census_chain_cascade(closure: NativeCensusClosureIndex, chain: NonEmptyDiagnostics) -> NativeCensusCascade {
+  if native_census_chain_ends_at_declarer(chain: chain) {
+    match native_census_innermost_declarer(chain: chain) {
+      Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_missing }
+      Present { value: found } =>
+        match closure {
+          NativeCensusClosureIndexUnavailable { reason: _ } =>
+            NativeCensusCascadeUnattributed { reason: ^native_census_declarer_closure_unavailable }
+          NativeCensusClosureIndexRead { importers_of: _, imports_of: _, module_paths: module_paths, modules: _, refused_modules: _ } =>
+            match map_lookup(module_paths, qualified_name_to_dotted_string(qn: found.declarer)) {
+              Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_not_censused }
+              Present { value: root_path } => NativeCensusCascadeMemberOf { root: root_path, root_reason: found.root_reason }
+            }
+        }
+    }
+  } else {
+    if diagnostics_fatal_reason(d: chain) == ^resolve_reason_declarer_refused {
+      NativeCensusCascadeUnattributed { reason: ^native_census_declarer_missing }
+    } else {
+      NativeCensusCascadeNone
+    }
+  }
+}
+
+type NativeCensusChainFiling {
+  groups: NativeCensusCauseGroups
+  root_filed: Bool
+}
+
+// A MODULE WITH A CHAIN OF ITS OWN ACCOUNT IS A ROOT FOR THAT CHAIN, AND ITS DECLARER CHAINS ARE STILL MEMBERS
+// OF THEIR DECLARERS: one row per chain, the first own-account chain carrying the module's root row (its
+// fan-out) and any later own-account chain None, as a module without declarers files them.
+fn native_census_cause_groups_add_chains_by_chain(
+  groups: NativeCensusCauseGroups,
+  positions: NativeCensusPositionTable,
+  closure: NativeCensusClosureIndex,
+  entry: NativeCensusModule,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>
+) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: Cons { head: first, tail: rest },
+    empty: NativeCensusChainFiling { groups: groups, root_filed: false },
+    cons: fn(acc, c) {
+      let own = native_census_chain_cascade(closure: closure, chain: c)
+      let cascade = match own {
+        NativeCensusCascadeNone => if acc.root_filed { NativeCensusCascadeNone } else { native_census_own_root(closure: closure, entry: entry) }
+        NativeCensusCascadeMemberOf { root: _, root_reason: _ } => own
+        NativeCensusCascadeUnattributed { reason: _ } => own
+        NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => own
+      }
+      NativeCensusChainFiling {
+        groups: native_census_cause_groups_add_residual(
+          groups: acc.groups,
+          cascade: cascade,
+          row: native_census_residual_row(positions: positions, entry: entry, chain: c)
+        ),
+        root_filed: acc.root_filed || (match own {
+          NativeCensusCascadeNone => true
+          NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+          NativeCensusCascadeUnattributed { reason: _ } => false
+          NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => false
+        })
+      }
+    }
+  ).groups
+}
+
+// THE ONE READER OF THE CORRECTION'S DECLARER: every arm of both coproducts is named, so a new
+// correction shape refuses to compile here instead of reading as "not a declarer".
+fn native_census_correction_declarer(c: Correction) -> Optional<QualifiedName> {
+  match c {
+    Suggested { node: _ } => optional_absent()
+    Unavailable { reason: r } =>
+      match r {
+        DeclarerRefused { declarer: q } => optional_present(value: q)
+        UserInputBoundary => optional_absent()
+        AmbiguousIntent => optional_absent()
+        ExternalContractUnknown => optional_absent()
+        CorrectionNotModeled => optional_absent()
+      }
+  }
+}
+
+fn native_census_chain_ends_at_declarer(chain: NonEmptyDiagnostics) -> Bool {
+  match native_census_correction_declarer(c: diagnostics_fatal(d: chain).correction) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+type NativeCensusDeclarerRoot {
+  declarer: QualifiedName
+  root_reason: Symbol
+}
+
+type NativeCensusDeclarerScan {
+  previous: Symbol
+  found: Optional<NativeCensusDeclarerRoot>
+}
+
+fn native_census_innermost_declarer(chain: NonEmptyDiagnostics) -> Optional<NativeCensusDeclarerRoot> {
+  fold_list(
+    xs: chain.tail,
+    empty: native_census_declarer_scan_step(scan: NativeCensusDeclarerScan { previous: chain.head.reason, found: optional_absent() }, d: chain.head),
+    cons: fn(scan, d) { native_census_declarer_scan_step(scan: scan, d: d) }
+  ).found
+}
+
+fn native_census_declarer_scan_step(scan: NativeCensusDeclarerScan, d: Diagnostic) -> NativeCensusDeclarerScan {
+  match scan.found {
+    Present { value: _ } => scan
+    Absent =>
+      match native_census_correction_declarer(c: d.correction) {
+        Present { value: q } =>
+          NativeCensusDeclarerScan { previous: d.reason, found: optional_present(value: NativeCensusDeclarerRoot { declarer: q, root_reason: scan.previous }) }
+        Absent => NativeCensusDeclarerScan { previous: d.reason, found: optional_absent() }
+      }
+  }
+}
+
 fn native_census_cause_groups_add_resolve_refused(
   groups: NativeCensusCauseGroups,
   positions: NativeCensusPositionTable,
@@ -4241,9 +4378,22 @@ fn native_census_cause_groups_add_resolve_refused(
 ) -> NativeCensusCauseGroups {
   match cascade {
     NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
-      native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason)
+      native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^native_prepare_reason_import_target_file_refused)
     NativeCensusCascadeNone =>
-      native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
+      if native_census_chain_ends_at_declarer(chain: first) && fold_list(xs: rest, empty: true, cons: fn(all, c) { all && native_census_chain_ends_at_declarer(chain: c) }) {
+        match native_census_chain_cascade(closure: closure, chain: first) {
+          NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
+            native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^resolve_reason_declarer_refused)
+          NativeCensusCascadeNone =>
+            native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
+          NativeCensusCascadeUnattributed { reason: r } =>
+            native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: NativeCensusCascadeUnattributed { reason: r }, cascade: NativeCensusCascadeUnattributed { reason: r })
+          NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
+            native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
+        }
+      } else {
+        native_census_cause_groups_add_chains_by_chain(groups: groups, positions: positions, closure: closure, entry: entry, first: first, rest: rest)
+      }
     NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
       native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
     NativeCensusCascadeUnattributed { reason: _ } =>
@@ -4516,13 +4666,20 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
 // ambient primitive contracts as a resolution authority -- the route's entries come from
 // native_lane_candidate_entries with no contract module, and neither do these. THE CLASS IS OPEN
 // (runs of different subject lists still load different populations); it closes at Seat 12's per-name
-// dispositions, added HERE and nowhere else, naming the tier each serves. The guard is
-// v2.test.claim.census_scoped_entries_boundary: it pins THIS function returning its input unchanged,
-// argv order, nothing appended -- a regression tripwire that REDs on any append inside the function.
-// It does not prevent a bypass at the call site below or a second acquisition route; that
-// prevention is the row's open ceiling, not this comment's claim. The executed same-subject agreement
-// with the route is read from the instrument //gunbc/instruments:v2-native-census-scoped beside the
-// route's own first fatal, never restated here.
+// dispositions, added HERE and nowhere else, naming the tier each serves. NO CLAIM FORM GUARDS THIS
+// BOUNDARY TODAY, ON MAIN OR AT THIS HEAD -- measured, four probe rounds
+// (banked scratch/qc503-boundary-probe1 through probe4, causes recorded in the ledger row): every
+// claim shape, from `==` over lists down to a bare String-literal equality in a module importing
+// nothing but std.types, refuses at prepare/eval with the grounding-not-derived chain. The control:
+// the same minimal module refuses identically ON MAIN (scratch/qc503-probe4-on-main @ 7b954f7182cc,
+// cause=eval_rejected_grounding_not_derived) -- this is the claim lane's own grounding requirement,
+// NOT an effect of this rework. An un-executed
+// claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE EXECUTED RUN-PAIR:
+// //gunbc/instruments:v2-native-census-scoped (its census report, baseline-diffed by census_run_diff)
+// run in ONE dispatch at ONE identity beside the route's own parse-label run, as in the acceptance
+// runs recorded in the ledger row; an append inside this function shows up there as a census-side
+// divergence in rows or first fatal against the route's. It does not catch a bypass at the call site below or a second
+// acquisition route; that prevention is the row's open ceiling, not this comment's claim.
 fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
   subjects
 }
@@ -4577,7 +4734,7 @@ fn native_census_subject_closure(
             Present { value: subject } =>
               match index {
                 NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusSubjectClosureUnavailable { reason: r }
-                NativeCensusClosureIndexRead { importers_of: _, imports_of: imports_of, modules: n, refused_modules: _ } =>
+                NativeCensusClosureIndexRead { importers_of: _, imports_of: imports_of, module_paths: _, modules: n, refused_modules: _ } =>
                   match native_lane_module_reachable(
                     index: imports_of,
                     frontier: [subject.module],
@@ -6726,11 +6883,7 @@ fn census_diff_stage_pair(before_row: CensusComparableRow, after_row: CensusComp
 
 fn census_stage_behind_matches(outcome: CensusComparableOutcome, earlier: NativeCensusCauseStage) -> Bool {
   match outcome {
-    CensusComparableUnobservedBehindAcquisitionBlock =>
-      match earlier {
-        NativeCensusCauseFrontEnd => true
-        _ => false
-      }
+    CensusComparableUnobservedBehindAcquisitionBlock => earlier is NativeCensusCauseFrontEnd
     CensusComparableUnobservedBehindStage { stage: s } =>
       match earlier {
         NativeCensusCauseFrontEnd =>
@@ -7172,4 +7325,22 @@ fn native_demand_schedule_universe_step(
     compiler: compiler,
     fuel: native_demand_plan_size(plan: plan) + 1
   )
+}
+
+// THE ONE DISPATCH FROM A CENSUS VERB WORD TO ITS FOLD (the emitted driver's run function calls only this).
+// The match is exhaustive over the closed verb type, so there is no default arm.
+type NativeCensusVerbOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootIngest) -> NativeCensusVerbOutput {
+  match verb {
+    CensusVerbDemand =>
+      let o = native_demand_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbDeclRef =>
+      let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+  }
 }

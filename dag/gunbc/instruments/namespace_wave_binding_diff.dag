@@ -318,6 +318,25 @@ fn formatter_control_failure() -> Optional<String> {
   }
 }
 
+// THE DECLARATION-ROW CONTROL: the census also prints `binding_declaration` rows (the declared callables a
+// module holds, for gunbc.instruments.ambient_operation_disposition_reading). This reader joins occurrences, so a
+// declaration row must neither reach the observation it forwards nor change the verdict: the same
+// target-changing pair, with declaration rows added to both sides, must refuse exactly as without them.
+fn declaration_row_control_failure() -> Optional<String> {
+  let decl = "binding_declaration\texamples.uses\thelper\tfn\t() -> Int\n"
+  let base_tree = "binding_module\texamples.uses\t1\t0\t0\t0\nbinding\texamples.uses\thelper\t0\tdeclared\texamples.a.helper\n" + decl
+  let head_tree = "binding_module\texamples.uses\t1\t0\t0\t0\nbinding\texamples.uses\thelper\t0\tdeclared\texamples.b.helper\n" + decl
+  let forwarded = census_observation_text(tree_stdout: base_tree)
+  let diff = binding_diff(base_stdout: forwarded, head_stdout: census_observation_text(tree_stdout: head_tree), rows: [])
+  if count(split(s: forwarded, delimiter: "binding_declaration")) != 1 {
+    optional_present(value: "a binding_declaration row reached the observation the diff reads")
+  } else if (count(diff.refused) != 1) || (count(diff.admitted) != 0) {
+    optional_present(value: "adding binding_declaration rows changed the diff's verdict on a target-changing pair")
+  } else {
+    optional_absent()
+  }
+}
+
 // ---------------------------------------------------------------------------------------------------
 // THE WAVE-1 JOIN CONTROLS ON THE REAL CENSUS ROUTE. Four roots the host censuses with the native census-infer: a
 // BASE module that still refuses resolve (`semver_version_parse` is declared nowhere) and uses `chars(s: ...)` unimported at
@@ -1088,7 +1107,7 @@ fn binding_diff_standing_prepared(
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure(), shard_merge_control_failure(), occurrence_join_controls_failure(prepared: prepared, lex: lex), wave_unobserved_control_failure(prepared: prepared, lex: lex), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex)]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), declaration_row_control_failure(), incomplete_side_control_failure(), shard_merge_control_failure(), occurrence_join_controls_failure(prepared: prepared, lex: lex), wave_unobserved_control_failure(prepared: prepared, lex: lex), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex))), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           binding_diff_sharded(base_stdout: base_stdout, head_stdout: head_stdout, base_status: base_status, head_status: head_status, base_root: base_root, head_root: head_root, head_sha: head_sha, base_sha: base_sha, instr_rev: instr_rev, rewritten_text: rewritten, shard_mode: shard_mode, prepared: prepared, lex: lex)

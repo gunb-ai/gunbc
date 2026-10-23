@@ -19,12 +19,11 @@ data gcp_iam_bootstrap_approval_in_reviewed_code: RungDrop = RungDrop {
   identity: "gcp_iam_bootstrap_approval_in_reviewed_code" as NonEmptyStr,
   subject: "approval-necessity for federating to iam-bootstrap, the project-parented bootstrap delta identity",
   declared: "2026-10-18",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged { replacement: "a GitHub custom deployment protection rule on the gcp-iam-bootstrap environment, modeled by gunbc#14336 stage 1 and wired by its stage 2" },
     population: Enumerated { members: FreeSemigroup { head: "gunbc.auth.gcp_iam_bootstrap_delta_run gcp_iam_bootstrap_delta_apply_wet", tail: [] } },
     restoration_trigger: "the gcp-iam-bootstrap environment's protection is a custom rule answered only on a redeemed capability, so the job that federates to iam-bootstrap cannot start before the operator's tap is redeemed; observed on a run whose deployment was held until redemption, at which point this row retires"
-  }
+  } }
 }
