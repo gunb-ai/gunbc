@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.a_derived_lookup_map_is_keyed_on_a_partial_population
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Filed at keen-heron-809's request (msg_946b7b96) with receipts, from the N7 infer-wall locator
+// (silent-raven-360, run raven-n7loc-11 at probe head cd5677c2a688). M3 set the ceiling and trigger;
+// the row states them at capability grain, and the current rung is the pre-fix reading the receipts
+// establish. This is a MEASUREMENT row: the instrument it describes is scratch (never lands) and the
+// refusal it names is real -- a fatal refusal whose location cannot be printed because the lookup map
+// the instrument reads was keyed on a population that never included the fatal node.
+data a_derived_lookup_map_is_keyed_on_a_partial_population: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_derived_lookup_map_is_keyed_on_a_partial_population" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: MechanicallyPreventable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the lookup map a consumer reads is built over the SAME population the consumer is asked about, not a narrower one; a refusal whose subject is absent from that population is an ERROR row (the lookup returned absent because the map never covered it), printed apart from a refusal whose subject is present and located. Concretely for the specimen: the census builds each module's loci map as native_census_binding_loci(ids: map_support_keys(m: resolved.occurrence_bindings)) (src/v2/compiler/source_root_eval.dag:3651) -- keyed on the BINDING ENTRIES only -- while the fatal refusal's node is any occurrence the infer wall fired on, a superset; when the fatal anchor is a minted node with no binding entry (std.keyed_row's branch-arm TypeNode at Minted:173734) the located-row print returns FileRefusalAtUnresolvedNode and the reason reads identical to 'this refusal has no site'."
+    }
+  },
+
+  receipts: [
+    "**a lookup that could only ever hit a subset reports its misses as the data's own absences** (INVALID STATE: an instrument builds a derived map over population A, is then asked to locate a subject drawn from a strictly LARGER population B, and every subject in B \\ A returns the same answer a genuine absence returns. The consumer cannot tell 'the subject has no location' from 'the map was never built to cover this subject', and reports the first while the second is true. It is not a missing feature in the subject -- the location was COMPUTED and then dropped for want of a key.
+
+SPECIMEN, N7 infer-wall locator, 2026-10-23 (silent-raven-360, run raven-n7loc-11, probe head cd5677c2a688). The instrument prints each module's refusal chain plus the compiler's own per-occurrence loci map, so a fatal refusal can be named by line and column instead of the census row's FileRefusalAtUnresolvedNode. For std.keyed_row the fatal was infer_branch_arm_type_mismatch anchored on a node with occurrence identity OccurrenceMinted { id: Minted:173734 }. That occurrence is NOT IN the loci map: the map's keys are exactly map_support_keys(m: resolved.occurrence_bindings) (src/v2/compiler/source_root_eval.dag:3651), the resolved tree's BINDING entries, and an arm-type node the binder never binds is outside them. The instrument therefore printed the fatal as unlocated -- identically to how it prints a refusal that truly has no authored source site (a Synthetic-occurrence node the compiler itself built). Two different facts, one rendering: 'this node is minted and bound nowhere' and 'this node is a compiler-built node with no source span' come back the SAME row, and the one that mattered (a minted, hence authored-line-reachable, node sitting on a branch-arm mismatch) was silently downgraded to the other.
+
+THE TELL IS THE POPULATIONS, NOT THE LOOKUP: name the set the map was keyed on and the set the questions are drawn from BEFORE trusting any absent. Here the two sets differ by exactly the nodes that are minted during infer and never bound, which is a large, ordinary class -- fold member type nodes, arm-value nodes, lowered argument nodes. The refusal that most needs a location is the one the map was least likely to hold.
+
+THE HARM IS A MEASUREMENT SILENTLY MISRENDERED AS A FINDING, and it is not confined to this census. The same shape recurs wherever a derived map is read for a subject that was never enumerated into it: any id->row map keyed on one table's keys and joined against a superset's ids. The generic guard is a DENOMINATOR, not a better map: a lookup that returns absent must say whether its population INCLUDED the key, because 'absent' from a subset is no evidence about the subset's complement.
+
+A NEAR-MISS THAT MAKES THE POINT SHARPER: in the SAME run, 30 of std.decl_ref's 106 refusal links located fine (their nodes are bound occurrences), and the reader's instinct was to conclude the instrument 'works for decl_ref and fails for keyed_row'. That is the wrong axis. It works on whichever nodes happen to be in the map's population; keyed_row's fatal node simply was not. The correct per-refusal statement is 'located', 'located-absent-from-map (minted, key class named)' or 'unlocatable by construction (Synthetic node)' -- three renderings, not two.
+
+CEILING: mechanically preventable -- the fix is not new reasoning, it is building the map over the population the consumer is asked about (every occurrence the walk can produce, including minted arm/member/argument nodes) and rendering a refusal whose key is absent as an ERROR, never as a silent absence. Nothing undecidable and no authority stands in the way; it is unbuilt work, so the current rung is mitigatable (the locator already prints the occurrence identity verbatim, so a reader CAN tell a minted node from a synthetic one -- the identity is present in the row even though the map lookup dropped it), and the trigger capability is the map-over-full-population plus the three-way rendering named above.
+
+NEXT-RUNG TRIGGER, at capability grain: a located-refusal row whose per-occurrence map is keyed on the full occurrence population the walk produces (not only the bound subset), and whose located column distinguishes 'located', 'minted-node-absent-from-map' and 'synthetic-node-never-locatable' rather than collapsing the last two into one 'unlocated'. When a refusal row prints the second of those three, it must be visible as a map-coverage gap, not read as a property of the refusal.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.compiler.source_root_eval", decl_name: "native_census_binding_loci"),
+    decl_ref(module_path: "v2.compiler.source_root_eval", decl_name: "native_census_locate"),
+  ],
+}
