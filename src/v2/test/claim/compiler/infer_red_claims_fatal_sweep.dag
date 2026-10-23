@@ -1,0 +1,846 @@
+module v2.test.claim.compiler.infer_red_claims_fatal_sweep
+
+// SEAT 16, SCRATCH SWEEP (never-merge branch; claims only; nothing here lands). Round 4 per
+// M3 msg_decf6a0e: claim_batch prints PASS/FAIL only and rounds 2-3 left the (a)/(c) fatals
+// OUTSIDE every exact candidate and every one of the 16 known families, so this module bisects
+// the COMPLEMENT: every reason lexeme minted in v2.compiler.infer's transitive import closure
+// whose prefix is not covered by the rounds 2-3 partition (194 names, produced by a python
+// closure walk over the tree at this head -- the discovery procedure, cited by method). Each
+// bucket membership claim uses the green contains+annotated-eq pattern (round 3); exactly one
+// bucket PASSes per tree (or the universe guard FAILs, which means the fatal is OUTSIDE this
+// complement and the extraction itself is suspect, not the name).
+
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import std.types { List }
+import std.algebra { contains }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_one,
+  dag_type_atom_node
+}
+import v2.test.claim.compiler.infer_application_argument_inhabitance_witness {
+  inhabitance_generic_formal_tree,
+  inhabitance_generic_formal_tree_over,
+  inhabitance_named_conj_domain
+}
+
+fn sweep_fatal_sym(d: NonEmptyDiagnostics) -> String {
+  symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+}
+
+fn sweep_a_reason() -> String {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => sweep_fatal_sym(d: d)
+  }
+}
+
+fn sweep_c_tree() -> ResolvedTree {
+  claim_resolved_tree_without_declarations(
+    root: inhabitance_generic_formal_tree_over(
+      declared: dag_arrow_with_body_node(
+        domain: inhabitance_named_conj_domain(
+          parameter: ^inhabitance_param_x,
+          declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+        ),
+        return_type_binding: ^inhabitance_type_param_t,
+        body: dag_int_literal_fixture_one()
+      )
+    )
+  )
+}
+
+fn sweep_c_reason() -> String {
+  match infer(tree: sweep_c_tree()) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => sweep_fatal_sym(d: d)
+  }
+}
+
+fn sweep_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+data sweep_universe: List<String> = [
+  "alias_binding_row_not_alias_decl",
+  "authored_parse_region_unrepresentable",
+  "body_view_bind_arity",
+  "body_view_bind_key_not_atom",
+  "body_view_branch_arity",
+  "body_view_match_arm_malformed",
+  "body_view_match_arms_absent",
+  "body_view_match_scrutinee_absent",
+  "body_view_not_bind",
+  "body_view_not_branch",
+  "body_view_not_match",
+  "body_view_operand_residue",
+  "body_view_operator_arity",
+  "body_view_transform_head_absent",
+  "body_view_transform_head_not_callee",
+  "body_view_unexpected_named_edge",
+  "cardinality_descent_not_proven",
+  "cardinality_loop_bound_ambiguous",
+  "cardinality_loop_bound_malformed",
+  "cardinality_loop_bound_not_loop",
+  "cardinality_loop_bound_undeclared",
+  "concrete_syntax_token_wire_malformed",
+  "constraints_ill_formed_root",
+  "constraints_not_realized",
+  "coproduct_nullary_inhabitant_duplicate",
+  "coproduct_nullary_inhabitant_missing",
+  "dag_emit_float_literal_lexeme_missing",
+  "dag_emit_int_literal_magnitude_missing",
+  "dag_emit_string_literal_value_missing",
+  "dag_emit_string_scalar_not_unicode",
+  "dag_emit_token_class_untransformable",
+  "dag_int_literal_lexeme_invalid",
+  "dag_literal_shape_invalid",
+  "dag_string_literal_escape_malformed",
+  "dag_string_literal_lexeme_unframed",
+  "dag_surface_operator_canonicalization_miss",
+  "export_signature_host_arrow_not_named_domain",
+  "field_reciprocal_operation",
+  "fold_form_elements_edge_absent",
+  "fold_form_elements_edge_ambiguous",
+  "fold_form_fill_arity_mismatch",
+  "fold_form_list_edge_ambiguous",
+  "fold_form_list_head_without_tail",
+  "fold_form_list_node_not_conj",
+  "fold_form_list_tail_without_head",
+  "fold_form_template_edge_absent",
+  "fold_form_template_edge_ambiguous",
+  "fold_lowering_callback_step_unbuilt",
+  "fold_lowering_not_a_fold_call",
+  "fold_lowering_operand_absent",
+  "fold_lowering_shape_invalid",
+  "fold_lowering_step_form_unresolved",
+  "generator_provenance_artifact_not_generated",
+  "grounding_evidence_is_source",
+  "import_binding_row_not_import_decl",
+  "integer_div_by_zero",
+  "integer_modulo_by_zero",
+  "integer_standard_integer_type_decode_invalid",
+  "integer_value_set_carrier_not_well_formed",
+  "integer_value_set_interval_field_count_unexpected",
+  "integer_value_set_interval_field_unresolved",
+  "integer_value_set_interval_spec_malformed",
+  "integer_value_set_kind_field_unresolved",
+  "integer_value_set_kind_unrecognized",
+  "integer_value_set_unbounded_carries_interval_field",
+  "integer_value_set_unbounded_field_count_unexpected",
+  "member_not_a_binder",
+  "named_child_ambiguous",
+  "named_child_missing",
+  "named_child_not_a_binder",
+  "namespace_graft_body_dissolved_refused",
+  "namespace_graft_declaration_name_repeated",
+  "namespace_graft_dual_position_refused",
+  "normalized_tree_reason_wrapper_retention_not_normalized",
+  "normalize_reason_minted_occurrence_duplicated",
+  "normalize_reason_pending_occurrence_survived",
+  "optional_absent_unwrap",
+  "per_language_fact_bundle_duplicate_key_reason",
+  "per_language_fact_bundle_ungrounded_subject_reason",
+  "primitive_fact_axis_unbound_reason",
+  "produced_decl_render_codomain_missing",
+  "produced_decl_render_decl_empty",
+  "produced_decl_render_decl_not_conj",
+  "produced_decl_render_decl_unnamed",
+  "produced_decl_render_domain_missing",
+  "produced_decl_render_function_type_position_unrealized",
+  "produced_decl_render_param_default_unrealized",
+  "produced_decl_render_parameter_order_absent",
+  "produced_decl_render_parameter_order_malformed",
+  "produced_decl_render_param_unnamed",
+  "produced_decl_render_type_param_kind_unrealized",
+  "qualified_name_projection_gated",
+  "qualified_name_structure_invalid",
+  "service_realization_argv_refused",
+  "service_realization_arm_malformed",
+  "service_realization_arms_empty",
+  "service_realization_binding_field_repeated",
+  "service_realization_binding_field_unknown",
+  "service_realization_config_malformed",
+  "service_realization_entry_malformed",
+  "service_realization_entry_member_repeated",
+  "service_realization_entry_repeated",
+  "service_realization_entry_without_operation",
+  "service_realization_entry_without_transport",
+  "service_realization_member_unknown",
+  "service_realization_projection_empty",
+  "service_realization_projection_field_not_an_output",
+  "service_realization_projection_field_repeated",
+  "service_realization_projection_malformed",
+  "service_realization_status_pattern_not_of_transport",
+  "service_realization_status_pattern_repeated",
+  "service_realization_transport_kind_malformed",
+  "service_realization_transport_malformed",
+  "service_realization_transport_unmodeled",
+  "service_realization_wire_key_not_a_string",
+  "service_realization_wire_key_not_of_transport",
+  "span_index_occurrence_absent",
+  "span_index_origin_chain_exhausted",
+  "statement_sequenced_block_construct_unwired",
+  "sugar_reason_duplicate_variant_name",
+  "sugar_reason_malformed",
+  "target_atom_realization_catalog_row_decode_invalid",
+  "target_atom_realization_display_name_decode_invalid",
+  "target_atom_realization_lookup_ambiguous",
+  "target_atom_realization_lookup_miss",
+  "target_atom_realization_target_model_bundle_mismatch",
+  "target_binding_spelling_not_found",
+  "target_bodied_arrow_scaffold_bundle_malformed",
+  "target_canonical_operation_wire_malformed",
+  "target_capability_eligibility_row_absent",
+  "target_capability_eligibility_row_duplicate",
+  "target_collection_free_monoid_no_representation",
+  "target_collection_realization_lookup_ambiguous",
+  "target_collection_realization_lookup_miss",
+  "target_collection_set_no_representation",
+  "target_collection_shape_malformed",
+  "target_concrete_token_kind_invalid",
+  "target_constructor_template_decode_invalid",
+  "target_declaration_reference_form_absent",
+  "target_declaration_reference_module_absent",
+  "target_derive_supplemental_generic_bound_contract_choice_malformed",
+  "target_derive_supplemental_generic_bound_contract_lookup_miss",
+  "target_function_boundary_site_decode_invalid",
+  "target_function_signature_realization_lookup_ambiguous",
+  "target_function_signature_realization_lookup_miss",
+  "target_function_signature_realization_row_decode_invalid",
+  "target_function_signature_realization_target_model_bundle_mismatch",
+  "target_import_names_empty",
+  "target_import_path_empty",
+  "target_layout_token_spelled_flat",
+  "target_lex_rule_literal_not_found",
+  "target_operator_realization_catalog_ambiguous",
+  "target_operator_realization_catalog_miss",
+  "target_operator_realization_wire_malformed",
+  "target_operator_shape_wire_malformed",
+  "target_primitive_realization_ambiguous",
+  "target_primitive_realization_arity_mismatch",
+  "target_primitive_realization_missing",
+  "target_primitive_realizations_unwired",
+  "target_reference_layer_tokens_decode_invalid",
+  "target_type_expr_emitted_shape_malformed",
+  "target_type_expression_decode_invalid",
+  "target_type_expr_projection_bundle_malformed",
+  "target_use_site_ownership_catalog_row_decode_invalid",
+  "target_use_site_ownership_lookup_ambiguous",
+  "target_use_site_ownership_lookup_miss",
+  "target_value_expression_emit_operator_shape_unsupported",
+  "target_value_expression_emit_primitive_apply_arity_invalid",
+  "target_value_expression_emit_unsupported_kind",
+  "target_value_expr_int_literal_form_malformed",
+  "target_value_expr_int_literal_form_unwired",
+  "target_value_expr_int_literal_wire_malformed",
+  "target_value_expr_list_introduction_form_malformed",
+  "target_value_expr_list_introduction_form_unwired",
+  "target_value_expr_operand_wire_malformed",
+  "target_value_expr_reason_arrow_body_form_unsupported",
+  "target_value_expr_reason_bind_annotation_not_modeled",
+  "target_value_expr_reason_body_scope_binding_invalid",
+  "target_value_expr_reason_closure_parameter_order_absent",
+  "target_value_expr_reason_closure_parameter_order_malformed",
+  "target_value_expr_reason_declared_parameter_order_unavailable_to_projection",
+  "target_value_expr_reason_function_type_position_unrealized",
+  "target_value_expr_reason_transform_shape_invalid",
+  "target_value_expr_resolved_primitive_marker_ambiguous",
+  "target_value_projection_bundle_malformed",
+  "target_value_projection_field_missing",
+  "target_value_template_decode_invalid",
+  "target_value_template_mismatch",
+  "translate_reason_generic_arrow_not_rendered",
+  "ts_partial_bigint_divide_by_zero",
+  "ts_partial_bigint_remainder_by_zero",
+  "validate_grammar_lhs_not_in_nonterminals",
+  "validate_grammar_rhs_symbol_not_in_alphabet",
+  "validate_grammar_start_not_in_nonterminals"
+]
+
+data sweep_bucket_1: List<String> = [
+  "alias_binding_row_not_alias_decl",
+  "authored_parse_region_unrepresentable",
+  "body_view_bind_arity",
+  "body_view_bind_key_not_atom",
+  "body_view_branch_arity",
+  "body_view_match_arm_malformed",
+  "body_view_match_arms_absent",
+  "body_view_match_scrutinee_absent"
+]
+fn sweep_a_bucket_1() -> Bool {
+  contains(xs: sweep_bucket_1, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_1_holds() -> Bool {
+  sweep_a_bucket_1()
+}
+fn sweep_c_bucket_1() -> Bool {
+  contains(xs: sweep_bucket_1, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_1_holds() -> Bool {
+  sweep_c_bucket_1()
+}
+
+data sweep_bucket_2: List<String> = [
+  "body_view_not_bind",
+  "body_view_not_branch",
+  "body_view_not_match",
+  "body_view_operand_residue",
+  "body_view_operator_arity",
+  "body_view_transform_head_absent",
+  "body_view_transform_head_not_callee",
+  "body_view_unexpected_named_edge"
+]
+fn sweep_a_bucket_2() -> Bool {
+  contains(xs: sweep_bucket_2, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_2_holds() -> Bool {
+  sweep_a_bucket_2()
+}
+fn sweep_c_bucket_2() -> Bool {
+  contains(xs: sweep_bucket_2, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_2_holds() -> Bool {
+  sweep_c_bucket_2()
+}
+
+data sweep_bucket_3: List<String> = [
+  "cardinality_descent_not_proven",
+  "cardinality_loop_bound_ambiguous",
+  "cardinality_loop_bound_malformed",
+  "cardinality_loop_bound_not_loop",
+  "cardinality_loop_bound_undeclared",
+  "concrete_syntax_token_wire_malformed",
+  "constraints_ill_formed_root",
+  "constraints_not_realized"
+]
+fn sweep_a_bucket_3() -> Bool {
+  contains(xs: sweep_bucket_3, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_3_holds() -> Bool {
+  sweep_a_bucket_3()
+}
+fn sweep_c_bucket_3() -> Bool {
+  contains(xs: sweep_bucket_3, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_3_holds() -> Bool {
+  sweep_c_bucket_3()
+}
+
+data sweep_bucket_4: List<String> = [
+  "coproduct_nullary_inhabitant_duplicate",
+  "coproduct_nullary_inhabitant_missing",
+  "dag_emit_float_literal_lexeme_missing",
+  "dag_emit_int_literal_magnitude_missing",
+  "dag_emit_string_literal_value_missing",
+  "dag_emit_string_scalar_not_unicode",
+  "dag_emit_token_class_untransformable",
+  "dag_int_literal_lexeme_invalid"
+]
+fn sweep_a_bucket_4() -> Bool {
+  contains(xs: sweep_bucket_4, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_4_holds() -> Bool {
+  sweep_a_bucket_4()
+}
+fn sweep_c_bucket_4() -> Bool {
+  contains(xs: sweep_bucket_4, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_4_holds() -> Bool {
+  sweep_c_bucket_4()
+}
+
+data sweep_bucket_5: List<String> = [
+  "dag_literal_shape_invalid",
+  "dag_string_literal_escape_malformed",
+  "dag_string_literal_lexeme_unframed",
+  "dag_surface_operator_canonicalization_miss",
+  "export_signature_host_arrow_not_named_domain",
+  "field_reciprocal_operation",
+  "fold_form_elements_edge_absent",
+  "fold_form_elements_edge_ambiguous"
+]
+fn sweep_a_bucket_5() -> Bool {
+  contains(xs: sweep_bucket_5, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_5_holds() -> Bool {
+  sweep_a_bucket_5()
+}
+fn sweep_c_bucket_5() -> Bool {
+  contains(xs: sweep_bucket_5, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_5_holds() -> Bool {
+  sweep_c_bucket_5()
+}
+
+data sweep_bucket_6: List<String> = [
+  "fold_form_fill_arity_mismatch",
+  "fold_form_list_edge_ambiguous",
+  "fold_form_list_head_without_tail",
+  "fold_form_list_node_not_conj",
+  "fold_form_list_tail_without_head",
+  "fold_form_template_edge_absent",
+  "fold_form_template_edge_ambiguous",
+  "fold_lowering_callback_step_unbuilt"
+]
+fn sweep_a_bucket_6() -> Bool {
+  contains(xs: sweep_bucket_6, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_6_holds() -> Bool {
+  sweep_a_bucket_6()
+}
+fn sweep_c_bucket_6() -> Bool {
+  contains(xs: sweep_bucket_6, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_6_holds() -> Bool {
+  sweep_c_bucket_6()
+}
+
+data sweep_bucket_7: List<String> = [
+  "fold_lowering_not_a_fold_call",
+  "fold_lowering_operand_absent",
+  "fold_lowering_shape_invalid",
+  "fold_lowering_step_form_unresolved",
+  "generator_provenance_artifact_not_generated",
+  "grounding_evidence_is_source",
+  "import_binding_row_not_import_decl",
+  "integer_div_by_zero"
+]
+fn sweep_a_bucket_7() -> Bool {
+  contains(xs: sweep_bucket_7, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_7_holds() -> Bool {
+  sweep_a_bucket_7()
+}
+fn sweep_c_bucket_7() -> Bool {
+  contains(xs: sweep_bucket_7, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_7_holds() -> Bool {
+  sweep_c_bucket_7()
+}
+
+data sweep_bucket_8: List<String> = [
+  "integer_modulo_by_zero",
+  "integer_standard_integer_type_decode_invalid",
+  "integer_value_set_carrier_not_well_formed",
+  "integer_value_set_interval_field_count_unexpected",
+  "integer_value_set_interval_field_unresolved",
+  "integer_value_set_interval_spec_malformed",
+  "integer_value_set_kind_field_unresolved",
+  "integer_value_set_kind_unrecognized"
+]
+fn sweep_a_bucket_8() -> Bool {
+  contains(xs: sweep_bucket_8, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_8_holds() -> Bool {
+  sweep_a_bucket_8()
+}
+fn sweep_c_bucket_8() -> Bool {
+  contains(xs: sweep_bucket_8, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_8_holds() -> Bool {
+  sweep_c_bucket_8()
+}
+
+data sweep_bucket_9: List<String> = [
+  "integer_value_set_unbounded_carries_interval_field",
+  "integer_value_set_unbounded_field_count_unexpected",
+  "member_not_a_binder",
+  "named_child_ambiguous",
+  "named_child_missing",
+  "named_child_not_a_binder",
+  "namespace_graft_body_dissolved_refused",
+  "namespace_graft_declaration_name_repeated"
+]
+fn sweep_a_bucket_9() -> Bool {
+  contains(xs: sweep_bucket_9, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_9_holds() -> Bool {
+  sweep_a_bucket_9()
+}
+fn sweep_c_bucket_9() -> Bool {
+  contains(xs: sweep_bucket_9, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_9_holds() -> Bool {
+  sweep_c_bucket_9()
+}
+
+data sweep_bucket_10: List<String> = [
+  "namespace_graft_dual_position_refused",
+  "normalized_tree_reason_wrapper_retention_not_normalized",
+  "normalize_reason_minted_occurrence_duplicated",
+  "normalize_reason_pending_occurrence_survived",
+  "optional_absent_unwrap",
+  "per_language_fact_bundle_duplicate_key_reason",
+  "per_language_fact_bundle_ungrounded_subject_reason",
+  "primitive_fact_axis_unbound_reason"
+]
+fn sweep_a_bucket_10() -> Bool {
+  contains(xs: sweep_bucket_10, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_10_holds() -> Bool {
+  sweep_a_bucket_10()
+}
+fn sweep_c_bucket_10() -> Bool {
+  contains(xs: sweep_bucket_10, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_10_holds() -> Bool {
+  sweep_c_bucket_10()
+}
+
+data sweep_bucket_11: List<String> = [
+  "produced_decl_render_codomain_missing",
+  "produced_decl_render_decl_empty",
+  "produced_decl_render_decl_not_conj",
+  "produced_decl_render_decl_unnamed",
+  "produced_decl_render_domain_missing",
+  "produced_decl_render_function_type_position_unrealized",
+  "produced_decl_render_param_default_unrealized",
+  "produced_decl_render_parameter_order_absent"
+]
+fn sweep_a_bucket_11() -> Bool {
+  contains(xs: sweep_bucket_11, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_11_holds() -> Bool {
+  sweep_a_bucket_11()
+}
+fn sweep_c_bucket_11() -> Bool {
+  contains(xs: sweep_bucket_11, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_11_holds() -> Bool {
+  sweep_c_bucket_11()
+}
+
+data sweep_bucket_12: List<String> = [
+  "produced_decl_render_parameter_order_malformed",
+  "produced_decl_render_param_unnamed",
+  "produced_decl_render_type_param_kind_unrealized",
+  "qualified_name_projection_gated",
+  "qualified_name_structure_invalid",
+  "service_realization_argv_refused",
+  "service_realization_arm_malformed",
+  "service_realization_arms_empty"
+]
+fn sweep_a_bucket_12() -> Bool {
+  contains(xs: sweep_bucket_12, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_12_holds() -> Bool {
+  sweep_a_bucket_12()
+}
+fn sweep_c_bucket_12() -> Bool {
+  contains(xs: sweep_bucket_12, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_12_holds() -> Bool {
+  sweep_c_bucket_12()
+}
+
+data sweep_bucket_13: List<String> = [
+  "service_realization_binding_field_repeated",
+  "service_realization_binding_field_unknown",
+  "service_realization_config_malformed",
+  "service_realization_entry_malformed",
+  "service_realization_entry_member_repeated",
+  "service_realization_entry_repeated",
+  "service_realization_entry_without_operation",
+  "service_realization_entry_without_transport"
+]
+fn sweep_a_bucket_13() -> Bool {
+  contains(xs: sweep_bucket_13, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_13_holds() -> Bool {
+  sweep_a_bucket_13()
+}
+fn sweep_c_bucket_13() -> Bool {
+  contains(xs: sweep_bucket_13, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_13_holds() -> Bool {
+  sweep_c_bucket_13()
+}
+
+data sweep_bucket_14: List<String> = [
+  "service_realization_member_unknown",
+  "service_realization_projection_empty",
+  "service_realization_projection_field_not_an_output",
+  "service_realization_projection_field_repeated",
+  "service_realization_projection_malformed",
+  "service_realization_status_pattern_not_of_transport",
+  "service_realization_status_pattern_repeated",
+  "service_realization_transport_kind_malformed"
+]
+fn sweep_a_bucket_14() -> Bool {
+  contains(xs: sweep_bucket_14, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_14_holds() -> Bool {
+  sweep_a_bucket_14()
+}
+fn sweep_c_bucket_14() -> Bool {
+  contains(xs: sweep_bucket_14, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_14_holds() -> Bool {
+  sweep_c_bucket_14()
+}
+
+data sweep_bucket_15: List<String> = [
+  "service_realization_transport_malformed",
+  "service_realization_transport_unmodeled",
+  "service_realization_wire_key_not_a_string",
+  "service_realization_wire_key_not_of_transport",
+  "span_index_occurrence_absent",
+  "span_index_origin_chain_exhausted",
+  "statement_sequenced_block_construct_unwired",
+  "sugar_reason_duplicate_variant_name"
+]
+fn sweep_a_bucket_15() -> Bool {
+  contains(xs: sweep_bucket_15, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_15_holds() -> Bool {
+  sweep_a_bucket_15()
+}
+fn sweep_c_bucket_15() -> Bool {
+  contains(xs: sweep_bucket_15, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_15_holds() -> Bool {
+  sweep_c_bucket_15()
+}
+
+data sweep_bucket_16: List<String> = [
+  "sugar_reason_malformed",
+  "target_atom_realization_catalog_row_decode_invalid",
+  "target_atom_realization_display_name_decode_invalid",
+  "target_atom_realization_lookup_ambiguous",
+  "target_atom_realization_lookup_miss",
+  "target_atom_realization_target_model_bundle_mismatch",
+  "target_binding_spelling_not_found",
+  "target_bodied_arrow_scaffold_bundle_malformed"
+]
+fn sweep_a_bucket_16() -> Bool {
+  contains(xs: sweep_bucket_16, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_16_holds() -> Bool {
+  sweep_a_bucket_16()
+}
+fn sweep_c_bucket_16() -> Bool {
+  contains(xs: sweep_bucket_16, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_16_holds() -> Bool {
+  sweep_c_bucket_16()
+}
+
+data sweep_bucket_17: List<String> = [
+  "target_canonical_operation_wire_malformed",
+  "target_capability_eligibility_row_absent",
+  "target_capability_eligibility_row_duplicate",
+  "target_collection_free_monoid_no_representation",
+  "target_collection_realization_lookup_ambiguous",
+  "target_collection_realization_lookup_miss",
+  "target_collection_set_no_representation",
+  "target_collection_shape_malformed"
+]
+fn sweep_a_bucket_17() -> Bool {
+  contains(xs: sweep_bucket_17, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_17_holds() -> Bool {
+  sweep_a_bucket_17()
+}
+fn sweep_c_bucket_17() -> Bool {
+  contains(xs: sweep_bucket_17, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_17_holds() -> Bool {
+  sweep_c_bucket_17()
+}
+
+data sweep_bucket_18: List<String> = [
+  "target_concrete_token_kind_invalid",
+  "target_constructor_template_decode_invalid",
+  "target_declaration_reference_form_absent",
+  "target_declaration_reference_module_absent",
+  "target_derive_supplemental_generic_bound_contract_choice_malformed",
+  "target_derive_supplemental_generic_bound_contract_lookup_miss",
+  "target_function_boundary_site_decode_invalid",
+  "target_function_signature_realization_lookup_ambiguous"
+]
+fn sweep_a_bucket_18() -> Bool {
+  contains(xs: sweep_bucket_18, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_18_holds() -> Bool {
+  sweep_a_bucket_18()
+}
+fn sweep_c_bucket_18() -> Bool {
+  contains(xs: sweep_bucket_18, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_18_holds() -> Bool {
+  sweep_c_bucket_18()
+}
+
+data sweep_bucket_19: List<String> = [
+  "target_function_signature_realization_lookup_miss",
+  "target_function_signature_realization_row_decode_invalid",
+  "target_function_signature_realization_target_model_bundle_mismatch",
+  "target_import_names_empty",
+  "target_import_path_empty",
+  "target_layout_token_spelled_flat",
+  "target_lex_rule_literal_not_found",
+  "target_operator_realization_catalog_ambiguous"
+]
+fn sweep_a_bucket_19() -> Bool {
+  contains(xs: sweep_bucket_19, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_19_holds() -> Bool {
+  sweep_a_bucket_19()
+}
+fn sweep_c_bucket_19() -> Bool {
+  contains(xs: sweep_bucket_19, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_19_holds() -> Bool {
+  sweep_c_bucket_19()
+}
+
+data sweep_bucket_20: List<String> = [
+  "target_operator_realization_catalog_miss",
+  "target_operator_realization_wire_malformed",
+  "target_operator_shape_wire_malformed",
+  "target_primitive_realization_ambiguous",
+  "target_primitive_realization_arity_mismatch",
+  "target_primitive_realization_missing",
+  "target_primitive_realizations_unwired",
+  "target_reference_layer_tokens_decode_invalid"
+]
+fn sweep_a_bucket_20() -> Bool {
+  contains(xs: sweep_bucket_20, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_20_holds() -> Bool {
+  sweep_a_bucket_20()
+}
+fn sweep_c_bucket_20() -> Bool {
+  contains(xs: sweep_bucket_20, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_20_holds() -> Bool {
+  sweep_c_bucket_20()
+}
+
+data sweep_bucket_21: List<String> = [
+  "target_type_expr_emitted_shape_malformed",
+  "target_type_expression_decode_invalid",
+  "target_type_expr_projection_bundle_malformed",
+  "target_use_site_ownership_catalog_row_decode_invalid",
+  "target_use_site_ownership_lookup_ambiguous",
+  "target_use_site_ownership_lookup_miss",
+  "target_value_expression_emit_operator_shape_unsupported",
+  "target_value_expression_emit_primitive_apply_arity_invalid"
+]
+fn sweep_a_bucket_21() -> Bool {
+  contains(xs: sweep_bucket_21, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_21_holds() -> Bool {
+  sweep_a_bucket_21()
+}
+fn sweep_c_bucket_21() -> Bool {
+  contains(xs: sweep_bucket_21, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_21_holds() -> Bool {
+  sweep_c_bucket_21()
+}
+
+data sweep_bucket_22: List<String> = [
+  "target_value_expression_emit_unsupported_kind",
+  "target_value_expr_int_literal_form_malformed",
+  "target_value_expr_int_literal_form_unwired",
+  "target_value_expr_int_literal_wire_malformed",
+  "target_value_expr_list_introduction_form_malformed",
+  "target_value_expr_list_introduction_form_unwired",
+  "target_value_expr_operand_wire_malformed",
+  "target_value_expr_reason_arrow_body_form_unsupported"
+]
+fn sweep_a_bucket_22() -> Bool {
+  contains(xs: sweep_bucket_22, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_22_holds() -> Bool {
+  sweep_a_bucket_22()
+}
+fn sweep_c_bucket_22() -> Bool {
+  contains(xs: sweep_bucket_22, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_22_holds() -> Bool {
+  sweep_c_bucket_22()
+}
+
+data sweep_bucket_23: List<String> = [
+  "target_value_expr_reason_bind_annotation_not_modeled",
+  "target_value_expr_reason_body_scope_binding_invalid",
+  "target_value_expr_reason_closure_parameter_order_absent",
+  "target_value_expr_reason_closure_parameter_order_malformed",
+  "target_value_expr_reason_declared_parameter_order_unavailable_to_projection",
+  "target_value_expr_reason_function_type_position_unrealized",
+  "target_value_expr_reason_transform_shape_invalid",
+  "target_value_expr_resolved_primitive_marker_ambiguous"
+]
+fn sweep_a_bucket_23() -> Bool {
+  contains(xs: sweep_bucket_23, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_23_holds() -> Bool {
+  sweep_a_bucket_23()
+}
+fn sweep_c_bucket_23() -> Bool {
+  contains(xs: sweep_bucket_23, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_23_holds() -> Bool {
+  sweep_c_bucket_23()
+}
+
+data sweep_bucket_24: List<String> = [
+  "target_value_projection_bundle_malformed",
+  "target_value_projection_field_missing",
+  "target_value_template_decode_invalid",
+  "target_value_template_mismatch",
+  "translate_reason_generic_arrow_not_rendered",
+  "ts_partial_bigint_divide_by_zero",
+  "ts_partial_bigint_remainder_by_zero",
+  "validate_grammar_lhs_not_in_nonterminals"
+]
+fn sweep_a_bucket_24() -> Bool {
+  contains(xs: sweep_bucket_24, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_24_holds() -> Bool {
+  sweep_a_bucket_24()
+}
+fn sweep_c_bucket_24() -> Bool {
+  contains(xs: sweep_bucket_24, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_24_holds() -> Bool {
+  sweep_c_bucket_24()
+}
+
+data sweep_bucket_25: List<String> = [
+  "validate_grammar_rhs_symbol_not_in_alphabet",
+  "validate_grammar_start_not_in_nonterminals"
+]
+fn sweep_a_bucket_25() -> Bool {
+  contains(xs: sweep_bucket_25, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_a_bucket_25_holds() -> Bool {
+  sweep_a_bucket_25()
+}
+fn sweep_c_bucket_25() -> Bool {
+  contains(xs: sweep_bucket_25, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_c_bucket_25_holds() -> Bool {
+  sweep_c_bucket_25()
+}
+
+test fn sweep_a_universe_holds() -> Bool {
+  contains(xs: sweep_universe, item: sweep_a_reason(), eq: sweep_eq)
+}
+test fn sweep_c_universe_holds() -> Bool {
+  contains(xs: sweep_universe, item: sweep_c_reason(), eq: sweep_eq)
+}
+test fn sweep_a_not_empty() -> Bool {
+  sweep_a_reason() != ""
+}
+test fn sweep_c_not_empty() -> Bool {
+  sweep_c_reason() != ""
+}
