@@ -20,7 +20,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // dag/test/claim/repository_convergence_wet_witness.dag --functions <comma-joined>:
 //   detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree,
 //   already_at_candidate_repairs_a_stale_index,
-//   reset_refusal_after_successful_cas_is_nonzero,
 //   a_legacy_derived_roster_file_is_retired_and_read_back_absent
 // Scratch-repository WET matrix over the real git transport.
 
@@ -40,7 +39,7 @@ type ScratchRepository {
   candidate: String
 }
 
-fn scratch_repository(index_lock: Bool, already_candidate: Bool) -> ScratchRepository? {
+fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
   let dir = shell.Mktemp.Dir()
   let root = dir.path as String
   let remote = concat(root, "/remote.git")
@@ -77,13 +76,7 @@ fn scratch_repository(index_lock: Bool, already_candidate: Bool) -> ScratchRepos
   } else {
     git.Core.ResetHardInRepo(repo: repo_path, target: old_sha).exit_code == 0
   }
-  // The lock is planted BEFORE the run: the production fetch passes --upload-pack explicitly
-  // (convergence_fetch_upload_pack), which overrides remote.origin.uploadpack, so a hook configured
-  // there never fires. A lock already present when the CAS succeeds makes the reset refuse after it.
-  let locking = if index_lock {
-    Filesystem.Write(path: concat(repo, "/.git/index.lock"), content: "").success
-  } else { true }
-  if dir.success && bare.exit_code == 0 && init.exit_code == 0 && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && branch.exit_code == 0 && worktree.exit_code == 0 && packed_ref.exit_code == 0 && pack.exit_code == 0 && loose_ref.exit_code == 0 && remote_add.exit_code == 0 && pushed.exit_code == 0 && detached.exit_code == 0 && tracking.exit_code == 0 && positioned && locking {
+  if dir.success && bare.exit_code == 0 && init.exit_code == 0 && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && branch.exit_code == 0 && worktree.exit_code == 0 && packed_ref.exit_code == 0 && pack.exit_code == 0 && loose_ref.exit_code == 0 && remote_add.exit_code == 0 && pushed.exit_code == 0 && detached.exit_code == 0 && tracking.exit_code == 0 && positioned {
     Present { value: ScratchRepository { root: root, repo: repo, remote_path: remote, old: old_sha, candidate: candidate_sha } }
   } else { none }
 }
@@ -106,7 +99,7 @@ fn run_scratch(s: ScratchRepository) -> ProcessExit {
 // ProcessExit.reason.
 
 test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let outcome = run_scratch(s: s)
@@ -117,7 +110,7 @@ test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and
 }
 
 test fn already_at_candidate_repairs_a_stale_index() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: true) {
+  match scratch_repository(already_candidate: true) {
     Absent => false
     Present { value: s } => {
       let outcome = run_scratch(s: s)
@@ -127,23 +120,15 @@ test fn already_at_candidate_repairs_a_stale_index() -> Bool {
   }
 }
 
-// DROPPED CASE: cas_race_is_observed_after_fetch lived here. Its only interposition point between the
-// fetch and the base-ref CAS was remote.origin.uploadpack, which the production fetch's explicit
-// --upload-pack overrides (#12279), so it was red on main. Declared at
-// gunbc.rung_drop.convergence_cas_race_fixture_interposition.
-test fn reset_refusal_after_successful_cas_is_nonzero() -> Bool {
-  match scratch_repository(index_lock: true, already_candidate: false) {
-    Absent => false
-    Present { value: s } => {
-      let outcome = run_scratch(s: s)
-      let cleaned = remove_scratch(s: s)
-      match outcome { ExitFailure { code: _, reason: why } => cleaned && string_contains(s: why, pattern: "PARTIAL TRANSITION") _ => false }
-    }
-  }
-}
+// DROPPED CASES: cas_race_is_observed_after_fetch and reset_refusal_after_successful_cas_is_nonzero
+// lived here. Both needed code to run BETWEEN the repository pre-state observation and the reset, and
+// their only interposition point was remote.origin.uploadpack, which the production fetch's explicit
+// --upload-pack overrides (#12279); a lock planted before the run is instead refused by the pre-state
+// observation, a different cause. Both were red on main. Declared at
+// gunbc.rung_drop.convergence_fetch_window_fixture_interposition.
 
 test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let changed = Filesystem.Write(path: concat(s.repo, "/.git/HEAD"), content: "ref: refs/heads/missing\n").success
@@ -155,7 +140,7 @@ test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
 }
 
 test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let changed = Filesystem.Write(path: concat(s.repo, "/.git/worktrees/linked/HEAD"), content: "invalid").success
@@ -167,7 +152,7 @@ test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
 }
 
 test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let linked_repo = concat(s.root, "/linked")
@@ -182,7 +167,7 @@ test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
 // The fixture plants the file the old binary wrote; convergence must remove it (the loader never
 // does) and only then report success.
 test fn a_legacy_derived_roster_file_is_retired_and_read_back_absent() -> Bool {
-  match scratch_repository(index_lock: false, already_candidate: false) {
+  match scratch_repository(already_candidate: false) {
     Absent => false
     Present { value: s } => {
       let roster = join([s.repo, "/dag/gunbc/rung_drop/roster.dag"], "")
