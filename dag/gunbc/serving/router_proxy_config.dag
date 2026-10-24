@@ -4,10 +4,10 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Milliseconds, Port, HttpStatus }
 import extdeps.proxy.openresty {
   OpenRestyVersion, openresty_1_27_1_1, NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff,
-  ServerBlock, ListenLoopback, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
+  ServerBlock, ListenOn, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
   ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetHeader, HeaderFromVariable, HeaderLiteral, ProxyPassDirective,
-  ProxyTargetFromUpstreamVariable, ProxyPassLoopback, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
-  LuaPhaseHook, AccessPhase, LogPhase, CaptureSubrequest, LogPostToLoopback, HeaderCopy,
+  ProxyTargetFromUpstreamVariable, ProxyPassToHost, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
+  LuaPhaseBlock, LuaPhase, AccessPhase, LogPhase,
   ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
 }
 
@@ -39,6 +39,7 @@ type RouterProxyVocabulary {
   v1_prefix: NginxToken
   content_length_header: NginxToken
   zero_literal: NginxToken
+  loopback_host: NginxToken
   upstream_variable: NginxVariable
   permit_variable: NginxVariable
 }
@@ -64,11 +65,14 @@ fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
     Present { value: content_length_header } =>
   match nginx_token(text: "0") {
     Present { value: zero_literal } =>
+  match nginx_token(text: "127.0.0.1") {
+    Present { value: loopback_host } =>
   match nginx_variable(text: "up") {
     Present { value: upstream_variable } =>
   match nginx_variable(text: "permit") {
     Present { value: permit_variable } =>
-  Present { value: RouterProxyVocabulary { seat_permit_header: seat_permit_header, upstream_answer_header: upstream_answer_header, authz_internal_path: authz_internal_path, authz_upstream_path: authz_upstream_path, stream_end_path: stream_end_path, v1_prefix: v1_prefix, content_length_header: content_length_header, zero_literal: zero_literal, upstream_variable: upstream_variable, permit_variable: permit_variable } }
+  Present { value: RouterProxyVocabulary { seat_permit_header: seat_permit_header, upstream_answer_header: upstream_answer_header, authz_internal_path: authz_internal_path, authz_upstream_path: authz_upstream_path, stream_end_path: stream_end_path, v1_prefix: v1_prefix, content_length_header: content_length_header, zero_literal: zero_literal, loopback_host: loopback_host, upstream_variable: upstream_variable, permit_variable: permit_variable } }
+  Absent => Absent }
   Absent => Absent }
   Absent => Absent }
   Absent => Absent }
@@ -81,6 +85,73 @@ fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
   Absent => Absent }
 }
 
+// The router's two callouts, in its own terms: the authz subrequest (a non-200 answer refuses with
+// failure_status before any forwarding, and the answer's headers are copied into variables) and the
+// stream-end notice (fire-and-forget from the log phase, only when a permit was issued). The loopback host,
+// the HTTP framing and the reading of 200 as admitted are router decisions, so they live here and reach
+// OpenResty only as the lines of a phase block.
+type HeaderCopy {
+  header: NginxToken
+  variable: NginxVariable
+}
+
+type RouterCallout
+  = AuthzCapture { location: NginxToken, failure_status: HttpStatus, copies: List<HeaderCopy> }
+  | StreamEndPost { host: NginxToken, port: Port, path: NginxToken, timeout_ms: Milliseconds, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
+
+type RouterCalloutHook {
+  phase: LuaPhase
+  callout: RouterCallout
+}
+
+fn router_callout_lines(c: RouterCallout) -> List<String> {
+  match c {
+    AuthzCapture { location: l, failure_status: r, copies: cs } => concat([
+      "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST\})",
+      "if res.status ~= 200 then return ngx.exit(" + ((r as Int) as String) + ") end",
+    ], map(cs, c => "ngx.var." + (c.variable as String) + " = res.header['" + (c.header as String) + "']"))
+    StreamEndPost { host: hs, port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
+      "if ngx.var." + (o as String) + " == '' then return end",
+      "local value = ngx.var." + (hv as String),
+      "ngx.timer.at(0, function(p)",
+      "local s = ngx.socket.tcp()",
+      "s:settimeout(" + ((t as Int) as String) + ")",
+      "if not s:connect('" + (hs as String) + "', " + ((pt as Int) as String) + ") then return end",
+      "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. value .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
+      "s:receive('*a')",
+      "s:close()",
+      "end)",
+    ]
+  }
+}
+
+fn router_callout_directive(h: RouterCalloutHook) -> NginxDirective {
+  LuaPhaseBlock { phase: h.phase, lines: router_callout_lines(c: h.callout) }
+}
+
+fn router_authz_hook(v: RouterProxyVocabulary) -> RouterCalloutHook {
+  RouterCalloutHook { phase: AccessPhase, callout: AuthzCapture {
+    location: v.authz_internal_path,
+    failure_status: 503 as HttpStatus,
+    copies: [
+      HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable },
+      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable },
+    ],
+  } }
+}
+
+fn router_stream_end_hook(v: RouterProxyVocabulary, stream_end_port: Port) -> RouterCalloutHook {
+  RouterCalloutHook { phase: LogPhase, callout: StreamEndPost {
+    host: v.loopback_host, port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000 as Milliseconds,
+    only_when_set: v.permit_variable, header: v.seat_permit_header, header_value: v.permit_variable,
+  } }
+}
+
+// The callouts the router location carries, in order; router_proxy_directives renders exactly these.
+fn router_proxy_callouts(v: RouterProxyVocabulary, stream_end_port: Port) -> List<RouterCalloutHook> {
+  [router_authz_hook(v: v), router_stream_end_hook(v: v, stream_end_port: stream_end_port)]
+}
+
 fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Port, authz_port: Port, stream_end_port: Port) -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },
@@ -88,32 +159,22 @@ fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Port, authz_po
     HttpBlock { body: [
       AccessLogOff,
       ServerBlock { body: [
-        ListenLoopback { port: listen_port },
+        ListenOn { address: v.loopback_host, port: listen_port },
         LocationBlock { matching: PrefixMatch { path: v.v1_prefix }, body: [
           SetEmptyVariable { variable: v.upstream_variable },
           SetEmptyVariable { variable: v.permit_variable },
-          LuaPhaseHook { phase: AccessPhase, hook: CaptureSubrequest {
-            location: v.authz_internal_path,
-            failure_status: 503 as HttpStatus,
-            copies: [
-              HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable },
-              HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable },
-            ],
-          } },
+          router_callout_directive(h: router_authz_hook(v: v)),
           ProxyHttpVersion11,
           ProxyBufferingDirective { value: ProxyBufferingOff },
           ProxyRequestBufferingDirective { value: ProxyRequestBufferingOff },
           ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff },
           ProxySetHeader { header: v.seat_permit_header, source: HeaderFromVariable { variable: v.permit_variable } },
           ProxyPassDirective { target: ProxyTargetFromUpstreamVariable, variable: v.upstream_variable },
-          LuaPhaseHook { phase: LogPhase, hook: LogPostToLoopback {
-            port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000 as Milliseconds,
-            only_when_set: v.permit_variable, header: v.seat_permit_header, header_value: v.permit_variable,
-          } },
+          router_callout_directive(h: router_stream_end_hook(v: v, stream_end_port: stream_end_port)),
         ] },
         LocationBlock { matching: ExactMatch { path: v.authz_internal_path }, body: [
           InternalLocationOnly,
-          ProxyPassLoopback { port: authz_port, path: v.authz_upstream_path },
+          ProxyPassToHost { host: v.loopback_host, port: authz_port, path: v.authz_upstream_path },
           ProxyMethodPost,
           ProxyPassRequestBodyOff,
           ProxySetHeader { header: v.content_length_header, source: HeaderLiteral { text: v.zero_literal } },
