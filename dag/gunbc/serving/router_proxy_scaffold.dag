@@ -5,10 +5,11 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // DECLARED SCAFFOLD. extdeps.proxy.openresty renders its closed typed directive sum directly to nginx
-// and Lua text instead of through extdeps/languages grammar rows. Authority: dashboard escalation
-// msg_090b06a7 (calm-crab-645, plan gunbc.plans.fabric_serving_router, S1), approved by default after no
-// operator answer in 15 minutes (2026-10-24). Basis: the Envoy candidate failed the stream-end falsifier
-// (its only stream-end sinks are gRPC), and the proxy itself is scheduled to dissolve.
+// and Lua text instead of through extdeps/languages grammar rows. Authority (DESIGN section 5: operator
+// approval outside the diff): the operator's ruling of 2026-10-24, in their own words, "its fine to hand
+// write something as long as the debt is tracked", recorded on gunbc#14938 by calm-crab-645. This row is
+// that tracked debt. Basis: the Envoy candidate failed the stream-end falsifier (its only stream-end
+// sinks are gRPC), and the proxy itself is scheduled to dissolve.
 data router_proxy_direct_render_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
