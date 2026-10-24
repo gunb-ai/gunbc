@@ -158,7 +158,7 @@ fn field_at(line: String, index: Int) -> String {
 }
 
 fn fixture_join_failure(stdout: String) -> Optional<String> {
-  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
+  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t") || starts_with(s: l, prefix: "binding_refusal_cause\t"))
   let expected = ambient_census_fixture_expected()
   let missing = expected |> filter(e => count(lines |> filter(l => l == e)) == 0)
   let unexpected = lines |> filter(l => count(expected |> filter(e => e == l)) == 0)
@@ -283,7 +283,7 @@ fn census_observation_text(tree_stdout: String) -> String {
 // validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
 // unreadable count beside them rather than a silently shortened row set.
 fn partial_lines(stdout: String) -> List<String> {
-  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t") || starts_with(s: l, prefix: "binding_refusal_cause\t"))
 }
 
 // THE REWRITTEN MODULES THE HEAD RUN REACHED AND REFUSED AT RESOLVE: what the host must probe at the merge base,
