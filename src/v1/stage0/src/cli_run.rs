@@ -31374,17 +31374,23 @@ pub fn resolve_coproduct_wire_policy(
     modules: &[Rc<TypedModule>],
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
-    use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
-    use crate::v1_std_core::module_imports;
+    // A runtime Value carries only its coproduct's leaf name, so this asks every declaring module
+    // in the closure and admits the answer only where they agree. The rows are the emitter's
+    // closure index, keyed on each row's declared target module, so a row applies here exactly
+    // where the emitted crate applies it.
+    use crate::v1_compiler_emit_rust::{
+        build_coproduct_wire_contract_index, resolve_contract_row_coproduct_wire_policy,
+    };
     let si = Rc::new(source_indices.clone());
+    let rows_by_target =
+        build_coproduct_wire_contract_index(Rc::new(modules.iter().cloned().collect()));
     let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
-    for tm in modules {
-        let imports = module_imports(tm.module.clone());
-        if let Some(local) = resolve_local_coproduct_wire_policy(
+    for (module_path, rows) in rows_by_target.iter() {
+        if let Some(local) = resolve_contract_row_coproduct_wire_policy(
+            module_path.clone(),
             coproduct_name.to_string(),
             false,
-            tm.items.clone(),
-            imports,
+            rows.clone(),
             si.clone(),
         ) {
             if local.error_message.is_none() {

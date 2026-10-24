@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.coproduct_wire_contract_target_not_local_in_emitted_extdeps_github
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -8,7 +9,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 data coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: RecurringFailureMode = RecurringFailureMode {
   identity: "coproduct_wire_contract_target_not_local_in_emitted_extdeps_github" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the emitter lowering a CoproductWireContract whose target coproduct is declared outside the emitting module, or the extdeps.github closure being emitted without that contract, so an emitted closure that reaches extdeps.github builds" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the front end resolving a CoproductWireContract DeclarationRef to a coproduct the named module declares, and refusing an unresolvable row where it is declared, so an unresolvable target never reaches an emitted compile_error" } },
 
   receipts: [
     "**coproduct wire contract target not local in the emitted extdeps.github closure** (INVALID STATE: an emitted crate containing extdeps_github_github.rs whose CoproductWireContract names a coproduct, IssueState, that is not a local coproduct of the emitted module, so the target compiler refuses.",
@@ -20,6 +21,14 @@ data coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: Recurri
     "WORKED AROUND NOWHERE: the rung-ledger census avoided the closure by giving the trigger capability and blocker a referent-free home (gunbc.rung_climb), which is a modeling correction on its own merit and does not repair the emitter; the defect is unfixed and routed outside that change.",
 
     "RUNG: found at mitigatable (cargo refuses the emitted crate); ceiling structurally guaranteed because whether a contract's target is local is decidable from the emitted module's coproduct declarations, so the emitter can refuse or lower it before cargo. NEXT-RUNG TRIGGER: climbable but unbuilt, capability named in the typed standing.",
+    "ROOT CAUSE (chain re-derivation, DESIGN section 6b): the earliest unjustified boundary was the emitter's row-to-target association, not the cargo error. v1.compiler.emit_rust found a module's contract rows by file placement (contracts_items_for_module: the `<module>_contracts` sibling) and matched them by decl_name alone, while each row states its target as a DeclarationRef (module_path, decl_name). The two agreed only while every row sat beside its target. extdeps.github.github_contracts stores UserType's row (extdeps.github.github) and IssueState's (extdeps.github.issues), so extdeps.github.github refused IssueState as foreign and extdeps.github.issues emitted IssueState with no contract at all: the internal-tag default, a wire spelling the upstream never sends. extdeps.ebay.ebay_contracts had the same shape for three rows (ConditionEnum, FormatTypeEnum, EbayErrorCategory).",
+
+    "REPAIRED: build_coproduct_wire_contract_index keys every admitted row in the closure on its declared target module (coproduct_wire_contract_target), and both policy call sites and the per-module target validation read it. The interpreter's decoder index and the REST serializer (cli_run resolve_coproduct_wire_policy) were two more answers to the same question; both now consume the same index, so a row applies at runtime exactly where the emitted crate applies it. RED/control: ct_coproduct_wire_contract_declared_target_test (fixture: rows for two modules' coproducts in one contracts file, plus a row naming a missing coproduct that must still refuse) and ct_github_contract_rows_declared_target_test (the live extdeps.github closure). RUNG UNCHANGED: a row whose DeclarationRef resolves to no coproduct is still refused only by an emitted compile_error, which is cargo's wall; the trigger now names that residual climb.",
   ],
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "build_coproduct_wire_contract_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "coproduct_wire_contract_target", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_coproduct_wire_contract_declared_target_test", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.compiler_tests_rust", decl_name: "ct_github_contract_rows_declared_target_test", field: WholeDeclaration },
+  ],
 }
