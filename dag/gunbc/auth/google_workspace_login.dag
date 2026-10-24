@@ -31,6 +31,7 @@ fn google_workspace_issuer() -> JwtStringOrUri {
 type GoogleLoginClient
   = GoogleLoginClientTrackerWeb
   | GoogleLoginClientApprovalsWeb
+  | GoogleLoginClientApproveIos
 
 type GoogleLoginEnvironment
   = GoogleLoginEnvironmentTest
@@ -41,6 +42,7 @@ fn google_login_client_label(client: GoogleLoginClient) -> NonEmptyStr {
   match client {
     GoogleLoginClientTrackerWeb => "tracker-web" as NonEmptyStr
     GoogleLoginClientApprovalsWeb => "approvals-web" as NonEmptyStr
+    GoogleLoginClientApproveIos => "approve-ios" as NonEmptyStr
   }
 }
 

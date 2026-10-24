@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.an_attempt_leaves_its_own_media_session_for_the_next_one
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data an_attempt_leaves_its_own_media_session_for_the_next_one: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_attempt_leaves_its_own_media_session_for_the_next_one" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**an attempt leaves its own media session for the next one** (a boot attempt starts a virtual-media session on the host's controller and ends without stopping it. The controller keeps the session after the host powers off, and what that session reads later is not what it read when it was left, so the next attempt meets a row it may not be able to read)." as NonEmptyStr,
+
+    "INVALID STATE: an attempt that ended with the host OFF while its own redirection session is still started on the controller. Nothing on the attempt's route reads the session as an obligation: the end-of-attempt look records it and stops there, so the residue is in the receipt and in no verdict." as NonEmptyStr,
+
+    "INSTANCE: boot run 39868779331 (census medium) recorded end_media 'row started, session_index 0; cd_error_code 0' and power_after 'OFF without the census END marker' after the fan gate stopped it. Boot runs 40038339650 and 40070230626 (runner medium), with no gunbc write in between, read that row at redirection_status 19 with general cd_error_code 19, a code no catalogue names, and refused before any write (extdeps.bmc.megarac megarac_redirection_status_of_wire). The residue blocked every following boot of the unit." as NonEmptyStr,
+
+    "DISTINGUISHING FACTS: the session is the attempt's OWN (its image, its stop to make), and the host is OFF, so stopping it withdraws nothing a running host reads. A host that stays ON is not this class: a diskless host that is up runs from its medium and keeps it. The next attempt's start-of-attempt convergence (gunbc.machine_intake.megarac_media_attach, #14959) replaces a lane-published session only on a CATALOGUED status, or on an unread code on the release whose evidence grounds that exception; it cannot replace a row that has decayed into an unread code on the admitted release, and it must not. So the repair belongs at the end of the attempt that owns the session, not at the start of the one that meets it." as NonEmptyStr,
+
+    "RUNG FOUND AT: below mitigatable for this class, because the residue was recorded and consumed by no verdict. REPAIRED TO mitigatable by gunbc#14991: gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_actuate stops its own session through gunbc.machine_intake.megarac_boot_media_attach megarac_release_boot_session when power after the attempt reads OFF, establishes the stop by read-back alone, and turns any residue into a failure naming it (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle outcome_with_end_release); test.claim.machine_intake.megarac_end_of_attempt_release_witness and the acceptance matrix's an_attempt_that_ends_with_the_host_off_stops_its_own_session execute it. CEILING: mitigatable. The controller is external state (outside the modeled guarantee), and an attempt that is killed reaches no end of attempt, as in gunbc.recurring_failure_mode.a_killed_run_leaves_its_credential_file_behind." as NonEmptyStr,
+
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: a committed reading of what a decayed session reads on the controller's current release (what redirection_status 19 and cd_error_code 19 mean on MegaRAC 0.45.3, grounded by an AMI source or an executed observation), SUFFICIENT FOR the next attempt's convergence to recognise and stop a lane-published session left by an attempt that was killed before its end. Guessing a catalogue row for 19 is not that capability.",
+  ],
+  evidence: [],
+}

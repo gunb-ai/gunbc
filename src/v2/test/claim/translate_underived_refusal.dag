@@ -1,5 +1,6 @@
 module v2.test.claim.translate_underived_refusal
 
+
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -31,7 +32,7 @@ import v2.extdeps.languages.rust_fixtures {
 import v2.extdeps.languages.rust_translate_underived {
   rust_minimal_underived_refusal_target
 }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty
@@ -63,6 +64,7 @@ import v2.std.node {
   core_edge,
   content_hash,
   node_rebuild,
+  NotADeclaration
 }
 import std.optional { Absent, Optional, optional_absent }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
@@ -142,7 +144,7 @@ fn translate_mixed_tree_root() -> Node {
     n: rust_add_emitted_root,
     children: list_snoc_item(
       xs: rust_add_emitted_root.children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: Edge { label: Positional, target: translate_underived_value_specimen, declaration: NotADeclaration }
     )
   )
 }
@@ -180,7 +182,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
     n: python_emitted_add_fn_node(),
     children: list_snoc_item(
       xs: python_emitted_add_fn_node().children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: Edge { label: Positional, target: translate_underived_value_specimen, declaration: NotADeclaration }
     )
   )
 }
@@ -218,7 +220,8 @@ fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
             xs: arrow.children,
             item: Edge {
               label: Positional,
-              target: translate_underived_value_specimen
+              target: translate_underived_value_specimen,
+              declaration: NotADeclaration
             }
           )
         )
@@ -283,7 +286,7 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
         value: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Positional, target: arrow }
+            Edge { label: Positional, target: arrow, declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
         }
@@ -328,6 +331,7 @@ fn translate_underived_grammar_match_bundle() -> Node {
 }
 
 data translate_underived_grammar_match_target: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: translate_underived_grammar_match_bundle(),
   lex: rust_pick_lex(),

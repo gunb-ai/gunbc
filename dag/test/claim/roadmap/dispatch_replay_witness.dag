@@ -3,13 +3,14 @@ module test.claim.roadmap.dispatch_replay_witness
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, GunbcHarnessProvider, ReplayDispatchProvider }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  GunbcHarnessProvider, ReplayDispatchProvider, dispatch_session_container_for_provider,
+  dispatch_session_container_for_provider,
   DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable,
   SystemdUnitContainer, TmuxSessionContainer,
   DispatchReplayInstanceAdmission, ReplayAdmittedOnInstance, ReplayRefusedOffLab, dispatch_replay_instance_admission,
   dispatch_cli_to_provider_kind, DispatchExecutorHasNoVendorKind, DispatchProviderKindIs,
-  decode_dispatch_executor_request, ExecutorDefault, ExecutorVendor, DispatchCliProvider, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown, ExecutorReplay,
+  decode_dispatch_executor_request, ExecutorDefault, ExecutorVendor, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown, ExecutorReplay,
 }
 import gunbc.dispatch_replay_recording {
   RecordingId, recording_id_text, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,

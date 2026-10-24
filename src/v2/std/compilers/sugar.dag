@@ -39,11 +39,11 @@ import v2.std.node {
   Authored,
   Instantiation,
   Node,
-  Occupancy,
   Symbol,
   TypeNode,
   edges_conform,
-  is_empty_conj_root
+  is_empty_conj_root,
+  NotADeclaration
 }
 
 type SugarLowering
@@ -214,10 +214,7 @@ fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
       Present { value: pair } =>
         match sugar_pipe_sequence_variant_optional(node: pair.left) {
           Present { value: variant } =>
-            list_snoc_item(
-              xs: sugar_collect_pipe_chain_variants(spine: pair.right),
-              item: variant
-            )
+            Cons { head: variant, tail: sugar_collect_pipe_chain_variants(spine: pair.right) }
           Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
         }
       Absent => std.algebra.Empty
@@ -299,7 +296,8 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
             Accepted {
               value: Edge {
                 label: Authored { name: name },
-                target: sugar_type_node(connective: Conj, children: [], n: variant)
+                target: sugar_type_node(connective: Conj, children: [], n: variant),
+                declaration: NotADeclaration
               },
               diagnostics: None
             }
@@ -325,8 +323,8 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
 // seq(type_expr, suffix) parse shape is gone by the time the fold runs (children are lowered
 // before the type_alias_rhs sugar fold). So when the seq shape is Absent, constructor presence is
 // decided from the CARRIED HEAD instead, by the kind body lowering gave it: the qualified_type
-// branch lowers a named head to an Atom, a dotted qualified-name spine Conj, or an Instantiation /
-// Occupancy wrap of either; the field_decl_block branch lowers to a record Conj; the fn_type branch
+// branch lowers a named head to an Atom, a dotted qualified-name spine Conj, or an Instantiation
+// of either; the field_decl_block branch lowers to a record Conj; the fn_type branch
 // lowers to an Arrow. The ^dag_surface_type_expr edge is written only by that rebuild, so a raw
 // arm (which keeps its parse shell) never reaches the carrier read. A head the rebuild hands over
 // that none of the named kinds can read is refused -- the where-rebuilt shape never fails open.
@@ -368,7 +366,6 @@ fn sugar_where_carried_head_is_nameless(variant: Node) -> Bool {
       match head.kind {
         TypeNode { connective: Atom { identity: _ } } => false
         TypeNode { connective: Instantiation } => false
-        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Conj } =>
           match qualified_name_from_node(root: head) {
             Accepted { value: qn } => length(xs: qn) == 0
@@ -462,8 +459,6 @@ fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node, enclosing_type_name:
       sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
     TypeNode { connective: Arrow } =>
       sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
-    TypeNode { connective: Occupancy } =>
-      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
     TypeNode { connective: Instantiation } =>
       sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
     ComputationNode { behavior: _ } =>
@@ -515,8 +510,6 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node, enclosing_type_name: Symb
                 TypeNode { connective: Conj } =>
                   Accepted { value: folded, diagnostics: None }
                 TypeNode { connective: Arrow } =>
-                  Accepted { value: folded, diagnostics: None }
-                TypeNode { connective: Occupancy } =>
                   Accepted { value: folded, diagnostics: None }
                 TypeNode { connective: Instantiation } =>
                   Accepted { value: folded, diagnostics: None }

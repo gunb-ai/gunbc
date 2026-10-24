@@ -365,6 +365,18 @@ fn attempt_exit_refused_dir(instance_root: String) -> String {
   join([attempt_exit_spool_root(instance_root: instance_root), "/refused"], "")
 }
 
+// `stalled` holds the drain's stall record (attempt_exit_stall_record_path): the typed, countable terminal
+// of an exit spool whose head entry cannot leave. It is a sibling of the stages and is never a stage: the
+// path unit watches inbox and queued, and the belt-exit service is skipped while this directory is non-empty
+// (gunbc.live_deploy.emit live_deploy_belt_exit_drain_service_unit_file), which is what stops the line.
+fn attempt_exit_stalled_dir(instance_root: String) -> String {
+  join([attempt_exit_spool_root(instance_root: instance_root), "/stalled"], "")
+}
+
+fn attempt_exit_stall_record_path(instance_root: String) -> String {
+  join([attempt_exit_stalled_dir(instance_root: instance_root), "/stall.json"], "")
+}
+
 // THE ATTEMPT-SYSTEM-UNIT REQUEST SPOOL. The launcher argv is pinned to instance_root only, so the
 // request cannot travel on argv. The channel is this spool, not one instance-global file: a second
 // concurrent start must not share a body (DESIGN §5). Shape reused from two existing homes, not a
@@ -392,8 +404,14 @@ fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
   join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
 }
 
-fn attempt_unit_spool_drain_lock_path(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/drain.lock"], "")
+// `stalled` holds the attempt-unit drain's stall record, the same line stop as the exit spool's
+// (gunbc.roadmap.spool_stall): the drain service is skipped by ConditionDirectoryNotEmpty=!<stalled> while it exists.
+fn attempt_unit_spool_stalled_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/stalled"], "")
+}
+
+fn attempt_unit_spool_stall_record_path(instance_root: String) -> String {
+  join([attempt_unit_spool_stalled_dir(instance_root: instance_root), "/stall.json"], "")
 }
 
 // THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on

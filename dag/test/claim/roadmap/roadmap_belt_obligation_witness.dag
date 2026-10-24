@@ -22,7 +22,7 @@ import gunbc.live_deploy.emit { live_deploy_belt_exit_path_unit_file, live_deplo
 import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name, deployment_owned_steps, DeploymentArtifactStep }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import gunbc.host.host_layout { attempt_exit_inbox_dir }
+import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_stalled_dir }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
 
 // THE OBLIGATION MODEL'S DECISIONS over supplied evidence (DESIGN section 3: a witness discriminates at
@@ -110,11 +110,25 @@ test fn the_deployment_wakes_the_drain_on_an_exit_and_installs_no_belt_timer() -
   let spec = deployment_spec_srv1()
   let lines = systemd_unit_file_lines(file: live_deploy_belt_exit_path_unit_file(spec: spec))
   let inbox = attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String)
-  let steps = deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons)
+  let steps = deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan)
   any(lines, l => l == join(["DirectoryNotEmpty=", inbox], ""))
     && any(lines, l => l == join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
     && !any(steps, st => string_contains(s: st.path as String, pattern: "-belt.timer"))
     && any(systemd_unit_file_lines(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)), l => string_contains(s: l, pattern: "--function belt_exit_drain_cli"))
+}
+
+// RED-L2: the line stop is in the unit files, not only in the drain. The exit service is skipped while
+// a stall record is held, and the path unit pins the trigger limit (systemd 255 default made explicit)
+// so a skipped-service re-fire loop ends in a failed .path rather than running unbounded.
+test fn the_exit_service_is_gated_on_the_stall_record_and_the_path_pins_its_trigger_limit() -> Bool {
+  let spec = deployment_spec_srv1()
+  let stalled = attempt_exit_stalled_dir(instance_root: spec.service.instance_root as String)
+  let service = systemd_unit_file_lines(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec))
+  let path = systemd_unit_file_lines(file: live_deploy_belt_exit_path_unit_file(spec: spec))
+  any(service, l => l == join(["ConditionDirectoryNotEmpty=!", stalled], ""))
+    && any(path, l => l == "TriggerLimitIntervalSec=2s")
+    && any(path, l => l == "TriggerLimitBurst=200")
+    && !any(path, l => string_contains(s: l, pattern: "Condition"))
 }
 
 fn follow_up_keys(action: BeltOperatorAction) -> String {

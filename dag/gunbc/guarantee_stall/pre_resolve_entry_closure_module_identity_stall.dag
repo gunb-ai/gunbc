@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.pre_resolve_entry_closure_module_identity_stall
 
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE DELIBERATELY DROPPED HALF OF gunbc#10258'S DISPLAY CONTRACT. That lane printed module
 // identity beside source path from ResolvedGraph, but only after typed resolution. The

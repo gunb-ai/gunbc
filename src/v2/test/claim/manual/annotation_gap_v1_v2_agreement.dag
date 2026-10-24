@@ -18,6 +18,7 @@ import v1.std.core { build_newline_index, empty_intern_table }
 import v2.compiler.parse { parse_module_authored, authored_parse_annotations, authored_parse_semantic }
 import v2.compiler.tokenize { lex_walk_artifact }
 import v2.extdeps.languages.dag { dag_lex_rules }
+import std.host_text { chars }
 
 // ROADMAP NODE parse-comment-gap-attachment-v2, agreement control. v1 and v2 attach by the SAME rule
 // (std.source_annotation attach_annotations) over DIFFERENT region trees -- v1's semantic nodes and
@@ -100,7 +101,7 @@ fn v1_occurrence_text(source: String, scope: AnnotationScope) -> String {
 
 // ---- v2: neighbour text through the recorded SpanIndex extents.
 fn v2_neighbours(source: String) -> List<String> {
-  match lex_walk_artifact(source: chars(s: source), file: ^zqx_agree, rules: dag_lex_rules()) {
+  match lex_walk_artifact(source: chars(text: source), file: ^zqx_agree, rules: dag_lex_rules()) {
     Rejected { diagnostics: _ } => ["<no lex>"]
     Accepted { value: artifact, diagnostics: _ } =>
       match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {

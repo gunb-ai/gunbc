@@ -8,7 +8,7 @@ import std.effect_grant {
   Read, Write, ServiceOpTree, NamespacePosition,
   ModeledRealization, LifecycleByConstruction, Grant, Envelope,
 }
-import v2.std.operation_argv { OperationRef }
+import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
   OperationObserved, ShellObserved,
@@ -95,7 +95,7 @@ fn hold_host_frame(world: HoldHostWorld) -> WitnessEvaluationFrame<HoldHostWorld
 }
 
 fn empty_store() -> ModeledFilesystem {
-  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String], files: [], refused_reads: [] }
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String], files: [], refused_reads: [], stats: [] }
 }
 
 // A machine with the given short hostname, the operator's reason exported, and the given store.

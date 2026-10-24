@@ -134,3 +134,38 @@ fn sudo_preserve_environment_command(command: List<String>) -> ArgvCommand {
     arguments: list_append(left: [sudo_preserve_environment_flag as String], right: command),
   )
 }
+
+// THE LONG LISTING FORM, NOT AN ELEVATION: `sudo -n -ll -u USER COMMAND...` asks sudo for ITS OWN decision
+// on whether the invoking principal may run COMMAND as USER, and sudo(8) states the command is not
+// executed: "-l, --list ... If a command is specified and is permitted by the security policy, the
+// fully-qualified path to the command is displayed along with any command line arguments. If a command
+// is specified but not permitted by the policy, sudo will exit with a status value of 1." Sudo evaluates
+// the run-as and sudoers' last-match order, so permission is the effective answer rather than a
+// reconstruction from display text.
+//
+// LISTING PROVES PERMISSION, NOT PASSWORDLESSNESS. `Defaults listpw` governs authentication for the
+// LISTING, not for execution: under `listpw=any` a `PASSWD:` command lists with exit 0 and prints just
+// its path, and the same command run under -n fails "a password is required" (recorded counterexample,
+// sudo 1.9.16p2, cited in extdeps.sudo.nopasswd_decision). The
+// long form (-ll, "sudo -l -l") additionally prints the selected entry's effective options, which is
+// where the authentication requirement is read.
+data sudo_list_flag: NonEmptyStr = "-ll"
+
+fn sudo_list_command_as(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: list_append(
+      left: [sudo_non_interactive_flag as String, sudo_list_flag as String, sudo_run_as_user_flag as String, user as String],
+      right: command,
+    ),
+  )
+}
+
+// THE VERSION BANNER: `sudo -V` prints "Sudo version M.m.PpN" first. The long-listing text is an
+// interpretation of one sudo family, so the version is observed alongside it and is part of what the
+// reading was taken under (extdeps.sudo.nopasswd_decision gates on a supported range).
+data sudo_version_flag: NonEmptyStr = "-V"
+
+fn sudo_version_command() -> ArgvCommand {
+  argv_command(program: sudo_program(), arguments: [sudo_version_flag as String])
+}

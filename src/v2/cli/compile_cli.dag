@@ -22,10 +22,14 @@ import v2.compiler.module_acquisition {
   acquisition_ingest,
   enumerate_bound_modules
 }
-import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, parse_verdict_reuse_off, parse_verdict_reuse_requested }
+import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, select_spelled_modules, parse_verdict_reuse_off, parse_verdict_reuse_requested }
 import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population, cli_verb_select_spelled_modules }
+import v2.cli.parse_verdict_invocation {
+  cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
+  cli_option_source_root
+}
 import v2.cli.repository_layout { repository_storage_layout }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {
@@ -181,6 +185,7 @@ type CliVerb
   = CliEmitClosure { entry: String, source_roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
   | CliCheckLayout { source_roots: FreeMonoid<String> }
+  | CliSelectSpelledModules { source_roots: FreeMonoid<String> }
   | CliParsePopulation {
       source_roots: FreeMonoid<String>,
       compiler: Optional<String>,
@@ -196,14 +201,16 @@ type CliRootsVerb
   = CliRootsDifferential
   | CliRootsCheckLayout
   | CliRootsParsePopulation
+  | CliRootsSelectSpelled
 
-data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsParsePopulation]
+data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsParsePopulation, CliRootsSelectSpelled]
 
 fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
   match kind {
     CliRootsDifferential => cli_verb_if_arm_reader_differential
     CliRootsCheckLayout => cli_verb_check_layout
     CliRootsParsePopulation => cli_verb_parse_population
+    CliRootsSelectSpelled => cli_verb_select_spelled_modules
   }
 }
 
@@ -214,6 +221,8 @@ fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
     CliRootsDifferential =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
     CliRootsCheckLayout =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+    CliRootsSelectSpelled =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
   }
 }
@@ -239,6 +248,7 @@ fn cli_roots_verb_selected(
   match kind {
     CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
     CliRootsCheckLayout => CliCheckLayout { source_roots: roots }
+    CliRootsSelectSpelled => CliSelectSpelledModules { source_roots: roots }
     CliRootsParsePopulation =>
       CliParsePopulation {
         source_roots: roots,
@@ -316,15 +326,12 @@ type CliParseState
     }
   | CliParseFailed { reason: Symbol, detail: String }
 
-data cli_option_source_root: String = "--source-root"
-
-data cli_option_compiler: String = "--compiler"
-
-data cli_option_write_identity: String = "--write-identity"
-
-data cli_option_receipts: String = "--receipts"
-data cli_option_reuse_from: String = "--reuse-from"
-
+// THE OPTION SPELLINGS MOVED to v2.cli.parse_verdict_invocation, joining the verb spellings that already
+// moved to v2.cli.population_verb_names for the same reason: while they lived here, every consumer that
+// needed a spelling either imported this whole closure or minted a copy -- and one of those copies was
+// the content hash that CERTIFIES the invocation, so a rename here could leave the emitted command and
+// the certifying stamp agreeing with each other and both wrong. This module PARSES them; it no longer
+// owns how they are spelled elsewhere. The parser is a consumer of the declaration, not its authority.
 data cli_option_entry: String = "--entry"
 
 data cli_option_target: String = "--target"
@@ -401,6 +408,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                 reason: ^cli_unknown_option,
                 detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
               }
+            CliRootsSelectSpelled =>
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              }
           }
         } else {
           if arg == cli_option_write_identity {
@@ -419,6 +431,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                   detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
                 }
               CliRootsCheckLayout =>
+                CliParseFailed {
+                  reason: ^cli_unknown_option,
+                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                }
+              CliRootsSelectSpelled =>
                 CliParseFailed {
                   reason: ^cli_unknown_option,
                   detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
@@ -445,6 +462,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                     reason: ^cli_unknown_option,
                     detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
                   }
+                CliRootsSelectSpelled =>
+                  CliParseFailed {
+                    reason: ^cli_unknown_option,
+                    detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                  }
               }
             } else {
               if arg == cli_option_reuse_from {
@@ -463,6 +485,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                       detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
                     }
                   CliRootsCheckLayout =>
+                    CliParseFailed {
+                      reason: ^cli_unknown_option,
+                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                    }
+                  CliRootsSelectSpelled =>
                     CliParseFailed {
                       reason: ^cli_unknown_option,
                       detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
@@ -728,6 +755,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
         CliIfArmReaderDifferential { source_roots: roots } => roots
         CliCheckLayout { source_roots: roots } => roots
+        CliSelectSpelledModules { source_roots: roots } => roots
         CliParsePopulation { source_roots: roots, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => roots
       }
   }
@@ -787,6 +815,7 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
             cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
           }
         CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
+        CliSelectSpelledModules { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_select_spelled_modules)
         CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
           cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
@@ -1059,6 +1088,7 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
       cli_run_acquired(plan: plan, bindings: bindings, entries: [entry])
     CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
     CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
+    CliSelectSpelledModules { source_roots: _ } => cli_population_reported(report: select_spelled_modules(bindings: bindings))
     CliParsePopulation { source_roots: _, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       cli_population_reported(
         report: parse_population_written(

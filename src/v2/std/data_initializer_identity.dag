@@ -2,7 +2,7 @@ module v2.std.data_initializer_identity
 
 import std.types { List }
 import std.algebra { list_snoc_item, collection_concat_shape }
-import v2.std.node { named_edge_sort_key, symbol_lexeme, Disj, Arrow, Occupancy, Instantiation, ComputationNode, Conj, Atom, Node }
+import v2.std.node { named_edge_sort_key, symbol_lexeme, Disj, Arrow, Instantiation, ComputationNode, Conj, Atom, Node }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.decl_index { DeclFact }
@@ -24,7 +24,6 @@ fn projection_kind_lexeme_optional(node: Node) -> Optional<String> {
     TypeNode { connective: Conj } => optional_absent()
     TypeNode { connective: Disj } => optional_absent()
     TypeNode { connective: Arrow } => optional_absent()
-    TypeNode { connective: Occupancy } => optional_absent()
     TypeNode { connective: Instantiation } => optional_absent()
     ComputationNode { behavior: _ } => optional_absent()
   }

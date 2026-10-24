@@ -1,0 +1,45 @@
+module test.probe.lost_boot_sweep_run_probe
+
+// THIS MODULE MUST NOT RESOLVE. The run witness's supplied_population supplies a width to a restricted
+// constructor, so it is a boundary of its own: admit_callers-restricted to run_sweep. A call from here
+// must refuse AT THE HELPER. The witness test.claim.runner.runner_lost_boot_sweep_run_probe_witness
+// requires that refusal by subject name. dag/test/probe/ sits under the strict-resolve exclusion.
+
+import std.types { String, NonEmptyStr, Secret }
+import std.process { ProcessExit }
+import std.resources { Network }
+import product.host_identity { HostIdentity }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.github_effect_perform { ControllerInstallationToken }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId }
+import gunbc.runner.runner_lost_boot_sweep_run { sweep_under_staged_key, sweep_and_deregister, CurrentBootEvidence, CurrentBootObservation, CurrentBootObserved, mint_current_boot_evidence }
+import gunbc.host.host_control_route { HostControlStanding }
+import test.claim.runner.runner_lost_boot_sweep_run_witness { SuppliedPopulation, supplied_population, observed_on }
+
+fn outside_supplied_population(host: HostControlStanding, id: String) -> SuppliedPopulation {
+  supplied_population(host: host, id: id)
+}
+
+fn outside_sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+  uses net: Network
+{
+  sweep_under_staged_key(host: host, standing: standing, current: current, wif: wif, key_path: key_path)
+}
+
+fn outside_sweep_and_deregister(standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
+  uses net: Network
+{
+  sweep_and_deregister(standing: standing, current: current, token: token, control_plane: control_plane)
+}
+
+fn outside_evidence_literal(host: String, boot: ServiceBootId) -> CurrentBootObservation {
+  CurrentBootObserved { evidence: CurrentBootEvidence { host: host, boot: boot } }
+}
+
+fn outside_mint_current_boot_evidence(host: String, boot: ServiceBootId) -> CurrentBootEvidence {
+  mint_current_boot_evidence(host: host, boot: boot)
+}
+
+fn outside_observed_on(host: String, id: String) -> CurrentBootObservation {
+  observed_on(host: host, id: id)
+}

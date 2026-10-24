@@ -36,7 +36,7 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.owned_directory { owned_directory_stat_format }
 import std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb, systemctl_mask_verb, systemctl_now_flag }
 import gunbc.fleet.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -76,6 +76,7 @@ type ExecutorPrivilegedOperation
   | SystemdDaemonReload
   | SystemdEnableUnit { unit: NonEmptyStr }
   | SystemdStartUnit { unit: NonEmptyStr }
+  | SystemdMaskNowUnit { unit: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
   | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
@@ -223,6 +224,12 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_start_verb,
       u
     ]
+    SystemdMaskNowUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_mask_verb,
+      systemctl_now_flag,
+      u
+    ]
     SystemdSetUnitProperty { unit: u, assignment: a } => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
       systemctl_set_property_verb,
@@ -243,6 +250,7 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     SystemdDaemonReload => RunsAsRoot
     SystemdEnableUnit { unit: _ } => RunsAsRoot
     SystemdStartUnit { unit: _ } => RunsAsRoot
+    SystemdMaskNowUnit { unit: _ } => RunsAsRoot
     SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
     EnsureSystemAccount { login: _, shell: _ } => RunsAsRoot
     EnsureSupplementaryGroupMembership { login: _, group: _ } => RunsAsRoot
@@ -433,7 +441,7 @@ fn runner_slot_privileged_operations(
 data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "host_effect_apply",
     field: WholeDeclaration,
   }
@@ -480,6 +488,7 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     SystemdDaemonReload => NoPrecondition
     SystemdEnableUnit { unit: _ } => NoPrecondition
     SystemdStartUnit { unit: _ } => NoPrecondition
+    SystemdMaskNowUnit { unit: _ } => NoPrecondition
     SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
     InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => NoPrecondition
     SystemdReloadUnit { unit: _ } => NoPrecondition

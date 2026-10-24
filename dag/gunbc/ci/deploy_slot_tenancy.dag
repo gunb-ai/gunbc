@@ -1,0 +1,60 @@
+module gunbc.ci.deploy_slot_tenancy
+
+import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.runner.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
+}
+import gunbc.ci.deploy_route_requirement { DeployRouteJobTenancy, SharesJobUidWithPullRequestJobs, SoleTenantOfJobUid }
+
+// ── THE SLOT THAT TAKES ONLY MAIN-PINNED DEPLOY DISPATCHES ──────────────────────────────────────
+// gunbc.ci.deploy_route_requirement requires the host-root effects of a deploy to run where no pull
+// request job shares the job uid. Two walls make a slot such a tenant, and neither alone does:
+//   * ADMISSION: a runner group restricted to exactly one workflow at the default branch
+//     (gunbc.runner.runner_group_restriction_observation RestrictedRunnerGroup, minted only by
+//     reading the org's groups back). A label alone does not admit or refuse: selection is set
+//     membership (runner_labels_satisfy_selector), so any workflow may name any label; the group is
+//     what refuses a pull request workflow.
+//   * ISOLATION: a job uid no pull request slot runs as. The group controls what is scheduled onto
+//     the slot, not whether a same-uid job in ANOTHER slot reaches this slot's in-run ssh-agent or
+//     the _work/_temp/fleet-ssh-mux socket, so admission without a distinct uid leaves the arm open.
+// gunbc.plans.srv1_deploy_principal_split, D3 precondition.
+
+// The runner group and the runner label are one string (as private_heal_publisher_runner_group_name
+// is): the label the deploy job selects is the group that restricts who may use it.
+data deploy_slot_runner_group_name: NonEmptyStr = "gunbc-deploy"
+
+// The job uid of the deploy slot, distinct from srv1's pull request job uid. Its grants are the
+// narrow per-unit set only; the administrator edge, not this account, holds host-root reach.
+data deploy_slot_job_user: NonEmptyStr = "ghdeploy"
+
+fn deploy_slot_selected_workflow() -> NonEmptyStr {
+  join([
+    gunbc_repository.full_name as String, "/",
+    artifact_path(a: FleetConvergeYamlArtifact),
+    "@refs/heads/", gunbc_repository.default_branch as String,
+  ], "") as NonEmptyStr
+}
+
+// What a read of the deploy slot holds: the group's standing as the sealed observer reports it, the
+// uid the deploy slot's jobs run as, and the uid of every other slot on the host.
+type DeploySlotReading {
+  group: MicrovmRunnerGroupStanding
+  deploy_slot_job_user: NonEmptyStr
+  other_slot_job_users: List<NonEmptyStr>
+}
+
+// SOLE TENANT ONLY WHEN BOTH WALLS HOLD. Anything the observer refused, or a uid shared with another
+// slot, reads as shared: absence of the group is not irrelevance.
+fn deploy_slot_observed_tenancy(reading: DeploySlotReading) -> DeployRouteJobTenancy {
+  match reading.group {
+    RunnerGroupRestrictionRefused { name: _, cause: _ } => SharesJobUidWithPullRequestJobs
+    RunnerGroupRestrictedToWorkflow { restriction: _ } =>
+      if count(filter(reading.other_slot_job_users, u => (u as String) == (reading.deploy_slot_job_user as String))) == 0 {
+        SoleTenantOfJobUid
+      } else {
+        SharesJobUidWithPullRequestJobs
+      }
+  }
+}

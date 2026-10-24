@@ -12,7 +12,7 @@ import v2.extdeps.languages.rust {
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 
 data nominal_distinct_forbidden_authority_source_text: String = "nominal_distinct_forbidden_authority_source_text"
@@ -22,6 +22,7 @@ data nominal_distinct_records_source: Medium<String> = Medium { carried: "module
 data nominal_distinct_brands_source: Medium<String> = Medium { carried: "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n", fidelity: Lossless }
 data nominal_distinct_control_source: Medium<String> = Medium { carried: "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n", fidelity: Lossless }
 data nominal_distinct_compile_target: TargetModel = TargetModel {
+  primitive_realizations: PrimitiveRealizationsUnwired,
   produced_decl_support: ProducedDeclUnwired,
   bundle: rust_target_model_node(),
   lex: rust_fn_add_lex(),

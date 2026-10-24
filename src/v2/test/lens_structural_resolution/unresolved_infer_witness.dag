@@ -1,10 +1,11 @@
 module v2.test.lens_structural_resolution.unresolved_infer_witness
 
+
 import v2.std.dependency { DependencyView }
 
 import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 
-import v2.std.node { Authored }
+import v2.std.node { Authored, NotADeclaration }
 import std.types { Map }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
@@ -26,7 +27,7 @@ data sr_infer_use: Node = sr_infer_claim_atom(s: ^sr_infer_use_symbol)
 data sr_infer_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_infer_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_infer_use, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

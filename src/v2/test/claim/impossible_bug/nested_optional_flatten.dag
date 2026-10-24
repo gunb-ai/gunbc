@@ -11,7 +11,9 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Occupancy }
+import std.nat { Succ, Zero }
+import v2.std.optional_layers { wrap_type_node_occupancy }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, NotADeclaration }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -33,30 +35,15 @@ fn atom_node(s: Symbol) -> Node {
 
 data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
 
-data falsification_nested_optional: Node = Node {
-  kind: TypeNode { connective: Occupancy },
-  children: [
-    Edge {
-      label: Positional,
-      target: Node {
-        kind: TypeNode { connective: Occupancy },
-        children: [
-          Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
-        ],
-        occurrence_id: OccurrenceSynthetic
-}
-    },
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data falsification_nested_optional: Node = wrap_type_node_occupancy(
+  base: atom_node(s: ^optional_value_symbol),
+  depth: Succ { prev: Succ { prev: Zero } }
+)
 
-data falsification_optional_double_unwrap: Node = Node {
-  kind: TypeNode { connective: Occupancy },
-  children: [
-    Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
-  ],
-  occurrence_id: OccurrenceSynthetic
-}
+data falsification_optional_double_unwrap: Node = wrap_type_node_occupancy(
+  base: atom_node(s: ^double_unwrap_symbol),
+  depth: Succ { prev: Zero }
+)
 
 data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
   label: "optional cardinality refinement keeps accessor surface single-layer",

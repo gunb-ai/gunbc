@@ -1,7 +1,8 @@
 module gunbc.rung_drop.rust_unit_tests_off_pull_requests
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-10-06, operator-approved (CI short-term relief). The fleet rust-unit-tests job runs
@@ -16,9 +17,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // blocks at the merge queue runs nowhere. The trigger did not fire: nothing reports a failing v1
 // unit test on a pull request. The loss is carried by v1_required_lanes_withdrawn.
 
-data rust_unit_tests_off_pull_requests_population: List<String> = [
-  "pull_request runs of the fleet rust-unit-tests job of gunbc.witness.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command) is not executed per push, so a failing v1-compiler unit test blocks at merge_group instead of on the pull request",
-]
+data rust_unit_tests_off_pull_requests_population: FreeSemigroup<String> = FreeSemigroup { head: "pull_request runs of the fleet rust-unit-tests job of gunbc.witness.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command) is not executed per push, so a failing v1-compiler unit test blocks at merge_group instead of on the pull request", tail: [] }
 
 data rust_unit_tests_off_pull_requests: RungDrop = RungDrop {
   identity: "rust_unit_tests_off_pull_requests" as NonEmptyStr,
@@ -27,15 +26,15 @@ data rust_unit_tests_off_pull_requests: RungDrop = RungDrop {
   standing: Superseded {
     ruling: "the operator ruling of 2026-10-09 (the v1 withdrawal): v1 is no longer a validation authority, and the rust-unit-tests job was deleted from gunbc.witness.compiler_gate_workflow with the floor, generated and seed lanes. The trigger did NOT fire -- no failing v1 unit test is reported on a pull request, or anywhere on the required path" as NonEmptyStr,
     decision_record: "the operator's brief to session smart-gull-336 on 2026-10-09 (the v2 half of the v1 withdrawal), carried by the change that declares gunbc.rung_drop v1_required_lanes_withdrawn" as NonEmptyStr,
-    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
-  },
-  declaration: TypedDeclaration {
+    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr,
+    declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "per-push runner cost of the CI programme (docs/plans/ci-end-to-end-accounting.md) brought below the point where the unit lane can run on every pull request"
     },
-    population: rust_unit_tests_off_pull_requests_population,
+    population: Enumerated { members: rust_unit_tests_off_pull_requests_population },
     restoration_trigger: "THE CAPABILITY: a failing v1-compiler --lib unit test is reported on the pull request that introduced it, within the per-push CI budget. WHAT THAT MUST BE SUFFICIENT FOR: the author of a breaking change sees the red before entering the queue; re-adding the job to pull_request without that budget does not retire this row."
+  }
   }
 }

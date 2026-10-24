@@ -1,0 +1,107 @@
+module test.claim.fleet_fan_mint_seal_witness
+
+import std.types { String, Bool, Int }
+import std.process { ProcessExit }
+import gunbc.compile_diagnostic_census { CensusNotRunnable, CensusObserved, CompileDiagnosticCensus, census_blocking_histograms_equal }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit, census_premise, CensusUnobserved, CensusVerdict, CensusHeld, CensusDisagreed }
+
+// THE FLEET FAN OBSERVATION MINT IS TERMINAL-SEALED. Each probe is source handed to the compiler as
+// DATA (the pattern of operation_admit_callers_inert_witness), written as an OUTSIDE module that is
+// named by no admit_callers list. The four routes a successful FleetFanObserved or a synthetic
+// FanObserveHost could take are each refused: a direct record literal, a direct call to the mint, an
+// indirect call through the witness `read` helper, and an indirect call through `variant_subject`.
+// The accepted controls are the baseline witnesses in fleet_fan_converge_witness, which execute the
+// admitted terminal routes; the control below shows the harness itself compiles a legal outside module
+// clean, so a red cannot mean this file cannot compile a probe at all.
+
+data literal_source: String = "module probe_fan_literal\nimport gunbc.fleet.fleet_fan_converge { FleetFanObserved, FleetFanReadReceipt, FleetFanReading }\nimport gunbc.machine_intake.fan_observe { FanObserveHost }\nfn forged(s: FanObserveHost, r: FleetFanReadReceipt, x: FleetFanReading) -> FleetFanObserved {\n  FleetFanObserved { subject: s, receipt: r, reading: x }\n}\n"
+
+data direct_mint_source: String = "module probe_fan_direct_mint\nimport gunbc.fleet.fleet_fan_converge { FleetFanObserved, FleetFanReadReceipt, FleetFanReading, fleet_fan_observed }\nimport gunbc.machine_intake.fan_observe { FanObserveHost }\nfn forged(s: FanObserveHost, r: FleetFanReadReceipt, x: FleetFanReading) -> FleetFanObserved {\n  fleet_fan_observed(subject: s, receipt: r, reading: x)\n}\n"
+
+data indirect_read_source: String = "module probe_fan_indirect_read\nimport gunbc.fleet.fleet_fan_converge { FleetFanObserved, FleetFanReading }\nimport gunbc.machine_intake.fan_observe { FanObserveHost }\nimport test.claim.fleet_fan_converge_witness { read }\nfn forged(s: FanObserveHost, x: FleetFanReading) -> FleetFanObserved {\n  read(s: s, n: 1, r: x)\n}\n"
+
+data indirect_subject_source: String = "module probe_fan_indirect_subject\nimport product.host_identity { HostIdentity }\nimport gunbc.machine_intake.fan_observe { FanObserveHost }\nimport test.claim.fleet_fan_converge_witness { variant_subject }\nfn forged(h: HostIdentity) -> FanObserveHost? {\n  variant_subject(host: h, openbmc: true)\n}\n"
+
+data evidence_literal_source: String = "module probe_fan_evidence_literal\nimport product.host_identity { HostIdentity }\nimport product.fleet_fan_policy { FleetFanControl }\nimport gunbc.fleet.fleet_fan_converge { FleetFanConvergedEvidence, FleetFanReadReceipt }\nfn forged(h: HostIdentity, c: FleetFanControl, r: FleetFanReadReceipt) -> FleetFanConvergedEvidence {\n  FleetFanConvergedEvidence { host: h, control: c, readback: r }\n}\n"
+
+data evidence_mint_source: String = "module probe_fan_evidence_mint\nimport product.host_identity { HostIdentity }\nimport product.fleet_fan_policy { FleetFanControl }\nimport gunbc.fleet.fleet_fan_converge { FleetFanConvergedEvidence, FleetFanReadReceipt, fleet_fan_converged_evidence }\nfn forged(h: HostIdentity, c: FleetFanControl, r: FleetFanReadReceipt) -> FleetFanConvergedEvidence {\n  fleet_fan_converged_evidence(host: h, control: c, readback: r)\n}\n"
+
+data legal_baseline_source: String = "module probe_fan_legal\nimport std.types { Int }\nimport gunbc.fleet.fleet_fan_converge { FleetFanReadReceipt }\n"
+
+data broken_outside_source: String = "module probe_fan_legal\nimport std.types { Int }\nimport gunbc.fleet.fleet_fan_converge { FleetFanReadReceipt }\nfn takes(r: FleetFanReadReceipt) -> Int { r.no_such_field + undefined_name }\n"
+
+data legal_outside_source: String = "module probe_fan_legal\nimport std.types { Int }\nimport gunbc.fleet.fleet_fan_converge { FleetFanReadReceipt }\nfn takes(r: FleetFanReadReceipt) -> Int { r.attempt }\n"
+
+fn fan_census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocked_with(source: String, class: String) -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: source, wanted_class: class), holds: fn(n) { n >= 1 }))
+}
+
+
+// THE CENSUS COUNTS THE WHOLE COMPILE, closure included (gunbc.compile_diagnostic_census), so an
+// absolute zero is permanently false for a fixture that imports anything. The exact form is a
+// DIFFERENTIAL over two sources that differ on one axis: the legal module adds one function to the
+// same imports, and its blocking HISTOGRAM (any class - an undefined name or a type error included)
+// must equal the baseline's key by key in both directions, both censuses observed. A total would let
+// one diagnostic disappearing offset another arriving.
+fn clean_verdict(source: String, expect_clean: Bool) -> CensusVerdict {
+  match fan_census_of(source: legal_baseline_source) {
+    CensusObserved { rows: base } => match fan_census_of(source: source) {
+      CensusObserved { rows: with_fn } =>
+        census_premise(name: "the blocking histogram equals the baseline's exactly when the module is clean", holds: census_blocking_histograms_equal(a: base, b: with_fn) == expect_clean)
+      CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+    }
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+  }
+}
+
+fn clean_exit(source: String, expect_clean: Bool) -> ProcessExit {
+  census_exit(clean_verdict(source: source, expect_clean: expect_clean))
+}
+
+// A source declaring no module is a census that cannot run. `!clean` used to read that refusal as "not
+// clean" and pass the broken-module claim; the verdict now carries it as unobserved instead.
+data moduleless_source: String = "fn probe_fan_moduleless() -> Int { 1 }\n"
+
+test fn witness_direct_literal_is_refused() -> ProcessExit {
+  blocked_with(source: literal_source, class: "SoleConstructorViolation")
+}
+
+test fn witness_direct_mint_call_is_refused() -> ProcessExit {
+  blocked_with(source: direct_mint_source, class: "ConstructorCallAdmissionRefused")
+}
+
+test fn witness_indirect_mint_through_read_is_refused() -> ProcessExit {
+  blocked_with(source: indirect_read_source, class: "ConstructorCallAdmissionRefused")
+}
+
+test fn witness_indirect_subject_through_variant_subject_is_refused() -> ProcessExit {
+  blocked_with(source: indirect_subject_source, class: "ConstructorCallAdmissionRefused")
+}
+
+test fn witness_a_legal_outside_module_compiles_clean() -> ProcessExit {
+  clean_exit(source: legal_outside_source, expect_clean: true)
+}
+
+test fn witness_converged_evidence_literal_is_refused() -> ProcessExit {
+  blocked_with(source: evidence_literal_source, class: "SoleConstructorViolation")
+}
+
+test fn witness_converged_evidence_mint_call_is_refused() -> ProcessExit {
+  blocked_with(source: evidence_mint_source, class: "ConstructorCallAdmissionRefused")
+}
+
+test fn witness_a_broken_outside_module_is_not_clean() -> ProcessExit {
+  clean_exit(source: broken_outside_source, expect_clean: false)
+}
+
+test fn a_census_that_cannot_run_is_unobserved_not_clean() -> Bool {
+  match clean_verdict(source: moduleless_source, expect_clean: false) {
+    CensusUnobserved { cause: _ } => true
+    CensusHeld {} => false
+    CensusDisagreed { reason: _ } => false
+  }
+}

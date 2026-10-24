@@ -2,7 +2,7 @@
 // Source module: std.graph
 
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
 };
 pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
@@ -267,9 +267,9 @@ pub fn graph_multi_node_scc_members(
             Rc::new(vec![]),
             |acc: Rc<Vec<String>>, component: Rc<Vec<String>>| {
                 if ((component.clone().len() as i64) > 1) {
-                    v1_rt::concat(acc.clone(), component.clone())
+                    v1_rt::concat(acc, component.clone())
                 } else {
-                    acc.clone()
+                    acc
                 }
             },
         )
@@ -336,15 +336,14 @@ pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<V
     }
 }
 
-pub fn graph_reverse_reachable_members(
-    names: Rc<Vec<String>>,
-    graph: Rc<CallGraph>,
+pub fn graph_reverse_reachable_members_from_views(
+    views: Rc<CallGraphAdjacencyViews>,
     start: String,
 ) -> Rc<Vec<String>> {
     {
         let reached = dfs_collect_component(
             start.clone(),
-            reverse_adjacency(names.clone(), graph.clone()),
+            views.reverse.clone(),
             Rc::new(SccComponentAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
                 members: Rc::new(vec![]),
@@ -360,6 +359,17 @@ pub fn graph_reverse_reachable_members(
             __result
         })
     }
+}
+
+pub fn graph_reverse_reachable_members(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+    start: String,
+) -> Rc<Vec<String>> {
+    graph_reverse_reachable_members_from_views(
+        build_adjacency_views(names.clone(), graph.clone()),
+        start.clone(),
+    )
 }
 
 pub fn is_lexicographic_descent(mut __tco_loop_evidence: Rc<Vec<DescentEvidence>>) -> bool {
