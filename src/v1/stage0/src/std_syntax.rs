@@ -150,9 +150,23 @@ pub struct OperatorSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PrefixOperatorSpec {
+    pub symbol: String,
+    pub binding_power: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PostfixOperatorSpec {
+    pub symbol: String,
+    pub binding_power: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SyntaxSpec {
     pub item_forms: Rc<Vec<Rc<ItemForm>>>,
     pub operators: Rc<Vec<Rc<OperatorSpec>>>,
+    pub prefix_operators: Rc<Vec<Rc<PrefixOperatorSpec>>>,
+    pub postfix_operators: Rc<Vec<Rc<PostfixOperatorSpec>>>,
     pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
     pub keyword_set: Rc<HashMap<String, bool>>,
 }

@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.declared_confinement_the_host_cannot_start
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 data declared_confinement_the_host_cannot_start: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_confinement_the_host_cannot_start" as NonEmptyStr,
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable." as NonEmptyStr } },
+
   receipts: [
     "**A workload declares a confinement mode that its host cannot build, and nothing reads that before the workload is selected, so the first observation of the deficit is the workload's own failure.** INVALID STATE: a selection admits a run whose declared execution environment -- here Cursor's sandbox, which gunbc.cursor_harness_credential cursor_worker_turn_run declares as CursorSandboxEnabled so that --force is not unconfined -- cannot be constructed on the host the run is placed on. The run fails closed, which is right, but only AFTER selection: the attempt, its receipt-qualified credential snapshot, its launch and its child are all spent to learn a host fact that a free read answers without a provider call.",
     "DISTINGUISHING FACTS. It is not sandbox_properties_declared_but_not_enforced_by_the_realization: there the confinement is silently DROPPED and the workload runs unconfined while every observable reads confined (below the ladder). Here the realization refuses loudly. The two share a host cause -- kernel.apparmor_restrict_unprivileged_userns=1 on Ubuntu 24.04 (extdeps.linux.apparmor_userns), which blocks the unprivileged user namespace both the systemd user manager and Cursor's sandbox need -- and that shared cause is the reason to read the host fact once, by an observation, rather than let each consumer discover it. Nor is it suppressed_precondition_failure_runs_the_workload_unconstrained, whose precondition fails and whose diagnostic is thrown away. Here the diagnostic arrives, but too late. That row IS the hazard a naive repair walks into, though: disabling the sandbox to make the turn run would trade this class for that one.",
@@ -19,7 +22,7 @@ data declared_confinement_the_host_cannot_start: RecurringFailureMode = Recurrin
     DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_sandbox_preflight_reading", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_sandbox_discriminating_preflight_command", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_worker_turn_run", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.worker_turn_standing", decl_name: "cursor_standing_from_readings", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.worker_turn_standing", decl_name: "cursor_standing_from_sandbox_refusal", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.linux.apparmor_userns", decl_name: "apparmor_restrict_unprivileged_userns_sysctl_name", field: WholeDeclaration },
   ],
 }

@@ -1,7 +1,8 @@
 module gunbc.guarantee_stall.keyed_apply_patch_rebuilds_rows_per_hunk_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // A KNOWN COPIED ACCUMULATOR, RECORDED AS AN EXISTING DEFICIT (DESIGN section 6, bare minimum cost: a
 // proven cost-shape defect is always fixed; this row bounds and names it until it is). std.change

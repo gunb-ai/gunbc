@@ -1,11 +1,22 @@
 module test.claim.host.host_reset_return_witness
 
 import std.logic { Bool }
-import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural, Sha256Digest, Sha256Hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit, ExitSuccess }
+import std.algebra { string_contains }
+import std.list { first_where }
+import v2.std.witness_evaluation { WitnessEvaluation, WitnessReturned }
+import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
+  MtCollins1BootWorld, world_for_reset_route, run_reset_route, count_named, realization_identity,
+}
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host.host_reset_return {
+  host_roster_contains,
+  host_reset_return_receipt_path,
   AttemptIdentitiesNotDistinct,
   AttemptTimingUnavailable,
   ControllerDidNotAccept,
@@ -168,8 +179,8 @@ fn fx_receipt(
       route: route,
       self_identity: self_identity,
       acknowledgement: acknowledgement,
-      observation: observation,
-    ),
+      observation: observation, admitted: none,
+      ),
     evidence_path: evidence_path,
     evidence_digest: evidence_digest,
   )
@@ -868,7 +879,7 @@ test fn w_attempts_against_different_subjects_refuse() -> Bool {
           back_first_seen_at: 1788000301000,
           down_samples: 3,
           back_samples: 2,
-        },
+        }, admitted: none,
       ),
       evidence_path: "artifacts/host/srv3-reset-attempt-2.json",
       evidence_digest: fx_digest_second,
@@ -1162,5 +1173,87 @@ test fn w_an_observer_assigned_to_two_subjects_refuses_from_a_fixture() -> Bool 
         NoResetSubjectRostered => false
       }
     DispatchAssignment { pairings: _ } => false
+  }
+}
+
+
+// ─── THE RESET ROUTE, EXECUTED ────────────────────────────────────────────────────────────────
+// SIDE-CHAT BLOCKER 1, RESET PROJECTION. Everything above asks the folds what they would conclude for
+// evidence a claim hands them. These three run the PRODUCTION entry -- gunbc.host.host_reset_return_run
+// host_reset_return_wet -- under the acceptance matrix's hermetic frame over the modeled srv1 world
+// (subject admitted from the COMMITTED operator evidence, the frame's own boot bindings with the ONE
+// change that reachability of the subject answers from the modeled chassis power), and read the
+// consumed release out of what the route ITSELF produced: the receipt text it wrote, and the controller
+// writes the frame recorded. A mutation that restores the historical observation-firmware lookup
+// INSIDE oob_boot_handoff -- where admission is actually computed -- changes what the route consumes
+// while leaving every claim-supplied admission untouched; only a claim that executes the route sees it.
+// The frame is shared with the boot projections on purpose: one realization authority, and the frame
+// module (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix) rosters its wet entry here.
+
+fn executed_reset_route_evaluation() -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+  run_reset_route(world: world_for_reset_route(observer_label: "srv1", run_id: "77001"), evidence: megarac_operation_evidence())
+}
+
+// THE ROUTE RAN AND SAID THE HOST CAME BACK. Exit 0 is the HostDrivenBack arm; every refusal arm --
+// including HostObservedDownAndNotBack, which is what a cycle the model never completed answers --
+// exits 1. So this arm is the run's OWN verdict from its OWN watches, not a claim's reading of a
+// transcript.
+fn executed_reset_route_drove_the_subject_back() -> Bool {
+  match executed_reset_route_evaluation() {
+    WitnessReturned { value: ExitSuccess, route: _, state: _ } => true
+    _ => false
+  }
+}
+
+test fn w_the_executed_reset_route_consumes_the_current_release_identity() -> Bool {
+  match executed_reset_route_evaluation() {
+    WitnessReturned { value: ExitSuccess, route: _, state: Present { value: w } } =>
+      match first_where(xs: w.fs.files, keep: fn(f) { f.path == "/home/runner/work/gunbc/gunbc/target/host-reset-return.txt" }) {
+        // THE RECEIPT NAMENTS THE RELEASE THE ROUTE CONSUMED, and the name that must be there is not
+        // the one a historical lookup could ever print: the committed route observation was probed on
+        // 0.32, so restoring the observation-firmware lookup at the fold puts 0.32 in this line and
+        // this claim goes red by release identity.
+        Present { value: receipt } =>
+          string_contains(s: receipt.content, pattern: " consumed=0.45.3")
+            && !string_contains(s: receipt.content, pattern: " consumed=0.32")
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// THE REPORTED IDENTITY CAME FROM WRITING THE CONTROLLER. The receipt's identity is carried out only by
+// the arm the route mints after it has applied the boot selection AND actuated power, but a reader who
+// trusts only the file could be trusting a mint beside writes that never happened. The frame's trace
+// says which controller operations the run actually issued: a selection write and a power operation,
+// both non-zero. A cycle that never left on answers HostObservedDownAndNotBack and is refused by the
+// exit judgement above, so the pair together say: this route reached the controller, made the chassis
+// leave and come back, and consumed the release the boot was admitted on.
+fn executed_reset_route_wrote_the_controller() -> Bool {
+  match executed_reset_route_evaluation() {
+    WitnessReturned { value: ExitSuccess, route, state: _ } =>
+      count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") != 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") != 0
+    _ => false
+  }
+}
+
+test fn w_the_identity_the_executed_reset_route_reported_came_from_writing_the_controller() -> Bool {
+  executed_reset_route_drove_the_subject_back() && executed_reset_route_wrote_the_controller()
+}
+
+
+
+// THE REAL DERIVATION NEVER ROSTERS A SUBJECT AS AN OBSERVER. A host enrolled as a runner executor AND admitted
+// as a reset subject (mtcollins1) is on both source rosters; the peer roster derives with every subject excluded,
+// so the whole assignment is minted instead of refused. Deleting the exclusion in reset_observer_peer_roster
+// refuses it with ObserverIsSubject, which is the fleet-converge regen refusal this control replaces.
+test fn w_the_real_peer_roster_excludes_every_reset_subject_and_the_assignment_is_minted() -> Bool {
+  let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
+  let peers = reset_observer_peer_roster(subjects: subjects)
+  let excluded = fold(subjects, init: true, f: (ok, s) => ok && host_roster_contains(roster: peers, host: s) == false)
+  excluded && list_length(subjects) > 0 && list_length(peers) > 0 && match reset_dispatch_pairings(subject_roster: subjects, peer_roster: peers) {
+    DispatchAssignment { pairings: _ } => true
+    DispatchAssignmentRefused { cause: _ } => false
   }
 }

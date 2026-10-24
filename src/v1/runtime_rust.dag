@@ -169,7 +169,7 @@ fn rt_string_ops() -> String {
     "}\n\n",
     "/// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved\n",
     "/// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.\n",
-    "pub fn pure_dag_seam_unreachable() -> i64 {\n",
+    "pub fn pure_dag_seam_unreachable() -> ! {\n",
     "    panic!(\"std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated\")\n",
     "}\n\n",
     "/// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.\n",

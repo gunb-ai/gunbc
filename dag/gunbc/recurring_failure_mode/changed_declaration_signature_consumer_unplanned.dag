@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.changed_declaration_signature_consumer_unpla
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data changed_declaration_signature_consumer_unplanned: RecurringFailureMode = RecurringFailureMode {
   identity: "changed_declaration_signature_consumer_unplanned" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "2026-10-09, PR #13607 bringup: runner_microvm_network_observe had been replaced by per-attempt sanitation helpers while ci_spec still named its removed runner_microvm_network_observe_wet CLI. The reference is workflow data, outside the declaration-call population described below. Restoring the observer and moving sanitation into runner_microvm_network_sanitation_observe preserves both consumers; workspace_network_producer_witness_test imports the restored production observer so the focused suite prepares its closure. Remaining ceiling: admission must resolve every emitted workflow entry/function pair, including data-carried references, before the required gate accepts it. This repair restores the particular route without claiming that broader gate exists.",
