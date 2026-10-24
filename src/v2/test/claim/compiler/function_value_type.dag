@@ -34,12 +34,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fvt_a_lambda_key_sort_derives_its_key_type, which runs the real route (source assembly, then infer) and asserts the
 // ROUTE: the lambda node's own facts are derived, and the call's K instance is that type's codomain.
 //
-// RED ON MAIN (measured on the PR): on main the lambda's facts are on the frontier (ProductEvidenceEdgesAbsent), so
-// fvt_a_lambda_key_sort_derives_its_key_type and fvt_a_record_field_function_value_is_typed are red,
-// and collection_roster_signature_arrow answers Absent for the sort_by row (CallableOf and AlgebraTypeVariable had no
-// projection), so fvt_sort_by_row_binds_its_key_variable is red.
-// MUTATION CONTROL: making infer_node_is_function_value answer false (the value takes product formation again) reds
-// the real-route claims and leaves the supplied interface claims green (cited in the PR).
+// RED ON MAIN, measured on gunbc#15038 against main 44c027aef41 with the same binary: the key lambda's facts are on the
+// frontier and the call records no K (it is accepted carrying inhabitance_undecidable_argument_type_not_derived), so
+// fvt_a_lambda_key_sort_derives_its_key_type is red; the record-field lambda's facts are on the frontier, so
+// fvt_a_record_field_function_value_is_typed is red; and collection_roster_signature_arrow answers Absent for the sort_by
+// row, so fvt_sort_by_row_binds_its_key_variable is red. The order pair is NOT red on main: main's consumer-position
+// signature already refused the Int key against a String order. It is kept as a control the repair must preserve.
+// MUTATION CONTROL: disabling the settle-row dispatch to infer_function_value_facts (the value takes product formation
+// again) reds the two real-route type claims, the order refusal, and callback_argument_formal's monomorphic positive;
+// the supplied interface claims are unaffected (both measured on the PR).
 
 data fvt_key_sort: String = "module p\n\nimport v2.std.collection { List }\n\ntype Item {\n  id: Int\n}\n\nfn sort_by_key<T, K>(xs: List<T>, key: fn(T) -> K) -> List<T> {\n  xs\n}\n\nfn by_id(xs: List<Item>) -> List<Item> {\n  sort_by_key(xs: xs, key: fn(x) { x.id })\n}\n"
 
@@ -280,10 +283,11 @@ test fn fvt_no_carrier_instance_fixes_no_generator() -> Bool {
 
 // THE KEY'S TYPE AND THE ORDER'S TYPE ARE ONE PARAMETER. The shape of std.algebra list_sort_by_key: K is fixed by the
 // order actual (settled first), and the key lambda's OWN type must then inhabit fn(T) -> K. An Int key against a
-// String order refuses AT `key`, typed and located (gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted:
-// the seed checker accepts this call and only rustc on the emitted crate refuses it -- a seed defect v2 does not carry
-// forward, DESIGN section 7). The matching Int order is accepted and decided -- the minimal pair, so the refusal is the
-// key's type and not an assembly slip.
+// String order refuses AT `key`, typed and located. The seed checker accepts this call and only rustc on the emitted
+// crate refuses it (gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted) -- a seed defect v2 does not
+// carry forward (DESIGN section 7); v2 refused it on main too, so this pair is a control the repair must keep, not a
+// RED. The matching Int order is accepted and decided -- the minimal pair, so the refusal is the key's type and not an
+// assembly slip.
 data fvt_ord_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Row {\n  rank: Int\n}\n\ntype Ord<K> {\n  pick: K\n}\n\nfn int_ord() -> Ord<Int> {\n  Ord { pick: 0 }\n}\n\nfn str_ord() -> Ord<String> {\n  Ord { pick: \"a\" }\n}\n\nfn sort_k<T, K>(xs: List<T>, key: fn(T) -> K, order: Ord<K>) -> List<T> {\n  xs\n}\n\n"
 
 fn fvt_ord_source(order: String) -> String {
