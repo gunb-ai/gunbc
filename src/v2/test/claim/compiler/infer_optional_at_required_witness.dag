@@ -102,7 +102,7 @@ data oar_arrow_named_ok_source: String = "module v2.test.oar_arrow_named_ok\n\nt
 
 data oar_arrow_named_x_source: String = "module v2.test.oar_arrow_named_x\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\nfn oar_pred(x: Int) -> Bool { true }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
 
-data oar_arrow_lambda_ok_source: String = "module v2.test.oar_arrow_lambda_ok\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\n\n\nfn oar_mk() -> OarA { OarA { p: fn(n) { n > 0 } } }\n"
+data oar_arrow_lambda_ok_source: String = "module v2.test.oar_arrow_lambda_ok\n\ntype OarA {\n  p: fn(Int) -> Bool\n}\n\n\n\nfn oar_mk() -> OarA { OarA { p: fn(n) { true } } }\n"
 
 data oar_arrow_nullary_source: String = "module v2.test.oar_arrow_nullary\n\ntype OarA {\n  p: fn() -> Bool\n}\n\nfn oar_pred() -> Bool { true }\n\nfn oar_mk() -> OarA { OarA { p: oar_pred } }\n"
 
@@ -293,7 +293,11 @@ test fn oar_arrow_named_x_is_accepted_holds() -> Bool {
 // gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer): the field's declared fn(Int) -> Bool
 // frames `n` at Int, and the unwritten return is the body's Bool. This control was the counted-frontier form
 // (accepted carrying inhabitance_undecidable_argument_type_not_derived) and flipped, as it said it would, when the
-// lambda's type was derived; it is never deleted.
+// lambda's type was derived; it is never deleted. ITS BODY IS `true`, NOT `n > 0`, AND THAT IS A CORRECTION: the
+// earlier form attributed the member run's inhabitance_undecidable_formal_unresolved to the lambda's fresh
+// variables, but it is the `>` operator application's -- a NAMED fn with the body `n > 0` at the same field carries it
+// on main and with this change alike, while `fn(n) { true }` carries none (measured on gunbc#15038). The operator's
+// obligation is its own frontier, and this control's subject is the lambda at the field.
 test fn oar_arrow_lambda_ok_is_accepted_and_decided_holds() -> Bool {
   rcf_member_accepted_and_decided(resolved: oar_resolved_arrow_lambda_ok(), member: ^oar_mk)
 }
