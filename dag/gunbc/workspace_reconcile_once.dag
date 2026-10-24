@@ -10,7 +10,7 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.command_runner { run_shell_command_capture }
 import product.placement_supply { HostIdentity }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
 import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_operation }
@@ -112,10 +112,13 @@ fn workspace_reconcile_prepare(store: FabricStorageBinding, allocation: Workspac
     WorkspaceHostJoinRefused { reason: why } => WorkspaceConvergenceUnobserved { reason: why }
     WorkspaceHostJoined { admissions: admissions } => {
     let evidence = workspace_demo_evidence(admissions: admissions, request: request)
-    workspace_prepare_convergence_from_observations(store: store, root: fabric_control_plane_store_root(), request: request,
-      attempt: workspace_demo_attempt(demand: workspace_demand(request: request, submitted_at: allocation.recorded_at, buy: workspace_demo_buy(), objective: debt_payoff_objective)),
-      evidence: evidence, policy: workspace_demo_policy(request: request, submitted_at: allocation.recorded_at, evidence: evidence),
-      submitted_at: allocation.recorded_at)
+    match fabric_allocation_store() {
+      FabricAllocationStoreUnready { detail } => WorkspaceConvergenceUnobserved { reason: detail as String }
+      FabricAllocationStoreReady { store: cells } => workspace_prepare_convergence_from_observations(store: store, allocation: cells, request: request,
+        attempt: workspace_demo_attempt(demand: workspace_demand(request: request, submitted_at: allocation.recorded_at, buy: workspace_demo_buy(), objective: debt_payoff_objective)),
+        evidence: evidence, policy: workspace_demo_policy(request: request, submitted_at: allocation.recorded_at, evidence: evidence),
+        submitted_at: allocation.recorded_at)
+    }
     }
   }
 }

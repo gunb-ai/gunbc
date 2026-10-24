@@ -35,11 +35,12 @@ import product.fabric.candidate_field { CandidateField }
 import product.fabric.selection { CandidateOffer }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric.fabric_executor_class { fleet_cell_sanction, capacity_admission_wire }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
 import gunbc.fabric.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, BudgetRefused,
   ReservationLost, PermitNamesAnotherUseForCell, StoreUnavailable, AttemptRefused,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
-  bind_fabric_cell_candidate, fabric_control_plane_store_root, fabric_cell_allocation_key,
+  bind_fabric_cell_candidate, fabric_cell_allocation_key,
   permit_standing_wire, money_refusal_wire, cas_store_failure_wire, offer_candidacy_wire,
 }
 import gunbc.runner.runner_microvm_shakedown {
@@ -142,7 +143,7 @@ fn microvm_shakedown_grant_evidence() -> FabricGrantEvidence {
 }
 
 fn microvm_job_broker_decide(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot: RunnerSlotIdentity,
   field: CandidateField<NonEmptyStr>,
   issued_at: Timestamp,
@@ -154,7 +155,7 @@ fn microvm_job_broker_decide(
     ShakedownRosterBound { roster: roster } =>
       ShakedownBrokerDecided {
         decision: broker_grant_for_demand(
-          root: root,
+          store: store,
           demand: microvm_job_demand(slot: slot, job: job),
           work: job.work,
           attempt: microvm_job_attempt(slot: slot, job: job),
@@ -171,12 +172,12 @@ fn microvm_job_broker_decide(
 }
 
 fn microvm_shakedown_broker_decide(
-  root: NonEmptyStr,
+  store: FabricAllocationStore,
   slot: RunnerSlotIdentity,
   field: CandidateField<NonEmptyStr>,
   issued_at: Timestamp,
 ) -> ShakedownBrokerOutcome {
-  microvm_job_broker_decide(root: root, slot: slot, field: field, issued_at: issued_at, job: microvm_shakedown_job())
+  microvm_job_broker_decide(store: store, slot: slot, field: field, issued_at: issued_at, job: microvm_shakedown_job())
 }
 
 // ── the candidate field: the shakedown offer, admitted under the fleet CI posture ──────────────────
@@ -310,8 +311,8 @@ fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField
 
 // ── the broker's root entry ─────────────────────────────────────────────────────────────────────
 
-// THE UNIT'S ENTRY TAKES NOTHING FROM ITS STARTER. The slot is the shakedown slot row, the store root
-// is the control plane's, the field is derived above; only the InvocationID systemd minted for this
+// THE UNIT'S ENTRY TAKES NOTHING FROM ITS STARTER. The slot is the shakedown slot row, the store is the
+// allocation store minted from its declaration (gunbc.fabric.fabric_allocation_store), the field is derived above; only the InvocationID systemd minted for this
 // start is read, to key the receipt. Exit is zero only for a committed reservation whose receipt was
 // written.
 fn microvm_slot_reserve_main() -> ProcessExit {
@@ -321,9 +322,11 @@ fn microvm_slot_reserve_main() -> ProcessExit {
       let slot = srv1_microvm_shakedown_slot()
       match clock_now_probed_at() {
       Absent => exit_failure(reason: "microvm_slot_reserve: the clock could not be read; a grant is not issued without its issue time")
-      Present { value: now } => {
+      Present { value: now } => match fabric_allocation_store() {
+      FabricAllocationStoreUnready { detail } => exit_failure(reason: join(["microvm_slot_reserve: the allocation store is unready: ", detail as String], ""))
+      FabricAllocationStoreReady { store: allocation } => {
       let outcome = microvm_shakedown_broker_decide(
-        root: fabric_control_plane_store_root(),
+        store: allocation,
         slot: slot,
         field: microvm_shakedown_candidate_field(slot: slot),
         issued_at: now,
@@ -337,6 +340,7 @@ fn microvm_slot_reserve_main() -> ProcessExit {
         exit_failure(reason: join(["microvm_slot_reserve: ", text], ""))
       } else {
         ExitSuccess
+      }
       }
       }
       }

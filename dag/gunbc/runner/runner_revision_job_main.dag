@@ -15,7 +15,7 @@ import product.fabric.identity { FabricIdentity }
 import product.fabric.sanitation { CellReadiness, CellQuarantined }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.floor.floor_demand { floor_execution_requirements }
-import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
 import gunbc.fabric.fabric_witness_run {
   ExactGitSource, FabricCiWorkBinding, FabricCiWorkBound, FabricCiWorkRefused, VerifiedGitCommitTree,
 }
@@ -205,20 +205,23 @@ fn revision_job_run(
   FabricCiWorkRefused { cause: _ } => RevisionJobWorkRefused
   FabricCiWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } => {
     let job = revision_job_cell_job(spec: spec, work: work, at: now)
-    let root = fabric_control_plane_store_root()
-    match microvm_job_broker_decide(root: root, slot: slot, field: microvm_job_candidate_field(slot: slot, job: job), issued_at: now, job: job) {
+    match fabric_allocation_store() {
+    FabricAllocationStoreUnready { detail } => RevisionJobNotGranted { detail: join(["the allocation store is unready: ", detail as String], "") }
+    FabricAllocationStoreReady { store: allocation } =>
+    match microvm_job_broker_decide(store: allocation, slot: slot, field: microvm_job_candidate_field(slot: slot, job: job), issued_at: now, job: job) {
     ShakedownBrokerRosterRefused { binding: _ } => RevisionJobNotGranted { detail: "the revision-job offer is not the cell" }
     ShakedownBrokerDecided { decision: d } => match d {
     CellGrantNotSelected { refusal: _ } => RevisionJobNotGranted { detail: "no admissible cell was selected" }
     CellGrantDecided { outcome: g } => match g {
     CellGranted { grant: grant, account: _, ledger: _ } =>
-      revision_job_launch_and_settle(spec: spec, revision: revision, work: work, job: job, slot: slot, grant: grant, staged: staged,
+      revision_job_launch_and_settle(allocation: allocation, spec: spec, revision: revision, work: work, job: job, slot: slot, grant: grant, staged: staged,
         release_dir: release_dir, image: RevisionJobGuestImage { kernel: image.kernel, rootfs: image.rootfs }, work_dir: work_dir, store_root: store_root, invocation_id: invocation_id, vcpus: vcpus, now: now)
     _ => RevisionJobNotGranted { detail: "the cell grant was not committed" }
-    } } } } } } } } } } }
+    } } } } } } } } } } } }
 }
 
 fn revision_job_launch_and_settle(
+  allocation: FabricAllocationStore,
   spec: RevisionJobSpec,
   revision: VerifiedGitCommitTree,
   work: product.fabric.work.Work<NonEmptyStr>,
@@ -234,9 +237,8 @@ fn revision_job_launch_and_settle(
   vcpus: HardwareThreadCount,
   now: Timestamp,
 ) -> RevisionJobOutcome {
-  let root = fabric_control_plane_store_root()
   let attempt_id = microvm_job_attempt(slot: slot, job: job).id
-  match observe_granted_cell_wet(root: root, host: slot.host, slot: slot, demand: microvm_job_demand(slot: slot, job: job),
+  match observe_granted_cell_wet(store: allocation, host: slot.host, slot: slot, demand: microvm_job_demand(slot: slot, job: job),
     offer: microvm_job_offer(slot: slot, job: job), attempt: attempt_id) {
   RequiredBuildCellObserved { snapshot: snapshot } => match bind_microvm_to_cell(snapshot: snapshot) {
     VmUnboundCellNotOwned { cause: c } => RevisionJobCellNotBound { cause: c }
@@ -265,7 +267,7 @@ fn revision_job_launch_and_settle(
         match readiness_of(outcome: outcome) {
           Absent => RevisionJobGuestNotRun { detail: "the controller did not run the attempt to a settled teardown" }
           Present { value: readiness } => match claim_set_receipt_and_settle(
-            root: root,
+            store: allocation,
             work: work.id,
             offer: microvm_job_offer(slot: slot, job: job).id,
             attempt: attempt_id,
