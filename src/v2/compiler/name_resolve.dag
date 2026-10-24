@@ -65,7 +65,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, PointwisePower, empty_map, map_contains_key, map_lookup, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, PointwisePower, empty_map, map_contains_key, map_lookup, map_insert, take_prefix }
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -1645,18 +1645,18 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
       let ge = length(xs: ggraph.edges)
       let gc = length(xs: gscc)
       let h0 = observed_thread_cpu_nanos("h0")
-      let hcount: Map<String, Int> = fold_list(xs: ggraph.edges, empty: empty_map(), cons: fn(m, edge) {
-        map_insert(m: map_insert(m: m, key: edge.caller, value: 1 + (match map_lookup(m: m, key: edge.caller) { Present { value: c } => c Absent => 0 })), key: edge.callee, value: 1)
+      let hl1 = fold_list(xs: take_prefix(xs: ggraph.edges, n: 2000), empty: empty_map(), cons: fn(m, edge) {
+        map_insert(m: m, key: edge.callee, value: match map_lookup(m: m, key: edge.callee) { Present { value: ns } => list_snoc_item(xs: ns, item: edge.caller) Absent => [edge.caller] })
       })
       let h1 = observed_thread_cpu_nanos("h1")
-      let hlists: Map<String, List<String>> = fold_list(xs: ggraph.edges, empty: empty_map(), cons: fn(m, edge) {
+      let hl2 = fold_list(xs: take_prefix(xs: ggraph.edges, n: 4000), empty: empty_map(), cons: fn(m, edge) {
         map_insert(m: m, key: edge.callee, value: match map_lookup(m: m, key: edge.callee) { Present { value: ns } => list_snoc_item(xs: ns, item: edge.caller) Absent => [edge.caller] })
       })
       let h2 = observed_thread_cpu_nanos("h2")
-      let hmax = fold_list(xs: ggraph.edges, empty: 0, cons: fn(mx, edge) {
-        match map_lookup(m: hlists, key: edge.callee) { Present { value: ns } => if length(xs: ns) > mx { length(xs: ns) } else { mx } Absent => mx }
+      let hcc = fold_list(xs: take_prefix(xs: ggraph.edges, n: 4000), empty: empty_map(), cons: fn(m, edge) {
+        map_insert(m: m, key: edge.callee, value: match map_lookup(m: m, key: edge.callee) { Present { value: ns } => concat(ns, [edge.caller]) Absent => [edge.caller] })
       })
-      let h3 = observed_thread_cpu_nanos("h3") + 0 * (if map_contains_key(m: hcount, key: "") { 1 } else { 0 })
+      let h3 = observed_thread_cpu_nanos("h3") + 0 * (if map_contains_key(m: hl1, key: "") { 1 } else { 0 }) + 0 * (if map_contains_key(m: hl2, key: "") { 1 } else { 0 }) + 0 * (if map_contains_key(m: hcc, key: "") { 1 } else { 0 })
       let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
       let q2 = observed_thread_cpu_nanos("cl-blocked")
       let by_module = closure_rows_by_module(rows: phase1.rows)
@@ -1683,7 +1683,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
       let outcome_index = module_outcome_index(outcomes: observed)
       let q6 = observed_thread_cpu_nanos("cl-oindex")
       ClosureDeclarations {
-        tm: [(h1 - h0) / 1000000, (h2 - h1) / 1000000, (h3 - h2) / 1000000, hmax, (g1 - g0) / 1000000, (g2 - g1) / 1000000, (g3 - g2) / 1000000, gn, ge, gc, (q1 - q0) / 1000000, (q2 - q1) / 1000000, (q3 - q2) / 1000000, (q4 - q3) / 1000000, (q5 - q4) / 1000000, (q6 - q5) / 1000000],
+        tm: [(h1 - h0) / 1000000, (h2 - h1) / 1000000, (h3 - h2) / 1000000, 0, (g1 - g0) / 1000000, (g2 - g1) / 1000000, (g3 - g2) / 1000000, gn, ge, gc, (q1 - q0) / 1000000, (q2 - q1) / 1000000, (q3 - q2) / 1000000, (q4 - q3) / 1000000, (q5 - q4) / 1000000, (q6 - q5) / 1000000],
         declarations: index,
         module_outcomes: observed,
         outcome_index: outcome_index,
