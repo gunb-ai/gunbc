@@ -220,19 +220,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // form the header cites (`--required-ci --query-module`) and the short form run.
                 required_admitted_set_mode = true;
             }
-            // Accepted so every command form this repository cites parses. The lane selector
-            // distinguished the two withdrawn measurement lanes (build vs witnesses) that this
-            // mode does not reproduce: the denominator here is the ingestion's admitted set,
-            // which no lane choice changes. Stored and ignored; an unknown value is a
-            // non-parsing argument (rc 2), which is what rc 2 is for.
-            "--required-lane" => {
-                i += 1;
-                let lane = require_value(&args, i, "--required-lane")?;
-                if lane != "build" && lane != "witnesses" {
-                    eprintln!("claim_executor: unknown --required-lane value: {}", lane);
-                    return Err(ExitCode::from(2));
-                }
-            }
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -349,39 +336,55 @@ fn run() -> Result<ExitCode, ExitCode> {
         // the query OBSERVED a state; rc 1 stays for an ingestion refusal, rc 2 for arguments
         // this binary does not parse.
         if let Some(identity) = &required_query_identity {
+            use v1_compiler::cli_run::{DeletionAttribution, ModuleAdmission};
             let admission = v1_compiler::cli_run::module_admission(&source_roots, identity);
-            let line = match &admission {
-                v1_compiler::cli_run::ModuleAdmission::Admitted { module } => {
-                    serde_json::json!({"kind":"admitted","module":module})
+            // Each arm prints ITS OWN state name and evidence; refusals are states too, printed
+            // and counted apart (rc 1) so "we could not observe it" never shares a line with an
+            // observation. No arm carries a value git did not produce.
+            let (line, observed) = match &admission {
+                ModuleAdmission::Admitted { module } => {
+                    (serde_json::json!({"kind":"admitted","module":module}), true)
                 }
-                v1_compiler::cli_run::ModuleAdmission::NeverAdmitted {
+                ModuleAdmission::NeverAdmitted {
                     module,
                     run_sha,
-                    deleting_commit,
-                } => serde_json::json!({
-                    "kind":"never-admitted","module":module,
-                    "evidence":{"run_sha":run_sha,"deleting_commit":deleting_commit}
-                }),
-                v1_compiler::cli_run::ModuleAdmission::IndexRefused { module, cause } => {
-                    serde_json::json!({
-                        "kind":"index-refused","module":module,"cause":cause
-                    })
+                    attribution,
+                } => {
+                    let attribution_line = match attribution {
+                        DeletionAttribution::Attributed { commit } => {
+                            serde_json::json!({"state":"attributed","commit":commit})
+                        }
+                        DeletionAttribution::NoDeletionInHistory { probed_commits } => {
+                            serde_json::json!({
+                                "state":"no-deletion-in-history","probed_commits":probed_commits
+                            })
+                        }
+                        DeletionAttribution::ProbeRefused { cause } => {
+                            serde_json::json!({"state":"probe-refused","cause":cause})
+                        }
+                    };
+                    (
+                        serde_json::json!({
+                            "kind":"never-admitted","module":module,
+                            "evidence":{"run_sha":run_sha,"attribution":attribution_line}
+                        }),
+                        true,
+                    )
                 }
+                ModuleAdmission::EvidenceRefused { module, cause } => (
+                    serde_json::json!({"kind":"evidence-refused","module":module,"cause":cause}),
+                    false,
+                ),
+                ModuleAdmission::IndexRefused { module, cause } => (
+                    serde_json::json!({"kind":"index-refused","module":module,"cause":cause}),
+                    false,
+                ),
             };
             println!("module-admission: {line}");
-            eprintln!(
-                "claim_executor --query-module {identity}: {}",
-                match &admission {
-                    v1_compiler::cli_run::ModuleAdmission::Admitted { .. } => "admitted",
-                    v1_compiler::cli_run::ModuleAdmission::NeverAdmitted { .. } => "never-admitted",
-                    v1_compiler::cli_run::ModuleAdmission::IndexRefused { .. } => "index-refused",
-                }
-            );
-            return match admission {
-                v1_compiler::cli_run::ModuleAdmission::IndexRefused { .. } => {
-                    Err(ExitCode::FAILURE)
-                }
-                _ => Ok(ExitCode::SUCCESS),
+            return if observed {
+                Ok(ExitCode::SUCCESS)
+            } else {
+                Err(ExitCode::FAILURE)
             };
         }
         return match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(

@@ -177,7 +177,7 @@ test fn never_admitted_is_a_typed_arm_carrying_its_evidence() -> Bool {
   census_rs.contains("pub enum ModuleAdmission")
     && census_rs.contains("NeverAdmitted")
     && census_rs.contains("run_sha")
-    && census_rs.contains("deleting_commit")
+    && census_rs.contains("attribution")
     && census_rs.contains("IndexRefused")
 }
 
@@ -191,7 +191,8 @@ test fn the_deleting_commit_is_a_derivation_not_a_written_value() -> Bool {
   census_rs.contains("\"-S\"")
     && census_rs.contains("\"log\"")
     && census_rs.contains("\"grep\"")
-    && census_rs.contains("and_then")
+    && census_rs.contains("rev-list")
+    && census_rs.contains("DeletionAttribution")
 }
 
 // THE RECEIPT AND THE QUERY ARE PAIRED. The census header cannot keep pointing at the typed arm

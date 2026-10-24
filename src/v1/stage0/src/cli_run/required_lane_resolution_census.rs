@@ -100,31 +100,75 @@ pub fn required_floor_nominal_subject_module_identities(
 /// a queried identity the ingestion does not know PRIVES its state and its evidence, it does not
 /// go quiet. `IndexRefused` exists so an ingestion failure is never misread as a never-admitted
 /// verdict -- an unobserved identity is not an absent one.
+/// THE OUTCOME OF THE DELETION ATTRIBUTION, three-way so an answer and an ignorance are never
+/// the same printed value (DESIGN section 5: every degradation typed, located and countable).
+/// A flat `Option<String>` conflated "the history has no such commit" (an ANSWER, and the reason
+/// a never-existed identity still has a verdict) with "git could not be consulted" (IGNORANCE,
+/// which must not be read as an answer -- that is the absence-as-evidence problem this carrier
+/// exists to remove).
+pub enum DeletionAttribution {
+    /// A commit was found whose diff removed the module header, verified to have had it in its
+    /// parent. Derived, never hand-written.
+    Attributed { commit: String },
+    /// The probes ran and answered: the reachable history contains no commit that removed the
+    /// header -- the identity never existed here. The verdict stands without an attribution.
+    NoDeletionInHistory { probed_commits: usize },
+    /// A probe could not be consulted, so attribution is UNKNOWN, not empty. The verdict stands
+    /// only for the tree at the run's SHA; how the identity disappeared is unobserved.
+    ProbeRefused { cause: String },
+}
+
 pub enum ModuleAdmission {
     /// The ingestion admits the identity: some file under the source roots declares it.
     Admitted { module: String },
-    /// No file in the tree at the run's SHA declares the identity. `deleting_commit` is DERIVED
-    /// (a pickaxe over the module header: the newest commit that changed the header's occurrence
-    /// count, verified to have found it in its parent), never hand-written; `None` means either
-    /// the identity never existed in the reachable history or the history is too shallow to
-    /// prove which -- the state still holds, the attribution just stays silent.
+    /// No file in the tree at the run's SHA declares the identity. `run_sha` is the git answer
+    /// for HEAD -- if git could not produce it the query refuses instead (`EvidenceRefused`);
+    /// the instrument never prints a made-up SHA as evidence.
     NeverAdmitted {
         module: String,
         run_sha: String,
-        deleting_commit: Option<String>,
+        attribution: DeletionAttribution,
     },
+    /// The identity is absent AND the run's own SHA could not be observed: the verdict would
+    /// claim evidence that was never observed, so the query refuses instead. Distinct from
+    /// `IndexRefused` (the ingestion itself failed) so the two failures stay countable apart.
+    EvidenceRefused { module: String, cause: String },
     /// The ingestion itself refused, so the identity's state was never observed. The census
     /// must decide on this arm; reading it as never-admitted would be absence-as-evidence
     /// smuggled back in through the error path.
     IndexRefused { module: String, cause: String },
 }
 
-fn git_output(args: &[&str]) -> Option<String> {
-    let out = std::process::Command::new("git").args(args).output().ok()?;
-    if out.status.success() {
-        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    } else {
-        None
+/// THE OUTCOME OF ONE GIT PROBE, typed so an ABSENCE and a FAILURE are never the same value.
+/// `Absent` means git ran the query and returned no match -- that is an answer. `ProbeFailed`
+/// means git could not be asked (no repo, no binary, a broken pipe) -- that is ignorance, and
+/// reading it as an absence would smuggle absence-as-evidence back in through the error path
+/// (DESIGN section 5: every degradation is typed, located and countable; no plausible output is
+/// fabricated).
+pub enum GitProbe {
+    /// git ran and produced this (possibly empty after trimming) stdout.
+    Ran(String),
+    /// git could not be run or refused: the reason it could not answer.
+    ProbeFailed(String),
+}
+
+fn git_probe(args: &[&str]) -> GitProbe {
+    match std::process::Command::new("git").args(args).output() {
+        Err(why) => {
+            GitProbe::ProbeFailed(format!("git {} could not be run: {why}", args.join(" ")))
+        }
+        Ok(out) => {
+            if out.status.success() {
+                GitProbe::Ran(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            } else {
+                GitProbe::ProbeFailed(format!(
+                    "git {} exited {}: {}",
+                    args.join(" "),
+                    out.status,
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ))
+            }
+        }
     }
 }
 
@@ -155,25 +199,67 @@ pub fn module_admission(source_roots: &[String], identity: &str) -> ModuleAdmiss
             module: identity.to_string(),
         };
     }
-    // The identity is in no file's `module` header. Establish WHERE it went, by derivation:
-    // the newest commit whose diff changed the occurrence count of the exact header line, and
-    // whether its parent still had it (only a commit that FOUND it in the parent deleted it --
-    // without this check, a commit that merely ADDED the header elsewhere would be accused).
-    let run_sha = git_output(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
-    let header = format!("module {identity}\n");
-    let deleting_commit =
-        git_output(&["log", "-1", "--format=%H", "-S", &header, "--"]).and_then(|sha| {
-            let pattern = format!("^module {}\\s*$", regex_escape_identity(identity));
-            let parent = format!("{sha}^");
-            match git_output(&["grep", "-l", "-E", &pattern, &parent, "--"]) {
-                Some(_) => Some(sha),
-                None => None,
+    // The identity is in no file's `module` header. Establish WHERE it went, by derivation --
+    // and refuse rather than fabricate: if git cannot answer even "what SHA is this run", the
+    // verdict would name evidence it never observed (DESIGN 5: no plausible output is
+    // fabricated), so the query exits on EvidenceRefused instead of printing "unknown".
+    let run_sha = match git_probe(&["rev-parse", "HEAD"]) {
+        GitProbe::Ran(sha) if !sha.is_empty() => sha,
+        GitProbe::Ran(_) => {
+            return ModuleAdmission::EvidenceRefused {
+                module: identity.to_string(),
+                cause: "git rev-parse HEAD succeeded but printed nothing".to_string(),
             }
-        });
+        }
+        GitProbe::ProbeFailed(cause) => {
+            return ModuleAdmission::EvidenceRefused {
+                module: identity.to_string(),
+                cause,
+            }
+        }
+    };
+    let header = format!("module {identity}\n");
+    let pattern = format!("^module {}\\s*$", regex_escape_identity(identity));
+    let attribution = match git_probe(&["log", "-1", "--format=%H", "-S", &header, "--"]) {
+        GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
+        GitProbe::Ran(sha) if sha.is_empty() => {
+            // The pickaxe answered "nothing". Confirm the probe was actually able to see
+            // history before reading that as "never existed here": a probe over zero commits
+            // is ignorance, not an answer.
+            match git_probe(&["rev-list", "--count", "HEAD"]) {
+                GitProbe::Ran(count) if count == "0" => DeletionAttribution::ProbeRefused {
+                    cause: "the reachable history has zero commits to pick over".to_string(),
+                },
+                GitProbe::Ran(count) => DeletionAttribution::NoDeletionInHistory {
+                    probed_commits: count.parse().unwrap_or(0),
+                },
+                GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
+            }
+        }
+        GitProbe::Ran(sha) => {
+            // Only a commit whose PARENT still contained the header deleted it; without this
+            // check a commit that merely ADDED the header elsewhere would be accused.
+            let parent = format!("{sha}^");
+            match git_probe(&["grep", "-l", "-E", &pattern, &parent, "--"]) {
+                GitProbe::Ran(found) if !found.is_empty() => {
+                    DeletionAttribution::Attributed { commit: sha }
+                }
+                // The newest history change to this header was an ADDITION (its parent lacks
+                // it), so no deletion is attributable; count the probed history honestly.
+                GitProbe::Ran(_) => match git_probe(&["rev-list", "--count", "HEAD"]) {
+                    GitProbe::Ran(count) => DeletionAttribution::NoDeletionInHistory {
+                        probed_commits: count.parse().unwrap_or(0),
+                    },
+                    GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
+                },
+                GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
+            }
+        }
+    };
     ModuleAdmission::NeverAdmitted {
         module: identity.to_string(),
         run_sha,
-        deleting_commit,
+        attribution,
     }
 }
 

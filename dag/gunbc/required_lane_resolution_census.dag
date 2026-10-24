@@ -39,7 +39,7 @@ type ModuleIdentityPopulation
   | ModuleIdentityPopulationRefused { cause: String }
 
 // WHAT ONE REQUIRED JOB RESOLVES, as a subject kind naming the producer that decides it.
-//   FloorNominalPreparedSubject -- `claim_executor --required-ci --required-lane witnesses`: the
+//   FloorNominalPreparedSubject -- `claim_executor --required-ci`: the
 //     prepared subject over the gate's nominal seeds (v1_compiler.cli_run
 //     required_floor_nominal_subject_seeds, assemble_prepared_subject_closure).
 //   RunEntryClosure -- `gunbc run --entry <path>`: the entry's loader closure

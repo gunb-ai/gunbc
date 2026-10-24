@@ -126,7 +126,7 @@ pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
     entry_closure_module_identities, module_admission,
     required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
-    ModuleAdmission, ModuleIdentityPopulation,
+    DeletionAttribution, GitProbe, ModuleAdmission, ModuleIdentityPopulation,
 };
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
