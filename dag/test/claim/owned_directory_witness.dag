@@ -22,6 +22,7 @@ fn target() -> OwnedDirectoryTarget {
     path: "/srv/instance/auth-sessions" as FilePath,
     owner: PosixOwnerNames { user: "svc" as NonEmptyStr, group: "svc" as NonEmptyStr },
     mode: DirectoryOwnerOnly,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
