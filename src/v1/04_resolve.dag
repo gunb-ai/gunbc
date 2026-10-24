@@ -813,7 +813,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1, masked: false)
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
-      let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: target_result.resolved.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: Present { value: ExpandedDeclarationBody }, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+      let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: target_result.resolved.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: Present { value: ResolvedArguments }, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
       let resolved_node = Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: Present { value: ResolvedArguments }, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, kind_diags, arg_diags, target_result.diagnostics) }
     } else {
@@ -1354,8 +1354,7 @@ fn field_children_with_stamped_type(field: Node, source_indices: Map<String, New
 fn reference_tree_with_declaration(n: Node, binders: List<String>, env: TypeEnv) -> Node {
   let name = authored_name(env: env, node: n)
   let is_binder_reference = n.children |> count == 0 && n.params |> count == 0 && binders |> any(b => b == name)
-  // A declaration, or an application's expansion (its children are the declaration's own members, not arguments).
-  let is_declaration = is_declaration_body(n: n) || match n.module_item_kind { ModuleItemTypeDeclaration => true  _ => false }
+  let is_declaration = is_declaration_body(n: n)
   if is_binder_reference || is_declaration || is_kernel_type(name: name) {
     n
   } else {
@@ -1605,17 +1604,19 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   }
 }
 
+// A declaration body has the declaration's own MEMBERS as children: the declaration item itself, or an
+// application's expansion (the producer says so in application_role).
 fn is_declaration_body(n: Node) -> Bool {
-  n.application_role == Present { value: ExpandedDeclarationBody }
+  n.application_role == Present { value: ExpandedDeclarationBody } || n.module_item_kind == ModuleItemTypeDeclaration
 }
 
 fn is_applied_declaration_carrier(n: Node) -> Bool {
-  n.application_role == Present { value: ResolvedArguments } && n.declaration != none
+  n.connective == NoConnective && n.declaration != none && (n.children |> count) > 0 && !is_declaration_body(n: n)
 }
 
 // A use-site application whose arguments are resolved but whose cached expansion was dropped by substitution.
 fn is_cache_dropped_application(n: Node) -> Bool {
-  is_applied_declaration_carrier(n: n) && n.inferred == none
+  n.application_role == Present { value: ResolvedArguments } && n.inferred == none
 }
 
 fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {

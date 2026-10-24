@@ -15291,8 +15291,11 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
     // parameter names, which the callee's names are not: rewriting it captures them (a permuting
     // return -> Pair<B, A>) or leaves a stale body. The substituted children carry the instantiation,
     // so the cache is dropped and the reader settles through them.
-    let new_inferred = if is_applied_declaration_carrier(n: n) { generics_substituted_cache_dropped(inferred: n.inferred) } else { substitute_generics_resolved(n: n, subst: subst, source_indices: source_indices) }
-    if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
+    let is_carrier = is_applied_declaration_carrier(n: n)
+    let new_inferred = if is_carrier { generics_substituted_cache_dropped(inferred: n.inferred) } else { substitute_generics_resolved(n: n, subst: subst, source_indices: source_indices) }
+    // The dropped-cache state is carried by the role: the arguments are resolved, the expansion is rebuilt on read.
+    let new_role = if is_carrier && new_inferred == none { Present { value: ResolvedArguments } } else { n.application_role }
+    if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred && new_role == n.application_role {
       n
     } else {
       Node {
@@ -15304,7 +15307,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
         return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
         properties: n.properties, type_annotation: n.type_annotation,
         is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
-        match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: n.application_role, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+        match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: new_role, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
       }
     }
   }
