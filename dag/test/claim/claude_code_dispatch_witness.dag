@@ -369,6 +369,7 @@ test fn the_executor_word_decodes_over_the_provider_labels() -> Bool {
             ReplayDispatchProvider => false
           }
         ExecutorDefault => false
+        ExecutorReplay { recording_id: _ } => false
       }
     DispatchExecutorRequestUnknown { word: _, known: _ } => false
   }
@@ -376,6 +377,7 @@ test fn the_executor_word_decodes_over_the_provider_labels() -> Bool {
     DispatchExecutorRequestDecoded { request } =>
       match request {
         ExecutorDefault => true
+        ExecutorReplay { recording_id: _ } => false
         ExecutorVendor { provider: _ } => false
       }
     DispatchExecutorRequestUnknown { word: _, known: _ } => false
@@ -384,6 +386,7 @@ test fn the_executor_word_decodes_over_the_provider_labels() -> Bool {
     DispatchExecutorRequestDecoded { request } =>
       match request {
         ExecutorDefault => true
+        ExecutorReplay { recording_id: _ } => false
         ExecutorVendor { provider: _ } => false
       }
     DispatchExecutorRequestUnknown { word: _, known: _ } => false
