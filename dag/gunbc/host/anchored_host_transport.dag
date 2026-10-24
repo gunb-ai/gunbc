@@ -570,9 +570,10 @@ fn anchored_host_key_mint_cleanup_commands(mint_dir: String) -> List<ArgvCommand
   ]
 }
 
-// THE MINT, RENDERED -- the runbook's Step 1 block was PRODUCED from this function's output (the
-// authoring session pasted the render; the runbook's Step 1 states its own honest boundary: no claim
-// reads that file, so keeping the copy equal to the render is convention + review, not a test).
+// THE MINT, RENDERED -- the runbook's Step 1 block is a CHECKED projection of this function's output:
+// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render reads
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md off disk and refuses if its fenced block differs from
+// this render byte for byte (the fence carries the render minus its trailing newline).
 // The mint dir is a fixed path created with mkdir -m 0700 CREATE-ONLY: it refuses outright when the
 // dir already exists, which means a previous minting session died mid-run. The trap then removes any
 // key found there -- removing a stale private half is the Q1-CORRECT action, not evidence loss (the
@@ -696,8 +697,10 @@ data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = S
 // (for example approval_ntfy_publisher_token_mint_intervention)"). The instruction NAMES the model
 // symbol the operator renders rather than transcribing shell -- inside the model there is no second
 // shell text to disagree with the render, exactly as the ntfy mint instruction points at its broker.
-// (The runbook's copied Step 1 block is a separate hand projection held to the render by convention
-// and review, which its own Step 1 states; no claim reads that file.) The mint is FleetOnce: the
+// The runbook's Step 1 block is a CHECKED projection, not an untested copy:
+// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render reads
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md off disk and refuses if its fenced block differs from
+// anchored_host_key_mint_shell(). The mint is FleetOnce: the
 // stable key is minted once per fleet, not per boot (per boot is the DELIVERY, and delivery is the
 // custody arm's job, not this step's).
 fn anchored_host_key_mint_intervention() -> HumanIntervention {
