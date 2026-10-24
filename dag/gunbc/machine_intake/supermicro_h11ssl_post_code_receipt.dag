@@ -22,9 +22,9 @@ data supermicro_h11ssl_post_code_observations: List<H11sslPostCodeObservation> =
 ]
 
 // CONSUMER (DESIGN section 3c): this fold is the executing route for the decode. It is exercised by
-// test.claim.supermicro_h11ssl_post_code_witness. The BMC POST-trace path that reads Snooping does not
-// exist in this corpus yet; the named later change is that reader, and its trigger is the first
-// BMC-read PostCode sequence being recorded as a receipt (it would call ami_aptio_decode with the table below).
+// test.claim.supermicro_h11ssl_post_code_witness. The first BMC-read PostCode SEQUENCES are recorded,
+// per unit, in gunbc.machine_intake.supermicro_h11ssl_unit_observation supermicro_h11ssl_post_traces,
+// decoded there through ami_aptio_decode with the same table; the live Snooping reader stays a later change.
 fn supermicro_h11ssl_decoded_observations() -> List<PostCodeDecode> {
   supermicro_h11ssl_post_code_observations
     |> map(o => ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: o.code))

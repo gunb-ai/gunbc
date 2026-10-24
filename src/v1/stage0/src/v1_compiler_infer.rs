@@ -8783,7 +8783,7 @@ pub fn direct_call_argument_inhabitance_diags(
                                             subject: app.formal.parameter_identity.clone(),
                                             declared:
                                                 if direct_call_formal_has_unbound_type_variable(
-                                                    app.formal.substitution_basis.clone(),
+                                                    app.formal.declared_type.clone(),
                                                 ) {
                                                     app.formal.substitution_basis.clone()
                                                 } else {

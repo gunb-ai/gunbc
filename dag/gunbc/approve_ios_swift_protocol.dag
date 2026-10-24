@@ -204,11 +204,11 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
     sw_doc(c: ["gunbc.auth.approval_device_wire ApprovalPushHint: one opaque locator, nothing that is decided."], d: sw_struct(n: "ApprovalPushHint", i: [sw_t(n: "Equatable")], m: [
       sw_field(n: "notification_id", t: sw_t(n: "String")),
     ])),
+    // base64url WITH '=' padding: the encoder of std base64_encode UrlSafe, which every .dag crossing
+    // (google_enrolment_nonce, point_b64url, signatures) uses; vectors.json is emitted from it.
     sw_enum(n: "Base64Url", i: [], m: [
       sw_func(m: [SwiftStaticModifier], n: "encode", p: [sw_p_(n: "d", t: sw_t(n: "Data"))], th: false, r: Present { value: sw_t(n: "String") }, b: [
-        sw_expr(e: approve_ios_replace(
-          e: approve_ios_replace(e: approve_ios_replace(e: sw_call(f: sw_path(b: "d", m: "base64EncodedString"), a: []), of: "+", with: "-"), of: "/", with: "_"),
-          of: "=", with: "")),
+        sw_expr(e: approve_ios_replace(e: approve_ios_replace(e: sw_call(f: sw_path(b: "d", m: "base64EncodedString"), a: []), of: "+", with: "-"), of: "/", with: "_")),
       ]),
     ]),
   ]

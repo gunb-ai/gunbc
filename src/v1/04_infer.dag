@@ -6274,7 +6274,20 @@ fn direct_call_argument_inhabitance_diags(
               obligation: DeclaredTypeObligation {
                 position: PositionDirectCallArgument,
                 subject: app.formal.parameter_identity,
-                declared: if direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis) {
+                // THE CALL'S OWN SOLVED MAP, NOT THE DECLARATION-BOUND BASIS (ruled by
+                // tidy-ant-251 2026-10-20, closing the nominal-isomorphic acceptance:
+                // gunbc.recurring_failure_mode
+                // .nominal_isomorphic_record_admitted_at_sibling_declaration). The plan's
+                // declared_type was substituted with this call's own unification result at
+                // build_call_application_plan -- no second solver, no re-derivation -- so when
+                // that substitution GROUNDS the formal, the pair is judged by the existing
+                // gates, including nominal_product_inhabitance_refusal, which names both
+                // declarations. The unsolved basis is kept ONLY where the variable is
+                // genuinely unsolved after the call, which stays UndecidableGenericFormal
+                // (advisory). Every argument at a T position is judged against the substituted
+                // formal, which is also the cross-argument consistency check -- one rule at
+                // the existing seam, not a second check at unify (DESIGN 3b: stated divergence).
+                declared: if direct_call_formal_has_unbound_type_variable(n: app.formal.declared_type) {
                   app.formal.substitution_basis
                 } else {
                   app.formal.declared_type
