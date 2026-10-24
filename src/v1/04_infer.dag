@@ -7097,8 +7097,7 @@ type Tier2bBt {
 // located at the argument. An argument is matched to its parameter by label, else by position.
 fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ErrorNode> {
   let host_params = builtin_host_text_param_names(name: func_name)
-  let dbg = if func_name == "concat" || func_name == "join" { typed_args |> enumerate |> filter(pr => pr.first == 0) |> map(pr => inference_error(message: concat("DBGC builtin ", func_name), span: pr.second.span, module_name: scope.module_name)) } else { [] }
-  concat(dbg, if host_params |> count == 0 { [] }
+  if host_params |> count == 0 { [] }
   else {
     let formal_names = builtin_param_names(name: func_name)
     typed_args |> enumerate |> flat_map(pair => {
@@ -7127,7 +7126,7 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
         }
       }
     })
-  })
+  }
 }
 
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
@@ -7620,19 +7619,16 @@ fn nominal_value_at_host_text_diags(t: Node, position: String, span: SourceSpan,
 }
 
 // THE HOST-TEXT POSITIONS OF AN ALGEBRA METHOD: each formal its template declares as the kernel
-// String (NamedTemplate String), each ReceiverSelf formal when the receiver is itself host text
-// (the rule v1.compiler.method builtin_host_text_param_names applies to the registry; a bare
-// `concat("id=", p)` resolves here, to the scalar free-monoid concat, before the registry is asked),
+// String (NamedTemplate String), each ReceiverSelf formal when the template returns ReceiverSelf and
+// the call's resolved result is host text, so Self IS the kernel String (the rule
+// v1.compiler.method builtin_host_text_param_names applies to the registry; a bare
+// `concat("id=", p)` resolves here, to the scalar free-monoid concat, before the registry is asked).
+// The result, not the receiver, is read because a literal receiver's text representation is not
+// always identified at this point (measured: the receiver read NotText or unidentified at corpus
+// concat sites whose result was host text),
 // and each receiver element when the template renders them (v1.compiler.method template_renders_receiver_elements_as_host_text).
 // `args` are the call's argument nodes after the receiver.
-fn algebra_method_host_text_crossing_diags(method_name: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, scope: InferScope) -> List<ErrorNode> {
-  let dbg = if method_name == "concat" || method_name == "join" {
-    [inference_error(message: concat("DBGC algebra ", method_name, " sem=", match semantics { Present { value: sm } => match sm { AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } => match at { Present { value: _ } => "alg+t"  Absent => "alg-t" }  _ => "other" }  Absent => "none" }, " recv=", match text_representation_by_identity(n: resolved_type(n: receiver), env: scope.type_env) { HostText => "host"  NotText => "not"  CodePointSequence => "cps"  _ => "unid" }), span: receiver.span, module_name: scope.module_name)]
-  } else { [] }
-  concat(dbg, algebra_method_host_text_crossing_core(method_name: method_name, semantics: semantics, receiver: receiver, args: args, scope: scope))
-}
-
-fn algebra_method_host_text_crossing_core(method_name: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, scope: InferScope) -> List<ErrorNode> {
+fn algebra_method_host_text_crossing_diags(method_name: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, result_type: Node, scope: InferScope) -> List<ErrorNode> {
   match semantics {
     Present { value: sem } =>
       match sem {
@@ -7640,11 +7636,12 @@ fn algebra_method_host_text_crossing_core(method_name: String, semantics: Method
           match at {
             Present { value: t } =>
               let receiver_type = resolved_type(n: receiver)
-              let receiver_is_host_text = match text_representation_by_identity(n: receiver_type, env: scope.type_env) { HostText => true  _ => false }
+              let self_is_host_text = template_return_is_receiver_self(template: t)
+                && match text_representation_by_identity(n: result_type, env: scope.type_env) { HostText => true  _ => false }
               let formal_diags = t.param_types |> skip(1) |> enumerate |> flat_map(pr => {
                 let host_text_formal = match pr.second {
                   NamedTemplate { name: n } => n == "String"
-                  ReceiverSelf => receiver_is_host_text
+                  ReceiverSelf => self_is_host_text
                   _ => false
                 }
                 if !host_text_formal { [] }
@@ -9650,7 +9647,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          emissions: infer_emissions_concat_all(chunks: [infer_emissions_of_diagnostics(diagnostics: if func_name == "concat" || func_name == "join" { [inference_error(message: concat("DBGC direct ", func_name), span: span, module_name: scope.module_name)] } else { [] }), infer_emissions_of_diagnostics(diagnostics: formal_authority_diags), arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(arg_shape_diags, arg_compat_diags, structured_arg_diags, inhabitance_arg_diags, generic_type_argument_inhabitance_diags, sibling_effect_order_arg_diags))])
+          emissions: infer_emissions_concat_all(chunks: [infer_emissions_of_diagnostics(diagnostics: formal_authority_diags), arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(arg_shape_diags, arg_compat_diags, structured_arg_diags, inhabitance_arg_diags, generic_type_argument_inhabitance_diags, sibling_effect_order_arg_diags))])
         }
         }
       } else {
@@ -9750,7 +9747,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, scope: scope))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope))))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -10133,7 +10130,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, scope: scope)))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope)))])
       }
       }
 
