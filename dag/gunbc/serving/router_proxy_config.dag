@@ -126,3 +126,13 @@ fn router_proxy_config(listen_port: Int, authz_port: Int, stream_end_port: Int) 
     Absent => RouterProxyConfigRefused { token: "vocabulary" }
   }
 }
+
+// The falsifier instrument's emit entry (tools/serving_proxy_falsifier): the rendered text, or on
+// refusal the text "refused <token>", which is not a nginx configuration, so the instrument's
+// `nginx -t` control fails loudly rather than driving an empty or plausible config.
+fn router_proxy_config_text(listen_port: Int, authz_port: Int, stream_end_port: Int) -> String {
+  match router_proxy_config(listen_port: listen_port, authz_port: authz_port, stream_end_port: stream_end_port) {
+    RouterProxyConfigRendered { text: t } => t
+    RouterProxyConfigRefused { token: k } => "refused " + k
+  }
+}
