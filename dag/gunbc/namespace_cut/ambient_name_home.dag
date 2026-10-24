@@ -62,24 +62,36 @@ type AmbientNameHome {
   kit_call: AmbientNameKitCall
 }
 
-// One row per landed wave. list_push (#14751): its one declared home is std.algebra `fn list_push<T>(xs: FreeMonoid<T>,
-// item: T)`, and its std.primitives list_push_contract row is retired. The kit_call restates that signature
-// (gunbc.rung_drop.kit_call_shape_restates_the_home_signature); the declaration is the authority, so the row follows it.
+// One row per landed wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives
+// authority row where it binds at all, has its one declared home in std.host_text. list_push (#14751): its one declared
+// home is std.algebra `fn list_push<T>(xs: FreeMonoid<T>, item: T)`, and its std.primitives list_push_contract row is
+// retired. A kit_call restates its home's signature (gunbc.rung_drop.kit_call_shape_restates_the_home_signature); the
+// declaration is the authority, so the row follows it.
 fn ambient_name_homes() -> List<AmbientNameHome> {
-  [AmbientNameHome {
-    name: "list_push" as NonEmptyStr,
-    home: "std.algebra" as NonEmptyStr,
-    table: PrimitiveAuthorityTable,
-    origin: ExistingDeclaration,
-    retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr),
-    kit_call: AmbientNameKitCall {
-      params: [
-        AmbientNameKitParam { name: "xs" as NonEmptyStr, type_ref: kit_list_of_int() },
-        AmbientNameKitParam { name: "item" as NonEmptyStr, type_ref: kit_int() }
-      ],
-      result: kit_list_of_int()
+  [
+    AmbientNameHome {
+      name: "chars",
+      home: "std.host_text.chars",
+      table: PrimitiveAuthorityTable,
+      origin: ExistingDeclaration,
+      retired_contract: optional_present(value: "chars_contract" as NonEmptyStr),
+      kit_call: chars_kit_call()
+    },
+    AmbientNameHome {
+      name: "list_push" as NonEmptyStr,
+      home: "std.algebra" as NonEmptyStr,
+      table: PrimitiveAuthorityTable,
+      origin: ExistingDeclaration,
+      retired_contract: optional_present(value: "list_push_contract" as NonEmptyStr),
+      kit_call: AmbientNameKitCall {
+        params: [
+          AmbientNameKitParam { name: "xs" as NonEmptyStr, type_ref: kit_list_of_int() },
+          AmbientNameKitParam { name: "item" as NonEmptyStr, type_ref: kit_int() }
+        ],
+        result: kit_list_of_int()
+      }
     }
-  }]
+  ]
 }
 
 // ROWS A WAVE HAS PROPOSED BUT NOT YET LANDED. The acceptance kit censuses a candidate's fixture pair exactly as it
@@ -88,6 +100,14 @@ fn ambient_name_homes() -> List<AmbientNameHome> {
 // and DELETES it here: a name present in both is read once, as the landed row.
 fn ambient_name_candidates() -> List<AmbientNameHome> {
   []
+}
+
+// chars's one declared home is std.host_text `fn chars(text: HostText) -> List<Char>`; the kit fixture calls it so.
+fn chars_kit_call() -> AmbientNameKitCall {
+  AmbientNameKitCall {
+    params: [AmbientNameKitParam { name: "text" as NonEmptyStr, type_ref: AmbientNameKitType { home: "std.host_text" as NonEmptyStr, name: "HostText" as NonEmptyStr, arguments: [] } }],
+    result: AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "List" as NonEmptyStr, arguments: [AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "Char" as NonEmptyStr, arguments: [] }] }
+  }
 }
 
 fn kit_int() -> AmbientNameKitType {
