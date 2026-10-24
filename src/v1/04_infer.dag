@@ -1992,15 +1992,18 @@ fn variant_literal_expected_application(owner: Node, expected: Node?, scope: Inf
 }
 
 // AN APPLICATION OF A DECLARATION is a type node with arguments and no connective whose head resolves to
-// that declaration's binding: rc identity, never a spelling comparison, and never the `declaration`
-// field, which a declared type expression (a callee's declared return, a parameter's type) does not
-// always carry. The variant-literal context above and the branch join's bare-declaration rule
+// that declaration: the same binding (rc identity) or the same DeclarationRef on the resolved head,
+// never a spelling comparison. The application node's own `declaration` field is not read: a declared
+// type expression (a callee's declared return, a parameter's type) does not always carry it. The
+// DeclarationRef arm is needed because a bare declaration reached through a variant reference
+// (`init: NoPassingCandidate`) is not always the env's own node for that declaration, so rc identity
+// alone misses it. The variant-literal context above and the branch join's bare-declaration rule
 // (arm_is_bare_declaration_of_sibling) both ask this one question.
 fn type_applies_declaration(application: Node, declaration: Node, env: TypeEnv) -> Bool {
   if application.connective != NoConnective || (application.children |> count) == 0 { false }
   else {
     match lookup_type_for(env: env, node: application) {
-      Present { value: head } => rc_ptr_eq(head, declaration)
+      Present { value: head } => rc_ptr_eq(head, declaration) || (declaration.declaration != none && head.declaration == declaration.declaration)
       Absent => false
     }
   }
