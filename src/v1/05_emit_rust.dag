@@ -3362,10 +3362,27 @@ type PhantomMarkerDecision
 
 fn phantom_marker_decision(coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
   match type_decl_occurrence_binding(index: emit_info.type_decl_items, leaf: vname, reference: arm) {
-    OccurrenceDeclaredHere { identity: _ } => PhantomMarkerArmDenotesDeclaration
-    OccurrenceImported { identity: _ } => PhantomMarkerArmDenotesDeclaration
+    OccurrenceDeclaredHere { identity: identity } => phantom_marker_for_bound_arm(identity: identity, coproduct: coproduct, arm: arm, vname: vname, env: env, emit_info: emit_info)
+    OccurrenceImported { identity: identity } => phantom_marker_for_bound_arm(identity: identity, coproduct: coproduct, arm: arm, vname: vname, env: env, emit_info: emit_info)
     OccurrenceIsKernelName => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
     OccurrenceUndecided => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+  }
+}
+
+// A BINDING MAY DENOTE THE VARIANT ITSELF. The symbol index binds a corpus-unique variant name to
+// the coproduct that owns it (v1.compiler.infer_env merge_global_bare_variant_locals: the owner is
+// the coproduct node), so a scope binding that resolves to a coproduct declaring a unit variant of
+// this name says the name IS that variant, not that a type of that name exists. Read as a type, it
+// dropped the markers of std.measure's dimension and prefix variants (rustc E0573 in the seed).
+fn phantom_marker_for_bound_arm(identity: String, coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
+  match type_decl_resolution_at_identity(index: emit_info.type_decl_items, identity: identity) {
+    TypeDeclResolved { identity: _, decl: decl } =>
+      if decl.connective == Disj && (decl.children |> any(c => (c.children |> count) == 0 && authored_name_at(source_indices: env.source_indices, node: c) == vname)) {
+        phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+      } else { PhantomMarkerArmDenotesDeclaration }
+    TypeDeclLeafAmbiguous { leaf: leaf } => PhantomMarkerUndecided { cause: concat("more than one declaration of ", leaf) }
+    TypeDeclKernelSpellingUndecided { leaf: leaf } => PhantomMarkerUndecided { cause: concat("kernel spelling undecided for ", leaf) }
+    TypeDeclNotDeclared => PhantomMarkerUndecided { cause: "the scope binding names no indexed declaration" }
   }
 }
 
