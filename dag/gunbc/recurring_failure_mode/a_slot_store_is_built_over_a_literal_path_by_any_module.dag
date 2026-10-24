@@ -14,6 +14,8 @@ data a_slot_store_is_built_over_a_literal_path_by_any_module: RecurringFailureMo
   receipts: [
     "INVALID STATE: a module that declares no store writes attempt_open(store: file_slot_store(root: \"/any/literal\"), ...) -- or any attempt_lifecycle operation, or the CAS library's plain wrappers -- over a path it chose itself, and the compiler accepts it. The per-store sealed records (gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore) protect only the business functions that take them; the shared layer below them takes a plain SlotStore, and file_slot_store is public and path-taking.",
 
+    "SECOND ROUTE, SAME SEAM: a sole_constructor record's FIELD READS are not module-private, so a module holding a sealed store reads its root (`store.root`, or `claims.slots.root` through gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore) and is accepted. The seal covers construction only. Executing evidence: test.claim.slot_store_seal_witness a_root_is_readable_through_a_claim_store_today (an expecting-red probe; also measured from gunbc#14972's lawful-mint controls). The restoring capability for this route is field reads of a sealed record confined to its declaring module.",
+
     "HARM: a store's location, realization and setup are decided at the call site rather than by one declaration, so two writers can disagree about where a store lives and the directory a deploy creates need not be the one written; nothing structural refuses the second route.",
 
     "POPULATION: every module that can reach gunbc.durable_cas_file_store file_slot_store (or the plain CAS operations) -- which, with Filesystem.* effects ambient (requires none), is every module in the corpus. (gunbc.filesystem_interface local_filesystem, once a second route, was deleted by gunbc#15047.) Not an enumeration of today's callers: a caller roster was tried on gunbc#14944 and withdrawn by operator ruling as not the architecture.",
@@ -27,5 +29,6 @@ data a_slot_store_is_built_over_a_literal_path_by_any_module: RecurringFailureMo
   evidence: [
     DeclarationRef { module_path: "gunbc.durable_cas_file_store", decl_name: "file_slot_store", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.slot_store_seal_witness", decl_name: "a_plain_store_over_a_literal_path_is_accepted_today", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.slot_store_seal_witness", decl_name: "a_root_is_readable_through_a_claim_store_today", field: WholeDeclaration },
   ],
 }

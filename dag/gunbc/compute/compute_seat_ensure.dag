@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
 import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
-import gunbc.durable_cas_file_store { CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
+import gunbc.durable_cas_file_store { slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.compute_attempt_slots_root {
   ComputeSeat, ComputeDispatchSeat, compute_seat_wire, compute_seat_holder_line, compute_seat_listed,
@@ -385,8 +385,7 @@ fn seat_dir_provably_absent(instance: HostDashboardInstance, attempt_key: String
 }
 
 fn compute_seat_discharge_dir(instance: HostDashboardInstance, store: ComputeSeatStore, leases_dir: String, subject: ComputeCapacitySubject, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatDischargePass {
-  let slots = store.slots
-  match slots.keys() {
+  match slot_keys(store: store.slots) {
     CasSlotKeysListed { keys } =>
       SeatDischargeRan { outcomes: keys |> map(k => compute_seat_ensure_in(instance: instance, store: store, leases_dir: leases_dir, subject: subject, reference: k, source: source, owner: owner)) }
     CasSlotKeysListingRefused { root: _, detail: d } => SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", d], "") }

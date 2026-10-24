@@ -12,11 +12,12 @@ import std.process { ProcessExit }
 // outside the defining files and asserts the refusal on the real acceptance path:
 //   - a forged SlotStore literal, a forged cast, a forged claim store, and a claim store built around a LITERAL PATH:
 //     each EXACTLY ONE SoleConstructorViolation on its subject;
-//   - a path-taking claim minter (the deleted slot_root_observe), a bare-root store passed where a claim store is
-//     required, and a root read out of a claim store: each at least one blocking diagnostic beyond a baseline
+//   - a path-taking claim minter (the deleted slot_root_observe) and a bare-root store passed where a claim store is
+//     required: each at least one blocking diagnostic beyond a baseline
 //     importing the same closure, which cancels the shared closure (gunbc.compile_diagnostic_census).
 // The GREEN is the lawful route, worktree_claim_store into worktree_claim_record_before_add, which adds no blocking
-// diagnostic and draws no seal violation. NOT witnessed, because it is not expressible: a store minted for instance
+// diagnostic and draws no seal violation. Two EXPECTING-RED probes record what is accepted today: a plain store over a
+// literal path, and a root read out of a claim store (field reads are not module-private). NOT witnessed, because it is not expressible: a store minted for instance
 // A refused where B is required (one type for both; see WorktreeClaimStore). NOT closed here: any module can still
 // build a plain SlotStore over its own path through file_slot_store, because Filesystem.* is
 // ambient; that store is not a claim store. Seal residuals: variant construction
@@ -31,7 +32,7 @@ fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> Cens
   census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
 }
 
-data forged_store_literal_source: String = "module probe_slot_store_literal\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStore, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store }\nimport gunbc.roadmap.roadmap_attempt_worktree_claim { WorktreeClaim, WorktreeClaimWritten, WorktreeClaimNotRecorded, worktree_claim_record_before_add }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f(s: SlotStore) -> SlotStore {\n  SlotStore { observe: s.observe, commit: s.commit, keys: s.keys }\n}\n"
+data forged_store_literal_source: String = "module probe_slot_store_literal\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStore, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store }\nimport gunbc.roadmap.roadmap_attempt_worktree_claim { WorktreeClaim, WorktreeClaimWritten, WorktreeClaimNotRecorded, worktree_claim_record_before_add }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f() -> SlotStore {\n  SlotStore { root: \"/tmp/forged-slots\" }\n}\n"
 
 data forged_store_cast_source: String = "module probe_slot_store_cast\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStore, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store }\nimport gunbc.roadmap.roadmap_attempt_worktree_claim { WorktreeClaim, WorktreeClaimWritten, WorktreeClaimNotRecorded, worktree_claim_record_before_add }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f(r: NonEmptyStr) -> SlotStore {\n  r as SlotStore\n}\n"
 
@@ -77,8 +78,15 @@ test fn a_bare_root_store_is_not_a_claim_store() -> ProcessExit {
   census_exit(blocking_delta(hostile: bare_store_as_claim_store_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
 }
 
-test fn claim_code_has_no_route_to_a_root() -> ProcessExit {
-  census_exit(blocking_delta(hostile: root_out_of_claim_store_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
+// AN EXPECTING-RED PROBE, recorded as what holds TODAY: a field read on a sole_constructor record is not
+// module-private, so a module holding a claim store reads its root (`c.slots.root`) and is ACCEPTED -- no
+// blocking diagnostic beyond the closure baseline. The seal is on construction only; the hole is declared in
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module. This probe must go red,
+// and is then inverted into that wall's RED, in the change that makes a sealed record's fields readable only
+// by its declaring module. (It was a RED while SlotStore held closures and no root field; the data-only shape,
+// ruled on 2026-10-24 because records of effectful closures do not emit natively, gives the root a field.)
+test fn a_root_is_readable_through_a_claim_store_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: root_out_of_claim_store_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }))
 }
 
 test fn the_lawful_mint_route_is_admitted() -> ProcessExit {
