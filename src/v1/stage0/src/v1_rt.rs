@@ -909,14 +909,35 @@ mod list_slice_tests {
 
     #[test]
     fn append_agrees_with_extension_for_every_shape() {
-        for (l, r) in [(0usize, 0usize), (0, 1), (0, 5), (5, 0), (5, 1), (5, 2), (7, 3000), (3000, 1)] {
+        for (l, r) in [
+            (0usize, 0usize),
+            (0, 1),
+            (0, 5),
+            (5, 0),
+            (5, 1),
+            (5, 2),
+            (7, 3000),
+            (3000, 1),
+        ] {
             let a: Vec<i64> = (0..l as i64).collect();
             let b: Vec<i64> = (100..100 + r as i64).collect();
             let want: std::vec::Vec<i64> = a.iter().chain(b.iter()).cloned().collect();
             let bare = list_concat(a.clone(), b.clone());
-            assert_eq!(bare.iter().cloned().collect::<std::vec::Vec<_>>(), want, "bare {} {}", l, r);
+            assert_eq!(
+                bare.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "bare {} {}",
+                l,
+                r
+            );
             let rc = rc_list_concat(Rc::new(a), Rc::new(b));
-            assert_eq!(rc.iter().cloned().collect::<std::vec::Vec<_>>(), want, "rc {} {}", l, r);
+            assert_eq!(
+                rc.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "rc {} {}",
+                l,
+                r
+            );
         }
     }
 
