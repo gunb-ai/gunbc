@@ -147,7 +147,7 @@ type MegaRacAttachOutcome
   | MegaRacSeveralImagesPresented { configurations: String }
   | MegaRacStaleDetachNotAdmitted { stale_image: String, reason: NonEmptyStr }
   | MegaRacStaleDetachUnconfirmed { detach: MegaRacDetachEvidence, reason: NonEmptyStr }
-  | MegaRacRedirectionUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, configurations: String }
+  | MegaRacRedirectionUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, refusal: UnreadRowStopRefusal, configurations: String }
   | MegaRacRefreshClockUnreadable { detail: String, detach: MegaRacDetachEvidence }
   | MegaRacListingUnparseableAfterDetach { detail: String, detach: MegaRacDetachEvidence }
   | MegaRacOfferedAmbiguouslyAfterDetach { image_name: NonEmptyStr, image_indices: List<String>, detach: MegaRacDetachEvidence }
@@ -1071,7 +1071,7 @@ fn detach_verdict(
     ) {
       ConvergeNothingPresented => DetachEstablished
       ConvergeUnreadable { detail: _ } => still_presenting
-      ConvergeUncatalogued { image_name: n, unread: u } =>
+      ConvergeUncatalogued { image_name: n, unread: u, refusal: _ } =>
         // THE STOP'S READ-BACK IS RECORDED, NOT JUDGED. On 0.45.3 no committed reading shows what a
         // stopped row reads, so a row left after the stop with an unread status does not establish the
         // stop; the reason carries the wire so this attempt's receipt is the reading that grounds it.
@@ -1419,28 +1419,61 @@ fn unread_code_on_the_evidenced_release(unread: MegaRacRedirectionUnread) -> Boo
   }
 }
 
+// WHY AN UNREAD ROW WAS NOT STOPPED, ONE ARM PER CONDITION, checked in this order so the refusal names the
+// first condition that failed rather than a disjunction of them. The order runs from the read itself (a
+// readiness look never writes; the release must be the evidenced one) to the row (named, not the wanted
+// image, recognised as this lane's). Boot run 40070230626 refused on the release arm -- its controller is
+// admitted as 0.32 under gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation
+// -- while the text it printed named the image as foreign; that is the defect these arms remove.
+type UnreadRowStopRefusal
+  = UnreadStopOnReadOnlyLook
+  | UnreadStopReleaseNotEvidenced { unread: MegaRacRedirectionUnread }
+  | UnreadStopRowUnnamed
+  | UnreadStopRowIsTheWantedImage
+  | UnreadStopImageForeign
+
+type UnreadRowStop
+  = UnreadRowStoppable { row: PresentingRow }
+  | UnreadRowNotStoppable { refusal: UnreadRowStopRefusal }
+
+fn unread_row_stop_refusal_text(refusal: UnreadRowStopRefusal) -> String {
+  match refusal {
+    UnreadStopOnReadOnlyLook => "this look is read-only and never stops a session"
+    UnreadStopReleaseNotEvidenced { unread: u } => join(["a stop on an unread status is admitted only on firmware ", megarac_firmware_0_45_3.raw_version as String, " (the release whose catalogue committed evidence grounds), and this row was read as ", redirection_unread_text(unread: u)], "")
+    UnreadStopRowUnnamed => "the row names no image, so nothing identifies it as this lane's"
+    UnreadStopRowIsTheWantedImage => "the row presents the image this attempt wants, and stopping it would withdraw that medium"
+    UnreadStopImageForeign => "the image is not one this lane publishes (no seeded stem recognises it)"
+  }
+}
+
 // A CD ROW WHOSE STATUS IS AN UNREAD CODE ON 0.45.3, NAMING AN IMAGE THIS LANE PUBLISHED AND NOT THE
 // ONE WANTED, IS TREATED AS PRESENTING. Presenting is the reading that licenses only StopMedia on it, the conservative
 // write: a stop on a session that was already stopped changes nothing, and the stop is established only
 // by the read-back (detach_verdict), never by the code. An unread row of any other kind stays unread
-// and refuses: a foreign or unnamed image is never stopped on an unread status, and the WANTED image
-// with an unread status is not stopped either -- that would withdraw the medium this attempt is about.
-// `replaceable` is absent on the readiness reading, which never writes.
+// and refuses with the condition that failed: a foreign or unnamed image is never stopped on an unread
+// status, and the WANTED image with an unread status is not stopped either -- that would withdraw the
+// medium this attempt is about. `replaceable` is absent on the readiness reading, which never writes.
 fn unread_row_replaceable(
   row: JsonValue,
   image_name: String,
   desired: NonEmptyStr,
   unread: MegaRacRedirectionUnread,
   replaceable: FreeSemigroup<NonEmptyStr>?,
-) -> PresentingRow? {
+) -> UnreadRowStop {
   match replaceable {
-    Absent => none
+    Absent => UnreadRowNotStoppable { refusal: UnreadStopOnReadOnlyLook }
     Present { value: stems } =>
-      if unread_code_on_the_evidenced_release(unread: unread) == false || image_name == "" || image_name == (desired as String) || seeded_stems_recognise(stems: stems, image_name: image_name) == false {
-        none
+      if unread_code_on_the_evidenced_release(unread: unread) == false {
+        UnreadRowNotStoppable { refusal: UnreadStopReleaseNotEvidenced { unread: unread } }
+      } else if image_name == "" {
+        UnreadRowNotStoppable { refusal: UnreadStopRowUnnamed }
+      } else if image_name == (desired as String) {
+        UnreadRowNotStoppable { refusal: UnreadStopRowIsTheWantedImage }
+      } else if seeded_stems_recognise(stems: stems, image_name: image_name) == false {
+        UnreadRowNotStoppable { refusal: UnreadStopImageForeign }
       } else {
-        Present {
-          value: PresentingRow {
+        UnreadRowStoppable {
+          row: PresentingRow {
             image_name: image_name,
             media_index: json_number_member(doc: row, key: "media_index"),
             session_index: json_number_member(doc: row, key: "session_index"),
@@ -1522,7 +1555,7 @@ fn configuration_row_presenting_reading(
 
 type PresentedMedia
   = PresentedMediaDocumentUnreadable { detail: String }
-  | PresentedMediaUncatalogued { image_name: String, unread: MegaRacRedirectionUnread }
+  | PresentedMediaUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, refusal: UnreadRowStopRefusal }
   | PresentedMediaRead { presenting: List<PresentingRow> }
 
 fn presented_media(
@@ -1540,14 +1573,14 @@ fn presented_media(
           fold(rows, init: PresentedMediaRead { presenting: [] }, f: (acc, row) =>
             match acc {
               PresentedMediaDocumentUnreadable { detail: _ } => acc
-              PresentedMediaUncatalogued { image_name: _, unread: _ } => acc
+              PresentedMediaUncatalogued { image_name: _, unread: _, refusal: _ } => acc
               PresentedMediaRead { presenting: ps } =>
                 match configuration_row_reading(row: row, image_name: image_name, firmware: firmware) {
                   ConfigurationRowUnreadable { detail: d } => PresentedMediaDocumentUnreadable { detail: d }
                   ConfigurationRowUncatalogued { image_name: n, unread: u } =>
                     match unread_row_replaceable(row: row, image_name: n, desired: image_name, unread: u, replaceable: replaceable) {
-                      Present { value: r } => PresentedMediaRead { presenting: ps.append(r) }
-                      Absent => PresentedMediaUncatalogued { image_name: n, unread: u }
+                      UnreadRowStoppable { row: r } => PresentedMediaRead { presenting: ps.append(r) }
+                      UnreadRowNotStoppable { refusal: why } => PresentedMediaUncatalogued { image_name: n, unread: u, refusal: why }
                     }
                   ConfigurationRowIdle => acc
                   ConfigurationRowPresenting { row: r } => PresentedMediaRead { presenting: ps.append(r) }
@@ -1565,7 +1598,7 @@ fn presented_media(
 // once is a state never observed and refuses rather than being stopped in some order.
 type PresentedConvergence
   = ConvergeUnreadable { detail: String }
-  | ConvergeUncatalogued { image_name: String, unread: MegaRacRedirectionUnread }
+  | ConvergeUncatalogued { image_name: String, unread: MegaRacRedirectionUnread, refusal: UnreadRowStopRefusal }
   | ConvergeDesiredPresented { row: PresentingRow }
   | ConvergeNothingPresented
   | ConvergeStalePresented { row: PresentingRow }
@@ -1579,7 +1612,7 @@ fn presented_convergence(
 ) -> PresentedConvergence {
   match presented {
     PresentedMediaDocumentUnreadable { detail: d } => ConvergeUnreadable { detail: d }
-    PresentedMediaUncatalogued { image_name: n, unread: u } => ConvergeUncatalogued { image_name: n, unread: u }
+    PresentedMediaUncatalogued { image_name: n, unread: u, refusal: why } => ConvergeUncatalogued { image_name: n, unread: u, refusal: why }
     PresentedMediaRead { presenting: ps } => presented_population_convergence(presenting: ps, image_name: image_name, replaceable_seeded_stems: replaceable_seeded_stems)
   }
 }
@@ -1638,7 +1671,7 @@ fn megarac_convergence_step(
 ) -> ConvergenceStep {
   match convergence {
     ConvergeUnreadable { detail: d } => ConvergeStepRefuse { outcome: MegaRacConfigurationsUnreadable { detail: d } }
-    ConvergeUncatalogued { image_name: n, unread: u } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: configurations } }
+    ConvergeUncatalogued { image_name: n, unread: u, refusal: why } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: configurations } }
     ConvergeForeignPresented { image_name: n } => ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: configurations } }
     ConvergeSeveralPresented => ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: configurations } }
     ConvergeDesiredPresented { row: _ } => ConvergeStepAwaitReadiness
@@ -1777,7 +1810,7 @@ fn attach_readiness(
   } else {
     match presented_media(body: body, image_name: image_name, firmware: firmware, replaceable: none) {
       PresentedMediaDocumentUnreadable { detail: d } => ReadinessMalformed { detail: d }
-      PresentedMediaUncatalogued { image_name: n, unread: u } => ReadinessUncatalogued { image_name: n, unread: u, configurations: body }
+      PresentedMediaUncatalogued { image_name: n, unread: u, refusal: _ } => ReadinessUncatalogued { image_name: n, unread: u, configurations: body }
       PresentedMediaRead { presenting: ps } => {
         let named = ps |> filter(r => r.image_name == (image_name as String))
         let others = ps |> filter(r => r.image_name != (image_name as String))
@@ -2132,7 +2165,7 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
     MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacStaleDetachNotAdmitted { stale_image: _, reason: _ } => presentation_unobserved_before_presentation()
     MegaRacStaleDetachUnconfirmed { detach: _, reason: _ } => presentation_unobserved_before_presentation()
-    MegaRacRedirectionUncatalogued { image_name: _, unread: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacRedirectionUncatalogued { image_name: _, unread: _, refusal: _, configurations: _ } => presentation_unobserved_before_presentation()
     MegaRacRefreshClockUnreadable { detail: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacListingUnparseableAfterDetach { detail: _, detach: _ } => presentation_unobserved_before_presentation()
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: _, image_indices: _, detach: _ } => presentation_unobserved_before_presentation()
