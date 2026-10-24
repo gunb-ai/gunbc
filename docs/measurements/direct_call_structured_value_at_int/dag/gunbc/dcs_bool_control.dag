@@ -1,8 +1,0 @@
-module gunbc.dcs_bool_control
-
-import std.types { Bool, String }
-import std.integer { int_to_decimal_string }
-
-fn dcs_bool_control(a: Bool) -> String {
-  int_to_decimal_string(value: a)
-}

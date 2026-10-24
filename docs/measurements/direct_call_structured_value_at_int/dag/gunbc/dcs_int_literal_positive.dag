@@ -1,8 +1,0 @@
-module gunbc.dcs_int_literal_positive
-
-import std.types { String }
-import std.integer { int_to_decimal_string }
-
-fn dcs_int_literal_positive() -> String {
-  int_to_decimal_string(value: 7)
-}

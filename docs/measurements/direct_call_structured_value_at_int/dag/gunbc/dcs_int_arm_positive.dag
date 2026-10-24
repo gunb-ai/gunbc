@@ -1,9 +1,0 @@
-module gunbc.dcs_int_arm_positive
-
-import std.types { String }
-import std.nat { Nat }
-import std.integer { NonNegative, int_to_decimal_string }
-
-fn dcs_int_arm_positive(n: Nat) -> String {
-  int_to_decimal_string(value: NonNegative { n: n })
-}
