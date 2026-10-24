@@ -48,3 +48,27 @@ test fn generated_runtime_carries_the_symbol_the_hand_seed_calls() -> Bool {
 test fn w_RED_seed_carries_the_mirror_doc_comment_beside_the_fn() -> Bool {
   file_contains(path: runtime_rust_seed_path, pattern: "\"/// Mirror of `gunbc.observation_ci_render.ci_human_elapsed`.\\n\"")
 }
+
+// The append arm is pinned in all three files, the dag authority, the checked-in seed and the generated
+// runtime: the declaration and both consumers, so reverting one mirror reds here. Each pattern is spelled
+// without a brace, which the dag authority escapes.
+fn append_arm_in(path: String) -> Bool {
+  file_contains(path: path, pattern: "fn append_persistent<T: Clone>(a: &mut Vec<T>, mut b: Vec<T>)")
+    && file_contains(path: path, pattern: "if b.len() == 1")
+    && file_contains(path: path, pattern: "append_persistent(&mut a, b);")
+    && file_contains(path: path, pattern: "append_persistent(Rc::make_mut(&mut result), b);")
+    && file_contains(path: path, pattern: "fn an_empty_side_copies_no_element()")
+    && !file_contains(path: path, pattern: "APPEND_ELEMENTWISE_MAX")
+}
+
+test fn dag_authority_pins_the_append_arm() -> Bool {
+  append_arm_in(path: runtime_rust_dag_path)
+}
+
+test fn checked_in_seed_pins_the_append_arm() -> Bool {
+  append_arm_in(path: runtime_rust_seed_path)
+}
+
+test fn generated_runtime_pins_the_append_arm() -> Bool {
+  append_arm_in(path: v1_rt_generated_path)
+}

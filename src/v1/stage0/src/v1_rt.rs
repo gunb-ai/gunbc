@@ -766,21 +766,24 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
-/// Right sides at or below this length are pushed one element at a time: im's `Vector::append` costs a
-/// roughly flat tens of microseconds per call whatever the right side's length (measured on the emitted
-/// carrier: 31 us against 0.2 us for one push onto a 20000-element left), so `concat(acc, [x])` in a
-/// fold is superlinear through the append and not through the element count. The two arms cross
-/// between 2048 and 4096 elements; the bound sits below the crossing.
-const APPEND_ELEMENTWISE_MAX: usize = 1024;
-
-fn append_persistent<T: Clone>(a: &mut Vec<T>, b: Vec<T>) {
-    if b.len() <= APPEND_ELEMENTWISE_MAX {
-        for x in b.iter() {
-            a.push_back(x.clone());
-        }
-    } else {
-        a.append(b);
+/// A one-element right side is a push, the shape of `concat(acc, [x])` in a fold: it takes the O(log n)
+/// push arm instead of `Vector::append`. An empty side is the identity and an empty left takes the
+/// right side whole; every other right side keeps `append`.
+fn append_persistent<T: Clone>(a: &mut Vec<T>, mut b: Vec<T>) {
+    if b.is_empty() {
+        return;
     }
+    if a.is_empty() {
+        *a = b;
+        return;
+    }
+    if b.len() == 1 {
+        if let Some(x) = b.pop_front() {
+            a.push_back(x);
+        }
+        return;
+    }
+    a.append(b);
 }
 
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
@@ -903,6 +906,36 @@ mod list_slice_tests {
             assert_eq!(list_take(&xs, n), copying_take, "take {}", n);
         }
     }
+
+    #[test]
+    fn append_agrees_with_extension_for_every_shape() {
+        for (l, r) in [(0usize, 0usize), (0, 1), (0, 5), (5, 0), (5, 1), (5, 2), (7, 3000), (3000, 1)] {
+            let a: Vec<i64> = (0..l as i64).collect();
+            let b: Vec<i64> = (100..100 + r as i64).collect();
+            let want: std::vec::Vec<i64> = a.iter().chain(b.iter()).cloned().collect();
+            let bare = list_concat(a.clone(), b.clone());
+            assert_eq!(bare.iter().cloned().collect::<std::vec::Vec<_>>(), want, "bare {} {}", l, r);
+            let rc = rc_list_concat(Rc::new(a), Rc::new(b));
+            assert_eq!(rc.iter().cloned().collect::<std::vec::Vec<_>>(), want, "rc {} {}", l, r);
+        }
+    }
+
+    // THE RED CONTROL FOR THE IDENTITY ARMS: an empty left takes the right side whole and an empty
+    // right side is the identity, so neither copies an element; walking and cloning the right side
+    // (the arm this replaced) would count one clone per member.
+    #[test]
+    fn an_empty_side_copies_no_element() {
+        let cps = non_ascii_code_points(50);
+        let (_, left_empty) = clones_during(|| list_concat(Vec::new(), cps.clone()));
+        assert_eq!(left_empty, 0);
+        let (_, right_empty) = clones_during(|| list_concat(cps.clone(), Vec::new()));
+        assert_eq!(right_empty, 0);
+        let rc = Rc::new(cps);
+        let (_, rc_left_empty) = clones_during(|| rc_list_concat(Rc::new(Vec::new()), rc.clone()));
+        assert_eq!(rc_left_empty, 0);
+        let (_, rc_right_empty) = clones_during(|| rc_list_concat(rc.clone(), Rc::new(Vec::new())));
+        assert_eq!(rc_right_empty, 0);
+    }
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
@@ -999,7 +1032,14 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
-    append_persistent(Rc::make_mut(&mut result), (*b).clone());
+    if b.is_empty() {
+        return result;
+    }
+    let b = match Rc::try_unwrap(b) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    };
+    append_persistent(Rc::make_mut(&mut result), b);
     result
 }
 
