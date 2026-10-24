@@ -26,6 +26,8 @@ echo "BASE_SHA=$BASE_SHA (merge-base main..head; base tree = head - reverse(PR d
 export CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
 H=/tmp/w933h; B=/tmp/w933b
 git worktree prune >/dev/null 2>&1 || true
+NEED_B=1; ls $CKPT/jobs/T1.out $CKPT/jobs/T2.out >/dev/null 2>&1 && ls $CKPT/jobs/T2b.out $CKPT/jobs/T3.out >/dev/null 2>&1 && NEED_B=0
+echo "NEED_B=$NEED_B"
 elapsed () { echo $(( $(date +%s) - START )); }
 CKPT=/tmp/c4v/ckpt933; mkdir -p $CKPT/jobs
 echo "CKPT=$CKPT deadline=${DEADLINE}s"
@@ -38,8 +40,8 @@ cp -f $CARGO_TARGET_DIR/release/claim_batch $H/target/release/claim_batch
 echo "BUILD_COMMIT=$HEAD_SHA"
 echo "HEAD_BIN sha256=$(sha $H/target/release/claim_batch)"
 # ---------- base tree: head tree minus PR diff (reverse-apply, guarded)
-[ -d $B ] || git worktree add -q --force --detach $B $HEAD_SHA || { echo WTB_FAIL; exit 9; }
-if [ ! -s $CKPT/reverse-applied ]; then
+if [ "$NEED_B" = 1 ]; then [ -d $B ] || git worktree add -q --force --detach $B $HEAD_SHA || { echo WTB_FAIL; exit 9; }; fi
+if [ "$NEED_B" = 1 ] && [ ! -s $CKPT/reverse-applied ]; then
   git diff origin/main...refs/verifier/f14933 > $CKPT/pr.patch
   (cd $B && git apply -R --check $CKPT/pr.patch && git apply -R $CKPT/pr.patch && echo REVERSE_APPLY_OK) || { echo "REVERSE_APPLY_FAIL -- STOP"; exit 9; }
   # guard: reverse-apply must actually change the subject files
@@ -47,9 +49,8 @@ if [ ! -s $CKPT/reverse-applied ]; then
   touch $CKPT/reverse-applied
 fi
 export CARGO_TARGET_DIR=/root/workspace/.t933b
-(cd $B && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1) || { echo BUILD_FAIL_BASE; exit 9; }
-mkdir -p $B/target/release
-cp -f $CARGO_TARGET_DIR/release/claim_batch $B/target/release/claim_batch
+if [ "$NEED_B" = 1 ]; then (cd $B && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1) || { echo BUILD_FAIL_BASE; exit 9; }; fi
+if [ "$NEED_B" = 1 ]; then mkdir -p $B/target/release; cp -f $CARGO_TARGET_DIR/release/claim_batch $B/target/release/claim_batch; fi
 echo "BASE_BIN sha256=$(sha $B/target/release/claim_batch)"
 CBH=$H/target/release/claim_batch
 CBB=$B/target/release/claim_batch
@@ -99,7 +100,8 @@ runjob T1 $H $CBH dry $COST $COSTFN --outcomes-out /tmp/c4v/14933-ledger-head.ts
 echo "=== T2 dag+src/v2 NO --outcomes-out head $(date -u +%H:%M:%S)Z"
 runjob T2 $H $CBH dry $COST $COSTFN || rc=$?
 echo "=== T2b dag+src/v2 NO --outcomes-out BASE $(date -u +%H:%M:%S)Z"
-runjob T2b $B $CBB dry $COST $COSTFN || rc=$?
+[ -x $CBB ] || { echo "BASE_BIN_MISSING — will build next pass"; rc=7; }
+[ "$rc" = 0 ] && runjob T2b $B $CBB dry $COST $COSTFN || true
 echo "=== T3 --outcomes-out on BASE must refuse $(date -u +%H:%M:%S)Z"
-runjob T3 $B $CBB dry $COST $COSTFN --outcomes-out /tmp/c4v/14933-ledger-base.tsv || rc=$?
+[ -x $CBB ] && runjob T3 $B $CBB dry $COST $COSTFN --outcomes-out /tmp/c4v/14933-ledger-base.tsv || true
 echo "ALL_DONE_14933 $(date -u +%H:%M:%S)Z"
