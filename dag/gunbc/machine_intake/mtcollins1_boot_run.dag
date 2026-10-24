@@ -73,9 +73,9 @@ import extdeps.bootloader.grub {
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import std.optional { Present }
-import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate, mtcollins1_boot_fan_gate_allowance }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate, mtcollins1_boot_fan_gate_abandon, mtcollins1_boot_fan_gate_allowance }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
-import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
@@ -1834,13 +1834,34 @@ fn mtcollins1_boot_watch_observer_gone(gone: String) -> ProcessExit {
 // mtcollins1_fan_transition_window before the gate reads the chassis, so the window is spent in ticks of the
 // census watch's own cadence, each observing through mtcollins1_sol_watch_observe and deciding by watch_tick:
 // a lost channel stops the boot within one cadence of its last live observation, before the gate, the
-// census watch or anything optional runs. The settle acts only on the two stops. A capture terminal seen
+// census watch or anything optional runs. The settle acts only on the two stops, and either one ABANDONS the
+// gate: the host is safe-stopped without a fan read (mtcollins1_boot_fan_gate mtcollins1_boot_fan_gate_abandon),
+// since both leave a powered host with unverified fans unwatched. A capture terminal seen
 // during it is not acted on: the capture is cumulative, and the census watch's first tick after the gate
 // reads it again, so the fan read always precedes the verdict. The tick count is the window over the
 // cadence rounded up, so the settle is never shorter than the window.
 type FanSettleWatch
   = FanSettleElapsed { last_live_at: String, screen_reported: List<String> }
   | FanSettleStopped { watch: TerminalWatch }
+
+// THE STOPPED SETTLE'S WATCH, with the abandonment's safe stop named in its exit after the stop's own cause.
+fn fan_settle_stop_watch(watch: TerminalWatch, gate: PostPowerFanGateReading) -> TerminalWatch {
+  let clause = match gate {
+    PostPowerFanGateAbandoned { reason: _, stop: s } => post_power_fan_gate_abandoned_text(stop: s)
+    PostPowerFanGateNotReached { reason: why } => concat("the host was NOT powered down: ", why as String)
+    PostPowerFanGateReached { fitted: _, outcome: _ } => "the chassis-fan gate was read"
+  }
+  TerminalWatch {
+    outcome: match watch.outcome {
+      ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, concat("; ", clause)) }
+      ExitSuccess => exit_failure(reason: clause)
+    },
+    census_ended: watch.census_ended,
+    smpro_census: watch.smpro_census,
+    screen_reported: watch.screen_reported,
+    runner_host: watch.runner_host,
+  }
+}
 
 fn mtcollins1_boot_fan_settle_ticks() -> Int {
   let cadence = second_count(s: mtcollins1_boot_poll_cadence) as Int
@@ -2590,8 +2611,13 @@ fn mtcollins1_boot_actuate(
           let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
           let smpro_read = proc_uptime_read()
           match mtcollins1_boot_watched_fan_settle(remaining: mtcollins1_boot_fan_settle_ticks(), capture_path: sol_capture_path, pid_path: sol_pid_path, subject: subject, password_file: password_file, last_live_at: handoff_live_at, screen: screen, screen_reported: []) {
-            FanSettleStopped { watch: stopped } =>
-              actuation_watch_of(watch: stopped, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read, terminal_read: proc_uptime_read(), fan_gate: PostPowerFanGateNotReached { reason: "the SOL watch stopped the boot during the settle window, before the chassis fans were read" as NonEmptyStr })
+            FanSettleStopped { watch: stopped } => {
+              let abandoned = match mtcollins1_bmc_username {
+                Present { value: user } => mtcollins1_boot_fan_gate_abandon(username: user, password_file: password_file as NonEmptyStr, reason: "the SOL watch stopped the boot during the settle window, before the chassis fans were read" as NonEmptyStr)
+                Absent => PostPowerFanGateNotReached { reason: "the SOL watch stopped the boot during the settle window, and no BMC account is modeled to power the host down with" as NonEmptyStr }
+              }
+              actuation_watch_of(watch: fan_settle_stop_watch(watch: stopped, gate: abandoned), selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read, terminal_read: proc_uptime_read(), fan_gate: abandoned)
+            }
             FanSettleElapsed { last_live_at: settled_live_at, screen_reported: settle_reported } => {
           let fan_gate = match mtcollins1_bmc_username {
             Present { value: user } => mtcollins1_boot_fan_gate(username: user, password_file: password_file as NonEmptyStr)
@@ -3160,6 +3186,7 @@ fn fan_gate_continuation(reading: PostPowerFanGateReading, selection: IpmiBootSe
 fn post_power_fan_gate_exit_of(reading: PostPowerFanGateReading) -> ProcessExit {
   match reading {
     PostPowerFanGateNotReached { reason: why } => exit_failure(reason: concat("mtcollins1 boot stopped: the post-power-on chassis-fan gate was not reached: ", why as String))
+    PostPowerFanGateAbandoned { reason: why, stop: s } => exit_failure(reason: concat("mtcollins1 boot stopped: ", concat(why as String, concat("; ", post_power_fan_gate_abandoned_text(stop: s)))))
     PostPowerFanGateReached { fitted: fitted, outcome: outcome } => post_power_fan_gate_exit(fitted: fitted, outcome: outcome)
   }
 }

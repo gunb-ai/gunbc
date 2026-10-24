@@ -55,6 +55,7 @@ import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_root 
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { MtCollins1EndMedia, EndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan }
 import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateAbandoned, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -887,9 +888,13 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 //
 // THE LOSS LANDS IN THE FAN GATE'S SETTLE: #14263's gate reads the chassis only after a 60s settle, and
 // a drop at boot+30s falls inside it. The case was red while the gate slept the settle with SOL
-// unwatched (the teardown landed 60-120s after power); it passes because the settle is spent under the
-// SOL watch (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_watched_fan_settle), and it stays
-// as that repair's regression control. The bound is the contract and was not widened.
+// unwatched (the teardown landed 60-120s after power). The settle is now spent under the SOL watch
+// (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_watched_fan_settle), and THE CONTRACT WAS
+// CORRECTED ON SAFETY GROUNDS (merry-fox-82, 2026-10-24; DESIGN 5), not relaxed: a loss before the gate
+// has passed leaves a powered host with unverified fans and nothing watching it, so the boot fails safe.
+// Power-on is followed by exactly one PowerDown, no fan read is taken after power-on, and the gate reads
+// Abandoned -- all within the same sixty-second teardown bound, which stays. The case stays as the
+// repair's regression control; a_sol_loss_after_the_fan_gate_passes_keeps_the_host_on is its control.
 fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
@@ -911,18 +916,73 @@ fn teardown_within(route: List<DispatchRecord>, bound: Int) -> Bool {
   }
 }
 
-test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
+// THE POWER ACTIONS THE ROUTE ISSUED, in dispatch order, as the verbs ipmitool was given.
+fn power_actions(route: List<DispatchRecord>) -> List<String> {
+  map(filter(route, r => operation_name(r: r) == "diagnostic.ipmi.Tool.ChassisPowerControl"), r => fold(r.invocation.bindings, init: "", f: fn(acc, b) {
+    if acc != "" { acc } else if b.name == "action" { match b.value { InputText { text: t } => t InputTextList { items: _ } => "" } } else { "" }
+  }))
+}
+
+// NO FAN READ AFTER POWER-ON: the gate's round reads the sensors by SdrTypeList, so none may follow the first power action.
+fn sdr_reads_after_power_on(route: List<DispatchRecord>) -> Int {
+  let power = first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+  count(filter(route, r => operation_name(r: r) == "diagnostic.ipmi.Tool.SdrTypeList" && r.ordinal > power))
+}
+
+fn fan_gate_abandoned(a: MtCollins1BootAttempt) -> Bool {
+  match a.fan_gate {
+    PostPowerFanGateAbandoned { reason: _, stop: _ } => true
+    PostPowerFanGateReached { fitted: _, outcome: _ } => false
+    PostPowerFanGateNotReached { reason: _ } => false
+  }
+}
+
+fn fan_gate_established(a: MtCollins1BootAttempt) -> Bool {
+  match a.fan_gate {
+    PostPowerFanGateReached { fitted: _, outcome: PostPowerFanEstablished { observation: _ } } => true
+    PostPowerFanGateReached { fitted: _, outcome: PostPowerFanRefused { cause: _, observation: _, stop: _, manager: _, evidence: _ } } => false
+    PostPowerFanGateAbandoned { reason: _, stop: _ } => false
+    PostPowerFanGateNotReached { reason: _ } => false
+  }
+}
+
+fn sol_drop_world(after: Int) -> MtCollins1BootWorld {
   let w = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
-  let dropping = with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: 30)))
-  match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
+  with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: after)))
+}
+
+test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: sol_drop_world(after: 30)), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
     WitnessReturned { value, route, state } =>
       string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
         && string_contains(s: outcome_reason(a: value), pattern: "incident frozen to /run/sol.capture.loss")
         && string_contains(s: outcome_reason(a: value), pattern: "BMC answered mc info")
-        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && string_contains(s: outcome_reason(a: value), pattern: "the host was powered down without a fan read: power-off read back as off")
+        && join(power_actions(route: route), ",") == "on,off"
+        && sdr_reads_after_power_on(route: route) == 0
+        && fan_gate_abandoned(a: value)
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
         && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
         && teardown_within(route: route, bound: 60)
+        && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
+    _ => false
+  }
+}
+
+// THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
+// settle and the gate's read are over and the census is running, so the census watch observes the loss:
+// typed ObservationChannelLost, an Established gate, ONE power action and no PowerDown -- the host is left
+// on as before, its fans verified -- and the collector torn down within sixty seconds of the loss. The
+// fail-safe above is therefore a fact of where the loss lands, not a PowerDown on every loss.
+test fn a_sol_loss_after_the_fan_gate_passes_keeps_the_host_on() -> Bool {
+  match evaluate_in_witness_frame(frame: matrix_frame(world: sol_drop_world(after: 90)), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
+    WitnessReturned { value, route, state } =>
+      string_contains(s: outcome_reason(a: value), pattern: "ObservationChannelLost while the boot was being watched")
+        && !string_contains(s: outcome_reason(a: value), pattern: "powered down without a fan read")
+        && join(power_actions(route: route), ",") == "on"
+        && fan_gate_established(a: value)
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
+        && teardown_within(route: route, bound: 90 + 60)
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
     _ => false
   }
