@@ -240,14 +240,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.parse.parse_witness_perf_holds",
       tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_observed_shell_holds",
-      tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_ambiguous_shell_holds",
-      tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_malformed_shell_holds",
-      tail: Cons {
-      head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_missing_shell_holds",
-      tail:  Cons {
       head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_16_length_holds",
       tail: Cons {
       head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_20_length_holds",
@@ -286,10 +278,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
-    }
-    }
-    }
-    }
     }
     }
     }
@@ -1298,9 +1286,19 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // Plus the test.claim.approval_device_routes_wet_witness identity (gunbc#12000): the
 // bound-realization control's enrolment-store Read. Triple enrollment: this expectation, its
 // WetScheduledClaim row, and the gunbc.ci.ci_layer_roots
-// LocalRepoWetLane row for approval_device_routes_wet_witness.dag.
+// LocalRepoWetLane row for approval_device_routes_wet_witness.dag. Plus the two
+// test.claim.approval_google_enrolment_wet_witness identities (the enrol sequence through the real store
+// and the subject pin's lost-CAS reread), whose first effect is shell.Mktemp.DirWithTemplate and whose
+// LocalRepoWetLane row is for approval_google_enrolment_wet_witness.dag.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} }, tail: Empty {} }
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } }
+  }
 }
 
 // Spark pair declared-unit digest identities lived here. They were deleted with
@@ -1783,26 +1781,6 @@ fn floor_route_gap_expectation_chunk_24() -> List<FloorRouteGapExpectation> {
     tail:  Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_symlinked_ancestor_stops_before_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
     tail: Empty {} } } } } } }
-}
-
-// The three gunbc#12077 identities, and the observation helper's real-output claim beside the root
-// (same module, same RunArgv reads): the enrolment-code slot write (first effect
-// shell.Mktemp.DirWithTemplate) and the real entropy read (Urandom.ReadBytes), both with no
-// mock_response, and the ntfy readback root, whose reads are shell.Exec.RunArgv with no published
-// mock case. Floor run 36039262942 measured the three unenrolled gaps. Triple enrollment: these
-// expectations, their WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci.ci_layer_roots
-// LocalRepoWetLane rows for approval_device_enrolment_code_wet_witness.dag and
-// approval_ntfy_access_readback_wet_witness.dag.
-fn floor_route_gap_expectation_chunk_25() -> List<FloorRouteGapExpectation> {
-  Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.approval_device_enrolment_code_wet_witness.the_code_slot_is_written_before_delivery_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.approval_device_enrolment_code_wet_witness.the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution", operation: "ReadBytes", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.approval_ntfy_access_readback_wet_witness.the_root_refuses_before_minting_on_this_host_by_real_execution", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.approval_ntfy_access_readback_wet_witness.the_helper_output_decodes_as_an_outcome_by_real_execution", operation: "shell.Exec.RunArgv", ground: UnpublishedMockCase {} },
-    tail: Empty {} } } } }
 }
 
 // The test.claim.machine_intake.sol_hold_stdin_wet_witness identities: the real
@@ -2293,7 +2271,7 @@ fn floor_route_gap_expectation_chunk_44() -> List<FloorRouteGapExpectation> {
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Cons { head: floor_route_gap_expectation_chunk_32(), tail: Cons { head: floor_route_gap_expectation_chunk_33(), tail: Cons { head: floor_route_gap_expectation_chunk_34(), tail: Cons { head: floor_route_gap_expectation_chunk_35(), tail: Cons { head: floor_route_gap_expectation_chunk_36(), tail: Cons { head: floor_route_gap_expectation_chunk_37(), tail: Cons { head: floor_route_gap_expectation_chunk_38(), tail: Cons { head: floor_route_gap_expectation_chunk_39(), tail: Cons { head: floor_route_gap_expectation_chunk_40(), tail: Cons { head: floor_route_gap_expectation_chunk_41(), tail: Cons { head: floor_route_gap_expectation_chunk_42(), tail: Cons { head: floor_route_gap_expectation_chunk_43(), tail: Cons { head: floor_route_gap_expectation_chunk_44(), tail: Cons { head: floor_route_gap_expectation_chunk_45(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } 
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Cons { head: floor_route_gap_expectation_chunk_32(), tail: Cons { head: floor_route_gap_expectation_chunk_33(), tail: Cons { head: floor_route_gap_expectation_chunk_34(), tail: Cons { head: floor_route_gap_expectation_chunk_35(), tail: Cons { head: floor_route_gap_expectation_chunk_36(), tail: Cons { head: floor_route_gap_expectation_chunk_37(), tail: Cons { head: floor_route_gap_expectation_chunk_38(), tail: Cons { head: floor_route_gap_expectation_chunk_39(), tail: Cons { head: floor_route_gap_expectation_chunk_40(), tail: Cons { head: floor_route_gap_expectation_chunk_41(), tail: Cons { head: floor_route_gap_expectation_chunk_42(), tail: Cons { head: floor_route_gap_expectation_chunk_43(), tail: Cons { head: floor_route_gap_expectation_chunk_44(), tail: Cons { head: floor_route_gap_expectation_chunk_45(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } 
 }
 
 

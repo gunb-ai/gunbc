@@ -2,6 +2,8 @@ module test.claim.machine_intake.mtcollins1_census_medium_readback_witness
 
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { decl_ref }
+import std.dissolution { BoundDissolution, DeclarationRetires }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, BootMediumVolumeLabel, stock_installer_boot_medium, bmc_boot_image_export, boot_image_export_eq }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
@@ -17,17 +19,18 @@ import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium,
   census_medium_qualification, CensusMediumQualified, CensusMediumNotCensus,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_image_name }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, boot_medium_served_path, boot_medium_served_argv }
 import gunbc.machine_intake.mtcollins1_census_medium_readback {
+  census_medium_readback_unconsumed_frontier,
   CensusMediumReadback, CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus, CensusMediumReadbackExporterUnsupported,
   census_medium_readback,
   CensusMediumReadbackRecordUnreadable, CensusMediumReadbackRecordMalformed, CensusMediumReadbackRecordDisagrees,
   CensusMediumReadbackImageUnreadable, CensusMediumReadbackMeasureMalformed,
-  RemoteAnswer, census_medium_readback_from_answers, census_readback_refusal,
+  census_medium_readback_from_answers, census_readback_refusal,
   census_readback_refusal_before_filing, census_readback_refusal_before_attach,
   CensusRecordAdmitted, CensusRecordRefused, census_record_standing,
-  census_record_argv, census_readback_argv,
-  census_medium_served_path, census_record_path, census_build_key,
-  remote_answer_of,
+  census_record_argv,
+  census_record_path, census_build_key,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -93,7 +96,7 @@ test fn the_served_path_and_the_record_path_derive_from_the_census_input() -> Bo
   match mtcollins1_census_image {
     CensusImageRefused { reason: _ } => false
     CensusImageDerived { input: input } =>
-      (census_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
+      (boot_medium_served_path(medium: census) as String) == "/srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
         && (census_record_path(input: input) as String) == concat("/srv/bmc/.gunbc-mtcollins1-census-ubuntu-24.04.3-arm64.", census_build_key(input: input) as String, ".built")
         && (census_build_key(input: input) as String) == "c001ac127d718e72"
   }
@@ -153,7 +156,7 @@ test fn sixty_four_non_hex_characters_are_malformed_in_the_record_and_from_sha25
 // The legs are the coreutils and crypto authorities' own commands, `--` included.
 test fn the_two_legs_are_the_upstream_commands_not_local_spellings() -> Bool {
   census_record_argv(record_path: "/srv/bmc/r" as NonEmptyStr) == ["cat", "/srv/bmc/r"]
-    && census_readback_argv(path: "/srv/bmc/x.iso" as NonEmptyStr) == ["sha256sum", "--", "/srv/bmc/x.iso"]
+    && boot_medium_served_argv(path: "/srv/bmc/x.iso" as NonEmptyStr) == ["sha256sum", "--", "/srv/bmc/x.iso"]
 }
 
 test fn a_malformed_record_is_malformed_not_diverged() -> Bool {
@@ -416,6 +419,16 @@ test fn control_b_medium_whose_stem_does_not_match_its_image_refuses_before_any_
   }
   match census_medium_readback(medium: wrong_stem_medium, image: mtcollins1_census_image, attempt: "census2-readback") {
     CensusMediumReadbackNotCensus => true
+    _ => false
+  }
+}
+
+// The unconsumed-readback frontier is bound to THIS readback retiring, not to a free label: its trigger
+// names the declaration whose deletion discharges it.
+test fn the_unconsumed_readback_frontier_retires_with_the_readback() -> Bool {
+  match census_medium_readback_unconsumed_frontier {
+    BoundDissolution { trigger: DeclarationRetires { ref: r } } =>
+      r == decl_ref(module_path: "gunbc.machine_intake.mtcollins1_census_medium_readback", decl_name: "census_medium_readback")
     _ => false
   }
 }

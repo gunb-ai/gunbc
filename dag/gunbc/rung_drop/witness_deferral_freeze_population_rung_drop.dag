@@ -1,0 +1,68 @@
+module gunbc.rung_drop.witness_deferral_freeze_population_rung_drop
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, LostAsPassenger }
+import gunbc.guarantee_rung { OutsideTheLadder, MechanicallyPreventable }
+// THE LABEL IS THE ROSTER'S OWN, IMPORTED NOT RESTATED. `rung_drop_population_is_readable` refuses
+// this row unless the label is rostered in gunbc.instrument_targets instrument_targets exactly
+// once; taking the very function that rostering calls -- instead of transcribing the label here --
+// means the drop and its instrument cannot drift: a renamed instrument retires the pointer with
+// it, rather than leaving a row pointing at a producer that never existed.
+import gunbc.instrument_targets { witness_deferral_freeze_population_label }
+
+// ONE RUNG DROP FOR THE WHOLE OFFLINE WITNESS DEFERRAL POPULATION (ruling stern-bat-401, option A,
+// 2026-10-23, from the Charter-4 census of gunbc.witness.witness_deferral_freeze). The population
+// AUTHORITY is the freeze file itself: its typed FrozenPathDeferral entries ARE the population, and
+// the instrument under this row's DerivedBy re-derives them as an IDENTITY JOIN over those typed
+// entries (entry#function per row) — never a count restated here, which would be a second
+// representation of the roster (§5). rung_drop_population_is_readable refuses this row unless the
+// label is rostered in gunbc.instrument_targets exactly once, so the drop and its instrument cannot
+// drift apart silently: the drop names a population only by pointing at the instrument that derives
+// it.
+//
+// WHY A DECLARED DROP AND NOT A SILENCE. A FrozenPathDeferral row stands in for executed witness
+// coverage while its claim runs on no lane: the one schedule consumer that executed deferred
+// witnesses (run_discovery_corpus_with_options_inner) was deleted as unreachable on 2026-10-04, and
+// the freeze file's own header admits the laundering ("same laundering"). A deferred claim enrolled
+// in nothing is a rung drop with no rung-drop row, which §5 refuses: a guarantee that is off the
+// ladder is a rung drop, and a rung drop is declared. The census found the drop undeclared across
+// the whole 101-entry population; this row is that declaration.
+//
+// BOUNDED, SHRINKING MONOTONICALLY — AND EXECUTED. The population is exactly the frozen list: it may
+// SHRINK (restoring a claim deletes its deferral row and the join still holds) but may never GROW.
+// The instrument (gunbc.instruments.witness_deferral_freeze_population, label
+// //gunbc/instruments:witness-deferral-freeze-population) enforces that by consuming the production
+// additions gate — cli_run::collect_frozen_path_deferral_additions, the same authority the required
+// floor consults — through one thin builtin that renders the join's verdict and adds no judgment of
+// its own. An identity outside the declared population exits 1 (the additions arm); the current list
+// exits 0 (the control); a deletion exits 0, because live-minus-baseline can never contain a
+// removed identity — shrinking is permitted by the construction of the join, not by an allowance
+// written into this file. A count could be edited to pass; an identity join cannot.
+//
+// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT. Restoring a rung means NATIVE EXECUTION RUNS THE
+// CLAIM: the required job (claim_executor --required-ci) invokes the claim on a head-built binary and
+// it answers TRUE, inside the per-witness eval-step cost floor. That, not a schedule edit, retires
+// the deferral: the row is DELETED from the freeze list in the same change (shrinking only — keeping
+// the deferral row while executing the claim leaves the claim standing twice, which is the second
+// representation this whole change exists to remove), the instrument's join loses that identity, and
+// when the frozen list is empty the drop retires with its enrolled set. An earlier sibling row was
+// repaired for naming an artifact instead of a capability (a required run "entering the
+// discovery-corpus path" — a path no required run ever entered); this trigger is written so that no
+// schedule change can satisfy it.
+data witness_deferral_freeze_population_rung_drop: RungDrop = RungDrop {
+  identity: "witness_deferral_freeze_population" as NonEmptyStr,
+
+  subject: "gunbc.witness.witness_deferral_freeze frozen_path_deferrals: the offline deferrals stand in for executed witness coverage, but no lane executes a deferred claim, so every deferral declares a guarantee whose rung is off the ladder",
+
+  declared: "2026-10-23 (silent-bee-194, Charter 4 census; the population it drops is older than this row)",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: "the discovery-corpus batch that executed deferred witnesses (run_discovery_corpus_with_options_inner and its offline_local_recipe consumer edge), deleted as unreachable on 2026-10-04 (calm-boar-904 line); the deferral rows survived their consumer, so 101 entries kept declaring coverage nothing ran" },
+    population: DerivedBy {
+      label: witness_deferral_freeze_population_label()
+    },
+    restoration_trigger: "native execution runs the claim inside the cost floor: the required job (claim_executor --required-ci, head-built) invokes the claim and it answers TRUE, at which point its FrozenPathDeferral row is DELETED from gunbc.witness.witness_deferral_freeze in the same change (shrinking only — restoring coverage while keeping the deferral row leaves the claim standing twice), the instrument's identity join loses that identity, and when the frozen list is empty this row retires with its enrolled set"
+  } }
+}
