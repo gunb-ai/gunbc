@@ -7118,7 +7118,9 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
                 span: value.span, module_name: scope.module_name)]
               HostText => []
               NotText => nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: concat("'", concat(bound_name, concat("' of ", func_name))), span: value.span, scope: scope)
-              TextRepresentationUnidentified => [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument '", concat(bound_name, concat("' of ", func_name))), span: value.span }, module_name: scope.module_name)]
+              TextRepresentationUnidentified => concat(
+                [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument '", concat(bound_name, concat("' of ", func_name))), span: value.span }, module_name: scope.module_name)],
+                nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: concat("'", concat(bound_name, concat("' of ", func_name))), span: value.span, scope: scope))
             }
           _ => []
         }
