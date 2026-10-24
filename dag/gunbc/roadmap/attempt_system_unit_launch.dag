@@ -129,7 +129,7 @@ fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: R
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
-  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
+  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore files the manager loads as the unit's credentials -- and no other unit, user, property, credential, or program" as NonEmptyStr
 }
 
 fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {

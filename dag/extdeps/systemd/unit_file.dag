@@ -787,6 +787,11 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
   }
 }
 
+// THE SYSTEM MANAGER'S CREDENTIAL STORE (systemd.exec(5), LoadCredential= and ImportCredential=: the first
+// directory the system manager searches for a credential named without a path). A LoadCredential= source the
+// manager opens as root belongs here, root-owned, so no less privileged principal can write or relink it.
+data systemd_system_credstore_directory: NonEmptyStr = "/etc/credstore"
+
 fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String {
   match directive {
     ServiceType { mode: v } => join(["Type=", systemd_service_mode_wire(mode: v) as String], "")

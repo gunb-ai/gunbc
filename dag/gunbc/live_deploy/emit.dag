@@ -219,6 +219,8 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launch_argv_refused_detail,
   attempt_system_unit_launcher_locus,
 }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchWorkerCredential, dispatch_worker_credentials }
+import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.live_deploy.lab_host_plan {
   LabPlanReady,
   LabPlanRefused,
@@ -344,6 +346,7 @@ import gunbc.live_deploy.operations {
   deploy_stage_visudo_check_command,
   installed_visudo_policy_check_command,
   deploy_stage_install_from_command,
+  deploy_stage_copy_unprivileged_command,
   deploy_stage_cmp_stages_command,
   rename_no_target_directory_command,
   pwd_tree_copy_privileged_command,
@@ -1365,6 +1368,42 @@ fn retired_attempt_unit_sudo_route_paths(instance: HostDashboardInstance) -> Lis
   ]
 }
 
+// THE ROOT-OWNED CREDSTORE COPIES A DEDICATED WORKER UNIT IS HANDED (gunbc.roadmap.roadmap_dispatch_actuator
+// dispatch_worker_credentials). Each custody file is read AS THE APPLY'S PRINCIPAL into the stage, then installed
+// by root from the stage, owner-only, under the system credstore -- so root never opens a path the service user
+// controls, and the copy the manager later loads holds only bytes that user could read. No credential, no steps: a
+// service-user worker reads its own custody and its instance gets none. A custody file that is missing or
+// unreadable fails the apply under set -e rather than deploying a worker whose model route cannot authenticate.
+data dispatch_worker_credstore_file_mode: NonEmptyStr = "0400"
+
+fn dispatch_worker_credstore_stage_name(credential: DispatchWorkerCredential) -> String {
+  join(["credstore-", credential.identifier as String], "")
+}
+
+fn dispatch_worker_credstore_steps(instance: HostDashboardInstance, owner: NonEmptyStr) -> List<PipelineStep> {
+  match dispatch_worker_credentials(instance: instance).first() {
+    Absent => []
+    Present { value: _ } =>
+      concat(
+        [deploy_raw(command: install_directory_owned_command(mode: declared_directory_mode(m: DirectoryOwnerOnly), owner: owner, group: owner, path: systemd_system_credstore_directory as String))],
+        fold(dispatch_worker_credentials(instance: instance), init: [], f: (acc, c) => concat(acc, [
+          deploy_raw(command: deploy_stage_copy_unprivileged_command(
+            source: c.custody_source as String,
+            mode: install_file_owner_only_mode,
+            stage_name: dispatch_worker_credstore_stage_name(credential: c),
+          )),
+          deploy_raw(command: deploy_stage_install_owned_command(
+            stage_name: dispatch_worker_credstore_stage_name(credential: c),
+            mode: dispatch_worker_credstore_file_mode,
+            owner: owner,
+            group: owner,
+            dest: c.credstore_path as String,
+          )),
+        ])),
+      )
+  }
+}
+
 fn attempt_unit_drain_steps_for_instance(
   spec: DeploymentSpec,
   instance: HostDashboardInstance,
@@ -1389,7 +1428,10 @@ fn attempt_unit_drain_steps_for_instance(
             deploy_raw(command: gunbc.live_deploy.operations.sudoers_after_removal_check_command()),
           ],
           concat(
-          root_owned_helper_snapshot_steps(locus: locus, revision: revision),
+          concat(
+            root_owned_helper_snapshot_steps(locus: locus, revision: revision),
+            dispatch_worker_credstore_steps(instance: instance, owner: locus.owner),
+          ),
           [
             deploy_raw(command: deploy_stage_write_command(
               stage_name: deployment_attempt_unit_drain_service_unit_name(names: spec.names) as String,

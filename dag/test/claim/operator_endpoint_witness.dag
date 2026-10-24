@@ -9,6 +9,7 @@ import gunbc.harness.harness_operator_route { operator_pinned_certificate, opera
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorModelsRefused, OperatorModelsAnswered,
   operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
+  operator_custody_file_path, OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
 }
 import gunbc.harness.harness_backend {
   harness_operator_roster_step, harness_roster_of, HarnessRosterFold, HarnessBackendRoster,
@@ -116,6 +117,30 @@ test fn an_empty_credential_file_is_refused_not_sent_as_an_empty_bearer() -> Boo
     Absent => true
     Present { value: _ } => false
   }
+}
+
+fn custody_path_text(path: NonEmptyStr?) -> String {
+  match path {
+    Absent => ""
+    Present { value: p } => p as String
+  }
+}
+
+// WHERE THE TWO FILES ARE FOUND. A harness the manager handed a credentials directory reads the route's files there
+// under the route's identifiers -- the same identifiers the dedicated worker unit loads them as
+// (test.claim.roadmap.dispatch_worker_traversal_witness the_dedicated_worker_unit_loads_both_pool_files_from_the_root_credstore)
+// -- and never from a home; one with only a home reads its custody there; one with neither locates nothing.
+test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_from_its_custody() -> Bool {
+  let r = harness_operator_route
+  let handed = OperatorCredentialHandedByManager { directory: "/run/credentials/gunbc-attempt-n-k.service" as NonEmptyStr }
+  let home = OperatorCredentialInHome { home: "/home/svc" as NonEmptyStr }
+  custody_path_text(path: operator_custody_file_path(custody: handed, identifier: r.credential_identifier, relative: r.credential_relative_path))
+    == "/run/credentials/gunbc-attempt-n-k.service/gunbc-pool-front-api-key"
+    && custody_path_text(path: operator_custody_file_path(custody: handed, identifier: r.certificate_identifier, relative: r.certificate_relative_path))
+      == "/run/credentials/gunbc-attempt-n-k.service/gunbc-pool-front-server-pem"
+    && custody_path_text(path: operator_custody_file_path(custody: home, identifier: r.credential_identifier, relative: r.credential_relative_path))
+      == "/home/svc/.config/gunbc-pool-front/api-key"
+    && custody_path_text(path: operator_custody_file_path(custody: OperatorCredentialUnlocated, identifier: r.credential_identifier, relative: r.credential_relative_path)) == ""
 }
 
 test fn the_operator_backend_access_hands_the_turn_its_header_file_and_a_seat_has_none() -> Bool {

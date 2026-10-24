@@ -265,6 +265,23 @@ fn installed_visudo_policy_check_command(path: String) -> String {
   shell_command_text_of_argv(argv: argv_words(command: visudo_policy_check_command(file: path)))
 }
 
+// AN UNPRIVILEGED READ INTO THE STAGE: the apply's own principal copies a file into the staging directory, so the
+// stage holds only bytes that principal could read itself. A later privileged install from the stage then never
+// opens a path that principal controls -- the converse of deploy_stage_install_from_command below.
+fn deploy_stage_copy_unprivileged_command(source: String, mode: NonEmptyStr, stage_name: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: [
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
+        source,
+      ]),
+      [deploy_stage_path_word(stage_name: stage_name)],
+    )),
+  )
+}
+
 // A PRIVILEGED FIXED-PATH READ INTO THE STAGE: install copies a root-only file to the staging
 // directory, owned by the reading principal. That is how a readback observes bytes it could not
 // read directly, without loosening the file's own group or mode.

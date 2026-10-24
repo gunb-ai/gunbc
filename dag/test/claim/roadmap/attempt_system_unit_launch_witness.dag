@@ -27,6 +27,7 @@ import gunbc.live_deploy.slice_bounds {
 }
 import gunbc.live_deploy.emit {
   attempt_unit_drain_steps_for_instance, retired_attempt_unit_sudo_route_paths, attempt_unit_drain_argv_refused_poison,
+  dispatch_worker_credstore_steps,
   live_deploy_attempt_unit_drain_service_unit_file, AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_path_unit_file,
   apply_intent_from_effects, attempt_unit_sudo_route_retire_dissolution,
 }
@@ -82,7 +83,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
 import extdeps.systemd.service_exec { exec_full_privileges_prefix }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider,
+  dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider, dispatch_worker_credentials,
 }
 import gunbc.host.host_layout { attempt_unit_spool_request_dir }
 import gunbc.cli_invoke {
@@ -796,6 +797,30 @@ fn launch_argv_refused_separator(reading: AttemptSystemUnitLaunchArgv) -> Bool {
         NamedArgumentAdmitted { argument: _ } => false
       }
   }
+}
+
+// THE DEDICATED WORKER'S CREDENTIALS REACH THE ROOT CREDSTORE THROUGH AN UNPRIVILEGED READ. Each custody file is
+// copied into the stage by the apply's own principal (no sudo on that line) and installed from the stage by root
+// (sudo, owner-only 0400) to its credstore path; the full lab apply carries both. Production's service-user worker
+// gets no credstore step. RED on a head whose copy read the custody path as root, which would let a relinked
+// custody file put an arbitrary root-only file into a unit the service user directs.
+fn step_texts_naming(texts: List<String>, needle: String) -> List<String> {
+  filter(texts, t => string_contains(s: t, pattern: needle))
+}
+
+test fn the_lab_apply_copies_each_worker_credential_unprivileged_then_installs_it_root_owned() -> Bool {
+  let own = srv1_lab_dashboard_instance()
+  let texts = map(dispatch_worker_credstore_steps(instance: own, owner: "root" as NonEmptyStr), st => pipeline_step_text(st: st))
+  let full = full_install_apply_text(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()))
+  let creds = dispatch_worker_credentials(instance: own)
+  count(creds) == 2
+    && count(dispatch_worker_credstore_steps(instance: srv1_live_dashboard_instance(), owner: "root" as NonEmptyStr)) == 0
+    && all(creds, c =>
+      count(step_texts_naming(texts: texts, needle: c.custody_source as String)) == 1
+        && all(step_texts_naming(texts: texts, needle: c.custody_source as String), t => !string_contains(s: t, pattern: "sudo"))
+        && count(step_texts_naming(texts: texts, needle: c.credstore_path as String)) == 1
+        && all(step_texts_naming(texts: texts, needle: c.credstore_path as String), t => string_contains(s: t, pattern: "sudo") && string_contains(s: t, pattern: "0400"))
+        && string_contains(s: full, pattern: c.credstore_path as String))
 }
 
 test fn an_instance_root_holding_the_separator_refuses_at_argv_and_drain_install() -> Bool {

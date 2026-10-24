@@ -103,6 +103,8 @@ type HarnessOperatorRoute {
   group_wire: NonEmptyStr
   credential_relative_path: NonEmptyStr
   certificate_relative_path: NonEmptyStr
+  credential_identifier: NonEmptyStr
+  certificate_identifier: NonEmptyStr
   concurrency_ceiling: Nat
   quality_floor: OperatorQualityFloor
 }
@@ -119,6 +121,8 @@ data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   group_wire: "operator:pool-front" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-pool-front/api-key" as NonEmptyStr,
   certificate_relative_path: ".config/gunbc-pool-front/server.pem" as NonEmptyStr,
+  credential_identifier: "gunbc-pool-front-api-key" as NonEmptyStr,
+  certificate_identifier: "gunbc-pool-front-server-pem" as NonEmptyStr,
   concurrency_ceiling: pool_budget_enforced(policy: pool_concurrency_budget_policy, upstream: pool_front_card_concurrency_high),
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
@@ -150,19 +154,48 @@ fn operator_class_admission(route: HarnessOperatorRoute, class: ServingCoTenancy
 // read here into a 0600 header file and never appears in argv, a log or an event. The certificate is public:
 // $HOME/.config/gunbc-pool-front/server.pem, mode 0644, any provenance, because it is trusted only if its SHA-256
 // fingerprint equals the pinned one (operator_pinned_certificate) -- a different file refuses.
-fn operator_home_path(relative: NonEmptyStr) -> NonEmptyStr? {
-  match shell.Env.Get(name: "HOME").value {
-    Absent => none
-    Present { value: h } => if h == "" { none } else { Present { value: join([h, "/", relative as String], "") as NonEmptyStr } }
+//
+// A HARNESS THE SERVICE MANAGER STARTED WITH THE FILES HANDED IN READS THEM THERE, NOT FROM A HOME. A dedicated
+// worker account (gunbc.roadmap.roadmap_dashboard_instance WorkerDedicatedAccount) is the untrusted principal and
+// has no home, so the custody above cannot be its own. The worker unit is handed both files by the manager
+// (systemd.exec(5) LoadCredential=, from root-owned credstore copies the deploy makes as the service user:
+// gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_credentials), under the two identifiers on the route,
+// in the per-invocation directory the manager names in $CREDENTIALS_DIRECTORY, owned by the unit's user and
+// removed when the unit stops. The two locations are not tried in turn: a process the manager handed a
+// credentials directory reads only that directory, so a unit started without this route's credential refuses
+// naming the missing file there and never falls through to a home.
+type OperatorCredentialCustody
+  = OperatorCredentialHandedByManager { directory: NonEmptyStr }
+  | OperatorCredentialInHome { home: NonEmptyStr }
+  | OperatorCredentialUnlocated
+
+fn operator_credential_custody() -> OperatorCredentialCustody {
+  match shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value {
+    Present { value: d } => if d == "" { OperatorCredentialUnlocated } else { OperatorCredentialHandedByManager { directory: d as NonEmptyStr } }
+    Absent =>
+      match shell.Env.Get(name: "HOME").value {
+        Absent => OperatorCredentialUnlocated
+        Present { value: h } => if h == "" { OperatorCredentialUnlocated } else { OperatorCredentialInHome { home: h as NonEmptyStr } }
+      }
   }
 }
 
+fn operator_custody_file_path(custody: OperatorCredentialCustody, identifier: NonEmptyStr, relative: NonEmptyStr) -> NonEmptyStr? {
+  match custody {
+    OperatorCredentialHandedByManager { directory: d } => Present { value: join([d as String, "/", identifier as String], "") as NonEmptyStr }
+    OperatorCredentialInHome { home: h } => Present { value: join([h as String, "/", relative as String], "") as NonEmptyStr }
+    OperatorCredentialUnlocated => none
+  }
+}
+
+data operator_custody_unlocated_detail: String = "neither CREDENTIALS_DIRECTORY nor HOME is set"
+
 fn operator_credential_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
-  operator_home_path(relative: route.credential_relative_path)
+  operator_custody_file_path(custody: operator_credential_custody(), identifier: route.credential_identifier, relative: route.credential_relative_path)
 }
 
 fn operator_certificate_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
-  operator_home_path(relative: route.certificate_relative_path)
+  operator_custody_file_path(custody: operator_credential_custody(), identifier: route.certificate_identifier, relative: route.certificate_relative_path)
 }
 
 // THE HEADER FILE'S TEXT, ONE SPELLING: the bearer line and the x-pool-session line. The session value is the
@@ -278,7 +311,7 @@ type OperatorCertificateText
 
 fn operator_read_certificate(route: HarnessOperatorRoute) -> OperatorCertificateText {
   match operator_certificate_path(route: route) {
-    Absent => OperatorCertificateTextRefused { detail: "HOME is not set, so the pool front's pinned certificate file cannot be located" }
+    Absent => OperatorCertificateTextRefused { detail: join([operator_custody_unlocated_detail, ", so the pool front's pinned certificate file cannot be located"], "") }
     Present { value: path } => {
       let read = Filesystem.Read(path: path as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -309,7 +342,7 @@ fn operator_pin_staged_certificate(staged: NonEmptyStr, pem: String) -> Operator
 // operator_header_text).
 fn operator_open_header(route: HarnessOperatorRoute, session: NonEmptyStr) -> OperatorHeaderOpen {
   match operator_credential_path(route: route) {
-    Absent => OperatorHeaderRefused { detail: "HOME is not set, so the operator endpoint's credential file cannot be located" }
+    Absent => OperatorHeaderRefused { detail: join([operator_custody_unlocated_detail, ", so the operator endpoint's credential file cannot be located"], "") }
     Present { value: path } => {
       let read = Filesystem.Read(path: path as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
