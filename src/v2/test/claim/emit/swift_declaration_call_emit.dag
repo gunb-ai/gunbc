@@ -42,7 +42,7 @@ data sdc_call_source: String = "module v2.test.sdc_m1\n\nfn f(a: Int, b: Int) ->
 // model is the existing refusal claim below).
 fn sdc_swap_scope_edges(edges: List<Edge>, scope: Symbol) -> List<Edge> {
   fold(edges, init: [], f: fn(acc, e) {
-    list_append(left: acc, right: [Edge { label: e.label, target: sdc_swap_scope(node: e.target, scope: scope) }])
+    list_append(left: acc, right: [Edge { label: e.label, target: sdc_swap_scope(node: e.target, scope: scope), declaration: e.declaration }])
   })
 }
 
