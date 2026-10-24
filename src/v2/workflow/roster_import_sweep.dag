@@ -410,7 +410,7 @@ fn roster_rename_census_selected(paths_csv: String, scope: RosterHomeScope, call
 fn roster_census_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>, call: String) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
-    let census = roster_census_text_rows(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures, census_call: call)
+    let census = roster_census_text_rows(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, candidates: roster_rows_for_scope(scope: scope), closures: closures, census_call: Present { value: call })
     "CENSUS " + path + " call=" + call + " heads=" + int_to_decimal_string(value: census.heads) + "\n" + roster_render_outcome(path: path, outcome: census.outcome)
   } else {
     roster_refuse_row(path: path, reason: RefusalUnreadable)
@@ -1018,11 +1018,11 @@ fn roster_sweep_text_scoped(sides: List<RosterHomeSide>, companions: List<Roster
 // the production table does not carry -- Wave 2's shape) so a refusal or a plan is measured against THAT row, never
 // against whatever the generator's table happens to hold. The production path reaches it through the scope filter above.
 fn roster_sweep_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
-  roster_census_text_rows(sides: sides, companions: companions, path: path, text: text, prepared: prepared, lex: lex, candidates: candidates, closures: closures, census_call: "").outcome
+  roster_census_text_rows(sides: sides, companions: companions, path: path, text: text, prepared: prepared, lex: lex, candidates: candidates, closures: closures, census_call: Absent).outcome
 }
 
 // THE SWEEP'S ONE READ OF A FILE, with the census count beside its outcome: `heads` is the number of parse-tree primary
-// heads spelled `census_call` (the lexical population the rename census accounts for; 0 when no call is asked), counted
+// heads spelled `census_call` (the lexical population the rename census accounts for; 0 when no call is asked, Absent), counted
 // off the same parse the outcome came from, so the census never re-reads or re-parses a file.
 type RosterCensusRead {
   outcome: RosterOutcome
@@ -1033,11 +1033,14 @@ fn roster_census_refused(reason: RosterRefusalReason) -> RosterCensusRead {
   RosterCensusRead { outcome: RosterRefused { reason: reason }, heads: 0 }
 }
 
-fn roster_census_heads(parse_root: Node, call: String) -> Int {
-  if call == "" { 0 } else { fold_list(xs: roster_primary_heads(parse_root: parse_root, call: call), empty: 0, cons: fn(n, _h) { n + 1 }) }
+fn roster_census_heads(parse_root: Node, call: Optional<String>) -> Int {
+  match call {
+    Absent => 0
+    Present { value: c } => length(xs: roster_primary_heads(parse_root: parse_root, call: c))
+  }
 }
 
-fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: String) -> RosterCensusRead {
+fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: Optional<String>) -> RosterCensusRead {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
         Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalTokenizeRefused)
         Accepted { value: stream, diagnostics: _ } =>
