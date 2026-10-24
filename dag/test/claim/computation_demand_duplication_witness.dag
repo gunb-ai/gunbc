@@ -1,4 +1,5 @@
 module test.claim.computation_demand_duplication_witness
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

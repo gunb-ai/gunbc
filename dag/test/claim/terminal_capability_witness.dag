@@ -1,4 +1,7 @@
 module test.claim.terminal_capability_witness
+import extdeps.render.terminal_capability { TerminalEnvironment }
+import std.live_tree { LiveTreeDisposition }
+import std.render { CursorAction, Viewport }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

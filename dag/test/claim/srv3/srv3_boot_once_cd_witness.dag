@@ -1,4 +1,5 @@
 module test.claim.srv3.srv3_boot_once_cd_witness
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

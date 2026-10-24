@@ -1,4 +1,7 @@
 module gunbc.floor.floor_materialization
+import gunbc.ci.ci_gate { Gate }
+import std.materialization_ladder { CacheProvider, CoversIdentities, FrameDemand, LadderVerdict, ValueConsumerEdge, ValueMaterialization, ValueUsage }
+import std.realization_schedule { ScheduleWitnessEntry }
 
 // P1 — the in-process INDEX-BUILD share, declared. Every floor consumer (spec gates + witness
 // entries + the floor-runner/entry-selection prelude) resolves against ONE shared MultiEntryIndex —

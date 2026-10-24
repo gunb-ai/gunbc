@@ -1,4 +1,6 @@
 module test.claim.os_free_witness
+import extdeps.tools.free { FreeOutput, SwapStats }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

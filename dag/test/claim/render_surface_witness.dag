@@ -1,4 +1,7 @@
 module test.claim.render_surface_witness
+import extdeps.render.surface { SurfaceEnv }
+import std.live_tree { LiveTreeDisposition }
+import std.render { Document, RenderCapability }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

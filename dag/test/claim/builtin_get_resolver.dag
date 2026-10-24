@@ -1,4 +1,5 @@
 module test.claim.builtin_get_resolver
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

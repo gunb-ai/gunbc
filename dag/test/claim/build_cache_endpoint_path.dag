@@ -1,4 +1,9 @@
 module test.claim.build_cache_endpoint_path
+import extdeps.cache.sccache { SccacheServerTcpPort }
+import gunbc.build_cache.build_cache_endpoint_path { EndpointPathConflict, EndpointPathObservationUnavailable, EndpointPathState, EndpointStaleSocket, ObservationCurrency, ObservationCurrencyUnknown }
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, EndpointPathUnreadable }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

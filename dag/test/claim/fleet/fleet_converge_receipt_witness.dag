@@ -1,4 +1,8 @@
 module test.claim.fleet.fleet_converge_receipt_witness
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.fleet.fleet_converge_receipt { FleetConvergeApplyReceipt, FleetConvergePlanReceipt }
+import gunbc.fleet.fleet_converge_terminal { PartiallyApplied }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -129,7 +129,6 @@ import gunbc.auth.deployment_gate_authorization {
   gate_app_permission_set_is_admissible,
   gate_app_permission_set_is_exact,
   GateInstallationClaim,
-
 }
 // THE DECLARED RESIDUAL, consumed by the test below so the row is not an unconsumed paragraph (§3c).
 import gunbc.auth.deployment_gate_operator_steps {

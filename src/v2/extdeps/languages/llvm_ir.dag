@@ -18,7 +18,7 @@ import v2.std.grammar {
   grammar_atom,
   grammar_empty_sync_tokens,
   grammar_formal_nonterminal,
-  grammar_formal_terminal
+  grammar_formal_terminal,
 }
 import v2.std.compilers.lexing {
   CharClassPattern,

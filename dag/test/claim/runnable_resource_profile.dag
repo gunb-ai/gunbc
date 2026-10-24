@@ -1,4 +1,6 @@
 module test.claim.runnable_resource_profile
+import std.live_tree { LiveTreeDisposition }
+import std.realization_schedule { RunnableDiscoveryBatch, RunnableSingleClaim }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

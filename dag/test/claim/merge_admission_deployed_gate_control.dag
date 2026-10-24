@@ -1,4 +1,7 @@
 module test.claim.merge_admission_deployed_gate_control
+import extdeps.git.object_store { GitObjectId }
+import gunbc.merge_admission { GateRosterHash, MergeAdmissionReceipt }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

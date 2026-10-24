@@ -1,4 +1,5 @@
 module gunbc.hand_lens_host_bridge_scaffold_watchdog
+import std.disposition { Disposition }
 
 
 type HostBridgeScaffoldRow {

@@ -1,4 +1,6 @@
 module test.claim.perturbation_kernel
+import std.live_tree { LiveTreeDisposition }
+import std.perturbation { PerturbationReading }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

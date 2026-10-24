@@ -1,4 +1,7 @@
 module test.claim.readback_independence
+import gunbc.readback_independence { ProbeAnswersWithoutSubject, ProbeEffectOnSubject, ProbeEffectOnSubjectFold, ProbeEffectUnknown, ProbeMayEstablish, ReadBackProbe }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

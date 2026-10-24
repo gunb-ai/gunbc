@@ -1,4 +1,6 @@
 module test.claim.measure_magnitude_carrier
+import std.live_tree { LiveTreeDisposition }
+import std.measure { Measure }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,4 +1,7 @@
 module test.claim.runner.runner_unit_live_read_witness
+import gunbc.host.host_converge { ConvergeTarget, PerSlotMemoryCap }
+import gunbc.runner.runner_unit_live_read { RunnerUnitLiveReadRow }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

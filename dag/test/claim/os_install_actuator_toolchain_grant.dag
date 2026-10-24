@@ -1,4 +1,5 @@
 module test.claim.os_install_actuator_toolchain_grant
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

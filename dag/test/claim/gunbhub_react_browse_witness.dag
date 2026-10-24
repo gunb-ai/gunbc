@@ -1,4 +1,5 @@
 module test.claim.gunbhub_react_browse_witness
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

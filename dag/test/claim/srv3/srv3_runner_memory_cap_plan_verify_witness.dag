@@ -1,4 +1,8 @@
 module test.claim.srv3.srv3_runner_memory_cap_plan_verify_witness
+import gunbc.host.host_runner_memory_cap_verify { RunnerMemoryCapVerifyObserved }
+import gunbc.runner.runner_unit_live_read { RunnerUnitLiveReadRow, RunnerUnitMemoryLiveRead }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

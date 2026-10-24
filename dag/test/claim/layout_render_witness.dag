@@ -1,4 +1,6 @@
 module test.claim.layout_render_witness
+import std.layout { Doc, LayoutProtocol }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

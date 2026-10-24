@@ -1,4 +1,5 @@
 module test.claim.websocat_install_source
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

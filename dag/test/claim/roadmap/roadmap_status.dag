@@ -1,4 +1,8 @@
 module test.claim.roadmap.roadmap_status
+import extdeps.github.github { GitHubUser }
+import extdeps.github.pulls { PullRequestRef }
+import gunbc.roadmap.roadmap_status { AuthoredLine, DerivableLine, DriftVerdict, PlainLine, RoadmapItem, SupersededLine }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

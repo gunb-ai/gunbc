@@ -1,4 +1,9 @@
 module test.claim.extdeps_llm_type_grounding_witness
+import extdeps.llm.anthropic_errors { AnthropicErrorEnvelope }
+import extdeps.llm.anthropic_messages_api { AnthropicMessages200Body, AnthropicMessages200Usage, Base64Image, CacheControl, CacheEphemeral, MessagesObjectMessage, MessagesTextBlock }
+import extdeps.llm.openai { OpenAiResponses200OutputContent, OpenAiResponses200OutputItem, ToolCall }
+import extdeps.llm.openai_errors { OpenAiErrorDetails }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

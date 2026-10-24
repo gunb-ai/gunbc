@@ -1,4 +1,6 @@
 module test.claim.hostname_allocation_witness
+import gunbc.hostname_allocation { HostnameAllocation }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

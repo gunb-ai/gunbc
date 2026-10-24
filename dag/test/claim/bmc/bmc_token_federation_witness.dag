@@ -1,4 +1,6 @@
 module test.claim.bmc.bmc_token_federation_witness
+import gunbc.assimilate.bmc_token_federation { SecretAccessBinding }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

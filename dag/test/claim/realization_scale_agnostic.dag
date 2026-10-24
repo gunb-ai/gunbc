@@ -1,4 +1,5 @@
 module test.claim.realization_scale_agnostic
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,5 @@
 module gunbc.ci.ci_oom_reclassify
+import gunbc.ci.ci_failure_class { FloorFailed, FloorFailureClass, FloorOutcome }
 
 
 type OomKillSource

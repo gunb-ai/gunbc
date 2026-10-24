@@ -1,4 +1,8 @@
 module test.claim.machine_word_witness
+import std.integer { QualifiedOctets }
+import std.live_tree { LiveTreeDisposition }
+import std.machine_word { OctetsResult, RawOctetsResult, Word, WordResult, WordWidth }
+import std.roster_frontier { FrontierRow }
 
 // THIS FILE IMPORTS NOTHING, AND THE ONE TYPE IT NAMES ACROSS A MODULE BOUNDARY IS WRITTEN OUT IN
 // FULL. It briefly imported std.machine_word Octet, and a bare Octet was ambiguous against

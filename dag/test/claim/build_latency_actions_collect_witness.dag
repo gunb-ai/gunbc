@@ -1,4 +1,7 @@
 module test.claim.build_latency_actions_collect_witness
+import gunbc.build_cache.build_cache_latency_probe { ActionsBuildJobObservation }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
