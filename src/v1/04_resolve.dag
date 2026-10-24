@@ -511,10 +511,11 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
 
 // A use that supplies arguments to a parameterless alias: the arguments bind to nothing, so the application is
 // refused by arity (expected 0) at the type position, not read as a use of the generic its right-hand side expands to.
-// The alias declaration's own right-hand side is the node the lookup returns (same span), so it is not a use.
+// A node carrying a `declaration` is a producer-built expansion of one (is_applied_declaration_carrier reads the same
+// fact), not a written use; only a written use, whose declaration is still none, is judged here.
 fn is_paramless_alias_use(n: Node, env: TypeEnv) -> Bool {
-  n.connective == NoConnective && (n.children |> count) > 0 && match lookup_type_for(env: env, node: n) {
-    Present { value: used } => used.params |> count == 0 && used.connective == NoConnective && used.span != n.span
+  n.connective == NoConnective && (n.children |> count) > 0 && n.declaration == none && match lookup_type_for(env: env, node: n) {
+    Present { value: used } => used.params |> count == 0 && used.connective == NoConnective
     Absent => false
   }
 }
