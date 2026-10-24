@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.an_explicit_order_restates_the_keys_unique_total_order
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data an_explicit_order_restates_the_keys_unique_total_order: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_explicit_order_restates_the_keys_unique_total_order" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.recurring_failure_mode.lambda_value_has_no_derived_type_in_v2_infer", decl_name: "lambda_value_has_no_derived_type_in_v2_infer", field: WholeDeclaration } } }, trigger_capability: "v2 infer resolves the key type K of a list_sort_by_key call (lambda keys included, after gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer) and its TotalOrder<K> inhabitance, so order derives from K's UNIQUE declared total order and an explicit order: survives only where K has competing orders -- executed check = the sort_by wave's generated sites compile with order: removed wherever K has one declared order, and a key type with two declared orders refuses without one" } },
+
+  receipts: [
+    "THE FRONTIER (sleek-owl-397's ruling for the sort_by wave, 2026-10-24): every site the wave moves off ambient sort_by onto std.algebra list_sort_by_key carries an explicit order: argument naming the canonical std.algebra order declaration for its key type (int_total_order, string_total_order or bool_total_order), never an inline comparator. Where K has exactly one declared total order that argument restates a fact the type already fixes, so it is a second authority for one fact (DESIGN section 3) and can drift from the key it orders. The POPULATION is GENERATED, not listed: it is the set of call sites v2.workflow.roster_import_sweep plans for the sort_by row on a given tree (the wave PR's census before/after names its count), so it grows and shrinks with the corpus and this row never needs editing when it does.",
+
+    "WHY IT IS NOT DERIVED TODAY: the key type is read per site by the seed's checker, used OFFLINE as a differential oracle for the generated edit (tidy-ant-251's ruling); no landed code reads it, and the landed authority is the source text the census verifies. v2 infer cannot yet supply K because an inline lambda has no derived type of its own (lambda_value_has_no_derived_type_in_v2_infer, owner keen-heron-809). HARM: a key type change at a site (String to Int) leaves a stale order: that the checker then refuses loudly -- mitigated, not silent -- but every site pays an argument the model could supply. ATTAINABLE CEILING: structurally impossible, once order is a derived fact with no source spelling where K's order is unique.",
+  ],
+
+  evidence: [],
+}

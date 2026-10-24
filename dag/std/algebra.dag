@@ -1396,6 +1396,25 @@ fn int_total_order() -> TotalOrder<Int> {
   TotalOrder { compare: int_compare_canonical }
 }
 
+// The canonical content order on String keys (bytewise over the UTF-8 encoding, the host's String Ord),
+// the order the host sort_by applies to them.
+fn string_compare_canonical(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn string_total_order() -> TotalOrder<String> {
+  TotalOrder { compare: string_compare_canonical }
+}
+
+// The canonical content order on Bool keys, false before true (the host's bool Ord).
+fn bool_compare_canonical(a: Bool, b: Bool) -> Ordering {
+  if a == b { Equal } else { if b { Less } else { Greater } }
+}
+
+fn bool_total_order() -> TotalOrder<Bool> {
+  TotalOrder { compare: bool_compare_canonical }
+}
+
 // std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
 // spelling, which is a primitive with the host realization): no host seam, so the realization
 // is this body. The key order is the caller's TotalOrder (the host admits String, Int and Bool keys

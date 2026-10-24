@@ -1,0 +1,14 @@
+module test.claim.sort_by_wave_pipe_probe
+
+import std.types { Bool, Int, List, String }
+import std.algebra { list_sort_by_key, string_total_order, int_total_order, bool_total_order, list_map, string_concat_join }
+
+fn bool_text(b: Bool) -> String { if b { "t" } else { "f" } }
+
+test fn string_order_sorts_bytewise() -> Bool {
+  string_concat_join(fields: list_sort_by_key(xs: ["b", "c", "a", "B"], key: fn(s) { s }, order: string_total_order()), separator: ",") == "B,a,b,c"
+}
+
+test fn bool_order_is_false_first() -> Bool {
+  string_concat_join(fields: list_map(xs: list_sort_by_key(xs: [true, false, true], key: fn(b) { b }, order: bool_total_order()), f: fn(b) { bool_text(b: b) }), separator: ",") == "f,t,t"
+}
