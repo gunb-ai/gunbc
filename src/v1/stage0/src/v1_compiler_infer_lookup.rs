@@ -46,7 +46,9 @@ use crate::v1_compiler_infer_method::NonDeclarationBinding::{
 pub use crate::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, infer_builtin_call_type, NonDeclarationBinding,
 };
-pub use crate::v1_compiler_infer_resolve::{expand_nominal_alias_rhs, fn_type_param_names};
+pub use crate::v1_compiler_infer_resolve::{
+    expand_nominal_alias_rhs, fn_type_param_names, generic_application_reapplied,
+};
 pub use crate::v1_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
 };
@@ -79,7 +81,7 @@ use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
-use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
+use crate::v1_std_core::InferredNode::{ArgumentsResolved, Resolved, TypeVariable};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
@@ -1208,6 +1210,25 @@ pub fn resolve_scrutinee_type_node_seen(
                         normed.clone(),
                         resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
                     )
+                }
+                Some(InferredNode::ArgumentsResolved) => {
+                    let reapplied = crate::v1_compiler_infer_resolve::generic_application_reapplied(
+                        normed.clone(),
+                        env.clone(),
+                    );
+                    match reapplied.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            crate::v1_std_core::preserve_outer_optional_cardinality(
+                                normed.clone(),
+                                resolve_scrutinee_type_node_seen(
+                                    env.clone(),
+                                    target.clone(),
+                                    seen.clone(),
+                                ),
+                            )
+                        }
+                        _ => normed.clone(),
+                    }
                 }
                 _ => normed.clone(),
             }

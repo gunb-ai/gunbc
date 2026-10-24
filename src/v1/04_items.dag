@@ -19,7 +19,7 @@ import std.interface_summary {
 import v1.std.core {
   Node, ErrorNode,
   make_param_node, param_node_name_at, param_node_type_expr,
-  make_field_node,
+  make_field_node, make_expr_error_node, ExprErrorKind, SemanticExprError,
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,

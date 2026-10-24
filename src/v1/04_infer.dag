@@ -143,7 +143,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
-  env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
+  env_with_type_variable_bindings, node_with_children_params_inferred_basis, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
   lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
@@ -177,7 +177,7 @@ import std.termination {
   OneStep
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
-import v1.compiler.infer_resolve {
+import v1.compiler.infer_resolve { is_declaration_body, is_applied_declaration_carrier, generic_application_reapplied,
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
@@ -616,7 +616,7 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?, mod
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
   Node {
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
@@ -624,7 +624,7 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?, mod
     inferred: Present { value: Resolved { node: declared_leaf } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: module_item_kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: module_item_kind, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -2150,12 +2150,12 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                         Node {
                           occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
                           children: sf.children, connective: sf.connective, params: sf.params,
-                          inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: si), subst: subst, source_indices: si) } },
+                          inferred: Present { value: Resolved { node: substitute_generics(n: stamp_field_type_from_decl_params(field_type: field_substitution_carrier(sf: sf, source_indices: si), serving_decl: decl, source_indices: si), subst: subst, source_indices: si) } },
                           return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
                           transport: sf.transport, properties: sf.properties,
                           type_annotation: sf.type_annotation, is_self_recursive: sf.is_self_recursive,
                           has_non_tail_self_call: sf.has_non_tail_self_call, match_pattern: sf.match_pattern,
-                          module_item_kind: sf.module_item_kind, declaration_marker: sf.declaration_marker, declaration: sf.declaration, expr_data: sf.expr_data
+                          module_item_kind: sf.module_item_kind, application_role: sf.application_role, declaration_marker: sf.declaration_marker, declaration: sf.declaration, expr_data: sf.expr_data
                         }
                       ) }
                   }
@@ -6621,7 +6621,7 @@ fn lambda_arrow_param(lambda_param: Node) -> Node {
     inferred: Present { value: Resolved { node: param_type } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -7698,7 +7698,7 @@ fn optional_cast_diags(
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -7844,7 +7844,7 @@ fn rest_operation_result_type(resolution: KnownMethodResolution, site: SourceSpa
   match resolution.result_type {
     Present { value: body } =>
       if resolution.rest_operation {
-        let carrier = Node { occurrence_identity: OccurrenceSynthetic, name: "RestResult", span: kernel_span(name: "RestResult"), ident_span: Present { value: kernel_span(name: "RestResult") }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        let carrier = Node { occurrence_identity: OccurrenceSynthetic, name: "RestResult", span: kernel_span(name: "RestResult"), ident_span: Present { value: kernel_span(name: "RestResult") }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         let decl = resolve_generic_use_decl(env: scope.type_env, n: carrier)
         match decl.params |> first {
           Present { value: body_slot } =>
@@ -8098,7 +8098,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc } },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
-        has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+        has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
       }
       let lam_value = arg_value(n: a)
       let prov_map = match elem_provenance {
@@ -8470,7 +8470,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspon
       unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
     }
     ArgGenericFoldState {
-      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: ar.emissions }]),
+      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: dump_generic_actual(ar: ar, formal: formal_raw, is_lambda: is_lambda_expr(e: arg_value(n: a)), span: a.span, scope: scope) }]),
       subst: next_subst,
       arg_formal_correspondence: st.arg_formal_correspondence
     }
@@ -8737,7 +8737,7 @@ fn elaborated_expr_node(name: String, expr_data: ExprData, children: List<Node>,
     params: [], inferred: Present { value: Resolved { node: destination_type } }, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: expr_data
+    has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: expr_data
   }
 }
 
@@ -9675,7 +9675,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               body: receiver.body, transport: receiver.transport,
               properties: receiver.properties, type_annotation: receiver.type_annotation,
               is_self_recursive: receiver.is_self_recursive, has_non_tail_self_call: receiver.has_non_tail_self_call,
-              match_pattern: receiver.match_pattern, module_item_kind: receiver.module_item_kind, declaration_marker: receiver.declaration_marker, declaration: receiver.declaration, expr_data: receiver.expr_data
+              match_pattern: receiver.match_pattern, module_item_kind: receiver.module_item_kind, application_role: receiver.application_role, declaration_marker: receiver.declaration_marker, declaration: receiver.declaration, expr_data: receiver.expr_data
             }
           } else { receiver }
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(occurrence_identity: ta.occurrence_identity, name: arg_name_at(n: ta, source_indices: scope.type_env.source_indices), value: arg_value(n: ta), span: span, name_span: span))
@@ -10582,7 +10582,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           return_cardinality: pn.return_cardinality, uses: pn.uses, body: pn.body,
           transport: pn.transport, properties: pn.properties, type_annotation: pn.type_annotation,
           is_self_recursive: pn.is_self_recursive, has_non_tail_self_call: pn.has_non_tail_self_call,
-          match_pattern: pn.match_pattern, module_item_kind: pn.module_item_kind, declaration_marker: pn.declaration_marker, declaration: pn.declaration, expr_data: pn.expr_data
+          match_pattern: pn.match_pattern, module_item_kind: pn.module_item_kind, application_role: pn.application_role, declaration_marker: pn.declaration_marker, declaration: pn.declaration, expr_data: pn.expr_data
         }
       )
       let lam_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -11117,8 +11117,8 @@ fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
 // (alias_chain_target_after_args, and the record branch's re-substitution over an
 // unresolved-parameter field) did not check at all. The repair is construction before validation:
 // the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed
-// downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and
-// located, at the seam that owns both the declaration and the application. SCOPE, stated rather
+// downstream by any caller; and resolve_node_bounded states the refusal ONCE, typed and
+// located, where a type application resolves in any type position. SCOPE, stated rather
 // than implied: the refused population is exactly the state `dropped_args` already computed -- both
 // counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already
 // treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched.
@@ -11158,29 +11158,6 @@ fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_ar
   }
 }
 
-fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  let type_args = carrier.children
-  if carrier_name == "" || (type_args |> count) == 0 || is_container_type(name: carrier_name) { [] }
-  else {
-    match lookup_type_by_name(env: env, name: carrier_name) {
-      Present { value: target } =>
-        let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-        if alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
-          [make_error_node(
-            diagnostic: TypeArgumentArityMismatch {
-              type_name: carrier_name,
-              supplied: type_args |> count,
-              declared: decl.params |> count,
-              span: carrier.span
-            },
-            module_name: module_name
-          )]
-        } else { [] }
-      Absent => []
-    }
-  }
-}
-
 fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
   let type_args = carrier.children
   if type_args |> count == 0 { target }
@@ -11192,7 +11169,10 @@ fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> N
         let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
         if is_parameterized_alias {
           match decl.inferred {
-            Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
+            // A parameterized alias body spells its formals as bare names; substitution keys on the declaration-parameter
+            // stamp alone, so the body is stamped through the one stamper before the arguments are bound.
+            Present { value: Resolved { node: alias_body } } =>
+              substitute_generics(n: stamp_field_type_from_decl_params(field_type: alias_body, serving_decl: decl, source_indices: env.source_indices), subst: subst, source_indices: env.source_indices)
             _ => target
           }
         } else {
@@ -11207,16 +11187,34 @@ fn alias_chain_carrier(n: Node) -> Node {
   else { structural_from_expanded_type(normed: n) }
 }
 
+// A generic application that already carries a Resolved target (a call result instantiated by
+// substitute_generics) holds the DECLARATION's body there, substituted by the CALLEE's spelled
+// parameter names, which are not the declaration's parameters: a permuting return type
+// (-> Pair<B, A>) captures them, and a callee whose names differ from the declaration's leaves the
+// body uninstantiated. The application's own type arguments against the declaration's parameter
+// identity are the only sound instantiation, so the carrier is rebuilt by the one construction of an
+// application (generic_declaration_application) from its ALREADY RESOLVED arguments: sending them
+// back through resolve_node_bounded would read them as authored type names. A parameterized alias
+// has no member body to apply, so its cache is dropped and the receiver settles as an authored use.
+// An applied declaration carrier is a REFERENCE to a generic declaration: its children are the type
+// arguments, it names the declaration it applies, and it is not the declaration node itself (whose
+// children are the declaration's own members, so a record with as many fields as the declaration has
+// parameters is indistinguishable from an application by shape). The distinction is the node's own
+// item kind, set by the producer: a declaration node is a ModuleItemTypeDeclaration, a reference is not.
+// A declaration body (the declaration itself, or an application's expansion) has the declaration's
+// MEMBERS as children, not type arguments: pairing a formal's arguments with them binds a parameter to a
+// field (SortKeyed<T, K> against a body of two fields bound T to `key`), so the descent never pairs them.
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
-  let peel_result = if needs_alias_field_expansion(n: n, env: env) {
-    peel_alias_once_for_field_access(n: n, env: env, module_name: module_name)
+  let application = generic_application_reapplied(n: n, env: env)
+  let peel_result = if needs_alias_field_expansion(n: application, env: env) {
+    peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
   } else {
-    NodeResolveResult { resolved: n, diagnostics: [] }
+    NodeResolveResult { resolved: application, diagnostics: [] }
   }
   let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
-  let own_diags = concat(peel_result.diagnostics, alias_chain_arity_diagnostics(carrier: carrier, carrier_name: carrier_name, env: env, module_name: module_name))
+  let own_diags = peel_result.diagnostics
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {
@@ -11563,7 +11561,7 @@ fn transparent_alias_application_at_head(exp: Node, decl: Node, scope: InferScop
               uses: exp.uses, body: exp.body, transport: exp.transport,
               properties: exp.properties, type_annotation: exp.type_annotation,
               is_self_recursive: exp.is_self_recursive, has_non_tail_self_call: exp.has_non_tail_self_call,
-              match_pattern: exp.match_pattern, module_item_kind: exp.module_item_kind, declaration_marker: exp.declaration_marker, declaration: exp.declaration, expr_data: exp.expr_data
+              match_pattern: exp.match_pattern, module_item_kind: exp.module_item_kind, application_role: exp.application_role, declaration_marker: exp.declaration_marker, declaration: exp.declaration, expr_data: exp.expr_data
             } }
           }
         Absent => none
@@ -12216,14 +12214,14 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         occurrence_identity: OccurrenceSynthetic, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
         children: [], connective: NoConnective,
                params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: Required, uses: [],
-        body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+        body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
       }
     )
     let anon_node = Node {
       occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none,
       children: child_nodes, connective: Conj,
            params: [], inferred: none, return_cardinality: Required, uses: [],
-      body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+      body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
     }
     let typed_field_nodes = typed_fields
     let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
@@ -13418,7 +13416,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern,
-        module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence } }
+        module_item_kind: body.module_item_kind, application_role: body.application_role, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: ExprCall { call_semantics: cs, descent_evidence: Present { value: evidence } }
       }
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
@@ -13608,7 +13606,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, application_role: body.application_role, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     ExprLet =>
       let val = let_value(texpr: body)
@@ -13662,7 +13660,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, application_role: body.application_role, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     ExprBlock =>
       let threaded = body.children |> fold(init: BlockAnnotateAcc { ctx: ctx, children: [] }, f: (acc, child) =>
@@ -13718,7 +13716,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, application_role: body.application_role, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
@@ -13831,7 +13829,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           properties: body.properties, type_annotation: body.type_annotation,
           is_self_recursive: body.is_self_recursive,
           has_non_tail_self_call: body.has_non_tail_self_call,
-          match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
+          match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, application_role: body.application_role, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
         }
       } else {
         map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
@@ -13877,7 +13875,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         properties: body.properties, type_annotation: body.type_annotation,
         is_self_recursive: body.is_self_recursive,
         has_non_tail_self_call: body.has_non_tail_self_call,
-        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
+        match_pattern: body.match_pattern, module_item_kind: body.module_item_kind, application_role: body.application_role, declaration_marker: body.declaration_marker, declaration: body.declaration, expr_data: body.expr_data
       }
     _ =>
       map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
@@ -14623,7 +14621,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
         uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
         type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
         has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-        module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
+        module_item_kind: p.module_item_kind, application_role: p.application_role, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
       },
       emissions: val_result.emissions
     }
@@ -14732,7 +14730,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
             uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
             type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
             has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-            module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
+            module_item_kind: p.module_item_kind, application_role: p.application_role, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
           },
           emissions: val_result.emissions
         }
@@ -14781,7 +14779,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
           uses: t.uses, body: t.body, transport: t.transport, properties: prop_result.props,
           type_annotation: t.type_annotation, is_self_recursive: t.is_self_recursive,
           has_non_tail_self_call: t.has_non_tail_self_call, match_pattern: t.match_pattern,
-          module_item_kind: t.module_item_kind, declaration_marker: t.declaration_marker, declaration: t.declaration, expr_data: t.expr_data
+          module_item_kind: t.module_item_kind, application_role: t.application_role, declaration_marker: t.declaration_marker, declaration: t.declaration, expr_data: t.expr_data
         } },
         emissions: infer_emissions_concat(left: prop_result.emissions, right: infer_emissions_concat_all(chunks: argv_results |> map(r => r.emissions)))
       }
@@ -14807,7 +14805,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: Present { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
     }
@@ -14855,7 +14853,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: is_recursive,
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), in_tail: true, source_indices: scope.type_env.source_indices),
-        match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+        match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, body_emissions, infer_emissions_of_diagnostics(diagnostics: return_conformance_diags)])
     }
@@ -14872,7 +14870,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Present { value: val_typed },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       emissions: infer_emissions_concat_all(chunks: [transport_emissions, props_emissions, val_emissions])
     }
@@ -14884,7 +14882,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
     }
@@ -14896,7 +14894,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
       },
       emissions: infer_emissions_concat(left: transport_emissions, right: props_emissions)
     }
@@ -15087,7 +15085,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) {
+  } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) && !is_declaration_body(n: actual) {
     unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
 }
@@ -15286,25 +15284,27 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
         Absent => n
       }
     _ =>
-  let nm = type_node_label(n: n, source_indices: source_indices)
-  let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
-  if is_bare {
-    match map_get(subst, nm) {
-      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
-      Absent => n
-    }
+  // A leaf type name is never a substitution key: a type parameter is substituted only through its
+  // declaration-parameter identity (the TypeVariable arm above), so a leaf whose spelling happens to
+  // equal a parameter's name (a field label, an unrelated type) is left as authored.
+  let is_leaf = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
+  if is_leaf {
+    n
   } else {
 
     let new_children = n.children |> map(c => substitute_generics_apply(n: c, subst: subst, source_indices: source_indices))
     let new_params = n.params |> map(p => substitute_generics_apply(n: p, subst: subst, source_indices: source_indices))
-    let new_inferred = match n.inferred {
-      Present { value: Resolved { node: rt } } =>
-        let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
-        if rc_ptr_eq(new_rt, rt) { n.inferred }
-        else { Present { value: Resolved { node: new_rt } } }
-      _ => n.inferred
-    }
-    if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
+    // Only an applied declaration carrier (a declaration identity over argument children) caches an
+    // EXPANSION in its Resolved target; any other node's Resolved is its own type and substitutes. The
+    // cached expansion is spelled in the declaration's
+    // parameter names, which the callee's names are not: rewriting it captures them (a permuting
+    // return -> Pair<B, A>) or leaves a stale body. The substituted children carry the instantiation,
+    // so the cache is dropped and the reader settles through them.
+    let is_carrier = is_applied_declaration_carrier(n: n)
+    let new_inferred = if is_carrier { generics_substituted_cache_dropped(inferred: n.inferred) } else { substitute_generics_resolved(n: n, subst: subst, source_indices: source_indices) }
+    // The dropped-cache state is carried by the role: the arguments are resolved, the expansion is rebuilt on read.
+    let new_role = if is_carrier && new_inferred == none { Present { value: ResolvedArguments } } else { n.application_role }
+    if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred && new_role == n.application_role {
       n
     } else {
       Node {
@@ -15316,10 +15316,27 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
         return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
         properties: n.properties, type_annotation: n.type_annotation,
         is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
-        match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+        match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: new_role, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
       }
     }
   }
+  }
+}
+
+fn substitute_generics_resolved(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } =>
+      let new_rt = substitute_generics_apply(n: rt, subst: subst, source_indices: source_indices)
+      if rc_ptr_eq(new_rt, rt) { n.inferred }
+      else { Present { value: Resolved { node: new_rt } } }
+    _ => n.inferred
+  }
+}
+
+fn generics_substituted_cache_dropped(inferred: InferredNode?) -> InferredNode? {
+  match inferred {
+    Present { value: Resolved { node: _ } } => none
+    _ => inferred
   }
 }
 
@@ -15727,7 +15744,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       connective: item.connective, params: item.params, inferred: none,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: item.properties,
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.body != none && item.transport == none {
@@ -15736,7 +15753,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: item.uses, body: none, transport: none, properties: item.properties,
-      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
@@ -15745,7 +15762,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       connective: NoConnective, params: [], inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: [],
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.transport == none && item.children |> count > 0 {
@@ -15757,7 +15774,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: [],
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
@@ -15768,7 +15785,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       connective: NoConnective, params: [], inferred: none,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: item.properties,
-      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
+      type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else {
@@ -16379,20 +16396,16 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+// A generic-parameter reference is stamped with the parameter's identity (TypeVariable) wherever a type
+// expression holds it: as a bare field type, under type arguments (children), and inside a callable
+// (params, and the return carried in a Resolved inferred). Substitution keys on that stamp alone, so a
+// position the stamp misses is a position substitution cannot reach.
 fn stamp_field_type_from_decl_params(field_type: Node, serving_decl: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if (serving_decl.params |> count) == 0 || field_type.inferred != none {
+  if (serving_decl.params |> count) == 0 {
     field_type
   } else {
-    let is_bare = (field_type.children |> count) == 0 && field_type.connective == NoConnective && (field_type.params |> count) == 0
-    if is_bare {
-      let nm = type_node_label(n: field_type, source_indices: source_indices)
-      let is_param = fold(
-        serving_decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
-        init: false,
-        f: (acc, pn) => acc || pn == nm
-      )
-      if is_param { node_with_inferred(n: field_type, inferred: Present { value: TypeVariable { id: nm } }) } else { field_type }
-    } else { field_type }
+    let param_names = serving_decl.params |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, generic_param_name_at(n: p, source_indices: source_indices), true))
+    stamp_type_param_occurrences(n: field_type, param_names: param_names, source_indices: source_indices)
   }
 }
 
@@ -16407,7 +16420,13 @@ fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_
       }
     } else { n }
   } else {
-    node_with_children(n: n, children: n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices)))
+    let children = n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices))
+    let params = n.params |> map(p => stamp_type_param_occurrences(n: p, param_names: param_names, source_indices: source_indices))
+    let inferred = match n.inferred {
+      Present { value: Resolved { node: rt } } => Present { value: Resolved { node: stamp_type_param_occurrences(n: rt, param_names: param_names, source_indices: source_indices) } }
+      _ => n.inferred
+    }
+    node_with_children_params_inferred_basis(n: n, children: children, params: params, inferred: inferred)
   }
 }
 
@@ -16632,9 +16651,9 @@ type AncestryPrecedence {
 // bcp_foreign_coproduct_where_bool_required_must_refuse). One constructor serves every
 // kernel-environment producer, so the fact cannot fork (review 57892).
 fn kernel_bool_type_node() -> Node {
-  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 // THE PRECEDENCE IS PRODUCED ONCE, HERE, AND NOWHERE DOWNSTREAM. Both type-env builders consume
@@ -16660,10 +16679,10 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
 // declaration it stands for is gunbc.structural_realization_bindings kernel_mint_declaration_rows,
 // and kernel_mint_shape_diagnostics refuses if the two stop agreeing.
 fn kernel_optional_type_node() -> Node {
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   kernel_optional
 }
 
@@ -16712,14 +16731,14 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
       provenance: SubValueUnknown, alias_rhs: none
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
     provenance: SubValueUnknown, alias_rhs: none
   })
   let kernel_optional = kernel_optional_type_node()
@@ -16895,7 +16914,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, provenance: SubValueUnknown, alias_rhs: none })
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, provenance: SubValueUnknown, alias_rhs: none })
   )
   let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
@@ -16919,10 +16938,10 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, module_item_kind: item.module_item_kind)
@@ -16930,7 +16949,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
-      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
+      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
     } else {
       acc
@@ -17882,7 +17901,7 @@ fn grounded_node(n: Node, occurrence_identity: NodeOccurrenceIdentity, children:
     body: body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: match_pattern,
-    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+    module_item_kind: n.module_item_kind, application_role: n.application_role, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
   }
 }
 
@@ -18716,7 +18735,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         properties: item.properties, type_annotation: item.type_annotation,
         is_self_recursive: item.is_self_recursive,
         has_non_tail_self_call: item.has_non_tail_self_call,
-        match_pattern: item.match_pattern, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: item.expr_data
+        match_pattern: item.match_pattern, module_item_kind: item.module_item_kind, application_role: item.application_role, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: item.expr_data
       }
     } else { item }
   )
@@ -19331,14 +19350,14 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
       provenance: SubValueUnknown, alias_rhs: none
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
     provenance: SubValueUnknown, alias_rhs: none
   })
   let kernel_optional = kernel_optional_type_node()
@@ -19448,4 +19467,26 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     },
     provider_demands: pass.provider_demands
   }
+}
+
+
+fn dump_role_label(n: Node) -> String {
+  match n.application_role {
+    Present { value: AuthoredArguments } => "Authored"
+    Present { value: ResolvedArguments } => "ResolvedArgs"
+    Present { value: ExpandedDeclarationBody } => "ExpandedBody"
+    Absent => "NoRole"
+  }
+}
+
+// DISCRIMINATOR DUMP, do not merge.
+fn dump_generic_actual(ar: InferResult, formal: Node, is_lambda: Bool, span: SourceSpan, scope: InferScope) -> InferEmissions {
+  let actual = resolved_type(n: ar.typed)
+  if scope.module_name == "extdeps.tools" && !is_lambda && formal.children |> count > 0 {
+    infer_emissions_concat(left: ar.emissions, right: infer_emissions_of_diagnostics([inference_error(message: concat("DUMP formal=", formal.name, "/", dump_count_label(k: formal.children |> count), " actual=", actual.name, "/", dump_count_label(k: actual.children |> count), " role=", dump_role_label(n: actual), " kind=", match actual.module_item_kind { ModuleItemTypeDeclaration => "TypeDecl"  _ => "other" }), span: span, module_name: scope.module_name)]))
+  } else { ar.emissions }
+}
+
+fn dump_count_label(k: Int) -> String {
+  if k == 0 { "0" } else if k == 1 { "1" } else if k == 2 { "2" } else if k == 3 { "3" } else { "4+" }
 }

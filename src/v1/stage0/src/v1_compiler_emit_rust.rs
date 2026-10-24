@@ -4880,6 +4880,7 @@ continue;
 } },
     InferredNode::CompilerError { message, .. } => { break rust_serde_error_policy(v1_rt::concat("wire_contract: ".to_string(), message.clone())); },
     InferredNode::TypeVariable { id: _, .. } => { break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string()); },
+    InferredNode::ArgumentsResolved => { break rust_serde_error_policy("wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt".to_string()); },
 } },
 }
                                             }
@@ -4926,6 +4927,9 @@ continue;
                                         }
                                         InferredNode::TypeVariable { id: _, .. } => {
                                             break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string());
+                                        }
+                                        InferredNode::ArgumentsResolved => {
+                                            break rust_serde_error_policy("wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt".to_string());
                                         }
                                     },
                                 },
