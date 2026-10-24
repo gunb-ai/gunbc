@@ -72,3 +72,36 @@ A roster-shaped directory the basename rule misses: gunbc.git_use_census.* (dire
 - M7 (slice 01): the seed reader's rework predates ruling (d). scripts/seed_supplement.py re-adds, over the 62 hand-written .rs files (non-test lines only), kernel-ABI literals as access L4, device nodes as placement L4, and CI-environment env reads (GITHUB_*, RUNNER_*, CI) as placement L4. That is 31 rows: slices/01-seed/findings_supplement.tsv. Among them are the reader's two suspected false L0s, which proved real: memory_governor.rs and cli_run/user_work_scope.rs read /proc/self/cgroup and /sys/fs/cgroup outside their test regions. 3 rows in interp_recorded_fixture_witness.rs whose /tmp/x, /tmp/y specimens are .dag source inside string literals are dropped (slices/01-seed/findings_dropped.tsv).
 - Seed class membership: 315 files, i.e. 306 src/v1/**/*.rs plus 9 src/v1/*.dag (the v1 compiler's own .dag sources, e.g. src/v1/04_env.dag). Of the 161 seed modules with a signal, 90 are seed-generated (generated_members.txt), 62 hand-written .rs and 9 .dag.
 - M8 (slice 04 second pass): the reader set gunbc.systemd_directive_value_grain to class=roster. M2 keeps it production (the roster rule does not match it), so merge.py restores the class. Depth: the reader states that ~17 large modules (host_effect_realize, fleet_converge_*, package_delivery, altra_autoinstall_seed, secret_provision_actuator, ...) were read by grep plus context around every hit and a declaration scan, not line by line. Their L0-L2 cells carry that caveat.
+
+## Slice commits the merge uses (one reader per slice; later pushes by duplicate sessions are not merged)
+- 01-seed e97029f (stern-crane-458: rework 3daab4e, then 'drop prose rows'), plus findings_supplement.tsv (M7)
+- 03-runner-ci d188d2c (warm-pike-594, rework). A duplicate session, lively-cat-254, never landed a push.
+- 04-fleet-host 07fcc30 (fierce-boar-597, second pass)
+- 05-machine-intake-sites fc3e189 (bold-tern-682). A second session on the same slice, still-lynx-483, later fast-forwarded the branch to f37754f with findings auto-generated from module cells (specimen = evidence_symbols). That push is below instance grain and is NOT merged; the branch head is not the merged sheet.
+
+## Phase 3 reading, corrected after slice 09
+The 6/60 (10%) figure is the measured miss rate of the SAMPLE. It should not be extrapolated, because the sample over-represents the two miss shapes.
+The shape leads match 82 of the 1,633 no-signal production modules (5.0%), but 9 of the 60 sampled (15%). For a random draw that is about a 1-in-200 outcome. Under a different seed the sample would have shown fewer misses.
+Every one of the 82 shape members has now been hand-read (9 in the sample, 73 in slice 09). 12 have a problem (6 in the sample, 6 in slice 09: lab_host_plan, managed_directory, pre_os_capture_replay, srv3_host_effect_apply, srv3_install_media_fetch, srv3_os_install_actuator_toolchain_ensure). As leads, the shapes have 15% precision.
+The other 1,551 no-signal production modules were sampled 51 times (60 minus the 9 shape members) with 0 misses. By the rule of three, the miss rate there is below ~6% at 95% confidence: up to ~90 unread modules with a problem, unbounded below by this sample.
+So the census's known gap is "up to ~6% of the no-signal remainder, shape unknown", not "10% of everything".
+Slice 09 read depth: grep leads, plus full text for ~15 modules; L0/L1 rows there are lower confidence (reader's caveat).
+- 09-phase3-shapes 7d1ae7b (witty-ant-451)
+- 07-fabric-compute-workspace a0f040b (merry-raven-458, rework). Its branch history held a full-repo-tree commit (1a13ec7) from a plumbing slip, so the branch was deleted right after this fetch; the sheets are kept locally under slices/07-fabric-compute-workspace/.
+- 06-roadmap-auth-dispatch 1f59ea7 (eager-swift-535). Its 8 calibration-overlap modules were copied verbatim from the parent's sheets; merge rule 1 keeps the parent's module rows, and the exact-duplicate instance filter counts the copied rows once.
+  Caveat: 120 of slice 06's 173 specimens describe the mechanism in words naming the calls (e.g. 'shell.Mkdir.Parents + Chmod.OwnerOnlyDirectory + WriteOwnerOnly ...'), not a quoted line. Every row names a real fn/data symbol, so it is identity-backed; it is weaker evidence than a quoted line. The reader also reports ~15 more srv1_live_dashboard_instance() wrapper pins beyond the brief's 26 (serve, apply, tick_cli, dogfood_route, ntfy_publish, deployment_gate, dispatch_preflight ...).
+- M9: any src/v1/** module is class seed (or seed-generated), whatever a sheet wrote. Slice 01 had marked the 9 src/v1/*.dag files production.
+- M10: exact-duplicate instances (module, dimension, level, symbol, specimen) count once. Slice 06 had copied the 8 calibration modules' rows verbatim (40 rows removed).
+
+## classes.tsv (schema addendum 2)
+scripts/classes.py assigns every hand-read-class instance at Rederived/Literal/Forked to exactly ONE error class, using the first matching rule
+(dimension + site + specimen/note/symbol keywords, in the order written in the script). Unmatched rows fall to <dim>_<site>_unclassified; that count is
+reported and is currently 0. The class membership is findings.tsv filtered by class_id, so every class count is identity-backed.
+current_rung is DESIGN.md §4b. This census looked for decision SITES, not for gates that already refuse them. A class is therefore written rung 0 unless a
+wall is named from the corpus (authz_ambient_sudo is 1: gunbc.auth.privileged_effect_census classifies the sites, which contains them, but refuses nothing).
+A 0 means "no wall observed by this census", not "proved unguarded".
+attainable_ceiling, wall and red_control are written in the parent's vocabulary (admit_callers roster / type / declared requires / derived from one
+declaration). They state what would hold the class; they are not a design proposal, and no new vocabulary is minted.
+- 02-extdeps 001901d (nimble-bear-464). 123 modules, 13 instance rows. The reader reports ~90% of mechanical leads in extdeps were false: upstream layout and env vars are Home, and kernel ABI in extdeps.linux.* is Home.
+- M11 (slice 02 misfit 1): an upstream binary location in an extdeps tool-catalog module is Home when it is where the UPSTREAM puts it (distro package path, Homebrew's documented prefix, the FHS /usr/local/bin, systemd's listed unit directories). It is placement Literal when it is OUR install choice carried in the upstream model. One instance: extdeps.cache.sccache::sccache_installed_binary_path "/usr/local/bin/sccache" (added as a parent row; the reader's L1 for the other 13 modules stands). Misfit 2: extdeps.google.issue_tracker ~/issue-tracker-shots is a provenance locator, not a runtime path: L0, as the reader scored it.
+- M12: a module's class is a function of its PATH (the brief's definition, taken from mechanical.tsv). Readers' own labels (observation 29, fleet_declaration 7, host_model 7, witness 2, test 1, all under dag/gunbc/) are relabelled to their path class. The only reader refinement kept is seed -> seed-generated (M5). Relabels are listed in merge_report.txt.

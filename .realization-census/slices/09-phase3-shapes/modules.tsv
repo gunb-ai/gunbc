@@ -1,0 +1,74 @@
+module	class	storage_level	caching_level	access_level	authz_level	placement_level	ambient_calls	worst_finding	evidence_symbols	phase
+gunbc.bmc.bmc_fan_program_decode_witness	witness	L0	L0	L0	L0	L0	0	none: witness fixture; srv lead false		P2
+gunbc.bmc.bmc_fan_program_representability_witness	witness	L0	L0	L0	L0	L0	0	none: sensor JSON text literals are test fixtures, not paths		P2
+gunbc.bmc.bmc_onboarding	production	L0	L0	L2	L0	L2	0	none: takes credential/endpoint facts as parameters	srv3_onboarding_plan	P2
+gunbc.ci.ci_materialization	production	L0	L2	L0	L0	L0	0	none: cache vocab is routing to extdeps.cache.* providers and std ladder; module caches nothing itself	ci_cache_providers; ci_sccache_provider_id	P2
+gunbc.deployed_intent_v0	production	L0	L0	L0	L0	L1	0	none: module IS the declared deployed-intent row for a host (fixture row)	deployed_intent_v0 rows	P2
+gunbc.deployed_intent_v1	production	L0	L0	L0	L0	L1	0	none: declares deployed intent per host	deployed_intent_v1 rows	P2
+gunbc.fleet.fleet_container	production	L2	L0	L0	L0	L2	0	none: memory envelope arithmetic; widths received	memory_aware_spawn_width	P2
+gunbc.fleet.fleet_enrollment	roster	L0	L0	L0	L0	L1	0	roster/authority: the fleet enrollment root (not scored beyond L1)	HostEnrollmentIntent rows	P2
+gunbc.fleet.fleet_fan_tach_expectation	fleet_declaration	L0	L0	L0	L0	L1	0	none: module IS the declared per-host physical/observed fact table	fleet_fan_tach_expectation	P2
+gunbc.fleet.fleet_fan_tach_observation	fleet_declaration	L0	L0	L0	L0	L1	0	none: module IS the declared per-host physical/observed fact table	fleet_fan_tach_observation	P2
+gunbc.fleet.fleet_fan_wiring	fleet_declaration	L0	L0	L0	L0	L1	0	none: module IS the declared per-host physical/observed fact table	fleet_fan_wiring	P2
+gunbc.fleet.fleet_install_transport_observations	fleet_declaration	L0	L0	L0	L0	L1	0	none: module IS the declared per-host physical/observed fact table	fleet_install_transport_observations	P2
+gunbc.fleet.fleet_physical_inventory	fleet_declaration	L0	L0	L0	L0	L1	0	none: module IS the declared per-host physical/observed fact table	fleet_physical_inventory	P2
+gunbc.fleet.fleet_reach	fleet_declaration	L0	L0	L0	L0	L0	0	none: reach modeled as types, no endpoint literals		P2
+gunbc.fleet.fleet_site_locale	fleet_declaration	L0	L0	L0	L0	L1	0	none: module IS the declared per-host physical/observed fact table	fleet_site_locale	P2
+gunbc.fleet.printer_federation	production	L0	L0	L2	L0	L2	0	none: receives printer endpoints/hosts		P2
+gunbc.host.bmc_release_capability_catalog	production	L0	L0	L0	L2	L0	0	none: capability catalog is typed data; no privileged effect		P2
+gunbc.host.boot_medium	host_model	L0	L0	L0	L0	L2	0	none: openssh_standard_port is the upstream standard port, received into a typed row		P2
+gunbc.host.host_identity_access	host_model	L0	L0	L0	L0	L1	0	none: typed host model; names no instance of its own		P2
+gunbc.host.host_identity_observation	observation	L0	L0	L0	L0	L0	0	none: typed fixture/deduction		P2
+gunbc.host.host_memory_qualification	host_model	L0	L0	L0	L0	L2	0	none: typed host model; names no instance of its own		P2
+gunbc.host.host_phase_status	host_model	L0	L0	L0	L0	L1	0	none: typed host model; names no instance of its own		P2
+gunbc.host.host_reset_return	observation	L0	L0	L0	L0	L0	0	none: typed fixture/deduction		P2
+gunbc.host.host_software_surface	host_model	L0	L0	L0	L0	L2	0	none: typed host model; names no instance of its own		P2
+gunbc.host.host_standup_assimilation_deduction	observation	L0	L0	L0	L0	L0	0	none: typed fixture/deduction		P2
+gunbc.host.host_toolchain_components	host_model	L0	L0	L0	L0	L2	0	none: typed host model; names no instance of its own		P2
+gunbc.host.managed_host	host_model	L0	L0	L0	L0	L2	0	none: typed host model; names no instance of its own		P2
+gunbc.host.mtcollins_3ds_memory_change	observation	L1	L0	L0	L0	L0	2	none: declares capture paths; read via read_verified_memory_capture seam	mtcollins_3ds_capture_path	P2
+gunbc.host.mtcollins_memory_change	observation	L1	L0	L0	L0	L0	1	none: declares training capture path+sha (L1); reads via read_verified_memory_capture seam	mtcollins_training_capture_path; read_verified_memory_capture	P2
+gunbc.live_deploy.lab_host_plan	production	L0	L0	L0	L0	L3	0	srv1_lab_deploy_plan pins srv1 around lab_deploy_plan_from_software	srv1_lab_deploy_plan; lab_deploy_plan_for_host_identity	P2
+gunbc.machine_intake.arrival_admission	production	L0	L0	L0	L0	L2	0	none: takes host as parameter		P2
+gunbc.machine_intake.bmc_inband_recovery_receipts	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.megarac_operation_evidence	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_32dimm_bringup_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_access_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_bmc_secure_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_dimm_admission	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_diskless_boot_receipt	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_memory_census_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_netboot_client_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_sixteen_module_restore_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtcollins1_socket1_investigation_observation	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.machine_intake.mtjade1_factory_network	observation	L0	L0	L0	L0	L0	0	none: citation prose + observed address as fixture		P2
+gunbc.machine_intake.pre_os_capture_replay	observation	L4	L0	L0	L0	L0	4	repo-relative artifacts/bmc capture path literals passed inline to read_verified_memory_capture	read_verified_memory_capture call sites	P2
+gunbc.managed_directory	production	L0	L0	L0	L2	L3	0	srv1_dashboard_service_principal() srv1-named nullary re-selects fleet_posix_operator_user for attempt_state_directory_at	srv1_dashboard_service_principal; attempt_state_directory_at	P2
+gunbc.merge_admission_produce	production	L1	L0	L0	L0	L0	1	none: declares receipt rel path; ci_repo_root_shell is a shell-subexpr string builder	merge_admission_receipt_rel_path; ci_repo_root_shell	P2
+gunbc.namecheap.observation_artifact	observation	L0	L0	L0	L0	L0	0	none: 6-line type carrier		P2
+gunbc.namespace_cut.namespace_step0_canary_v1_history	observation	L0	L0	L0	L0	L0	0	none: history record		P2
+gunbc.nbd_proxy_virtual_media_install	production	L0	L0	L0	L0	L1	0	none: declares actuator plan; srv3 export is an explicit placeholder; selection received	srv3_nbd_proxy_export_placeholder	P2
+gunbc.os_install_actuator_selection	production	L0	L0	L0	L0	L1	0	none: module IS the declared candidate/tie-break policy for srv3 actuation	srv3_os_install_actuator_candidate_hosts; srv3_os_install_actuator_tie_break_policy	P2
+gunbc.regen_receipt	production	L1	L0	L0	L0	L0	0	none: declares candidate/receipt rel paths and artifact names	stage0_regen_receipt_rel	P2
+gunbc.roadmap.roadmap_fleet_components	roster	L0	L0	L0	L0	L1	0	roster: FleetComponentBinding id->host table	FleetComponentBinding rows	P2
+gunbc.runner.runner_capacity_realize	production	L0	L0	L0	L0	L2	0	none: host plans received; disk observation via host_disk_observation seam	runner_capacity_apply_host_plan	P2
+gunbc.runner.runner_cgroup_placement_receipt	observation	L0	L0	L0	L0	L0	0	none: typed receipt of an observed fact		P2
+gunbc.runner.runner_guest_egress_attempt	observation	L0	L0	L0	L0	L0	0	none: typed receipt of an observed fact		P2
+gunbc.runner.runner_guest_network_receipt	observation	L0	L0	L0	L0	L0	0	none: typed receipt of an observed fact		P2
+gunbc.runner.runner_host_first_boot_receipt	observation	L0	L0	L0	L0	L0	0	none: typed receipt of an observed fact		P2
+gunbc.runner.runner_host_hardware_observation	observation	L0	L0	L0	L0	L0	0	none: typed receipt of an observed fact		P2
+gunbc.runner.runner_host_jailed_kvm_receipt	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.runner.runner_host_kvm_probe_receipt	observation	L0	L0	L0	L0	L0	0	none: typed receipt of an observed fact		P2
+gunbc.runner.runner_live_census_receipt	observation	L1	L0	L0	L0	L0	0	none: module IS the declaration of its committed evidence artifact path/digest (observation carrier); no I/O	*_artifact_path / evidence label	P2
+gunbc.runner.runner_width_transition	production	L0	L0	L0	L0	L1	0	none: module IS the declared slot_width_transition_26_25 table	slot_width_transition_26_25	P2
+gunbc.serving.rented_release	production	L0	L0	L2	L2	L0	0	none: ssh/engine-port facts are RentedHostReading supplied by caller (declared gap)	RentedHostReading	P2
+gunbc.session_residency	production	L0	L0	L0	L0	L1	0	none: module IS the declared per-host interactive-session residency	host_session_evidence	P2
+gunbc.spark.fabric_switch_observed	production	L0	L0	L0	L0	L2	0	none: typed observation		P2
+gunbc.spark.first_party_serving	production	L0	L0	L0	L0	L1	0	none: declares first-party serving route		P2
+gunbc.spark.group_b_node_qualification	production	L0	L0	L0	L0	L2	0	none: typed qualification		P2
+gunbc.srv3.srv3_bmc_credential_resolve	production	L0	L0	L2	L0	L0	0	none: SecretRef from bmc_srv3_admin_secret_ref passed through; no lookup	srv3_os_install_actuate_credential_intent	P2
+gunbc.srv3.srv3_host_effect_apply	production	L0	L0	L0	L2	L3	0	srv3_actuator_target_or_refusal re-selects actuator; pins transport LocalShell and ci_deploy_srv1_access	srv3_host_effect_apply	P2
+gunbc.srv3.srv3_install_media_fetch	production	L0	L0	L0	L0	L3	0	srv3 artifact pin; fetch routed through host_effect_apply seam	srv3_ubuntu_install_media_install_path	P2
+gunbc.srv3.srv3_os_install_actuator_toolchain_ensure	production	L0	L0	L0	L0	L3	0	pins operator_host_srv3 around host_toolchain_ensure (wrapper pattern)	srv3_os_install_actuator_toolchain_ensure	P2
+gunbc.worker_turn_snapshot_custody	production	L1	L0	L0	L1	L1	0	none: declares custody paths/owners/hosts	claude_worker_turn_snapshot_custody	P2
+product.printing.failure_incidents	observation	L0	L0	L0	L0	L0	0	none: incident record data with evidence URLs		P2

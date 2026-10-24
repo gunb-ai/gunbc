@@ -1,0 +1,123 @@
+module	class	storage_level	caching_level	access_level	authz_level	placement_level	ambient_calls	worst_finding	evidence_symbols	phase
+gunbc.compile_pool_ensure	production	L0	L0	L0	L0	L2	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached; placement received as cache_placement	compile_pool_ensure; cache_placement	P2
+gunbc.compile_pool_observe	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached	build_cache_instance import	P2
+gunbc.compute.compute_seat_ensure	production	L2	L0	L0	L0	L2	4	none: leases_dir/attempts_dir received; Filesystem.List/Read are ambient reads through received paths (path-typed)	compute_seat_ensure; leases_dir	P2
+gunbc.compute.recorded_cgroup_drain	production	L0	L0	L0	L0	L0	1	none: reads events_path received from caller	recorded_cgroup_drain	P2
+gunbc.compute.test_run	production	L4	L0	L0	L0	L2	2	receipt written by Filesystem.Write to path under worktree; entry path literal	test_process_entry; test_process_receipt_name	P2
+gunbc.compute.unit_bounds	production	L0	L0	L0	L0	L4	0	container-runtime socket denylist and systemd manager dir literals in business logic	user_work_scope_systemd_manager_dir; -/var/run/docker.sock list	P2
+gunbc.compute.work_provider_local	production	L5	L0	L0	L0	L4	16	is ComputeLayout home yet carries raw writes, /proc/self/status and /run/user/<uid> literal, recursive remove	"Filesystem.Write/WriteCreateNew; Remove.RecursiveForce; ""/run/user/""; ""/proc/self/status"""	P2
+gunbc.compute.work_request	production	L0	L0	L0	L0	L0	0	none: cache_release is a work-operation verb, not a cache	WorkOperation	P2
+gunbc.fabric.fabric_allocation_store_substrate	production	L4	L0	L0	L0	L0	0	"namespace_path ""/var/lib/gunbc/fabric"" and presence_ancestor ""/var/lib/gunbc"" hard-coded"	fabric_allocation_store_substrate	P2
+gunbc.fabric.fabric_blob_r2	production	L0	L1	L2	L0	L0	0	module declares cache-blob and workspace-chunk keys/bounds; token_source received	fabric_cache_blob_key; put_cache_blob; token_source: AccessTokenSource	P2
+gunbc.fabric.fabric_blob_shell	production	L0	L1	L3	L0	L0	0	generates the blob-transfer shell program; Secret Manager URL rebuilt in shell	secret_access_url; credential_statements	P2
+gunbc.fabric.fabric_cell_acquire	production	L0	L0	L0	L0	L4	1	"slice unit pattern ""fabric-cell-*.slice"" literal; cell attempt root entry name"	fabric_cell_slice_unit_pattern; fabric_cell_attempt_root_entry_name	P2
+gunbc.fabric.fabric_cell_converge	production	L0	L0	L0	L0	L4	0	"cell base dir parent ""/opt"", entry ""fabric-cells"", slice name lead ""fabric-cell-"" declared here"	fabric_cell_base_dir_parent; fabric_cell_slice_name_lead	P2
+gunbc.fabric.fabric_cell_effect	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.fabric.fabric_cell_host_root	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.fabric.fabric_cell_observe	production	L0	L0	L0	L0	L2	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached; host/slot received	fabric_cell_observe	P2
+gunbc.fabric.fabric_cell_subject	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.fabric.fabric_ci_program	production	L0	L0	L0	L0	L0	0	"none: ""sudo"" appears only in FabricCiGate prose strings (gate descriptions)"	FabricCiGate	P2
+gunbc.fabric.fabric_control_plane	production	L4	L0	L0	L0	L2	0	"allocation store root ""/var/lib/gunbc/fabric/allocation"" hard-coded"	fabric_control_plane; CellReservation	P2
+gunbc.fabric.fabric_executor_class	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.fabric.fabric_m0_commit	production	L2	L0	L0	L2	L0	0	none: cache_manifest_read is a manifest verb; store/authorization received	fabric_m0_commit	P2
+gunbc.fabric.fabric_object_r2	production	L5	L0	L2	L0	L0	3	stages objects via shell.Mktemp + Filesystem.Write then r2_put; own put/readback	put_fabric_object_r2; shell.Mktemp.Dir	P2
+gunbc.fabric.fabric_required_build_cell	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.fabric.fabric_source_snapshot	production	L5	L0	L0	L0	L4	16	own provider base dir: /run/user/ prefix, /tmp default, Mkdir.NewOwnerOnly, trusted-root check, recursive remove	provider_root_default; provider_base_runtime_prefix; shell.Mkdir.NewOwnerOnly	P2
+gunbc.fabric.fabric_storage_file_store	production	L5	L0	L0	L0	L0	5	own create-only file write + mkdir for objects/heads beside durable_cas_file_store	Filesystem.WriteCreateNew; shell.Mkdir.Parents	P2
+gunbc.fabric.fabric_storage_r2_head	production	L5	L0	L2	L0	L0	3	head object staged by raw Filesystem.Write then pushed; own staging	r2_head_body; Filesystem.Write	P2
+gunbc.fabric.fabric_storage_state_auth_io	production	L0	L0	L4	L0	L0	1	reads MAC key file path from env GUNBC_FABRIC_STATE_KEY_FILE	shell.Env.Get GUNBC_FABRIC_STATE_KEY_FILE	P2
+gunbc.fabric.fabric_storage_state_location	production	L0	L0	L1	L0	L0	0	IS the declaration of the state-writer MAC key host path (single literal)	fabric_state_key_host_path	P2
+gunbc.fabric.fabric_witness_run	production	L0	L0	L0	L0	L0	0	none: cache/cache_policy appear as claim vocabulary	fabric_witness_run	P2
+gunbc.fabric.fabric_writer_identity_observe	production	L4	L0	L0	L0	L0	1	"receipt written to relative ""target/fabric-writer-identity-receipt.txt"""	fabric_writer_identity_receipt_path	P2
+gunbc.fabric.fabric_writer_roster	production	L0	L0	L0	L0	L3	0	IS the roster of fabric writers per host (srv1/srv3/srv4); srv1 row re-picks live instance	fabric_writer_roster; srv1_live_dashboard_instance	P2
+gunbc.fabric.fci1_bounded_execution_context	production	L0	L0	L0	L0	L1	0	IS the declaration of the fci1-bounded-driver unit name	fci1_driver_unit	P2
+gunbc.fabric.fci1_controls_slice	production	L0	L0	L0	L0	L4	0	"unit dir ""/run/systemd/system"" literal beside slice_bounds-supplied values"	fci1_controls_slice_unit_directory	P2
+gunbc.fabric.workspace_checkpoint_instrument	production	L5	L0	L4	L0	L4	16	"host ""srv3"" literal, HOME env, own mkdir/remove, receipt writes"	workspace_checkpoint_host; shell.Env.Get HOME; Remove.RecursiveForce	P2
+gunbc.fabric.workspace_source	production	L5	L0	L4	L0	L4	16	/home/briansrls source roots, srv1 pack host, env slot, own mkdir/remove	workspace_agent_state_home; workspace_source_pack_host; WORKSPACE_AGENT_STATE_SLOT	P2
+gunbc.fabric.workspace_transcript_rate	production	L4	L0	L0	L0	L0	1	raw transcript write (synthetic measurement fixture)	workspace_transcript_rate; Filesystem.Write	P2
+gunbc.serving.replica_incarnation	production	L0	L0	L0	L0	L0	0	none: /proc/<pid>/exe and /proc/stat are kernel observation paths read through a host transport (upstream Linux layout)	replica_incarnation	P2
+gunbc.serving.serving_artifact_placement	production	L2	L0	L0	L0	L2	0	none: mkdir_parents_command is a command constructor; paths received	serving_artifact_placement	P2
+gunbc.serving.serving_front_door	production	L0	L0	L4	L2	L0	0	"seat-permit key path ""/etc/gunbc/serving-seat-permit.key"" and key id literal"	serving_seat_permit_key_path; serving_seat_permit_key_id	P2
+gunbc.serving.session_store	production	L0	L0	L0	L0	L0	0	none: cached_tokens is a usage field of upstream responses		P2
+gunbc.serving.turn_admission	production	L0	L0	L0	L0	L2	0	none: cached_tokens is a usage field	serving_group_admission	P2
+gunbc.spark.arm_memory_fit	production	L0	L0	L0	L0	L0	0	none: KV cache sizing is a memory-fit fact (declared quantities), nothing is cached		P2
+gunbc.spark.collective_transport_plan	production	L0	L0	L0	L0	L1	0	declares NCCL/UCX env names and /dev/infiniband device mapping as upstream transport contract	nccl_socket_ifname_env; host_path /dev/infiniband	P2
+gunbc.spark.credential_workflow	production	L0	L0	L2	L0	L2	0	none: sudo only in prose; credentials resolve via SecretRef rows; consumer ids are declared here	spark_administrator_password_secret_ref	P2
+gunbc.spark.dgx_procurement	production	L0	L0	L0	L0	L1	0	IS the procurement/disposal roster of srv5..srv12 units	DgxSparkDisposedUnit rows	P2
+gunbc.spark.fabric_blob_peer	production	L1	L0	L0	L0	L1	0	IS the declaration of the peer blob root, staging dir, rsyncd conf and serve unit	fabric_blob_root; fabric_blob_rsyncd_conf_path; fabric_blob_serve_unit	P2
+gunbc.spark.fabric_rail_apply	production	L4	L0	L0	L0	L2	1	receipt written to relative target/ path	fabric_rail_apply_receipt_path	P2
+gunbc.spark.grant_privileged_operation	production	L0	L0	L0	L1	L2	1	builds AuthorizationScope/escalation for sudoers install; sudoers content from spark_managed_grant_* ; sudo sites are census-classified	spark_bootstrap_sudoers_scope; posix.sudoers.install	P2
+gunbc.spark.host_privileged_apply	production	L0	L0	L0	L3	L2	0	"privileged invocation argv [""sudo"",""-S"",""sh"",""-s""] hard-coded"	spark_pair_privileged_invocation	P2
+gunbc.spark.managed_access_apply	production	L4	L0	L2	L3	L2	2	local sudo -S sh -s argv; receipt Filesystem.Write; logins literal	spark_managed_login; spark_apply_receipt_path	P2
+gunbc.spark.managed_access_bootstrap	production	L4	L0	L0	L1	L2	0	"IS the bootstrap of managed grants: declares executor login, home ""/home/<login>"", grant disclosure; sudo ""-n"" lines are grant definitions"	spark_managed_executor_login; spark_managed_grant_sudoers_command	P2
+gunbc.spark.managed_grant_install	production	L4	L0	L0	L3	L2	1	receipt write; sudoers install delegates to spark_managed_grant_* helpers	spark_grant_install_receipt_path	P2
+gunbc.spark.managed_grant_reconcile	production	L0	L0	L0	L1	L0	0	IS the sudoers drop-in reconcile: declares /etc/sudoers.d dropin dir and content shape	spark_sudoers_dropin_directory; spark_managed_grant_sudoers_content	P2
+gunbc.spark.model_snapshot_acquisition	production	L4	L4	L0	L0	L0	0	"hub cache root ""/home/briansrls/.cache/huggingface/hub"" and models root ""/home/briansrls/models"" are our policy paths"	spark_hub_cache_root; spark_models_root	P2
+gunbc.spark.model_snapshot_materialize	production	L0	L2	L0	L3	L2	0	"container CLI home ""/root"" mirrors the upstream image; sudo -S sh -s spelled locally; cache env received"	containerized_cli_home; portable_remote_words(sudo)	P2
+gunbc.spark.oobe_execution_placement	production	L0	L0	L0	L0	L2	0	none: PlaywrightBrowserCacheEntry is an upstream browser-cache record, observed not managed		P2
+gunbc.spark.oobe_screen_observation	production	L0	L0	L0	L0	L4	0	"rendering host ""srv4"" and locator ""127.0.0.1:18082"" literals"	rendering_host srv4; locator 127.0.0.1:18082	P2
+gunbc.spark.pinned_base_env_classification	production	L0	L0	L0	L0	L0	0	none: NODE_IP=0.0.0.0 is classified text from the pinned base image env (upstream fact), not our listen address	pinned_base_env_classification	P2
+gunbc.spark.retired_serving_container_names	production	L0	L0	L0	L0	L1	0	IS the roster of retired unit names	retired_serving_container_names	P2
+gunbc.spark.serving_arm	production	L0	L0	L0	L0	L4	0	"upstream hf binary ""/opt/env/bin/hf"" / ""/usr/local/bin/hf"" in business code; HubCachePlacement received"	hf binary literal	P2
+gunbc.spark.serving_capacity_intent	production	L0	L0	L0	L0	L0	0	none: kv_cache_dtype / cache fit are model-memory quantities, nothing cached		P2
+gunbc.spark.serving_compatibility	production	L0	L0	L0	L0	L0	0	none: kv_cache_dtype / cache fit are model-memory quantities, nothing cached		P2
+gunbc.spark.serving_performance_subject	production	L0	L0	L0	L0	L0	0	none: kv_cache_dtype / cache fit are model-memory quantities, nothing cached		P2
+gunbc.spark.serving_promotion	production	L0	L0	L0	L0	L0	0	none: kv_cache_dtype / cache fit are model-memory quantities, nothing cached		P2
+gunbc.spark.serving_rank_observe	production	L0	L0	L0	L0	L1	0	none: /dev/infiniband is upstream device layout inside observation; GpuKvCacheSize is a reading	serving_rank_observe	P2
+gunbc.spark.snapshot_rail_replica	production	L0	L2	L0	L0	L0	0	none: HubCachePlacement received; blob_in_cache is an observation	snapshot_rail_replica	P2
+gunbc.spark.systemd_execution_cell	production	L4	L0	L0	L0	L4	0	"scratch dir ""/var/tmp/<container>-workload"" and http://127.0.0.1:<serve_port> literal; cache reuse script is a calibration workload"	systemd_workload scratch path; base=http://127.0.0.1:	P2
+gunbc.spark.vllm_observed	production	L0	L0	L0	L0	L4	0	"host ""srv6"" literal in observation specimens; cache config is a gauge readback"	vllm_observed; srv6	P2
+gunbc.typed_remote_file_write	production	L0	L0	L0	L2	L2	0	none: is the typed realization of remote file write; sudo via extdeps.sudo.elevation sudo_elevate and visudo check, received write	typed_remote_file_write; sudo_elevate	P2
+gunbc.workspace_acquisition_invocation	production	L0	L0	L4	L0	L0	2	ambient env read; /proc/self/stat is kernel layout	shell.Env.Get	P2
+gunbc.workspace_allocation	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_allocation_dispatch	production	L0	L0	L4	L0	L0	3	workspace root read from ambient env name	gunbc_workspace_root_env_name	P2
+gunbc.workspace_allocation_launch_directive	production	L0	L0	L0	L0	L0	1	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_allocation_lifecycle	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_allocation_metrics	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_allocation_operations	production	L0	L0	L4	L0	L0	0	"EnsureOwnedDirectory ""/etc/credstore"": access L4 (no authority exists: credstore path)"	workspace_allocation_operations; /etc/credstore	P2
+gunbc.workspace_allocation_policy	production	L0	L0	L0	L0	L1	0	"IS the allocation policy: operator guest key comment and ssh path ""gunbc-workspace-srv1-13"""	workspace_operator_public_key_ref	P2
+gunbc.workspace_allocation_supply	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_admission_observe	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_apply_readback	production	L2	L0	L0	L0	L0	5	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached; reads through received store	workspace_commissioning_apply_readback	P2
+gunbc.workspace_commissioning_controller	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_directive	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_dispatch	production	L0	L0	L0	L0	L2	4	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached; /dev/stdin is shell stdin	workspace_commissioning_dispatch	P2
+gunbc.workspace_commissioning_dispatch_operations	production	L0	L0	L0	L1	L0	0	IS the declaration of the dispatch sudoers grant path and operations	workspace_dispatch_grant_path; executor_privileged_operation_sudoers_line	P2
+gunbc.workspace_commissioning_executor_cli	production	L0	L0	L4	L0	L0	4	4 ambient env reads GUNBC_MICROVM_SLOT/ACTION/ACTOR/CONTROLLER	shell.Env.Get	P2
+gunbc.workspace_commissioning_executor_fence	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_executor_helper	production	L0	L0	L4	L0	L2	2	ambient env read; /proc/self/cgroup kernel layout	shell.Env.Get	P2
+gunbc.workspace_commissioning_executor_input	production	L0	L0	L0	L0	L0	1	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_executor_submission	production	L5	L0	L4	L0	L2	5	raw WriteCreateNewWithMode into /etc/credstore with own ownership check	read_store_ownership; Filesystem.WriteCreateNewWithMode	P2
+gunbc.workspace_commissioning_executor_unit	production	L0	L0	L0	L0	L1	0	IS the declaration of the executor template unit (name, /etc/systemd/system path, script/helper names)	workspace_executor_template_name	P2
+gunbc.workspace_commissioning_fleet	production	L0	L0	L0	L2	L2	2	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached	workspace_commissioning_fleet	P2
+gunbc.workspace_commissioning_history	production	L0	L0	L0	L0	L0	2	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_input_store	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_location	production	L1	L0	L0	L0	L0	0	IS the declaration of the commissioning store location	workspace_commissioning_store_location	P2
+gunbc.workspace_commissioning_observe	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_runtime	production	L0	L0	L0	L2	L2	2	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached	workspace_commissioning_runtime	P2
+gunbc.workspace_commissioning_start_identity	production	L0	L0	L4	L0	L0	2	"submitter credential path ""/etc/credstore/<prefix><instance>"" hard-coded (no authority exists: credstore path)"	workspace_commissioning_submitter_credential_id; CREDENTIALS_DIRECTORY	P2
+gunbc.workspace_commissioning_store	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_commissioning_transaction	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_gateway	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_gateway_admission	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_gateway_observer	production	L5	L0	L0	L0	L4	3	"scratch dir ""/tmp/gunbc_workspace_gateway.XXXXXX"", WriteCreateNew, RecursiveForce remove"	shell.Mktemp.DirWithTemplate; Filesystem.WriteCreateNew	P2
+gunbc.workspace_gateway_store	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_host_offer_observe	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_initial_sanitation	production	L0	L0	L0	L0	L0	3	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_offer_producer	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_operator_request	production	L4	L0	L4	L0	L0	2	"env reads for request; receipt written to ""target/workspace-operation.json"""	workspace_operator_receipt_path; shell.Env.Get	P2
+gunbc.workspace_slot_mutation	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_ssh_access	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+gunbc.workspace_tool_observer	production	L0	L0	L0	L0	L0	0	none: cache vocab is the imported gunbc.build_cache.* vocabulary; nothing is cached		P2
+product.fabric.flex_vast_template_control	production	L4	L0	L2	L0	L2	1	receipt write to relative target/ path	flex_vast_template_receipt_path	P2
+product.fabric.serving_recipe	production	L0	L1	L0	L0	L0	0	none: ServingCacheSizing/ServingCacheTiers is the declared recipe cache sizing (L1 caching)	ServingCacheSizing; ServingCacheTiers	P2
+product.printed_chassis.assembly_inventory	production	L0	L0	L0	L0	L0	1	none: inventory model; the ambient call is a read of a received repo file	assembly_inventory	P2
+product.printed_chassis.cad_check_run	production	L4	L0	L0	L0	L0	2	receipt writes to relative target/ path	cad_check_run	P2
+product.printed_chassis.preparation_identity	production	L0	L0	L0	L0	L0	3	none: identity computation; ambient calls read inputs only	preparation_identity	P2
+product.printed_chassis.print_preparation	production	L5	L0	L0	L0	L0	5	own Mkdir + WriteCreateNew for prepared artefacts	print_preparation	P2
+product.printed_chassis.print_workflow	production	L5	L0	L2	L0	L2	7	own Mkdir + WriteCreateNew; runtime received	print_workflow	P2
+product.printed_chassis.stack_mass_review	production	L0	L0	L0	L0	L0	0	none: srv3/srv4 appear in review-finding prose and population names, not as placement decisions	stack_mass_review	P2
+product.printing.cad_runtime_converge	production	L5	L0	L0	L0	L4	6	own Mkdir/RecursiveForce/WriteCreateNew; micromamba path literal	cad_runtime_converge; micromamba path	P2
+product.printing.print_runtime	production	L5	L0	L0	L0	L4	4	"print_runtime_root ""/var/lib/gunbc/print-runtime"", /etc/os-release read, python path, own Mkdir/WriteCreateNew"	print_runtime_root; Filesystem.WriteCreateNew	P2
+product.printing.runtime_converge	production	L5	L0	L0	L0	L2	1	raw receipt write; reads /etc/os-release (kernel/OS layout)	runtime_converge	P2
