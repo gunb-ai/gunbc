@@ -56,7 +56,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.text { String }
-import v2.std.node { node_same_occurrence,
+import v2.std.node {
   Atom,
   Conj,
   Edge,

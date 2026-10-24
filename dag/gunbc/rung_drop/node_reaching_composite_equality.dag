@@ -1,0 +1,28 @@
+module gunbc.rung_drop.node_reaching_composite_equality
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
+import v1.compiler.infer { equality_node_reaching_composite_drop_population }
+
+// DECLARED 2026-10-24 with Node joining the equality-inadmissible rows (gunbc#14842). Every bare Node ==
+// moved onto node_same_occurrence or node_equal_ignoring_provenance, and List/Optional/RuntimeValue/
+// DependencyView/Diagnostic operands onto their existing lifts. What remains compares a COMPOSITE that
+// reaches Node (SymbolicCost, ComplexityAssessment, IdempotencyVerdict, ParallelismRelation, ModelCore,
+// NormalizedTree, TargetModel, ExecutorBatch, List<TypeVariableInstance>), for which no erasure route
+// exists without a hand-written equality per type. The seed admits == at exactly the declarations in the
+// population (module and declaration), and only where neither operand is itself Node or Edge; any other
+// site still refuses. Every listed site asks the STRUCTURAL question (an actual value against an expected
+// or a recomputed one), so the follow-up target is structural equality with a Node-leaf route.
+data node_reaching_composite_equality: RungDrop = RungDrop {
+  identity: "node_reaching_composite_equality" as NonEmptyStr,
+  subject: "== on composites that reach v2.std.node Node, at the enumerated declarations",
+  declared: "2026-10-24",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "derived structural equality with a Node-leaf occurrence route, so a composite reaching Node compares through the erasure route without a per-type equality" },
+    population: Enumerated { members: equality_node_reaching_composite_drop_population },
+    restoration_trigger: "the language derives structural equality for a composite with a Node-leaf occurrence route; then every listed declaration compares through it and equality_node_reaching_composite_drop_population is deleted",
+  } }
+}

@@ -8,7 +8,7 @@ import v2.std.diagnostic { diagnostic_eq, Accepted, Rejected }
 import v2.std.parse_refusal_reason { TokenStartsNotIncreasing }
 import std.algebra { Cons, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { node_same_occurrence, Symbol }
+import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

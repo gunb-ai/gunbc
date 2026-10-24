@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node { node_same_occurrence,
+import v2.std.node {
   Atom,
   Loop,
   LoopBoundEdge,
@@ -84,11 +84,11 @@ fn map_id_actual_complexity() -> ComplexityAssessment {
 
 test fn map_id_cost_projection_holds() -> Bool {
   match map_id_actual_cost() {
-    Holds { value: actual } => node_same_occurrence(a: actual, b: map_id_claim.expected_cost)
+    Holds { value: actual } => actual == map_id_claim.expected_cost
     Violates { diagnostic: _ } => false
   }
 }
 
 test fn map_id_complexity_projection_holds() -> Bool {
-  node_same_occurrence(a: map_id_actual_complexity(), b: established_complexity(bound: map_id_claim.expected_complexity))
+  map_id_actual_complexity() == established_complexity(bound: map_id_claim.expected_complexity)
 }

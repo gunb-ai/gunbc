@@ -31,7 +31,7 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { node_same_occurrence,
+import v2.std.node {
   Arrow,
   Atom,
   ComputationNode,

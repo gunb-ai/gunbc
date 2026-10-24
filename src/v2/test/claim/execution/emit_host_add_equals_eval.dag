@@ -45,7 +45,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.machine { Byte }
-import v2.std.node { node_same_occurrence,
+import v2.std.node {
   Atom,
   Conj,
   Edge,

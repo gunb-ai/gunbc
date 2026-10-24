@@ -46,7 +46,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.node { node_same_occurrence, Node, Symbol }
+import v2.std.node { Node, Symbol }
 import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,

@@ -33,7 +33,7 @@ pub use crate::gunbc_structural_realization_bindings::{
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{
     carrier_container_equality_rows, kernel_carrier_admits_numeral, CollectionSizeEffect,
-    FreeMonoid,
+    FreeMonoid, FreeSemigroup,
 };
 use crate::std_coercion::ConversionPlanJudgment::{
     ConversionPlanAbsent, ConversionPlanAdmitted, ConversionPlanAmbiguous,
@@ -5055,6 +5055,112 @@ pub fn equality_inadmissible_declaration_identities() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
+pub fn equality_node_reaching_composite_drop_population() -> Rc<FreeSemigroup<String>> {
+    thread_local! {
+            static CACHED: Rc<FreeSemigroup<String>> = {
+                Rc::new(FreeSemigroup {
+        head: "v2.lens.cost symbolic_max_rhs".to_string(),
+        tail: Rc::new(vec!["v2.lens.idempotency idempotency_classified_eq".to_string(), "v2.lens.parallelism parallelism_classified_eq".to_string(), "v2.test.claim.callexec.kinded_type_param_instances kti_non_generic_call_carries_no_instances".to_string(), "v2.test.claim.manual.v4_evaluator_runtime_anchor v4_anchor_model_core_same".to_string(), "v2.test.claim.name_resolve.admission_fail_closed validated_subject_index_matches_general_lookup".to_string(), "v2.test.lens_complexity.map_id map_id_complexity_projection_holds".to_string(), "v2.test.lens_complexity.map_id map_id_cost_projection_holds".to_string(), "v2.test.lens_complexity.nested nested_complexity_projection_holds".to_string(), "v2.test.lens_complexity.nested nested_cost_projection_holds".to_string(), "v2.test.lens_cost.arrow_body_cost_domain_excluded arrow_body_cost_domain_excluded_holds".to_string(), "v2.test.lens_cost.atom_zero atom_zero_claim_holds".to_string(), "v2.test.lens_cost.bounded_summation existing_cost_lens_kernel_unchanged".to_string(), "v2.test.lens_cost.disj_max disj_max_claim_holds".to_string(), "v2.test.lens_cost.helper_properties control_harness_distinguishes_helpers".to_string(), "v2.test.lens_cost.helper_properties max_dominance_orders_linear_over_log".to_string(), "v2.test.lens_cost.helper_properties max_equal_operands_return_themselves".to_string(), "v2.test.lens_cost.helper_properties max_zero_delegates_to_right".to_string(), "v2.test.lens_cost.helper_properties product_one_is_identity".to_string(), "v2.test.lens_cost.helper_properties product_unknown_propagates".to_string(), "v2.test.lens_cost.helper_properties product_zero_absorbs_from_left".to_string(), "v2.test.lens_cost.helper_properties product_zero_absorbs_from_right".to_string(), "v2.test.lens_cost.helper_properties sequential_general_case_sums".to_string(), "v2.test.lens_cost.helper_properties sequential_unknown_left_wins".to_string(), "v2.test.lens_cost.helper_properties sequential_zero_is_left_identity".to_string(), "v2.test.lens_cost.helper_properties sequential_zero_is_right_identity".to_string(), "v2.test.lens_cost.map_linear map_linear_claim_holds".to_string(), "v2.test.lens_cost.nested_product nested_product_claim_holds".to_string(), "v2.workflow.bootstrap bootstrap_projection_inputs_well_formed".to_string(), "v2.workflow.executor executor_batches_preserve_frontiers".to_string(), "v2.workflow.realization_runner runner_schedule_contains_batch".to_string()]),
+        _phantom: std::marker::PhantomData,
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<FreeSemigroup<String>>| c.clone())
+}
+
+pub fn equality_operand_is_the_refused_type(
+    n: Rc<Node>,
+    r: Rc<EqualityAdmissionRefusal>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+        let source_indices = scope.type_env.source_indices.clone();
+        let identity = type_reference_identity(peeled.clone(), source_indices.clone());
+        (((crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone())
+            == r.type_name.clone())
+            || {
+                let mut __found = false;
+                for i in equality_inadmissible_declaration_identities()
+                    .iter()
+                    .cloned()
+                {
+                    if (i.clone() == identity.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+            || {
+                let mut __found = false;
+                for l in equality_inadmissible_declaration_leaf_names()
+                    .iter()
+                    .cloned()
+                {
+                    if (l.clone()
+                        == crate::v1_std_core::qualified_last_segment(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                peeled.clone(),
+                            ),
+                        ))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })
+    }
+}
+
+pub fn equality_inadmissible_declaration_leaf_names() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["Edge".to_string(), "Node".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn equality_node_reaching_composite_dropped(
+    r: Rc<EqualityAdmissionRefusal>,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    ((((r.member.clone() == "declared equality-inadmissible".to_string())
+        && !equality_operand_is_the_refused_type(left.clone(), r.clone(), scope.clone()))
+        && !equality_operand_is_the_refused_type(right.clone(), r.clone(), scope.clone()))
+        && equality_node_reaching_composite_drop_listed(v1_rt::concat(
+            v1_rt::concat(scope.module_name.clone(), " ".to_string()),
+            scope.caller_decl_name.clone(),
+        )))
+}
+
+pub fn equality_node_reaching_composite_drop_listed(key: String) -> bool {
+    ((equality_node_reaching_composite_drop_population()
+        .head
+        .clone()
+        == key.clone())
+        || {
+            let mut __found = false;
+            for k in equality_node_reaching_composite_drop_population()
+                .tail
+                .clone()
+                .iter()
+                .cloned()
+            {
+                if (k.clone() == key.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+}
+
 pub fn equality_inadmissible_type_refusal(
     identity: String,
     name: String,
@@ -5740,20 +5846,48 @@ pub fn equality_admission_diags(
                                 v1_rt::rc_empty_map::<String, bool>(),
                                 0,
                             ) {
-                                Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    equality_admission_refusal_diag(r.clone(), span.clone()),
-                                    scope.module_name.clone(),
-                                )]),
+                                Some(r) => {
+                                    if equality_node_reaching_composite_dropped(
+                                        r.clone(),
+                                        lt.clone(),
+                                        rt.clone(),
+                                        scope.clone(),
+                                    ) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                                            equality_admission_refusal_diag(
+                                                r.clone(),
+                                                span.clone(),
+                                            ),
+                                            scope.module_name.clone(),
+                                        )])
+                                    }
+                                }
                                 std::option::Option::None => match equality_operand_admission(
                                     rt.clone(),
                                     scope.clone(),
                                     v1_rt::rc_empty_map::<String, bool>(),
                                     0,
                                 ) {
-                                    Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                        equality_admission_refusal_diag(r.clone(), span.clone()),
-                                        scope.module_name.clone(),
-                                    )]),
+                                    Some(r) => {
+                                        if equality_node_reaching_composite_dropped(
+                                            r.clone(),
+                                            lt.clone(),
+                                            rt.clone(),
+                                            scope.clone(),
+                                        ) {
+                                            Rc::new(vec![])
+                                        } else {
+                                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                                equality_admission_refusal_diag(
+                                                    r.clone(),
+                                                    span.clone(),
+                                                ),
+                                                scope.module_name.clone(),
+                                            )])
+                                        }
+                                    }
                                     std::option::Option::None => Rc::new(vec![]),
                                 },
                             }

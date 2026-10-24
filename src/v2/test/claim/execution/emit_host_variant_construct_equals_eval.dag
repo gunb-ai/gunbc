@@ -44,7 +44,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { node_same_occurrence,
+import v2.std.node {
   Atom,
   Conj,
   ConstructTagEdge,

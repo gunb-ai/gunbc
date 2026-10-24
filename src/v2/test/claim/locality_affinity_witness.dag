@@ -14,7 +14,7 @@ import std.content_hash { ContentHash, Fnv1a64 }
 import std.algebra { length }
 import v2.std.dependency { dependency_view_equal, BarrierBefore, DataDependsOn, DependencyView }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { node_same_occurrence, Atom, Node, TypeNode, content_hash }
+import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
   AffinityClaim,
   AffinityFlowRefused,

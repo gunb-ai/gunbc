@@ -176,7 +176,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
+import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
@@ -3556,26 +3556,70 @@ data equality_inadmissible_declaration_identities: List<String> = [
   type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
 ]
 
-// A NARROWED, DECLARED DROP (gunbc.rung_drop.node_reaching_composite_equality): each row names one
-// declaration ("<module> <declaration>") whose `==` compares a COMPOSITE that reaches Node (a record or
+// A NARROWED, DECLARED DROP (gunbc.rung_drop.node_reaching_composite_equality, which reads its population
+// from here): each row names one declaration ("<module> <declaration>") whose `==` compares a COMPOSITE that reaches Node (a record or
 // coproduct with a Node somewhere inside), where no erasure route exists yet because a composite's
 // equality would have to be written by hand per type. Such a site is admitted; a bare Node or Edge operand
 // still refuses everywhere, and a composite reaching Node anywhere else still refuses. The capability that
 // retires the list is derived structural equality with a Node-leaf occurrence route.
-data equality_node_reaching_composite_drop_sites: List<String> = [
-]
+data equality_node_reaching_composite_drop_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.lens.cost symbolic_max_rhs", tail: [
+  "v2.lens.idempotency idempotency_classified_eq",
+  "v2.lens.parallelism parallelism_classified_eq",
+  "v2.test.claim.callexec.kinded_type_param_instances kti_non_generic_call_carries_no_instances",
+  "v2.test.claim.manual.v4_evaluator_runtime_anchor v4_anchor_model_core_same",
+  "v2.test.claim.name_resolve.admission_fail_closed validated_subject_index_matches_general_lookup",
+  "v2.test.lens_complexity.map_id map_id_complexity_projection_holds",
+  "v2.test.lens_complexity.map_id map_id_cost_projection_holds",
+  "v2.test.lens_complexity.nested nested_complexity_projection_holds",
+  "v2.test.lens_complexity.nested nested_cost_projection_holds",
+  "v2.test.lens_cost.arrow_body_cost_domain_excluded arrow_body_cost_domain_excluded_holds",
+  "v2.test.lens_cost.atom_zero atom_zero_claim_holds",
+  "v2.test.lens_cost.bounded_summation existing_cost_lens_kernel_unchanged",
+  "v2.test.lens_cost.disj_max disj_max_claim_holds",
+  "v2.test.lens_cost.helper_properties control_harness_distinguishes_helpers",
+  "v2.test.lens_cost.helper_properties max_dominance_orders_linear_over_log",
+  "v2.test.lens_cost.helper_properties max_equal_operands_return_themselves",
+  "v2.test.lens_cost.helper_properties max_zero_delegates_to_right",
+  "v2.test.lens_cost.helper_properties product_one_is_identity",
+  "v2.test.lens_cost.helper_properties product_unknown_propagates",
+  "v2.test.lens_cost.helper_properties product_zero_absorbs_from_left",
+  "v2.test.lens_cost.helper_properties product_zero_absorbs_from_right",
+  "v2.test.lens_cost.helper_properties sequential_general_case_sums",
+  "v2.test.lens_cost.helper_properties sequential_unknown_left_wins",
+  "v2.test.lens_cost.helper_properties sequential_zero_is_left_identity",
+  "v2.test.lens_cost.helper_properties sequential_zero_is_right_identity",
+  "v2.test.lens_cost.map_linear map_linear_claim_holds",
+  "v2.test.lens_cost.nested_product nested_product_claim_holds",
+  "v2.workflow.bootstrap bootstrap_projection_inputs_well_formed",
+  "v2.workflow.executor executor_batches_preserve_frontiers",
+  "v2.workflow.realization_runner runner_schedule_contains_batch"
+] }
 
-fn equality_operand_is_inadmissible_leaf(n: Node, scope: InferScope) -> Bool {
+// The refusal names the type it fired on; an operand whose own type IS that type is the inadmissible
+// declaration itself (Node, Edge), not a composite that reaches it.
+fn equality_operand_is_the_refused_type(n: Node, r: EqualityAdmissionRefusal, scope: InferScope) -> Bool {
   let peeled = normalize_access_type_node(n: n)
-  let identity = type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices)
-  equality_inadmissible_declaration_identities |> any(i => i == identity)
+  let source_indices = scope.type_env.source_indices
+  let identity = type_reference_identity(n: peeled, source_indices: source_indices)
+  authored_name_at(source_indices: source_indices, node: peeled) == r.type_name
+    || (equality_inadmissible_declaration_identities |> any(i => i == identity))
+    || (equality_inadmissible_declaration_leaf_names |> any(l => l == qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))))
 }
+
+// The leaf spellings of the inadmissible declarations, read only to recognise an operand that IS one of
+// them; admission itself keys on declaration identity above.
+data equality_inadmissible_declaration_leaf_names: List<String> = ["Edge", "Node"]
 
 fn equality_node_reaching_composite_dropped(r: EqualityAdmissionRefusal, left: Node, right: Node, scope: InferScope) -> Bool {
   r.member == "declared equality-inadmissible"
-    && !equality_operand_is_inadmissible_leaf(n: left, scope: scope)
-    && !equality_operand_is_inadmissible_leaf(n: right, scope: scope)
-    && (equality_node_reaching_composite_drop_sites |> any(k => k == concat(scope.module_name, " ", scope.caller_decl_name)))
+    && !equality_operand_is_the_refused_type(n: left, r: r, scope: scope)
+    && !equality_operand_is_the_refused_type(n: right, r: r, scope: scope)
+    && equality_node_reaching_composite_drop_listed(key: concat(scope.module_name, " ", scope.caller_decl_name))
+}
+
+fn equality_node_reaching_composite_drop_listed(key: String) -> Bool {
+  equality_node_reaching_composite_drop_population.head == key
+    || (equality_node_reaching_composite_drop_population.tail |> any(k => k == key))
 }
 
 fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
