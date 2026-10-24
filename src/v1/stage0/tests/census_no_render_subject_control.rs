@@ -15,14 +15,18 @@
 //  2. THE PARSE-CLEAN CONTROLS STAY GREEN: the same fixtures with the defect removed must report
 //     an Observed census with NO ParseError row. If a fix made everything report a parse error,
 //     the REDs would look right and the controls would catch it.
-//  3. RENDEREVERYMODULE IS NEVER REACHED BY A CENSUS. The counter at
-//     `v1_compiler_compile::every_module_render_calls` counts every render constructed with
-//     `RenderEveryModule` (the widening the census route must never take -- it re-buys the
-//     whole-graph render cost the empty selection exists to not-pay). Each census call below runs
-//     between counter snapshots and requires the delta to be zero. The positive control in
-//     `a_whole_graph_render_really_moves_the_counter` proves the counter is not stuck at zero: it
-//     asks for a whole-graph render directly and requires exactly one counted call, so a counter
-//     wired to nothing cannot pass this file either.
+//  3. RENDEREVERYMODULE IS NEVER REACHED BY A CENSUS. The counters at
+//     `v1_compiler::cli_run::every_module_render_calls` /
+//     `non_empty_selected_render_calls` count every render REQUEST passing through the host seam
+//     `emit_resolved_for_target_counting`, by requested shape (whole-graph vs a non-empty
+//     selected-basenames list). The widening the census route must never take is a whole-graph
+//     render -- it re-buys the cost the empty selection exists to not-pay. Each census call below
+//     runs between counter snapshots and requires the delta to be zero. The positive control in
+//     `a_whole_graph_render_really_moves_the_counter` proves neither counter is stuck at zero: it
+//     drives all three shapes through the same seam -- the census's own empty-selection shape
+//     (moves neither, emits nothing), a whole-graph request (moves the whole-graph counter by
+//     exactly one), and a non-empty selected-basenames request (moves the selected counter by
+//     exactly one) -- so a counter wired to nothing cannot pass this file either.
 //
 // RUNG, stated honestly (same rule this branch's measurement test learned; review 84038): this is
 // a cargo integration test in the v1 seed, and NO CI STEP RUNS IT -- the required path runs no v1
@@ -30,10 +34,12 @@
 // `cargo test -p v1-compiler --test census_no_render_subject_control -- --exact <name>`, which is
 // how its REDs were established: each RED fails at the pre-fix head and only when run.
 use std::rc::Rc;
-use v1_compiler::cli_run::{compile_dag_diagnostic_census, CompileDiagnosticCensus};
+use v1_compiler::cli_run::{
+    compile_dag_diagnostic_census, emit_resolved_for_target_counting, every_module_render_calls,
+    non_empty_selected_render_calls, CompileDiagnosticCensus,
+};
 use v1_compiler::v1_compiler_compile::{
-    compile_to_resolved, emit_resolved_for_target, every_module_render_calls,
-    non_empty_selected_render_calls, RenderTarget, RustModuleRenderSelection, SourceFile,
+    compile_to_resolved, RenderTarget, RustModuleRenderSelection, SourceFile,
 };
 
 // The five RED fixtures, verbatim from the fleet witness `data` rows.
@@ -223,9 +229,12 @@ fn the_parse_clean_controls_report_no_parse_error() {
     }
 }
 
-/// THE CONTROL OF THE CONTROL: the counter is wired to a real render. A direct whole-graph render
-/// moves it by exactly one, so the zero-delta assertions above cannot be passing on a counter
-/// that never increments.
+/// THE CONTROL OF THE CONTROL: the counters are wired to real render requests. Through the same
+/// seam the census route takes (`emit_resolved_for_target_counting`), a whole-graph request moves
+/// the whole-graph counter by exactly one, an empty-selection request moves neither, and a
+/// non-empty selected-basenames request moves the selected counter by exactly one. Together these
+/// three legs pin each counter to the shape it names, so the zero-delta assertions above cannot
+/// be passing on a counter that never increments.
 #[test]
 fn a_whole_graph_render_really_moves_the_counter() {
     let sources = Rc::new(im::vector![Rc::new(SourceFile {
@@ -233,10 +242,45 @@ fn a_whole_graph_render_really_moves_the_counter() {
         content: "module census_counter_positive_control\ndata answer: Int = 7\n".to_string(),
     })]);
     let resolved = compile_to_resolved(sources.clone());
+
+    // Leg 1: the census route's own shape -- a `RenderSelectedMirrors` with no basenames -- moves
+    // NEITHER counter. This is the request `compile_fixture_rendering_nothing` makes, so the
+    // census-side zeros above are the same shape proven here, not an absence of evidence.
     let before = every_module_render_calls();
     let selected_before = non_empty_selected_render_calls();
-    let full = emit_resolved_for_target(resolved.clone(), RenderTarget::Rust);
-    let after = every_module_render_calls();
+    let empty_selected = emit_resolved_for_target_counting(
+        resolved.clone(),
+        RenderTarget::Rust,
+        Rc::new(RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: Rc::new(im::Vector::new()),
+        }),
+    );
+    assert_eq!(
+        every_module_render_calls() - before,
+        0,
+        "an empty-selection render moved the whole-graph counter, so the counters do not name \
+         the shapes they count"
+    );
+    assert_eq!(
+        non_empty_selected_render_calls() - selected_before,
+        0,
+        "an empty-basenames render moved the non-empty-selected counter"
+    );
+    assert!(
+        empty_selected.files.is_empty(),
+        "the census route's own render shape emitted files, so the route's zero-file claim is \
+         false and the counters would be counting a render that emits"
+    );
+
+    // Leg 2: a whole-graph request through the same seam moves the whole-graph counter by exactly
+    // one and the selected counter not at all.
+    let before = every_module_render_calls();
+    let selected_before = non_empty_selected_render_calls();
+    let full = emit_resolved_for_target_counting(
+        resolved.clone(),
+        RenderTarget::Rust,
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    );
     assert_eq!(
         non_empty_selected_render_calls() - selected_before,
         0,
@@ -244,20 +288,37 @@ fn a_whole_graph_render_really_moves_the_counter() {
          counting the shapes they name"
     );
     assert_eq!(
-        after - before,
+        every_module_render_calls() - before,
         1,
         "a whole-graph RenderEveryModule render did not move the counter by exactly one"
     );
-    // The positive control also proves the selected-empty route and the whole-graph route are
-    // genuinely different routes: the whole-graph render emitted the module, while the empty
-    // selection the census takes emits none. (The census route's own zero-file emission is what
-    // `render_calls_during == 0` asserts per call above.)
     assert!(
         !full.files.is_empty(),
         "the whole-graph render emitted no files, so the counter's zero-delta assertions above \
          would not distinguish a render from a refusal"
     );
-    let _ = RustModuleRenderSelection::RenderSelectedMirrors {
-        basenames: Rc::new(im::Vector::new()),
-    };
+
+    // Leg 3: a non-empty selected-basenames request moves the selected counter by exactly one and
+    // the whole-graph counter not at all. Without this leg the selected counter would only ever
+    // be asserted at zero and could not be shown wired at all.
+    let names: im::Vector<String> = im::vector!["census_counter_positive_control".to_string()];
+    let before = every_module_render_calls();
+    let selected_before = non_empty_selected_render_calls();
+    let _ = emit_resolved_for_target_counting(
+        resolved,
+        RenderTarget::Rust,
+        Rc::new(RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: Rc::new(names),
+        }),
+    );
+    assert_eq!(
+        every_module_render_calls() - before,
+        0,
+        "a selected render moved the whole-graph counter"
+    );
+    assert_eq!(
+        non_empty_selected_render_calls() - selected_before,
+        1,
+        "a non-empty selected-basenames render did not move the selected counter by exactly one"
+    );
 }
