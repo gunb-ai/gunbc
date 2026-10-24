@@ -138,6 +138,7 @@ use crate::v1_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding
 use self::WitnessCtorPathVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::AliasDeclArityVerdict::*;
+use self::RecordLiteralPhantom::*;
 use self::SealReading::*;
 use self::ForwardedBoundClass::*;
 use self::HostOptionArmReading::*;
@@ -17214,6 +17215,85 @@ pub fn type_node_mentions_name(
             }
         }
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RecordLiteralPhantom {
+    RecordLiteralPhantomField,
+    RecordLiteralNoPhantomField,
+    RecordLiteralDeclarationUnresolved { cause: String },
+}
+impl RecordLiteralPhantom {
+    pub fn cause(&self) -> String {
+        match self {
+            RecordLiteralPhantom::RecordLiteralPhantomField => panic!("no cause on unit variant"),
+            RecordLiteralPhantom::RecordLiteralNoPhantomField => panic!("no cause on unit variant"),
+            RecordLiteralPhantom::RecordLiteralDeclarationUnresolved { cause: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
+pub fn record_literal_phantom_field(
+    resolved_type: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<RecordLiteralPhantom> {
+    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+        emit_info.type_decl_items.clone(),
+        resolved_type.clone(),
+        source_indices.clone(),
+    ))
+    .clone()
+    {
+        TypeDeclResolution::TypeDeclResolved { decl, .. } => {
+            if (decl.connective.clone() == Connective::Conj) {
+                {
+                    let pnames = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in decl.params.clone().iter().cloned() {
+                            __result.push(crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                source_indices.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    if ((struct_unused_param_names(
+                        pnames.clone(),
+                        decl.children.clone(),
+                        source_indices.clone(),
+                    )
+                    .len() as i64)
+                        > 0)
+                    {
+                        Rc::new(RecordLiteralPhantom::RecordLiteralPhantomField)
+                    } else {
+                        Rc::new(RecordLiteralPhantom::RecordLiteralNoPhantomField)
+                    }
+                }
+            } else {
+                Rc::new(RecordLiteralPhantom::RecordLiteralNoPhantomField)
+            }
+        }
+        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => {
+            Rc::new(RecordLiteralPhantom::RecordLiteralDeclarationUnresolved {
+                cause: v1_rt::concat("more than one declaration of ".to_string(), leaf.clone()),
+            })
+        }
+        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf, .. } => {
+            Rc::new(RecordLiteralPhantom::RecordLiteralDeclarationUnresolved {
+                cause: v1_rt::concat("kernel spelling undecided for ".to_string(), leaf.clone()),
+            })
+        }
+        TypeDeclResolution::TypeDeclNotDeclared => {
+            Rc::new(RecordLiteralPhantom::RecordLiteralDeclarationUnresolved {
+                cause: "not declared".to_string(),
+            })
+        }
+    }
 }
 
 pub fn struct_unused_param_names(
@@ -36011,44 +36091,11 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                         }
                                         std::option::Option::None => Rc::new(vec![]),
                                     };
-                                    let phantom_strs =
-                                        match crate::v1_compiler_infer_env::lookup_type_by_name(
-                                            scope.type_env.clone(),
-                                            ctor_name.clone(),
-                                        ) {
-                                            Some(struct_decl) => {
-                                                let is_struct = (struct_decl.connective.clone()
-                                                    == Connective::Conj);
-                                                let pnames = Rc::new({
-                                                    let mut __result = Vec::new();
-                                                    for p in
-                                                        struct_decl.params.clone().iter().cloned()
-                                                    {
-                                                        __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), si.clone()));
-                                                    }
-                                                    __result
-                                                });
-                                                let unused = struct_unused_param_names(
-                                                    pnames.clone(),
-                                                    struct_decl.children.clone(),
-                                                    si.clone(),
-                                                );
-                                                let has_unused =
-                                                    ((unused.clone().len() as i64) > 0);
-                                                if (is_struct.clone() && has_unused.clone()) {
-                                                    Rc::new(vec![v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            "    ".to_string(),
-                                                            rust_phantom_field_name(),
-                                                        ),
-                                                        ": std::marker::PhantomData,".to_string(),
-                                                    )])
-                                                } else {
-                                                    Rc::new(vec![])
-                                                }
-                                            }
-                                            std::option::Option::None => Rc::new(vec![]),
-                                        };
+                                    let phantom_strs = match (*record_literal_phantom_field(resolved_type.clone(), emit_info.clone(), si.clone())).clone() {
+    RecordLiteralPhantom::RecordLiteralPhantomField => Rc::new(vec![v1_rt::concat(v1_rt::concat("    ".to_string(), rust_phantom_field_name()), ": std::marker::PhantomData,".to_string())]),
+    RecordLiteralPhantom::RecordLiteralNoPhantomField => Rc::new(vec![]),
+    RecordLiteralPhantom::RecordLiteralDeclarationUnresolved { cause: cause, .. } => return emit_rust_compile_error_expr(v1_rt::concat("record literal's type names no single declaration, so whether it carries a phantom field is undecided: ".to_string(), cause.clone())),
+};
                                     let all_field_strs = v1_rt::concat(
                                         v1_rt::concat(field_strs.clone(), default_strs.clone()),
                                         phantom_strs.clone(),
