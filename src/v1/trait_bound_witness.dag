@@ -170,6 +170,17 @@ fn v1_union_bound_param_names(base: List<String>, extra: List<String>) -> List<S
 // specimen with two or more compound type arguments is a declared next-rung trigger for this exact
 // reason, not a silent gap: it falls through to no match (empty list) rather than mis-pairing
 // arguments by position under an unverified arity, which would be worse than the boundary.
+//
+// THAT TRIGGER FIRED, AND THE PAIRING IS NOW POSITIONAL AT ANY EQUAL ARITY. The specimen
+// is std.state_durability: state_durability_admission_eq<Target, ReadbackSubject> compares both
+// generics, and its callers pass StateDurabilityAdmission<Target, ReadbackSubject>, an arity-2
+// argument the arity-1 pairing could not join, so every caller emitted without PartialEq (rustc
+// E0277). Positions are paired only when both sides apply the SAME number of type arguments, exactly
+// the condition the arity-1 pairing already used, so every arity-1 join is unchanged; differing
+// arities still join nothing rather than guess. The head is not compared, as before: a type check
+// that admitted the call already related the argument's type to the parameter's. Nested
+// arguments (a bound generic under a second application level) are the next trigger: no specimen
+// needs them yet.
 
 fn v1_call_forwarding_bound_wrapper_param_names(
   callee_param_type_name: String,
@@ -187,22 +198,25 @@ fn v1_call_forwarding_bound_wrapper_param_names(
   } else {
     []
   }
-  let compound_arity_one = (callee_param_type_arg_names |> count) == 1 && (arg_type_arg_names |> count) == 1
-  let compound_match = if !compound_arity_one {
+  let compound_same_arity = (callee_param_type_arg_names |> count) > 0
+    && (callee_param_type_arg_names |> count) == (arg_type_arg_names |> count)
+  let compound_match = if !compound_same_arity {
     []
   } else {
     callee_param_type_arg_names
-    |> flat_map(callee_arg =>
-      arg_type_arg_names
-      |> flat_map(wrapper_arg =>
-        if (callee_generic_param_names |> any(g => g == callee_arg))
-          && (callee_bound_param_names |> any(g => g == callee_arg))
-          && (wrapper_generic_param_names |> any(g => g == wrapper_arg)) {
-          [wrapper_arg]
-        } else {
-          []
-        }
-      )
+    |> enumerate
+    |> flat_map(pair =>
+      match arg_type_arg_names |> skip(pair.first) |> first {
+        Present { value: wrapper_arg } =>
+          if (callee_generic_param_names |> any(g => g == pair.second))
+            && (callee_bound_param_names |> any(g => g == pair.second))
+            && (wrapper_generic_param_names |> any(g => g == wrapper_arg)) {
+            [wrapper_arg]
+          } else {
+            []
+          }
+        Absent => []
+      }
     )
   }
   v1_union_bound_param_names(base: bare_match, extra: compound_match)
