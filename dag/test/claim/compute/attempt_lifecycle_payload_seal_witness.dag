@@ -61,9 +61,13 @@ test fn a_credential_open_wrapper_is_not_an_unadmitted_payload_call() -> Process
 }
 
 // THE LAWFUL CONTROLS COMPILE CLEAN, not only free of the one class each RED keys on (review 85261): a
-// fixture whose header failed to import what its body calls would still answer zero for that class. Each
-// control's blocking census is judged against its own header alone, so the shared closure cancels and any
-// blocking row the control's body adds is a defect in the control.
+// control whose body failed to resolve would still answer zero for that class. Each control's blocking
+// census is judged against its own header alone, so the shared closure cancels and any blocking row the
+// body adds is a defect in the control. Measured (one remote dispatch): both controls and both headers
+// count 0 blocking rows, and a body calling an undefined function counts 2, so this check refuses a
+// control that does not resolve. Removing the headers' store imports did NOT raise a row: a bare name
+// resolves corpus-wide here, so the imports are declared for the reader and the census does not depend
+// on them.
 test fn the_lawful_controls_add_no_blocking_diagnostic() -> ProcessExit {
   census_verdict_all(verdicts: [
     blocking_delta(hostile: lawful_begin_launch_source, safe: probe_hdr, holds: fn(n) { n <= 0 }),
