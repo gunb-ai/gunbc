@@ -1,0 +1,55 @@
+module test.claim.print_request_witness
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
+import gunbc.fleet.printer_job_monitor { JobRunning, JobCompletedAwaitingInspection, JobPaused, JobFailed, JobUnresolved }
+import gunbc.fleet.print_request {
+  PrintRequest, PrintRequestRecord, print_attempt_id, record_matches,
+  PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded,
+  print_standing, print_action, PrintAction, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
+}
+
+fn request(id: String, root: String) -> PrintRequest {
+  PrintRequest { request_id: id as NonEmptyStr, root: root as NonEmptyStr, recipe: "a1-mini-pla-prototype-v1", printer: printer_01 }
+}
+data artifact: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn starts(e: PrintEvidence) -> Bool { match print_action(s: print_standing(evidence: e)) { RequestBedClearThenStart => true _ => false } }
+fn stops(e: PrintEvidence) -> Bool { match print_action(s: print_standing(evidence: e)) { Stop => true _ => false } }
+
+// Exactly one evidence shape may lead to a start: recorded, unclaimed, and a printer freshly ready.
+test fn only_a_ready_unclaimed_request_may_start() -> Bool {
+  starts(e: RecordedNotClaimed { printer_ready: true }) &&
+  !starts(e: RecordedNotClaimed { printer_ready: false }) &&
+  !starts(e: NoRequestRecord) && !starts(e: CompletionRecorded) &&
+  !starts(e: ClaimedObserved { job: JobRunning }) && !starts(e: ClaimedObserved { job: JobCompletedAwaitingInspection }) &&
+  !starts(e: ClaimedObserved { job: JobPaused }) && !starts(e: ClaimedObserved { job: JobFailed }) &&
+  !starts(e: ClaimedObserved { job: JobUnresolved })
+}
+
+// A claimed attempt whose job cannot be identified on the printer stops; it is never resent.
+test fn an_ambiguous_start_stops_and_is_not_resent() -> Bool {
+  stops(e: ClaimedObserved { job: JobUnresolved }) && stops(e: ClaimedObserved { job: JobFailed }) && stops(e: ClaimedObserved { job: JobPaused })
+}
+
+// A completed request does nothing on a second pass; a finished job for this attempt is recorded once.
+test fn completion_is_recorded_once_then_observed() -> Bool {
+  (match print_action(s: print_standing(evidence: ClaimedObserved { job: JobCompletedAwaitingInspection })) { RecordCompletion => true _ => false }) &&
+  (match print_action(s: print_standing(evidence: CompletionRecorded)) { ObserveOnly => true _ => false })
+}
+
+// Two requests for the same part are two physical copies with two attempts; the attempt also
+// changes with the artifact and the printer, and is stable for equal inputs.
+test fn attempts_are_per_request_artifact_and_printer() -> Bool {
+  let a = print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: artifact)
+  a == print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: artifact) &&
+  a != print_attempt_id(request: request(id: "ring-2", root: "a16-plug-fit-ring"), artifact_sha256: artifact) &&
+  a != print_attempt_id(request: request(id: "ring-1", root: "a16-plug-fit-ring"), artifact_sha256: "f123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") &&
+  a != print_attempt_id(request: PrintRequest { request_id: "ring-1", root: "a16-plug-fit-ring", recipe: "a1-mini-pla-prototype-v1", printer: printer_02 }, artifact_sha256: artifact)
+}
+
+// A request id recorded for one root cannot be reused for another.
+test fn a_reused_request_id_for_another_part_does_not_match() -> Bool {
+  let r = request(id: "ring-1", root: "a16-plug-fit-ring")
+  let record = PrintRequestRecord { request: r, source_revision: "abc", credential_version: "3", preparation_key_digest: "k", artifact_sha256: artifact, attempt_id: print_attempt_id(request: r, artifact_sha256: artifact) }
+  record_matches(record: record, request: r) && !record_matches(record: record, request: request(id: "ring-1", root: "a16-sleeve-fit-ring"))
+}

@@ -125,11 +125,15 @@ fn store_prepared(store: String, key: PreparationKey, project_path: String, proj
 // A consumer that needs the archive at a working path gets a copy of the stored bytes and their
 // readback, re-hashed after the copy. The working path carries no authority.
 fn materialize_prepared(project: PreparedProject, path: String) -> Bool {
-  let source = prepared_artifact_path(p: project)
+  materialize_artifact(sha256: project.artifact_sha256, path: path)
+}
+// The same copy for a digest a durable record already names (gunbc.fleet.print_request).
+fn materialize_artifact(sha256: String, path: String) -> Bool {
+  let source = artifact_path(store: prepared_project_store as String, sha256: sha256)
   shell.Copy.File(source: source as FilePath, destination: path as FilePath).success &&
   shell.Copy.File(source: concat(source, ".readback.json") as FilePath, destination: concat(path, ".readback.json") as FilePath).success &&
   (match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
-    Sha256FileDigest { digest: d } => (d.hex as String) == project.artifact_sha256
+    Sha256FileDigest { digest: d } => (d.hex as String) == sha256
     Sha256FileDigestUnavailable { path: _, reason: _ } => false
   })
 }

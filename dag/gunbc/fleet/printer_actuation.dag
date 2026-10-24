@@ -110,7 +110,8 @@ fn report_allows_start(text: String) -> Bool {
 // Fixed host state: changing output folders cannot re-admit the same grant. Never delete
 // claims on failure; an unknown physical effect must be reconciled by observation.
 
-fn start_claim_path(escalation_id:NonEmptyStr) -> String { join([printer_start_claim_directory,"/",escalation_id as String,".claimed"],"") }
+fn start_claim_name(escalation_id:NonEmptyStr) -> String { concat(escalation_id as String,".claimed") }
+fn start_claim_path(escalation_id:NonEmptyStr) -> String { join([printer_start_claim_directory,"/",start_claim_name(escalation_id:escalation_id)],"") }
 
 type ClaimedPrinterStart sole_constructor {
  printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,

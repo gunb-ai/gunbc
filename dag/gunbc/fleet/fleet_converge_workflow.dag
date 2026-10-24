@@ -5682,7 +5682,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
     type: InputString,
   },
   DispatchInput { name: "printer", description: Present { value: "Printer identity; required for printer mode" }, required: false, default: none, type: InputChoice { options: map(printer_access_code_loci,p=>p.printer as String) } },
-  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe/print), project_path, project_sha256, credential_version, bed_clear (string true/false). The existing printer admission validates every field." }, required: false, default: none, type: InputString },
+  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes." }, required: false, default: none, type: InputString },
   DispatchInput {
     name: "agent_state_slot",
     description: Present { value: "workspace_source_pack and workspace_transcript_rate_observe: the Claude auth slot whose agent state is packed, as <slot> in /home/briansrls/.claude@<slot> on srv1; admitted only if that directory exists, refused naming the observed slots otherwise; no default" },
@@ -5989,6 +5989,9 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 
 // The printer's identity pins this job to main and to its dedicated environment.
 // Inputs are data passed through env, never interpolated into executable shell.
+// Preparation (CAD and slicing) plus the 15-minute bed-clear approval window must fit one pass.
+data printer_converge_step_timeout_minutes: Duration = 45
+
 fn fleet_converge_printer_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
@@ -5999,7 +6002,7 @@ fn fleet_converge_printer_job() -> Job {
       ci_wif_auth_step_for(name: "WIF auth (dedicated printer credential reader)",
         provider_resource: printer_provider_resource(), service_account: printer_service_account as String),
       RunStep {
-        name: Present { value: "Printer: observe credential or deliver and start the pinned project" },
+        name: Present { value: "Printer: observe the credential or converge one print request" },
         id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,
         env: Present { value: [
           kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -6008,13 +6011,12 @@ fn fleet_converge_printer_job() -> Job {
           kv(key:approval_store_receipt_mac_key_path_env as String,value:yaml_string(s:approval_store_receipt_mac_key_path as String)),
           kv(key: "PRINTER_TARGET", value: yaml_string(s: "${{ inputs.printer }}")),
           kv(key: "PRINTER_OPERATION", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').operation }}")),
-          kv(key: "PRINTER_PROJECT_PATH", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').project_path }}")),
-          kv(key: "PRINTER_PROJECT_SHA256", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').project_sha256 }}")),
-          kv(key: "PRINTER_CREDENTIAL_VERSION", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').credential_version }}")),
-          kv(key: "PRINTER_BED_CLEAR", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').bed_clear }}")),
+          kv(key: "PRINTER_REQUEST_ID", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').request_id }}")),
+          kv(key: "PRINTER_ROOT", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').root }}")),
+          kv(key: "PRINTER_RECIPE", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').recipe }}")),
         ] },
         working_directory: none, if_condition: none, continue_on_error: none,
-        timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes },
+        timeout_minutes: Present { value: printer_converge_step_timeout_minutes },
       },
       fleet_converge_receipt_upload_step(id: "printer_receipt", name: "Upload printer operation receipt",
         artifact: "printer-operation", path: printer_workflow_receipt_path, if_condition: "success()"),
@@ -6022,7 +6024,7 @@ fn fleet_converge_printer_job() -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
-    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes + 20 },
+    timeout_minutes: Present { value: printer_converge_step_timeout_minutes + 20 },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
     permissions: Present { value: WorkflowPermissions {

@@ -21,13 +21,13 @@ import gunbc.auth.approval_gate {
 
 // The ntfy approval adapter: it files the start request, polls for the signed grant and hands
 // that grant to gunbc.fleet.printer_actuation start_authorized, which owns every physical effect.
-fn approve_and_print(printer: String, path: String, digest: String, version: String, attempt: String, bed_clear: String, token_source: AccessTokenSource) -> ProcessExit {
+fn approve_and_print(printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource) -> ProcessExit {
   let host=os.Hostname.ReadShort()
   if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {
     return exit_failure(reason:"Print starts must run on the modeled printer LAN host so approvals share one durable claim store")
   }
-  if path == "" || attempt == "" || !print_inputs_admitted(version: version, digest: digest, bed_clear: bed_clear) {
-    return exit_failure(reason: "Print requires a path, digest, numeric credential version, attempt and clear-bed confirmation")
+  if path == "" || attempt == "" || !print_inputs_admitted(version: version, digest: digest) {
+    return exit_failure(reason: "Print requires a path, digest, numeric credential version and attempt")
   }
   if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
   match select_printer(name: printer) {
