@@ -1623,7 +1623,10 @@ fn roster_import_text_appended(original: String, names: List<String>) -> String?
     Absent
   } else {
     let body = roster_trim_end(s: substring(s: original, start: 0, end: n - 1))
-    Present { value: body + ", " + roster_join(xs: names, sep: ", ") + substring(s: original, start: string_length(s: body), end: n) }
+    let k = string_length(s: body)
+    // A block whose last member already carries a trailing comma takes the names after it, not a second comma.
+    let joiner = if (k > 0) && (substring(s: body, start: k - 1, end: k) == ",") { " " } else { ", " }
+    Present { value: body + joiner + roster_join(xs: names, sep: ", ") + substring(s: original, start: k, end: n) }
   }
 }
 
