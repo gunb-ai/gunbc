@@ -274,7 +274,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
@@ -815,9 +815,8 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). The SPAWN root is the instance's own repo_root: `git worktree add` must run inside the gunbc repo the instance serves — the same tree `gunbc serve` loads, which is why dispatch works in-process — and it is read from the instance the caller passed, never from one host's layout. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
-data belt_actuate_workdir: FilePath = srv1_gunbc_repo_root
 
 data belt_observe_workdir: FilePath = "/" as FilePath
 
@@ -5422,8 +5421,8 @@ type BeltAttempts
 // U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a
 // non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr),
 // never widened to zero; exit 0 with empty output IS a genuine zero (for-each-ref's documented
-// no-match behavior). Runs in belt_actuate_workdir — the repo-root authority the spawn's worktree
-// add uses, because attempt branches live where spawns mint them.
+// no-match behavior). Runs in the instance's repo root — the root the spawn's worktree add uses,
+// because attempt branches live where spawns mint them.
 fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAttempts {
   let cmd = git_for_each_ref_dispatch_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
@@ -14011,7 +14010,7 @@ fn belt_publish_project_worktree(instance: HostDashboardInstance, project_key: S
         ),
         args: ["worktree", "add", "--detach", path, base_sha],
       ),
-      workdir: belt_actuate_workdir as String,
+      workdir: instance.repo_root as String,
     )
   } else {
     ExecOk { stdout: "" }
