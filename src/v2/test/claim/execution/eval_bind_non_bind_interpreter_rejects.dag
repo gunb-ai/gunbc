@@ -1,6 +1,5 @@
 module v2.test.claim.execution.eval_bind_non_bind_interpreter_rejects
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -17,8 +16,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
       lookup: fn(n) {
         Absent
       }
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
   match eval_bind_node_eval(
     node: node,

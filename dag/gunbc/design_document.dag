@@ -8,6 +8,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.design_ruling {
   DesignRuling,
+  where_refinements_retire_for_checked_constructors,
   job_roster_closed_to_growth,
   regeneration_jobs_added_to_roster,
   conformance_needs_attention,
@@ -221,6 +222,7 @@ fn section_4_blocks() -> List<MarkdownBlock> {
       li(text: "*e.g.* **one grammar, read in both directions.** Ingest selects a production forward to fold surface syntax into a core `Node`; emit selects from the *same* rows backward, so a new target language is rows in `extdeps/languages/`, never an edit to the fold. Coercion is the same move sideways: a homomorphism check."),
     ]),
     p(text: concat("**Coercion is the implicit-safe subset of declared conversions** ", concat(ruling(r: coercion_is_the_implicit_safe_subset), ". An implicit route must be total, exact, semantics-preserving, unique, pure and consent-free; a phase that changes interpretation, needs proof, may lose information, needs a policy or has competing routes refuses implicit coercion, and the author names a conversion plan. Every phase stays represented in the typed program. Target realization may refuse to realize a plan but never decides whether a conversion is legal, so a target's cast table is not the source language's semantics. *e.g.* `Bool` does not implicitly inhabit `Int`; `true as Int` refuses unless it names a declared route such as `bool_indicator`."))),
+    p(text: concat("Where-refinements are retired in favour of checked constructors returning `Optional` ", concat(ruling(r: where_refinements_retire_for_checked_constructors), "."))),
     p(text: concat("**Text has two representations of one type, and every crossing goes through the declared unfold or refuses** ", concat(ruling(r: text_crossings_go_through_the_unfold), ". `v2.std.text` `String` is `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other. The only route between them is the Unicode scalar unfold, `gunbc.structural_realization_bindings` `literal_homomorphism_rows` `UnicodeScalarSequenceUnfold`. Type compatibility keys on the exact declaration a position resolves to, never its leaf name; the unfold is not a property of literals, so a non-literal value at a crossing takes the same route or refuses; and the untranslated crossings inside the emitted compiler are measured and dispositioned under `gunbc.rung_drop.text_boundary_identity_wall`, whose standing follows the measurement."))),
   ]
 }
