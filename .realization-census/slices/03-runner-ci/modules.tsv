@@ -1,0 +1,137 @@
+module	class	storage_level	caching_level	access_level	authz_level	placement_level	ambient_calls	worst_finding	evidence_symbols	phase
+gunbc.annotation_parse_instrument_agreement	production	L0	L0	L0	L0	L4	0	installed_build: path: "/usr/local/bin/gunbc" as NonEmptyStr; path_gunbc_resolution: wrapper_path: "/usr/local/ctrl-build-shims/gunbc"; delegates_to: "/usr/local/bin/gunbc"	installed_build; path_gunbc_resolution	P2
+gunbc.build_cache.build_cache_endpoint_observation	production	L0	L0	L0	L0	L2	0	none: cache vocab is the sccache instance noun; nothing cached here	build_cache_ci_endpoint_observation	P2
+gunbc.build_cache.build_cache_endpoint_observe	production	L0	L0	L0	L0	L4	0	boot_id_path: data boot_id_path: String = "/proc/sys/kernel/random/boot_id"; systemd_unit_suffix: data systemd_unit_suffix: String = ".service"	boot_id_path; systemd_unit_suffix	P2
+gunbc.build_cache.build_cache_endpoint_path	production	L0	L0	L0	L0	L0	0	none: cache vocab only; module admits stale-socket unlink from received state	admit_stale_socket_unlink	P2
+gunbc.build_cache.build_cache_ensure	production	L0	L0	L0	L0	L2	0	none: cache vocab; ensure takes the instance and decides nothing	admit_ensure_build_cache_instance	P2
+gunbc.build_cache.build_cache_instance	production	L1	L1	L0	L0	L1	0	none: this module IS the declared sccache instance table (paths, sockets, capacity)	BuildCacheInstance; build_cache_instance rows	P2
+gunbc.build_cache.build_cache_instance_readiness	production	L0	L0	L0	L0	L0	0	none: cache vocab; derives readiness from received observations	derive_build_cache_instance_readiness	P2
+gunbc.build_cache.build_cache_latency_probe	production	L0	L0	L0	L0	L2	0	none: hosts come from fleet_host_identity; latency data is a measurement record	srv1_build_latency; peer_build_latency_references	P2
+gunbc.build_cache.build_cache_provision_verdict	production	L0	L0	L0	L0	L2	0	none: srv1 appears only in fixture fns; verdict takes placement	provision_build_cache_verdict	P2
+gunbc.build_cache.build_cache_unit	production	L0	L2	L0	L0	L4	0	build_cache_unit_system_path: concat("/etc/systemd/system/", instance.intended_unit as String)	build_cache_unit_system_path	P2
+gunbc.ci.ci_budget_tree	production	L0	L0	L0	L0	L1	0	none: declares per-host budget trees from fleet offers	srv1_budget_tree; fleet_budget_trees	P2
+gunbc.ci.ci_deploy_access	production	L0	L0	L0	L1	L2	0	none: roster of deploy sudo grants (L1 authz); sudoers path is derived in ci_deploy_sudoers	ci_deploy_srv1_access; PosixSudoGrant	P2
+gunbc.ci.ci_deploy_sudoers	production	L0	L0	L0	L1	L1	0	none: IS the sudoers grant roster; binary paths are the grant's content	gunbc_deploy_sudoers_dropin; fleet_posix_ci_runner_sudo_grants	P2
+gunbc.ci.ci_deploy_target_host	production	L0	L0	L4	L0	L2	1	deploy_target_host_observed_runner_name: shell.Env.Get(name: "RUNNER_NAME" as NonEmptyStr)	deploy_target_host_observed_runner_name	P2
+gunbc.ci.ci_failure_class	production	L0	L0	L0	L0	L0	0	none: sccache strings are failure-log fragments to classify	verdict_infra_signatures	P2
+gunbc.ci.ci_fleet	production	L0	L0	L0	L0	L1	0	none: IS the fleet offer table (srv1..srv4)	srv1_offer; ComputeOffer	P2
+gunbc.ci.ci_layer_roots	production	L1	L0	L0	L0	L0	0	none: IS the witness layer-root and receipt-path declaration; sudo lead is noise	witness_layer_roots; witness_discovery_scan_dirs	P2
+gunbc.ci.ci_spec	production	L4	L0	L0	L2	L3	0	site_pxe_edge_converge_receipt_path: "target/site-pxe-edge-converge-receipt.txt"; gunbc_fleet_converge_apply_receipt_artifact_dir: "/tmp/fleet-converge-apply"	site_pxe_edge_converge_receipt_path; gunbc_fleet_converge_apply_receipt_artifact_dir; gunbc_rlm_launch_deployment_receipt_artifact_dir; gunbc_ci_rlm_launch_deployment_receipt_invoke; gunbc_ci_fleet_reach_probe_invoke; gunbc_ci_multi_principal_probe_invoke; gunbc_ci_runner_guest_image_observe_invoke; gunbc_ci_runner_microvm_host_converge_invoke; gunbc_ci_runner_microvm_network_observe_invoke; gunbc_ci_deploy_srv1_runner_spec	P2
+gunbc.ci.ci_workflow_expressions	production	L0	L1	L0	L0	L0	0	none: IS the declaration of the GHA cache path/key templates	ci_cache_path_template; ci_cache_key_template	P2
+gunbc.ci.ci_yaml_validate	production	L2	L0	L0	L0	L0	1	none: path received (path-typed)	ci_yml_parse_outcome	P2
+gunbc.class_b_import_closure_overlay	production	L2	L0	L0	L0	L0	3	none: lead was false	class_b_materialize_stripped_entry_overlay	P2
+gunbc.compiler_frontend_program_status	roster	-	-	-	-	-	1	roster: program status about the repo	xl2_prerequisites	P2
+gunbc.design.brand_mark_assets_cli	production	L2	L0	L0	L0	L0	1	none: output dir received (path-typed)	brand_assets_write	P2
+gunbc.design_document	production	L0	L0	L0	L0	L0	0	none: markdown projection of design rulings; sudo lead is prose	section_3b_blocks	P2
+gunbc.doc_graph_roots	roster	-	-	-	-	-	0	roster: doc graph roots about the repo	hand_authored_outside_index_works	P2
+gunbc.floor.floor_cold_build_receipt	production	L0	L0	L0	L0	L0	0	none: cache vocab only	gunbc_floor_cold_build_receipt_plan	P2
+gunbc.floor.floor_demand	production	L0	L0	L0	L0	L1	0	none: floor demand receipts record measured runner units as evidence	gunbc_ci_floor_run_peak_receipts	P2
+gunbc.floor.floor_materialization	production	L0	L2	L0	L0	L0	0	none: provider rows consumed from std.materialization_ladder	floor_index_build_share_provider; floor_entry_walk_memo_provider_id	P2
+gunbc.generated_artifact	production	L1	L0	L0	L0	L2	0	none: IS the generated-artifact location table; sudo lead is the sudoers artifact name	artifact_location; runner_host_sudoers_artifact_name	P2
+gunbc.generated_artifact_emit	production	L0	L0	L0	L0	L2	0	none: dispatches to emitters; sudo lead is artifact variant names	artifact_generate	P2
+gunbc.generated_artifact_observation	production	L2	L0	L0	L0	L0	2	none: reads live tree through listing by directories from the artifact table	observe_directory_listings; observe_generated_artifact	P2
+gunbc.heal_candidate	production	L5	L0	L4	L0	L0	9	prepare_candidate_directory: shell.Remove.RecursiveForce(path: heal_candidate_directory) then shell.Mkdir.Parents(...)	heal_candidate_directory; prepare_candidate_directory; write_candidate_blob; required_env	P2
+gunbc.heal_candidate_stage0	production	L2	L0	L0	L0	L0	2	none: lists received mirror dir	stage0_mirror_candidate_paths	P2
+gunbc.heal_publication	production	L4	L0	L4	L0	L0	4	heal_publication_receipt_path: "target/heal-publication-receipt.txt" written by readback_wet Filesystem.Write; env_value: shell.Env.Get(name: name) over HEAL_CANDIDATE_DIRECTORY and GITHUB_EVENT_PATH	heal_publication_receipt_path; env_value	P2
+gunbc.instrument_targets	production	L0	L0	L0	L0	L0	0	none: label rows; sccache lead is probe label names	compute_run_unit_sccache_probe_binding	P2
+gunbc.live_rust_observation	production	L0	L0	L4	L0	L0	1	current_actions_sha_observation: shell.Env.Get(name: github_sha_variable_name)	current_actions_sha_observation	P2
+gunbc.materialization_kernel_closing_frontier_audit	roster	-	-	-	-	-	0	roster: frontier audit about the repo	closing_frontier_clauses	P2
+gunbc.materialization_provider_targets	roster	-	-	-	-	-	0	roster: provider contract targets about the repo	materialization_provider_targets	P2
+gunbc.materialization_store_budgets	production	L0	L1	L0	L0	L0	0	none: IS the declaration of local store family budgets	materialization_store_durable_family_budgets	P2
+gunbc.namespace_cut.namespace_cut_subject_observation	production	L2	L0	L0	L0	L0	1	none: report path received	observe_host_probe	P2
+gunbc.native_product_federation	production	L0	L0	L1	L1	L0	0	none: IS the WIF/secret grant declaration for the native product store	native_product_read_service_account; native_product_write_service_account	P2
+gunbc.native_product_shared_store	production	L2	L0	L2	L0	L0	0	none: store access goes through fabric_blob_r2 and an injected token source	get_cache_blob; put_cache_blob	P2
+gunbc.native_product_shared_transfer	production	L2	L0	L2	L0	L0	7	none: staging uses fabric_blob_r2 seam; scratch mktemp/tar is transient	native_product_save_one; native_product_save_all	P2
+gunbc.observation_ci_render	production	L0	L0	L0	L0	L0	0	none: cache vocab is event wording	ci_event_line	P2
+gunbc.observation_seed_render	production	L0	L0	L0	L0	L0	0	none: cache vocab is metric wording	seed_heartbeat_render	P2
+gunbc.parse_verdict_publish	production	L0	L1	L0	L0	L0	0	none: IS the GHA cache scope declaration for parse verdicts	GhaCacheEntryScope; parse_verdict_publish	P2
+gunbc.parse_verdict_restore	production	L0	L1	L0	L0	L0	0	none: restores by declared cache key/scope; /dev/null is a shell sink	parse_verdict_restore; cache_restore_action	P2
+gunbc.parse_verdict_schema	production	L0	L1	L0	L0	L0	0	none: IS the cache key/prefix declaration	parse_compiler_sha_identity_cache_key	P2
+gunbc.repo_workspace	production	L0	L0	L0	L0	L0	0	none: cache vocab LocalCacheState is a checkout state noun	LocalCacheState	P2
+gunbc.review_sheet_legacy_extent_producer	production	L0	L0	L2	L0	L0	1	none: receives extent declaration	review_sheet_legacy_extent_producer	P2
+gunbc.review_sheet_spreadsheet_actuator	production	L4	L0	L0	L0	L0	0	review_sheet_legacy_declaration_path: "/etc/gunbc/review-sheet-legacy-extent-declaration.json"	review_sheet_legacy_declaration_path	P2
+gunbc.runner.runner_activation	production	L0	L0	L0	L0	L2	0	none: cache vocab; activation takes instance	runner_activation	P2
+gunbc.runner.runner_attempt_launch	production	L0	L0	L0	L0	L4	1	host_busybox_bin: data host_busybox_bin: NonEmptyStr = "/bin/busybox"	host_busybox_bin; write_and_read_back_bootstrap_device	P2
+gunbc.runner.runner_broker_progress_watchdog	production	L0	L0	L0	L0	L0	0	none: cache vocab only	runner_broker_progress_watchdog	P2
+gunbc.runner.runner_browser_toolchain	production	L4	L0	L0	L0	L4	11	runner_browser_toolchain_converge_receipt_path: "target/runner-browser-toolchain-converge-receipt.txt" written by Filesystem.Write; runner_browser_toolchain_system_path: "/usr/sbin:/usr/bin:/sbin:/bin"	runner_browser_toolchain_converge_receipt_path; tree_sha256_wet; runner_browser_toolchain_system_path; plant_probe_wet	P2
+gunbc.runner.runner_capacity_operator_access	production	L0	L0	L0	L2	L4	0	runner_capacity_sudo_grant_list_probe: "/usr/bin/sudo" as SudoNopasswdGrantListProbeShape	runner_capacity_sudo_grant_list_probe	P2
+gunbc.runner.runner_capacity_plan	production	L0	L0	L0	L0	L2	0	none: cache vocab; plan takes instances	runner_capacity_plan	P2
+gunbc.runner.runner_checkout_receipt	production	L0	L0	L0	L0	L0	0	none: cache vocab loader_cache_defect is a defect name	runner_checkout_receipt	P2
+gunbc.runner.runner_claim_set_guest	production	L2	L0	L4	L0	L0	2	claim_set_guest_env: shell.Env.Get(name: name) over claim_set_guest_device_env "GUNBC_CLAIM_SET_RESULTS_DEVICE" and ..._BYTES	claim_set_guest_env	P2
+gunbc.runner.runner_claim_set_receipt	production	L0	L0	L0	L0	L0	1	none: pure receipt construction	runner_claim_set_receipt	P2
+gunbc.runner.runner_claim_set_work	production	L0	L2	L0	L0	L0	0	none: claim_set_cache_policy is a received policy value	claim_set_cache_policy	P2
+gunbc.runner.runner_connectivity_recovery	production	L0	L0	L0	L0	L2	0	none: cache vocab; takes instance	runner_connectivity_recovery	P2
+gunbc.runner.runner_connectivity_repair_plan	production	L0	L0	L0	L0	L0	0	none: cache vocab; scaffold is a name	runner_connectivity_repair_plan	P2
+gunbc.runner.runner_disk_reclaim	production	L0	L0	L0	L0	L4	0	reclaim_source_observed_on_srv4: path: "/usr/local/bin/reclaim-runner-disk.sh"; reclaim_managed_unit_paths: "/etc/systemd/system/gunbc-runner-reclaim.service" and ".timer"	reclaim_source_observed_on_srv4; reclaim_managed_unit_paths	P2
+gunbc.runner.runner_group_restriction_ensure_run	production	L4	L0	L0	L2	L2	1	microvm_runner_group_ensure_receipt_path: "artifacts/microvm-runner-group-ensure-receipt.txt" via write_receipt Filesystem.Write	microvm_runner_group_ensure_receipt_path	P2
+gunbc.runner.runner_guest_image	production	L0	L0	L4	L0	L0	4	runner_guest_job_home_value: "/root" and runner_guest_job_path_value PATH literal; runner_guest_agent_unit_name: "gunbc-runner-agent.service"	runner_guest_job_home_value; runner_guest_agent_unit_name; runner_guest_agent_unit_path	P2
+gunbc.runner.runner_host_cap_bracket	production	L4	L0	L0	L0	L2	1	write_bracket_obligation: Filesystem.Write(path: path, content: bracket_obligation_text(...))	write_bracket_obligation	P2
+gunbc.runner.runner_host_deploy	production	L0	L0	L0	L0	L1	0	none: IS the per-host deploy declaration; sccache lead is provision script name	runner_host_sccache_provision_script	P2
+gunbc.runner.runner_host_file_converge	production	L4	L0	L0	L2	L2	2	runner_host_file_scope: FileTreeScope { root_path: "/etc" as NonEmptyStr }	runner_host_file_scope; runner_host_file_ci_wet	P2
+gunbc.runner.runner_host_grants	production	L0	L0	L0	L1	L4	0	runner_host_sudoers_install_path: "/etc/sudoers.d/gunbc-ghrunner"	runner_host_sudoers_install_path	P2
+gunbc.runner.runner_host_kernel_config	production	L4	L0	L0	L0	L0	0	runner_host_kernel_config_path: "/var/tmp/gunbc-hostimage/linux-6.12.108/.config"	runner_host_kernel_config_path	P2
+gunbc.runner.runner_host_medium	production	L0	L0	L0	L0	L0	0	none: scratch runner dir setup through command seam, not kept state	runner_host_up_stages	P2
+gunbc.runner.runner_host_medium_publish	production	L4	L0	L0	L0	L2	1	mtcollins1_runner_image_receipt_path: "target/mtcollins1-runner-image.txt" via mtcollins1_runner_image_publish_wet Filesystem.Write	mtcollins1_runner_image_receipt_path	P2
+gunbc.runner.runner_host_surface	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_host_surface	P2
+gunbc.runner.runner_host_unit_slot	production	L0	L0	L0	L0	L4	0	provider_guest_slot_unit: join(["gunbc-provider-ci-", host, "-", attempt, ".service"])	provider_guest_slot_unit	P2
+gunbc.runner.runner_incarnation	production	L0	L0	L0	L0	L2	0	none: cache vocab	runner_incarnation	P2
+gunbc.runner.runner_lifecycle	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_lifecycle	P2
+gunbc.runner.runner_local_state	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_local_state	P2
+gunbc.runner.runner_lost_boot_sweep_run	production	L4	L0	L0	L2	L2	2	lost_boot_sweep_receipt_path: "artifacts/service-runner-lost-boot-sweep-receipt.txt" via write_sweep_receipt Filesystem.Write	lost_boot_sweep_receipt_path	P2
+gunbc.runner.runner_microvm	production	L0	L0	L0	L0	L0	0	none: GuestCacheAllowance is a guest memory allowance	GuestCacheAllowance	P2
+gunbc.runner.runner_microvm_attempt	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_microvm_attempt	P2
+gunbc.runner.runner_microvm_attempt_identity	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_microvm_attempt_identity	P2
+gunbc.runner.runner_microvm_boot_probe	production	L4	L0	L4	L0	L0	4	runner_microvm_boot_probe_receipt_path: "target/runner-microvm-boot-probe.txt" via Filesystem.Write; executor_home_wet: shell.Env.Get(name: "HOME")	runner_microvm_boot_probe_receipt_path; executor_home_wet	P2
+gunbc.runner.runner_microvm_cell_readiness	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_microvm_cell_readiness	P2
+gunbc.runner.runner_microvm_cell_readiness_location	production	L1	L0	L0	L0	L0	0	none: IS the cell-readiness store location declaration	cell_readiness_store_location	P2
+gunbc.runner.runner_microvm_cell_readiness_store	production	L5	L2	L2	L0	L0	4	persist_one_record: Filesystem.Write(path: join([cell_readiness_store_dir, "/", name]), content: encode_record_document(record))	persist_one_record	P2
+gunbc.runner.runner_microvm_host_ready	production	L4	L0	L4	L0	L0	2	runner_microvm_host_standing_receipt_path: "target/runner-microvm-host-standing.txt" via write_host_standing_receipt; executor_home_wet: shell.Env.Get(name: "HOME")	runner_microvm_host_standing_receipt_path; executor_home_wet	P2
+gunbc.runner.runner_microvm_lifecycle	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_microvm_lifecycle	P2
+gunbc.runner.runner_microvm_lifecycle_realize	production	L5	L2	L2	L0	L0	4	stage_attempt_configuration: Filesystem.Write(path: concat(jail_root, jail_config_path), content: document); clean_attempt_resources: rm_recursive_force_one_file_system_command(path: attempt_dir)	stage_attempt_configuration; clean_attempt_resources	P2
+gunbc.runner.runner_microvm_network	production	L4	L0	L0	L0	L4	0	runner_microvm_converged_receipt_root: "/var/lib/gunbc/microvm-network"; runner_microvm_networkd_dir: "/etc/systemd/network"	runner_microvm_converged_receipt_root; runner_microvm_networkd_dir; runner_microvm_systemd_unit_dir; runner_microvm_ip_forward_proc_path	P2
+gunbc.runner.runner_microvm_network_apply	production	L4	L0	L0	L0	L2	7	runner_microvm_network_apply_receipt_path: "target/microvm-network-apply-receipt.txt" via runner_microvm_network_apply_ci_wet Filesystem.Write; runner_microvm_network_plan_local_wet: Filesystem.Write(path: "target/microvm-network-local-plan.txt", content: body)	runner_microvm_network_apply_receipt_path; runner_microvm_network_plan_local_wet	P2
+gunbc.runner.runner_microvm_network_converge	production	L4	L0	L4	L0	L4	4	runner_microvm_staging_dir: "/var/lib/gunbc-microvm-network-stage"; runner_microvm_network_receipt_path: "target/microvm-network-observe.txt" (duplicated from ci_spec receipt_rel)	runner_microvm_staging_dir; runner_microvm_network_receipt_path; converge_generation_reading; staged_host_unit	P2
+gunbc.runner.runner_microvm_network_observe	production	L4	L0	L0	L0	L2	2	record_converge_readback_wet: Filesystem.Write(path: runner_microvm_network_receipt_path, content: text)	record_converge_readback_wet	P2
+gunbc.runner.runner_microvm_network_receipt_store	production	L5	L0	L0	L0	L0	2	publish_initial_network_receipt: Filesystem.WriteCreateNew(path: runner_microvm_converged_receipt_path, content: text)	publish_initial_network_receipt	P2
+gunbc.runner.runner_microvm_network_sanitation_observe	production	L0	L0	L2	L0	L0	1	none: reads sanitation state through seam	runner_microvm_network_sanitation_observe	P2
+gunbc.runner.runner_microvm_shakedown	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_microvm_shakedown	P2
+gunbc.runner.runner_microvm_slot_controller	production	L5	L0	L4	L0	L2	3	controller_exit: Filesystem.Write(path: path, content: concat(text, "\n"))	controller_exit; environment_value	P2
+gunbc.runner.runner_microvm_slot_reserve	production	L5	L0	L0	L0	L2	2	microvm_slot_reserve_main: Filesystem.Write(path: microvm_unit_receipt_path(prefix, invocation_id), content: concat(text, "\n"))	microvm_slot_reserve_main; microvm_slot_reserve_ci_wet	P2
+gunbc.runner.runner_microvm_slot_start	production	L4	L0	L0	L0	L0	2	microvm_slot_start_ci_wet: Filesystem.Write(path: microvm_slot_start_receipt_path, content: body)	microvm_slot_start_ci_wet	P2
+gunbc.runner.runner_microvm_slot_unit	production	L4	L0	L0	L0	L4	0	microvm_controller_root: "/opt/gunbc/microvm-controller"; microvm_slot_controller_receipt_dir: "/var/lib/gunbc/microvm-slot-controller"	microvm_controller_root; microvm_slot_controller_receipt_dir; microvm_slot_start_receipt_path; workspace_launch_credential_source_path; microvm_slot_unit_path	P2
+gunbc.runner.runner_microvm_slot_unit_identity	production	L0	L0	L0	L0	L4	0	microvm_slot_unit_instance_name: join(["gunbc-microvm-slot@", slot_instance, ".service"])	microvm_slot_unit_instance_name	P2
+gunbc.runner.runner_microvm_stop_propagation_probe	production	L0	L0	L0	L0	L4	0	stop_propagation_probe_supervisor_unit: "gunbc-stop-propagation-probe-supervisor.service" (and stand-in unit)	stop_propagation_probe_supervisor_unit	P2
+gunbc.runner.runner_password_session_tool_converge	production	L4	L0	L0	L0	L2	1	runner_password_session_tool_converge_receipt_path: "target/runner-password-session-tool-converge-receipt.txt" via Filesystem.Write	runner_password_session_tool_converge_receipt_path	P2
+gunbc.runner.runner_qemu_toolchain	production	L0	L0	L0	L0	L4	1	qemu_toolchain_system_path: "/usr/sbin:/usr/bin:/sbin:/bin"; qemu_toolchain_library_path: join([root, "/usr/lib/aarch64-linux-gnu:", root, "/lib/aarch64-linux-gnu"])	qemu_toolchain_system_path; qemu_toolchain_library_path; place_qemu_toolchain_wet	P2
+gunbc.runner.runner_registration_labels	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_registration_labels	P2
+gunbc.runner.runner_revision_job_guest	production	L0	L0	L0	L0	L4	0	revision_job_spec_device: "/dev/vdb" (also revision_job_tree_device "/dev/vdc", revision_job_vendor_device "/dev/vdd")	revision_job_spec_device; revision_job_image_cargo_config	P2
+gunbc.runner.runner_revision_job_image	production	L0	L0	L0	L0	L0	6	none: scratch build tree, not kept state	revision_job_image_tree_commands	P2
+gunbc.runner.runner_revision_job_launch	production	L0	L0	L0	L0	L0	0	none: scratch jail root, not kept state	revision_job_launch_plan	P2
+gunbc.runner.runner_revision_job_main	production	L5	L0	L4	L0	L4	6	revision_job_await: Filesystem.WriteCreateNew(path: results_out / runtime_out, content: ...)	revision_job_await; revision_job_run; revision_job_env	P2
+gunbc.runner.runner_revision_job_receipt	production	L5	L0	L0	L0	L0	5	publish_revision_job_receipt: WriteCreateNew(staging_path) then WriteCreateNew(index_entry, concat(receipt_path, "\n")) with mkdir_parents_command	publish_revision_job_receipt	P2
+gunbc.runner.runner_revision_job_stage	production	L5	L0	L0	L0	L0	2	stage_spec_and_results: Filesystem.WriteCreateNew(path: spec, content: spec_text); WriteCreateNew(path: results, content: "")	stage_spec_and_results	P2
+gunbc.runner.runner_revision_job_toolchain	production	L5	L0	L0	L0	L4	6	prove_toolchain_rows: mkdir_parents_command(store/toolchain-closure) then Filesystem.WriteCreateNew(path, toolchain_closure_receipt_body)	prove_toolchain_rows; toolchain_effect_commands	P2
+gunbc.runner.runner_revision_job_unit	production	L4	L0	L0	L0	L4	0	revision_job_state_root: "/var/lib/gunbc/revision-job" (also revision_job_spec_dir, revision_job_receipt_store); revision_job_image_staging_root: "target/revision-job-image-artifact"	revision_job_state_root; revision_job_image_staging_root; revision_job_runner_unit_path	P2
+gunbc.runner.runner_runtime_snapshot	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_runtime_snapshot	P2
+gunbc.runner.runner_service_activation	production	L0	L0	L0	L0	L0	0	none: sudo and cache leads are comment prose and cache_ready name	runner_service_activation	P2
+gunbc.runner.runner_service_slot_controller	production	L0	L0	L4	L0	L2	1	service_slot_env: shell.Env.Get(name: name)	service_slot_env	P2
+gunbc.runner.runner_slot_actuation	production	L0	L0	L0	L0	L2	0	none: elevation via extdeps sudo_elevate seam; no sudoers literal	sudo_elevate	P2
+gunbc.runner.runner_slot_allocation	production	L0	L0	L0	L0	L4	0	gunbc_srv2_03_effective_cap_observation: runner_unit: "actions-runner@srv2-03.service" (also srv1_04/srv1_05 throttle observations); gunbc_floor_armed_budget_doomed_witness_receipts: runner_unit: "srv3-05", "srv3-02"; budget_source: "/proc/meminfo MemAvailable"	gunbc_srv2_03_effective_cap_observation; gunbc_floor_armed_budget_doomed_witness_receipts	P2
+gunbc.runner.runner_slot_job_role	production	L0	L0	L0	L0	L2	0	none: cache vocab	runner_slot_job_role	P2
+gunbc.runner.runner_slot_provision	production	L0	L0	L0	L0	L0	0	none: cache_install_command/actions_runner_cache_dir are file paths for runner, cache vocab	runner_slot_provision	P2
+gunbc.runner.runner_slot_retirement	production	L0	L0	L0	L0	L4	0	srv4_transition_interruption_authorization: "actions-runner@srv4-13.service" ... "srv4-20.service"	srv4_transition_interruption_authorization	P2
+gunbc.runner.runner_teardown_receipt	production	L0	L0	L0	L0	L0	0	none: cache vocab	runner_teardown_receipt	P2
+gunbc.runner.runner_throughput_qualification_route	production	L0	L0	L0	L0	L4	0	ephemeral_slot_unit: join(["gunbc-qualification-", host, "-", attempt, ".service"])	ephemeral_slot_unit	P2
+gunbc.runner.runner_unit	production	L0	L0	L0	L0	L4	0	runner_unit_dropin_dir: join(["/etc/systemd/system/", runner_unit_template_name, ".d"])	runner_unit_dropin_dir	P2
+gunbc.runner.runner_unit_file	production	L0	L0	L4	L0	L4	0	runner_host_app_pem_path: "/etc/actions-runner/app.pem"; runner_unit_system_path: join(["/etc/systemd/system/", runner_unit_template_name])	runner_host_app_pem_path; runner_unit_system_path	P2
+gunbc.runner.runner_unit_live_read	production	L0	L0	L0	L0	L4	0	gunbc_srv1_runner_unit_live_read_fixture: unit: "actions-runner@srv1-01.service"	gunbc_srv1_runner_unit_live_read_fixture	P2
+gunbc.runner.workspace_guest_image	production	L0	L0	L0	L0	L4	3	workspace_guest_unit: ExecStart { command: "/bin/sh /usr/local/sbin/gunbc-workspace-bootstrap" }	workspace_guest_unit; workspace_image_tree_commands	P2
+gunbc.runner.workspace_microvm	production	L0	L0	L0	L0	L2	2	none: scratch jail root, not kept state	workspace_launch_plan	P2
+gunbc.seed_growth_admission	roster	-	-	-	-	-	0	roster: seed growth admission	seed_growth_admission	P2
+gunbc.source_layout_namespaces	production	L0	L0	L0	L0	L1	0	none: IS the namespace table (srv3 appears as a namespace name)	source_layout_namespaces	P2
+gunbc.source_root_read	production	L2	L0	L0	L0	L0	3	none: reads received paths	source_root_read_file	P2
+gunbc.tier_o_artifact_emit	production	L0	L0	L0	L0	L1	0	none: sudo lead is artifact name	tier_o_artifact_emit	P2
+gunbc.toolchain_coherence	production	L0	L0	L0	L0	L0	0	none: cache vocab	toolchain_coherence	P2
+gunbc.typed_module_cache_capacity	production	L0	L2	L0	L0	L0	1	none: cap derivation is a received/derived policy value	typed_module_cache_cap_derivation	P2
+gunbc.v1.v1_complexity_decl_classification_roster	roster	-	-	-	-	-	0	roster: classification roster	InterproceduralSummaryMemo	P2
+gunbc.witness.compiler_gate_workflow	production	L0	L0	L0	L0	L0	0	none: ci_cache step names only	compiler_gate_workflow	P2

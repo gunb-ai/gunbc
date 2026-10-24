@@ -1,0 +1,85 @@
+module	class	storage_level	caching_level	access_level	authz_level	placement_level	ambient_calls	worst_finding	evidence_symbols	phase
+gunbc.apply	production	L0	L0	L0	L0	L4	0	dispatcher selects the instance by mode literal "dashboard-srv1"	apply dispatcher mode match	P2
+gunbc.assimilate.bmc_bootstrap_provision	production	L0	L0	L0	L0	L0	1	none: srv3 only appears in a name; IAM cells flow from the declarer	bmc_bootstrap_provision_srv3	P2
+gunbc.assimilate.bmc_token_federation	production	L0	L0	L1	L0	L1	0	none: module IS the declaration of the srv3 BMC secret name and assimilator	bmc_srv3_secret_name; bmc_assimilator_display_name	P2
+gunbc.bmc.bmc_fan_converge	production	L0	L0	L4	L0	L4	1	per-host BMC identity/known-hosts files and swampd binary spelled as literals	srv3_bmc_fan_converge_target; srv4 target; /etc/gunbc/bmc-identities	P2
+gunbc.bmc.bmc_fan_program_capture	production	L1	L0	L0	L0	L1	0	none: module IS the declaration of the captured-program receipts (host, source path, artifact path)	srv3_captured_program; srv4_captured_program	P2
+gunbc.bmc.bmc_fan_program_observation	production	L2	L0	L0	L0	L0	1	none: reads the capture path it is handed	observe_captured_program	P2
+gunbc.bmc.bmc_fan_program_observation_witness	production	L4	L0	L0	L0	L4	2	witness re-spells the capture artifact path instead of using the capture row	Filesystem.Read(path: "artifacts/bmc/srv3-config-asrr.json")	P2
+gunbc.bmc.bmc_fan_projection	production	L1	L0	L0	L0	L0	0	none: /usr/share/swampd/config-asrr.json is the upstream OpenBMC swampd layout, faithfully modelled	altrad8ud_openbmc_322_swampd_config_asrr_path	P2
+gunbc.bmc.bmc_netboot_serve	production	L5	L0	L0	L0	L1	1	netboot dirs and staging prefix literals, hand mkdir command and raw local write	bmc_netboot_bootstrap_artifact_dir; bmc_netboot_local_staging_prefix; srv4_bmc_netboot_serve_plan; bmc_netboot_provision	P2
+gunbc.bmc.bmc_virtual_media	production	L4	L0	L0	L0	L1	0	ISO path and nbd device literals in the per-host intent	srv4_virtual_media_source; srv4_configfs_params	P2
+gunbc.board_authority_binding	production	L2	L0	L0	L0	L0	1	none: reads receipt.artifact_path it is handed	Filesystem.Read(path: receipt.artifact_path)	P2
+gunbc.busybox_bmc_build	production	L4	L0	L0	L0	L0	0	build/tarball/output paths hard-coded; mkdir goes through the extdeps command seam	busybox build plan data	P2
+gunbc.cloudflare.r2_bucket_ensure	production	L4	L0	L2	L0	L0	1	receipt written raw to a literal target/ path	r2_bucket_ensure_receipt_path	P2
+gunbc.cloudflare.r2_conditional_put_race_probe	production	L5	L0	L2	L0	L0	6	probe writes and recursively removes its own staging and receipt	race_probe_receipt_path; shell.Remove.RecursiveForce	P2
+gunbc.cloudflare.r2_mint_secret_access	production	L0	L0	L1	L0	L0	0	none: "cache" vocab is the fabric-cache-blobs purpose name; module declares the R2 mint secret ids	fabric_cache_blobs_read_secret_id; fabric_cache_blobs_write_secret_id	P2
+gunbc.cloudflare.r2_origin	production	L0	L0	L1	L0	L1	0	none: cache vocab is origin-purpose naming; module IS the declaration of R2 origin profiles	FabricCacheBlobs; fabric_cache_blob_prefix	P2
+gunbc.cloudflare.r2_permission_group_observe	production	L4	L0	L2	L0	L0	1	observation receipt raw-written to literal path	r2_mint_preflight_receipt_path	P2
+gunbc.cloudflare.r2_s3_netrc	production	L5	L0	L5	L0	L0	9	materializes the R2 credential into an owner-only netrc in a workspace it makes and removes	Filesystem.WriteOwnerOnly(token_path); shell.Remove.RecursiveForce(workspace)	P2
+gunbc.cloudflare.r2_staged_transfer	production	L5	L0	L2	L0	L0	2	hand-rolled staging dir removal	r2 staging removal arm	P2
+gunbc.cloudflare.r2_token_mint_run	production	L5	L0	L4	L0	L2	7	token ids and receipts kept in /tmp with hand mkdir; env reads for run id	r2_mint_receipt_dir_root; r2_mint_receipt_run_id_env; Filesystem.Write /tmp/r2-account-token-list.txt	P2
+gunbc.container.registry_image_config	production	L5	L0	L0	L0	L0	13	scratch dir written owner-only and removed by hand on 12 arms	Filesystem.WriteOwnerOnly; shell.Remove.RecursiveForce(dir.path)	P2
+gunbc.demo.board_artifacts	production	L4	L0	L0	L0	L0	1	demo artifact written to a path raw	Filesystem.Write(path: p)	P2
+gunbc.demo.semantic_system_readout	production	L4	L0	L0	L0	L0	1	readout written raw to literal target/ path	readout_path	P2
+gunbc.deploy_transition	production	L5	L0	L0	L0	L0	7	lease implemented as a hand O_EXCL create plus raw reads/lists of instance state	Filesystem.WriteOwnerOnly lease create; Filesystem.List(instance_root)	P2
+gunbc.deployment_risk	production	L0	L0	L0	L2	L1	0	none: module IS the declaration of deployment ids and prod role	srv1_daily_workspace_deployment; prod_role_selection	P2
+gunbc.devboot.build	production	L4	L0	L0	L0	L0	6	producer realization and work root literals; raw receipt writes; cache vocab is git index	gunbc_build_cli_realization_path; gunbc_build_cli_work_root	P2
+gunbc.devboot.produce	production	L2	L0	L0	L0	L0	2	none: store root and receipt paths arrive as parameters ("EVERY HOST PATH ARRIVES AS A PARAMETER")	receipt_path parameter (path-typed)	P2
+gunbc.econ.llm_attempt_receipt	production	L0	L0	L0	L0	L0	0	none: PrefixCache* is a provider-reported observation type, nothing is cached here	PrefixCacheObservation	P2
+gunbc.frontend_eval.control	production	L5	L0	L0	L0	L0	9	hand-made workspace copy, mutate/restore, recursive removal	shell.Mkdir.Parents; shell.Remove.RecursiveForce(workspace)	P2
+gunbc.frontend_eval.instrument	production	L2	L0	L0	L0	L0	1	none: writes to the path it is handed	Filesystem.Write(path: path)	P2
+gunbc.guest_image_delivery	production	L5	L0	L0	L0	L0	1	hand mkdir command and raw digest receipt	mkdir_parents_command; Filesystem.Write(receipt_path)	P2
+gunbc.machine_intake.bmc_recovery_route	production	L1	L0	L0	L2	L0	0	none: /dev/ipmi*, /dev/imb are the upstream IPMI device nodes; /tmp/pw are test argv fixtures	ipmi_device_node_canonical_text; in_band_channel_from_argv	P2
+gunbc.machine_intake.boot_image_export_ownership	production	L1	L0	L0	L0	L1	0	none: /srv/bmc and login shells are observed-account fixtures read from srv2	export_path fixture; srv2_account_key_for_name	P2
+gunbc.machine_intake.fan_observe	production	L4	L0	L0	L0	L2	2	observation receipts raw-written	Filesystem.Write at receipt sites	P2
+gunbc.machine_intake.host_capture_envelope	production	L4	L0	L0	L0	L0	0	workload chunk dir is ours; /sys edac paths are kernel layout	host_capture_workload_chunk_dir	P2
+gunbc.machine_intake.megarac_boot_media_attach	production	L4	L0	L0	L0	L0	0	cookie jar path built under literal /tmp/gunbc-	cookie jar path fn	P2
+gunbc.machine_intake.megarac_kvm_observer_observe	production	L2	L0	L0	L0	L0	1	none: receipt path comes from received paths	megarac_kvm_observer_probe_receipt_path(paths:)	P2
+gunbc.machine_intake.megarac_kvm_still	production	L2	L0	L0	L0	L0	5	none: writes into directory d handed in (IPC trigger files); path-typed	trigger/journal/stop files under d	P2
+gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle	production	L4	L0	L0	L0	L2	4	bundle receipt raw write; SdrCache* is BMC SDR cache observation type, not our cache	mtcollins1_boot_diagnostics_path	P2
+gunbc.machine_intake.mtcollins1_boot_dry_realization	production	L0	L0	L0	L0	L1	0	none: declares the hermetic dry world (fake fs, hostname, checkout); the writes are modelled, not real	dry_worker_short_hostname; dry_worker_checkout; proc_* paths	P2
+gunbc.machine_intake.mtcollins1_boot_fan_gate	production	L5	L0	L0	L0	L0	3	hand read-modify-write append of the observation file	fan_gate_observation_path; Filesystem.Read then Write(prior+block)	P2
+gunbc.machine_intake.mtcollins1_boot_run	production	L5	L0	L0	L0	L2	37	12 raw writes of capture/ledger files; SdrCache* is a BMC observation type	mtcollins1_boot_receipt_path; capture writes; sdr_cache	P2
+gunbc.machine_intake.mtcollins1_census_image	production	L0	L0	L0	L0	L0	0	none: /dev/<tty> is kernel device naming derived from the tty row; no write here	mtcollins1_census_console_device	P2
+gunbc.machine_intake.mtcollins1_census_image_publish	production	L5	L0	L0	L0	L2	1	scratch dir by mktemp/rm seam with literal /var/tmp template, raw receipt write	census_regression_template; mtcollins1_census_image_receipt_path	P2
+gunbc.machine_intake.mtcollins1_census_member_readback	production	L5	L0	L0	L0	L2	1	scratch dir by mktemp/rm seam and raw receipt	census_member_readback_receipt_path	P2
+gunbc.machine_intake.mtcollins1_census_qemu_host_observe	production	L5	L0	L0	L0	L0	1	hand mkdir command then raw receipt write to literal target/	census_qemu_host_observe_receipt_path	P2
+gunbc.machine_intake.mtcollins1_fan_observe	production	L4	L0	L4	L0	L2	3	credential path reached by ambient env GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE	mtcollins1_fan_credential_path_env; mtcollins1_fan_observation_receipt_path	P2
+gunbc.machine_intake.mtcollins1_sol_notice	production	L5	L0	L0	L0	L0	8	ledger/summary/marker files appended by hand read-modify-write	sol notice ledger; mtcollins1_sol_notice_live_log	P2
+gunbc.machine_intake.mtjade1_access_observation	production	L1	L0	L0	L0	L1	10	none: module declares the captured-artifact paths and provenance of observations (srv1 observer is a recorded fact)	mtjade1_*_capture_path rows	P2
+gunbc.machine_intake.sol_hold	production	L0	L0	L0	L0	L0	0	none: /proc and /dev/null are inside the emitted shell script text; no decision	bash_build_* script builder	P2
+gunbc.namecheap.observe	production	L4	L0	L2	L0	L0	1	observation receipt raw write	namecheap_observation_receipt_path	P2
+gunbc.node_http_server_emit	production	L0	L0	L0	L0	L2	0	none: 0.0.0.0 comes from the received listen config; module emits TS	spec.listen.host	P2
+gunbc.oracle_oci.always_free_ensure	production	L4	L0	L2	L0	L0	1	raw receipt write	oci_always_free_ensure_receipt_path	P2
+gunbc.oracle_oci.api	production	L0	L0	L4	L0	L2	0	API signing key location literal	oci api key path data	P2
+gunbc.oracle_oci.compartment_ensure	production	L4	L0	L2	L0	L0	1	raw receipt write	oci_compartment_ensure_receipt_path	P2
+gunbc.oracle_oci.instance_ensure	production	L5	L0	L2	L0	L2	5	own create-new launch records and a hand lock file under /etc/gunbc/oracle-oci	oci_instance_lock_path; oci_launch_attempt_path; WriteCreateNew	P2
+gunbc.oracle_oci.network_ensure	production	L0	L0	L2	L0	L0	0	none: 0.0.0.0/0 is a CIDR route semantic, not a listen/placement choice	route rule comparison	P2
+gunbc.readback_independence	production	L0	L0	L0	L0	L0	0	none: sccache_show_stats_probe is a modelled probe, nothing cached here	sccache_show_stats_probe	P2
+gunbc.revision_job_image_delivery	production	L5	L0	L0	L0	L0	0	hand mkdir commands for store, index, rust-dist, debs	mkdir_parents_command x4	P2
+gunbc.served_surface_browser_observation	production	L0	L0	L0	L0	L4	0	fixture ports in locators	local_http_url 127.0.0.1:43821/43822	P2
+gunbc.site.gunb_ai_css	production	L2	L0	L0	L0	L0	1	none: writes the rendered sheet to the out-dir path it is handed (path-typed)	Filesystem.Write(path: path)	P2
+gunbc.site.gunb_ai_deck	production	L2	L0	L0	L0	L0	1	none: writes the rendered deck to the out-dir path it is handed (path-typed)	Filesystem.Write(path: path)	P2
+gunbc.site.gunb_ai_layout_review	production	L2	L0	L0	L0	L0	1	none: writes the rendered layout ballot to the out-dir path it is handed (path-typed)	Filesystem.Write(path: path)	P2
+gunbc.site.gunb_ai_mark	production	L2	L0	L0	L0	L0	1	none: writes the rendered mark to the out-dir path it is handed (path-typed)	Filesystem.Write(path: path)	P2
+gunbc.site.gunb_ai_page	production	L2	L0	L0	L0	L0	1	none: writes the rendered page to the out-dir path it is handed (path-typed)	Filesystem.Write(path: path)	P2
+gunbc.site.gunb_ai_tokens_review	production	L2	L0	L0	L0	L0	1	none: writes the rendered tokens page to the out-dir path it is handed (path-typed)	Filesystem.Write(path: path)	P2
+gunbc.srv3.srv3_actuate_shell_paths	production	L4	L0	L4	L0	L4	0	module declares /tmp credential/body files and a log path	srv3_bmcweb_token_path; srv3_sol_console_log_path	P2
+gunbc.srv3.srv3_boot_once_cd	production	L5	L0	L2	L2	L0	4	request bodies raw-written to /tmp paths	srv3_boot_cd_body_path; srv3_reset_body_path	P2
+gunbc.srv3.srv3_nbd_proxy_serve_intent	production	L0	L0	L0	L0	L4	0	lease key restates host and port as a literal	srv3_nbd_proxy_lease_key	P2
+gunbc.srv3.srv3_os_install_actuate	production	L4	L0	L2	L0	L2	1	runbook path literal and raw writes of login body	srv3_os_install_actuate_operator_runbook; srv3_bmcweb_login_body_content	P2
+gunbc.srv3.srv3_os_install_actuate_scope	production	L0	L0	L0	L0	L0	0	none: srv3 names are imports of authorities; module is disposition + refusal fold	srv3_autoinstall_seed_delivery_refusal	P2
+gunbc.srv3.srv3_os_install_actuate_workflow	production	L0	L0	L0	L1	L2	0	none: module IS the declaration of srv3 boot-override and reset AuthorizationScope rows	srv3_boot_override_scope; srv3_system_reset_scope	P2
+gunbc.srv3.srv3_os_install_diagnostic	production	L0	L0	L0	L0	L2	0	none: host names are imported identities and thresholds	srv3_install_hang_* thresholds	P2
+gunbc.srv3.srv3_seeded_install_media	production	L0	L0	L0	L0	L0	0	none: dispositions and apply routing only	srv3_seeded_install_media_toolchain_ensure	P2
+gunbc.srv3.srv3_seeded_install_media_artifact	production	L1	L0	L0	L0	L1	0	none: module IS the declaration of the srv3 seeded image stem and nocloud dir	srv3_seeded_install_media_image_stem	P2
+gunbc.srv4_uefi_observed	production	L0	L0	L0	L0	L0	0	none: 0.0.0.0 are observed UEFI interface fields in a fixture	srv4_uefi_observed_environment	P2
+gunbc.tools.bmc_first_contact	production	L0	L0	L4	L0	L0	2	BMC_HOST read from ambient env	shell.Env.Get(name: "BMC_HOST")	P2
+gunbc.tools.bmc_health_reader_converge	production	L5	L0	L2	L0	L2	6	credential body written to a /tmp file by hand	bmc_health_reader_body path; Filesystem.WriteOwnerOnly	P2
+gunbc.tools.bmc_intake_first_contact	production	L0	L0	L4	L0	L0	2	BMC_HOST read from ambient env	shell.Env.Get(name: "BMC_HOST")	P2
+gunbc.tools.bmc_onboard	production	L5	L0	L4	L0	L2	11	netrc and password body in fixed /tmp files plus env reads	bmc_onboard_netrc_path; bmc_onboard_pwbody_path	P2
+gunbc.tools.bmc_read_telemetry	production	L0	L0	L4	L0	L0	4	BMC_HOST and BMC_NETRC_FILE from ambient env	shell.Env.Get x2	P2
+gunbc.tools.card_intake	production	L2	L0	L0	L0	L0	1	none: reads the photo_path it is handed	Filesystem.Read(path: photo_path)	P2
+gunbc.tools.review	production	L4	L0	L0	L0	L4	0	macOS operator home path literal for cron log	/Users/briansrls/.local/share/gunbc-review/logs/cron.log	P2
+gunbc.url_file_acquisition	production	L5	L0	L0	L0	L0	5	hand mkdir, .part file and cleanup around a download	shell.Mkdir.Parents; shell.Remove.RecursiveForce(part_path)	P2

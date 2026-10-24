@@ -1,0 +1,11 @@
+M7 seed: +56 supplement, -3 dropped
+rule 1: 2 slice module rows superseded by parent rows (their instances kept): src/v1/stage0/src/cli_run.rs, gunbc.fleet.fleet_posix_accounts
+class fix gunbc.systemd_directive_value_grain: roster -> production
+ruling (d) moves: placement->access: 11, storage->access: 1, storage->placement: 1
+cells raised to their worst instance: 21
+cells dropped because their instances moved under ruling (d): 1 gunbc.machine_intake.host_capture_envelope:storage
+UNBACKED L3+ cells (sheet level with no instance row): 4
+  gunbc.runner.runner_revision_job_toolchain placement L4
+  gunbc.bmc.bmc_fan_program_observation_witness placement L4
+  gunbc.srv3.srv3_actuate_shell_paths placement L4
+  gunbc.tools.review placement L4

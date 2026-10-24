@@ -1,0 +1,4 @@
+module	dimension	level	symbol	specimen	note	existing_authority	fix_shape
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	storage	L4	witness	let r = { success: true, bytes_written: 42, path: "/tmp/x", error: "" }	literal scratch path in non-test code	gunbc.owned_directory / std.artifact_store / gunbc.filesystem_interface	declare once and consume
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	storage	L4	witness	let r = { success: false, bytes_written: 0, path: "/tmp/y", error: "changed" }	literal scratch path in non-test code	gunbc.owned_directory / std.artifact_store / gunbc.filesystem_interface	declare once and consume
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	storage	L4	witness	let r = { success: true, bytes_written: 42, path: "/tmp/x", error: "" }	literal scratch path in non-test code	gunbc.owned_directory / std.artifact_store / gunbc.filesystem_interface	declare once and consume
