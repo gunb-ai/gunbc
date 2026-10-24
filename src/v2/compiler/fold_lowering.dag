@@ -62,7 +62,7 @@ import std.algebra {
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { NotADeclaration, positional_child_target_nodes,
   Atom,
   Bind,
   BinderStructureEdge,
@@ -421,7 +421,7 @@ fn collection_roster_carrier_type() -> Node {
 fn collection_roster_carrier_binder() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } },
-    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()) }]
+    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()), declaration: NotADeclaration }]
   )
 }
 
@@ -472,7 +472,7 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
               let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type())
               let binders = node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder() }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }], source: collection_roster_carrier_type())
+                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder(), declaration: NotADeclaration }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type(), declaration: NotADeclaration }], source: collection_roster_carrier_type())
               )
               optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
           }
@@ -1458,11 +1458,11 @@ fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
     body_binding: node_synthetic(
       kind: ComputationNode { behavior: Loop },
       children: [
-        Edge { label: Positional, target: operands.step },
-        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection },
-        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot) },
-        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom() },
-        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head }
+        Edge { label: Positional, target: operands.step, declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection, declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot), declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom(), declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head, declaration: NotADeclaration }
       ]
     )
   )

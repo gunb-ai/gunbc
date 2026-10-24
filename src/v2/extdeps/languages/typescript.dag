@@ -95,6 +95,7 @@ import v2.std.grounding {
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
+  ListIntroductionUnwired,
   IntLiteralDecimal,
   ProducedDeclParamSegment,
   ProducedDeclRenderRows,
@@ -195,6 +196,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.host_transport {
   HostBuildEnvironment,
@@ -284,7 +286,7 @@ fn ts_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn ts_primitive_algebra_witness_node(
@@ -683,6 +685,7 @@ fn ts_value_expression_projection_full(
       false_token: ^ts_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^ts_token_num_lit },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: block_evaluation_mode
   }
 }
@@ -888,7 +891,7 @@ fn ts_type_annotation_name_emitted(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: binding) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: binding), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -898,8 +901,8 @@ fn ts_record_field_emitted(field_binding: Symbol, type_child: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding) },
-      Edge { label: Positional, target: type_child }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: field_binding), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_child, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -909,7 +912,7 @@ fn ts_record_fields_single_emitted(field: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: field }
+      Edge { label: Positional, target: field, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -919,8 +922,8 @@ fn ts_record_fields_pair_emitted(left: Node, right: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      Edge { label: Positional, target: left, declaration: NotADeclaration },
+      Edge { label: Positional, target: right, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -949,7 +952,8 @@ fn ts_record_type_task_emitted() -> Node {
             field_binding: ^ts_binding_field_status,
             type_child: ts_type_annotation_name_emitted(binding: ^ts_binding_type_task_status)
           )
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -960,7 +964,7 @@ fn ts_type_annotation_task_record_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_record_type_task_emitted() }
+      Edge { label: Positional, target: ts_record_type_task_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -970,8 +974,8 @@ fn ts_type_alias_decl_emitted(name_binding: Symbol, type_child: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding) },
-      Edge { label: Positional, target: type_child }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: name_binding), declaration: NotADeclaration },
+      Edge { label: Positional, target: type_child, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1098,8 +1102,8 @@ fn ts_pr3_identity_typed_param_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) },
-      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1109,7 +1113,7 @@ fn ts_pr3_identity_typed_params_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted() }
+      Edge { label: Positional, target: ts_pr3_identity_typed_param_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1119,7 +1123,7 @@ fn ts_pr3_identity_typed_params_opt_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted() }
+      Edge { label: Positional, target: ts_pr3_identity_typed_params_emitted(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1129,10 +1133,10 @@ fn ts_pr3_identity_typed_fn_emitted() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity) },
-      Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted() },
-      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x) }
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_pr3_identity), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_pr3_identity_typed_params_opt_emitted(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_pr3_identity_type_annotation_emitted(), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_param_x), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -1747,7 +1751,8 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_foobar } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -1755,7 +1760,8 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_x } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
@@ -1763,7 +1769,8 @@ fn ts_sg2_instantiation_source_type_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^ts_binding_sg2_y } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -1853,8 +1860,8 @@ fn ts_sg2_arrow_malformed_source_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x) },
-      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y) }
+      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_x), declaration: NotADeclaration },
+      Edge { label: Positional, target: ts_sg2_atom_node(binding: ^ts_binding_sg2_y), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
 }

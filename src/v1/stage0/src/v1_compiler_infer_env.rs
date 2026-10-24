@@ -356,6 +356,7 @@ pub struct SymbolIndex {
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
+    pub alias_cycles: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
     pub file_modules: Rc<HashMap<String, String>>,
     pub module_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
@@ -372,6 +373,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
+        alias_cycles: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
         file_modules: v1_rt::rc_empty_map::<String, String>(),
         module_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
@@ -713,9 +715,10 @@ pub fn symbol_index_insert(
         let __rb_1_0 = index.global_bare.clone();
         let __rb_2_0 = index.services.clone();
         let __rb_3_0 = index.transparent_alias_rep.clone();
-        let __rb_4_0 = index.type_head_exposures.clone();
-        let __rb_5_0 = index.file_modules.clone();
-        let __rb_6_0 = index.module_named_imports.clone();
+        let __rb_4_0 = index.alias_cycles.clone();
+        let __rb_5_0 = index.type_head_exposures.clone();
+        let __rb_6_0 = index.file_modules.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
         let mut __rb_h = index;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -723,9 +726,10 @@ pub fn symbol_index_insert(
                 __rb_r.global_bare = __rb_1_0;
                 __rb_r.services = __rb_2_0;
                 __rb_r.transparent_alias_rep = __rb_3_0;
-                __rb_r.type_head_exposures = __rb_4_0;
-                __rb_r.file_modules = __rb_5_0;
-                __rb_r.module_named_imports = __rb_6_0;
+                __rb_r.alias_cycles = __rb_4_0;
+                __rb_r.type_head_exposures = __rb_5_0;
+                __rb_r.file_modules = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
             }
             None => {
                 __rb_h = Rc::new(SymbolIndex {
@@ -733,9 +737,10 @@ pub fn symbol_index_insert(
                     global_bare: __rb_1_0,
                     services: __rb_2_0,
                     transparent_alias_rep: __rb_3_0,
-                    type_head_exposures: __rb_4_0,
-                    file_modules: __rb_5_0,
-                    module_named_imports: __rb_6_0,
+                    alias_cycles: __rb_4_0,
+                    type_head_exposures: __rb_5_0,
+                    file_modules: __rb_6_0,
+                    module_named_imports: __rb_7_0,
                 });
             }
         }
@@ -764,9 +769,10 @@ pub fn symbol_index_insert_decl(
         );
         let __rb_2_0 = index.services.clone();
         let __rb_3_0 = index.transparent_alias_rep.clone();
-        let __rb_4_0 = index.type_head_exposures.clone();
-        let __rb_5_0 = index.file_modules.clone();
-        let __rb_6_0 = index.module_named_imports.clone();
+        let __rb_4_0 = index.alias_cycles.clone();
+        let __rb_5_0 = index.type_head_exposures.clone();
+        let __rb_6_0 = index.file_modules.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
         let mut __rb_h = index;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -774,9 +780,10 @@ pub fn symbol_index_insert_decl(
                 __rb_r.global_bare = __rb_1_0;
                 __rb_r.services = __rb_2_0;
                 __rb_r.transparent_alias_rep = __rb_3_0;
-                __rb_r.type_head_exposures = __rb_4_0;
-                __rb_r.file_modules = __rb_5_0;
-                __rb_r.module_named_imports = __rb_6_0;
+                __rb_r.alias_cycles = __rb_4_0;
+                __rb_r.type_head_exposures = __rb_5_0;
+                __rb_r.file_modules = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
             }
             None => {
                 __rb_h = Rc::new(SymbolIndex {
@@ -784,9 +791,10 @@ pub fn symbol_index_insert_decl(
                     global_bare: __rb_1_0,
                     services: __rb_2_0,
                     transparent_alias_rep: __rb_3_0,
-                    type_head_exposures: __rb_4_0,
-                    file_modules: __rb_5_0,
-                    module_named_imports: __rb_6_0,
+                    alias_cycles: __rb_4_0,
+                    type_head_exposures: __rb_5_0,
+                    file_modules: __rb_6_0,
+                    module_named_imports: __rb_7_0,
                 });
             }
         }
@@ -812,9 +820,10 @@ pub fn symbol_index_insert_service(
             }),
         );
         let __rb_3_0 = index.transparent_alias_rep.clone();
-        let __rb_4_0 = index.type_head_exposures.clone();
-        let __rb_5_0 = index.file_modules.clone();
-        let __rb_6_0 = index.module_named_imports.clone();
+        let __rb_4_0 = index.alias_cycles.clone();
+        let __rb_5_0 = index.type_head_exposures.clone();
+        let __rb_6_0 = index.file_modules.clone();
+        let __rb_7_0 = index.module_named_imports.clone();
         let mut __rb_h = index;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -822,9 +831,10 @@ pub fn symbol_index_insert_service(
                 __rb_r.global_bare = __rb_1_0;
                 __rb_r.services = __rb_2_0;
                 __rb_r.transparent_alias_rep = __rb_3_0;
-                __rb_r.type_head_exposures = __rb_4_0;
-                __rb_r.file_modules = __rb_5_0;
-                __rb_r.module_named_imports = __rb_6_0;
+                __rb_r.alias_cycles = __rb_4_0;
+                __rb_r.type_head_exposures = __rb_5_0;
+                __rb_r.file_modules = __rb_6_0;
+                __rb_r.module_named_imports = __rb_7_0;
             }
             None => {
                 __rb_h = Rc::new(SymbolIndex {
@@ -832,9 +842,10 @@ pub fn symbol_index_insert_service(
                     global_bare: __rb_1_0,
                     services: __rb_2_0,
                     transparent_alias_rep: __rb_3_0,
-                    type_head_exposures: __rb_4_0,
-                    file_modules: __rb_5_0,
-                    module_named_imports: __rb_6_0,
+                    alias_cycles: __rb_4_0,
+                    type_head_exposures: __rb_5_0,
+                    file_modules: __rb_6_0,
+                    module_named_imports: __rb_7_0,
                 });
             }
         }
@@ -3844,7 +3855,23 @@ pub fn declaration_named_in_module(
                 module_path.clone(),
                 name.clone(),
             ) {
-                Some(m) => Some(crate::std_decl_ref::decl_ref(m.clone(), name.clone())),
+                Some(m) => match (*bare_occurrence_import_terminal(
+                    env.symbol_index.clone(),
+                    m.clone(),
+                    name.clone(),
+                    16,
+                ))
+                .clone()
+                {
+                    BareOccurrenceBinding::BareOccurrenceImportedByName {
+                        module_path: declaring,
+                        ..
+                    } => Some(crate::std_decl_ref::decl_ref(
+                        declaring.clone(),
+                        name.clone(),
+                    )),
+                    _ => std::option::Option::None,
+                },
                 std::option::Option::None => match symbol_index_lookup(
                     env.symbol_index.clone(),
                     v1_rt::concat(

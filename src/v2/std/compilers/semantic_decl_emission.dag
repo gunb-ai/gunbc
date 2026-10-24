@@ -4,6 +4,7 @@ import std.types { List, Map }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
 import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, NamedField, TypeParameter, WholeDeclaration }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -86,11 +87,12 @@ import v2.std.node {
   Symbol,
   symbol_intern_lexeme,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.node_query { declared_field_from_edge, find_named_child }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_any_char_in, string_head, string_tail }
-import std.algebra { Cons, Empty, FreeMonoid, for_all, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, collection_concat_shape }
+import std.algebra { Cons, Empty, FreeMonoid, for_all, list_append, list_snoc_item, fold_list, fold_list_right, is_empty, empty_map, map_insert, map_lookup, collection_concat_shape }
 import std.host_text { chars }
 
 type TargetSemanticDeclDecorationLine {
@@ -109,6 +111,22 @@ type TargetSemanticDeclCoproductSurfaceLayout
       union_field: Symbol
     }
 
+// ONE COLUMN SHAPE for a declaration's surface: a target either does not wire the column (`ColumnUnwired`: a value for
+// it refuses, located, under the consuming column's own reason) or wires it with a placement `P`. Header, imports, docs
+// and conformance have one placement (`TargetSemanticDeclColumnPlain`); members place inside the type body or in an associated block.
+type TargetSemanticDeclColumn<P>
+  = ColumnUnwired
+  | ColumnWired { placement: P }
+
+type TargetSemanticDeclColumnPlain {
+}
+
+// WHERE A TARGET PUTS A DECLARATION'S MEMBERS, the one authority for member position. A target whose declarations
+// cannot carry members leaves the column unwired and a member refuses, located.
+type TargetSemanticDeclMemberPlacement
+  = MembersInsideTypeBody
+  | MembersInAssociatedBlock
+
 type TargetSemanticDeclSurfaceProjection {
   record_decoration_lines: List<TargetSemanticDeclDecorationLine>
   coproduct_decoration_rules: List<TargetSemanticDeclCoproductDecorationRule>
@@ -118,24 +136,19 @@ type TargetSemanticDeclSurfaceProjection {
   enum_name_after_variants: Bool
   field_type_permit_only_int: Bool
   coproduct_layout: TargetSemanticDeclCoproductSurfaceLayout
-  member_projection: TargetSemanticDeclMemberProjection
-  import_projection: TargetSemanticDeclImportProjection
-  header_projection: TargetSemanticDeclHeaderProjection
+  member_projection: TargetSemanticDeclColumn<TargetSemanticDeclMemberPlacement>
+  import_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+  header_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+  doc_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
+  conformance_projection: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>
 }
 
-// WHERE A TARGET PUTS A DECLARATION'S HEADER, the leading comment lines a generated file states its origin with. The
-// lines are typed text; the comment prefix is the target's own lex row, so no source annotation channel is involved
-// and the declaration's graph, hashes and occurrence ids are unchanged -- only the emitted bytes differ.
-type TargetSemanticDeclHeaderProjection
-  = HeaderUnwired
-  | HeaderLeadingLines
-
-// WHERE A TARGET PUTS A DECLARATION'S IMPORTS, the one authority for import position. `ImportsLeading` places
-// them before the declaration in the same emission; a target with no import spelling says so and an import
-// refuses, located, rather than being dropped. `path` is the imported name as the target's own grammar prints it.
-type TargetSemanticDeclImportProjection
-  = ImportsUnwired
-  | ImportsLeading
+// WHETHER A TARGET HAS A CONFORMANCE CLAUSE, the protocol or raw-type names a declaration states after its name.
+// `ConformancesTargetDefault` states none, so the target's own fixed clause (if it has one) prints; `ConformancesNamed`
+// prints the names given under a wired conformance column, and refuses, located, under a target with no such clause.
+type TargetSemanticDeclConformances
+  = ConformancesTargetDefault
+  | ConformancesNamed { names: List<Symbol> }
 
 // A constant a declaration carries beside its fields: `name` is the member's identifier and `literal` the
 // text of its string value (printed through the target's string-quote transform row). The member's type is
@@ -144,13 +157,6 @@ type TargetSemanticDeclMember {
   name: Symbol
   literal: Symbol
 }
-
-// WHERE A TARGET PUTS A DECLARATION'S MEMBERS, the one authority for member position. Every projection
-// states its arm: a target whose declarations cannot carry members says so and a member refuses, located.
-type TargetSemanticDeclMemberProjection
-  = MembersUnwired
-  | MembersInsideTypeBody
-  | MembersInAssociatedBlock
 
 type TargetSemanticDeclSerializeProfile {
   lex_rule_rows: List<Node>
@@ -351,7 +357,7 @@ fn semantic_decl_lex_rules_catalog(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: row }
+          item: Edge { label: Positional, target: row, declaration: NotADeclaration }
         )
       }
     )
@@ -513,7 +519,7 @@ fn semantic_decl_binding_spellings_catalog(rows: List<Node>) -> Node {
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
-          item: Edge { label: Positional, target: row }
+          item: Edge { label: Positional, target: row, declaration: NotADeclaration }
         )
       }
     )
@@ -829,7 +835,7 @@ fn semantic_decl_count_node(n: Int) -> Node {
     target_model_type_atom_node(identity: ^semantic_decl_count_negative)
   } else {
     target_model_type_conj_node(
-      children: if n == 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit) }]) }
+      children: if n == 0 { Empty } else { list_append(left: semantic_decl_count_node(n: n - 1).children, right: [Edge { label: Positional, target: target_model_type_atom_node(identity: ^semantic_decl_count_unit), declaration: NotADeclaration }]) }
     )
   }
 }
@@ -893,7 +899,7 @@ fn semantic_decl_emit_transform_node(t: TokenClassEmitTransform) -> Node {
               children: fold_list(
                 xs: es,
                 empty: Empty,
-                cons: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_escape_node(e: e) }) }
+                cons: fn(acc, e) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_escape_node(e: e), declaration: NotADeclaration }) }
               )
             )
           )
@@ -920,7 +926,7 @@ fn semantic_decl_emit_transform_rows_catalog(rows: List<TargetSemanticDeclEmitTr
       xs: rows,
       empty: Empty,
       cons: fn(acc, row) {
-        list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_transform_row(row: row) })
+        list_snoc_item(xs: acc, item: Edge { label: Positional, target: semantic_decl_emit_transform_row(row: row), declaration: NotADeclaration })
       }
     )
   )
@@ -1160,7 +1166,8 @@ fn semantic_decl_decoration_lines_catalog_from_lines(
           xs: acc,
           item: Edge {
             label: Positional,
-            target: semantic_decl_decoration_line_row(line: line)
+            target: semantic_decl_decoration_line_row(line: line),
+            declaration: NotADeclaration
           }
         )
       }
@@ -1251,7 +1258,8 @@ fn semantic_decl_coproduct_decoration_rules_catalog(
           xs: acc,
           item: Edge {
             label: Positional,
-            target: semantic_decl_coproduct_decoration_rule_row(rule: rule)
+            target: semantic_decl_coproduct_decoration_rule_row(rule: rule),
+            declaration: NotADeclaration
           }
         )
       }
@@ -1401,15 +1409,23 @@ fn semantic_decl_surface_projection_bundle(
         ),
         target_model_named_edge(
           name: ^semantic_decl_surface_field_member_projection,
-          target: semantic_decl_member_projection_node(projection: projection.member_projection)
+          target: semantic_decl_column_node(column: projection.member_projection, placement_node: fn(p) { semantic_decl_member_placement_node(p: p) })
         ),
         target_model_named_edge(
           name: ^semantic_decl_surface_field_import_projection,
-          target: semantic_decl_import_projection_node(projection: projection.import_projection)
+          target: semantic_decl_column_node(column: projection.import_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
         ),
         target_model_named_edge(
           name: ^semantic_decl_surface_field_header_projection,
-          target: semantic_decl_header_projection_node(projection: projection.header_projection)
+          target: semantic_decl_column_node(column: projection.header_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_doc_projection,
+          target: semantic_decl_column_node(column: projection.doc_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
+        ),
+        target_model_named_edge(
+          name: ^semantic_decl_surface_field_conformance_projection,
+          target: semantic_decl_column_node(column: projection.conformance_projection, placement_node: fn(p) { semantic_decl_plain_placement_node(p: p) })
         )
       ],
       right: semantic_decl_surface_projection_coproduct_layout_extra_edges(
@@ -1419,70 +1435,54 @@ fn semantic_decl_surface_projection_bundle(
   )
 }
 
-fn semantic_decl_member_projection_node(projection: TargetSemanticDeclMemberProjection) -> Node {
-  match projection {
-    MembersUnwired => target_model_type_atom_node(identity: ^semantic_decl_members_unwired)
+fn semantic_decl_plain_placement_node(p: TargetSemanticDeclColumnPlain) -> Node {
+  target_model_type_atom_node(identity: ^semantic_decl_column_plain)
+}
+
+fn semantic_decl_member_placement_node(p: TargetSemanticDeclMemberPlacement) -> Node {
+  match p {
     MembersInsideTypeBody => target_model_type_atom_node(identity: ^semantic_decl_members_inside_type_body)
     MembersInAssociatedBlock => target_model_type_atom_node(identity: ^semantic_decl_members_in_associated_block)
   }
 }
 
-fn semantic_decl_header_projection_node(projection: TargetSemanticDeclHeaderProjection) -> Node {
-  match projection {
-    HeaderUnwired => target_model_type_atom_node(identity: ^semantic_decl_header_unwired)
-    HeaderLeadingLines => target_model_type_atom_node(identity: ^semantic_decl_header_leading_lines)
+fn semantic_decl_column_node<P>(column: TargetSemanticDeclColumn<P>, placement_node: fn(P) -> Node) -> Node {
+  match column {
+    ColumnUnwired => target_model_type_atom_node(identity: ^semantic_decl_column_unwired)
+    ColumnWired { placement: p } => placement_node(p)
   }
 }
 
-fn decode_semantic_decl_header_projection(bundle: Node) -> Outcome<TargetSemanticDeclHeaderProjection> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: ^semantic_decl_surface_field_header_projection),
-    f: fn(id) {
-      if id == ^semantic_decl_header_unwired {
-        outcome_accepted(value: HeaderUnwired)
-      } else if id == ^semantic_decl_header_leading_lines {
-        outcome_accepted(value: HeaderLeadingLines)
-      } else {
-        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
-      }
-    }
-  )
-}
-
-fn semantic_decl_import_projection_node(projection: TargetSemanticDeclImportProjection) -> Node {
-  match projection {
-    ImportsUnwired => target_model_type_atom_node(identity: ^semantic_decl_imports_unwired)
-    ImportsLeading => target_model_type_atom_node(identity: ^semantic_decl_imports_leading)
+fn decode_semantic_decl_plain_placement(id: Symbol, bundle: Node) -> Outcome<TargetSemanticDeclColumnPlain> {
+  if id == ^semantic_decl_column_plain {
+    outcome_accepted(value: TargetSemanticDeclColumnPlain {})
+  } else {
+    outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
   }
 }
 
-fn decode_semantic_decl_import_projection(bundle: Node) -> Outcome<TargetSemanticDeclImportProjection> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: ^semantic_decl_surface_field_import_projection),
-    f: fn(id) {
-      if id == ^semantic_decl_imports_unwired {
-        outcome_accepted(value: ImportsUnwired)
-      } else if id == ^semantic_decl_imports_leading {
-        outcome_accepted(value: ImportsLeading)
-      } else {
-        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
-      }
-    }
-  )
+fn decode_semantic_decl_member_placement(id: Symbol, bundle: Node) -> Outcome<TargetSemanticDeclMemberPlacement> {
+  if id == ^semantic_decl_members_inside_type_body {
+    outcome_accepted(value: MembersInsideTypeBody)
+  } else if id == ^semantic_decl_members_in_associated_block {
+    outcome_accepted(value: MembersInAssociatedBlock)
+  } else {
+    outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
+  }
 }
 
-fn decode_semantic_decl_member_projection(bundle: Node) -> Outcome<TargetSemanticDeclMemberProjection> {
+fn decode_semantic_decl_column<P>(
+  bundle: Node,
+  field: Symbol,
+  placement: fn(Symbol) -> Outcome<P>
+) -> Outcome<TargetSemanticDeclColumn<P>> {
   bind_outcome(
-    o: projection_bundle_symbol_field(bundle: bundle, field: ^semantic_decl_surface_field_member_projection),
+    o: projection_bundle_symbol_field(bundle: bundle, field: field),
     f: fn(id) {
-      if id == ^semantic_decl_members_unwired {
-        outcome_accepted(value: MembersUnwired)
-      } else if id == ^semantic_decl_members_inside_type_body {
-        outcome_accepted(value: MembersInsideTypeBody)
-      } else if id == ^semantic_decl_members_in_associated_block {
-        outcome_accepted(value: MembersInAssociatedBlock)
+      if id == ^semantic_decl_column_unwired {
+        outcome_accepted(value: ColumnUnwired)
       } else {
-        outcome_rejected(d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle))
+        bind_outcome(o: placement(id), f: fn(p) { outcome_accepted(value: ColumnWired { placement: p }) })
       }
     }
   )
@@ -1686,14 +1686,20 @@ fn decode_semantic_decl_surface_projection_bundle(
                                         ),
                                         f: fn(coproduct_layout) {
                                           bind_outcome(
-                                            o: decode_semantic_decl_member_projection(bundle: bundle),
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_member_projection, placement: fn(id) { decode_semantic_decl_member_placement(id: id, bundle: bundle) }),
                                             f: fn(member_projection) {
                                           bind_outcome(
-                                            o: decode_semantic_decl_import_projection(bundle: bundle),
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_import_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
                                             f: fn(import_projection) {
                                           bind_outcome(
-                                            o: decode_semantic_decl_header_projection(bundle: bundle),
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_header_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
                                             f: fn(header_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_doc_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
+                                            f: fn(doc_projection) {
+                                          bind_outcome(
+                                            o: decode_semantic_decl_column(bundle: bundle, field: ^semantic_decl_surface_field_conformance_projection, placement: fn(id) { decode_semantic_decl_plain_placement(id: id, bundle: bundle) }),
+                                            f: fn(conformance_projection) {
                                           outcome_accepted(
                                             TargetSemanticDeclSurfaceProjection {
                                               record_decoration_lines: record_decoration_lines,
@@ -1706,7 +1712,13 @@ fn decode_semantic_decl_surface_projection_bundle(
                                               coproduct_layout: coproduct_layout,
                                               member_projection: member_projection,
                                               import_projection: import_projection,
-                                              header_projection: header_projection
+                                              header_projection: header_projection,
+                                              doc_projection: doc_projection,
+                                              conformance_projection: conformance_projection
+                                            }
+                                          )
+                                            }
+                                          )
                                             }
                                           )
                                             }
@@ -1875,7 +1887,7 @@ fn semantic_decl_emission_from_target(target: TargetModel) -> Outcome<TargetSema
 }
 
 fn target_semantic_decl_surface_pos(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn target_semantic_decl_surface_conj(children: List<Edge>) -> Node {
@@ -2107,18 +2119,25 @@ fn target_semantic_decl_surface_struct_name_field_edges(
   name: Symbol,
   fields: List<Node>,
   body_edges: List<Edge>,
+  conformance_edges: List<Edge>,
   struct_typedef_name_after_fields: Bool
 ) -> List<Edge> {
   if struct_typedef_name_after_fields {
-    [
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges)),
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
-    ]
+    list_append(
+      left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges)) ],
+      right: list_append(
+        left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)) ],
+        right: conformance_edges
+      )
+    )
   } else {
-    [
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges))
-    ]
+    list_append(
+      left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)) ],
+      right: list_append(
+        left: conformance_edges,
+        right: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block_with(fields: fields, body_edges: body_edges)) ]
+      )
+    )
   }
 }
 
@@ -2128,6 +2147,7 @@ fn target_semantic_decl_surface_struct_nongeneric(
   fields: List<Node>,
   body_member_edges: List<Edge>,
   trailing_member_edges: List<Edge>,
+  conformance_edges: List<Edge>,
   struct_typedef_name_after_fields: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
@@ -2138,6 +2158,7 @@ fn target_semantic_decl_surface_struct_nongeneric(
           name: name,
           fields: fields,
           body_edges: body_member_edges,
+          conformance_edges: conformance_edges,
           struct_typedef_name_after_fields: struct_typedef_name_after_fields
         ),
         right: trailing_member_edges
@@ -2155,38 +2176,48 @@ fn target_semantic_decl_import_surface(path: Symbol) -> Node {
 // The imports a declaration leads with, one arm per import projection. Under a wired target the leading edge is
 // ALWAYS present (an empty list is the nil terminator the target's nullable import list consumes), so a
 // declaration without imports prints nothing extra; under an unwired target an import refuses, located.
-fn target_semantic_decl_surface_with_imports(
-  projection: TargetSemanticDeclSurfaceProjection,
-  imports: List<Symbol>,
+fn target_semantic_decl_import_surfaces(imports: List<Symbol>) -> List<Node> {
+  fold_list(
+    xs: imports,
+    empty: Empty,
+    cons: fn(acc, path) { list_snoc_item(xs: acc, item: target_semantic_decl_import_surface(path: path)) }
+  )
+}
+
+fn target_semantic_decl_line_surfaces(lines: List<String>) -> List<Node> {
+  fold_list(
+    xs: lines,
+    empty: Empty,
+    cons: fn(acc, line) { list_snoc_item(xs: acc, item: target_semantic_decl_header_line_surface(line: line)) }
+  )
+}
+
+// The leading list a declaration states ahead of its keyword (header lines, imports, doc lines), one arm per column.
+// Under a wired column the leading edge is ALWAYS present (an empty list is the nil the target's nullable list
+// consumes), so nothing extra prints; under an unwired column an item refuses, located, under `reason`.
+fn target_semantic_decl_surface_with_leading_lines(
+  column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  reason: Symbol,
+  items: List<Node>,
   surface: Node
 ) -> Outcome<Node> {
-  match projection.import_projection {
-    ImportsUnwired =>
-      if is_empty(xs: imports) {
+  match column {
+    ColumnUnwired =>
+      if is_empty(xs: items) {
         outcome_accepted(value: surface)
       } else {
         outcome_rejected(d: Diagnostic {
-              reason: ^target_semantic_decl_imports_unwired,
+              reason: reason,
               at: node_locus(node: surface),
               correction: Unavailable { reason: ExternalContractUnknown }
             })
       }
-    ImportsLeading =>
+    ColumnWired { placement: _ } =>
       outcome_accepted(
         value: Node {
           kind: surface.kind,
           children: list_append(
-            left: [
-              target_semantic_decl_surface_pos(
-                target: target_semantic_decl_surface_cons_list(
-                  items: fold_list(
-                    xs: imports,
-                    empty: Empty,
-                    cons: fn(acc, path) { list_snoc_item(xs: acc, item: target_semantic_decl_import_surface(path: path)) }
-                  )
-                )
-              )
-            ],
+            left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_cons_list(items: items)) ],
             right: surface.children
           ),
           occurrence_id: surface.occurrence_id
@@ -2203,6 +2234,24 @@ fn target_semantic_decl_lines_break(lines: List<String>) -> Bool {
   !(for_all(xs: lines, predicate: fn(line) { !string_any_char_in(s: line, alphabet: target_semantic_decl_line_break_alphabet) }))
 }
 
+// Text lines (header and doc) lead through the same column function, after the line-break refusal.
+fn target_semantic_decl_surface_with_leading_text_lines(
+  column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  reason: Symbol,
+  lines: List<String>,
+  surface: Node
+) -> Outcome<Node> {
+  if target_semantic_decl_lines_break(lines: lines) {
+    outcome_rejected(d: Diagnostic {
+          reason: ^target_semantic_decl_line_break,
+          at: node_locus(node: surface),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+  } else {
+    target_semantic_decl_surface_with_leading_lines(column: column, reason: reason, items: target_semantic_decl_line_surfaces(lines: lines), surface: surface)
+  }
+}
+
 fn target_semantic_decl_header_line_surface(line: String) -> Node {
   target_semantic_decl_surface_conj(
     children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: symbol_intern_lexeme(lexeme: line))) ]
@@ -2212,50 +2261,38 @@ fn target_semantic_decl_header_line_surface(line: String) -> Node {
 // The header lines a declaration leads with, one arm per header projection. Under a wired target the leading edge
 // is ALWAYS present (an empty list is the nil the target's nullable header list consumes); under an unwired target
 // a line refuses, located. Applied last, so the header leads the imports.
-fn target_semantic_decl_surface_with_header(
+// The doc lines a declaration carries, one arm per doc projection; the same leading-edge shape as the header.
+// The conformance edge a declaration states after its name: absent when it names none (the target's own fixed clause
+// prints), present under a wired target when it names some, and a located refusal under an unwired target.
+fn target_semantic_decl_conformance_edges(
   projection: TargetSemanticDeclSurfaceProjection,
-  header: List<String>,
-  surface: Node
-) -> Outcome<Node> {
-  match projection.header_projection {
-    HeaderUnwired =>
-      if is_empty(xs: header) {
-        outcome_accepted(value: surface)
-      } else {
-        outcome_rejected(d: Diagnostic {
-              reason: ^target_semantic_decl_header_unwired,
-              at: node_locus(node: surface),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            })
-      }
-    HeaderLeadingLines =>
-      if target_semantic_decl_lines_break(lines: header) {
-        outcome_rejected(d: Diagnostic {
-              reason: ^target_semantic_decl_header_line_break,
-              at: node_locus(node: surface),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            })
-      } else {
-      outcome_accepted(
-        value: Node {
-          kind: surface.kind,
-          children: list_append(
-            left: [
+  conformances: TargetSemanticDeclConformances,
+  at: Node
+) -> Outcome<List<Edge>> {
+  match conformances {
+    ConformancesTargetDefault => outcome_accepted(value: Empty)
+    ConformancesNamed { names: names } =>
+      match projection.conformance_projection {
+        ColumnUnwired =>
+          outcome_rejected(d: Diagnostic {
+                reason: ^target_semantic_decl_conformance_unwired,
+                at: node_locus(node: at),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+        ColumnWired { placement: _ } =>
+          outcome_accepted(
+            value: [
               target_semantic_decl_surface_pos(
                 target: target_semantic_decl_surface_cons_list(
                   items: fold_list(
-                    xs: header,
+                    xs: names,
                     empty: Empty,
-                    cons: fn(acc, line) { list_snoc_item(xs: acc, item: target_semantic_decl_header_line_surface(line: line)) }
+                    cons: fn(acc, c) { list_snoc_item(xs: acc, item: target_semantic_decl_surface_atom(id: c)) }
                   )
                 )
               )
-            ],
-            right: surface.children
-          ),
-          occurrence_id: surface.occurrence_id
-        }
-      )
+            ]
+          )
       }
   }
 }
@@ -2294,17 +2331,17 @@ fn target_semantic_decl_member_edges(
     outcome_accepted(value: Empty)
   } else {
     match projection.member_projection {
-      MembersUnwired =>
+      ColumnUnwired =>
         outcome_rejected(d: Diagnostic {
               reason: ^target_semantic_decl_members_unwired,
               at: node_locus(node: at),
               correction: Unavailable { reason: ExternalContractUnknown }
             })
-      MembersInsideTypeBody =>
+      ColumnWired { placement: MembersInsideTypeBody } =>
         outcome_accepted(
           value: if inside_body { [target_semantic_decl_member_block_edge(members: members)] } else { [] }
         )
-      MembersInAssociatedBlock =>
+      ColumnWired { placement: MembersInAssociatedBlock } =>
         outcome_accepted(
           value: if inside_body {
             []
@@ -2323,18 +2360,24 @@ fn target_semantic_decl_surface_struct_generic(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   params: List<Symbol>,
-  fields: List<Node>
+  fields: List<Node>,
+  conformance_edges: List<Edge>
 ) -> Node {
   target_semantic_decl_surface_conj(
     children: list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_generic_params(params: params)
-        ),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-      ]
+      right: list_append(
+        left: [
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_generic_params(params: params)
+          )
+        ],
+        right: list_append(
+          left: conformance_edges,
+          right: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields)) ]
+        )
+      )
     )
   )
 }
@@ -2342,6 +2385,7 @@ fn target_semantic_decl_surface_struct_generic(
 fn target_semantic_decl_surface_enum_name_variant_edges(
   name: Symbol,
   variants: List<Node>,
+  conformance_edges: List<Edge>,
   enum_name_after_variants: Bool
 ) -> List<Edge> {
   if enum_name_after_variants {
@@ -2351,20 +2395,24 @@ fn target_semantic_decl_surface_enum_name_variant_edges(
           target: target_semantic_decl_surface_variant_block(variants: variants)
         )
       ],
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
-      ]
+      right: list_append(
+        left: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)) ],
+        right: conformance_edges
+      )
     )
   } else {
     list_append(
       left: [
         target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
       ],
-      right: [
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_variant_block(variants: variants)
-        )
-      ]
+      right: list_append(
+        left: conformance_edges,
+        right: [
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_variant_block(variants: variants)
+          )
+        ]
+      )
     )
   }
 }
@@ -2373,6 +2421,7 @@ fn target_semantic_decl_surface_enum_nongeneric(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   variants: List<Node>,
+  conformance_edges: List<Edge>,
   enum_name_after_variants: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
@@ -2381,6 +2430,7 @@ fn target_semantic_decl_surface_enum_nongeneric(
       right: target_semantic_decl_surface_enum_name_variant_edges(
         name: name,
         variants: variants,
+        conformance_edges: conformance_edges,
         enum_name_after_variants: enum_name_after_variants
       )
     )
@@ -2392,6 +2442,7 @@ fn target_semantic_decl_surface_enum_generic(
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   params: List<Symbol>,
   variants: List<Node>,
+  conformance_edges: List<Edge>,
   enum_name_after_variants: Bool
 ) -> Node {
   if enum_name_after_variants {
@@ -2408,6 +2459,7 @@ fn target_semantic_decl_surface_enum_generic(
         right: target_semantic_decl_surface_enum_name_variant_edges(
           name: name,
           variants: variants,
+          conformance_edges: conformance_edges,
           enum_name_after_variants: true
         )
       )
@@ -2416,15 +2468,22 @@ fn target_semantic_decl_surface_enum_generic(
     target_semantic_decl_surface_conj(
       children: list_append(
         left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-        right: [
-          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-          target_semantic_decl_surface_pos(
-            target: target_semantic_decl_surface_generic_params(params: params)
-          ),
-          target_semantic_decl_surface_pos(
-            target: target_semantic_decl_surface_variant_block(variants: variants)
+        right: list_append(
+          left: [
+            target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+            target_semantic_decl_surface_pos(
+              target: target_semantic_decl_surface_generic_params(params: params)
+            )
+          ],
+          right: list_append(
+            left: conformance_edges,
+            right: [
+              target_semantic_decl_surface_pos(
+                target: target_semantic_decl_surface_variant_block(variants: variants)
+              )
+            ]
           )
-        ]
+        )
       )
     )
   }
@@ -2512,6 +2571,7 @@ fn target_semantic_decl_surface_tagged_union_nongeneric(
           variants: variants
         ),
         body_edges: Empty,
+        conformance_edges: Empty,
         struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
       )
     )
@@ -2689,9 +2749,114 @@ fn target_semantic_decl_coproduct_decoration_lines(
     )
   }
 }
+// A DECLARATION'S DOCUMENTATION IS ONE INPUT: the lines above the declaration and the lines above each field. A
+// field is keyed by its identity, a DeclarationRef whose NamedField names a field of THIS declaration.
+type TargetSemanticDeclFieldDoc { field: DeclarationRef, lines: List<String> }
+
+type TargetSemanticDeclDocumentation { lines: List<String>, fields: List<TargetSemanticDeclFieldDoc> }
+
+fn target_semantic_decl_no_documentation() -> TargetSemanticDeclDocumentation {
+  TargetSemanticDeclDocumentation { lines: [], fields: [] }
+}
+
+// The field name a documentation entry keys, or absent when the entry names no field of the declaration `name`.
+fn target_semantic_decl_field_doc_key(entry: TargetSemanticDeclFieldDoc, name: Symbol) -> Symbol? {
+  match entry.field.field {
+    NamedField { field_name: f } =>
+      if symbol_intern_lexeme(lexeme: entry.field.decl_name as String) == name {
+        Present { value: symbol_intern_lexeme(lexeme: f as String) }
+      } else {
+        Absent
+      }
+    WholeDeclaration => Absent
+    TypeParameter { name: _ } => Absent
+  }
+}
+
+// The record's field names, built once: membership is then a lookup, not a walk of the children.
+fn target_semantic_decl_record_field_names(record: Node) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: record.children,
+    empty: empty_map(),
+    cons: fn(acc, e) {
+      match declared_field_from_edge(e: e) {
+        Present { value: binder } => map_insert(m: acc, key: binder.name, value: true)
+        Absent => acc
+      }
+    }
+  )
+}
+
+// FAIL CLOSED: an entry naming a field the record lacks (or another declaration, or no field) and a second entry
+// for one field each refuse, located at the record; nothing is dropped.
+fn target_semantic_decl_documentation_fields_admitted(
+  documentation: TargetSemanticDeclDocumentation,
+  name: Symbol,
+  record: Node
+) -> Outcome<Node> {
+  let fields = target_semantic_decl_record_field_names(record: record)
+  bind_outcome(
+    o: fold_list(
+      xs: documentation.fields,
+      empty: outcome_accepted(value: empty_map()),
+      cons: fn(acc_o, entry) {
+        bind_outcome(
+          o: acc_o,
+          f: fn(seen) {
+            match target_semantic_decl_field_doc_key(entry: entry, name: name) {
+              Absent => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_unknown_field, record: record)
+              Present { value: key } =>
+                match map_lookup(m: fields, key: key) {
+                  Absent => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_unknown_field, record: record)
+                  Present { value: _ } =>
+                    match map_lookup(m: seen, key: key) {
+                      Present { value: _ } => target_semantic_decl_field_doc_refused(reason: ^target_semantic_decl_field_doc_duplicate, record: record)
+                      Absent => outcome_accepted(value: map_insert(m: seen, key: key, value: true))
+                    }
+                }
+            }
+          }
+        )
+      }
+    ),
+    f: fn(_) { outcome_accepted(value: record) }
+  )
+}
+
+fn target_semantic_decl_field_doc_refused(reason: Symbol, record: Node) -> Outcome<Map<Symbol, Bool>> {
+  outcome_rejected(d: Diagnostic {
+    reason: reason,
+    at: node_locus(node: record),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
+}
+
+fn target_semantic_decl_field_doc_lines(edge: Edge, name: Symbol, field_docs: List<TargetSemanticDeclFieldDoc>) -> List<String> {
+  match declared_field_from_edge(e: edge) {
+    Present { value: binder } =>
+      fold_list(
+        xs: field_docs,
+        empty: Empty,
+        cons: fn(acc, d) {
+          match target_semantic_decl_field_doc_key(entry: d, name: name) {
+            Present { value: k } => if k == binder.name { list_append(left: acc, right: d.lines) } else { acc }
+            Absent => acc
+          }
+        }
+      )
+    Absent => Empty
+  }
+}
+
+// Field docs ride the declaration's doc column, one leading list per field, so a field's docs state themselves
+// under the same wired/unwired rule a declaration's do. A position that takes no field docs passes ColumnUnwired
+// and an empty list, which adds no edge.
 fn target_semantic_decl_field_surfaces(
   edges: List<Edge>,
   projection: TargetSemanticDeclSurfaceProjection,
+  doc_column: TargetSemanticDeclColumn<TargetSemanticDeclColumnPlain>,
+  name: Symbol,
+  field_docs: List<TargetSemanticDeclFieldDoc>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<Node>> {
   fold_list(
@@ -2707,8 +2872,16 @@ fn target_semantic_decl_field_surfaces(
               projection: projection,
               type_binding: type_binding
             ),
-            f: fn(fnode) {
-              outcome_accepted(value: list_snoc_item(xs: acc, item: fnode))
+            f: fn(bare) {
+              bind_outcome(
+                o: target_semantic_decl_surface_with_leading_text_lines(
+                  column: doc_column,
+                  reason: ^target_semantic_decl_doc_unwired,
+                  lines: target_semantic_decl_field_doc_lines(edge: edge, name: name, field_docs: field_docs),
+                  surface: bare
+                ),
+                f: fn(fnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: fnode)) }
+              )
             }
           )
         }
@@ -2729,6 +2902,9 @@ fn target_semantic_decl_tagged_union_variant_surface_from_edge(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection,
+            doc_column: ColumnUnwired,
+            name: vname,
+            field_docs: Empty,
             type_binding: type_binding
           ),
           f: fn(fields) {
@@ -2798,6 +2974,9 @@ fn target_semantic_decl_variant_surface_from_edge(
           o: target_semantic_decl_field_surfaces(
             edges: edge.target.children,
             projection: projection,
+            doc_column: ColumnUnwired,
+            name: vname,
+            field_docs: Empty,
             type_binding: type_binding
           ),
           f: fn(fields) {
@@ -2913,6 +3092,7 @@ fn target_semantic_enum_surface_from_coproduct(
   name: Symbol,
   params: List<Symbol>,
   coproduct: Node,
+  conformances: TargetSemanticDeclConformances,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: coproduct) {
@@ -2925,7 +3105,7 @@ fn target_semantic_enum_surface_from_coproduct(
     NotATypeDecl =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: coproduct))
     PlainTypeDecl { member: m } =>
-      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m, type_binding: type_binding)
+      target_semantic_enum_surface_from_coproduct_admitted(projection: projection, name: name, params: params, coproduct: m, conformances: conformances, type_binding: type_binding)
   }
 }
 
@@ -2934,6 +3114,7 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
   name: Symbol,
   params: List<Symbol>,
   coproduct: Node,
+  conformances: TargetSemanticDeclConformances,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match coproduct.kind {
@@ -2951,6 +3132,9 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
               type_binding: type_binding
             ),
             f: fn(variants) {
+            bind_outcome(
+            o: target_semantic_decl_conformance_edges(projection: projection, conformances: conformances, at: coproduct),
+            f: fn(conformance_edges) {
               if target_semantic_decl_coproduct_uses_tagged_union_layout(
                     layout: projection.coproduct_layout
                   )
@@ -2978,6 +3162,7 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
                     name: name,
                     decoration_lines: decoration_lines,
                     variants: variants,
+                    conformance_edges: conformance_edges,
                     enum_name_after_variants: projection.enum_name_after_variants
                   )
                 )
@@ -2988,10 +3173,13 @@ fn target_semantic_enum_surface_from_coproduct_admitted(
                     decoration_lines: decoration_lines,
                     params: params,
                     variants: variants,
+                    conformance_edges: conformance_edges,
                     enum_name_after_variants: projection.enum_name_after_variants
                   )
                 )
               }
+            }
+            )
             }
           )
         }
@@ -3018,6 +3206,8 @@ fn target_semantic_struct_surface_from_record(
   params: List<Symbol>,
   record: Node,
   members: List<TargetSemanticDeclMember>,
+  conformances: TargetSemanticDeclConformances,
+  documentation: TargetSemanticDeclDocumentation,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match type_decl_view(target: record) {
@@ -3030,7 +3220,7 @@ fn target_semantic_struct_surface_from_record(
     NotATypeDecl =>
       outcome_rejected(d: semantic_decl_not_a_member_diagnostic(decl: record))
     PlainTypeDecl { member: m } =>
-      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, type_binding: type_binding)
+      target_semantic_struct_surface_from_record_admitted(projection: projection, name: name, params: params, record: m, members: members, conformances: conformances, documentation: documentation, type_binding: type_binding)
   }
 }
 
@@ -3040,15 +3230,25 @@ fn target_semantic_struct_surface_from_record_admitted(
   params: List<Symbol>,
   record: Node,
   members: List<TargetSemanticDeclMember>,
+  conformances: TargetSemanticDeclConformances,
+  documentation: TargetSemanticDeclDocumentation,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   match record.kind {
     TypeNode { connective: Conj } =>
       bind_outcome(
-        o: target_semantic_decl_field_surfaces(
-          edges: record.children,
-          projection: projection,
-          type_binding: type_binding
+        o: bind_outcome(
+          o: target_semantic_decl_documentation_fields_admitted(documentation: documentation, name: name, record: record),
+          f: fn(_) {
+            target_semantic_decl_field_surfaces(
+              edges: record.children,
+              projection: projection,
+              doc_column: projection.doc_projection,
+              name: name,
+              field_docs: documentation.fields,
+              type_binding: type_binding
+            )
+          }
         ),
         f: fn(fields) {
         bind_outcome(
@@ -3057,6 +3257,9 @@ fn target_semantic_struct_surface_from_record_admitted(
         bind_outcome(
         o: target_semantic_decl_member_edges(projection: projection, name: name, members: members, inside_body: false, at: record),
         f: fn(trailing_member_edges) {
+        bind_outcome(
+        o: target_semantic_decl_conformance_edges(projection: projection, conformances: conformances, at: record),
+        f: fn(conformance_edges) {
           if is_empty(xs: params) {
             outcome_accepted(
               value: target_semantic_decl_surface_struct_nongeneric(
@@ -3065,6 +3268,7 @@ fn target_semantic_struct_surface_from_record_admitted(
                 fields: fields,
                 body_member_edges: body_member_edges,
                 trailing_member_edges: trailing_member_edges,
+                conformance_edges: conformance_edges,
                 struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
               )
             )
@@ -3087,11 +3291,14 @@ fn target_semantic_struct_surface_from_record_admitted(
                   name: name,
                   decoration_lines: projection.record_decoration_lines,
                   params: params,
-                  fields: fields
+                  fields: fields,
+                  conformance_edges: conformance_edges
                 )
               )
             }
           }
+        }
+        )
         }
         )
         }

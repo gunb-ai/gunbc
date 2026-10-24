@@ -108,6 +108,22 @@ fn posix_user_is_root(user: PosixUser) -> Bool {
 // This exists because FilePermissions had no way to reach a host argv, which is a large part of why
 // it sat modeled and unconsumed.
 
+// WHICH PERMISSION CLASS APPLIES (path_resolution(7), "Permission bits"): the owner class when the
+// caller is the file's owner, otherwise the group class when the caller is in the file's group,
+// otherwise other. The first matching class decides and later classes are never consulted. THE RULE IS
+// HERE ONCE; a consumer answers the two membership questions from its own identity representation
+// (numeric ids with every observed group, or declared account names) and asks this function which bits
+// apply. Root's bypass is a separate fact and stays with the consumer that models root.
+fn file_mode_class_bits(mode: FileMode, caller_is_owner: Bool, caller_in_group: Bool) -> PermissionBits {
+  if caller_is_owner {
+    mode.owner
+  } else if caller_in_group {
+    mode.group
+  } else {
+    mode.other
+  }
+}
+
 fn permission_bits_octal_digit(bits: PermissionBits) -> Int {
   let r = if bits.read { 4 } else { 0 }
   let w = if bits.write { 2 } else { 0 }

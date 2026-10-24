@@ -4,7 +4,7 @@ import std.logic { Bool }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
 import v2.compiler.target_carriers { bundle_fidelity_quotient_optional, fidelity_quotient_decode_fidelity }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, Edge, Authored, Positional, Atom, TypeNode, ComputationNode, Conj, Value, Symbol, node_synthetic }
+import v2.std.node { Node, Edge, Authored, Positional, Atom, TypeNode, ComputationNode, Conj, Value, Symbol, node_synthetic, NotADeclaration }
 import std.optional { Present, Absent }
 
 // THE 07_target_carriers ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
@@ -22,30 +22,32 @@ fn tcc_conj(children: List<Edge>) -> Node {
 }
 
 fn tcc_modeled_only() -> Node {
-  tcc_conj(children: [Edge { label: Positional, target: tcc_atom(identity: ^dag_fidelity_disposition_kind_modeled) }])
+  tcc_conj(children: [Edge { label: Positional, target: tcc_atom(identity: ^dag_fidelity_disposition_kind_modeled), declaration: NotADeclaration }])
 }
 
 fn tcc_with_fail_closed() -> Node {
   tcc_conj(children: [
-    Edge { label: Positional, target: tcc_atom(identity: ^dag_fidelity_disposition_kind_modeled) },
+    Edge { label: Positional, target: tcc_atom(identity: ^dag_fidelity_disposition_kind_modeled), declaration: NotADeclaration },
     Edge {
       label: Positional,
       target: tcc_conj(children: [
         Edge {
           label: Authored { name: ^dag_fidelity_disposition_kind_fail_closed },
-          target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+          target: node_synthetic(kind: ComputationNode { behavior: Value }, children: []),
+          declaration: NotADeclaration
         }
-      ])
+      ]),
+      declaration: NotADeclaration
     }
   ])
 }
 
 fn tcc_unrecognized() -> Node {
-  tcc_conj(children: [Edge { label: Positional, target: tcc_atom(identity: ^self_host_witness_unknown_disposition) }])
+  tcc_conj(children: [Edge { label: Positional, target: tcc_atom(identity: ^self_host_witness_unknown_disposition), declaration: NotADeclaration }])
 }
 
 fn tcc_quotient_edge() -> Edge {
-  Edge { label: Authored { name: ^target_model_edge_fidelity_quotient }, target: tcc_modeled_only() }
+  Edge { label: Authored { name: ^target_model_edge_fidelity_quotient }, target: tcc_modeled_only(), declaration: NotADeclaration }
 }
 
 type TccQuotientReading = TccQuotientRefused | TccQuotientAbsent | TccQuotientPresent

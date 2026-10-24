@@ -1,0 +1,53 @@
+module test.claim.host.h11ssl_smpro_platform_witness
+
+import std.types { Bool }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority }
+import extdeps.board_soc { board_soc_architecture, Established }
+import extdeps.cpu.amd { amd_epyc_7001_soc_family, amd_epyc_7002_soc_family }
+import extdeps.cpu.types { soc_family_eq }
+import extdeps.toolchain.types { X86_64 }
+import gunbc.host.board_platform_facts { board_soc_edges_for }
+import gunbc.host.smpro_platform_capability {
+  smpro_facility_of_families, SmproFacilityNotCarried, SmproFacilityCarried, SmproFacilityUnestablished,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// H11SSL RESOLVES SMpro TO NotCarried FROM CITED SILICON. The route is the production one: the
+// consumer table (gunbc.host.board_platform_facts.board_soc_edges) joined to the board authority
+// (board_soc_edges_for), the edge's families read by the SMpro verdict, with no supplied stand-in
+// family. Both EPYC families are the cited AMD rows in extdeps.cpu.amd.
+//
+// ONE-LINE MUTATION RED: delete `supermicro_h11ssl_board_soc_edge` from `board_soc_edges` and
+// board_soc_edges_for answers Absent for the H11SSL authority, so the first arm fails; in
+// production that Absent is host_board_soc_families == none, i.e. SmproFacilityUnestablished
+// NoBoardRowBound, never NotCarried. Delete either family from the edge's roster and the
+// edge-names-both claim fails.
+test fn w_h11ssl_smpro_is_not_carried_from_the_cited_edge() -> Bool {
+  match board_soc_edges_for(authority: supermicro_h11ssl_board_authority) {
+    Absent => false
+    Present { value: edge } => match smpro_facility_of_families(families: edge.soc_families) {
+      SmproFacilityNotCarried { family: _ } => true
+      SmproFacilityCarried { family: _ } => false
+      SmproFacilityUnestablished { cause: _ } => false
+    }
+  }
+}
+
+test fn w_h11ssl_edge_names_both_cited_epyc_families_and_establishes_x86() -> Bool {
+  match board_soc_edges_for(authority: supermicro_h11ssl_board_authority) {
+    Absent => false
+    Present { value: edge } => {
+      let roster = edge.soc_families
+      let names_both = soc_family_eq(a: roster.head, b: amd_epyc_7001_soc_family)
+        && any(roster.tail, f => soc_family_eq(a: f, b: amd_epyc_7002_soc_family))
+      let x86 = match board_soc_architecture(edge: edge) {
+        Established { architecture: a } => a == X86_64
+        _ => false
+      }
+      names_both && x86
+    }
+  }
+}

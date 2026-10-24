@@ -2,10 +2,11 @@ module extdeps.tools.id
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, List, Bool, Unit }
+import std.types { NonEmptyStr, List, Bool, Unit, Int, String }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -14,19 +15,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THE ABSOLUTE PATH IS LOAD-BEARING, NOT PEDANTRY. The argv rows above name `id` bare and resolve
-// through PATH, which is right for a remote shell. A sudoers NOPASSWD rule matches on the command
-// PATH, so a privileged invocation that names the binary bare is a different subject from the one
-// the grant authorizes -- and gunbc.host.host_effect_realize needs both spellings for the same tool.
+// THE ABSOLUTE PATH IS LOAD-BEARING, NOT PEDANTRY. The builders in this module name `id` bare and
+// resolve through PATH, which is right for a remote shell. A sudoers NOPASSWD rule matches on the
+// command PATH, so a privileged invocation that names the binary bare is a different subject from the
+// one the grant authorizes -- and gunbc.host.host_effect_realize needs both spellings for the same
+// tool (its own *_absolute rows spell the binary through this path).
 data id_binary_path: NonEmptyStr = "/usr/bin/id"
 
-// THE PATH-RESOLVED SPELLING, DECLARED ONCE. The argv rows below and the command builder all name
-// the same program, and spelling it three times would be three places one word could drift.
+// THE PATH-RESOLVED SPELLING, DECLARED ONCE. Every argv row and command builder in this module names
+// the same program through this identity, and spelling the word again per builder would be another
+// place one word could drift. The numeric flag pairs exist ONCE, as the sealed builders below
+// (id_uid_command, id_gid_command) -- the module's own header rule applied to the flags themselves.
 fn id_program() -> ProgramIdentity = uncataloged_program(invocation: "id")
-
-fn id_uid_argv() -> List<String> {
-  [id_program().invocation as String, "-u"]
-}
 
 // NO OPERAND, DELIBERATELY: id(1) with no operand answers from the CALLING PROCESS's own
 // credentials, established at its exec and never changing afterwards. The reach probe asks "which
@@ -41,8 +41,15 @@ fn id_user_name_argv() -> List<String> {
   [id_program().invocation as String, "-un"]
 }
 
-fn id_gid_argv() -> List<String> {
-  [id_program().invocation as String, "-g"]
+// -gn WITH NO OPERAND: the PRIMARY GROUP NAME of THE CALLING PROCESS. -n selects NAMES over numeric gids
+// and -g picks the primary group, which is the group a process may chgrp an entry to without privilege.
+// It exists because find(1)'s `%g` prints the group NAME when the account database maps the gid to one
+// and the number when it does not: a witness that groups its own tree to a token and then reads the tree
+// back must compare against the spelling the tool used for the same inode, so it asks for the name the
+// way find would print it. The no-operand rule is the one every probe in this module follows -- the
+// account database cannot tell you what a process that is already running holds.
+fn id_group_name_command() -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-gn"])
 }
 
 // -nG NAMES THE USER EXPLICITLY, AND THAT IS THE WHOLE REASON THIS BUILDER TAKES ONE. id(1) with an
@@ -58,9 +65,96 @@ fn id_group_names_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-nG", "--", user as String])
 }
 
+// -g WITH NO OPERAND: the PRIMARY GROUP of THE CALLING PROCESS, numeric. The counterpart of
+// id_uid_command's no-operand rule, and for the same reason: install(1) takes a numeric owner:group, and
+// a witness that seeds a tree must seed it with the group it actually holds. A caller asking whether a
+// SUPPLEMENTARY group has landed must instead ask the account database (id_group_names_command), because
+// a running process cannot have picked one up.
+fn id_gid_command() -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-g"])
+}
+
+// THE FLAT ROW, DERIVED -- not a second spelling. The flag lives once, in the sealed builder above;
+// this renders its words (extdeps.exec.command's argv_words, the corpus rule that renderers and
+// transports needing one flat vector derive it there). Callers that run raw argv words (the bounded-
+// controls actuator) take this; callers that spawn through the typed surface take the command.
+fn id_gid_argv() -> List<String> {
+  argv_words(command: id_gid_command())
+}
+
+// -u WITH NO OPERAND: the uid of THE CALLING PROCESS, which is the account the transport actually
+// reached -- the counterpart of id_user_name_argv's no-operand rule, in numeric form. install(1) takes a
+// numeric owner, and a witness that seeds a tree must seed it with the owner it is actually allowed to
+// claim; asking the account database for a name and guessing the number is how a witness ends up
+// asserting a mode it never had.
+fn id_uid_command() -> ArgvCommand {
+  argv_command(program: id_program(), arguments: ["-u"])
+}
+
+// THE FLAT ROW, DERIVED -- same rule as id_gid_argv: the flag lives once in the sealed builder; this
+// renders its words for callers that run raw argv (the bounded-controls actuator reads the uid it
+// actually holds).
+fn id_uid_argv() -> List<String> {
+  argv_words(command: id_uid_command())
+}
+
 // -u WITH AN OPERAND: the named account's numeric uid, from the account database (as above).
 fn id_uid_of_command(user: NonEmptyStr) -> ArgvCommand {
   argv_command(program: id_program(), arguments: ["-u", "--", user as String])
+}
+
+// id(1) WITH AN OPERAND prints `uid=1004(gunbc-worker) gid=1004(gunbc-worker) groups=1004(gunbc-worker),1003(gunbc-attempt)`
+// (man7.org id.1): the numeric id leads each `N(name)` entry. THE GRAMMAR IS THE TOOL'S, so the parse
+// lives here and a consumer reads the structured result. A line that does not carry a uid, a gid and
+// a groups list, or carries a non-numeric id, is unobserved with its reason, never an empty group list.
+type IdCredentials
+  = IdCredentialsObserved { uid: Int, primary_gid: Int, supplementary_gids: List<Int> }
+  | IdCredentialsUnobserved { reason: String }
+
+fn id_numbered_entry(segment: String) -> Int? {
+  match get(xs: split(s: segment, delimiter: "("), index: 0) {
+    Absent => none
+    Present { value: head } => parse_int(s: head)
+  }
+}
+
+fn id_field_value(fields: List<String>, prefix: String) -> String? {
+  match get(xs: filter(fields, f => starts_with(s: f, prefix: prefix)), index: 0) {
+    Absent => none
+    Present { value: f } => Present { value: substring(s: f, start: string_length(s: prefix), end: string_length(s: f)) }
+  }
+}
+
+fn id_credentials_of_line(line: String) -> IdCredentials {
+  let fields = split(s: trim(s: line), delimiter: " ")
+  match id_field_value(fields: fields, prefix: "uid=") {
+    Absent => IdCredentialsUnobserved { reason: "id printed no uid field" }
+    Present { value: u } =>
+      match id_field_value(fields: fields, prefix: "gid=") {
+        Absent => IdCredentialsUnobserved { reason: "id printed no gid field" }
+        Present { value: g } =>
+          match id_field_value(fields: fields, prefix: "groups=") {
+            Absent => IdCredentialsUnobserved { reason: "id printed no groups field" }
+            Present { value: gs } => {
+              let segments = split(s: gs, delimiter: ",")
+              let gids = flat_map(segments, seg => match id_numbered_entry(segment: seg) { Present { value: n } => [n]  Absent => [] })
+              match id_numbered_entry(segment: u) {
+                Absent => IdCredentialsUnobserved { reason: "id printed a uid that is not a number" }
+                Present { value: uid } =>
+                  match id_numbered_entry(segment: g) {
+                    Absent => IdCredentialsUnobserved { reason: "id printed a gid that is not a number" }
+                    Present { value: pg } =>
+                      if gids.count() != segments.count() {
+                        IdCredentialsUnobserved { reason: "id printed a group that is not a number" }
+                      } else {
+                        IdCredentialsObserved { uid: uid, primary_gid: pg, supplementary_gids: gids }
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
 }
 
 service os.Id {

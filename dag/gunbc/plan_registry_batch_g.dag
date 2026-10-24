@@ -23,6 +23,7 @@ import gunbc.plans.source_layout_authority { source_layout_authority_plan }
 import gunbc.plans.physical_machine_boot_program { physical_machine_boot_program_plan }
 import gunbc.plans.gunb_ai_projection { gunb_ai_projection_plan }
 import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_semantics_plan }
+import gunbc.plans.ntfy_deployment_gate_approval { ntfy_deployment_gate_approval_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -46,5 +47,6 @@ data batch_g_plans: List<Plan> = [
   source_layout_authority_plan,
   physical_machine_boot_program_plan,
   gunb_ai_projection_plan,
-  p4_home_serving_power_semantics_plan
+  p4_home_serving_power_semantics_plan,
+  ntfy_deployment_gate_approval_plan
 ]
