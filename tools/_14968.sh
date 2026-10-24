@@ -11,6 +11,7 @@
 #     summary + ADMITTED lines + unreached lines; guarantee_probe_corpus_witness spot-check
 set -u
 cd "$(dirname "$0")/.." || exit 9
+mkdir -p /root/workspace/.c4logs968; exec > >(tee /root/workspace/.c4logs968/last.log) 2>&1
 DEADLINE=${1:-2400}
 START=$(date +%s)
 HEAD_SHA=6f21ff1ced52d035d6ac7399db1612650e5d1a47
