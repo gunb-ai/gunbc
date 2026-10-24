@@ -8,7 +8,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.types { yaml_string, kv }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, SelfHosted, Bash,
+  Workflow, Job, Step, RunStep, SelfHosted, Bash, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputString,
   WorkflowPermissions, PermRead,
   self_hosted_provenance_label,
@@ -209,11 +209,13 @@ fn microvm_shakedown_job(script: String) -> Job {
   }
 }
 
-fn microvm_shakedown_workflow(script: String) -> Workflow {
-  Workflow {
-  name: microvm_shakedown_workflow_name,
-  run_name: Present { value: join(["microvm-shakedown ", microvm_shakedown_attempt_expression()], "") },
-  on: [
+// THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
+// field, so it cannot depend on the dispatched script: "workflow_dispatch-only" — the reason
+// gunbc.runner.runner_fleet_job_timeout_census omits this workflow from the drain-bound population —
+// is then a property of this constant, read directly by the census discharge and its witness, not a
+// sampling over built workflows.
+fn microvm_shakedown_workflow_triggers() -> List<WorkflowTrigger> {
+  [
     WorkflowDispatch {
       inputs: [
         DispatchInput {
@@ -225,7 +227,14 @@ fn microvm_shakedown_workflow(script: String) -> Workflow {
         },
       ]
     }
-  ],
+  ]
+}
+
+fn microvm_shakedown_workflow(script: String) -> Workflow {
+  Workflow {
+  name: microvm_shakedown_workflow_name,
+  run_name: Present { value: join(["microvm-shakedown ", microvm_shakedown_attempt_expression()], "") },
+  on: microvm_shakedown_workflow_triggers(),
   concurrency: none,
   env: none,
   permissions: none,

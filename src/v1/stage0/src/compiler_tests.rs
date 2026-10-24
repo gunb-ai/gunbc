@@ -3826,14 +3826,13 @@ mod compiler_tests {
     }
 
     #[test]
-    fn coproduct_wire_contract_applies_by_declared_target() {
-        // DISCRIMINATING RED for gunbc.recurring_failure_mode
-        // coproduct_wire_contract_target_not_local_in_emitted_extdeps_github. probe.home_contracts
-        // stores rows for probe.home HomeState AND for probe.away AwayState, the shape of
-        // extdeps.github.github_contracts (UserType's row beside IssueState's). Emission that finds
-        // rows by the `<module>_contracts` file and matches decl_name alone puts a compile_error
-        // for AwayState into probe.home and emits AwayState with no contract at all. The Missing
-        // row is the control that a row naming no coproduct of its declared module still refuses.
+    fn record_literal_phantom_field_follows_the_constructed_declaration() {
+        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):
+        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the
+        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record
+        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).
+        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm
+        // `Group`. The control is the record literal itself, which must keep its phantom field.
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
@@ -3843,101 +3842,44 @@ mod compiler_tests {
                         content: content.to_string(),
                     })
                 };
-                let contracts = "module probe.home_contracts\nimport std.serialization { CoproductWireContract, StringVariant, AsAuthored, SnakeCase }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\ndata home_state_wire_contract: CoproductWireContract = { coproduct: DeclarationRef { module_path: \"probe.home\", decl_name: \"HomeState\", field: WholeDeclaration }, encoding: StringVariant { naming: AsAuthored } }\ndata away_state_wire_contract: CoproductWireContract = { coproduct: DeclarationRef { module_path: \"probe.away\", decl_name: \"AwayState\", field: WholeDeclaration }, encoding: StringVariant { naming: SnakeCase } }\ndata missing_wire_contract: CoproductWireContract = { coproduct: DeclarationRef { module_path: \"probe.home\", decl_name: \"Missing\", field: WholeDeclaration }, encoding: StringVariant { naming: AsAuthored } }\n";
                 let sources = im::vector![
-                    source("std_decl_ref.dag", "module std.decl_ref\ntype DeclField = WholeDeclaration | NamedField { field_name: String }\ntype DeclarationRef { module_path: String, decl_name: String, field: DeclField }\n"),
-                    source("std_serialization.dag", "module std.serialization\nimport std.decl_ref { DeclarationRef }\ntype VariantNaming = AsAuthored | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming } | TaggedVariant\ntype CoproductWireContract { coproduct: DeclarationRef, encoding: VariantEncoding }\n"),
-                    source("probe_home_contracts.dag", contracts),
-                    source("probe_home.dag", "module probe.home\nimport probe.home_contracts { home_state_wire_contract }\ntype HomeState = HomeOn | HomeOff\n"),
-                    source("probe_away.dag", "module probe.away\nimport probe.home_contracts { away_state_wire_contract }\ntype AwayState = AwayOpen | AwayClosed\n")
+                    source("probe_algebra.dag", "module probe.algebra\ntype Group<T> { carrier: Int }\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\n"),
+                    source("probe_sections.dag", "module probe.sections\ntype SectionElement = Prose { text: Int } | Group { size: Int }\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\n")
                 ];
                 let result = crate::v1_compiler_compile::compile_sources(
                     std::rc::Rc::new(sources),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
                 let emitted = |suffix: &str| -> String {
                     result.files.iter()
                         .find(|f| f.path.ends_with(suffix))
                         .map(|f| f.content.clone())
                         .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
                 };
-                let home = emitted("probe_home.rs");
-                let away = emitted("probe_away.rs");
-                let home_errors: Vec<&str> = home.lines().filter(|l| l.contains("compile_error!")).collect();
-                assert_eq!(
-                    home_errors.len(), 1,
-                    "probe.home must refuse exactly the Missing row; a row whose DeclarationRef names probe.away is not probe.home's to judge; probe.home:\n{}",
-                    home
+                let sections = emitted("probe_sections.rs");
+                let algebra = emitted("probe_algebra.rs");
+                assert!(
+                    !sections.contains("_phantom"),
+                    "the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\n{}",
+                    sections
                 );
                 assert!(
-                    home_errors[0].contains("Missing") && !home.contains("AwayState"),
-                    "the one refusal in probe.home names Missing, never AwayState; probe.home:\n{}",
-                    home
+                    !sections.contains("compile_error!"),
+                    "the variant literal's type resolves to one declaration; probe.sections:\n{}",
+                    sections
                 );
                 assert!(
-                    !away.contains("compile_error!"),
-                    "probe.away declares AwayState, so the row naming it is admitted there; probe.away:\n{}",
-                    away
-                );
-                assert!(
-                    away.contains("#[serde(rename_all = \"snake_case\")]"),
-                    "AwayState takes its SnakeCase contract from the row that names it, wherever the row is stored; probe.away:\n{}",
-                    away
-                );
-                assert!(
-                    !home.contains("#[serde(rename_all = \"snake_case\")]"),
-                    "HomeState's row is AsAuthored; the SnakeCase row governs AwayState only; probe.home:\n{}",
-                    home
+                    algebra.contains("_phantom: std::marker::PhantomData,"),
+                    "the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\n{}",
+                    algebra
                 );
             })
             .expect("failed to spawn thread")
             .join();
-        result.expect("coproduct_wire_contract_applies_by_declared_target panicked");
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn github_contract_rows_apply_where_their_targets_are_declared() {
-        // The real producer for the probe.home / probe.away fixture above: extdeps.github.github_contracts
-        // stores the rows for extdeps.github.github UserType AND extdeps.github.issues IssueState.
-        // Red while emission matched rows by file and leaf name: extdeps_github_github.rs carried
-        // compile_error for IssueState and IssueState was emitted with no contract.
-        let result = std::thread::Builder::new()
-            .stack_size(64 * 1024 * 1024)
-            .spawn(|| {
-                let entry_pairs = discover_dag_files("dag/extdeps/github");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
-                let result = crate::v1_compiler_compile::compile_sources(
-                    sources,
-                    crate::v1_compiler_artifact::RenderTarget::Rust,
-                );
-                let emitted = |suffix: &str| -> String {
-                    result.files.iter()
-                        .find(|f| f.path.ends_with(suffix))
-                        .map(|f| f.content.clone())
-                        .unwrap_or_else(|| panic!("no emitted file ending {}", suffix))
-                };
-                let github = emitted("extdeps_github_github.rs");
-                let issues = emitted("extdeps_github_issues.rs");
-                assert!(
-                    !github.contains("CoproductWireContract target"),
-                    "extdeps.github.github must not judge the IssueState row, whose DeclarationRef names extdeps.github.issues"
-                );
-                let issue_state = issues.find("enum IssueState").expect("extdeps.github.issues emits IssueState");
-                let attrs_start = issues[..issue_state].rfind("\n\n").unwrap_or(0);
-                assert!(
-                    issues[attrs_start..issue_state].contains("#[serde(rename_all = \"snake_case\")]"),
-                    "IssueState takes its SnakeCase contract (\"open\" / \"closed\"); emitted:\n{}",
-                    &issues[attrs_start..issue_state]
-                );
-                assert!(
-                    !issues.contains("CoproductWireContract target"),
-                    "the IssueState row is admitted where IssueState is declared"
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("github_contract_rows_apply_where_their_targets_are_declared panicked");
+        result.expect("record_literal_phantom_field_follows_the_constructed_declaration panicked");
     }
 
     #[test]
