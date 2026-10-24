@@ -1,0 +1,60 @@
+module test.claim.durable_cas_plain_wrapper_roster_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING RED FOR THE FROZEN PLAIN CAS WRAPPERS. gunbc.durable_cas_file_store file_compare_and_set,
+// observe_cas_slot_state and cas_slot_keys each hard-wire local_filesystem; their admit_callers rosters are
+// the census of the production cohorts that still reach the filesystem that way, and the freeze: a module
+// outside the roster is refused by the compiler. Each probe below hands the compiler a module OUTSIDE every
+// roster that calls one wrapper, and asserts the refusal keyed by the CALLEE's name (a class-only count is a
+// property of the whole closure, gunbc.compile_diagnostic_census). The positive control is the admitted
+// route: an outside module that takes a SlotStore over a filesystem it is handed and uses its operations is
+// not refused, so the three REDs are not a wall refusing everything.
+
+fn keyed_refusals(source: String, callee: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "ConstructorCallAdmissionRefused", subject_name: callee, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data plain_commit_source: String = "module probe_plain_commit\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasOutcome }\nimport gunbc.durable_cas_file_store { file_compare_and_set, CasGenerationPublication, VerifiedCasAttempt }\nfn commit(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {\n  file_compare_and_set(root: root, publication: publication, verified: verified)\n}\n"
+
+data plain_observe_source: String = "module probe_plain_observe\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasSlotObservation }\nimport gunbc.durable_cas_file_store { observe_cas_slot_state }\nfn look(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {\n  observe_cas_slot_state(root: root, key: key)\n}\n"
+
+data plain_keys_source: String = "module probe_plain_keys\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { cas_slot_keys, CasSlotKeys }\nfn list(root: NonEmptyStr) -> CasSlotKeys {\n  cas_slot_keys(root: root)\n}\n"
+
+data plain_store_source: String = "module probe_plain_store\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { file_slot_store, SlotStore }\nfn open(root: NonEmptyStr) -> SlotStore {\n  file_slot_store(root: root)\n}\n"
+
+data injected_store_source: String = "module probe_injected_store\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasSlotObservation }\nimport gunbc.filesystem_interface { FilesystemInterface }\nimport gunbc.durable_cas_file_store { file_slot_store_over, SlotStore }\nfn open(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {\n  file_slot_store_over(fs: fs, root: root)\n}\nfn look(store: SlotStore, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {\n  let observe = store.observe\n  observe(key)\n}\n"
+
+test fn a_plain_commit_outside_the_roster_is_refused() -> Bool {
+  keyed_refusals(source: plain_commit_source, callee: "file_compare_and_set") >= 1
+}
+
+test fn a_plain_observe_outside_the_roster_is_refused() -> Bool {
+  keyed_refusals(source: plain_observe_source, callee: "observe_cas_slot_state") >= 1
+}
+
+test fn a_plain_key_listing_outside_the_roster_is_refused() -> Bool {
+  keyed_refusals(source: plain_keys_source, callee: "cas_slot_keys") >= 1
+}
+
+test fn the_path_constructor_outside_the_roster_is_refused() -> Bool {
+  keyed_refusals(source: plain_store_source, callee: "file_slot_store") >= 1
+}
+
+test fn the_injected_store_route_is_admitted() -> Bool {
+  keyed_refusals(source: injected_store_source, callee: "file_slot_store_over") == 0
+    && keyed_refusals(source: injected_store_source, callee: "file_compare_and_set") == 0
+}

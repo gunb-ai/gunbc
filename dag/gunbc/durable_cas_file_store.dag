@@ -324,7 +324,11 @@ fn cas_read_generation_over(fs: FilesystemInterface, root: NonEmptyStr, key: Non
   )
 }
 
-fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead {
+fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_store_receipt", decl_name: "store_receipt_answer"),
+  ]
+{
   cas_read_generation_over(fs: local_filesystem, root: root, key: key, generation: generation)
 }
 
@@ -357,10 +361,6 @@ fn cas_probe_gallop_over(fs: FilesystemInterface, root: NonEmptyStr, key: NonEmp
   }
 }
 
-fn cas_probe_gallop(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr) -> CasSlotProbe {
-  cas_probe_gallop_over(fs: local_filesystem, root: root, key: key, present: present, present_value: present_value)
-}
-
 // INVARIANT: `present` read present, `absent` read absent, present < absent. The head is the last
 // present generation, reached when the two are adjacent.
 fn cas_probe_bisect_over(fs: FilesystemInterface, root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, absent: CasGeneration) -> CasSlotProbe {
@@ -378,10 +378,6 @@ fn cas_probe_bisect_over(fs: FilesystemInterface, root: NonEmptyStr, key: NonEmp
         cas_probe_bisect_over(fs: fs, root: root, key: key, present: present, present_value: present_value, absent: mid)
     }
   }
-}
-
-fn cas_probe_bisect(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, absent: CasGeneration) -> CasSlotProbe {
-  cas_probe_bisect_over(fs: local_filesystem, root: root, key: key, present: present, present_value: present_value, absent: absent)
 }
 
 // AN ABSENT FIRST GENERATION IS AN EMPTY SLOT ONLY IN AN ESTABLISHED STORE. The host answers
@@ -717,7 +713,35 @@ fn observe_cas_slot_state_over(fs: FilesystemInterface, root: NonEmptyStr, key: 
   observe_cas_slot_state_retained_over(fs: fs, root: root, key: key, retention: KeepAllGenerations)
 }
 
-fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_assertion_counter", decl_name: "observe_assertion_counter"),
+    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "observe_escalation"),
+    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "create_or_read_subject_pin"),
+    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "observe_google_enrolment"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_admit_reader_or_discard"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_recover_root"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_recover_slot"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_slot_record"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
+    decl_ref(module_path: "gunbc.fabric.fabric_required_build_cell", decl_name: "observe_required_build_cell_expecting"),
+    decl_ref(module_path: "gunbc.fabric.fabric_storage_file_store", decl_name: "fabric_storage_file_head"),
+    decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "fci1_allocation_prestate"),
+    decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "fci1_allocation_slot_observation"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "dogfood_route_acceptance_holds_on"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "dogfood_start_record_for_instance"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_view_preference_store", decl_name: "issue_view_store_read"),
+    decl_ref(module_path: "gunbc.scm.repository_slot", decl_name: "read_repository_slot"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "observe_durable_record"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_idempotent_on_store"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_store", decl_name: "workspace_executor_journal_observe"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_input_store", decl_name: "workspace_commissioning_input_read"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_committed_for_slot"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_store_observe"),
+    decl_ref(module_path: "product.printed_chassis.assembly_inventory_store", decl_name: "mutate_inventory"),
+    decl_ref(module_path: "product.printed_chassis.assembly_inventory_store", decl_name: "observe_stored_inventory"),
+  ]
+{
   observe_cas_slot_state_over(fs: local_filesystem, root: root, key: key)
 }
 
@@ -944,7 +968,11 @@ fn cas_commit_at_over(fs: FilesystemInterface, admitted: AdmittedCasPublication)
   }
 }
 
-fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
+fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_verify_named_window_head"),
+  ]
+{
   cas_commit_at_over(fs: local_filesystem, admitted: admitted)
 }
 
@@ -1258,7 +1286,29 @@ fn file_compare_and_set_over(fs: FilesystemInterface, root: NonEmptyStr, publica
   file_compare_and_set_retained_over(fs: fs, root: root, publication: publication, retention: KeepAllGenerations, verified: verified).outcome
 }
 
-fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_assertion_counter", decl_name: "assertion_counter_commit"),
+    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "commit_broker_decision"),
+    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "file_approval_request"),
+    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "device_store_write"),
+    decl_ref(module_path: "gunbc.authorization_claim_slot", decl_name: "claim_authorization_slot"),
+    decl_ref(module_path: "gunbc.authorization_claim_slot", decl_name: "settle_authorization_claim"),
+    decl_ref(module_path: "gunbc.fabric.fabric_storage_file_store", decl_name: "fabric_storage_file_advance"),
+    decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "consume_attempt_slot"),
+    decl_ref(module_path: "gunbc.instruments.cas_store_live_probe", decl_name: "cas_probe_run"),
+    decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "fci1_live_replace_held"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "dogfood_start_record_for_instance"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_view_preference_store", decl_name: "issue_view_store_commit"),
+    decl_ref(module_path: "gunbc.scm.repository_slot", decl_name: "publish_prepared"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_derived_phase"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_on_store"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_store", decl_name: "workspace_executor_journal_publish"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_input_store", decl_name: "workspace_commissioning_input_publish"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_publish_phase"),
+    decl_ref(module_path: "product.printed_chassis.assembly_inventory_store", decl_name: "publish_inventory"),
+  ]
+{
   file_compare_and_set_over(fs: local_filesystem, root: root, publication: publication, verified: verified)
 }
 
@@ -1327,7 +1377,14 @@ fn cas_slot_keys_over(fs: FilesystemInterface, root: NonEmptyStr) -> CasSlotKeys
   }
 }
 
-fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
+fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "pending_escalations"),
+    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "list_google_enrolments"),
+    decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "compute_seat_discharge_dir"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_recover_root"),
+  ]
+{
   cas_slot_keys_over(fs: local_filesystem, root: root)
 }
 
