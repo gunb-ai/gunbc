@@ -18,7 +18,11 @@ import extdeps.systemd {
 // with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
-import extdeps.systemd.unit_file { LoadCredential, systemd_service_directive_line }
+import extdeps.systemd.unit_file {
+  LoadCredential, systemd_service_directive_line,
+  SystemdPathDirective, systemd_path_directive_line,
+  SystemdUnitDirective, systemd_unit_directive_line,
+}
 
 // EmptyCapabilityBoundingSet is the empty capability-set carrier: systemd.exec(5)
 // CapabilityBoundingSet= with no names drops every capability. It is its own arm, not a
@@ -102,12 +106,18 @@ type SystemdSetenvBinding {
 //   Pipe           --pipe
 //   Collect        --collect
 //   EndOfOptions   -- (systemd-run's own options end; the rest is the command)
+// PathTrigger and PathDependency are systemd-run(1) --path-property=: a setting on the transient PATH unit
+// systemd-run creates beside the service, which starts the service when its condition holds. The setting's
+// text is the unit-file authority's own line for that directive (a [Path] trigger, or a [Unit] dependency),
+// never a second spelling of it.
 type SystemdRunOption
   = RunUnit { unit: NonEmptyStr }
   | RunUserManager
   | RunScope
   | PropertyShort { property: SystemdRunProperty }
   | PropertyLong { property: SystemdRunProperty }
+  | PathTrigger { directive: SystemdPathDirective }
+  | PathDependency { directive: SystemdUnitDirective }
   | SetEnv { binding: SystemdSetenvBinding }
   | Wait
   | Quiet
@@ -128,6 +138,7 @@ type SystemdRunOptionWordsRefusedCause
   | SetenvValueMultiline
   | CredentialIdentifierInvalid
   | CredentialSourceNotOneAbsolutePath
+  | PathPropertyMultiline
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -166,6 +177,7 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
     CredentialIdentifierInvalid => "a credential ID is one file name with no : (systemd.exec(5) LoadCredential=ID:PATH)"
     CredentialSourceNotOneAbsolutePath => "a LoadCredential= source is one line naming an absolute path, which the manager reads"
+    PathPropertyMultiline => "a --path-property= setting is one line"
   }
 }
 
@@ -238,6 +250,14 @@ fn systemd_run_property_options_short(properties: List<SystemdRunProperty>) -> L
   fold(properties, init: [], f: (acc, p) => list_append(left: acc, right: [PropertyShort { property: p }]))
 }
 
+fn systemd_run_path_property_word(words: List<String>, line: String) -> SystemdRunOptionWordsReading {
+  if systemd_run_option_word_has_newline(s: line) {
+    systemd_run_option_word_refused(cause: PathPropertyMultiline)
+  } else {
+    SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--path-property=", line)]) }
+  }
+}
+
 // THE ONE PROJECTION STEP. Each option's words are spelled exactly once, here; the fold folds over
 // these so a refused command never mints words at all (short-circuit on the first refusal).
 fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option: SystemdRunOption) -> SystemdRunOptionWordsReading {
@@ -255,6 +275,8 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
           }
         RunUserManager => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--user"]) }
         RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
+        PathTrigger { directive: d } => systemd_run_path_property_word(words: words, line: systemd_path_directive_line(directive: d))
+        PathDependency { directive: d } => systemd_run_path_property_word(words: words, line: systemd_unit_directive_line(directive: d))
         PropertyShort { property: p } =>
           match systemd_run_property_assignment(property: p) {
             SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)

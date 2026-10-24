@@ -124,6 +124,9 @@ type SystemdUnitDirective
   | Before { target: NonEmptyStr }
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
+  // systemd.unit(5) BindsTo=: Requires= plus stop-propagation -- when the bound unit stops, this unit
+  // is stopped too, so a companion unit cannot outlive the unit it serves.
+  | BindsTo { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
   | StartLimitBurst { count: NonEmptyStr }
   | OnSuccess { unit: NonEmptyStr }
@@ -777,6 +780,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Before { target: v } => join(["Before=", v as String], "")
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
+    BindsTo { target: v } => join(["BindsTo=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
     StartLimitBurst { count: v } => join(["StartLimitBurst=", v as String], "")
     OnSuccess { unit: v } => join(["OnSuccess=", v as String], "")

@@ -1314,7 +1314,7 @@ fn live_deploy_attempt_unit_drain_service_unit_file(
   instance: HostDashboardInstance,
   revision: ReleaseRevisionBinding,
 ) -> AttemptUnitDrainServiceFile {
-  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision, handin_wake_unit: deployment_belt_exit_drain_service_unit_name(names: spec.names)) {
     AttemptSystemUnitLaunchArgvRefused { cause } => AttemptUnitDrainServiceRefused { cause: cause }
     AttemptSystemUnitLaunchArgvReady { argv } =>
       AttemptUnitDrainServiceReady { file: ServiceUnitFile {

@@ -5,7 +5,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.host.host_layout { attempt_exit_stall_record_path, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
-  attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
+  attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_handin_entry_name,
 }
 import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
@@ -17,6 +17,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_exit_stall_failures, belt_exit_stall_release_at, belt_exit_stall_analyze_at, BeltExitStallObserved, BeltExitStallUnobserved, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallNotHeld,
   belt_exit_stall_clear_target, belt_exit_stall_clear_admission, belt_exit_stall_clear_at, BeltExitClearTarget, BeltExitClearAdmission, BeltExitClearTargeted, BeltExitClearTargetRefused, BeltExitClearAdmitted, BeltExitClearRefused, BeltExitCleared, BeltExitClearFailed, BeltExitClearOutcome, belt_exit_stall_whoami,
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_handin_relay_directory,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   host_exec_argv, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitObservation, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
@@ -119,6 +120,53 @@ test fn a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox() -
     BeltExitDrainRefused { reason: _ } => false
   }
   wrote && handed_to_attempt && count(names_in(root: root, stage_is_queued: false)) == 0 && names_in(root: root, stage_is_queued: true) == [worker_exit]
+}
+
+// A HAND-IN IS RELAYED FROM ITS OWN ATTEMPT'S DIRECTORY, AND NOTHING ELSE IS. A session writes its hand-in entry
+// into its attempt's hand-in directory, never the exit inbox (the inbox holds the manager's statements). The
+// drain's relay moves an entry naming THAT attempt into the inbox, and moves everything else to refused: a
+// hand-in naming another attempt, an exit-record name (a session must not be able to forge its own exit), and
+// a name that is neither. The directory ends empty, so the path unit watching it stops firing. RED on a relay
+// that trusted any hand-in name (the foreign one would reach the inbox), that relayed the forged exit, or that
+// left a refused entry behind.
+fn touched(path: String) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "touch", args: ["--", path]), workdir: "/") {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn directory_is_empty(path: String) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "ls", args: ["-A", "--", path]), workdir: "/") {
+    ExecOk { stdout } => stdout == ""
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+test fn the_relay_moves_its_own_handin_to_the_inbox_and_refuses_the_rest() -> Bool {
+  let root = fresh_spool(tag: "handin")
+  let dir = join([root, "/attempt/worker/handin"], "")
+  let made = match belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", "--", dir]), workdir: "/") {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+  let own = attempt_handin_entry_name(node_id: "wet-node", attempt_key: "feedfacefeedface", handin: "h1")
+  let foreign = attempt_handin_entry_name(node_id: "other-node", attempt_key: "0000000000000000", handin: "h1")
+  let wrote = made
+    && touched(path: join([dir, "/", own], ""))
+    && touched(path: join([dir, "/", foreign], ""))
+    && touched(path: join([dir, "/", worker_exit], ""))
+    && touched(path: join([dir, "/", "not-a-handin"], ""))
+  let relayed = belt_handin_relay_directory(root: root, dir: dir, node_id: "wet-node", attempt_key: "feedfacefeedface")
+  wrote
+    && names_at(root: root, stage: AttemptExitInbox) == [own]
+    && count(names_at(root: root, stage: AttemptExitRefused)) == 3
+    && count(relayed) == 3
+    && all(relayed, e => match e { BeltExitEntryRefused { entry: _, reason: _ } => true  _ => false })
+    && directory_is_empty(path: dir)
 }
 
 // A reviewer's exit is handed to its attempt the same way but frees no worker capacity, so it does

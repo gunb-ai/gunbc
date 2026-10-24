@@ -1080,6 +1080,7 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
   let scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: key))
   let publication_dir = dispatch_attempt_publication_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
   let wire_dir = dispatch_attempt_wire_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let handin_dir = dispatch_attempt_handin_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
   let traverse = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid))
   let writable = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
@@ -1089,6 +1090,7 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
     && any(argvs, a => any(a.args, w => w == scratch) && any(a.args, w => w == writable) && !any(a.args, w => w == attempt_dir))
     && any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == writable))
     && !any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == owner_only))
+    && any(argvs, a => any(a.args, w => w == handin_dir) && any(a.args, w => w == writable))
     && any(argvs, a => any(a.args, w => w == publication_dir) && any(a.args, w => w == owner_only) && !any(a.args, w => w == attempt_dir))
     && setgid_traverse.setgid && setgid_traverse.group.execute && !setgid_traverse.group.write
     && !any(argvs, a => any(a.args, w => w == attempt_dir) && (any(a.args, w => w == writable) || any(a.args, w => w == owner_only)))

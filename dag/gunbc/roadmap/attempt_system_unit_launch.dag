@@ -68,7 +68,7 @@ import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
-  SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire,
+  SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire, SystemdUnitNameAdmission,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
 }
@@ -80,9 +80,11 @@ import extdeps.systemd.systemd_run {
   SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_of, systemd_run_property_options_short,
   systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
-  RunUnit, Wait, Quiet, Collect, EndOfOptions,
+  RunUnit, Wait, Quiet, Collect, EndOfOptions, PathTrigger, PathDependency,
 }
 import extdeps.systemd.systemctl
+import extdeps.systemd.systemctl { systemctl_binary_path, systemctl_start_verb }
+import extdeps.systemd.unit_file { DirectoryNotEmpty, BindsTo, After }
 import gunbc.cli_invoke {
   admit_named_argument, NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
 }
@@ -100,7 +102,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
   dispatch_worker_unit_properties_for_plan,
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_pane_working_directory, GunbcHarnessProvider,
+  dispatch_pane_working_directory, GunbcHarnessProvider, dispatch_attempt_handin_dir_for_instance,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
@@ -129,7 +131,7 @@ fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: R
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
-  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore files the manager loads as the unit's credentials -- and no other unit, user, property, credential, or program" as NonEmptyStr
+  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore files the manager loads as the unit's credentials -- and, beside it, one transient path unit bound to that worker which watches the attempt's own hand-in directory and starts the instance's exit drain; no other unit, user, property, credential, or program" as NonEmptyStr
 }
 
 fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
@@ -566,27 +568,39 @@ fn attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentAdmission)
   }
 }
 
-fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitLaunchArgv {
+// THE DRAIN UNIT THE LAUNCHER WAKES ON A HAND-IN is the deployment's (gunbc.live_deploy.spec
+// deployment_belt_exit_drain_service_unit_name), so the deploy that renders this argv supplies it; the launcher's
+// own closure never reaches the deployment model.
+fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding, handin_wake_unit: NonEmptyStr) -> AttemptSystemUnitLaunchArgv {
   let dir = attempt_system_unit_launcher_dir(instance: instance, revision: revision)
   match attempt_system_unit_launch_named_argument(instance_root: instance.instance_root as String) {
     NamedArgumentNameEmpty => AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentNameEmpty }
     NamedArgumentNameHoldsSeparator { name } =>
       AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentNameHoldsSeparator { name: name } }
     NamedArgumentAdmitted { argument: arg } =>
-      AttemptSystemUnitLaunchArgvReady {
-        argv: map(
-          concat(
-            gunbc_entry_run_argv(
-              workspace_root: dir as NonEmptyStr,
-              binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
-              source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
-              entry: join([dir, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
-              function: attempt_system_unit_launch_function as NonEmptyStr,
+      match admit_named_argument(name: "handin_wake_unit", value: handin_wake_unit as String) {
+        NamedArgumentNameEmpty => AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentNameEmpty }
+        NamedArgumentNameHoldsSeparator { name } =>
+          AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentNameHoldsSeparator { name: name } }
+        NamedArgumentAdmitted { argument: wake } =>
+          AttemptSystemUnitLaunchArgvReady {
+            argv: map(
+              concat(
+                gunbc_entry_run_argv(
+                  workspace_root: dir as NonEmptyStr,
+                  binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+                  source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+                  entry: join([dir, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
+                  function: attempt_system_unit_launch_function as NonEmptyStr,
+                ),
+                [
+                  "--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr,
+                  "--arg" as NonEmptyStr, join([wake.name, "=", wake.value], "") as NonEmptyStr,
+                ],
+              ),
+              w => w as String,
             ),
-            ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
-          ),
-          w => w as String,
-        ),
+          }
       }
   }
 }
@@ -880,6 +894,7 @@ fn attempt_system_unit_cli_start(
   instance: HostDashboardInstance,
   verb: AttemptSystemUnitStartVerb,
   request: AttemptSystemUnitStartRequest,
+  handin_wake_unit: String,
 ) -> ProcessExit {
   match attempt_system_unit_start_facts_for_request(instance: instance, request: request) {
     AttemptSystemUnitStartUnderivable { reason: why } => exit_failure(reason: why)
@@ -887,7 +902,7 @@ fn attempt_system_unit_cli_start(
       match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
         AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
         AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
-          attempt_system_unit_run_admitted_start(instance: instance, facts: admitted, unit: unit, verb: verb)
+          attempt_system_unit_run_admitted_start(instance: instance, facts: admitted, unit: unit, verb: verb, handin_wake_unit: handin_wake_unit)
       }
   }
 }
@@ -920,6 +935,7 @@ fn attempt_system_unit_run_admitted_start(
   facts: AttemptSystemUnitStartFacts,
   unit: NonEmptyStr,
   verb: AttemptSystemUnitStartVerb,
+  handin_wake_unit: String,
 ) -> ProcessExit {
   let plan = attempt_system_unit_plan_from_facts(facts: facts, unit: unit)
   let wait = match verb {
@@ -933,7 +949,91 @@ fn attempt_system_unit_run_admitted_start(
     wait: wait,
   ) {
     SystemdRunCommandRefused { cause: why } => exit_failure(reason: systemd_run_option_words_refused_cause_detail(cause: why))
-    SystemdRunCommandReady { command: command } => attempt_system_unit_run_ready(command: command)
+    SystemdRunCommandReady { command: command } =>
+      // A waited start ends with its worker, so there is no live session whose hand-in a wake could serve.
+      if wait {
+        attempt_system_unit_run_ready(command: command)
+      } else {
+        match attempt_system_unit_run_ready(command: command) {
+          ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+          ExitSuccess => attempt_system_unit_bind_handin_wake(instance: instance, facts: facts, worker_unit: unit, handin_wake_unit: handin_wake_unit)
+        }
+      }
+  }
+}
+
+// THE SESSION'S HAND-IN WAKE, BOUND TO ITS WORKER. A worker hands in by writing into its own attempt's hand-in
+// directory (gunbc.roadmap.roadmap_dispatch_actuator dispatch_attempt_handin_dir_for_instance), never into the
+// exit inbox, which holds the manager's statements. A handed-in worker stays alive waiting for acceptance, so
+// nothing would notice that write until its exit drained; the launcher therefore starts, beside the worker, a
+// transient PATH unit on that directory whose service runs a BLOCKING `systemctl start` of the instance's exit
+// drain, which relays the entry (gunbc.roadmap.roadmap_belt_actuate belt_handin_relay_for_instance). Blocking
+// matters: a path unit re-checks its condition when its service ends, and a service that returned before the
+// drain relayed would re-trigger until systemd's trigger limit failed the path unit. BindsTo= stops the path
+// unit whenever the worker goes inactive, for ANY reason (PartOf= follows only stop jobs, and a worker that
+// exits issues none), with After= on the same unit because systemd.unit(5) leaves BindsTo's stop ordering
+// undefined without it (gunbc.runner.runner_microvm_stop_propagation_probe). The drain unit is the deployment's,
+// baked into this launcher's argv by the deploy; the directory and the binding are derived here from the
+// instance and the attempt, so the request carries neither.
+//
+// THE WORKER AND ITS WAKE ARE ONE START: a wake that cannot be bound stops the worker and refuses the request,
+// so no worker runs whose hand-in nothing would hear.
+fn attempt_system_unit_handin_wake_unit(facts: AttemptSystemUnitStartFacts) -> SystemdUnitNameAdmission {
+  systemd_service_unit_name(stem: join([dispatch_attempt_unit_stem(node_id: facts.node_id, attempt_key: facts.attempt_key), "-handin"], ""))
+}
+
+fn attempt_system_unit_handin_wake_command(
+  instance: HostDashboardInstance,
+  facts: AttemptSystemUnitStartFacts,
+  wake_unit: NonEmptyStr,
+  worker_unit: NonEmptyStr,
+  handin_wake_unit: NonEmptyStr,
+) -> SystemdRunCommandReading {
+  systemd_run_command_of(
+    options: [
+      RunUnit { unit: wake_unit },
+      Collect,
+      PathTrigger { directive: DirectoryNotEmpty { path: dispatch_attempt_handin_dir_for_instance(instance: instance, node_id: facts.node_id as RoadmapNodeId, attempt_key: facts.attempt_key) as NonEmptyStr } },
+      PathDependency { directive: BindsTo { target: worker_unit } },
+      PathDependency { directive: After { target: worker_unit } },
+      EndOfOptions,
+    ],
+    command_argv: [systemctl_binary_path() as String, systemctl_start_verb as String, handin_wake_unit as String],
+  )
+}
+
+fn attempt_system_unit_bind_handin_wake(
+  instance: HostDashboardInstance,
+  facts: AttemptSystemUnitStartFacts,
+  worker_unit: NonEmptyStr,
+  handin_wake_unit: String,
+) -> ProcessExit {
+  let refused = if handin_wake_unit == "" {
+    Present { value: "the launcher was given no exit-drain unit to wake (handin_wake_unit is empty)" }
+  } else {
+    match attempt_system_unit_handin_wake_unit(facts: facts) {
+      SystemdUnitNameAdmitted { name } =>
+        match attempt_system_unit_handin_wake_command(instance: instance, facts: facts, wake_unit: systemd_unit_name_wire(name: name), worker_unit: worker_unit, handin_wake_unit: handin_wake_unit as NonEmptyStr) {
+          SystemdRunCommandRefused { cause: why } => Present { value: systemd_run_option_words_refused_cause_detail(cause: why) }
+          SystemdRunCommandReady { command } => {
+            let ran = systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command))
+            if ran.success { none } else { Present { value: join(["systemd-run refused the hand-in path unit: ", trim(s: ran.stderr)], "") } }
+          }
+        }
+      SystemdUnitNameStemEmpty => Present { value: "the hand-in wake unit name stem is empty" }
+      SystemdUnitNameDisallowedCharacter { stem: _, character: ch } => Present { value: join(["the hand-in wake unit name has a character systemd unit names disallow: ", ch], "") }
+      SystemdUnitNameOverlong { length: _ } => Present { value: "the hand-in wake unit name exceeds systemd's 255-character limit" }
+    }
+  }
+  match refused {
+    Absent => ExitSuccess
+    Present { value: why } => {
+      let stopped = systemd.Systemctl.Stop(unit: worker_unit as String)
+      exit_failure(reason: join([
+        "the worker's hand-in wake could not be bound (", why, "); the worker unit ",
+        worker_unit as String, if stopped.success { " was stopped" } else { " could NOT be stopped" },
+      ], ""))
+    }
   }
 }
 
@@ -962,7 +1062,7 @@ fn attempt_system_unit_refuse_request(instance_root: String, entry: String, body
   )
 }
 
-fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: String, path: String) -> AttemptUnitHandled {
+fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: String, path: String, handin_wake_unit: String) -> AttemptUnitHandled {
   let root = instance.instance_root as String
   match attempt_system_unit_read_claimed_body(path: attempt_system_unit_request_body_path(dir: path)) {
     AttemptSystemUnitClaimedBodyRefused { reason: why } => attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: "", why: why)
@@ -976,7 +1076,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
         if attempt_system_unit_request_entry_name(node_id: request.node_id, attempt_key: request.attempt_key) != entry {
           attempt_system_unit_refuse_request(instance_root: root, entry: entry, body: content, why: "request body identity does not match the entry name")
         } else {
-          match attempt_system_unit_cli_start(instance: instance, verb: verb, request: request) {
+          match attempt_system_unit_cli_start(instance: instance, verb: verb, request: request, handin_wake_unit: handin_wake_unit) {
             ExitSuccess =>
               attempt_system_unit_answer_request(instance_root: root, entry: entry, body: content, answer: AttemptSystemUnitStarted, refusal: "")
             ExitFailure { code: _, reason: why } =>
@@ -1000,10 +1100,11 @@ fn attempt_system_unit_handle_claimed(
   instance: HostDashboardInstance?,
   entry: String,
   path: String,
+  handin_wake_unit: String,
 ) -> AttemptUnitHandled {
   match instance {
     Absent => attempt_system_unit_refuse_request(instance_root: instance_root, entry: entry, body: "", why: "instance_root is not a declared dashboard instance")
-    Present { value: inst } => attempt_system_unit_process_claimed(instance: inst, entry: entry, path: path)
+    Present { value: inst } => attempt_system_unit_process_claimed(instance: inst, entry: entry, path: path, handin_wake_unit: handin_wake_unit)
   }
 }
 
@@ -1053,7 +1154,7 @@ fn attempt_unit_pass_unmovable(pass: AttemptUnitDrainPass, entry: String, step: 
   }
 }
 
-fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass {
+fn attempt_system_unit_drain_pass(instance_root: String, handin_wake_unit: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
   let empty = AttemptUnitDrainPass { exit: ExitSuccess, retired: 0, refused: 0, unmovable: [] as List<SpoolStallEntry> }
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
@@ -1081,6 +1182,7 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
                 instance: instance,
                 entry: e,
                 path: p,
+                handin_wake_unit: handin_wake_unit,
               ),
             )
         }
@@ -1105,6 +1207,6 @@ fn attempt_unit_stall_failure(instance_root: String, pass: AttemptUnitDrainPass)
   }
 }
 
-fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
-  attempt_unit_stall_failure(instance_root: instance_root, pass: attempt_system_unit_drain_pass(instance_root: instance_root))
+fn attempt_system_unit_launch_cli(instance_root: String, handin_wake_unit: String) -> ProcessExit {
+  attempt_unit_stall_failure(instance_root: instance_root, pass: attempt_system_unit_drain_pass(instance_root: instance_root, handin_wake_unit: handin_wake_unit))
 }

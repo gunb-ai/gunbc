@@ -38,7 +38,7 @@ import gunbc.live_deploy.spec {
 }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
-import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path }
+import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path, deployment_belt_exit_drain_service_unit_name }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
@@ -61,6 +61,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_worker_slice,
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
   AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
+  attempt_system_unit_handin_wake_command,
   AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
   AttemptSystemUnitStartVerb, StartDetached, StartAndWait,
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
@@ -84,6 +85,7 @@ import extdeps.systemd.service_exec { exec_full_privileges_prefix }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
   dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider, dispatch_worker_credentials,
+  dispatch_attempt_handin_dir_for_instance,
 }
 import gunbc.host.host_layout { attempt_unit_spool_request_dir }
 import gunbc.cli_invoke {
@@ -410,6 +412,36 @@ test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> B
         && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
         && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
         && facts.working_directory == dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: inst, worktree_path: facts.attempt_worktree)
+  }
+}
+
+// THE HAND-IN WAKE IS A PATH UNIT ON THIS ATTEMPT'S OWN HAND-IN DIRECTORY, BOUND TO ITS WORKER. Its words name
+// the directory the root side derives for the attempt (not anything the request carried), bind the path unit to
+// the worker with BindsTo= AND After= (systemd.unit(5): BindsTo's stop ordering is undefined without After= on
+// the same unit), and start the deployment's exit drain with a blocking `systemctl start`. RED on a wake missing
+// any of them: without BindsTo the path unit outlives its worker, without the directory it watches nothing.
+test fn the_handin_wake_watches_its_own_attempt_and_is_bound_to_the_worker() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let worker = "gunbc-attempt-n1-k1.service" as NonEmptyStr
+  let drain = deployment_belt_exit_drain_service_unit_name(names: deployment_spec_srv1().names)
+  match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: "n1", attempt_key: "k1")) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      match attempt_system_unit_handin_wake_command(instance: inst, facts: facts, wake_unit: "gunbc-attempt-n1-k1-handin.service" as NonEmptyStr, worker_unit: worker, handin_wake_unit: drain) {
+        SystemdRunCommandRefused { cause: _ } => false
+        SystemdRunCommandReady { command } => {
+          let words = argv_words(command: command)
+          let handin = dispatch_attempt_handin_dir_for_instance(instance: inst, node_id: "n1" as RoadmapNodeId, attempt_key: "k1")
+          any(words, w => w == "--unit=gunbc-attempt-n1-k1-handin.service")
+            && any(words, w => w == join(["--path-property=DirectoryNotEmpty=", handin], ""))
+            && any(words, w => w == join(["--path-property=BindsTo=", worker as String], ""))
+            && any(words, w => w == join(["--path-property=After=", worker as String], ""))
+            && ends_with(s: handin, suffix: "/worker/handin")
+            && string_contains(s: handin, pattern: "n1-ak1")
+            && (match words.last() { Present { value: last } => last == (drain as String)  Absent => false })
+            && !any(words, w => w == "--no-block")
+        }
+      }
   }
 }
 
@@ -832,7 +864,7 @@ test fn an_instance_root_holding_the_separator_refuses_at_argv_and_drain_install
     revision: rev,
     path: "/usr/bin:/bin" as NonEmptyStr,
   ))
-  launch_argv_refused_separator(reading: attempt_system_unit_launch_gunbc_argv_at(instance: inst, revision: rev))
+  launch_argv_refused_separator(reading: attempt_system_unit_launch_gunbc_argv_at(instance: inst, revision: rev, handin_wake_unit: deployment_belt_exit_drain_service_unit_name(names: deployment_spec_srv1().names)))
     && string_contains(s: steps, pattern: join([
       attempt_unit_drain_argv_refused_poison,
       attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentNameHoldsSeparator { name: "instance_root" }),
@@ -840,12 +872,18 @@ test fn an_instance_root_holding_the_separator_refuses_at_argv_and_drain_install
     ], ""))
 }
 
+// The launcher is handed the deployment's exit-drain unit, the one its hand-in path units wake: the argv carries
+// it as a named argument, beside the instance root, and the full apply renders that argv into the drain service.
 test fn a_declared_instance_launch_argv_stays_ready() -> Bool {
   let live = srv1_live_dashboard_instance()
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  match attempt_system_unit_launch_gunbc_argv_at(instance: live, revision: rev) {
+  let wake = deployment_belt_exit_drain_service_unit_name(names: deployment_spec_srv1().names)
+  match attempt_system_unit_launch_gunbc_argv_at(instance: live, revision: rev, handin_wake_unit: wake) {
     AttemptSystemUnitLaunchArgvRefused { cause: _ } => false
-    AttemptSystemUnitLaunchArgvReady { argv: gunbc } => count(gunbc) > 0 && !any(gunbc, w => w == "/usr/bin/false")
+    AttemptSystemUnitLaunchArgvReady { argv: gunbc } =>
+      count(gunbc) > 0 && !any(gunbc, w => w == "/usr/bin/false")
+        && any(gunbc, w => w == join(["handin_wake_unit=", wake as String], ""))
+        && string_contains(s: full_install_apply_text(spec: deployment_spec_srv1()), pattern: join(["handin_wake_unit=", wake as String], ""))
   }
 }
 

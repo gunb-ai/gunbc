@@ -25,7 +25,7 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import gunbc.harness.harness_cli { harness_turn_exit, harness_worker_supervision, harness_worker_step_budget }
 
 fn route() -> HarnessAcceptanceRoute {
-  HarnessAcceptanceRoute { inbox: "/i/attempt-exit-spool/inbox", node_id: "n", attempt_key: "k" }
+  HarnessAcceptanceRoute { inbox: "/i/attempt-exit-spool/inbox", node_id: "n", attempt_key: "k", outcome_directory: "/state" }
 }
 
 fn decodes_to_kind(text: String, kind: String) -> Bool {

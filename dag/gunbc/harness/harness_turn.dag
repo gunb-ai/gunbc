@@ -291,13 +291,18 @@ fn harness_submission_terminal_cause(reason: String) -> String {
 // rounds run out, and its notices say so. A supervised session pauses at each boundary, synchronously
 // and invisibly, while a bounded alignment check reads its work; the verdict decides the next turn,
 // and nothing about the boundary is said to the worker unless the verdict is a steer.
-// WHERE A SUPERVISED SESSION HANDS IN (slice S2): the event spool's inbox that wakes acceptance, and the
-// node and attempt its hand-in entry names. The outcome comes back beside the session's own state, in
-// the check directory.
+// WHERE A SUPERVISED SESSION HANDS IN (slice S2): the inbox its hand-in entry is written to, and the
+// node and attempt that entry names. The outcome comes back in outcome_directory, which the belt writes
+// and the session only reads. It is NOT the check directory: the session writes its own check and
+// supervisor artifacts, so a session that could also write where its acceptance is decided could accept
+// itself. Under a dedicated worker account the two directories have different writers and so different
+// modes (gunbc.roadmap.roadmap_dispatch_actuator attempt_state_prepare_argvs_for_instance); the srv1 lab
+// refused the first supervised worker's check write into the attempt directory's place for both.
 type HarnessAcceptanceRoute {
   inbox: String
   node_id: String
   attempt_key: String
+  outcome_directory: String
 }
 
 type HarnessSupervision
@@ -3342,7 +3347,7 @@ fn harness_await_acceptance(
   repairs_used: Int,
   blocks: List<HarnessWireBlock>,
 ) -> HarnessTurnOutcome {
-  let read = Filesystem.Read(path: join([route.check_directory, "/", acceptance_outcome_basename as String], ""))
+  let read = Filesystem.Read(path: join([route.route.outcome_directory, "/", acceptance_outcome_basename as String], ""))
   match harness_acceptance_outcome_for(text: if read.success { Present { value: read.content } } else { none }, handin: handin) {
     Present { value: outcome } =>
       harness_apply_acceptance(

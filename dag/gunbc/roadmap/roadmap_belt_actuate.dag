@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
 import std.algebra { trim, skip }
 import std.durable_compare_and_set { cas_generation_count }
+import std.filesystem { path_parent_directory }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
@@ -207,6 +208,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_verification_checkout_path_for_instance,
   git_worktree_add_detached_argv_for_instance,
   dispatch_current_attempt_key_path_for_instance,
+  dispatch_attempt_handin_dir_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
   dispatch_current_attempt_events_projection_argv_for_instance,
   dispatch_current_attempt_spawn_failure_path_for_instance,
@@ -15738,13 +15740,115 @@ fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltOb
   }
 }
 
+// THE SESSIONS' HAND-INS ARE RELAYED INTO THE EXIT INBOX BY THE DRAIN, AS THE SERVICE USER, BEFORE THE
+// INBOX IS LISTED. A session writes its hand-in entry into its own attempt's hand-in directory
+// (gunbc.roadmap.roadmap_dispatch_actuator dispatch_attempt_handin_dir_for_instance), the one place it can
+// write; the exit inbox is the manager's, and a confined unit that could write it could record an exit or a
+// hand-in for any attempt (gunbc.roadmap.roadmap_attempt_exit_spool). The root launcher binds a path unit to
+// that directory that starts this drain. Each pass looks at every node's CURRENT attempt -- the only attempt a
+// live session belongs to -- and moves an entry that decodes as a hand-in naming that node and attempt into
+// the inbox, where the claim below takes it like any other entry. Anything else in the directory -- a
+// hand-in naming another attempt, or a name that is not a hand-in -- is moved to the refused stage and
+// reported, never left: a non-empty directory keeps its path unit firing. An attempt whose directory is
+// absent (dispatched before the directory existed) has nothing to relay, which a listing establishes; an
+// unreadable state is reported, never read as empty.
+fn belt_handin_relay_for_instance(instance: HostDashboardInstance) -> List<BeltExitDrainEntry> {
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  let listing = Filesystem.List(path: root)
+  match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListingRefused { directory: d, error } =>
+      [BeltExitEntryRefused { entry: d as String, reason: join(["hand-ins not relayed: the attempt-state root could not be listed: ", error], "") }]
+    FilesystemDirectorySubjectRefused { directory: d, cause } =>
+      [BeltExitEntryRefused { entry: d, reason: join(["hand-ins not relayed: the attempt-state root is not an admissible directory: ", cause], "") }]
+    FilesystemDirectoryListed(admitted) =>
+      filesystem_listing_entry_names(listing: admitted)
+        |> filter(n => ends_with(s: n, suffix: belt_current_attempt_suffix))
+        |> flat_map(n => belt_handin_relay_node(instance: instance, node_id: substring(s: n, start: 0, end: string_length(s: n) - string_length(s: belt_current_attempt_suffix))))
+  }
+}
+
+data belt_current_attempt_suffix: String = "-current"
+
+fn belt_handin_relay_node(instance: HostDashboardInstance, node_id: String) -> List<BeltExitDrainEntry> {
+  let key_path = dispatch_current_attempt_key_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId)
+  let key_read = Filesystem.Read(path: key_path)
+  let attempt_key = trim(s: key_read.content)
+  if !key_read.success || attempt_key == "" {
+    [BeltExitEntryRefused { entry: key_path, reason: join(["hand-ins not relayed for ", node_id, ": its current attempt key could not be read: ", key_read.error], "") }]
+  } else {
+    let worker_dir = path_parent_directory(path: dispatch_attempt_handin_dir_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key))
+    let worker_listing = Filesystem.List(path: worker_dir)
+    match filesystem_entry_presence(
+      listing: filesystem_listing_observation(directory: worker_dir, success: worker_listing.success, entries: worker_listing.entries, error: worker_listing.error),
+      name: belt_handin_dir_name,
+    ) {
+      FilesystemEntryAbsent(_) => [] as List<BeltExitDrainEntry>
+      FilesystemEntryPresenceIndeterminate { cause } =>
+        [BeltExitEntryRefused { entry: worker_dir, reason: join(["hand-ins not relayed for ", node_id, ": ", cause], "") }]
+      FilesystemEntrySubjectRefused { directory: _, name: _, cause } =>
+        [BeltExitEntryRefused { entry: worker_dir, reason: join(["hand-ins not relayed for ", node_id, ": ", cause], "") }]
+      FilesystemEntryListed { directory: _, name: _ } =>
+        belt_handin_relay_directory(root: instance.instance_root as String, dir: dispatch_attempt_handin_dir_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key), node_id: node_id, attempt_key: attempt_key)
+    }
+  }
+}
+
+data belt_handin_dir_name: String = "handin"
+
+fn belt_handin_relay_directory(root: String, dir: String, node_id: String, attempt_key: String) -> List<BeltExitDrainEntry> {
+  let listing = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListingRefused { directory: d, error } =>
+      [BeltExitEntryRefused { entry: d as String, reason: join(["hand-ins not relayed: the hand-in directory could not be listed: ", error], "") }]
+    FilesystemDirectorySubjectRefused { directory: d, cause } =>
+      [BeltExitEntryRefused { entry: d, reason: join(["hand-ins not relayed: the hand-in directory is not admissible: ", cause], "") }]
+    FilesystemDirectoryListed(admitted) =>
+      filesystem_listing_entry_names(listing: admitted)
+        |> flat_map(entry => belt_handin_relay_entry(root: root, dir: dir, node_id: node_id, attempt_key: attempt_key, entry: entry))
+  }
+}
+
+// PURE: whether an entry found in an attempt's hand-in directory is a hand-in for THAT attempt. The name is
+// the whole claim (gunbc.roadmap.roadmap_attempt_exit_spool attempt_handin_entry_name), so a session can
+// only ever hand in for the attempt whose directory it can write.
+fn belt_handin_entry_is_own(entry: String, node_id: String, attempt_key: String) -> Bool {
+  match attempt_exit_entry_decode(entry_name: entry) {
+    AttemptHandInEntryDecoded { node_id: n, attempt_key: k, handin: _, entry_name: _ } => n == node_id && k == attempt_key
+    AttemptExitEntryDecoded { record: _ } => false
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+fn belt_handin_relay_entry(root: String, dir: String, node_id: String, attempt_key: String, entry: String) -> List<BeltExitDrainEntry> {
+  let own = belt_handin_entry_is_own(entry: entry, node_id: node_id, attempt_key: attempt_key)
+  let stage = if own { AttemptExitInbox } else { AttemptExitRefused }
+  let cmd = mv_exact_destination_command(
+    source: join([dir, "/", entry], ""),
+    destination: join([attempt_exit_spool_stage_dir(instance_root: root, stage: stage), "/", entry], ""),
+  )
+  match belt_exec(cmd: host_exec_argv(program: cmd.program.invocation as String, args: cmd.arguments), workdir: belt_observe_workdir as String) {
+    ExecOk { stdout: _ } =>
+      if own { [] as List<BeltExitDrainEntry> } else {
+        [BeltExitEntryRefused { entry: entry, reason: join(["the hand-in directory of ", node_id, "/", attempt_key, " held an entry that is not a hand-in for that attempt; moved to refused"], "") }]
+      }
+    ExecFailed { program: _, exit_code, stderr } =>
+      [BeltExitEntryRefused { entry: entry, reason: join(["the hand-in could not be relayed from ", dir, ": mv exited ", to_string(exit_code), ": ", stderr], "") }]
+    ExecRefused { program: _, reason } =>
+      [BeltExitEntryRefused { entry: entry, reason: join(["the hand-in could not be relayed from ", dir, ": ", reason], "") }]
+  }
+}
+
 fn belt_exit_drain_for_instance(instance: HostDashboardInstance) -> BeltExitDrain {
-  belt_exit_drain_at(
+  let relayed = belt_handin_relay_for_instance(instance: instance)
+  match belt_exit_drain_at(
     root: instance.instance_root as String,
     enqueue: (node_id, attempt_key) => belt_attempt_obligations_enqueue(instance: instance, node_id: node_id, attempt_key: attempt_key),
     launch: fn() { belt_instance_obligation_enqueue(instance: instance, kind: LaunchObligation) },
     observe: (node_id, attempt_key) => attempt_unit_observation(unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key)),
-  )
+  ) {
+    BeltExitDrained { entries, launch } => BeltExitDrained { entries: concat(relayed, entries), launch: launch }
+    BeltExitDrainRefused { reason } => BeltExitDrainRefused { reason: reason }
+  }
 }
 
 fn belt_exit_drain_entry_json(e: BeltExitDrainEntry) -> JsonValue {

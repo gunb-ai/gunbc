@@ -968,11 +968,14 @@ fn harness_worker_turn_cli(
               events_path: events_path as FilePath,
               backend: backend,
               system_prompt: system_prompt,
+              // THE SESSION'S OWN SUPERVISION ARTIFACTS GO BESIDE ITS EVENT STREAM, which it writes; supervision_dir
+              // is where the belt writes the acceptance outcome, which the session only reads
+              // (gunbc.harness.harness_turn HarnessAcceptanceRoute).
               supervision: harness_worker_supervision(
                 chain_fingerprint: alignment_chain_fingerprint,
                 check_prompt: supervision_prompt,
-                check_directory: supervision_dir,
-                acceptance: HarnessAcceptanceRoute { inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key },
+                check_directory: path_parent_directory(path: events_path),
+                acceptance: HarnessAcceptanceRoute { inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key, outcome_directory: supervision_dir },
               ),
               acceptance_capacity: harness_acceptance_capacity_of(binding: binding, admission: harness_cli_admission()),
             )
