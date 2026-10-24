@@ -1,0 +1,102 @@
+module gunbc.instruments.append_chain_ladder_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { non_empty_to_list }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import gunbc.instruments.append_chain_ladder {
+  LadderTiming,
+  LadderLinearity,
+  LadderLinear,
+  LadderSuperlinear,
+  LadderUnobserved,
+  ladder_linearity,
+  ladder_piece,
+  non_empty_piece,
+  push_steps,
+  concat_steps,
+  elementwise_steps,
+  non_empty_steps
+}
+
+// THE LABEL'S TIMED ROUTE ON THE EMITTED PATH (gunbc.recurring_failure_mode
+// non_empty_append_on_a_persistent_vector_is_superlinear). `gunbc test //gunbc/instruments:append-chain-ladder`
+// emits this closure, builds it release and runs it (NativeClaimProgramProducer, the producer
+// gunbc.instruments.native_crypto_cost already rides); nothing is interpreted, because the defect is a
+// property of the emitted realization. Each (arm, n) row is the best of ladder_trials runs, each run
+// timed between two observed_monotonic_nanos readings (std.realization_measurement
+// ObserveElapsedAtSubject) around one arm call. A run that builds the wrong element count makes the
+// row not held, so a fast wrong answer is never a time. The rows go to gunbc.instruments.append_chain_ladder
+// ladder_linearity, which judges each doubling of n inside one arm against the policy band.
+//
+// NOT ON THE REQUIRED PATH: this label runs when invoked, and nothing in v2-bootstrap executes it.
+// Reverting the rc_list_concat fix turns concat_chain and non_empty_append_chain superlinear here, which
+// is the RED; it does not turn any required check red.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn ladder_sizes() -> List<Int> { [2000, 4000, 8000, 16000] }
+
+fn ladder_trials() -> Int { 5 }
+
+fn ladder_required_arms() -> List<String> { ["push_chain", "concat_chain", "elementwise_chain", "non_empty_append_chain"] }
+
+type TimedRun {
+  nanos: Int
+  length: Int
+}
+
+fn run_arm(arm: String, n: Int, trial: Int) -> TimedRun {
+  let tag = concat(arm, "-", to_string(value: n), "-", to_string(value: trial))
+  let t0 = observed_monotonic_nanos(concat(tag, "-start"))
+  let length = if arm == "push_chain" { push_steps(i: 0, n: n, acc: []) |> count }
+    else if arm == "concat_chain" { concat_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count }
+    else if arm == "elementwise_chain" { elementwise_steps(i: 0, n: n, acc: [], piece: ladder_piece()) |> count }
+    else { non_empty_to_list(xs: non_empty_steps(i: 0, n: n, acc: non_empty_piece(), piece: non_empty_piece())) |> count }
+  let t1 = observed_monotonic_nanos(concat(tag, "-end"))
+  TimedRun { nanos: t1 - t0, length: length }
+}
+
+fn expected_length(arm: String, n: Int) -> Int {
+  if arm == "non_empty_append_chain" { 8 * (n + 1) } else { 8 * n }
+}
+
+type TimedRow {
+  timing: LadderTiming
+  held: Bool
+}
+
+fn best_of(arm: String, n: Int, trial: Int, best: Int, held: Bool) -> TimedRow {
+  if trial >= ladder_trials() {
+    TimedRow { timing: LadderTiming { arm: arm, n: n, best_ns: best }, held: held }
+  } else {
+    let r = run_arm(arm: arm, n: n, trial: trial)
+    let next_best = if (best < 0) || (r.nanos < best) { r.nanos } else { best }
+    best_of(arm: arm, n: n, trial: trial + 1, best: next_best, held: held && (r.length == expected_length(arm: arm, n: n)))
+  }
+}
+
+fn timed_rows() -> List<TimedRow> {
+  flat_map(ladder_required_arms(), a => map(ladder_sizes(), n => best_of(arm: a, n: n, trial: 0, best: 0 - 1, held: true)))
+}
+
+fn row_text(r: TimedRow) -> String {
+  concat("append_chain_ladder arm=", r.timing.arm, " n=", to_string(value: r.timing.n), " best_ns=", to_string(value: r.timing.best_ns), " held=", if r.held { "true" } else { "false" }, "\n")
+}
+
+fn ladder_terminal(rows: List<TimedRow>) -> NativeClaimTerminal {
+  let wrong = filter(rows, r => !r.held)
+  if count(wrong) > 0 {
+    NativeClaimNotHeld { reason: concat("an arm built the wrong element count: ", join(map(wrong, r => concat(r.timing.arm, "@", to_string(value: r.timing.n))), ",")) }
+  } else {
+    match ladder_linearity(rows: map(rows, r => r.timing), arms: ladder_required_arms()) {
+      LadderLinear => NativeClaimHeld
+      LadderSuperlinear { arm: a, from_n: n, ratio_x100: x } => NativeClaimNotHeld { reason: concat(a, " grew ", to_string(value: x), "/100 per doubling from n=", to_string(value: n)) }
+      LadderUnobserved { arm: a, cause: c } => NativeClaimNoObservation { reason: concat("no curve for ", a, ": ", c) }
+    }
+  }
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let rows = timed_rows()
+  NativeClaimReport { stdout: join(map(rows, r => row_text(r: r)), ""), terminal: ladder_terminal(rows: rows) }
+}
