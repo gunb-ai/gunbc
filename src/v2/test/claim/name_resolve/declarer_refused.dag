@@ -287,6 +287,9 @@ test fn a_declaration_mentioning_a_refused_variant_blocks_its_users() -> Bool {
     Present { value: vs } =>
       dr_refuses_with(v: vs.relay_user, reason: ^resolve_reason_declarer_refused)
         && dr_fatal_declarer(v: vs.relay_user) == "v2.test.dr.relay"
+  }
+}
+
 // THE CHAIN ORDER OF A DECLARER-BODY REFUSAL, PINNED (gunbc.recurring_failure_mode
 // cascade_chain_head_names_a_node_the_importer_never_wrote). The declarer v2.test.dr.body_decl refuses for an
 // unbound name inside its own fn body; the importer only calls helper. Today the importer's chain HEAD is the
