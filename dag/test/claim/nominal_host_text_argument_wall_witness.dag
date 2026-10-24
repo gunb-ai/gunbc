@@ -19,9 +19,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // one and failed at runtime with a TypeError. The REDs cover concat, join's elements and join's
 // separator, for a record and for a coproduct, and string_length as the one sibling of the
 // registry's host-text formals. The controls: String and NonEmptyStr pass, a declared conversion
-// passes, and kernel Int, Nat and Bool stay accepted at concat and join: at a host-text formal they
-// follow the cast's admission of the same source, and each is its own control so that a kernel
-// refusal joining v1.compiler.infer value_type_is_declared_nominal's judgment turns it RED in one edit. PATH SCOPE:
+// passes, and kernel Int and Nat stay accepted at concat and join: at a host-text formal they follow
+// the cast's admission of the same source, and each is its own control so that a kernel refusal
+// joining v1.compiler.infer value_type_is_declared_nominal's judgment turns it RED in one edit. Bool
+// is a RED: the cast already refuses `b as String`, so the formals refuse it too. PATH SCOPE:
 // compile acceptance on the seed only; the v2 native route is unmeasured.
 
 fn refusals(source: String, subject: String) -> Int {
@@ -75,7 +76,7 @@ data control_int_source: String = "module probe_host_text_int\nimport std.types 
 
 data control_nat_source: String = "module probe_host_text_nat\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(n: Nat, ns: List<Nat>) -> String { concat(concat(\"n=\", n), join(ns, \",\")) }\n"
 
-data control_bool_source: String = "module probe_host_text_bool\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(b: Bool, bs: List<Bool>) -> String { concat(concat(\"b=\", b), join(bs, \",\")) }\n"
+data kernel_bool_source: String = "module probe_host_text_bool\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(b: Bool, bs: List<Bool>) -> String { concat(concat(\"b=\", b), join(bs, \",\")) }\n"
 
 data control_local_join_parameter_source: String = "module probe_host_text_local_join\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn combine(join: fn(P, P) -> P, p: P) -> P { join(p, p) }\n"
 
@@ -137,8 +138,9 @@ test fn control_kernel_nat_is_accepted() -> Bool {
   blocking_total(source: control_nat_source) == 0
 }
 
-test fn control_kernel_bool_is_accepted() -> Bool {
-  blocking_total(source: control_bool_source) == 0
+test fn a_kernel_bool_at_concat_and_join_is_refused() -> Bool {
+  refusals(source: kernel_bool_source, subject: "nominal Bool at host text String formal of concat: no declared conversion") == 1
+    && refusals(source: kernel_bool_source, subject: "nominal Bool at host text elements of join: no declared conversion") == 1
 }
 
 test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {

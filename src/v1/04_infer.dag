@@ -7561,7 +7561,7 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
 
 fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
   node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
-    || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
+    || node_is_kernel_mint_named(n: n, name: "Unit")
     || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
 }
 
@@ -7589,39 +7589,28 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
 // that `as` and the host-text formals give one answer.
 //
 // A type is a nominal value with no declared conversion unless its DECLARATION is grounded onto
-// a kernel type, is the std.types `Unit` placeholder, or is std.types `Bool`. Every exemption is keyed on the exact
+// a kernel type or is the std.types `Unit` placeholder. Every exemption is keyed on the exact
 // DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
 // spelling: Nat is exempt because gunbc.structural_realization_bindings kernel_grounding_rows carries a
 // row whose carrier IS that declaration (a Nat is an Int, so `n as Int` is a declared identity), and a
 // foreign type spelled `Unit` is not std.types Unit. `Unit` is what the call-site generic solve answers
 // for a parameter it did not solve and what an absent literal infers as, so it is no established
-// nominal identity. std.types Bool is declared as the coproduct `True | False`, so the head exposure
-// reads it as a coproduct, but it is a kernel scalar of the cast table and not a nominal value; at a
-// host-text formal it follows the cast's admission like Int and Nat. The kernel SCALAR mints (Int,
-// Float, Bool, Unit, read by mint provenance and name, never by a corpus spelling) are likewise no
-// nominal; measured, a kernel Bool reaches here with no recovered declaration. Other kernel mints
-// with a product or coproduct head (the kernel Optional, Map, RestResult, Hash, Callable) are NOT
-// exempt: a kernel Optional at a host-text formal renders `Present { value: .. }`, this class. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
+// nominal identity. Kernel Int and Float have no product or coproduct head and are not read as
+// nominal; Bool is: std.types declares it as the coproduct `True | False`, so `b as String` refuses
+// here and so does a Bool at a host-text formal (the refusal's reason text calls it nominal for now;
+// a kernel-scalar arm of this judgment gives it its own). Other kernel mints with a product or
+// coproduct head (the kernel Optional, Map, RestResult, Hash, Callable) are not exempt: a kernel
+// Optional at a host-text formal renders `Present { value: .. }`, this class. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
 // located, so it is counted by the diagnostic census rather than waved through.
-fn kernel_scalar_mint(n: Node) -> Bool {
-  node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
-    || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
-}
-
 fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
-  let kernel_scalar = kernel_scalar_mint(n: t) || match t.inferred {
-    Present { value: Resolved { node: r } } => kernel_scalar_mint(n: r)
-    _ => false
-  }
-  !kernel_scalar && (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
+  (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
     || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
     && match type_reference_declaration_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
       Absent => !cast_source_is_solver_unit_placeholder(source_node: t)
       Present { value: d } =>
         !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
           && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
-          && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Bool"))
     }
 }
 
