@@ -1,5 +1,6 @@
 module gunbc.fleet.print_request
 import std.types { String, NonEmptyStr, Bool }
+import std.content_hash { Sha256Digest }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
@@ -19,13 +20,13 @@ type PrintRequest {
 
 // THE REQUEST RECORD BINDS A REQUEST TO ITS ARTIFACT, once. It is written create-new after the first
 // preparation, so a later convergence on a newer source revision reuses the bytes it recorded instead
-// of preparing a different part for the same request.
+// of preparing a different part for the same request. It carries no credential: the version a start
+// uses is resolved when the start is selected and sealed into that attempt's signed subject.
 type PrintRequestRecord {
   request: PrintRequest
   source_revision: NonEmptyStr
-  credential_version: NonEmptyStr
-  preparation_key_digest: String
-  artifact_sha256: String
+  preparation_key_digest: Sha256Digest
+  artifact_sha256: Sha256Digest
   attempt_id: NonEmptyStr
 }
 
@@ -33,12 +34,12 @@ fn text_sha256(s: String) -> String { sha256_hex(message: bytes_octets(b: utf8_e
 
 // The single attempt a request admits. An attempt whose outcome is ambiguous is never followed by
 // another automatically; a confirmed failure is replaced by a new request, not a new attempt.
-fn print_attempt_id(request: PrintRequest, artifact_sha256: String) -> NonEmptyStr {
+fn print_attempt_id(request: PrintRequest, artifact_sha256: Sha256Digest) -> NonEmptyStr {
   concat("print-attempt-", text_sha256(s: serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "gunbc.print-attempt.v1")),
     json_kv(key: "request_id", value: json_string(s: request.request_id as String)),
     json_kv(key: "printer", value: json_string(s: request.printer as String)),
-    json_kv(key: "artifact_sha256", value: json_string(s: artifact_sha256)),
+    json_kv(key: "artifact_sha256", value: json_string(s: artifact_sha256.hex as String)),
   ])))) as NonEmptyStr
 }
 
@@ -58,6 +59,7 @@ type PrintEvidence
   | RecordedNotClaimed { printer_ready: Bool }
   | ClaimedObserved { job: JobObservation }
   | CompletionRecorded
+  | CompletionRecordMismatched
 
 type PrintStanding
   = NeedsPreparation
@@ -74,6 +76,7 @@ fn print_standing(evidence: PrintEvidence) -> PrintStanding {
     NoRequestRecord => NeedsPreparation
     RecordedNotClaimed { printer_ready: r } => if r { AwaitingBedClear } else { PrinterBusy }
     CompletionRecorded => Completed
+    CompletionRecordMismatched => NeedsAttention
     ClaimedObserved { job: j } => match j {
       JobRunning => Printing
       JobCompletedAwaitingInspection => CompletedAwaitingRecord

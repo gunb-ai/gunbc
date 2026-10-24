@@ -48,25 +48,6 @@ fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: 
   }
 }
 
-// The credential version a convergence pins is the registry's latest, resolved once and recorded
-// with the request; it is never an operator input.
-fn resolve_credential_version(printer: PhysicalAssetIdentity, token_source: AccessTokenSource) -> String? {
-  match printer_access_code_locus(printer: printer) {
-    PrinterAccessCodeLocusUnknown { printer: _ } => none
-    PrinterAccessCodeLocusConflict { printer: _, matches: _ } => none
-    PrinterAccessCodeDesiredLocusFound { locus: locus } =>
-      match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: "latest"), token_source: token_source) {
-        SecretCredentialReady { credential: c, resolved_version: version } => if (c as String) == "" { none } else {
-          match sm_resolved_version_id(identity: version) { SmVersionIdProjected { version: v } => Present { value: v as String } SmVersionIdNotAVersionResource { supplied: _ } => none }
-        }
-        SecretCredentialAccessUpsertRequired { plan: _ } => none
-        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
-        SecretCredentialFetchRefused { reason: _ } => none
-        SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
-      }
-  }
-}
-
 fn run() -> ProcessExit {
   let run_id = actions_variable_trimmed(name: "GITHUB_RUN_ID")
   let operation = actions_variable_trimmed(name: "PRINTER_OPERATION")
@@ -85,12 +66,9 @@ fn run() -> ProcessExit {
           let revision = actions_variable_trimmed(name: "GITHUB_SHA")
           if request_id == "" || root == "" || recipe == "" || revision == "" {
             exit_failure(reason: "Converge requires request_id, root and recipe, and an attributed revision")
-          } else { match resolve_credential_version(printer: printer, token_source: WorkloadIdentityToken) {
-            Absent => exit_failure(reason: "Printer credential version could not be resolved from the registry")
-            Present { value: version } => converge_print(
-              request: PrintRequest { request_id: request_id as NonEmptyStr, root: root as NonEmptyStr, recipe: recipe as NonEmptyStr, printer: printer },
-              source_revision: revision as NonEmptyStr, credential_version: version as NonEmptyStr, run_id: run_id, token_source: WorkloadIdentityToken)
-          } }
+          } else { converge_print(
+            request: PrintRequest { request_id: request_id as NonEmptyStr, root: root as NonEmptyStr, recipe: recipe as NonEmptyStr, printer: printer },
+            source_revision: revision as NonEmptyStr, run_id: run_id, token_source: WorkloadIdentityToken) }
         }
     }
   }
