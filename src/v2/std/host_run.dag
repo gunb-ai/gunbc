@@ -59,6 +59,14 @@ type EmitHostTransportResult {
   build_log: BuildLog
 }
 
+// A PROJECTION KEPT FOR ONE MINT, NOT A SECOND HOME FOR THE FACT. Its only caller is
+// v2.compiler.emit_host run_host_process_admitted, which mints EmitHostRunReceipt.compile_skipped
+// from it. That Bool still has ~15 readers: the emit_on_demand_* and native_selected_witness_bundle
+// claims, emit_host_identity_cast_native, std.selected_witness_bundle and
+// v2.compiler.self_host.parity_window. Moving them onto the phase is a replacement migration over
+// a population mostly outside the required gate's closure, so it is not folded into the change
+// that declared the phase. TRIGGER: EmitHostRunReceipt carries phase: EmitHostTransportPhase and
+// those readers match on it; this function and the receipt's Bool are then deleted together.
 fn emit_host_transport_compile_skipped(phase: EmitHostTransportPhase) -> Bool {
   match phase {
     EmitHostBuildStepFailed => false
