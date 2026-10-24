@@ -1,6 +1,6 @@
 #!/bin/bash
 set -u
-B() { cargo build --release -p v1-compiler --bin gunbc --bin claim_executor 2>&1 | tail -2; }
+B() { cargo build --release -p v1-compiler --bin gunbc --bin claim_executor > /tmp/b.log 2>&1; rc=$?; grep -E "^error|Finished" /tmp/b.log | head -8; grep -B3 -A12 "^error\[" /tmp/b.log | head -60; [ $rc -eq 0 ] || { echo "BUILD FAILED rc=$rc"; exit 3; }; }
 regen() {
   for round in 1 2 3 4; do
     echo "=== regen round $round $(date)"

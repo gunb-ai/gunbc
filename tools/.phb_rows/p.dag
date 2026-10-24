@@ -1,5 +1,6 @@
 module phb_rows
 import std.types { String, Int, List, Bool }
+import std.algebra { list_map, collection_join_shape }
 import std.process { ProcessExit, exit_failure }
 import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, CompileDiagnosticCensusRow }
 import test.claim.nominal_host_text_argument_wall_witness { concat_record_source,concat_coproduct_unit_source,concat_coproduct_record_arm_source,join_record_elements_source,join_coproduct_elements_source,join_record_separator_source,join_coproduct_separator_source,string_length_record_source,control_string_source,control_non_empty_source,control_declared_conversion_source,control_kernel_scalars_source,control_local_join_parameter_source }
