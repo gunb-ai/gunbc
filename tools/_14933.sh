@@ -79,7 +79,7 @@ arm_cgroup () {
   { [ "$RB" != "max" ] && [ -n "$RB" ]; } || { echo "MEM_READBACK_FAIL $1 got=$RB"; return 9; }
   CGPATH=$cg
 }
-fns_of2 () { perl -0777 -ne 'while(/test fn\s+([A-Za-z0-9_]+)\s*\(/g){print "$1\n"}' $1 | sort -u; }
+fns_of2 () { python3 "$(dirname "$0")/fns_safe.py" $1; }
 runjob () { # runjob <tag> <tree> <bin> <mode wet|dry> <entry> <fns-csv> [extra args...]
   local tag=$1 tree=$2 bin=$3 mode=$4 entry=$5 fns=$6; shift 6
   if [ "$ARMS" != all ]; then case ",$ARMS," in *",$tag,"*) ;; *) echo "ROW $tag SKIPPED-ARGLIST"; return 0;; esac; fi
