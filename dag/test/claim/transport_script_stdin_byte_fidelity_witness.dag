@@ -24,27 +24,39 @@ module test.claim.transport_script_stdin_byte_fidelity_witness
 // exclusion from dry discovery plus two `bin_wet` roster rows, the same shape
 // as `effect_plan_bash_materialize_real_execution_witness_test`.
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.retained_shell_script { retained_runtime }
+import gunbc.bash_materialized_transport { bash_materialized_transport }
+import v2.std.effect_plan { Call, EffectPlan }
+import v2.std.orchestration { FailFast }
+import v2.workflow.effect_plan_bash_materialize { effect_plan_bash_materialize }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn stdin_exact_bytes(body: String) -> String {
-  let script = retained_runtime(
-    body: body,
-    reason: "witness: TransportScript stdin byte fidelity through the production bridge" as NonEmptyStr,
-  )
-  shell.Exec.Run(script: script).stdout
+// The script reaches the shell through bash_materialized_transport, one of the two minters
+// transport_script_seal admits: the bytes under test are the payload of a materialized `printf %s`
+// Call, so the stdin carrier is exercised by text an effect plan actually emitted and no free
+// minter or bridge is involved.
+fn stdin_exact_bytes(payload: String) -> String {
+  match bash_materialized_transport(materialization: effect_plan_bash_materialize(plan: EffectPlan {
+    steps: [Call { callee: "printf", args: ["%s", payload] }],
+    on_failure: FailFast,
+  })) {
+    Present { value: script } => shell.Exec.Run(script: script).stdout
+    Absent => "REFUSED-TO-MATERIALIZE"
+  }
 }
 
 test fn transport_script_stdin_delivers_exact_bytes() -> Bool {
-  let observed = stdin_exact_bytes(body: "printf '%s' 'alpha beta\ttab $dollar \"dq\" end'")
-  observed == "alpha beta\ttab $dollar \"dq\" end"
+  let payload = "alpha beta\ttab $dollar \"dq\" end"
+  stdin_exact_bytes(payload: payload) == payload
 }
 
-test fn transport_script_stdin_fidelity_is_independent_of_terminal_newline() -> Bool {
-  let without_terminal_newline = stdin_exact_bytes(body: "printf '%s' 'newline-probe'")
-  let with_terminal_newline = stdin_exact_bytes(body: "printf '%s' 'newline-probe'\n")
-  without_terminal_newline == "newline-probe" && with_terminal_newline == "newline-probe"
+// DECLARED DROP OF A CASE: the former control ran one body with and without a terminal newline on the
+// SCRIPT. A materialized script has a fixed ending, so that axis is no longer reachable through an
+// admitted minter and is not exercised here. What remains is the return-side half it pinned: the stdout
+// read back is the same with and without a terminal newline on the payload, as the former control asserted.
+test fn transport_script_stdout_is_independent_of_a_payload_terminal_newline() -> Bool {
+  stdin_exact_bytes(payload: "newline-probe") == "newline-probe"
+    && stdin_exact_bytes(payload: "newline-probe\n") == "newline-probe"
 }
