@@ -1,6 +1,7 @@
 module gunbc.os_install_emit
 
 import std.logic { Bool }
+import std.optional { Absent, Present }
 import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
@@ -36,16 +37,15 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     ])),
     kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
   ]
-  let with_ssh = if payload.install_openssh_server {
-    append(base, items: [
+  let with_ssh = match payload.ssh {
+    Present { value: ssh } => append(base, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(payload.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
-        kv(key: "allow-pw", value: yaml_bool(b: payload.ssh_password_auth)),
+        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
+        kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
       ])),
     ])
-  } else {
-    base
+    Absent => base
   }
   if payload.fully_automated {
     let automated = append(with_ssh, items: [

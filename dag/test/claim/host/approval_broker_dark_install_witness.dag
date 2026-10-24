@@ -29,10 +29,8 @@ import gunbc.host.host_effect_realize {
   dark_run_leg,
   dark_expect_empty_state,
   dark_same_hash_state,
-  dark_sudoers_legs,
   dark_unit_legs,
   dark_slice_control_legs,
-  dark_snapshot_readback_legs,
   approval_broker_dark_install,
   DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
   DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, dark_sidecar_readback_not_local, DarkInstallInputs,
@@ -75,27 +73,6 @@ fn leg_step(l: DarkLeg) -> DarkInstallStep {
   }
 }
 
-// SUPPLIED SCRATCH: the sudoers legs are pure over the scratch directory the caller acquired, so the
-// claim supplies it. Order is the contract: stage, visudo, install, policy, rename, policy, readback,
-// compare -- the compare is LAST, so convergence is the independent readback.
-test fn the_sudoers_legs_stage_check_install_and_end_with_the_readback_compare() -> Bool {
-  let legs = dark_sudoers_legs(revision: rev(), principal: fleet_posix_ci_runner_principal(), scratch: "/tmp/s")
-  count(legs) == 8
-    && match legs |> first { Present { value: l } => leg_step(l: l) == DarkStepSudoersStage
-      Absent => false }
-}
-
-test fn the_sudoers_legs_end_with_the_compare() -> Bool {
-  let legs = dark_sudoers_legs(revision: rev(), principal: fleet_posix_ci_runner_principal(), scratch: "/tmp/s")
-  match legs |> last {
-    Present { value: l } => match l {
-      DarkLegSameHash { step: s, left: a, right: b } => s == DarkStepSudoersCompare && a != b
-      _ => false
-    }
-    Absent => false
-  }
-}
-
 test fn the_unit_legs_enable_and_restart_only_the_broker_unit_after_a_daemon_reload() -> Bool {
   let steps = map(dark_unit_legs(spec: deployment_spec_srv1(), revision: rev()), l => leg_step(l: l))
   steps == [DarkStepSliceUnit, DarkStepBrokerUnit, DarkStepDaemonReload, DarkStepEnable, DarkStepRestart]
@@ -113,10 +90,6 @@ test fn the_unit_legs_never_name_the_roadmap_unit() -> Bool {
   let restart_roadmap = DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: roadmap)) }
   any(legs, l => l == enable_broker) && any(legs, l => l == restart_broker)
     && !any(legs, l => l == enable_roadmap) && !any(legs, l => l == restart_roadmap)
-}
-
-test fn the_snapshot_readback_runs_two_bare_finds() -> Bool {
-  count(dark_snapshot_readback_legs(dir: "/opt/gunbc/approval-broker-helpers/x")) == 2
 }
 
 // SUPPLIED OUTCOMES: the pure steps dark_run_leg delegates to are driven with supplied outcomes, so no

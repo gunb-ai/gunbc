@@ -1,6 +1,7 @@
 module std.power_of_two
 
 import std.types { Int, List }
+import std.algebra { list_push }
 
 // 2^n over bit positions, below std.machine_word and std.machine_width_range so neither has an import cycle.
 // NOT std.induction int_pow_bounded: that is a PARTIAL, linear, capped pow (Int? answer), a different
