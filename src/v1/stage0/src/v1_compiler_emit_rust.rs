@@ -34357,10 +34357,13 @@ pub fn rust_receiver_has_callable_method_field(
             scope.type_env.source_indices.clone(),
             receiver_type.clone(),
         );
-        if crate::v1_compiler_infer_types::node_is_keyed_collection(
+        if (crate::v1_compiler_infer_types::node_is_keyed_collection(
             receiver_type.clone(),
             scope.type_env.source_indices.clone(),
-        ) {
+        ) && crate::v1_compiler_emit::keyed_container_has_target_inhabitant(
+            crate::v1_std_core::qualified_last_segment(receiver_type_name.clone()),
+            RenderTarget::Rust,
+        )) {
             false
         } else {
             match rust_struct_field_type_node(
