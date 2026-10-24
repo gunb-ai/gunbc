@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.nominal_isomorphic_record_admitted_at_sibling_declaration
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data nominal_isomorphic_record_admitted_at_sibling_declaration: RecurringFailureMode = RecurringFailureMode {
   identity: "nominal_isomorphic_record_admitted_at_sibling_declaration" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the fix at the judgment link (a head-identity gate before the structural comparison of a nominal pair, refusing with a typed cause naming both declarations), plus deleting the nickname pair so one declaration remains" } },
 
   receipts: [
     "**a nominal record admitted at a field-isomorphic sibling declaration** (invalid state: a value of one declared nominal record type reaches a slot whose declared type is a DIFFERENT nominal record type with the same field names and types, and the front end accepts it because the check that fires compares STRUCTURE -- field labels and types -- where the declaration's IDENTITY decides. The two declarations are one fact restated twice (DESIGN section 3's nickname fork at the type layer), so nothing the structure check can see distinguishes them; the first refusal happens in the emitted target, where distinct Rust structs make the mismatch a compile error. Harm: DESIGN section 4b(1)'s rung below the ladder -- a value not inhabiting its declared type passes as Accepted, so the ladder's verdict is reported green while rustc, not gunbc, is the authority that judges inhabitance).",
