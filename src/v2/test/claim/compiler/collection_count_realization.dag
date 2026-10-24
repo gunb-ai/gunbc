@@ -110,6 +110,6 @@ test fn ccc_int_binds_the_carrier_formal() -> Bool {
 test fn ccc_size_result_is_the_stated_int() -> Bool {
   match ccc_arrow() {
     Absent => false
-    Present { value: arrow } => node_same_occurrence(a: list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1), b: Present) { value: ccc_int_type() }
+    Present { value: arrow } => list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1) == Present { value: ccc_int_type() }
   }
 }

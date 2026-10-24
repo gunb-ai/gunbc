@@ -543,7 +543,7 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
   (node_same_occurrence(a: inputs.snapshot.root, b: bootstrap_source_snapshot_root()))
     && (inputs.snapshot.language_model.language_identity == seed_capability_language_model().language_identity)
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
-    && (node_same_occurrence(a: inputs.target_model, b: rust_target_model()))
+    && (inputs.target_model == rust_target_model())
     && v4_evaluator_runtime_models_equal(a: inputs.runtime_model, b: v2_evaluator_runtime())
 }
 

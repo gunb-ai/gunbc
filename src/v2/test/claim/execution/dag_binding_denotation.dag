@@ -145,6 +145,6 @@ test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds
 }
 
 test fn dag_binding_denotation_rows_point_at_std_authorities_holds() -> Bool {
-  (node_same_occurrence(a: dag_binding_denotation(sym: dag_int_type_binding()), b: Present) { value: integer_int_type_node() })
-    && (node_same_occurrence(a: dag_binding_denotation(sym: ^bool_node_symbol), b: Present) { value: bool_node() })
+  (dag_binding_denotation(sym: dag_int_type_binding()) == Present { value: integer_int_type_node() })
+    && (dag_binding_denotation(sym: ^bool_node_symbol) == Present { value: bool_node() })
 }

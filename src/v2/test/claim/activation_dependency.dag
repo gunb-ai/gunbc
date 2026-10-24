@@ -230,7 +230,7 @@ fn acd_branch_demand_reads_the_slots(demand: ActivationDemand<Node>) -> Bool {
             Present { value: e } =>
               node_same_occurrence(a: demand.selector, b: c)
                 && node_same_occurrence(a: demand.alternatives.head.root, b: t)
-                && node_same_occurrence(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: e))
+                && optional_eq(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: e), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
             Absent => false
           }
         Absent => false
@@ -362,7 +362,7 @@ test fn acd_d_match_selects_one_arm_by_pattern_holds() -> Bool {
         Present { value: demand } =>
           acd_alternative_count(demand: demand) == 2
             && acd_match_ordinals_are(demand: demand, first: 1, second: 2)
-            && node_same_occurrence(a: match_slot_target(n: demand.site, slot: MatchScrutineeSlot), b: optional_present(value: demand.selector))
+            && optional_eq(a: match_slot_target(n: demand.site, slot: MatchScrutineeSlot), b: optional_present(value: demand.selector), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
       }
   }
 }
@@ -492,7 +492,7 @@ test fn acd_f_branch_condition_equal_to_arm_resolves_by_slot_holds() -> Bool {
           acd_branch_slots_are_then_else(demand: demand)
             && node_same_occurrence(a: demand.selector, b: acd_atom(s: ^acd_shared))
             && node_same_occurrence(a: demand.alternatives.head.root, b: acd_atom(s: ^acd_then))
-            && node_same_occurrence(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_shared)))
+            && optional_eq(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_shared)), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
       }
   }
 }
@@ -512,7 +512,7 @@ test fn acd_g_match_scrutinee_equal_to_arm_body_resolves_by_slot_holds() -> Bool
           node_same_occurrence(a: demand.selector, b: acd_atom(s: ^acd_shared))
             && acd_match_ordinals_are(demand: demand, first: 1, second: 2)
             && node_same_occurrence(a: demand.alternatives.head.root, b: acd_atom(s: ^acd_shared))
-            && node_same_occurrence(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_other)))
+            && optional_eq(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_other)), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
       }
   }
 }
@@ -770,7 +770,7 @@ fn acd_zero_alternatives_then_infers(src: String, check_inference: Bool, accepte
             && acd_total(d: d, root: tree.root)
             && match d.zero_alternatives {
               Cons { head: z, tail: Empty } =>
-                node_same_occurrence(a: match_slot_target(n: z.site, slot: MatchScrutineeSlot), b: optional_present(value: z.selector))
+                optional_eq(a: match_slot_target(n: z.site, slot: MatchScrutineeSlot), b: optional_present(value: z.selector), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
                   && length(xs: z.site.children) == 1
               _ => false
             }

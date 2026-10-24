@@ -77,7 +77,7 @@ fn arrow_body_cost_arrow() -> Node {
 fn arrow_body_cost_domain_excluded_holds() -> Bool {
   match cost_lens(n: arrow_body_cost_arrow()) {
     Holds { value: actual } =>
-      node_same_occurrence(a: actual, b: SumCost) {
+      actual == SumCost {
         lhs: unit_cost(),
         rhs: unit_cost()
       }

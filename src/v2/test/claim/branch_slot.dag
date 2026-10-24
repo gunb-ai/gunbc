@@ -2,7 +2,7 @@ module v2.test.claim.branch_slot
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.optional { Absent, Present, optional_absent, optional_present }
+import std.optional { optional_eq, Absent, Present, optional_absent, optional_present }
 import std.types { Bool }
 import v2.std.node { node_same_occurrence,
   NotADeclaration,
@@ -55,8 +55,8 @@ test fn bs_a_table_maps_ordinals_to_roles_holds() -> Bool {
 test fn bs_c_fourth_positional_has_no_role_holds() -> Bool {
   branch_positional_slot(ordinal: 3) == optional_absent()
     && branch_positional_slot(ordinal: 9) == optional_absent()
-    && node_same_occurrence(a: branch_slot_target(n: bs_branch_four(), slot: BranchElseSlot), b: optional_absent())
-    && node_same_occurrence(a: branch_slot_target(n: bs_branch_four(), slot: BranchConditionSlot), b: optional_absent())
+    && optional_eq(a: branch_slot_target(n: bs_branch_four(), slot: BranchElseSlot), b: optional_absent(), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
+    && optional_eq(a: branch_slot_target(n: bs_branch_four(), slot: BranchConditionSlot), b: optional_absent(), eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
 }
 
 fn bs_branch_four() -> Node {

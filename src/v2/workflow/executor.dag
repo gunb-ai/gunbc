@@ -138,7 +138,7 @@ fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: Lis
     ok && contains(
       xs: batches,
       item: executor_batch_for_frontier(frontier: RunnableFrontier { ready: layer.ready }),
-      eq: fn(left, right) { node_same_occurrence(a: left, b: right) }
+      eq: fn(left, right) { left == right }
     )
   })
 }

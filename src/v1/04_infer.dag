@@ -3556,6 +3556,28 @@ data equality_inadmissible_declaration_identities: List<String> = [
   type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
 ]
 
+// A NARROWED, DECLARED DROP (gunbc.rung_drop.node_reaching_composite_equality): each row names one
+// declaration ("<module> <declaration>") whose `==` compares a COMPOSITE that reaches Node (a record or
+// coproduct with a Node somewhere inside), where no erasure route exists yet because a composite's
+// equality would have to be written by hand per type. Such a site is admitted; a bare Node or Edge operand
+// still refuses everywhere, and a composite reaching Node anywhere else still refuses. The capability that
+// retires the list is derived structural equality with a Node-leaf occurrence route.
+data equality_node_reaching_composite_drop_sites: List<String> = [
+]
+
+fn equality_operand_is_inadmissible_leaf(n: Node, scope: InferScope) -> Bool {
+  let peeled = normalize_access_type_node(n: n)
+  let identity = type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices)
+  equality_inadmissible_declaration_identities |> any(i => i == identity)
+}
+
+fn equality_node_reaching_composite_dropped(r: EqualityAdmissionRefusal, left: Node, right: Node, scope: InferScope) -> Bool {
+  r.member == "declared equality-inadmissible"
+    && !equality_operand_is_inadmissible_leaf(n: left, scope: scope)
+    && !equality_operand_is_inadmissible_leaf(n: right, scope: scope)
+    && (equality_node_reaching_composite_drop_sites |> any(k => k == concat(scope.module_name, " ", scope.caller_decl_name)))
+}
+
 fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
   if equality_inadmissible_declaration_identities |> any(i => i == identity) {
     equality_refused(carrier: name, member: "declared equality-inadmissible", member_judged: true)
@@ -3821,10 +3843,14 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       )]
     } else {
       match equality_operand_admission(n: lt, scope: scope, visited: empty_map(), depth: 0) {
-        Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+        Present { value: r } =>
+          if equality_node_reaching_composite_dropped(r: r, left: lt, right: rt, scope: scope) { [] }
+          else { [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)] }
         Absent =>
           match equality_operand_admission(n: rt, scope: scope, visited: empty_map(), depth: 0) {
-            Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+            Present { value: r } =>
+              if equality_node_reaching_composite_dropped(r: r, left: lt, right: rt, scope: scope) { [] }
+              else { [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)] }
             Absent => []
           }
       }

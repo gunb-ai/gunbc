@@ -40,7 +40,7 @@ import v2.compiler.value_use_dependency {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.dependency { DataDependsOn, DependencyView, dependency_view_relation }
+import v2.std.dependency { dependency_view_equal, DataDependsOn, DependencyView, dependency_view_relation }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { node_same_occurrence, Bind, ComputationNode, Node, NodeOccurrenceIdentity, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.provenance { node_occurrence_id_optional }
@@ -472,7 +472,7 @@ fn vudd_view_in(views: List<DependencyView>, view: DependencyView) -> Bool {
 }
 
 fn vudd_view_eq(a: DependencyView, b: DependencyView) -> Bool {
-  node_same_occurrence(a: a, b: b)
+  dependency_view_equal(a: a, b: b)
 }
 
 // A ROW'S ENDPOINT IS A NODE OF THE RESOLVED GRAPH under the consumer's own equality (structural, as

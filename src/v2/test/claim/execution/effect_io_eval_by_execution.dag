@@ -54,7 +54,7 @@ import v2.std.node { node_same_occurrence,
   TypeNode,
   Value,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -236,7 +236,7 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
     context: effect_io_eval_context_bound(),
     inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Accepted { value: v, diagnostics: None } => node_same_occurrence(a: v, b: effect_io_eval_literal_value())
+    Accepted { value: v, diagnostics: None } => (runtime_value_equality(a: v, b: effect_io_eval_literal_value()) == RuntimeValuesEqual)
     _ => false
   }
 }

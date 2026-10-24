@@ -566,7 +566,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
     match validate_module_roots(roots: roots) {
       Rejected { diagnostics: _ } => false
       Accepted { value: validated, diagnostics: _ } =>
-        node_same_occurrence(a: validated.roots, b: roots) && fold_list(
+        validated.roots == roots && fold_list(
           xs: [^fc_subject_a_seg, ^fc_subject_b_seg, ^fc_missing_seg],
           empty: true,
           cons: fn(ok, segment) {
@@ -575,7 +575,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
               Accepted { value: expected, diagnostics: expected_diag } =>
                 match validated_module_root_for_name(roots: validated, name: name) {
                   Accepted { value: actual, diagnostics: actual_diag } =>
-                    node_same_occurrence(a: actual, b: expected) && diagnostics_eq(a: actual_diag, b: expected_diag)
+                    actual == expected && diagnostics_eq(a: actual_diag, b: expected_diag)
                   Rejected { diagnostics: _ } => false
                 }
               Rejected { diagnostics: expected } =>

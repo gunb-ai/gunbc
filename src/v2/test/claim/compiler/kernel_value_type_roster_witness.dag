@@ -109,7 +109,7 @@ fn kvr_atom_identity(n: Node) -> Optional<Symbol> {
 fn kvr_binding_denotes(node: Node) -> Bool {
   match kvr_atom_identity(n: node) {
     Absent => false
-    Present { value: id } => node_same_occurrence(a: dag_binding_denotation(sym: id), b: Present) { value: node }
+    Present { value: id } => dag_binding_denotation(sym: id) == Present { value: node }
   }
 }
 
@@ -121,7 +121,7 @@ fn kvr_binding_denotes(node: Node) -> Bool {
 fn kvr_row_binds_and_denotes(row: KernelValueType) -> Bool {
   match dag_kernel_value_type_binding(row: row) {
     Absent => false
-    Present { value: binding } => node_same_occurrence(a: dag_binding_denotation(sym: binding), b: Present) { value: row.value_type }
+    Present { value: binding } => dag_binding_denotation(sym: binding) == Present { value: row.value_type }
   }
 }
 

@@ -56,7 +56,7 @@ data nested_product_input: Node = Node {
 test fn nested_product_claim_holds() -> Bool {
   match cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
-      node_same_occurrence(a: actual, b: ProductCost) {
+      actual == ProductCost {
         lhs: LinearCost { variable: SizeVariable { source: nested_product_input_measure } },
         rhs: LinearCost { variable: SizeVariable { source: nested_product_inner_measure } }
       }

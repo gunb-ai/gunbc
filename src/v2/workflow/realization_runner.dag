@@ -443,5 +443,5 @@ fn runner_schedule_contains_batch(
   batches: List<ExecutorBatch>,
   batch: ExecutorBatch
 ) -> Bool {
-  contains(xs: batches, item: batch, eq: fn(left, right) { node_same_occurrence(a: left, b: right) })
+  contains(xs: batches, item: batch, eq: fn(left, right) { left == right })
 }

@@ -49,7 +49,7 @@ data map_linear_input: Node = Node {
 test fn map_linear_claim_holds() -> Bool {
   match cost_lens(n: map_linear_input) {
     Holds { value: actual } =>
-      node_same_occurrence(a: actual, b: LinearCost) { variable: SizeVariable { source: map_linear_measure } }
+      actual == LinearCost { variable: SizeVariable { source: map_linear_measure } }
     _ => false
   }
 }
