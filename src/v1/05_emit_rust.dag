@@ -15593,9 +15593,16 @@ fn rust_callable_field_method_call(method_name: String, receiver: Node, args: Li
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
   let receiver_type = resolved_type(n: receiver)
   let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
-  match rust_struct_field_type_node(scope: scope, struct_name: receiver_type_name, field_name: method_name) {
-    Present { value: field_type } => field_type.connective == Arrow
-    Absent => false
+  // A receiver lowered to the host keyed container has no record to own a field: the algebra
+  // profile struct that declares `map_keys` as an arrow member is not the value's representation
+  // (one name, two representations; RESIDUE keyed by leaf spelling through node_is_keyed_collection,
+  // tracked by gunbc.recurring_failure_mode emitter_keyed_container_lowering_is_keyed_by_leaf_spelling).
+  if node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices) { false }
+  else {
+    match rust_struct_field_type_node(scope: scope, struct_name: receiver_type_name, field_name: method_name) {
+      Present { value: field_type } => field_type.connective == Arrow
+      Absent => false
+    }
   }
 }
 
