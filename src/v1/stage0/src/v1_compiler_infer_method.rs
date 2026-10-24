@@ -225,10 +225,6 @@ pub fn filesystem_read_result_type() -> Rc<Node> {
     )
 }
 
-pub fn emit_host_transport_result_type() -> Rc<Node> {
-    crate::v1_compiler_infer_types::nominal_type_ref("EmitHostTransportResult".to_string())
-}
-
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -869,7 +865,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "emit_host_environment".to_string(),
     }),
     })]),
-        returns: emit_host_transport_result_type(),
+        returns: type_variable_node("emit_host_run_transport_result".to_string()),
     }));
                 __m.insert("emit_host_run_transport_cached".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -903,7 +899,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         id: "emit_host_environment".to_string(),
     }),
     })]),
-        returns: emit_host_transport_result_type(),
+        returns: type_variable_node("emit_host_run_transport_result".to_string()),
     }));
                 __m.insert("emit_host_native_cache_evict".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
