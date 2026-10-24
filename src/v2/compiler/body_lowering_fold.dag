@@ -7014,20 +7014,16 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumSpine { segments: segments } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
-                      // QUALIFIED CALL `m.f(args)` IS ROUTED THROUGH body_lower_primary_call_node, like
-                      // the bare call: the call root is the semantic form of the authored suffix, so it
-                      // takes the suffix's occurrence. The spine this site passes as its operator carries
-                      // the SAME source occurrence on its root until the helper's close_lowered_image
-                      // demotes it to OccurrencePending { caused_by } -- normalize's one allocation pass
-                      // turns it Projected -- so exactly one node carries the suffix's Minted id and no
-                      // two nodes ever share one occurrence.
-                      node: body_lower_primary_call_node(
+                      // MUTATION CONTROL (SCRATCH, NEVER MERGE): the realistic per-site regression --
+                      // back to the bare node_synthetic via body_lower_transform_call, the site's
+                      // pre-fix form. Expected: the qualified RED (census locatable) and the qualified
+                      // collision pin go red; every other claim stays green.
+                      node: body_lower_transform_call(
                         operator: body_lower_qualified_name_spine_node(
                           segments: list_snoc_item(xs: segments, item: step_segment),
                           source: source
                         ),
-                        args: args,
-                        source: source
+                        args: args
                       )
                     },
                     diagnostics: diagnostics_merge(outer: ad, inner: cd)
