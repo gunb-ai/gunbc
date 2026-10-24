@@ -111,10 +111,8 @@ pub fn with_module_path_index<R>(
         .map(|r| anchor_source_root(r))
         .collect::<Vec<_>>()
         .join("\u{1f}");
-    let cached = MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(&key));
-    if !cached {
-        let index = build_module_path_index_uncached(source_roots);
-        MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), index));
+    if let Err(refusals) = fill_module_path_index_cache(source_roots, &key) {
+        refuse_module_index(&refusals);
     }
     MODULE_PATH_INDEX_CACHE.with(|cache| {
         let cache = cache.borrow();
@@ -122,9 +120,44 @@ pub fn with_module_path_index<R>(
     })
 }
 
+/// The fallible fill of the cached module-path index: the typed refusal set on failure, nothing
+/// cached. `with_module_path_index` exits on it (its callers are infallible); the claim route
+/// reads it as no observation.
+pub(crate) fn try_with_module_path_index(
+    source_roots: &[String],
+) -> Result<(), Vec<ModuleIndexRefusal>> {
+    let key = source_roots
+        .iter()
+        .map(|r| anchor_source_root(r))
+        .collect::<Vec<_>>()
+        .join("\u{1f}");
+    fill_module_path_index_cache(source_roots, &key)
+}
+
+fn fill_module_path_index_cache(
+    source_roots: &[String],
+    key: &str,
+) -> Result<(), Vec<ModuleIndexRefusal>> {
+    if MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(key)) {
+        return Ok(());
+    }
+    let index = try_build_module_path_index_uncached(source_roots)?;
+    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.to_string(), index));
+    Ok(())
+}
+
 pub(crate) fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, String> {
+    try_build_module_path_index_uncached(source_roots).unwrap_or_else(|refusals| {
+        refuse_module_index(&refusals);
+        unreachable!("refuse_module_index exits on a nonempty refusal set")
+    })
+}
+
+fn try_build_module_path_index_uncached(
+    source_roots: &[String],
+) -> Result<HashMap<String, String>, Vec<ModuleIndexRefusal>> {
     let mut index: HashMap<String, String> = HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
+    let refusals = for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
         if let Some(existing) = index.get(&binding.module_path) {
             if existing == &rel || same_canonical_file(existing, &rel) {
@@ -138,7 +171,11 @@ pub(crate) fn build_module_path_index_uncached(source_roots: &[String]) -> HashM
         }
         insert_module_path(&mut index, &binding.module_path, rel);
     });
-    index
+    if refusals.is_empty() {
+        Ok(index)
+    } else {
+        Err(refusals)
+    }
 }
 
 /// Project `whole_tree_strict_resolve_exclusion_substrings` out of the ci_layer_roots authority.
