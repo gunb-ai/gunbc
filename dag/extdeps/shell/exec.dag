@@ -100,7 +100,7 @@ data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 // census and its measured receipts are gunbc.hermetic_mock_fidelity.
 //
 // The arms are DELETED rather than made input-varying. Hermetic execution of these operations now
-// reaches HermeticEffectGround.NoMockResponse -- a typed, located, per-identity refusal that
+// reaches EffectRefusalGround.NoMockResponse -- a typed, located, per-identity refusal that
 // surfaces on the route-gap roster -- instead of a fabricated success. A witness that reaches this
 // seam hermetically needs a ROUTE, never a better mock: reachability in particular has no honest
 // mock, since consulting the transport is what hermetic mode forbids.

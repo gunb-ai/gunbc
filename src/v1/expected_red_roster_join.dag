@@ -19,15 +19,23 @@ type BudgetVerdictCompletion
   = Interrupted
   | CompletedOverBudget
 
-// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION, closed and companion-local exactly as
+// WHY A RUN COULD NOT REALIZE ONE OPERATION, closed and companion-local exactly as
 // BudgetVerdictCompletion above is. Each arm names a DIFFERENT remedy, which is the whole
 // reason it is not one String: an unpublished mock case is closed by publishing the case, a
-// missing mock_response by authoring one, and a filesystem removal only by a wet route, since
-// removal's whole content is the effect and there is no mock arm to author.
-type HermeticEffectGround
+// missing mock_response by authoring one, a filesystem removal only by a wet route, since
+// removal's whole content is the effect and there is no mock arm to author, and a witness frame
+// only by a hermetic run, since a modeled realization is admitted nowhere else. The MODE the
+// run was in is not a second field beside the ground: it is derived from it by
+// effect_refusal_mode, so the pair cannot disagree and the remedy follows the mode.
+type EffectRefusalGround
   = UnpublishedMockCase
   | NoMockResponse
   | FilesystemRemoval
+  | FrameNotRealizableUnderMode
+
+type EffectRefusalMode
+  = RefusedUnderHermetic
+  | RefusedUnderWet
 
 // HostEffectRefused IS A ROUTE GAP, NOT A VERDICT. The witness never reached its subject: the
 // route it was given has no arm for a host effect it reached for. That is the same distinction
@@ -53,7 +61,7 @@ type WitnessEvalVerdict
   | NotBool { got: String }
   | RuntimeError { message: String }
   | HostToolUnresolved { name: String, probed: List<String> }
-  | HostEffectRefused { operation: String, ground: HermeticEffectGround }
+  | HostEffectRefused { operation: String, ground: EffectRefusalGround }
   | BudgetExceeded { elapsed_ms: Int, budget_ms: Int, kind: String, completion: BudgetVerdictCompletion }
   | ExitFailure { code: Int, reason: String }
 
@@ -98,11 +106,37 @@ type VerdictClassification {
   detail: String
 }
 
-fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+fn effect_refusal_mode(ground: EffectRefusalGround) -> EffectRefusalMode {
+  match ground {
+    UnpublishedMockCase => RefusedUnderHermetic
+    NoMockResponse => RefusedUnderHermetic
+    FilesystemRemoval => RefusedUnderHermetic
+    FrameNotRealizableUnderMode => RefusedUnderWet
+  }
+}
+
+fn effect_refusal_ground_label(ground: EffectRefusalGround) -> String {
   match ground {
     UnpublishedMockCase => "no published mock case for a corpus-governed service"
     NoMockResponse => "operation declares no mock_response"
     FilesystemRemoval => "filesystem removal has no mock arm; only a wet route can run it"
+    FrameNotRealizableUnderMode => "a modeled witness frame is admitted only under Hermetic execution"
+  }
+}
+
+fn effect_refusal_mode_label(mode: EffectRefusalMode) -> String {
+  match mode {
+    RefusedUnderHermetic => "hermetic route has no arm for"
+    RefusedUnderWet => "wet run cannot realize"
+  }
+}
+
+// The remedy depends only on the mode: a hermetic run is given a wet route, a wet run a hermetic
+// one. The Hermetic spelling names both entry points, so no caller re-spells it per CLI.
+fn effect_refusal_remedy(mode: EffectRefusalMode) -> String {
+  match mode {
+    RefusedUnderHermetic => "re-run with --wet"
+    RefusedUnderWet => "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
   }
 }
 
@@ -125,7 +159,7 @@ fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
       VerdictClassification {
         disposition: NotEvaluated { reason: "host_effect_refused" },
         detail: concat(
-          "hermetic route has no arm for ", operation, " (", hermetic_effect_ground_label(ground: ground),
+          effect_refusal_mode_label(mode: effect_refusal_mode(ground: ground)), " ", operation, " (", effect_refusal_ground_label(ground: ground),
           ") — the witness never reached its subject, so this is a route gap, not a verdict"
         )
       },

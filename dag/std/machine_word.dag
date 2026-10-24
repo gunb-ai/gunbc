@@ -9,6 +9,7 @@ import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte, BitWidth, bit_width, bit_width_count }
 import std.integer { Unsigned, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, qualified_octets, qualified_octet_members }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
+import std.algebra { list_push }
 
 // THE FIXED-WIDTH MACHINE WORD, AND WHY IT IS A VALUE-LEVEL WIDTH.
 //

@@ -10,7 +10,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, Bash,
+  Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputChoice,
   WorkflowPermissions, PermRead, ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
 }
@@ -1063,37 +1063,46 @@ fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
   }
 }
 
+// THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
+// field, so it cannot depend on the dispatched (seed, guard, script): "workflow_dispatch-only" — the
+// reason gunbc.runner.runner_fleet_job_timeout_census omits this workflow from the drain-bound
+// population — is then a property of this constant, read directly by the census discharge and its
+// witness, not a sampling over built workflows.
+fn instrument_dispatch_workflow_triggers() -> List<WorkflowTrigger> {
+  [
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: instrument_dispatch_wave_shard_input,
+          // EXTERNAL FACT (GitHub product policy, DESIGN 3): a workflow_dispatch input description
+          // longer than 160 characters makes GitHub reject the ENTIRE workflow file as invalid -- the
+          // push run dies jobless with the invalid-workflow signature and dispatches refuse 'Workflow
+          // does not have workflow_dispatch trigger' (422). Observed on this repo at head fa5fe4d399
+          // (2026-10-20): a 255-char description here killed the file; at 106 chars it loads. Keep
+          // every dispatch-input description in this file under 160 characters: the next long one
+          // refuses at push time, on the fleet, with no diagnostic beyond a jobless run.
+          description: Present { value: "Wave gate only: base | i/K | merge/K. none = not a wave run; a wave label with none refuses malformed (2)." },
+          required: false,
+          default: Present { value: "none" },
+          type: InputChoice { options: instrument_dispatch_wave_shard_options() },
+        },
+        DispatchInput {
+          name: instrument_dispatch_label_input,
+          description: Present { value: "The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref." },
+          required: true,
+          default: none,
+          type: InputChoice { options: instrument_dispatch_label_options() },
+        },
+      ]
+    }
+  ]
+}
+
 fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> Workflow {
   Workflow {
     name: instrument_dispatch_workflow_name,
     run_name: Present { value: join(["instrument-dispatch ", instrument_dispatch_label_expression()], "") },
-    on: [
-      WorkflowDispatch {
-        inputs: [
-          DispatchInput {
-            name: instrument_dispatch_wave_shard_input,
-            // EXTERNAL FACT (GitHub product policy, DESIGN 3): a workflow_dispatch input description
-            // longer than 160 characters makes GitHub reject the ENTIRE workflow file as invalid -- the
-            // push run dies jobless with the invalid-workflow signature and dispatches refuse 'Workflow
-            // does not have workflow_dispatch trigger' (422). Observed on this repo at head fa5fe4d399
-            // (2026-10-20): a 255-char description here killed the file; at 106 chars it loads. Keep
-            // every dispatch-input description in this file under 160 characters: the next long one
-            // refuses at push time, on the fleet, with no diagnostic beyond a jobless run.
-            description: Present { value: "Wave gate only: base | i/K | merge/K. none = not a wave run; a wave label with none refuses malformed (2)." },
-            required: false,
-            default: Present { value: "none" },
-            type: InputChoice { options: instrument_dispatch_wave_shard_options() },
-          },
-          DispatchInput {
-            name: instrument_dispatch_label_input,
-            description: Present { value: "The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref." },
-            required: true,
-            default: none,
-            type: InputChoice { options: instrument_dispatch_label_options() },
-          },
-        ]
-      }
-    ],
+    on: instrument_dispatch_workflow_triggers(),
     concurrency: Present { value: instrument_dispatch_concurrency },
     env: none,
     permissions: Present {
