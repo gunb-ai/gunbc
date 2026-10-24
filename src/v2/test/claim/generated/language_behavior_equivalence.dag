@@ -1,6 +1,5 @@
 module v2.test.claim.generated.language_behavior_equivalence
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -152,8 +151,7 @@ fn lbe_inferred_tree(root: Node) -> InferredTree {
       lookup: fn(_) {
         Present { value: facts }
       }
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 

@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.emitter_keyed_container_lowering_is_keyed_by_leaf_spelling
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data emitter_keyed_container_lowering_is_keyed_by_leaf_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitter_keyed_container_lowering_is_keyed_by_leaf_spelling" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: the seed Rust emitter decides that a two-argument type lowers to the host keyed container (HashMap) from the authored LEAF SPELLING at the position (`v1.compiler.types` `node_is_keyed_collection`: the declared alias roster, plus `node_is_keyed_algebra_spelling`, which reads the algebra row for the spelling), not from the declaration the position resolves to. Any other declaration whose leaf is FinitelySupportedFunction, or an alias spelling shadowed by a user type, lowers to HashMap. DESIGN section 4: type compatibility keys on the exact declaration a position resolves to, never its leaf name.",
+
+    "HARM AND SPECIMEN: operator Map ruling of 2026-10-21 (its gunbc.design_ruling row lands with #14876, the atomic cutover this PR is the prerequisite of; it is not in this tree, so it is not a DeclarationRef here). Retyping std.algebra to spell FinitelySupportedFunction directly rendered the algebra struct beside HashMap callers (32 E0308 in the regenerated std_algebra.rs and std_source_annotation.rs), because the spelling is deliberately not an alias row (canonical_spelling_sorts_ahead_of_alias_reason). The admitted repair reads the spelling from the declared algebra rows and admits only the keyed algebra; it stays at spelling grain because the emitter reaches only the authored name at that site. Same class as host_seam_realization_is_keyed_by_primitive_spelling (sunny-bee-153, lands with #14751); a receipt for this site belongs on that row once it lands.",
+
+    "LATENT DIVERGENCE ON MAIN FOUND BY THIS REPAIR, WITH BEFORE/AFTER MIRROR LINES (heal commit fb91c4b3976): the declared alias `type Map<Key, Value> = FinitelySupportedFunction<Key, Value>` in std.types emitted `pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;` (the algebra PROFILE STRUCT), while every kernel Map position lowered to `Rc<HashMap<K, V>>`; the same split sat in the profile struct's own fields (`pub empty: Rc<FinitelySupportedFunction<K, V>>`, `insert`, `merge` in std_algebra.rs). After: std_types.rs `pub type Map<Key, Value> = Rc<HashMap<Key, Value>>;` and std_algebra.rs `pub empty: Rc<HashMap<K, V>>` with insert and merge to match. No value crossed the two representations at runtime because no stage0 consumer built the struct form (a value of it could not flow into a HashMap parameter, which is why the retyped std.algebra failed rustc with 32 E0308 until the rule landed), and the three mirrors (std_algebra.rs, std_types.rs, v1_compiler_infer_types.rs) are regenerated together in one bot commit. The class: one concept, two emitted representations, keyed by which spelling the declaration was authored with.",
+
+    "RUNG FOUND AT: mitigatable (spelling-keyed, no collision refusal). CEILING: structurally guaranteed once the emitter reads the resolved declaration identity at the position. NEXT-RUNG TRIGGER: the emitter carries the resolved declaration at node_is_keyed_collection (the one representation classifier of the Map crossing, PR 2 of the Map ruling), so the alias roster and the algebra spelling collapse to one row read keyed on std.algebra.FinitelySupportedFunction.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "text_crossings_go_through_the_unfold", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "FinitelySupportedFunction", field: WholeDeclaration },
+  ],
+}

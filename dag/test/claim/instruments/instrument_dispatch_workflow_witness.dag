@@ -53,7 +53,7 @@ test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -
     && !contains(t, "schedule")
     && !contains(t, "push:")
     && contains(t, "type: choice")
-    && contains(t, "timeout-minutes: 240")
+    && contains(t, "timeout-minutes: 360")
     && contains(t, "concurrency:\n  queue: max\n  group: instrument-dispatch-queued\n  cancel-in-progress: false\n")
     && !contains(t, "concurrency: instrument-dispatch")
     && !contains(t, "group: instrument-dispatch\n")
