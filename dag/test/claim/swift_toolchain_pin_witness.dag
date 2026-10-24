@@ -34,7 +34,11 @@ import extdeps.swift_toolchain {
   swift_toolchain_signature_authority,
   swift_toolchain_signature_authority_for,
   swift_toolchain_signature_url,
-  swift_toolchain_signing_key_fingerprint,
+  SwiftToolchainSigningKey,
+  KeyStandingDoesNotCiteKeyring,
+  swift_toolchain_signing_key,
+  swift_toolchain_signing_key_as_listed,
+  swift_toolchain_signing_key_absence_refusal,
   swift_toolchain_signing_keyring_authority,
   swift_toolchain_pinned_subject,
   extdeps_external_authority_anchor,
@@ -89,7 +93,7 @@ test fn pinned_archive_is_verified_and_cites_the_upstream_signature() -> Bool {
         && a.subject.distribution == Debian13
         && swift_toolchain_expected_digest(archive: a).hex
              == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
-        && swift_toolchain_signing_key_fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+        && swift_toolchain_signing_key.fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
     Absent => false
   }
 }
@@ -480,4 +484,57 @@ test fn the_refusal_names_the_rows_own_signature_as_expected() -> Bool {
         && e.uri.locator != swift_toolchain_signature_url(subject: debian).locator
     _ => false
   }
+}
+
+// THE FINGERPRINT CARRIES ITS STANDING, AND THE GATE READS IT. Mirror of the pin's standing rule, for the key:
+// the same fingerprint whose standing is a transcription of a gpg run, or a citation of the .sig instead of
+// the keyring, is not a listed key, and the refusal names the keyring as the authority it should have cited.
+// Discriminating: the same fingerprint cited to the keyring IS listed, and the module's own key is listed and
+// lets the signed candidate through the gate -- so the refusals are about the standing, not the value.
+test fn a_fingerprint_whose_standing_does_not_cite_the_keyring_is_refused() -> Bool {
+  let transcribed = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: TranscribedUncited { read_obligation: "gpg --verify on the runner printed this key" }
+  }
+  let cites_the_signature = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signature_authority }
+  }
+  let cites_the_keyring = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+  }
+  match swift_toolchain_signing_key_as_listed(key: transcribed) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  && match swift_toolchain_signing_key_absence_refusal(key: transcribed) {
+       KeyStandingDoesNotCiteKeyring { expected: e, detail: d } =>
+         e.uri.locator == "swift.org/keys/all-keys.asc" && !is_empty(xs: d)
+       _ => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: cites_the_signature) {
+       Absent => true
+       Present { value: _ } => false
+     }
+  && match swift_toolchain_signing_key_absence_refusal(key: cites_the_signature) {
+       KeyStandingDoesNotCiteKeyring { expected: e, detail: _ } => e.uri.locator == "swift.org/keys/all-keys.asc"
+       _ => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: cites_the_keyring) {
+       Present { value: k } => k.fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+       Absent => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: swift_toolchain_signing_key) {
+       Present { value: _ } => true
+       Absent => false
+     }
+  && match swift_toolchain_verify(candidate: SwiftToolchainCandidate {
+       signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+       observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+       observed_size: byte_size(count: 1122730813)
+     }) {
+       Absent => true
+       Present { value: _ } => false
+     }
 }

@@ -269,12 +269,55 @@ data swift_toolchain_verification_instructions_authority: ExternalAuthority = Ex
   }
 }
 
-// The key the signature must be made by, as the published fingerprint rather than a keyid. Observed on the
-// verification run: `gpg: Good signature from "Swift 6.x Release Signing Key
-// <swift-infrastructure@forums.swift.org>"`, made Mon 12 Oct 2026 18:17:30 UTC, RSA key whose long id is
-// the tail of this fingerprint. A revoked or substituted key is the reason this is a fingerprint and not
-// just a key name.
-data swift_toolchain_signing_key_fingerprint: NonEmptyStr = "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+// THE KEY THE SIGNATURE MUST BE MADE BY, AND WHO SAYS IT IS swift.org's. A fingerprint rather than a keyid or
+// a key name, because a revoked or substituted key is what this check exists to refuse. The fingerprint is a
+// figure like the digest, so it carries its standing in its type the way the digest does: the gate compares
+// a candidate's signer against this value, and a value nobody can re-derive would make SignedByUnlistedKey a
+// refusal against a number we authored. The standing cites the keyring swift.org tells you to import --
+// `gpg --show-keys --with-fingerprint` over it lists this fingerprint as "Swift 6.x Release Signing Key" --
+// because that file is the upstream authority over which keys sign releases; a gpg run of ours could only say
+// which key signed one archive, not that the key is upstream's.
+type SwiftToolchainSigningKey {
+  fingerprint: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data swift_toolchain_signing_key: SwiftToolchainSigningKey = SwiftToolchainSigningKey {
+  fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+  standing: CitedToAuthority {
+    authority: swift_toolchain_signing_keyring_authority
+  }
+}
+
+// THE RULE FOR THE KEY, TAKING DATA -- the fingerprint's counterpart of swift_toolchain_archive_as_pin. A key
+// reads as listed only when its standing cites the published keyring; anything else yields nothing, so an
+// uncited fingerprint cannot become the thing a signer is compared against.
+fn swift_toolchain_signing_key_as_listed(key: SwiftToolchainSigningKey) -> SwiftToolchainSigningKey? {
+  match key.standing {
+    CitedToAuthority { authority: c } =>
+      if c.uri == swift_toolchain_signing_keyring_authority.uri { Present { value: key } } else { Absent }
+    TranscribedUncited { read_obligation: _ } => Absent
+    ObservedByReceipt { observed: _ } => Absent
+  }
+}
+
+// Explains a "no" the rule above already reached, so it cannot disagree about whether, only say why.
+fn swift_toolchain_signing_key_absence_refusal(key: SwiftToolchainSigningKey) -> SwiftToolchainRefusal {
+  match key.standing {
+    CitedToAuthority { authority: _ } => KeyStandingDoesNotCiteKeyring {
+      expected: swift_toolchain_signing_keyring_authority
+      detail: "cites an authority other than the published signing keyring"
+    }
+    TranscribedUncited { read_obligation: _ } => KeyStandingDoesNotCiteKeyring {
+      expected: swift_toolchain_signing_keyring_authority
+      detail: "standing is a transcription: a fingerprint read off a gpg run is not upstream listing the key"
+    }
+    ObservedByReceipt { observed: _ } => KeyStandingDoesNotCiteKeyring {
+      expected: swift_toolchain_signing_keyring_authority
+      detail: "standing is an observation receipt from inside this repository, which cannot make a key upstream's"
+    }
+  }
+}
 
 // THE ORDER OF VERIFICATION LIVES IN ONE PLACE: `verify_against`, which checks signature, then key, then
 // digest, then size, and returns the FIRST refusal it reaches. It used to be spelled a second time here as
@@ -328,9 +371,13 @@ type SwiftToolchainRefusal
   // has them and cannot say who says they are upstream's -- which is how this lane shipped a pin over a
   // digest no fetch ever produced.
   | PinStandingDoesNotCiteSignature { expected: ExternalAuthority, detail: NonEmptyStr }
+  // The same defect for the key: a fingerprint whose standing does not cite the published keyring is not a
+  // listed key, so a signer cannot be judged against it -- in either direction.
+  | KeyStandingDoesNotCiteKeyring { expected: ExternalAuthority, detail: NonEmptyStr }
 
 // THE GATE. Returns Absent (usable) only when the signature verified against the published key's
-// fingerprint AND the digest and size both equal the pin's. Anything else is a named refusal.
+// fingerprint AND the digest and size both equal the pin's. Anything else is a named refusal. The key, like
+// the pin, is resolved through its rule first: verify_against takes the LISTED key, never the raw row.
 //
 // Note what is NOT here: no parameter accepts an expected digest or size. Both are read out of
 // `pinned_swift_toolchain` by the helpers below, so a caller cannot confirm its own expected value -- the
@@ -344,7 +391,10 @@ fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainR
     // thing candidate bytes are compared against, and comparing them anyway yields a confident green or a
     // confident refusal with no upstream behind it either way.
     Absent => Present { value: swift_toolchain_pin_absence_refusal(archive: pinned_swift_toolchain) }
-    Present { value: pinned } => verify_against(candidate: candidate, pinned: pinned)
+    Present { value: pinned } => match swift_toolchain_signing_key_as_listed(key: swift_toolchain_signing_key) {
+      Absent => Present { value: swift_toolchain_signing_key_absence_refusal(key: swift_toolchain_signing_key) }
+      Present { value: key } => verify_against(candidate: candidate, pinned: pinned, key: key)
+    }
   }
 }
 
@@ -352,7 +402,7 @@ fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainR
 // invent a size or a digest for the case where the pin is missing, because that case never reaches this
 // function -- which is the difference between a type that cannot misstate and a call order that happens
 // not to let it.
-fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive) -> SwiftToolchainRefusal? {
+fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive, key: SwiftToolchainSigningKey) -> SwiftToolchainRefusal? {
   match candidate.signature {
     BadSignature { detail: _ } => Present {
       value: SignatureUnverified {
@@ -361,12 +411,12 @@ fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVeri
         instructions: swift_toolchain_verification_instructions_authority
       }
     }
-    GoodSignature { fingerprint: f } => verify_digest_and_size(candidate: candidate, pinned: pinned, fingerprint: f)
+    GoodSignature { fingerprint: f } => verify_digest_and_size(candidate: candidate, pinned: pinned, key: key, fingerprint: f)
   }
 }
 
-fn verify_digest_and_size(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive, fingerprint: NonEmptyStr) -> SwiftToolchainRefusal? {
-  if fingerprint != swift_toolchain_signing_key_fingerprint {
+fn verify_digest_and_size(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive, key: SwiftToolchainSigningKey, fingerprint: NonEmptyStr) -> SwiftToolchainRefusal? {
+  if fingerprint != key.fingerprint {
     Present { value: SignedByUnlistedKey { observed_fingerprint: fingerprint } }
   } else if !content_hash_eq_cryptographic(
       left: candidate.observed_digest,
