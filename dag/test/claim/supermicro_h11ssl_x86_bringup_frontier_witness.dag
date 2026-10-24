@@ -1,9 +1,10 @@
 module test.claim.supermicro_h11ssl_x86_bringup_frontier_witness
 
 import std.types { Bool }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
+import std.decl_ref { DeclarationRef }
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_rows_well_formed, frontier_subject_eq }
 import std.dissolution { BoundDissolution, UnboundDissolution }
+import std.algebra { zip_eq }
 import gunbc.machine_intake.h11ssl_x86_bringup_frontier {
   h11ssl_x86_bringup_frontier_rows,
   h11ssl_x86_bringup_fill_order,
@@ -40,12 +41,10 @@ test fn w_every_gap_row_is_well_formed() -> Bool {
 }
 
 // EVERY GAP TRIGGERS ON A CONDITION THE FILL CAN ACTUALLY SATISFY OR DISSOLVE -- here, an unbound
-// description carrying the trigger prose. A row whose dissolution is bound but whose trigger is the
-// EMPTY string is a row that can never be deleted; the well-formedness predicate already refuses it,
-// and this row says WHY the dissolutions are written as they are rather than as bare bound refs to
-// symbols that would be invented alongside (the roster_frontier contract deletes a row in the same
-// change as its fill -- a bound trigger naming the fill's symbol is the shape that lets the census
-// itself say "this deficit's replacement landed").
+// description carrying the trigger prose, and a trigger description that is EMPTY is a row that can
+// never be deleted (the well-formedness predicate already refuses it; this row says WHY the
+// dissolutions carry their prose rather than naming symbols that would be invented alongside -- the
+// roster_frontier contract deletes a row in the same change as its fill).
 test fn w_every_gap_carries_a_trigger_that_can_retire_it() -> Bool {
   all(h11ssl_x86_bringup_frontier_rows, row => match row.dissolution {
     UnboundDissolution { description: d } => !(d as String == "")
@@ -62,24 +61,21 @@ test fn w_no_gap_subject_is_enrolled_twice() -> Bool {
 
 // THE EIGHT SUBJECTS ARE THE EIGHT GAP BOUNDARIES THE HEADER CITES -- pinned by identity, so a row
 // cannot be silently retargeted at an easier-to-dissolve symbol (which is the pressure that rots a
-// gap list: the boundary the fill must cross is the boundary the row must name).
+// gap list: the boundary the fill must cross is the boundary the row must name). Comparison goes
+// through frontier_subject_eq, the std predicate -- no empty-string sentinel is ever built.
 test fn w_the_subjects_are_the_cited_boundaries() -> Bool {
-  let want = [
-    h11ssl_x86_bringup_bmc_family_gap_subject,
-    h11ssl_x86_bringup_virtual_media_gap_subject,
-    h11ssl_x86_bringup_dimm_reader_gap_subject,
-    h11ssl_x86_bringup_storage_reader_gap_subject,
-    h11ssl_x86_bringup_adoption_gap_subject,
-    h11ssl_x86_bringup_seed_gap_subject,
-    h11ssl_x86_bringup_pxe_edge_gap_subject,
-    h11ssl_x86_bringup_install_route_gap_subject,
+  let want: List<FrontierSubject> = [
+    DeclSubject { ref: h11ssl_x86_bringup_bmc_family_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_virtual_media_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_dimm_reader_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_storage_reader_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_adoption_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_seed_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_pxe_edge_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_install_route_gap_subject },
   ]
-  let have = map(h11ssl_x86_bringup_frontier_rows, row => match row.subject {
-    DeclSubject { ref: r } => r
-    _ => decl_ref(module_path: "", decl_name: "")
-  })
-  count(want) == count(have)
-    && all(want, w => any(have, h => h == w))
+  count(want) == count(h11ssl_x86_bringup_frontier_rows)
+    && all(want, w => any(h11ssl_x86_bringup_frontier_rows, row => frontier_subject_eq(a: row.subject, b: w)))
 }
 
 // THE FILL ORDER AND THE ROSTER AGREE, BOTH WAYS: every gap has a position and every position names
@@ -89,20 +85,22 @@ test fn w_the_fill_order_covers_the_roster_exactly() -> Bool {
     && count(h11ssl_x86_bringup_fill_order) == count(h11ssl_x86_bringup_frontier_rows)
 }
 
-// THE FILL ORDER IS THE PROPOSED DEPENDENCY ORDER: BMC family first (the gate every BMC-side route
-// reads), storage reader second (read-only census), adoption third (needs neither image nor boot),
-// the capstone (install-to-disk, which composes seed + boot path + media attach) LAST. A reorder that
-// puts the capstone before its parts is a plan that cannot execute; this row makes the order a
-// checked claim, not a paragraph.
+// THE FILL ORDER IS THE PROPOSED DEPENDENCY ORDER, PINNED POSITION BY POSITION: BMC family first
+// (the gate every BMC-side route reads), then the two read-only census readers, then adoption (needs
+// neither image nor boot), then the seed, the boot path, the media attach -- and the capstone
+// (install-to-disk, which composes seed + boot path + media attach) LAST. A reorder that puts the
+// capstone before its parts is a plan that cannot execute; zip_eq makes the ORDER a checked claim,
+// not a membership check.
 test fn w_the_fill_order_is_dependency_first() -> Bool {
-  let order = h11ssl_x86_bringup_fill_order
-  count(order) == 8
-    && order[0] == h11ssl_x86_bringup_bmc_family_gap_subject
-    && order[1] == h11ssl_x86_bringup_dimm_reader_gap_subject
-    && order[2] == h11ssl_x86_bringup_storage_reader_gap_subject
-    && order[3] == h11ssl_x86_bringup_adoption_gap_subject
-    && order[4] == h11ssl_x86_bringup_seed_gap_subject
-    && order[5] == h11ssl_x86_bringup_pxe_edge_gap_subject
-    && order[6] == h11ssl_x86_bringup_virtual_media_gap_subject
-    && order[7] == h11ssl_x86_bringup_install_route_gap_subject
+  let want: List<DeclarationRef> = [
+    h11ssl_x86_bringup_bmc_family_gap_subject,
+    h11ssl_x86_bringup_dimm_reader_gap_subject,
+    h11ssl_x86_bringup_storage_reader_gap_subject,
+    h11ssl_x86_bringup_adoption_gap_subject,
+    h11ssl_x86_bringup_seed_gap_subject,
+    h11ssl_x86_bringup_pxe_edge_gap_subject,
+    h11ssl_x86_bringup_virtual_media_gap_subject,
+    h11ssl_x86_bringup_install_route_gap_subject,
+  ]
+  zip_eq(a: h11ssl_x86_bringup_fill_order, b: want, eq: fn(x, y) { x == y })
 }
