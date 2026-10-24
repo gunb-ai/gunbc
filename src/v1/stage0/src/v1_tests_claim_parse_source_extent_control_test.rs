@@ -85,27 +85,34 @@ pub fn free_monoid_last(
 ) -> Option<OccurrenceId> {
     {
         let mut __tco_cursor_xs: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut last = __tco_loop_last;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor_xs) == 0 {
-                    break last;
-                } else {
-                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
-                    {
-                        let __tco_0 = __tco_cursor_xs + 1;
-                        let __tco_1 = Some(h.clone());
-                        __tco_cursor_xs = __tco_0;
-                        __tco_loop_last = __tco_1;
-                        continue;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut last = __tco_loop_last;
+                #[allow(unused_mut)]
+                let mut xs = __tco_loop_xs.clone();
+                {
+                    let __fm = xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break last;
+                    } else {
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        {
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = Some(h.clone());
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_last = __tco_1;
+                            continue;
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
