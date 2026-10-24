@@ -3776,15 +3776,23 @@ fn for_each_parsed_module_binding(
 /// typed result returned to a caller. So an in-process observer cannot witness this arm; a run
 /// receipt must come from an EXTERNAL observer until the exit moves to the command boundary.
 fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
-    if refusals.is_empty() {
+    let lines: Vec<String> = refusals.iter().map(|r| r.rendered()).collect();
+    refuse_unparseable_corpus_sources("module index refused", &lines);
+}
+
+/// THE ONE REFUSAL FOR A CORPUS READER THAT CANNOT READ A SOURCE (DESIGN section 5, Stop visibly).
+/// Every walker over the source roots that needs a file's parse refuses through here, so two
+/// readers over the same roots cannot disagree on whether an unparsable file is a finding:
+/// `heading` names the reader, `lines` are the located per-file causes, and the line stops. Same
+/// rung as `refuse_unparseable_module_sources`: per-file typed and located, operation-level still a
+/// process exit.
+pub(crate) fn refuse_unparseable_corpus_sources(heading: &str, lines: &[String]) {
+    if lines.is_empty() {
         return;
     }
-    eprintln!(
-        "module index refused: {} unparseable .dag source(s)",
-        refusals.len()
-    );
-    for refusal in refusals {
-        eprintln!("  {}", refusal.rendered());
+    eprintln!("{heading}: {} unparseable .dag source(s)", lines.len());
+    for line in lines {
+        eprintln!("  {line}");
     }
     std::process::exit(1);
 }
@@ -27831,8 +27839,6 @@ pub struct ComplexityLinearityAuditFinding {
 
 #[derive(Debug, Clone, Default)]
 pub struct ComplexityLinearityAuditSummary {
-    pub files_scanned: usize,
-    pub files_parsed: usize,
     pub fns_scanned: usize,
     pub findings: Vec<ComplexityLinearityAuditFinding>,
 }

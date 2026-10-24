@@ -1817,14 +1817,12 @@ fn corpus_dag_files_for_roots(
     files
 }
 
-/// Whole-tree declaration-fact walk with corpus file counters (parse-only, non-test boundary).
+/// Whole-tree declaration-fact walk (parse-only, non-test boundary). A file it cannot read or
+/// parse REFUSES the walk (`refuse_unparseable_corpus_sources`), so a returned walk is the whole
+/// corpus and carries no scanned/parsed count a consumer could ignore.
 #[derive(Debug, Clone)]
 pub struct DeclFactsCorpusWalk {
     pub facts: Vec<DeclFactRaw>,
-    /// Non-test `.dag` files visited (includes unparseable and zero-decl files).
-    pub files_scanned: usize,
-    /// Subset of `files_scanned` that parsed successfully.
-    pub files_parsed: usize,
 }
 
 // decl_facts_corpus_walk parses every .dag under every pool_root independently,
@@ -1834,28 +1832,42 @@ pub struct DeclFactsCorpusWalk {
 // source and the shadowed stub; compile binds only the winner.
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
-    let mut files_scanned = 0usize;
-    let mut files_parsed = 0usize;
+    let mut refusals: Vec<String> = Vec::new();
     for file in corpus_dag_files_for_roots(pool_roots) {
         let rel = repo_rel(file.path());
-        files_scanned += 1;
-        let content = file.read().ok();
-        let module_path = content
-            .as_ref()
-            .and_then(|c| extract_module_path(c))
-            .unwrap_or_default();
-        // The acquired bytes, not a second read of the path: a derived roster has no file.
-        let filename = file
-            .path()
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("?");
-        let Some(parsed) = content.as_deref().and_then(|c| {
-            crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename)
-        }) else {
-            continue;
+        let content = match file.read() {
+            Ok(c) => c,
+            Err(cause) => {
+                refusals.push(format!("{rel}: unreadable ({cause})"));
+                continue;
+            }
         };
-        files_parsed += 1;
+        let module_path = extract_module_path(&content).unwrap_or_default();
+        // The acquired bytes, not a second read of the path: a derived roster has no file.
+        let parsed = match crate::module_path_index::parsed_dag_file::try_parse_dag_content(
+            &content, &rel,
+        ) {
+            Ok(parsed) => parsed,
+            Err(crate::module_path_index::parsed_dag_file::DagParseFailure::Diagnostic(
+                diagnostic,
+            )) => {
+                refusals.push(
+                    crate::module_path_index::ModuleBindingRefusal {
+                        source_path: rel.clone(),
+                        source: content.clone(),
+                        diagnostic,
+                    }
+                    .rendered(),
+                );
+                continue;
+            }
+            Err(crate::module_path_index::parsed_dag_file::DagParseFailure::NoModuleProduced) => {
+                refusals.push(format!(
+                    "{rel}: parsed without error but produced no module"
+                ));
+                continue;
+            }
+        };
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
             let name = authored_name_at(si.clone(), item.clone());
@@ -1873,6 +1885,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             });
         }
     }
+    crate::cli_run::refuse_unparseable_corpus_sources("decl_facts corpus walk refused", &refusals);
     out.sort_by(|a, b| {
         let kind_ord = |k: ItemKind| match k {
             ItemKind::FnItem => 0,
@@ -1887,11 +1900,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             kind_ord(b.kind),
         ))
     });
-    DeclFactsCorpusWalk {
-        facts: out,
-        files_scanned,
-        files_parsed,
-    }
+    DeclFactsCorpusWalk { facts: out }
 }
 
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).

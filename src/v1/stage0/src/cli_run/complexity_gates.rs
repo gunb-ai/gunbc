@@ -159,8 +159,6 @@ pub fn complexity_linearity_audit_corpus_over_decl_facts(
 ) -> ComplexityLinearityAuditSummary {
     let walk = decl_facts_corpus_walk(roots);
     let mut summary = ComplexityLinearityAuditSummary::default();
-    summary.files_scanned = walk.files_scanned;
-    summary.files_parsed = walk.files_parsed;
 
     for fact in &walk.facts {
         if !matches!(fact.kind, ItemKind::FnItem) {

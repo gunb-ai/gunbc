@@ -1,0 +1,141 @@
+module test.claim.decl_facts_walk_refusal_witness
+
+import std.types { Bool, String, FilePath, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THIS IS WET. The subject is what the `claim_batch` PROCESS does when the declaration-fact
+// walk (`decl_facts`, coproduct_reflection decl_facts_corpus_walk) meets a pool file it cannot
+// parse: exit 1, a located refusal naming the file, and NO PASS/FAIL verdict line. The exit status
+// is an external effect, so no in-process assertion observes it, and a Rust test would sit off the
+// merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path).
+//
+// THE CLASS: gunbc.recurring_failure_mode a_corpus_walk_skips_the_file_it_cannot_parse. Before the
+// refusal the walk `continue`d past an unparsable file and returned a SMALLER fact list, so every
+// census over it kept passing on a population missing the file that broke -- a `concept_index_*`
+// count that silently excluded a module read as "that module declares nothing".
+//
+// THE UNPARSABLE FILE IS PLANTED, NEVER COMMITTED, AND IS NOT A SOURCE ROOT. The pool lives in its
+// own mktemp directory under target/ and is handed to `decl_facts` as a pool root; the entry that
+// calls `decl_facts` sits in a SEPARATE directory handed to the child as --source-root. A source
+// root holding the unparsable file would refuse earlier, in the module-index walk
+// (claim_batch_parse_gate_witness), and this witness would observe that refusal instead of the
+// walker's. The control differs from the RED only in whether the pool file parses.
+
+data decl_facts_walk_healthy_pool_source: String = "module probe.decl_facts_walk_pool
+
+fn decl_facts_walk_pool_value() -> Bool {
+  true
+}
+"
+
+data decl_facts_walk_unparsable_pool_source: String = "module probe.decl_facts_walk_pool_broken
+
+fn decl_facts_walk_pool_broken_value() -> Bool {
+  true
+"
+
+type PlantedDeclFactsWalk
+  = PlantedDeclFactsWalkReady { dir: String, src: String }
+  | PlantedDeclFactsWalkUnwritable { detail: String }
+
+fn decl_facts_walk_entry_source(pool: String) -> String {
+  join([
+    "module probe.decl_facts_walk_entry\n\n",
+    "import std.types { Bool }\n",
+    "import std.algebra { length }\n",
+    "import v2.std.decl_index { decl_facts }\n\n",
+    "test fn decl_facts_walk_entry_holds() -> Bool {\n",
+    "  length(decl_facts(pool_roots: [\"", pool, "\"])) > 0\n",
+    "}\n"
+  ], "")
+}
+
+fn plant_decl_facts_walk(root: String, pool_second_file: String) -> PlantedDeclFactsWalk {
+  let dir = shell.Mktemp.DirWithTemplate(
+    template: concat(root, "/target/decl-facts-walk-planted-XXXXXX") as FilePath,
+  )
+  if !dir.success {
+    PlantedDeclFactsWalkUnwritable { detail: "mktemp under target/ failed" }
+  } else {
+    let d = dir.path as String
+    let made = shell.Mkdir.Parents(path: concat(d, "/src") as FilePath)
+    let made_pool = shell.Mkdir.Parents(path: concat(d, "/pool") as FilePath)
+    let pool = concat(d, "/pool")
+    let e = Filesystem.Write(path: concat(d, "/src/decl_facts_walk_entry.dag"), content: decl_facts_walk_entry_source(pool: pool))
+    let g = Filesystem.Write(path: concat(pool, "/decl_facts_walk_pool.dag"), content: decl_facts_walk_healthy_pool_source)
+    let s = Filesystem.Write(path: concat(pool, "/decl_facts_walk_second.dag"), content: pool_second_file)
+    if made.success && made_pool.success && e.success && g.success && s.success {
+      PlantedDeclFactsWalkReady { dir: d, src: concat(d, "/src") }
+    } else {
+      PlantedDeclFactsWalkUnwritable { detail: "fixture directory or write failed" }
+    }
+  }
+}
+
+fn decl_facts_walk_args(src: String) -> List<String> {
+  [
+    "--source-root", "dag",
+    "--source-root", "src/v2",
+    "--source-root", src,
+    "--entry", concat(src, "/decl_facts_walk_entry.dag"),
+    "--function", "decl_facts_walk_entry_holds"
+  ]
+}
+
+// The refusal arm. A pool file the walker cannot parse must stop the line: exit 1, the walker's own
+// heading, the file located with line and column, and no verdict.
+test fn an_unparsable_pool_file_refuses_the_decl_facts_walk_with_exit_1() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_decl_facts_walk(root: root, pool_second_file: decl_facts_walk_unparsable_pool_source) {
+    PlantedDeclFactsWalkUnwritable { detail: _ } => false
+    PlantedDeclFactsWalkReady { dir, src } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: decl_facts_walk_args(src: src)
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 1
+        && string_contains(s: result.stderr, pattern: "decl_facts corpus walk refused")
+        && string_contains(s: result.stderr, pattern: "/pool/decl_facts_walk_second.dag:")
+        && !string_contains(s: result.stdout, pattern: "PASS")
+        && !string_contains(s: result.stdout, pattern: "FAIL")
+    }
+  }
+}
+
+// The positive control. The same entry over a pool whose second file PARSES reaches a verdict:
+// exit 0 and a PASS. Without it the arm above is satisfiable by a binary that refuses every pool.
+test fn a_parseable_pool_reaches_a_real_pass_verdict() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_decl_facts_walk(root: root, pool_second_file: decl_facts_walk_healthy_second_source) {
+    PlantedDeclFactsWalkUnwritable { detail: _ } => false
+    PlantedDeclFactsWalkReady { dir, src } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: decl_facts_walk_args(src: src)
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 0
+        && string_contains(s: result.stdout, pattern: "PASS")
+        && !string_contains(s: result.stderr, pattern: "decl_facts corpus walk refused")
+    }
+  }
+}
+
+data decl_facts_walk_healthy_second_source: String = "module probe.decl_facts_walk_second
+
+fn decl_facts_walk_second_value() -> Bool {
+  true
+}
+"
