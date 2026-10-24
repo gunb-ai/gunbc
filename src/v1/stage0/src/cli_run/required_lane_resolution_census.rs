@@ -58,7 +58,7 @@ pub fn source_root_ingest_module_identities(source_roots: &[String]) -> ModuleId
 pub fn required_floor_nominal_subject_module_identities(
     source_roots: &[String],
 ) -> ModuleIdentityPopulation {
-    let index = process_shared_index(source_roots);
+    let index = process_shared_index_or_refuse(source_roots);
     let seeds = match required_floor_nominal_subject_seeds(source_roots, &index) {
         Ok(seeds) => seeds,
         Err(cause) => {
