@@ -69,6 +69,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, Pointwi
 import std.graph {
   CallGraph,
   GraphEdge,
+  build_adjacency_views,
   graph_strongly_connected_components
 }
 import v2.std.witness { map_get_checked }
@@ -1632,6 +1633,17 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
         }
       )
       let q1 = observed_thread_cpu_nanos("cl-phase1")
+      let g0 = observed_thread_cpu_nanos("g0")
+      let gnames = closure_decl_name_list(rows: phase1.rows)
+      let ggraph = closure_decl_call_graph(rows: phase1.rows)
+      let g1 = observed_thread_cpu_nanos("g1")
+      let gviews = build_adjacency_views(names: gnames, graph: ggraph)
+      let g2 = observed_thread_cpu_nanos("g2")
+      let gscc = graph_strongly_connected_components(names: gnames, graph: ggraph)
+      let g3 = observed_thread_cpu_nanos("g3")
+      let gn = length(xs: gnames) + (if map_contains_key(m: gviews.forward, key: "") { 1 } else { 0 })
+      let ge = length(xs: ggraph.edges)
+      let gc = length(xs: gscc)
       let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
       let q2 = observed_thread_cpu_nanos("cl-blocked")
       let by_module = closure_rows_by_module(rows: phase1.rows)
@@ -1658,7 +1670,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
       let outcome_index = module_outcome_index(outcomes: observed)
       let q6 = observed_thread_cpu_nanos("cl-oindex")
       ClosureDeclarations {
-        tm: [(q1 - q0) / 1000000, (q2 - q1) / 1000000, (q3 - q2) / 1000000, (q4 - q3) / 1000000, (q5 - q4) / 1000000, (q6 - q5) / 1000000],
+        tm: [(g1 - g0) / 1000000, (g2 - g1) / 1000000, (g3 - g2) / 1000000, gn, ge, gc, (q1 - q0) / 1000000, (q2 - q1) / 1000000, (q3 - q2) / 1000000, (q4 - q3) / 1000000, (q5 - q4) / 1000000, (q6 - q5) / 1000000],
         declarations: index,
         module_outcomes: observed,
         outcome_index: outcome_index,
