@@ -1,68 +1,25 @@
 module gunbc.owned_process
 
-import std.types { Bool, Int, List, NonEmptyStr, Unit }
+import std.types { Bool, List, NonEmptyStr }
 import std.algebra { trim }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time }
+import extdeps.linux.proc_pid_stat { StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time }
 import gunbc.machine_intake.sol_hold
 
-// A BACKGROUND PROCESS THIS RUN STARTED, OWNED BY (pid, start time). The launch publishes
-// "<pid> <starttime>" (proc(5) field 22 at spawn, written to a temporary name and renamed) beside the
-// process's own log, kills the child it started if that record cannot be published, and appends the
-// child's exit status and instant to the log when it ends. Standing is read from the record against
-// /proc/<pid>/stat: a pid the kernel has handed to another process fails the start-time join, so it
-// reads Foreign, never Running. Release is gunbc.machine_intake.sol_hold's owned release (TERM, then
-// KILL, each only while (pid, start time) still match), and release is OBSERVED afterwards, never
-// assumed from the signal.
+// A BACKGROUND PROCESS THIS RUN OWNS, IDENTIFIED BY (pid, start time). Standing is read from the
+// published "<pid> <starttime>" record (proc(5) field 22 at spawn) against /proc/<pid>/stat: a pid
+// the kernel has handed to another process fails the start-time join, so it reads Foreign, never
+// Running. Release is gunbc.machine_intake.sol_hold's owned release (TERM, then KILL, each only
+// while (pid, start time) still match), and release is OBSERVED afterwards, never assumed from the
+// signal.
 //
-// This is the lifecycle the SOL collector hold already runs, lifted out so the KVM observer and the
-// loopback BMC transport hold their processes the same way; gunbc.machine_intake.mtcollins1_boot_run
-// reads the SOL collector's record through owned_process_record too, so the record format has one parser.
-data owned_process_launch_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.owned_process",
-    decl_name: "owned_process_launch_dissolution_trigger",
-    field: WholeDeclaration
-  }
-}
-
-data owned_process_launch_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.owned_process LaunchOwned -- a bash -c background launch that publishes (pid, starttime) and records the exit. RETIRED BY THE CAPABILITY: a typed process-hold realization SUFFICIENT TO start a process detached from the evaluation, publish its (pid, start time) identity atomically, stop exactly the child it started when publication fails, and record its exit status and instant -- the same capability gunbc.machine_intake.sol_hold ActivateHeld waits on. Admission: operator escalation msg_4bbcf810, default-approved on recommendation A, 2026-09-30")
-
-data owned_process_exit_prefix: String = "gunbc-owned: exited status="
-
-data owned_process_unpublished_line: String = "gunbc-owned: pid not published; child stopped (observed gone)"
-
-data owned_process_unpublished_survived_line: String = "gunbc-owned: pid not published; child SURVIVED KILL (cleanup unresolved)"
-
-data owned_process_unpublished_unobservable_line: String = "gunbc-owned: pid not published; child state UNOBSERVABLE after KILL (cleanup unresolved)"
-
-// WHEN THE RECORD CANNOT BE PUBLISHED the launch still owns the child it started (it is that child's
-// parent and has not reaped it), so it drives it to an OBSERVED end: TERM, up to two seconds, KILL, up
-// to one more second, each step observing the child as running, gone (no /proc/<pid>, or a zombie) or
-// UNOBSERVABLE (/proc/<pid> exists but its stat cannot be read). Only an observed gone ends a wait or
-// skips KILL, and only an observed gone is written as stopped; a child still running, or whose state
-// cannot be observed, after KILL is written as an unresolved cleanup, never as stopped.
-data owned_process_launch_script: String = "pf=\"$1\"; lg=\"$2\"; ep=\"$3\"; ug=\"$4\"; us=\"$5\"; uu=\"$6\"; shift 6; ( \"$@\" >> \"$lg\" 2>&1 < /dev/null & p=$!; obs() \{ if [ ! -e /proc/$p ]; then o=gone; return; fi; s=$(cat /proc/$p/stat 2>/dev/null) || \{ if [ -e /proc/$p ]; then o=unobservable; else o=gone; fi; return; \}; s=$\{s##*) \}; case \"$s\" in Z*) o=gone;; *) o=running;; esac; \}; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf.tmp\" && mv -T \"$pf.tmp\" \"$pf\" || \{ rm -f \"$pf.tmp\"; kill \"$p\" 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do obs; [ \"$o\" = gone ] && break; sleep 0.2; done; if [ \"$o\" != gone ]; then kill -9 \"$p\" 2>/dev/null; for i in 1 2 3 4 5; do obs; [ \"$o\" = gone ] && break; sleep 0.2; done; fi; case \"$o\" in gone) printf \"%s\\n\" \"$ug\" >> \"$lg\";; running) printf \"%s\\n\" \"$us\" >> \"$lg\";; *) printf \"%s\\n\" \"$uu\" >> \"$lg\";; esac; \}; wait \"$p\"; echo \"$ep$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$lg\" ) > /dev/null 2>&1 &"
-
-service gunbc.owned_process.launch {
-  operation LaunchOwned {
-    requires opaque
-    input { pid_path: NonEmptyStr, log_path: NonEmptyStr, command: List<String> }
-    output { stdout: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
-    transport shell {
-      argv: ["bash", "-c", owned_process_launch_script, "owned-launch", "{pid_path}", "{log_path}", owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, command]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "owned launch failed"
-    }
-  }
-}
+// The RECORD PRODUCER is gunbc.machine_intake.sol_hold's supervisor: it publishes the record, stops
+// the child it started if publication fails, and appends the exit record when the child ends
+// (sol_hold's supervisor comment block). What lives here is the READER/OWNER side of the same
+// record — the KVM observer and the loopback BMC transport hold their processes through these
+// types, and gunbc.machine_intake.mtcollins1_boot_run reads the SOL collector's record through
+// owned_process_record too, so the record format has one parser.
 
 type OwnedProcessRecord
   = OwnedRecorded { pid: String, start_time: String }
