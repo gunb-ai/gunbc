@@ -1756,176 +1756,6 @@ mod compiler_tests {
         );
     }
 
-    /// Statement-position match lowering, subject `v1.compiler.emit_rust` `emit_rust_block_stmts`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn statement_position_match_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_statement_position_match_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("statement-position-match {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the statement-position-match control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// A record field typed by its declaring type's parameter, subject `v1.compiler.emit_rust` `record_field_declaring_generic_names`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn record_declaring_param_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_record_declaring_param_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("record-declaring-param {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the record-declaring-param control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// A record field typed Nat, realized by an opaque kernel alias row, subject `v1.compiler.emit_rust` `shared_layer_of_resolution`, JUDGED BY RUSTC. The green arm was measured RED on the seed before the repair;
-    /// the red arm is the route's own. #[ignore]d on the same terms as the pairs beside it.
-    #[test]
-    #[ignore]
-    fn nat_kernel_alias_field_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
-        let pair = crate::cli_run::run_nat_kernel_alias_field_discrimination(&probe_root);
-        for line in crate::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("nat-kernel-alias-field {}", line);
-        }
-        assert!(
-            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
-            "the red arm never reached a rustc verdict: {}",
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-        assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the nat-kernel-alias-field control must COMPILE and the route red must still be refused; control={} red={}",
-            crate::cli_run::fixture_closure_summary(&pair.green),
-            crate::cli_run::fixture_closure_summary(&pair.red)
-        );
-    }
-
-    /// `SharedLayerRefuse` FIRES: two declarations of one leaf (`Word64`, owners `a` and `b`) that
-    /// DISAGREE on the layer are never answered from the collapsed spelling. The positive control is
-    /// the same leaf with both declarations at one layer, which answers without refusing; the pair
-    /// differs only in whether the second identity is in the shared set.
-    #[test]
-    fn an_ambiguous_leaf_whose_declarations_disagree_on_layer_refuses() {
-        let ident = |owner: &str| {
-            crate::v1_compiler_infer_emit_info::type_decl_identity(
-                owner.to_string(),
-                "Word64".to_string(),
-            )
-        };
-        let mut index = crate::v1_compiler_infer_emit_info::empty_type_decl_index();
-        for owner in ["a", "b"] {
-            index = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-                index,
-                owner.to_string(),
-                "Word64".to_string(),
-                shaped_type_node("Word64", Vec::new()),
-            );
-        }
-        let mut one = im::OrdSet::new();
-        one.insert(ident("a"));
-        let red = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(one.clone()),
-            "Word64".to_string(),
-            index.clone(),
-        );
-        match &*red {
-            crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
-                assert_eq!(leaf.as_str(), "Word64");
-                assert_eq!(cause.as_str(), "TypeDeclLeafAmbiguous");
-            }
-            _ => panic!("disagreeing declarations of one leaf must refuse, never be guessed"),
-        }
-        let mut both = one;
-        both.insert(ident("b"));
-        let agree = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(both),
-            "Word64".to_string(),
-            index.clone(),
-        );
-        assert!(
-            matches!(
-                &*agree,
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtShared
-            ),
-            "declarations that agree answer their shared layer"
-        );
-        let none = crate::v1_compiler_emit_rust::shared_layer_of_ambiguous_leaf(
-            std::rc::Rc::new(im::OrdSet::new()),
-            "Word64".to_string(),
-            index,
-        );
-        assert!(
-            matches!(
-                &*none,
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtValue
-            ),
-            "declarations that all sit at the value layer answer the value layer"
-        );
-    }
-
-    /// A USER TYPE SPELLED `FreeMonoid` is not the std native alias: it must not answer `SharedLayerAtShared`
-    /// through the container-template key. The positive control is the `std.algebra` declaration, which does.
-    #[test]
-    fn a_user_type_spelled_freemonoid_does_not_answer_shared() {
-        let mut set = im::OrdSet::new();
-        set.insert("FreeMonoid".to_string());
-        let shared = std::rc::Rc::new(set);
-        let answer = |owner: &str| {
-            let mut index = crate::v1_compiler_infer_emit_info::empty_type_decl_index();
-            index = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-                index,
-                owner.to_string(),
-                "FreeMonoid".to_string(),
-                shaped_type_node("FreeMonoid", Vec::new()),
-            );
-            crate::v1_compiler_emit_rust::shared_layer_of_leaf(
-                shared.clone(),
-                "FreeMonoid".to_string(),
-                index,
-                std::rc::Rc::new(Vec::new()),
-            )
-        };
-        assert!(
-            matches!(
-                &*answer("user.mod"),
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtValue
-            ),
-            "a user FreeMonoid is at the value layer"
-        );
-        assert!(
-            matches!(
-                &*answer("std.algebra"),
-                crate::v1_compiler_emit_rust::SharedLayerAnswer::SharedLayerAtShared
-            ),
-            "the std.algebra declaration answers the shared layer"
-        );
-    }
-
     /// THE SHELL PROJECTION'S RETURN CONVENTION, JUDGED BY RUSTC. Subject:
     /// `v1.compiler.emit_rust` `emit_shell_return`.
     ///
@@ -4882,28 +4712,15 @@ mod compiler_tests {
         let empty_shared = std::rc::Rc::new(im::OrdSet::new());
         assert_eq!(
             crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
-                empty_shared.clone(),
-                crate::v1_compiler_infer_emit_info::empty_type_decl_index()
+                empty_shared.clone()
             ),
             "Option<NonEmptyDiagnostics>"
         );
         let mut shared_ned_inner = im::OrdSet::new();
-        shared_ned_inner.insert(crate::v1_compiler_infer_emit_info::type_decl_identity(
-            "m".to_string(),
-            "NonEmptyDiagnostics".to_string(),
-        ));
-        let declared_ned = crate::v1_compiler_infer_emit_info::type_decl_index_insert(
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
-            "m".to_string(),
-            "NonEmptyDiagnostics".to_string(),
-            shaped_type_node("NonEmptyDiagnostics", Vec::new()),
-        );
+        shared_ned_inner.insert("NonEmptyDiagnostics".to_string());
         let shared_ned = std::rc::Rc::new(shared_ned_inner);
         assert_eq!(
-            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(
-                shared_ned,
-                declared_ned
-            ),
+            crate::v1_compiler_emit_rust::render_rust_diagnostics_carrier_applied(shared_ned),
             "Option<Rc<NonEmptyDiagnostics>>"
         );
         assert!(crate::v1_compiler_emit_rust::is_some_like_variant_name(
@@ -5044,7 +4861,6 @@ mod compiler_tests {
             source_indices,
             variant_to_enum,
             env,
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert!(
             !rendered.contains('.'),
@@ -5076,7 +4892,6 @@ mod compiler_tests {
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(populated_env_value),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert_eq!(
             populated, "Box<Time>",
@@ -5089,7 +4904,6 @@ mod compiler_tests {
             std::rc::Rc::new(HashMap::new()),
             std::rc::Rc::new(HashMap::new()),
             crate::v1_compiler_infer_env::empty_type_env(),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
         );
         assert!(
             unavailable.contains("unit-variant marker identity evidence unavailable for Time"),
@@ -6119,7 +5933,6 @@ mod compiler_tests {
                 source_indices.clone(),
                 std::rc::Rc::new(HashMap::new()),
                 observed_env.clone(),
-                crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
             )
         };
         let red = render(shaped_type_node("Optional", Vec::new()));
