@@ -2,7 +2,8 @@ module gunbc.roadmap.roadmap_session_attempt_slots_root
 
 import std.types { String, NonEmptyStr, FilePath }
 import gunbc.filesystem_interface { local_filesystem }
-import gunbc.durable_cas_file_store { SlotStore, slot_root_observe, slot_store_of, SlotRootObserved, SlotRootUnready }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store_over }
+import extdeps.filesystem.filesystem_io { filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
@@ -26,9 +27,10 @@ fn session_attempt_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
   join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", session_attempt_slots.member as String], "") as NonEmptyStr
 }
 
-// THE SESSION SLOT STORE, A SEALED VALUE MINTED FROM EVIDENCE, as WorktreeClaimStore is: sole_constructor,
-// built in one place (session_attempt_slots_store) from the readiness an observation of THIS declaration's
-// directory produced for the instance the route received. Session placement takes this type, so a SlotStore
+// THE SESSION SLOT STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as WorktreeClaimStore is: sole_constructor,
+// built in one place (session_attempt_slots_store), which takes the instance and no path: the root is derived
+// here from session_attempt_slots, and only a directory listed through the filesystem the store will use yields
+// a store. Session placement takes this type, so a SlotStore
 // minted for another declaration or from a bare root is not a session slot store, and no holder can read a
 // root out of it. Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
 // f13). NOT established, as for the claim store: that a store minted for instance A is refused where B is
@@ -43,9 +45,14 @@ type SessionAttemptSlotsStoreReading
   | SessionAttemptSlotsStoreUnready { detail: String }
 
 fn session_attempt_slots_store(instance: HostDashboardInstance) -> SessionAttemptSlotsStoreReading {
-  match slot_root_observe(fs: local_filesystem, declaration: session_attempt_slots.member, root: session_attempt_slots_path(instance: instance)) {
-    SlotRootObserved { ready } => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, slots: slot_store_of(ready: ready) } }
-    SlotRootUnready { declaration: _, detail } => SessionAttemptSlotsStoreUnready { detail: detail }
+  let root = session_attempt_slots_path(instance: instance)
+  let fs = local_filesystem
+  let fs_list = fs.list
+  let listing = fs_list(root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SessionAttemptSlotsStoreUnready { detail: join(["the ", session_attempt_slots.member as String, " store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SessionAttemptSlotsStoreUnready { detail: join(["the ", session_attempt_slots.member as String, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => SessionAttemptSlotsStoreReady { store: SessionAttemptSlotsStore { instance: instance.instance_id, slots: file_slot_store_over(fs: fs, root: root) } }
   }
 }
 

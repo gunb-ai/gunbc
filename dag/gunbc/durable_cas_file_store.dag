@@ -1327,11 +1327,12 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 // THE SLOT STORE IS THE `*_over` LOGIC ALREADY BOUND TO ITS FILESYSTEM AND ITS ROOT: the
 // `FilesystemInterface` idiom one level up. A holder can observe a slot, publish a verified attempt
 // and list the keys; it cannot get the root or the filesystem back out, because neither is a field,
-// and it cannot spell one, because the record is sole_constructor: the only expression that builds a
-// SlotStore is slot_store_of below (seal per file on the seed route;
+// and it cannot spell one, because the record is sole_constructor (seal per file on the seed route;
 // residuals f13 coproduct variants and f19 parameter defaults, so the record is kept non-generic and
-// never a variant arm). It carries the identity of the directory declaration it was minted for, read
-// back as slot_store_declaration.
+// never a variant arm). A SlotStore is NOT an identity: the only builder below takes a root, so a
+// SlotStore says nothing about which store it is. Identity lives one level up, in a per-store sealed
+// record whose declaring module derives the root from its own declaration (for the worktree claim
+// store, gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore).
 //
 // It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
 // is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
@@ -1339,46 +1340,22 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 // are not carried: no holder of this value uses them, and a holder that does adds the field with its
 // first consumer (DESIGN section 3c).
 type SlotStore sole_constructor {
-  declaration: NonEmptyStr
   observe: fn(NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
   commit: fn(CasGenerationPublication, VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
   keys: fn() -> CasSlotKeys
 }
 
-fn slot_store_declaration(store: SlotStore) -> NonEmptyStr {
-  store.declaration
-}
-
-// READINESS IS THE EVIDENCE A STORE IS MINTED FROM: the named directory was listed through the
-// filesystem the store will use, at the root the store will use. Sealed like the store, so the only
-// readiness that exists is one an observation produced; a store's declaration, root and filesystem
-// are the readiness's own, so a readiness for one declaration can only ever mint a store for that
-// declaration (there is no second, independently supplied identity for it to disagree with).
-type SlotRootReady sole_constructor {
-  declaration: NonEmptyStr
-  root: NonEmptyStr
-  fs: FilesystemInterface
-}
-
-type SlotRootReadiness
-  = SlotRootObserved { ready: SlotRootReady }
-  | SlotRootUnready { declaration: NonEmptyStr, detail: String }
-
-fn slot_root_observe(fs: FilesystemInterface, declaration: NonEmptyStr, root: NonEmptyStr) -> SlotRootReadiness {
-  let fs_list = fs.list
-  let listing = fs_list(root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotRootUnready { declaration: declaration, detail: join(["the ", declaration as String, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotRootUnready { declaration: declaration, detail: join(["the ", declaration as String, " store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => SlotRootObserved { ready: SlotRootReady { declaration: declaration, root: root, fs: fs } }
-  }
-}
-
-fn slot_store_of(ready: SlotRootReady) -> SlotStore {
-  let fs = ready.fs
-  let root = ready.root
+// THE ONE SLOT STORE BUILDER, AND IT TAKES A ROOT. It survives public because a per-store declaring module
+// has to build the SlotStore its sealed record holds, and the seal is per file: each such module derives
+// its root from its own declaration and passes it here. Its production callers are exactly those mints:
+// gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store,
+// gunbc.roadmap.roadmap_session_attempt_slots_root session_attempt_slots_store,
+// gunbc.dispatch_credential_acquisition credential_acquisition_store and gunbc.compute.compute_attempt_slots_root
+// compute_seat_store; the rest are witnesses. Holding a SlotStore from it is not holding any of those stores:
+// each per-store record cannot be spelled outside its module. NOT closed here: any module can still build a
+// plain SlotStore over a path of its own, because Filesystem.* and local_filesystem are ambient.
+fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {
   SlotStore {
-    declaration: ready.declaration,
     observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
     commit: fn(publication, verified) { file_compare_and_set_over(fs: fs, root: root, publication: publication, verified: verified) }
     keys: fn() { cas_slot_keys_over(fs: fs, root: root) }

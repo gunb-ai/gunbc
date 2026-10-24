@@ -102,7 +102,7 @@ fn subject_at(dir: String) -> ComputeCapacitySubject {
 // THE SESSION SLOT STORE UNDER A DIRECTORY THE TEST OWNS: the production mint
 // (gunbc.roadmap.roadmap_session_attempt_slots_root session_attempt_slots_store) over an instance rooted in
 // the witness's directory, its slot directory created the way the instance directory row would, so the store
-// is minted from a real readiness observation exactly as the belt's is. The records directory stays the
+// is minted from a real listing of that directory exactly as the belt's is. The records directory stays the
 // witness's directory: it is a path, not a slot store (gunbc.roadmap.roadmap_session_placement SessionPlacementStores).
 fn instance_at(dir: String) -> HostDashboardInstance {
   isolated_dashboard_instance(

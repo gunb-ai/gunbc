@@ -34,7 +34,7 @@ fn tree_there(td: String, n: String, k: String) -> Bool { Filesystem.Read(path: 
 
 // THE CLAIM STORE UNDER A DIRECTORY THE TEST OWNS: the production mint over an instance whose state root is the
 // test's, its directory created the way the instance directory row would, so the store is minted from a real
-// readiness observation exactly as the belt's is.
+// listing of that directory exactly as the belt's is.
 fn claims_at(cd: String) -> WorktreeClaimStoreReading {
   let instance = isolated_dashboard_instance(
     deployment: deployment_id(name: "claim-wet" as NonEmptyStr),
