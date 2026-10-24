@@ -1645,18 +1645,9 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
       let ge = length(xs: ggraph.edges)
       let gc = length(xs: gscc)
       let h0 = observed_thread_cpu_nanos("h0")
-      let hl1 = fold_list(xs: take_prefix(xs: ggraph.edges, n: 2000), empty: empty_map(), cons: fn(m, edge) {
-        map_insert(m: m, key: edge.callee, value: match map_lookup(m: m, key: edge.callee) { Present { value: ns } => list_snoc_item(xs: ns, item: edge.caller) Absent => [edge.caller] })
-      })
-      let h1 = observed_thread_cpu_nanos("h1")
-      let hl2 = fold_list(xs: take_prefix(xs: ggraph.edges, n: 4000), empty: empty_map(), cons: fn(m, edge) {
-        map_insert(m: m, key: edge.callee, value: match map_lookup(m: m, key: edge.callee) { Present { value: ns } => list_snoc_item(xs: ns, item: edge.caller) Absent => [edge.caller] })
-      })
-      let h2 = observed_thread_cpu_nanos("h2")
-      let hcc = fold_list(xs: take_prefix(xs: ggraph.edges, n: 4000), empty: empty_map(), cons: fn(m, edge) {
-        map_insert(m: m, key: edge.callee, value: match map_lookup(m: m, key: edge.callee) { Present { value: ns } => concat(ns, [edge.caller]) Absent => [edge.caller] })
-      })
-      let h3 = observed_thread_cpu_nanos("h3") + 0 * (if map_contains_key(m: hl1, key: "") { 1 } else { 0 }) + 0 * (if map_contains_key(m: hl2, key: "") { 1 } else { 0 }) + 0 * (if map_contains_key(m: hcc, key: "") { 1 } else { 0 })
+      let h1 = h0
+      let h2 = h0
+      let h3 = h0
       let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
       let q2 = observed_thread_cpu_nanos("cl-blocked")
       let by_module = closure_rows_by_module(rows: phase1.rows)
