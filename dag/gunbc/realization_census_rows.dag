@@ -17,6 +17,8 @@ import gunbc.realization_census {
 // producer (it dissolves when a v2 lens produces these readings). Do not edit: regenerate from the
 // receipt in docs/probes/realization_census_1dd3eda5_2026-10-24/.
 
+data realization_census_pin: String = "1dd3eda5696a10e8cb49700f37d61b40c304d326"
+
 data realization_census_data_commit: String = "f0e73dc1d045357af172ac3402e421263459cbfb"
 
 data realization_census_module_rows: List<ModuleCensusReading> = [

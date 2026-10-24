@@ -8,6 +8,7 @@ import extdeps.transports.rest {
   RestResult,
   RestAnswered,
   RestRefused,
+  RestRefusal,
   RestReadExchange,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
@@ -365,24 +366,55 @@ fn review_tab_standing_of_outcome(
         spreadsheet_id: spreadsheet_id,
         classified: classify_review_tabs(read: answer, title: title),
       )
-    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
-      RestExchangeStatusRefused { status, body } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
-        }
-      RestExchangeUnreached { cause } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
-        }
-      RestExchangeUndecodable { status, cause } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
-        }
-      RestExchangeCommitAmbiguous { detail } =>
-        TabUnreadable {
-          cause: join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
-        }
-    }
+    RestRefused { refusal } => TabUnreadable { cause: metadata_read_refusal_cause(refusal: refusal) }
+  }
+}
+
+// ONE ACCOUNT OF A REFUSED METADATA READ, shared by the per-title locator and the whole-set read
+// below: both ask spreadsheets.get the same question under the same mask, so a refusal means the
+// same thing to each and is spelled once.
+fn metadata_read_refusal_cause(refusal: RestRefusal) -> NonEmptyStr {
+  match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+    RestExchangeStatusRefused { status, body } =>
+      join(["the tab metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
+    RestExchangeUnreached { cause } =>
+      join(["the tab metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
+    RestExchangeUndecodable { status, cause } =>
+      join(["the tab metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+    RestExchangeCommitAmbiguous { detail } =>
+      join(["the tab metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+  }
+}
+
+// THE WHOLE TAB SET, FOR A CONVERGE THAT MUST KNOW EVERY TAB AND NOT ONLY THE ONE IT ASKS FOR. A
+// kind declares its exact tab set, so a tab it does not declare is a drift to refuse rather than a
+// tab to ignore, and that needs the titles of all of them. It is the same read and mask as
+// locate_review_tab, and the same poisoning rule: one unreadable tab makes the set unreadable,
+// because a set with a tab dropped is a confident answer about a workbook nobody observed. It mints
+// no LocatedReviewTab; a writer still locates its tab by title through the sealed mint.
+type ReviewTabSetReading
+  = TabSetRead { candidates: List<ReviewTabCandidate> }
+  | TabSetUnreadable { cause: NonEmptyStr }
+
+fn review_tab_set_of(read: SpreadsheetRead) -> ReviewTabSetReading {
+  let scanned = fold_list(
+    match read.sheets { Present { value: ss } => ss  Absent => [] },
+    ReviewTabScan { candidates: [], unreadable: none },
+    (acc, s) => advance_review_tab_scan(acc: acc, sheet: s),
+  )
+  match scanned.unreadable {
+    Present { value: c } => TabSetUnreadable { cause: c }
+    Absent => TabSetRead { candidates: scanned.candidates }
+  }
+}
+
+fn observe_review_tab_set(spreadsheet_id: NonEmptyStr) -> ReviewTabSetReading uses net: Network {
+  match sheets.Spreadsheets.GetSpreadsheetMetadata(
+    spreadsheet_id: spreadsheet_id as String,
+    fields: review_tab_locator_field_mask,
+  ) {
+    RestAnswered { answer } => review_tab_set_of(read: answer.result)
+    RestRefused { refusal } => TabSetUnreadable { cause: metadata_read_refusal_cause(refusal: refusal) }
   }
 }
 

@@ -57,6 +57,7 @@ import gunbc.review_sheet_format_actuator {
   color_standing,
   format_review_sheet,
   standing_admitted_color,
+  RuleTextContains,
 }
 
 fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
@@ -137,7 +138,7 @@ fn forge_a_standing_rule_on_an_arbitrary_tab() -> FormatStepOutcome uses net: Ne
   color_standing(
     q: StandingRuleRequest {
       spreadsheet_id: "someone-elses-workbook", sheet_id: 7,
-      start_row: 1, start_col: 3, end_col: 4, match_text: "Opportunity", rule_index: 0,
+      start_row: 1, start_col: 3, end_col: 4, condition: RuleTextContains { fragment: "Opportunity" }, rule_index: 0,
       color: standing_admitted_color(),
     }
   )

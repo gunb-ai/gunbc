@@ -26,6 +26,7 @@ import gunbc.review_sheet_format_actuator {
   FormatPlanned,
   FormatPlanRefused,
   standing_admitted_color,
+  RuleTextContains,
   format_request_plan,
   review_sheet_format_grid_field_mask,
   review_sheet_format_meta_field_mask,
@@ -97,7 +98,7 @@ fn witness_rules() -> List<FormatRule> {
   map(
     ["Opportunity", "Arbitrage", "Incompatible", "Required", "Replay"],
     f => FormatRule {
-      column: "Standing" as NonEmptyStr, fragment: f, color: standing_admitted_color()
+      column: "Standing" as NonEmptyStr, condition: RuleTextContains { fragment: f }, color: standing_admitted_color()
     }
   )
 }

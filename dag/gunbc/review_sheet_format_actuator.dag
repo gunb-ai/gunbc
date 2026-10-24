@@ -37,6 +37,9 @@ import gunbc.review_sheet_projection {
 }
 import extdeps.google.sheets
 import extdeps.google.sheets {
+  SheetsBooleanConditionType,
+  ConditionTextContains,
+  ConditionNumberGreater,
   SheetsColor,
   sheets_field_mask,
   sheets_field_sheet_id,
@@ -289,7 +292,7 @@ type StandingRuleRequest sole_constructor {
   start_row: Int
   start_col: Int
   end_col: Int
-  match_text: String
+  condition: FormatRuleCondition
   rule_index: Int
   color: SheetsColorReading
 }
@@ -325,7 +328,7 @@ fn standing_rule_request(
     start_row: review_sheet_header_row_count,
     start_col: column_index,
     end_col: column_index + 1,
-    match_text: rule.fragment,
+    condition: rule.condition,
     rule_index: rule_index,
     color: rule.color,
   }
@@ -338,8 +341,37 @@ fn standing_rule_request(
 // it resolves against the validated header, and a name the header does not carry refuses the plan.
 type FormatRule {
   column: NonEmptyStr
-  fragment: String
+  condition: FormatRuleCondition
   color: SheetsColorReading
+}
+
+// WHAT A RULE MATCHES, as the upstream condition it lowers to. A substring colours a closed
+// vocabulary cell by its member's name; a number colours a count above a named threshold. Each arm
+// is one extdeps.google.sheets SheetsBooleanConditionType and its one value, so a rule cannot ask
+// for a comparison upstream cannot express.
+type FormatRuleCondition
+  = RuleTextContains { fragment: String }
+  | RuleNumberGreater { threshold: Int }
+
+fn format_rule_condition_type(c: FormatRuleCondition) -> SheetsBooleanConditionType {
+  match c {
+    RuleTextContains { fragment: _ } => ConditionTextContains
+    RuleNumberGreater { threshold: _ } => ConditionNumberGreater
+  }
+}
+
+fn format_rule_condition_value(c: FormatRuleCondition) -> String {
+  match c {
+    RuleTextContains { fragment: f } => f
+    RuleNumberGreater { threshold: n } => to_string(n)
+  }
+}
+
+fn format_rule_condition_text(c: FormatRuleCondition) -> String {
+  match c {
+    RuleTextContains { fragment: f } => join(["containing ", f], "")
+    RuleNumberGreater { threshold: n } => join(["greater than ", to_string(n)], "")
+  }
 }
 
 type FormatRequestPlan sole_constructor {
@@ -423,7 +455,7 @@ fn color_standing(q: StandingRuleRequest) -> FormatStepOutcome {
   match q.color {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused {
-        step: join(["standing colour for ", q.match_text], "") as NonEmptyStr,
+        step: join(["colour for cells ", format_rule_condition_text(c: q.condition)], "") as NonEmptyStr,
         cause: c,
       }
     SheetsColorDerived { color: fg } => color_standing_derived(q: q, color: fg)
@@ -431,14 +463,15 @@ fn color_standing(q: StandingRuleRequest) -> FormatStepOutcome {
 }
 
 fn color_standing_derived(q: StandingRuleRequest, color: SheetsColor) -> FormatStepOutcome {
-  let step = join(["standing colour for ", q.match_text], "") as NonEmptyStr
+  let step = join(["colour for cells ", format_rule_condition_text(c: q.condition)], "") as NonEmptyStr
   match sheets.Spreadsheets.AddTextColorRule(
     spreadsheet_id: q.spreadsheet_id,
     sheet_id: q.sheet_id,
     start_row: q.start_row,
     start_col: q.start_col,
     end_col: q.end_col,
-    match_text: q.match_text,
+    condition_type: format_rule_condition_type(c: q.condition),
+    condition_value: format_rule_condition_value(c: q.condition),
     foreground: color,
     rule_index: q.rule_index,
   ) {
