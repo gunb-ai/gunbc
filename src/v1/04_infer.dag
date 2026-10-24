@@ -124,7 +124,7 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names, template_renders_receiver_elements_as_host_text,
   is_empty_map_constructor, is_empty_set_constructor,
   bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
   KernelMethodOnly, DeclarationOnly
@@ -7117,7 +7117,7 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
                   " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
                 span: value.span, module_name: scope.module_name)]
               HostText => []
-              NotText => []
+              NotText => nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: concat("'", concat(bound_name, concat("' of ", func_name))), span: value.span, scope: scope)
               TextRepresentationUnidentified => [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument '", concat(bound_name, concat("' of ", func_name))), span: value.span }, module_name: scope.module_name)]
             }
           _ => []
@@ -7576,7 +7576,16 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
   }
 }
 
-// A cast source is a nominal value with no declared conversion unless its DECLARATION is grounded onto
+// THE ONE NOMINAL PREDICATE AT EVERY HOST-TEXT CROSSING
+// (gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text).
+// A value whose type is a declared product or coproduct has no implicit route into host text: the
+// host realization would write its debug rendering. Chain (i) asks this at `as` (validate_cast);
+// chain (ii) asks it at every host-text position a builtin or algebra method declares
+// (builtin_text_argument_crossing_diags, algebra_method_host_text_crossing_diags). Kernel Int, Nat
+// and Bool are not refused here: they are no nominal, and whether they inhabit host text implicitly
+// is gunbc.recurring_failure_mode two_admission_authorities_keyed_on_different_relations SPECIMEN 3.
+//
+// A type is a nominal value with no declared conversion unless its DECLARATION is grounded onto
 // a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact
 // DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
 // spelling: Nat is exempt because gunbc.structural_realization_bindings kernel_grounding_rows carries a
@@ -7586,12 +7595,67 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
 // nominal identity. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
 // located, so it is counted by the diagnostic census rather than waved through.
-fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  match type_reference_declaration_ref(n: source_node, source_indices: source_indices, env: env) {
-    Absent => !cast_source_is_solver_unit_placeholder(source_node: source_node)
-    Present { value: d } =>
-      !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
-        && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
+  (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
+    || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
+    && match type_reference_declaration_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+      Absent => !cast_source_is_solver_unit_placeholder(source_node: t)
+      Present { value: d } =>
+        !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
+          && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+    }
+}
+
+// The refusal every chain (ii) position emits, located at the value.
+fn nominal_value_at_host_text_diags(t: Node, position: String, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  if value_type_is_declared_nominal(t: t, scope: scope) {
+    [inference_error(
+      message: concat("nominal ", authored_name_at(source_indices: scope.type_env.source_indices, node: t),
+        " at host text ", position, ": no declared conversion"),
+      span: span, module_name: scope.module_name)]
+  } else { [] }
+}
+
+// THE HOST-TEXT POSITIONS OF AN ALGEBRA METHOD: each formal its template declares as the kernel
+// String (NamedTemplate String; index 0 is the receiver), and each receiver element when the
+// template renders them (v1.compiler.method template_renders_receiver_elements_as_host_text).
+// `args` are the call's argument nodes after the receiver.
+fn algebra_method_host_text_crossing_diags(method_name: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  match semantics {
+    Present { value: sem } =>
+      match sem {
+        AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
+          match at {
+            Present { value: t } =>
+              let formal_diags = t.param_types |> skip(1) |> enumerate |> flat_map(pr =>
+                match pr.second {
+                  NamedTemplate { name: n } =>
+                    if n != "String" { [] }
+                    else {
+                      match args |> skip(pr.first) |> first {
+                        Present { value: a } =>
+                          let v = arg_value(n: a)
+                          match v.inferred {
+                            Present { value: Resolved { node: _ } } =>
+                              nominal_value_at_host_text_diags(t: expression_value_type(e: v), position: concat("String formal of ", method_name), span: v.span, scope: scope)
+                            _ => []
+                          }
+                        Absent => []
+                      }
+                    }
+                  _ => []
+                })
+              let receiver_type = resolved_type(n: receiver)
+              let element_diags = if template_renders_receiver_elements_as_host_text(template: t)
+                  && node_is_element_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                receiver_type.children |> flat_map(ch => nominal_value_at_host_text_diags(t: child_type_node(ch: ch), position: concat("elements of ", method_name), span: receiver.span, scope: scope))
+              } else { [] }
+              concat(formal_diags, element_diags)
+            Absent => []
+          }
+        _ => []
+      }
+    Absent => []
   }
 }
 
@@ -9671,7 +9735,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name)))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, scope: scope))))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -10054,7 +10118,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name)))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, scope: scope)))])
       }
       }
 
@@ -10640,10 +10704,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let source_is_nominal = match inner_typed.inferred {
-        Present { value: Resolved { node: source_node } } =>
-          (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
-            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope)))
-            && cast_source_is_declared_nominal(source_node: source_node, source_indices: si, env: scope.type_env)
+        Present { value: Resolved { node: source_node } } => value_type_is_declared_nominal(t: source_node, scope: scope)
         _ => false
       }
       let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)

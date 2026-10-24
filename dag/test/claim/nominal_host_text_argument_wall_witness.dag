@@ -1,0 +1,112 @@
+module test.claim.nominal_host_text_argument_wall_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key, census_blocking_rows, census_total_count,
+  // Each refusal claim is keyed (class + subject_name + blocking). The subject of an InternalError
+  // row is its message truncated at 80 bytes; every refusal below is shorter, so the subject is the
+  // whole message v1.compiler.infer nominal_value_at_host_text_diags writes.
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A NOMINAL VALUE HAS NO IMPLICIT ROUTE INTO A HOST-TEXT POSITION OF A
+// BUILTIN OR ALGEBRA METHOD, on the source -> .dag-acceptance path (gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, chain (ii)). Before
+// v1.compiler.infer asked value_type_is_declared_nominal at these positions, concat and join
+// accepted a record or coproduct and the host rendered its debug text, and string_length accepted
+// one and failed at runtime with a TypeError. The REDs cover concat, join's elements and join's
+// separator, for a record and for a coproduct, and string_length as the one sibling of the
+// registry's host-text formals. The controls: String and NonEmptyStr pass, a declared conversion
+// passes, and kernel Int, Nat and Bool stay accepted at concat and join BY DECISION (arm (a) of this
+// chain): whether they inhabit host text implicitly is gunbc.recurring_failure_mode
+// two_admission_authorities_keyed_on_different_relations SPECIMEN 3, not this class. PATH SCOPE:
+// compile acceptance on the seed only; the v2 native route is unmeasured.
+
+fn refusals(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data concat_record_source: String = "module probe_host_text_concat_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn text(p: P) -> String { concat(\"id=\", p) }\n"
+
+data concat_coproduct_unit_source: String = "module probe_host_text_concat_unit\nimport std.types { String, Int, List }\ntype U = Red | Blue\nfn text(u: U) -> String { concat(\"id=\", u) }\n"
+
+data concat_coproduct_record_arm_source: String = "module probe_host_text_concat_record_arm\nimport std.types { String, Int, List }\ntype C = Red | Green { n: Int }\nfn text() -> String { concat(\"id=\", Green { n: 1 }) }\n"
+
+data join_record_elements_source: String = "module probe_host_text_join_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn text(ps: List<P>) -> String { join(ps, \",\") }\n"
+
+data join_coproduct_elements_source: String = "module probe_host_text_join_coproduct\nimport std.types { String, Int, List }\ntype C = Red | Green { n: Int }\nfn text(cs: List<C>) -> String { join(cs, \",\") }\n"
+
+data join_record_separator_source: String = "module probe_host_text_join_sep_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn text(xs: List<String>, p: P) -> String { join(xs, p) }\n"
+
+data join_coproduct_separator_source: String = "module probe_host_text_join_sep_coproduct\nimport std.types { String, Int, List }\ntype U = Red | Blue\nfn text(xs: List<String>, u: U) -> String { join(xs, u) }\n"
+
+data string_length_record_source: String = "module probe_host_text_string_length_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn size(p: P) -> Int { string_length(p) }\n"
+
+data control_string_source: String = "module probe_host_text_string\nimport std.types { String, Int, List }\nfn text(s: String, xs: List<String>) -> String { concat(join(xs, s), concat(\"id=\", s)) }\n"
+
+data control_non_empty_source: String = "module probe_host_text_non_empty\nimport std.types { String, NonEmptyStr, List }\nfn text(s: NonEmptyStr, xs: List<NonEmptyStr>) -> String { concat(join(xs, s), concat(\"id=\", s)) }\n"
+
+data control_declared_conversion_source: String = "module probe_host_text_declared_conversion\nimport std.types { String, Int, List }\nimport extdeps.languages.json.parse { JsonDocumentGap, json_document_gap_text }\nfn text(g: JsonDocumentGap) -> String { concat(\"gap=\", json_document_gap_text(gap: g)) }\n"
+
+data control_kernel_scalars_source: String = "module probe_host_text_kernel_scalars\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(i: Int, n: Nat, b: Bool, is: List<Int>, ns: List<Nat>, bs: List<Bool>) -> String { concat(concat(concat(\"i=\", i), concat(\"n=\", n)), concat(concat(\"b=\", b), concat(join(is, \",\"), concat(join(ns, \",\"), join(bs, \",\"))))) }\n"
+
+test fn a_record_at_concat_is_refused() -> Bool {
+  refusals(source: concat_record_source, subject: "nominal P at host text 'b' of concat: no declared conversion") == 1
+}
+
+test fn a_unit_arm_coproduct_at_concat_is_refused() -> Bool {
+  refusals(source: concat_coproduct_unit_source, subject: "nominal U at host text 'b' of concat: no declared conversion") == 1
+}
+
+test fn a_record_arm_coproduct_at_concat_is_refused() -> Bool {
+  refusals(source: concat_coproduct_record_arm_source, subject: "nominal C at host text 'b' of concat: no declared conversion") == 1
+}
+
+test fn record_elements_at_join_are_refused() -> Bool {
+  refusals(source: join_record_elements_source, subject: "nominal P at host text elements of join: no declared conversion") == 1
+}
+
+test fn coproduct_elements_at_join_are_refused() -> Bool {
+  refusals(source: join_coproduct_elements_source, subject: "nominal C at host text elements of join: no declared conversion") == 1
+}
+
+test fn a_record_separator_at_join_is_refused() -> Bool {
+  refusals(source: join_record_separator_source, subject: "nominal P at host text String formal of join: no declared conversion") == 1
+}
+
+test fn a_coproduct_separator_at_join_is_refused() -> Bool {
+  refusals(source: join_coproduct_separator_source, subject: "nominal U at host text String formal of join: no declared conversion") == 1
+}
+
+test fn a_record_at_string_length_is_refused() -> Bool {
+  refusals(source: string_length_record_source, subject: "nominal P at host text 's' of string_length: no declared conversion") == 1
+}
+
+test fn control_string_is_accepted() -> Bool {
+  blocking_total(source: control_string_source) == 0
+}
+
+test fn control_non_empty_str_is_accepted() -> Bool {
+  blocking_total(source: control_non_empty_source) == 0
+}
+
+test fn control_declared_conversion_is_accepted() -> Bool {
+  blocking_total(source: control_declared_conversion_source) == 0
+}
+
+test fn control_kernel_int_nat_bool_stay_accepted_by_decision() -> Bool {
+  blocking_total(source: control_kernel_scalars_source) == 0
+}

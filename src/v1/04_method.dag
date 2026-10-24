@@ -10,7 +10,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
   OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
-  free_monoid_scalar_templates, kernel_algebra_profile
+  free_monoid_scalar_templates, kernel_algebra_profile, collection_join_shape
 }
 
 import v1.std.core { Unmarked,
@@ -528,6 +528,15 @@ fn builtin_host_text_param_names(name: String) -> List<String> {
         }
       ) |> map(p => p.name)
   }
+}
+
+// THE COLLECTION JOIN RENDERS EACH ELEMENT OF ITS RECEIVER AS HOST TEXT. std.algebra
+// collection_join_shape types the receiver as ReceiverSelf, the whole collection, so the element
+// position is not a formal of its own; its host realization still writes every element into the
+// String it returns. Keyed on the template declaration, never on the spelling `join`, which
+// std.algebra also uses for the boolean-algebra and scalar free-monoid joins.
+fn template_renders_receiver_elements_as_host_text(template: AlgebraFieldTemplate) -> Bool {
+  template == collection_join_shape()
 }
 
 fn infer_builtin_call_type(name: String) -> Node? {
