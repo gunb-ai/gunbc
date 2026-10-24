@@ -1,0 +1,467 @@
+module v2.workflow.outside_discovery_roots_census
+
+// THE OUTSIDE-DISCOVERY-ROOTS CENSUS. One question: which tracked claim files can NO governed acquirer
+// see? The answer is a TYPED STANDING computed from the layout authority, never a transcription of a
+// listing (§6: "never transcribe its output" -- twelve paths copied into source would rot the moment one
+// is renamed, and the census would pass by agreeing with itself).
+//
+// CONSUMER, stated plainly because §3c makes "a module nothing imports" the red. This census has NO label
+// of its own, deliberately: it answers the same question as the existing
+// `gunbc test //gunbc/instruments:claim-coverage-census` -- which claims sit outside what is watched -- so
+// under the one-instrument ruling it enters that instrument as a SOURCE rather than becoming a second
+// label. THE CONSUMER IS `gunbc.claim_coverage_census_live` `claim_coverage_census_exit`: it calls
+// `outside_roots_census` (live module) over the two tracked-claim captures, folds the census's
+// `OutsideRootsChannel` beside the wet schedule's standing and the S1 discovered universe's standing in
+// `claim_coverage_composed_standing`, and prints this module's receipt and header lines beside the other
+// two sources' lines. The executing route is the label itself -- `gunbc test
+// //gunbc/instruments:claim-coverage-census` -- and the fold is pinned per-channel by the composition
+// claims in `v2.test.claim.claim_coverage_census_s1_witness`; the per-source behaviour is pinned by the
+// claim files under src/v2/test/claim and scheduled by the three enrollment rows.
+//
+// WHY A STANDING AND NOT AN ENUMERATION OF ABSENT ANSWERS (warm-wolf-570's ruling). The repo already
+// declares this population: `v1_claim_scoped_witness_batch_deleted_note` in gunbc.ci.ci_layer_roots states
+// that the entries under src/v1/tests/claim have no executing consumer, that their stage0 emissions
+// "compile into the seed crate, which is not execution", and what restores them ("one prepared subject
+// spanning dag, src/v1 and src/v2"). A census that answered Absent twelve times would re-derive one call's
+// fact twelve times and would be a claim about twelve strings rather than about the MODEL. The standing
+// here says the stronger thing: a path is OutsideDiscoveryRoots BECAUSE the layout admits only two
+// governed trees, so git lists it while every governed reader refuses it, for one reason. The RED is the
+// listed paths, and dropping one from the listing makes the census name exactly it.
+//
+// WHY THE ENUMERATION COMES FROM `git ls-files`. `v2.cli.repository_layout repository_tree_of_root_argument`
+// matches over [V2Tree, DagTree] and nothing else, so a tree outside those two can never be a
+// --source-root and no discovery walk will ever list it -- the tree is not merely unbound today, it is
+// unrepresentable in the layout model (the mechanical cause of the S1 census answering S1InputsUnread for
+// roots under src/v1). `extdeps.git git_ls_files_command` asks the index instead; it is an argv builder
+// beside its siblings and reuses the already-declared `git_ls_files_external_authority_anchor` rather
+// than adding an anchor.
+//
+// GRAIN. One row per tracked .dag FILE, at path grain. Claim identities are deliberately NOT rows: a
+// claim inside an unacquirable file cannot be read by any governed marker route, so stating identities
+// would assert more than the instrument can observe. The file population is reported here and the note
+// owns the restoration.
+//
+// NO COUNT LITERALS (§5/§6). Every number is derived from the listing handed to the census, and the
+// population is stated as a PREDICATE over paths (the subject of the note it cites), not as a snapshot of
+// what the tree contains today.
+
+import std.types { String, Bool, List, Int }
+import std.optional { Optional, Absent, Present }
+import std.algebra { Cons, Empty, list_map, list_reverse, trim }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.rust_emitted_edge { module_to_filename }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
+import v2.lens.module_graph { ModuleDeclarationFact }
+import gunbc.ci.ci_layer_roots {
+  witness_discovery_scan_dirs,
+  v1_claim_scoped_witness_batch_deleted_subject_directory
+}
+import v2.cli.repository_layout { repository_module_file_of_path, repository_tree_directory }
+
+// THE STANDING. Three states, each a decision the census can actually make about ONE PATH from its inputs:
+//   InsideGovernedTree    -- the layout owns the path; a governed reader can acquire it. Not a finding.
+//   OutsideDiscoveryRoots -- tracked, a .dag, and the layout owns NO tree for it. THE FINDING.
+//   NotAClaimFile         -- outside the trees but not a claim file. Not a finding.
+// An unread listing used to live HERE as a fourth arm, beside the per-path states -- review 84111: a fact
+// about the WHOLE census stored as a fact about one path, so a list could mix "unread" with observed rows,
+// a predicate (`listing_is_unread`) existed only to hunt the marker, and any fold forgetting that hunt
+// treated an unread listing as an empty, clean population -- the fail-open shape §5 refuses. "Could not
+// look" is now UNWRITABLE as a row (correctness by construction, §4b): it is an arm of the outcome sum
+// below, which cannot coexist with rows at all.
+type OutsideRootsStanding
+  = InsideGovernedTree { path: String, tree_directory: String }
+  | OutsideDiscoveryRoots { path: String, cause: OutsideRootsCause }
+  | NotAClaimFile { path: String }
+
+// WHY A READ FAILED, AS A SUM AND NOT A SENTENCE (review 84644). The census asks git two questions, and each
+// can fail in the three ways the transport and the decision on its text really distinguish: the process
+// never answered, it answered with a refusal (exit code and stderr are DATA here, not interpolated prose),
+// or it answered with nothing at all. Prose is made only at the receipt, by `census_unread_cause_text`.
+type CensusReadFailure
+  = ReadProcessAbsent
+  | ReadProcessRefused { exit_code: Int, stderr: String }
+  | ReadNoAnswer
+
+// WHICH READ FAILED. The subject axis is separate from the failure axis so the two are never fused into one
+// arm per combination: a listing and a marker read that fail the same way stay distinguishable by subject.
+type CensusUnreadCause
+  = IndexUnread { failure: CensusReadFailure }
+  | MarkerUnread { failure: CensusReadFailure }
+
+// THE ONE RENDERER, used only where a receipt line or an exit reason is printed.
+fn census_unread_cause_text(cause: CensusUnreadCause) -> String {
+  match cause {
+    IndexUnread { failure: failure } => concat("the index could not be asked: ", match failure {
+      ReadProcessAbsent => "the index could not be asked"
+      ReadProcessRefused { exit_code: exit_code, stderr: stderr } =>
+        concat("the index refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr))))
+      ReadNoAnswer => "the index returned no listing at all"
+    })
+    MarkerUnread { failure: failure } => concat("the claim marker could not be read: ", match failure {
+      ReadProcessAbsent => "the marker read was never answered"
+      ReadProcessRefused { exit_code: exit_code, stderr: stderr } =>
+        concat("the marker read refused (exit ", concat(to_string(exit_code), concat("): ", trim(s: stderr))))
+      ReadNoAnswer => "the marker read returned no answer at all"
+    })
+  }
+}
+
+// THE OUTCOME: what the census as a whole knows. Either it looked, and these are the rows -- or it could
+// not look, and this is why. Not both, ever: the fold that consumed the marker-hunting predicate is gone,
+// and the channel the composed census consumes is now DERIVED by matching this sum (review 84111 also
+// dissolves the Bool the derivation used to take: an unread census and a clean census were distinguishable
+// only because a Bool said so; now they are different arms).
+type OutsideRootsOutcome
+  = CensusUnread { cause: CensusUnreadCause }
+  | CensusObserved { rows: List<OutsideRootsStanding> }
+
+// THE CAUSE, AS CITATIONS AND NOT AS PROSE. A finding's cause used to be one sentence naming its three
+// authorities; a sentence cannot be checked, so a rename or deletion of any of them would have left every
+// claim green (review 83419, DESIGN 3 "cite the symbol, not the position", 4c "a String declaration whose
+// only purpose is commentary is misplaced"). Each authority is now a DeclarationRef over (module, decl),
+// which the witness resolves through v2.std.decl_ref_resolution against the live index: the claim fails the
+// moment the named symbol stops existing, which is the whole point of a citation.
+//
+// The emitted-population authority is deliberately a REFERENCE TO A FUNCTION and not a file path. The old
+// string carried `src/v1/stage0/src/emitted_population.rs` -- a position, in a frozen tree, that no index
+// resolves and that rots on any rename. The registry's identity is the fn that reads it.
+type OutsideRootsCause {
+  tracked_by: DeclarationRef
+  note_subject: DeclarationRef
+  emitted_by: DeclarationRef
+  layout_authority: DeclarationRef
+}
+
+// THE AUTHORITIES, each at the grain it actually holds (§5: no per-item authority claimed from a source
+// that carries only a coarser one). The index says TRACKED. The note says the SUBJECT -- its body names
+// `src/v1/tests/claim` as having no executing consumer and names no file. The emitted registry says this
+// FILE was emitted, the only per-file statement available in-tree. The layout says NO GOVERNED TREE admits
+// the path, which is the finding itself.
+data outside_roots_cause: OutsideRootsCause = OutsideRootsCause {
+  tracked_by: decl_ref(module_path: "extdeps.git", decl_name: "git_ls_files_command"),
+  note_subject: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "v1_claim_scoped_witness_batch_deleted_note"),
+  emitted_by: decl_ref(module_path: "gunbc.stage0.stage0_rust_host_observation", decl_name: "emitted_population_repo_paths"),
+  layout_authority: decl_ref(module_path: "v2.cli.repository_layout", decl_name: "repository_module_file_of_path")
+}
+
+// HOW A CITATION IS PRINTED: `module:decl`, read off the carrier. Every printed citation in this module --
+// header and receipt alike -- goes through here, so the string a reader sees and the reference the witness
+// resolves are ONE datum. There is deliberately no `data note_identity: String = "..."` beside it: a second
+// spelling is what a rename makes stale, which is the defect review 83419 named.
+fn declaration_ref_display(ref: DeclarationRef) -> String {
+  concat(ref.module_path as String, concat(":", ref.decl_name as String))
+}
+
+
+// THE POPULATION PREDICATE, spelled from the note rather than from a snapshot. The note's subject is claim
+// files under the v1 test tree; this is the one path fact the census states outright, because it is the
+// subject of the note it cites -- not a list of the files found under it.
+// ONE fact, two spellings derived from it. The path prefix used for containment is the directory plus the
+// separator, so the two cannot drift apart -- a second literal would be a second source for one fact.
+// THE SUBJECT IS IMPORTED, NOT RESTATED (review 84153 #1): the note at
+// gunbc.ci.ci_layer_roots v1_claim_scoped_witness_batch_deleted_note owns this subject, and the typed
+// carrier beside it is the one place the directory is spelled (§3: one fact, one home). The witness claim
+// the_subject_carrier_and_the_note_prose_agree ties the carrier to the note's prose, so the census credits
+// the note for a population the note actually declares -- if the note is rewritten, the census's sorting
+// and its receipt's credit move together or a claim goes RED.
+data note_declared_subject_directory: String = v1_claim_scoped_witness_batch_deleted_subject_directory
+data note_declared_prefix: String = concat(note_declared_subject_directory, "/")
+
+// TWO TESTS, AND THE SECOND IS DOING THE REAL WORK.
+//
+// The marker test is not decoration. Three files under the note's subject -- generic_identity_census,
+// interpolation_hole_census, shared_type_leaf_collision_census -- are tracked `.dag` that declare no `test fn`
+// at all: they are helper inventories the claim files beside them import. An extension-only test reported
+// them as uncovered claims, which is a fabricated finding: the census named paths whose claim population is
+// zero. So the marker answer is SUPPLIED, not read here -- this module is pure, and the live entry asks
+// `git grep -l`, the same rule the interpreter applies to a claim file's text.
+//
+// And a `.dag` under a fixtures directory is a parser INPUT even when its text carries the marker: the
+// fixture corpora deliberately contain claim-shaped text for parse tests. Without this test the whole
+// fixture corpus would be reported as uncovered claims. `fixtures` is a declared input medium
+// (gunbc.floor.incremental_floor_authority FloorInputMedium::Fixtures), not a governed tree, so no layout
+// authority answers for it and the prefix is stated here, once, beside the predicate that uses it.
+data fixture_path_prefix: String = "fixtures/"
+
+data claim_file_suffix: String = ".dag"
+
+fn path_is_claim_file(path: String, declares_claims: Bool) -> Bool {
+  if !declares_claims {
+    false
+  } else if path.starts_with(prefix: fixture_path_prefix) {
+    false
+  } else {
+    path.ends_with(suffix: claim_file_suffix)
+  }
+}
+
+fn path_is_under_note_subject(path: String) -> Bool {
+  path.starts_with(prefix: note_declared_prefix)
+}
+
+// ONE ROW. The layout authority is the only thing consulted for ownership; this module carries no copy of
+// the tree list (§6b -- a second local implementation of one rule is the trigger). If a governed tree is
+// ever bound over the note's population, this call starts answering Present and the standing moves on its
+// own, which is the correct behaviour and the reason the standing is computed rather than written down.
+//
+// `claim_bearers` is the marker answer handed in -- the exact tracked paths `git grep -l` reported for the
+// claim marker. Membership is an identity join on the whole path, the same grain both sides carry; no
+// substring of a path is compared to a name.
+fn outside_roots_row(path: String, claim_bearers: List<String>) -> OutsideRootsStanding {
+  match repository_module_file_of_path(path: path) {
+    Present { value: file } =>
+      InsideGovernedTree { path: path, tree_directory: repository_tree_directory(tree: file.tree) }
+    Absent =>
+      if path_is_claim_file(path: path, declares_claims: declares_claim(path: path, claim_bearers: claim_bearers)) {
+        OutsideDiscoveryRoots { path: path, cause: outside_roots_cause }
+      } else {
+        NotAClaimFile { path: path }
+      }
+  }
+}
+
+// THE JOIN. Exact path equality against the marker answer -- a bearer is the path `git grep` itself printed.
+fn declares_claim(path: String, claim_bearers: List<String>) -> Bool {
+  any(xs: claim_bearers, predicate: fn(bearer) { bearer == path })
+}
+
+// THE CENSUS: rows in, standings out. Nothing is skipped and nothing is invented -- a path handed in
+// appears exactly once in the output, in whatever state the layout puts it in.
+fn census_rows(listing: List<String>, claim_bearers: List<String>) -> List<OutsideRootsStanding> {
+  list_map(xs: listing, f: fn(path) { outside_roots_row(path: path, claim_bearers: claim_bearers) })
+}
+
+// THE FINDINGS. Only OutsideDiscoveryRoots rows are findings; the other states are the census's answers
+// about the rest of the listing, not defects.
+// THE FINDINGS, projected in ONE fold. The first version filtered to the finding arm and then mapped the
+// whole sum again, which forced four arms and made the unread arm invent an empty string to satisfy the
+// type. It was unreachable -- the filter had just removed those rows -- so it printed nothing wrong today;
+// it was a fabricated default waiting for someone to loosen the filter, which is the §5 hard reject. One
+// fold has no such arm: a row that is not a finding leaves the accumulator UNTOUCHED, so there is no value
+// to make up and no placeholder that could become a finding. Accumulate through Cons and reverse once at the
+// end, so the census still reports rows in listing order.
+// THE EMITTER JOIN, computed from two MODELED authorities and nothing else (review 83368).
+//
+// The first version of this check read `src/v1/stage0/src/emitted_population.rs` with `string_contains` over
+// `// src/v1_tests_claim_<stem>.rs` comment lines and carried a hand-written fallback that stripped `_test`
+// for one file. Wrong three ways at once, all of them mine: it re-implemented a reader the repo already
+// models, it re-implemented a naming rule the repo already models, and the fallback existed only because I
+// had never read that rule.
+//
+// What the repo models, and what this uses:
+//   - the artifact's SHAPE is owned by `gunbc.stage0.stage0_emitted_population_manifest`, whose
+//     `emitted_population_manifest_line_prefix` / `..._separator` the structural reader
+//     `gunbc.stage0.stage0_rust_host_observation::emitted_population_repo_paths` applies. The artifact is a
+//     `.rs` of COMMENT LINES precisely so the regen comparison covers it, and that reader documents the fact
+//     -- nothing here parses Rust, which is what the reviewer's "a comment in a seed Rust file" finding was
+//     pointing at.
+//   - the emitted file NAME for a module is `gunbc.rust_emitted_edge::module_to_filename` (dots to
+//     underscores), composed with the package root and source dir from `gunbc.stage0.stage0_cargo_manifest`.
+//   - WHICH module a `.dag` declares is `v2.lens.module_graph::ModuleDeclarationFact`, supplied by the caller:
+//     hermetic claims pass fixture facts, the wet claim passes `module_declaration_facts_live`.
+//
+// THE `_test` FALLBACK IS GONE, and the reason matters more than the deletion. It existed because I derived
+// the expected name from the file PATH, whose stem keeps `_test`, while the emitter names the file after the
+// DECLARED MODULE, whose name has no `_test` to strip.
+// `src/v1/tests/claim/tco_tail_call_assigns_every_loop_slot_witness_test.dag` declares
+// `module v1.tests.claim.tco_tail_call_assigns_every_loop_slot_witness`, and `module_to_filename` of THAT is
+// the emitter's line verbatim. Reading the rule removed the exception: there was never an anomaly to
+// tolerate, only a rule I had not read. Verified over all sixteen subject files -- every one matches through
+// `module_to_filename` alone, and zero are reachable only by the old strip hack.
+//
+// The facts are an ARGUMENT, so one pure function serves both routes: a witness that supplies its own facts
+// proves the shape, and the wet claim that supplies `module_declaration_facts_live` proves the route is
+// inhabited. Neither can be satisfied by the other.
+fn emitted_entry_for_module(module_name: String) -> String {
+  concat(
+    concat(stage0_package_root, stage0_source_dir_relative_to_package),
+    concat(module_to_filename(name: module_name), ".rs")
+  )
+}
+
+fn subject_path_is_emitted(
+  path: String,
+  emitted: List<String>,
+  facts: List<ModuleDeclarationFact>
+) -> Bool {
+  any(
+    xs: facts,
+    predicate: fn(fact) {
+      fact.path == path
+        && any(xs: emitted, predicate: fn(entry) { entry == emitted_entry_for_module(module_name: fact.module) })
+    }
+  )
+}
+
+// The completeness direction, over the same two authorities. The subject NAMESPACE is derived, not spelled:
+// it is the dotted form of the subject directory mapped through the emitter's own naming rule, so a rename of
+// either side moves this predicate with it instead of silently narrowing the population to nothing.
+fn outside_roots_findings(rows: List<OutsideRootsStanding>) -> List<String> {
+  let collected = fold(
+    rows,
+    init: Empty,
+    f: fn(acc, row) {
+      match row {
+        OutsideDiscoveryRoots { path: path, cause: _ } => Cons { head: path, tail: acc }
+        InsideGovernedTree { path: _, tree_directory: _ } => acc
+        NotAClaimFile { path: _ } => acc
+      }
+    }
+  )
+  list_reverse(xs: collected)
+}
+
+// FINDINGS THE NOTE DOES NOT VOUCH FOR. A finding outside the note's declared subject is a NEW population
+// and must not be absorbed under the note's authority -- it is reported separately so it cannot quietly
+// become "covered by the note" the way a widening would.
+fn findings_outside_note_subject(findings: List<String>) -> List<String> {
+  findings |> filter(fn(path) { !(path_is_under_note_subject(path: path)) })
+}
+
+// FINDINGS THE NOTE DOES VOUCH FOR: the declared population, as computed rather than transcribed.
+fn findings_under_note_subject(findings: List<String>) -> List<String> {
+  findings |> filter(fn(path) { path_is_under_note_subject(path: path) })
+}
+
+// THE RECEIPT. One line per finding, at the grain the note names. No count is transcribed: the line count
+// IS the population, produced by the fold over the listing handed in.
+//
+// The vouching is said per line, not once in the header. The note declares its subject at DIRECTORY grain
+// -- its body names the subject and the standing, and no file -- so a line may only claim the note declared
+// IT if its path is under that declared subject. Attaching "declared by" to every finding, including a path
+// outside the subject, would be the fabricated sentence this census exists to avoid: the census's own first
+// run produced exactly that, four `src/v1/*.dag` lines each printed as declared by a note that never named
+// them. So the caller separates the two populations and each line says which it is.
+//
+// AND THE MARKER ANSWER IS TYPED ON EVERY LINE, because it is not the marker authority. `acquisition_test_
+// markers` is the authority on "declares a test fn" and it is a PARSE; what the census was handed is a
+// pattern match over text, produced by `git grep -E -l` with a caller-supplied regex. The two are held to
+// agree on the census's own reported population, by the witness claims over that population; the line says
+// which one spoke. Printing a
+// pattern-grain observation with the authority's name on it is the transcribed standing DESIGN §6 forbids: a
+// reader would take a text match for the parser's verdict, and a pattern that drifts (prose `test fn`,
+// fixture text) would then be invisible behind an authority it never consulted.
+data claim_marker_grain_token: String = "claim-marker: pattern-grain (text match, not acquisition_test_markers)"
+
+fn outside_roots_receipt_line(path: String, vouched_by_note: Bool) -> String {
+  let head = concat("OUTSIDE-DISCOVERY-ROOTS ", path)
+  let attribution = declaration_ref_display(ref: outside_roots_cause.note_subject)
+  let grain = concat(" | ", claim_marker_grain_token)
+  // "within the subject <note> declares", never "declared by <note>": the note's own body names the subject
+  // directory and zero files, so a per-path "declared by" would credit it with an authority it does not hold.
+  if vouched_by_note {
+    concat(concat(head, concat(" | within the subject ", concat(attribution, " declares"))), grain)
+  } else {
+    concat(concat(head, concat(" | OUTSIDE the subject ", concat(attribution, " declares"))), grain)
+  }
+}
+
+fn outside_roots_receipt_lines(findings: List<String>, vouched_by_note: Bool) -> List<String> {
+  list_map(
+    xs: findings,
+    f: fn(path) { outside_roots_receipt_line(path: path, vouched_by_note: vouched_by_note) }
+  )
+}
+
+// THE SCAN-DIR GAP: A POPULATION, NOT A STANDING (warm-wolf-570's ruling).
+//
+// `witness_discovery_scan_dirs` is the authority on which directories the wet claim lanes scan, and it is a
+// CLOSED list of three. A tracked `.dag` that declares a test fn but sits under none of them is running in
+// no lane -- but it is NOT the same fact as `OutsideDiscoveryRoots`, and giving it the same standing would
+// be a judgment nobody has made: these paths are census-VISIBLE (the layout authority owns them, the
+// discovery roots cover them); the open question is whether the flat `src/v2/test/claim` shape, which holds
+// the largest share of them, is the accepted shape. That is somebody else's ruling to make, so this census
+// prints them and says nothing about whether it is a defect.
+//
+// Why the two populations cannot overlap, and why no extra exclusion is needed to keep them apart.
+// `OutsideDiscoveryRoots` is assigned exactly when `repository_module_file_of_path` refuses the path; this
+// population admits exactly the paths that same authority ACCEPTS. One predicate, evaluated once, puts a path
+// in at most one of the two -- so the note's `src/v1/tests/claim` population is kept out of the standing-less
+// population by the ruling it already has, not by a second exclusion bolted on here. A filter that could not
+// change the answer would be dead code with a comment claiming it was load-bearing.
+// Cited as a DeclarationRef and printed through `declaration_ref_display`, like every other citation here:
+// a (location, identity) string pair is two free strings that a rename leaves green.
+data scan_dir_authority: DeclarationRef = decl_ref(
+  module_path: "gunbc.ci.ci_layer_roots",
+  decl_name: "witness_discovery_scan_dirs"
+)
+// EVERY CITATION THIS CENSUS PRINTS, in one list, so a claim can ask of each one whether the symbol still
+// exists. The list is derived from the carriers rather than restating their (module, name) pairs: a citation
+// added to a carrier and not to this list shows up as a count mismatch, which is decidable, whereas a second
+// spelling would only go stale silently.
+data outside_roots_citations: List<DeclarationRef> = [
+  outside_roots_cause.tracked_by,
+  outside_roots_cause.note_subject,
+  outside_roots_cause.emitted_by,
+  outside_roots_cause.layout_authority,
+  scan_dir_authority
+]
+
+// The gap is reported at PATH grain because that is the grain the marker read answers at: `git grep -l`
+// prints a path, not a number of claims. Printing a claim count here would transcribe a figure this
+// instrument never measured.
+data scan_dir_gap_grain_token: String = "population only: no standing is ruled; path grain, per the marker read"
+
+// Membership in a scan lane is the authority's own list, joined at the directory boundary. This module holds
+// no copy of the three directories (§6b: the second local list is the defect the trigger names).
+fn path_is_in_a_scan_lane(path: String) -> Bool {
+  any(xs: witness_discovery_scan_dirs, predicate: fn(dir) {
+    path.starts_with(prefix: concat(dir, "/"))
+  })
+}
+
+// THE GAP POPULATION, computed from the marker answer the census was already handed. Nothing new is read and
+// nothing is excluded by name.
+fn scan_dir_gap_population(claim_bearers: List<String>) -> List<String> {
+  filter(
+    xs: claim_bearers,
+    predicate: fn(path) {
+      !(path.starts_with(prefix: fixture_path_prefix))
+        && (match repository_module_file_of_path(path: path) {
+             Present { value: _ } => true
+             Absent => false
+           })
+        && !(path_is_in_a_scan_lane(path: path))
+    }
+  )
+}
+
+fn scan_dir_gap_receipt_line(path: String) -> String {
+  concat(
+    concat("OUTSIDE-SCAN-DIRS ", path),
+    concat(" | ", scan_dir_gap_grain_token)
+  )
+}
+
+fn scan_dir_gap_receipt_lines(paths: List<String>) -> List<String> {
+  list_map(xs: paths, f: fn(path) { scan_dir_gap_receipt_line(path: path) })
+}
+
+fn scan_dir_gap_header_lines() -> List<String> {
+  [
+    concat(
+      "OUTSIDE-SCAN-DIRS census: lane authority ",
+      declaration_ref_display(ref: scan_dir_authority)
+    )
+  ]
+}
+
+
+// THE LOCATOR IS NOT AN INPUT. Like the S1 census, this census is a pure function of the listing handed
+// to it; the revision it describes is stamped beside the output by whoever ran it.
+//
+// EVERY AUTHORITY PRINTED IS READ OFF THE CARRIER. These lines are built by `declaration_ref_display` from
+// the same DeclarationRef values the cause carries and the witness resolves, so the printed citation and the
+// checked citation are one datum -- there is no second spelling here for a rename to make stale.
+fn outside_roots_header_lines() -> List<String> {
+  [
+    concat("OUTSIDE-DISCOVERY-ROOTS census: tracked by ",
+      declaration_ref_display(ref: outside_roots_cause.tracked_by)),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: subject declared by ",
+      declaration_ref_display(ref: outside_roots_cause.note_subject)),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: emitted population per ",
+      declaration_ref_display(ref: outside_roots_cause.emitted_by)),
+    concat("OUTSIDE-DISCOVERY-ROOTS census: ownership authority ",
+      declaration_ref_display(ref: outside_roots_cause.layout_authority))
+  ]
+}

@@ -17,6 +17,11 @@ import gunbc.claim_coverage_census {
   claim_coverage, claim_coverage_standing, claim_coverage_receipt_lines,
 }
 import v2.workflow.claim_coverage_census_s1_live { s1_compose, s1_head_receipt_line }
+import v2.workflow.outside_discovery_roots_census_live {
+  tracked_claim_listing, tracked_claim_bearers, outside_roots_census, outside_roots_head_receipt_line,
+  OutsideRootsChannel, OutsideChannelHeld, OutsideChannelFinding, OutsideChannelUnread
+}
+import v2.workflow.outside_discovery_roots_census { CensusUnreadCause, census_unread_cause_text }
 import v2.workflow.claim_coverage_census_s1 { s1_block }
 import v2.workflow.claim_coverage_census_s1 {
   S1Standing, S1Held, S1DidNotHold, S1Unread,
@@ -95,12 +100,20 @@ type ComposedCensusStanding
   | ComposedFinding { reasons: List<String> }
   | ComposedUnread { cause: String }
 
-// THE PRECEDENCE, AS ONE EXHAUSTIVE MATCH OVER TWO SUMS (review 82914 kept: both inputs are declared
-// coproducts, nothing is turned into a Bool, no integer is compared). Both censuses naming findings keeps
-// BOTH reasons -- either alone would send the reader to the wrong file, and the unread cause is printed here
-// too when it accompanies a finding, because an unreadable input is still a located fact the reader has to
-// fix even though it does not decide the exit.
-fn claim_coverage_composed_standing(wet: ClaimCoverageStanding, s1: S1Standing) -> ComposedCensusStanding {
+// THE PRECEDENCE, AS ONE EXHAUSTIVE MATCH OVER THE THREE SUMS (review 82914 kept: every input is a declared
+// coproduct, nothing is turned into a Bool, no integer is compared). THREE sources now report through this one
+// fold -- the wet schedule, the S1 discovered universe, and the outside-discovery-roots census -- because the
+// one-instrument ruling admits no second exit. Every census naming findings keeps EVERY reason: dropping any
+// one would send the reader to the wrong file, so a source that found something is never silenced by another
+// that did not. An unread input is printed beside a finding (a located fact the reader must still fix) but
+// never decides the exit against one; only when no source found anything can an unread input make the
+// observation "none", and then the FIRST unread cause wins -- deterministically, S1 before outside, so the
+// existing located cause is the one a reader is already trained to look for.
+fn claim_coverage_composed_standing(
+  wet: ClaimCoverageStanding,
+  s1: S1Standing,
+  outside: OutsideRootsChannel
+) -> ComposedCensusStanding {
   let wet_reason = match wet {
     ClaimCoverageHeld => []
     ClaimCoverageDidNotHold { uncovered: uncovered } => [claim_coverage_wet_reason(uncovered: uncovered)]
@@ -110,26 +123,46 @@ fn claim_coverage_composed_standing(wet: ClaimCoverageStanding, s1: S1Standing) 
     S1DidNotHold { reason: s1_reason } => [s1_reason]
     S1Unread { reason: cause } => []
   }
-  let findings = concat(wet_reason, s1_channel)
+  let outside_channel = match outside {
+    OutsideChannelHeld => []
+    OutsideChannelFinding { reasons: reasons } => reasons
+    OutsideChannelUnread { cause: cause } => []
+  }
+  let findings = concat(concat(wet_reason, s1_channel), outside_channel)
   if !is_empty(findings) {
-    // A finding dominates. With an unread input beside it, the cause travels as a further reason: the exit is
-    // already decided by the finding, and the reader still needs to know which input could not be read.
-    let unread_note = match s1 {
+    // A finding dominates. With unread inputs beside it, each cause travels as a further reason: the exit is
+    // already decided by the finding, and the reader still needs to know which inputs could not be read.
+    let s1_unread_note = match s1 {
       S1Unread { reason: cause } => [unread_beside_finding_note(cause: cause)]
       _ => []
     }
-    ComposedFinding { reasons: concat(findings, unread_note) }
+    let outside_unread_note = match outside {
+      OutsideChannelUnread { cause: cause } => [unread_beside_finding_note(cause: outside_unread_text(cause: cause))]
+      _ => []
+    }
+    ComposedFinding { reasons: concat(findings, concat(s1_unread_note, outside_unread_note)) }
   } else {
     match s1 {
-      // Nothing was found and the discovered census could not read: no observation, exit 2.
+      // Nothing was found and the discovered census could not read: no observation, exit 2. S1 leads so the
+      // established cause stays the one a reader is trained to find.
       S1Unread { reason: cause } => ComposedUnread { cause: cause }
-      _ => ComposedHeld
+      _ => match outside {
+        // Nothing found, S1 read clean, but the outside census could not read its listing: no observation.
+        OutsideChannelUnread { cause: cause } => ComposedUnread { cause: outside_unread_text(cause: cause) }
+        _ => ComposedHeld
+      }
     }
   }
 }
 
 // THE UNREAD CAUSE, SAID AS WHAT IT IS WHEN IT DOES NOT DECIDE. Kept separate from the finding reasons so a
 // reader cannot mistake it for a claim finding, and so the exit-2 arm can print the bare cause instead.
+// The outside census's typed unread cause becomes prose only here, at the receipt/exit boundary, carrying
+// the instrument's name so the located cause says which census could not read.
+fn outside_unread_text(cause: CensusUnreadCause) -> String {
+  concat("outside-discovery-roots-census: ", census_unread_cause_text(cause: cause))
+}
+
 fn unread_beside_finding_note(cause: String) -> String {
   concat("an input could not be read (does not change the exit: a finding was found): ", cause)
 }
@@ -153,9 +186,10 @@ fn claim_coverage_composed_exit_code(standing: ComposedCensusStanding) -> Int {
 fn claim_coverage_composed_exit(
   bytes: String,
   wet: ClaimCoverageStanding,
-  s1: S1Standing
+  s1: S1Standing,
+  outside: OutsideRootsChannel
 ) -> CliWireResponse {
-  let standing = claim_coverage_composed_standing(wet: wet, s1: s1)
+  let standing = claim_coverage_composed_standing(wet: wet, s1: s1, outside: outside)
   match standing {
     ComposedHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
     ComposedUnread { cause: cause } => CliWirePrintable {
@@ -183,6 +217,15 @@ fn claim_coverage_census_exit() -> CliWireResponse {
   // entry itself rather than on a helper). The fix composes the two halves that do exist; it does not invent a
   // third function, and the head stays stamped beside the output by this runner, not inside the fold.
   let s1 = s1_block(s1: s1_compose())
+  // THE OUTSIDE CENSUS, COMPOSED IN (warm-wolf-570's one-instrument ruling): this source is enrolled as a
+  // ROW OF THIS census, not a second instrument. Its reads are the two captures the wet-lane claims already
+  // execute; here they are the same calls, so what the wet lane measures and what the label prints can never
+  // drift apart. The channel is derived from what the fold observed -- never chosen beside it -- and the
+  // receipt lines join the output beside the wet and S1 lines so a reader sees all three standings at once.
+  let outside = outside_roots_census(
+    listing: tracked_claim_listing(),
+    bearers: tracked_claim_bearers()
+  )
   // THE LOCATOR IS STAMPED BESIDE THE OUTPUT BY THIS RUNNER (warm-wolf-570): the census is a pure function
   // of the tree, so the revision is the runner's business. THIS runner has git, so it asks and prints what
   // it got: `S1-CENSUS head:<rev>` from `RevisionRead`, or `S1-CENSUS head UNREADABLE: <cause>` from
@@ -192,13 +235,17 @@ fn claim_coverage_census_exit() -> CliWireResponse {
   // route has no git to run -- and it omits it because the question does not arise there, not because an
   // answer was missing.
   let s1_lines = concat([s1_head_receipt_line()], s1.lines)
-  let bytes = concat(
-    concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n"),
-    concat(s1_lines |> join(separator: "\n"), "\n")
-  )
+  // THE OUTSIDE LINES JOIN THE SAME OUTPUT, each source stamped by the same head authority so the receipts
+  // cannot disagree about which tree was measured (one head, read once by the runner, printed per source).
+  let outside_lines = concat([outside_roots_head_receipt_line()], outside.lines)
+  let wet_bytes = concat(claim_coverage_receipt_lines(c: c) |> join(separator: "\n"), "\n")
+  let s1_bytes = concat(s1_lines |> join(separator: "\n"), "\n")
+  let outside_bytes = concat(outside_lines |> join(separator: "\n"), "\n")
+  let bytes = concat(concat(wet_bytes, s1_bytes), outside_bytes)
   claim_coverage_composed_exit(
     bytes: bytes,
     wet: claim_coverage_standing(c: c),
-    s1: s1.standing
+    s1: s1.standing,
+    outside: outside.channel
   )
 }
