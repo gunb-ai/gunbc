@@ -27,7 +27,7 @@ import gunbc.runner.runner_slot_actuation {
 }
 import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
 import gunbc.runner.runner_host_file_converge {
-  runner_host_current_registration_line, RunnerHostFilesObserveOnly, RunnerHostFilesApply,
+  runner_host_current_registration_line, FleetHostFilesObserveOnly, FleetHostFilesApply,
 }
 import extdeps.github.actions_runner { actions_runner_registration_file_name }
 import extdeps.transports.shell { ShellProcessExited }
@@ -194,7 +194,7 @@ test fn the_observe_receipt_reports_the_identity_and_apply_costs_no_leg() -> Boo
     legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
     body: fn(target, context) {
       runner_host_current_registration_line(
-        mode: RunnerHostFilesObserveOnly, target: target, context: context,
+        mode: FleetHostFilesObserveOnly, target: target, context: context,
         units: [witness_unit(n: "srv3-02")],
       )
     },
@@ -203,7 +203,7 @@ test fn the_observe_receipt_reports_the_identity_and_apply_costs_no_leg() -> Boo
     legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
     body: fn(target, context) {
       runner_host_current_registration_line(
-        mode: RunnerHostFilesApply, target: target, context: context,
+        mode: FleetHostFilesApply, target: target, context: context,
         units: [witness_unit(n: "srv3-02")],
       )
     },
