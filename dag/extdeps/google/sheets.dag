@@ -91,6 +91,10 @@ data sheets_conditional_format_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/sheets#conditionalformatrule" }
 }
 
+data sheets_add_sheet_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/request#addsheetrequest" }
+}
+
 data sheets_a1_notation_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/guides/concepts#cell" }
 }
@@ -119,6 +123,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_get_citation,
     sheets_grid_properties_citation,
     sheets_conditional_format_citation,
+    sheets_add_sheet_citation,
     sheets_a1_notation_citation
   ]
 }
@@ -607,6 +612,23 @@ type SpreadsheetRead {
   sheets: List<SheetsSheetRead>?
 }
 
+// batchUpdate's reply to an addSheet request: one reply per request, in request order, each
+// carrying the new tab's properties. sheetId is what a later request addresses, so it is read from
+// this reply rather than assumed; absent is zero under the same proto3 omission as
+// SheetsSheetPropertiesRead, and sheets_sheet_id_read is the one place that says so.
+type SheetsAddSheetReplyRead {
+  properties: SheetsSheetPropertiesRead?
+}
+
+type SheetsBatchReplyRead {
+  addSheet: SheetsAddSheetReplyRead?
+}
+
+type BatchUpdateAddSheetResponse {
+  spreadsheetId: String
+  replies: List<SheetsBatchReplyRead>?
+}
+
 type ValueRangeWrite {
   range: String
   majorDimension: String
@@ -903,6 +925,33 @@ service sheets.Spreadsheets {
     }
     response {
       200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+
+  // AddSheetRequest names the tab by properties.title only; sheetId and index are assigned by
+  // upstream and read back from the reply. A title already in use is refused by upstream with 400,
+  // which is the refusal the tab locator's per-title ambiguity rule never has to see.
+  operation AddSheet {
+    requires Network
+    input { spreadsheet_id: String, title: String }
+    output { result: BatchUpdateAddSheetResponse }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          { addSheet: { properties: { title: title } } }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateAddSheetResponse
       400 => SheetsError
       401 => SheetsError
       403 => SheetsError

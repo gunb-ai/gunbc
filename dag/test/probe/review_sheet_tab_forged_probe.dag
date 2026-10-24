@@ -105,6 +105,7 @@ fn mint_a_located_tab_through_the_witness_wrapper() -> ReviewTabStanding {
 fn mint_a_located_tab_from_an_authored_ok_outcome(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
   review_tab_standing_of_outcome(
     spreadsheet_id: spreadsheet_id,
+    title: "Sheet1" as NonEmptyStr,
     outcome: RestAnswered { answer: authored_single_tab_response(sheet_id: 0, title: "Sheet1") },
   )
 }
