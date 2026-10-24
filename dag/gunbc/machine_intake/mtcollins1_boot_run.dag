@@ -2654,12 +2654,6 @@ fn mtcollins1_boot_actuate(
         }
       }
       let screen_record = megarac_kvm_observer_finish(start: screen, attempt: attempt, terminal_order: 3)
-      let end_media_owed = end_media_is_owed(media: media)
-      let end_look = if end_media_owed {
-        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
-      } else {
-        none
-      }
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_after_read = proc_uptime_read()
       let power_after = mtcollins1_boot_power_after_poll(
@@ -2668,6 +2662,19 @@ fn mtcollins1_boot_actuate(
         remaining: mtcollins1_boot_power_after_samples,
       )
       let power_after_read = proc_uptime_read()
+      // THE SOL RELEASE FOLLOWS THE POWER READING AND PRECEDES THE END MEDIA LOOK AND RELEASE, on every path
+      // (merry-fox-82, 2026-10-24, over #12423's sixty-second teardown bound). The host's power is observed
+      // first, so a census that ends with poweroff -f has written its last console byte before the collector
+      // goes; the media steps are BMC requests the console never carried, and their outcome reaches the run
+      // record through end_media, not through the capture.
+      let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path, capture_path: sol_capture_path)
+      let released = proc_uptime_read()
+      let end_media_owed = end_media_is_owed(media: media)
+      let end_look = if end_media_owed {
+        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+      } else {
+        none
+      }
       // THE RELEASE FOLLOWS THE END LOOK AND THE POWER READING, still under the hold: the look records the
       // medium as the attempt left it, and only a host observed OFF has its own session stopped.
       let end_media = match end_look {
@@ -2682,8 +2689,6 @@ fn mtcollins1_boot_actuate(
             },
           }
       }
-      let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path, capture_path: sol_capture_path)
-      let released = proc_uptime_read()
       actuation_after_watch(
         observed: observed,
         media: media,

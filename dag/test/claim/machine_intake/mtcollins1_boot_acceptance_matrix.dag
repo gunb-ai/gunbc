@@ -40,6 +40,7 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
   SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
+  mtcollins1_boot_run_record,
 }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, census_record_path }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
@@ -53,7 +54,7 @@ import gunbc.runner.runner_browser_toolchain {
 }
 import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { MtCollins1EndMedia, EndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan }
+import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { MtCollins1EndMedia, EndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, run_record_text, MtCollins1BootRunRecord }
 import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateAbandoned, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused }
 
@@ -893,8 +894,12 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 // CORRECTED ON SAFETY GROUNDS (merry-fox-82, 2026-10-24; DESIGN 5), not relaxed: a loss before the gate
 // has passed leaves a powered host with unverified fans and nothing watching it, so the boot fails safe.
 // Power-on is followed by exactly one PowerDown, no fan read is taken after power-on, and the gate reads
-// Abandoned -- all within the same sixty-second teardown bound, which stays. The case stays as the
-// repair's regression control; a_sol_loss_after_the_fan_gate_passes_keeps_the_host_on is its control.
+// Abandoned -- all within the same sixty-second teardown bound, which stays. The bound is met in this
+// model's time because the SOL release precedes the end media look and release on every path; with the
+// host now OFF that release runs, and its outcome must still reach the run record after the collector has
+// gone, so the case reads the record's end_media line too. Model time is not real-host timing: this case
+// does not establish the bound on the physical controller. The case stays as the repair's regression
+// control; a_sol_loss_after_the_fan_gate_passes_keeps_the_host_on is its control.
 fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
@@ -964,9 +969,18 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
         && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
         && teardown_within(route: route, bound: 60)
+        && end_release_stopped(end: value.end_media)
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "megarac.Media.StopMedia")
+        && string_contains(s: run_record_text(r: attempt_run_record(a: value)), pattern: "end_media=")
+        && string_contains(s: run_record_text(r: attempt_run_record(a: value)), pattern: "this attempt's own session stopped and read back as gone")
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
     _ => false
   }
+}
+
+// THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
+fn attempt_run_record(a: MtCollins1BootAttempt) -> MtCollins1BootRunRecord {
+  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
 // THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
