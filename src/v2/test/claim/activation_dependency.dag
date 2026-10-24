@@ -26,6 +26,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.dependency { ActivationAlternative, ActivationDemand, SelectedByBranchSlot, SelectedByPattern }
 import v2.std.diagnostic { Accepted, Diagnostic, Locus, LocusAnchor, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.node {
+  NotADeclaration,
   Atom,
   Branch,
   BranchConditionSlot,
@@ -452,7 +453,8 @@ fn acd_atom(s: Symbol) -> Node {
 }
 
 fn acd_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, d, declaration: NotADeclaration
+eclaration: NotADeclaration }
 }
 
 fn acd_branch_of(children: List<Edge>) -> Node {
@@ -467,8 +469,8 @@ fn acd_arm(pattern: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
-      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -625,8 +627,8 @@ fn acd_arm_body_first(pattern: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body },
-      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern }
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -699,11 +701,13 @@ fn acd_conj_of(edges: List<Edge>) -> Node {
 }
 
 fn acd_pattern_edge(t: Symbol) -> Edge {
-  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t) }
+  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t), d, declaration: NotADeclaration
+eclaration: NotADeclaration }
 }
 
 fn acd_body_edge(t: Symbol) -> Edge {
-  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t) }
+  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t), d, declaration: NotADeclaration
+eclaration: NotADeclaration }
 }
 
 fn acd_arm_is_malformed(arm: Node) -> Bool {
@@ -723,12 +727,13 @@ fn acd_arm_is_malformed(arm: Node) -> Bool {
 }
 
 // (o) A SCRUTINEE-ONLY MATCH IS ITS OWN CASE, NEVER A FABRICATED ALTERNATIVE OR A DROPPED SELECTOR, AND ITS
-// VALIDITY IS INFERENCE'S: `fn f(n: Never) -> Int { match (n) { } }` is fed through the real front end. The
-// derivation records ActivationZeroAlternatives with the scrutinee as selector, no demand and nothing
-// malformed, and inference ACCEPTS it. The paired control is an INHABITED scrutinee with the same empty
-// Match: the derivation gives the same disposition (it does not infer uninhabitedness from the absence of
-// arms) and inference REFUSES it with the non-exhaustive-match diagnostic, so the verdict lives where the
-// semantic judgment does.
+// VALIDITY IS INFERENCE'S: `fn f(n: Never) -> Int { match (n) { } }` is fed through the real front end, and
+// the derivation records ActivationZeroAlternatives with the scrutinee as selector, no demand and nothing
+// malformed. This claim does not assert that inference accepts it (see the note above acd_never_source). The
+// paired control is an INHABITED scrutinee with the same empty Match: the derivation gives the same
+// disposition (it does not infer uninhabitedness from the absence of arms) and inference refuses it -- any
+// refusal; the claim does not pin which diagnostic -- so the zero-alternative row does not itself certify
+// validity.
 test fn acd_o_scrutinee_only_match_is_its_own_case_and_validity_is_inferences_holds() -> Bool {
   acd_zero_alternatives_then_infers(src: acd_never_source, check_inference: false, accepted: true)
     && acd_zero_alternatives_then_infers(src: acd_inhabited_empty_source, check_inference: true, accepted: false)

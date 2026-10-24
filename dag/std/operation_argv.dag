@@ -1,7 +1,7 @@
 module std.operation_argv
 
 import std.types { brand, String, List, Bool }
-import std.algebra { list_map, collection_concat_shape, collection_join_shape }
+import std.algebra { length, list_map, collection_concat_shape, collection_join_shape }
 import std.template { Template }
 
 // An operation's transport argv is materialized by binding THAT OPERATION'S OWN DECLARED INPUTS, by
@@ -110,6 +110,7 @@ type ShellTransportOperationRow {
   at: OperationRef
   declared_inputs: List<OperationInputName>
   argv_input_refs: List<OperationInputName>
+  executable_input_refs: List<OperationInputName>
 }
 
 fn operation_argv_bind_text(name: String, text: String) -> OperationInputBinding {
@@ -136,6 +137,7 @@ type ArgvRowClassification
   = ArgvRowMaterialized
   | ArgvRowExpressionResidue
   | ArgvRowExecutablePositionRefused
+  | ArgvRowExecutableClosedUnevaluated
   | ArgvRowOtherRefusal
 
 fn operation_argv_classify_cause(cause: ArgvRefusalCause) -> ArgvRowClassification {
@@ -156,6 +158,23 @@ fn operation_argv_classify(m: ArgvMaterialization) -> ArgvRowClassification {
   match m {
     ArgvMaterialized { argv: _ } => ArgvRowMaterialized
     ArgvMaterializationRefused { at: _, cause: c } => operation_argv_classify_cause(cause: c)
+  }
+}
+
+// The row-grain classification. A refused executable position splits on a fact of the DECLARATION
+// (the row's executable_input_refs), not on the refusal text: argv[0] that reads a declared input is
+// the wall firing correctly (ArgvRowExecutablePositionRefused); argv[0] that reads none is a
+// closed, zero-input expression the materializer does not evaluate -- observed as a catalog call such as
+// sshpass_program().invocation -- whose program the wall therefore cannot judge
+// (ArgvRowExecutableClosedUnevaluated). The two are different obligations and must not share a count.
+fn operation_argv_row_classify(row: ShellTransportOperationRow, m: ArgvMaterialization) -> ArgvRowClassification {
+  match operation_argv_classify(m: m) {
+    ArgvRowMaterialized => ArgvRowMaterialized
+    ArgvRowExpressionResidue => ArgvRowExpressionResidue
+    ArgvRowExecutablePositionRefused =>
+      if length(xs: row.executable_input_refs) == 0 { ArgvRowExecutableClosedUnevaluated } else { ArgvRowExecutablePositionRefused }
+    ArgvRowExecutableClosedUnevaluated => ArgvRowExecutableClosedUnevaluated
+    ArgvRowOtherRefusal => ArgvRowOtherRefusal
   }
 }
 

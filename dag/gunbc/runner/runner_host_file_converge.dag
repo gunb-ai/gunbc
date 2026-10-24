@@ -34,9 +34,9 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted }
+import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire }
-import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire }
+import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -2141,7 +2141,15 @@ type RunnerHostCapPhase
   = CapPhaseNotOwed
   | CapPhaseWithheld { cause: String }
   | CapPhaseObserved { readings: List<SlotCapUnitStanding> }
-  | CapPhaseRan { files: List<RunnerHostFileResult>, reload: RunnerHostManagerReload, slots: List<SlotCapOutcome> }
+  // `certified` is what the drain bracket ADMITTED: one typed {unit, registration} record per admitted idle
+  // listener, each naming the JIT-minted identity the roster was joined on. It comes from the bracket's own
+  // verdict (BracketDrained.certified) and is not re-read, so the receipt can state what was certified for
+  // these caps without a second host leg; the receipt RENDERS the record, it does not parse a packed string.
+  // The admitted units downstream are derived from these records, so there is one authority, not two lists
+  // that must agree. In apply mode this is the only place that identity reaches an operator: the
+  // observe-only slot-registration line is deliberately absent here, because an apply must not ask the host
+  // who is registered AFTER its own writes have landed.
+  | CapPhaseRan { files: List<RunnerHostFileResult>, reload: RunnerHostManagerReload, slots: List<SlotCapOutcome>, certified: List<CertifiedListener> }
 
 data runner_host_cap_phase_not_owed: RunnerHostCapPhase = CapPhaseNotOwed
 
@@ -2162,7 +2170,7 @@ fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
     CapPhaseNotOwed => true
     CapPhaseWithheld { cause: _ } => false
     CapPhaseObserved { readings: rs } => runner_host_cap_phase_observed_settled(readings: rs)
-    CapPhaseRan { files: fs, reload: rl, slots: ss } =>
+    CapPhaseRan { files: fs, reload: rl, slots: ss, certified: _ } =>
       all(fs, r => runner_host_file_outcome_settled(outcome: r.outcome))
         && runner_host_manager_reload_settled(r: rl)
         && all(ss, o => slot_cap_outcome_settled(o: o))
@@ -2186,7 +2194,7 @@ fn runner_host_cap_phase_observed_verdict(phase: RunnerHostCapPhase) -> Bool {
     CapPhaseObserved { readings: rs } => length(rs) > 0 && runner_host_cap_phase_observed_settled(readings: rs)
     CapPhaseNotOwed => false
     CapPhaseWithheld { cause: _ } => false
-    CapPhaseRan { files: _, reload: _, slots: _ } => false
+    CapPhaseRan { files: _, reload: _, slots: _, certified: _ } => false
   }
 }
 
@@ -2199,10 +2207,15 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
         map(rs, r => concat(slot_cap_standing_wire(unit: r.unit, s: r.standing), "\n")),
         "",
       )
-    CapPhaseRan { files: fs, reload: rl, slots: ss } =>
+    CapPhaseRan { files: fs, reload: rl, slots: ss, certified: cs } =>
       join([
         join(map(fs, r => runner_host_file_result_line(r: r)), ""),
         "caps-reload=", runner_host_manager_reload_wire(reload: rl), "\n",
+        // WHAT THE BRACKET CERTIFIED, named. A cap applied to a JIT-registered listener is only provable
+        // against the registration the bracket actually joined on, and that name cannot be recovered later
+        // from the slot: the next job re-mints it. So the receipt that says "caps applied" has to say which
+        // registration was admitted while it still holds the answer.
+        "caps-certified=", if length(cs) == 0 { "none (no listener needed a roster join)" } else { join(map(cs, c => certified_listener_line(c: c)), " ") }, "\n",
         join(map(ss, o => concat(slot_cap_outcome_wire(o: o), "\n")), ""),
         "caps-slots-on-old-shape=", join(map(filter(ss, o => !slot_cap_outcome_settled(o: o)), o => match o { SlotCapsLeftInPlace { unit: u } => u as String SlotCapsRestartedAndRead { unit: u } => u as String SlotCapsRefused { unit: u, step: _, reason: _ } => u as String }), " "), "\n",
       ], "")
@@ -2295,7 +2308,7 @@ fn runner_host_cap_phase_bars_reload(phase: RunnerHostCapPhase) -> Bool {
     // it bars host-wide reloads the same way. A reading that came back (any other standing) answers the
     // question and opens the sites.
     CapPhaseObserved { readings: rs } => !runner_host_cap_phase_observed_settled(readings: rs)
-    CapPhaseRan { files: _, reload: _, slots: _ } => !runner_host_cap_phase_settled(phase: phase)
+    CapPhaseRan { files: _, reload: _, slots: _, certified: _ } => !runner_host_cap_phase_settled(phase: phase)
   }
 }
 
@@ -2359,10 +2372,13 @@ fn run_runner_host_cap_phase(
             retirement_cause: runner_host_cap_gate_cause(standing: runner_host_cap_retirement_gate(retired_units: subject.retired_units, population: population)),
           ) {
             HostCapsWithheld { cause: c } => CapPhaseWithheld { cause: c }
+            // Nothing was drained and no join was needed, so there is no identity to name: an empty list
+            // here is a real answer, not a gap. A non-empty list with no drain would be a fabrication.
             HostCapsLeaveInPlace => CapPhaseRan {
               files: [],
               reload: ManagerReloadNotOwed,
               slots: map(subject.desired_units, u => SlotCapsLeftInPlace { unit: u }),
+              certified: [],
             }
             HostCapsDrainWriteRestart =>
               match actions_variable_read(name: runner_host_cap_step_budget_env_name) {
@@ -2396,34 +2412,80 @@ fn run_runner_host_cap_bracket(
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
       match drain_until_quiescent_over(target: subject.target, context: context, observed: subject.desired_units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
-        BracketDrained => {
-          let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
-          let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
-          let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
-          // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
-          let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
-          // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
-          // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
-          let owned_slots = map(owned, u => if written {
-            activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
-          } else {
-            SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
-          })
-          let foreign_slots = map(filter(subject.desired_units, u => length(filter(owned, o => o == u)) == 0), u =>
-            SlotCapsRefused { unit: u, step: "foreign-mask", reason: "masked by someone else before this run: not unmasked and not activated, so its caps are applied when its owner re-admits it and are not proven here" })
-          let slots = concat(owned_slots, foreign_slots)
-          // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
-          let admitting = if written { all(owned_slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
-          let discharged = if admitting { write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) } else { Present { value: "host not read back as admitting" } }
-          // A discharge that did not land is reported, not hidden: release would then find the units unmasked and issue no argv.
-          let discharge_note = match discharged { Present { value: w } => if admitting { map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
-          CapPhaseRan { files: files, reload: reload, slots: concat(slots, discharge_note) }
-        }
-        BracketAdmissionNotClosed { listeners: ls } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls }))
+        BracketDrained { certified: certified } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified)
+        BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
         BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
         BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
       }
   }
+}
+
+// EVERYTHING AFTER A DRAINED BRACKET, as one function so the order is executable on its own: the fresh
+// admission reading, then (only if it admits) the first cap-applying effect.
+fn cap_phase_after_drain_over(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  desired: RunnerSlotDesired,
+  owned: List<NonEmptyStr>,
+  certified: List<CertifiedListener>,
+) -> RunnerHostCapPhase
+{
+  // THE FRESH ADMISSION READING GATES THE FIRST CAP-APPLYING EFFECT, FOR EVERY AFFECTED LIVE LISTENER. The
+  // write and the reload that follows it are what apply a cap to a running unit, so the three readings
+  // are taken again for every observed unit, owned or foreign, before the write and not only before the stop.
+  match cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: subject.desired_units, owned: owned, readings: read_slot_drain_pass_over(target: subject.target, context: context, units: subject.desired_units)) {
+    CapWriteRefused { causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: concat("no cap was written, reloaded, stopped or started: the admission was read again immediately before the first cap-applying effect and no longer holds: ", join(cs, "; ")))
+    CapWriteAdmitted => write_reload_and_restart_admitted_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified)
+  }
+}
+
+fn write_reload_and_restart_admitted_over(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  desired: RunnerSlotDesired,
+  owned: List<NonEmptyStr>,
+  certified: List<CertifiedListener>,
+) -> RunnerHostCapPhase
+{
+  // WHICH units to stop-and-restart is DERIVED from what the bracket certified, not carried alongside it as
+  // a second list that would have to agree by luck (§3): each record names its own unit and the registration
+  // that unit was joined on, so there is one authority for the admitted set.
+  let admitted = map(certified, c => c.unit)
+  let files = map(runner_host_cap_files(), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+  let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
+  let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+  // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
+  let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
+  // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
+  // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
+  // AN ADMITTED IDLE LISTENER IS STOPPED ONLY AFTER ITS THREE READINGS ARE TAKEN AGAIN (stop_admitted_listener_over);
+  // the activation then starts it, which is what applies the caps. A listener whose reading no longer holds
+  // is not stopped and is reported by name with the residual; the obligation stays held, so the release finalizer unmasks it.
+  let restarts = if written { map(filter(owned, u => any(admitted, a => a == u)), u => stop_admitted_listener_over(target: subject.target, context: context, unit: u)) } else { [] }
+  let owned_slots = map(owned, u => if written {
+    match first(filter(restarts, r => listener_restart_unit(r: r) == u)) {
+      Present { value: r } => match listener_restart_refusal(r: r) {
+        Present { value: why } => SlotCapsRefused { unit: u, step: "listener-restart", reason: why }
+        Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+      }
+      Absent => activate_and_read_back_slot_caps_over(target: subject.target, context: context, unit: u, desired: desired)
+    }
+  } else {
+    SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
+  })
+  let foreign_slots = map(filter(subject.desired_units, u => length(filter(owned, o => o == u)) == 0), u =>
+    SlotCapsRefused { unit: u, step: "foreign-mask", reason: "masked by someone else before this run: not unmasked and not activated, so its caps are applied when its owner re-admits it and are not proven here" })
+  let slots = concat(owned_slots, foreign_slots)
+  // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
+  let admitting = if written { all(owned_slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
+  let discharged = if admitting { write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) } else { Present { value: "host not read back as admitting" } }
+  // A discharge that did not land is reported, not hidden: release would then find the units unmasked and issue no argv.
+  let discharge_note = match discharged { Present { value: w } => if admitting { map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
+  CapPhaseRan { files: files, reload: reload, slots: concat(slots, discharge_note), certified: certified }
 }
 
 fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, owned: List<NonEmptyStr>, head: String) -> RunnerHostCapPhase
@@ -2737,6 +2799,7 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     context_receipt,
                     runner_job_user_uid_reading_line(reading: uid_reading),
+                    runner_host_current_registration_line(mode: mode, target: subject.target, context: context, units: subject.desired_units),
                     join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
                   ], "")
@@ -2765,6 +2828,49 @@ fn runner_host_file_observe_ci_wet() -> ProcessExit
 fn runner_host_file_converge_ci_wet() -> ProcessExit
 {
   runner_host_file_ci_wet(mode: RunnerHostFilesApply)
+}
+
+// THE CURRENT REGISTRATION IDENTITY EACH SLOT'S LISTENER IS RUNNING UNDER, read from the host by
+// gunbc.runner.runner_slot_actuation.slot_current_registration_over_unit over the same
+// administrator-over-fleet-SSH edge (ssh.Session.ExecPortableWords) every other slot reading uses.
+//
+// WHY THE FIELD EXISTS. A fleet listener registers under a JIT-minted suffix
+// (srv3-02-1792728034-201414), never under the slot's own name, and the suffix changes per job -- so the
+// name a listener registered under is a fact about the host that no slot name can supply. The cap bracket
+// needs that identity to join the organization roster on it, and today does not have it: the bracket still
+// joins on the slot's BARE name, which is why every running idle listener is reported as having no
+// registration on the roster and caps are withheld. THIS CHANGE DOES NOT FIX THAT JOIN; it lands only the
+// read, so the bracket's later change can consume it. When that change lands it must call
+// slot_current_registration_over_unit rather than derive the identity again, and the line should STAY empty
+// in apply mode: the bracket will read the identity itself in its cap phase and carry it in its own verdict,
+// so a second read here would be a redundant leg on the way to a WRITE, reading the host after writes landed.
+//
+// SO THE ONE CALLER OF THIS READ, AT THIS HEAD, IS THIS RECEIPT. No consumer exists in the bracket yet; the
+// claim made here is about the read's SHAPE, which a real host has to confirm and a witness cannot: the live
+// runner_host_file_observe receipt from a srv3/srv4 host is the §3 inhabitance evidence that the host holds
+// the suffixed shape. A slot whose identity cannot be read appears as an unreadable naming the unit; the read
+// never falls back to the slot's name, so neither does the receipt.
+//
+// THE MODE DECISION, SEPARATED FROM THE READ. Asked of the host in OBSERVE mode only. In observe mode nothing
+// else in this route asks who is registered, so the receipt is the only place an operator can see the identity
+// the bracket WOULD join on. In apply mode the line is empty because nothing in this change consumes it there,
+// and an unrequired read on the way to a WRITE would report an identity that this run's own writes may have
+// just changed.
+fn runner_host_current_registration_line(mode: RunnerHostFileConvergeMode, target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  match mode {
+    RunnerHostFilesObserveOnly => runner_host_current_registration_text(target: target, context: context, units: units)
+    RunnerHostFilesApply => ""
+  }
+}
+
+fn runner_host_current_registration_text(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> String {
+  join(map(units, u => match slot_current_registration_over_unit(target: target, context: context, unit: u) {
+    UnitRegistrationRead { unit: un, instance: _, name: n } => join(["slot-registration unit=", un as String, " agent_name=", n as String, "\n"], "")
+    // only two answers are reachable from this read: it asks the host for every unit it is given. A slot
+    // that is not running an idle listener still answers with what its tree holds, which is what an
+    // operator wants here; the bracket's OWN pass is what decides not to consult the roster for it.
+    UnitRegistrationUnreadable { unit: un, cause: c } => join(["slot-registration unit=", un as String, " UNREADABLE ", c, "\n"], "")
+  }), "")
 }
 
 // THE FINALIZER OF THE CAP BRACKET, RUN AFTER THE CONVERGE STEP WHATEVER ITS FATE (the workflow step is

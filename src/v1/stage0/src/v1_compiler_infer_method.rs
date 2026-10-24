@@ -1645,6 +1645,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: type_variable_node("roadmap_acceptance_history_projection".to_string()),
     }));
+                __m.insert("witness_deferral_freeze_population_census".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![]),
+        returns: string_type(),
+    }));
                 __m.insert("commit_witness_claim_roster_unresolvable_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: int_type(),

@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.verdict_stale_at_the_merge_instant
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data verdict_stale_at_the_merge_instant: RecurringFailureMode = RecurringFailureMode {
   identity: "verdict_stale_at_the_merge_instant" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a landing path whose precondition is a terminal verdict over the MERGED tree at or after the landing instant (a merge queue, or a required up-to-date check), sufficient to refuse a landing whose evidence was computed over a base the target has moved off." } },
 
   receipts: [
     "**a head merges carrying a verdict that was reached against a base main has since moved away from, so the evidence certifies a combination that no longer exists.** INVALID STATE: the verdict is real, terminal and green; the tree it was computed over is not the tree that results from the merge, and nothing at the merge instant represents the age of the verdict or the distance between those two trees.",
@@ -22,6 +26,8 @@ data verdict_stale_at_the_merge_instant: RecurringFailureMode = RecurringFailure
     "RUNG FOUND AT: mitigatable, by habit and by whoever notices main is red.",
 
     "CEILING: structurally guaranteed, by the same construction that closes the row above it -- a merge queue verifies the QUEUED REF, which is the join rather than either side, so a verdict about a superseded base cannot be the evidence a landing rests on. That single construction discharges both rows, which is a reason to price it once rather than twice.",
+
+    "CURRENT RUNG: MITIGATABLE, NARROWED BUT NOT CLOSED, by the required job v2-bootstrap checking out `github.sha` (the pull request merge ref) instead of the head. WHY: main has no merge queue, so with a head checkout nothing ever built head merged with the base, and two individually green pull requests broke main (#14539, #14675). WHAT EXECUTED: the claim `compiler_gate_workflow_witness` `the_required_job_checks_out_the_merge_ref` and its RED `w_RED_the_pull_request_head_ref_is_not_the_checkout_ref` PASS as written and both FAIL when the head ref is restored; and a git fixture in the #14675 shape (the head removes a binding main has a new caller of) resolves for the head alone, refuses for head merged with main (`name 'fx_binding' not found in module 'fx.lib'`), and resolves for a control branch touching nothing main uses merged with main. THE TRADE-OFF, STATED PLAINLY: the merge ref is fixed when the pull request event fires, and commits landing on main afterwards do not retrigger the run, so a landing can still rest on a composed tree that main has since moved off. That window is narrowed from unbounded (never composed) to the span between event and landing; it is not closed, and the ceiling stays the queued-ref verdict named below.",
 
     "NEXT TRIGGER, NAMED AS THE CAPABILITY: `gunbc.guarantee_stall` `merge_admission_terminal_verdict_stall` -- a landing path whose precondition is a terminal verdict over the MERGED tree, sufficient to refuse a landing whose evidence was computed over a base the target has moved off. A staleness threshold expressed in minutes does not discharge it: it makes the same wrong subject acceptable below some age, which is the same class with a parameter.",
   ],

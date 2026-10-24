@@ -1,9 +1,10 @@
 module gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format
 
 import std.types { List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import std.dissolution { dissolution_description }
 import std.materialization_provider { resolved_graph_disk_format_unqualified_frontier }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-16 (review 66936; fierce-seal ruling: take the §4b(3) drop; do not migrate
@@ -16,11 +17,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // Restoration reuses std.materialization_provider resolved_graph_disk_format_unqualified_frontier
 // (both ObservedEvaluationPreimage AND ResultContentIdentity); it does not mint a second trigger.
 
-data persisted_resolved_graph_disk_probe_unqualified_format_population: List<String> = [
-  "std.materialization_provider serve_resolved_graph_stored_disk_probe",
-  "std.materialization_provider serve_resolved_graph_incomplete_stored_disk_probe — shares the UnqualifiedPersistedFormat wall",
-  "v1_compiler.cli_run resolved_graph_from_sources_with_index -- the production consumer. On 2026-10-03 its cross-process tier was DELETED (v1_compiler.resolved_graph_cache and the cli_run disk-hit seam) after measurement showed it wrote 0 bytes and served no hit; the graph and its carried outputs are recomputed in-process, so the availability loss this drop declares is unchanged and now has no legacy-format objects behind it",
-]
+data persisted_resolved_graph_disk_probe_unqualified_format_population: FreeSemigroup<String> = FreeSemigroup { head: "std.materialization_provider serve_resolved_graph_stored_disk_probe", tail: ["std.materialization_provider serve_resolved_graph_incomplete_stored_disk_probe — shares the UnqualifiedPersistedFormat wall", "v1_compiler.cli_run resolved_graph_from_sources_with_index -- the production consumer. On 2026-10-03 its cross-process tier was DELETED (v1_compiler.resolved_graph_cache and the cli_run disk-hit seam) after measurement showed it wrote 0 bytes and served no hit; the graph and its carried outputs are recomputed in-process, so the availability loss this drop declares is unchanged and now has no legacy-format objects behind it"] }
 
 fn persisted_resolved_graph_disk_probe_restoration() -> String {
   concat(
@@ -36,15 +33,13 @@ data persisted_resolved_graph_disk_probe_unqualified_format: RungDrop = RungDrop
 
   declared: "2026-09-16",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "std.materialization_provider resolved_graph_disk_format_unqualified_frontier — both ObservedEvaluationPreimage and ResultContentIdentity persisted before serve_resolved_graph_stored_disk_probe uses PersistedProbe. Availability and diagnostic-discrimination drop on this one legacy cache format; the new materialization-object route stays qualified. Cost: a present object of this format cannot serve; the consumer recomputes the graph and carried outputs. Counts and elapsed time stay in the producing receipt, not this row.",
     },
-    population: persisted_resolved_graph_disk_probe_unqualified_format_population,
+    population: Enumerated { members: persisted_resolved_graph_disk_probe_unqualified_format_population },
     restoration_trigger: persisted_resolved_graph_disk_probe_restoration(),
-  }
+  } }
 }

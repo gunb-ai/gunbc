@@ -12,7 +12,7 @@ import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, kv, yaml_string, 
 // XcodeGen's project spec (project.yml), pinned at release 2.46.0. Field names are the spec's. Only
 // the fields a consumer in this tree writes are modeled: Options (bundleIdPrefix, deploymentTarget,
 // xcodeVersion, createIntermediateGroups), configFiles, Settings.base, and Target (type, platform,
-// sources, settings.base, info, entitlements, dependencies). Further fields land with their first
+// sources, settings.base, info, entitlements, dependencies), and packages (url, from). Further fields land with their first
 // consumer. project_spec_yaml below is the spec's YAML encoding: one total projection from the modeled
 // spec, written by extdeps.languages.yaml.emit.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -130,6 +130,15 @@ type XcodeGenTarget {
   info: TargetPlist
   entitlements: TargetPlist
   dependencies: List<String>
+  package_dependencies: List<String>
+}
+
+// A Swift package the project depends on, by its `packages:` key: the repository url and the lowest
+// version XcodeGen resolves (`from`, up to the next major). A target names it in package_dependencies.
+type SwiftPackage {
+  name: String
+  url: String
+  from: String
 }
 
 type ProjectSpec {
@@ -137,6 +146,7 @@ type ProjectSpec {
   options: ProjectOptions
   config_files: List<ConfigFile>
   settings: List<BuildSetting>
+  packages: List<SwiftPackage>
   targets: List<XcodeGenTarget>
 }
 
@@ -197,7 +207,8 @@ fn target_yaml(t: XcodeGenTarget) -> YamlKeyValue {
     kv(key: "sources", value: yaml_sequence(elements: map(t.sources, s => target_source_yaml(s: s))))
   ]
   let settings = if (t.settings |> count) == 0 { [] } else { [kv(key: "settings", value: build_settings_yaml(settings: t.settings))] }
-  let deps = if (t.dependencies |> count) == 0 { [] } else { [kv(key: "dependencies", value: yaml_sequence(elements: map(t.dependencies, d => yaml_mapping(entries: [kv(key: "target", value: yaml_string(s: d))]))))] }
+  let dep_elements = concat(map(t.dependencies, d => yaml_mapping(entries: [kv(key: "target", value: yaml_string(s: d))])), map(t.package_dependencies, d => yaml_mapping(entries: [kv(key: "package", value: yaml_string(s: d))])))
+  let deps = if (dep_elements |> count) == 0 { [] } else { [kv(key: "dependencies", value: yaml_sequence(elements: dep_elements))] }
   kv(key: t.name, value: yaml_mapping(entries: concat(concat(concat(concat(head, settings), target_plist_entries(key: "info", p: t.info)), target_plist_entries(key: "entitlements", p: t.entitlements)), deps)))
 }
 
@@ -207,6 +218,7 @@ fn project_spec_yaml(p: ProjectSpec) -> YamlValue {
     kv(key: "options", value: options_yaml(o: p.options)),
     kv(key: "configFiles", value: config_files_yaml(files: p.config_files)),
     kv(key: "settings", value: build_settings_yaml(settings: p.settings)),
+    kv(key: "packages", value: yaml_mapping(entries: map(p.packages, k => kv(key: k.name, value: yaml_mapping(entries: [kv(key: "url", value: yaml_string(s: k.url)), kv(key: "from", value: yaml_string(s: k.from))]))))),
     kv(key: "targets", value: yaml_mapping(entries: map(p.targets, t => target_yaml(t: t))))
   ])
 }

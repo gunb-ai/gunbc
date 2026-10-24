@@ -5,6 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Present, optional_absent, optional_present }
 import std.types { Bool }
 import v2.std.node {
+  NotADeclaration,
   Atom,
   BranchConditionSlot,
   BranchElseSlot,
@@ -35,9 +36,9 @@ fn bs_branch() -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: bs_atom(s: ^bs_shared) },
-      Edge { label: Positional, target: bs_atom(s: ^bs_shared) },
-      Edge { label: Positional, target: bs_atom(s: ^bs_else) }
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration },
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration },
+      Edge { label: Positional, target: bs_atom(s: ^bs_else), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -62,10 +63,10 @@ fn bs_branch_four() -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: bs_atom(s: ^bs_shared) },
-      Edge { label: Positional, target: bs_atom(s: ^bs_shared) },
-      Edge { label: Positional, target: bs_atom(s: ^bs_else) },
-      Edge { label: Positional, target: bs_atom(s: ^bs_fourth) }
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration },
+      Edge { label: Positional, target: bs_atom(s: ^bs_shared), declaration: NotADeclaration },
+      Edge { label: Positional, target: bs_atom(s: ^bs_else), declaration: NotADeclaration },
+      Edge { label: Positional, target: bs_atom(s: ^bs_fourth), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
