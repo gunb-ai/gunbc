@@ -351,22 +351,10 @@ fn activation_refusal_word(r: ActivationNotDerivedReason) -> String {
   }
 }
 
-fn activation_span_sites(sites: List<FactCallSite>, spans: List<FactSpan>, want: FactSpanRoleWanted) -> List<List<Int>> {
+fn activation_span_sites(sites: List<FactCallSite>, spans: List<FactSpan>, want: FactSpanRole) -> List<List<Int>> {
   fold_list(xs: spans, empty: Empty, cons: fn(a, sp) {
-    if activation_role_is(role: sp.role, want: want) { list_snoc_item(xs: a, item: activation_arm_sites(sites: sites, span: sp)) } else { a }
+    if sp.role == want { list_snoc_item(xs: a, item: activation_arm_sites(sites: sites, span: sp)) } else { a }
   })
-}
-
-type FactSpanRoleWanted
-  = WantSelector
-  | WantAlternative
-
-fn activation_role_is(role: FactSpanRole, want: FactSpanRoleWanted) -> Bool {
-  match role {
-    FactSelector => match want { WantSelector => true, WantAlternative => false }
-    FactAlternative => match want { WantSelector => false, WantAlternative => true }
-    FactUnroled => false
-  }
 }
 
 // ROLES COME FROM THE WALK (v2.compiler.activation_dependency joined by identity at the Branch/Match node, children
@@ -380,8 +368,8 @@ fn activation_edges(sites: List<FactCallSite>, groups: List<FactGroup>) -> Activ
         match nd {
           Present { value: why } => ActivationEdges { orders: acc.orders, exclusive: acc.exclusive, refusals: list_snoc_item(xs: acc.refusals, item: activation_refusal_word(r: why)) }
           Absent => {
-            let selectors = activation_span_sites(sites: sites, spans: children, want: WantSelector)
-            let arms = activation_span_sites(sites: sites, spans: children, want: WantAlternative)
+            let selectors = activation_span_sites(sites: sites, spans: children, want: FactSelector)
+            let arms = activation_span_sites(sites: sites, spans: children, want: FactAlternative)
             let selector = fold_list(xs: selectors, empty: Empty, cons: fn(a, x) { fold_list(xs: x, empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: o) }) })
             let ordered = fold_list(xs: arms, empty: acc.orders, cons: fn(o, arm) {
               fold_list(xs: selector, empty: o, cons: fn(o2, a) { fold_list(xs: arm, empty: o2, cons: fn(o3, b) { list_snoc_item(xs: o3, item: OrderEdge { from: a, to: b }) }) })
