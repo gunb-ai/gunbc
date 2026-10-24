@@ -1,0 +1,146 @@
+module test.claim.ci.binwet_row_function_liveness_witness
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains, Cons, Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY bin_wet ROSTER ROW MUST NAME A DECLARATION THAT EXISTS IN THE FILE IT NAMES.
+//
+// WHY THIS JOIN EXISTS. `gunbc.ci.ci_layer_roots bin_witness_wet_entries` is a hand-written
+// roster -- entry path + function name, typed as ScheduleWitnessEntry but never joined against
+// the tree. When a claim function is renamed or moved its roster row keeps naming a function
+// that no longer exists, and NOTHING notices: the lane that would have run the rows has executed
+// nothing since 2026-08-15 (gunbc.ci.ci_layer_roots bin_witness_wet_note; gunbc.rung_drop
+// edited_bin_witness_wet_rows_not_executed_by_ci declares the loss), so a dead row is not even a
+// row that fails -- it is a row that cannot fail. Two such rows named
+// compile_clean_shard_roster_is_well_formed and compile_clean_shard_totality_algebra_holds after
+// those functions moved to dag_compile_clean_shard_hermetic_witness.dag. DESIGN section 3: data
+// that duplicates the tree's layout is a second authority that drifts; this join makes the roster
+// answer to the first authority again.
+//
+// WHY THIS IS NOT THE GREP-AS-CONSUMER DEFECT CLASS (DESIGN section 5). The fact under test is
+// not behavior -- it is not "does this claim pass", which would require RUNNING the claim (see
+// required_lane_resolution_census_witness, which does exactly that for its subject). The fact is
+// "a declaration named THIS exists in THAT file", and the roster's own rows are strings in a data
+// table. The roster's text is the join's left side and the tree is its right side; neither stands
+// in for the other, and no behavior is inferred from tokens.
+//
+// THE FALSIFIER (DESIGN section 5: a check that cannot fail checks nothing). At the base this PR
+// cut from the claim FAILS, and the failing pair is the two moved-function rows named in the body
+// receipt; deleting those two rows makes it PASS. Renaming or deleting any function a surviving
+// row names turns it RED again by that row's identity, and the anti-vacuity claim below fails if
+// the roster parse ever yields (almost) nothing.
+data binwet_roster_authority: String = "dag/gunbc/ci/ci_layer_roots.dag"
+
+// LOUD ON A DEAD PATH, BY DESIGN. The filesystem_read builtin panics when the host cannot read
+// the file (v1_rt.rs filesystem_read), so a roster row naming a MISSING entry file aborts this
+// claim with the host's "failed to read <path>" message rather than comparing against an empty
+// string -- the wrong kind of green. A row naming a file that exists but not the function fails
+// below with the row's identity in the FAIL line.
+fn read_file_source(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+// The roster's two quoted columns, read positionally off its own source. Each row renders on one
+// line as: bin_wet(entry: "PATH", f: "NAME"). Splitting that line on the double-quote puts PATH
+// at part 1 and NAME at part 3; take/skip is the repo's admitted positional idiom on a split
+// (action_use_admission_witness reads its `uses:` columns the same way). A line whose quoting
+// parses short yields an empty column and is refused by pair_names_live_declaration, never
+// skipped.
+fn roster_column(line: String, at: Int) -> String {
+  let parts = split(s: line, delimiter: "\"")
+  join(parts.skip(n: at).take(n: 1), "")
+}
+
+// ANCHORED ON THE ROW'S INDENTED SHAPE, deliberately. A bare `bin_wet(entry: ` match also
+// catches the `fn bin_wet(...)` definition itself and the two fold lines that re-render
+// RehomedBinWetRow entries (`concat(acc, [bin_wet(entry: r.entry, ...`) -- those are not rows,
+// their quoted columns are empty, and matching them would fail this claim for the wrong reason.
+// Every real row renders at indentation two as `  bin_wet(entry: "...", f: "...")`; the
+// two-quote prefix with its leading spaces is what no other line in the file carries.
+fn roster_rows() -> List<String> {
+  filter(
+    split(s: read_file_source(binwet_roster_authority), delimiter: "\n"),
+    line => string_contains(s: line, pattern: "  bin_wet(entry: \"")
+  )
+}
+
+fn pair_names_live_declaration(row: String) -> Bool {
+  let path = roster_column(row, 1)
+  let name = roster_column(row, 3)
+  if path == "" { false } else {
+    let src = read_file_source(path)
+    if name == "" {
+      // A file-grain row (f: "") names the entry file, not one claim; the roster holds exactly
+      // one such row (roadmap_belt_actuate_witness.dag, which is a whole entry runner). It is
+      // live when the named file exists and declares claims at all; a dead path aborts loudly
+      // through read_file_source's host panic (see above), so this arm only judges files that
+      // exist -- no invented function name is needed here.
+      string_contains(s: src, pattern: "test fn ")
+    } else {
+      // A roster row may name a `test fn` (a claim) or a plain `fn` the entry calls; both are live
+      // declarations in the named file. Anything else -- a name that exists nowhere in that file --
+      // is the drift this join catches.
+      string_contains(s: src, pattern: concat("test fn ", name, "("))
+        || string_contains(s: src, pattern: concat("fn ", name, "("))
+    }
+  }
+}
+
+fn first_text(xs: List<String>) -> String {
+  match xs {
+    Cons { head: h, tail: _ } => h
+    Empty {} => "(none)"
+  }
+}
+
+fn failing_rows() -> List<String> {
+  filter(roster_rows(), row => !pair_names_live_declaration(row))
+}
+
+// PROCESS-EXIT, NOT BOOL, ON PURPOSE. claim_batch prints `FAIL <fn>` plus the typed reason for a
+// ProcessExit claim (claim_batch.rs ClaimOutcome::ExitFailure) but only the bare function name for
+// a false Bool. This join's whole value is naming WHICH row drifted; a Bool would make the operator
+// re-derive it by hand, and the falsifier run could not show the row's identity in the receipt.
+test fn every_binwet_row_names_an_existing_function() -> ProcessExit {
+  let bad = failing_rows()
+  if length(xs: bad) == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat("bin_wet roster rows naming a declaration their entry file does not declare: ", int_to_decimal_string(value: length(xs: bad))),
+        concat(" of ", concat(int_to_decimal_string(value: length(xs: roster_rows())), "; first: ", first_text(xs: bad)))
+      )
+    }
+  }
+}
+
+// THE JOIN READS REAL ROWS -- the anti-vacuity arm. A join over an empty parse is vacuously
+// green: if the roster were ever renamed, re-quoted, or moved out of this file's view, the claim
+// above would "pass" over zero rows, which is the silence this file exists to refuse. The bound
+// sits WELL BELOW the population on purpose: it is an anti-vacuity guard, not a second hand-kept
+// row count that rots into the drift it polices. Population measured by this claim at head-built
+// runs on 2026-10-24: 91 rows read here (PR head), 93 at base 3390986a with the 2 stale rows
+// still present -- the receipts are posted on this PR.
+test fn the_binwet_roster_join_reads_real_rows() -> ProcessExit {
+  let read = length(xs: roster_rows())
+  if read >= 80 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        "the roster parse read only ",
+        concat(int_to_decimal_string(value: read), " rows; the authority file moved, re-quoted, or emptied")
+      )
+    }
+  }
+}
