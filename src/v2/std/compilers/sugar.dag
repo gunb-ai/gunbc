@@ -536,3 +536,67 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node, enclosing_type_name: Symb
       }
   }
 }
+
+// The shared shape recognizers: lowering and acquisition (v2.compiler.generated_head_demand) read the
+// SAME bracket test, so which trees owe a list head is never a second copy.
+fn sugar_is_pass_through_emitted(emitted: Symbol) -> Bool {
+  (emitted == ^dag_surface_expr)
+    || (emitted == ^dag_surface_binary_expr)
+    || (emitted == ^dag_surface_unary_expr)
+    || (emitted == ^dag_surface_postfix_expr)
+    || (emitted == ^dag_surface_block_expr)
+    || (emitted == ^dag_surface_stmt)
+    || (emitted == ^dag_surface_lambda_let_stmt)
+    || (emitted == ^dag_surface_stmt_seq)
+    || (emitted == ^dag_surface_arg)
+}
+
+fn sugar_unwrap_surface_shell(node: Node) -> Node {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if sugar_is_pass_through_emitted(emitted: emitted) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => sugar_unwrap_surface_shell(node: captured)
+          Absent => node
+        }
+      } else {
+        node
+      }
+    Absent => node
+  }
+}
+
+fn sugar_deep_unwrap_optional(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } =>
+      sugar_deep_unwrap_optional(node: child)
+    Rejected { diagnostics: _ } => node
+  }
+}
+
+fn sugar_node_is_token(node: Node, token: Symbol) -> Bool {
+  match node_atom_identity_optional(node: sugar_deep_unwrap_optional(node: node)) {
+    Present { value: id } => id == token
+    Absent => false
+  }
+}
+
+fn sugar_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: sugar_unwrap_surface_shell(node: captured)) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      if sugar_node_is_token(node: pair.left, token: ^dag_token_lbracket) {
+        match sugar_sequence_pair_optional(node: pair.right) {
+          Absent => optional_absent()
+          Present { value: rest } =>
+            if sugar_node_is_token(node: rest.right, token: ^dag_token_rbracket) {
+              optional_present(value: rest.left)
+            } else {
+              optional_absent()
+            }
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
