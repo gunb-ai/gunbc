@@ -964,16 +964,16 @@ fn required_gate_authored_modules() -> List<String> {
     // its own claim_batch run is on record -- green by execution at the head the fix PR landed with
     // (cite the run, never transcribe its output; the roster row's cost is the run's own pricing).
     // RECEIPT (this edit, per Manager 3's ruling "same approved row, not roster growth"). Instrument:
-    // gunbc claim_batch over this module. The runs the row waited for are on record: the green run
-    // executed on the pre-merge battery for this fix PR, and the mutation-control runs on the two
-    // never-merge scratch branches -- lane16/scratch-mutation-qualified-synthetic (the qualified call
-    // site back to its pre-fix bare node_synthetic shape) and lane16/scratch-mutation-is-rejected-
-    // geometry (the is site back to the ownership geometry the #14891 deferral rejected, Match root
-    // stamped from the pattern's own occurrence). Each control goes red exactly on the checks it
-    // discriminates -- the instrument's output says where, and it stays there: transcribing counts,
-    // verdicts per claim or commit SHAs into this comment would break the line above and DESIGN §6
-    // ("a transcribed number rots unreachably"), and §4c says an annotation is never evidence. The
-    // citation this row carried at #14946's landing is retired by these runs.
+    // gunbc claim_batch over this module, executed on srv1 by the Manager-3 battery at this PR's final
+    // head, alongside the mutation-control runs on the two never-merge scratch branches --
+    // lane16/scratch-mutation-qualified-synthetic (the qualified call site back to its pre-fix bare
+    // node_synthetic shape) and lane16/scratch-mutation-is-rejected-geometry (the is site back to the
+    // ownership geometry the #14891 deferral rejected, Match root stamped from the pattern's own
+    // occurrence). Each control goes red exactly on the checks it discriminates and green elsewhere --
+    // the instrument's output says where, and it stays there: transcribing counts, verdicts per claim
+    // or commit SHAs into this comment would break the line above and DESIGN §6 ("a transcribed number
+    // rots unreachably"), and §4c says an annotation is never evidence. The citation this row carried
+    // at #14946's landing is retired by these runs.
     // Same exact grain
     // as the row above, for the same reason: one module, never a family selector. This module pins
     // what the census reader needs to be locatable at all -- native_census_owner_key answers Present
