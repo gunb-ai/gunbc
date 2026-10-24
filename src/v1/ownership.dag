@@ -22,6 +22,7 @@ import v1.std.core {
 }
 
 import v1.compiler.emit_core_support { to_string }
+import std.occurrence_identity { OccurrenceId, authored_occurrence_of }
 
 
 // Read is the ELSE OF in_tail, not a finding that the use borrows. walk_expr's ExprVar arm
@@ -68,10 +69,13 @@ import v1.compiler.emit_core_support { to_string }
 // become a read-only parameter.
 type EdgeKind = Consumed | Read | Threaded | Projected | PassedByValue | Invoked
 
+// `occurrence` is the authored occurrence the use answers for (std.occurrence_identity
+// authored_occurrence_of), carried where a decision is keyed by occurrence: a by-value argument.
 type EdgeClassification {
   kind: EdgeKind
   site: String
   span_start: Int
+  occurrence: OccurrenceId?
 }
 
 type BindingUsage {
@@ -127,7 +131,11 @@ fn empty_usage_accum() -> UsageAccum {
 }
 
 fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
-  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
+  record_use_at(accum: accum, name: name, kind: kind, site: site, binding_kind: binding_kind, span_start: span_start, occurrence: none)
+}
+
+fn record_use_at(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int, occurrence: OccurrenceId?) -> UsageAccum {
+  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start, occurrence: occurrence }
   let existing = match map_get(accum.bindings, name) {
     Present { value: usage } => usage
     Absent => BindingUsage { name: name, binding_kind: none, consumers: [] }
@@ -363,7 +371,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
 fn walk_call_argument(accum: UsageAccum, arg: Node, si: Map<String, NewlineIndex>) -> UsageAccum {
   match arg.expr_data {
     ExprVar { binding_kind: bk } =>
-      record_use(accum: accum, name: expr_var_name_at(texpr: arg, source_indices: si), kind: PassedByValue, site: "argument", binding_kind: bk, span_start: arg.span.start)
+      record_use_at(accum: accum, name: expr_var_name_at(texpr: arg, source_indices: si), kind: PassedByValue, site: "argument", binding_kind: bk, span_start: arg.span.start, occurrence: authored_occurrence_of(identity: arg.occurrence_identity))
     _ => walk_expr(accum: accum, texpr: arg, in_tail: false, si: si)
   }
 }
@@ -426,26 +434,30 @@ fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<Str
 // keys a binding by its name, and a name can be bound twice in one function (a let, a lambda
 // parameter, an arm binder). A name-keyed movable set would then let the proof for one binding move
 // a different binding of the same spelling (DESIGN section 4: key on the exact declaration). An
-// ExprVar carries no declaration identity in v1, but it carries its own occurrence, and the fact
-// proved here is about one occurrence: this edge is the only use the proof saw under this spelling.
-// Every occurrence of the spelling in the scope is an edge (a nested lambda's uses surface as
-// captures), so one edge is one occurrence, and the move happens exactly there and nowhere else.
-// The emitter asks the same key (v1.compiler.emit_rust emit_rust_expr_var). The pre-existing tail
-// consume above stays keyed by name as on main; this change only makes it more conservative.
-fn moved_argument_occurrence_key(name: String, span_start: Int) -> String {
-  concat(name, "@", to_string(value: span_start))
-}
+// ExprVar carries no declaration identity in v1, but it carries its own occurrence identity, and the
+// fact proved here is about one occurrence: this edge is the only use the proof saw under this
+// spelling. Every occurrence of the spelling in the scope is an edge (a nested lambda's uses surface
+// as captures), so one edge is one occurrence, and the move happens exactly there and nowhere else.
+// The key is that occurrence's authored OccurrenceId, read through the one keying authority
+// (std.occurrence_identity authored_occurrence_of), never a second key; a synthetic node answers for
+// no occurrence, so it keys nothing and is never moved. The emitter reads the same identity
+// (v1.compiler.emit_rust emit_rust_expr_var). The pre-existing tail consume above stays keyed by name
+// as on main; this change only makes it more conservative.
 
 // `locals_admitted` is false for a lambda's own proof: there a name that is not a parameter is a
 // capture of the enclosing frame, even when it is a local there, and a capture never moves out of an
 // Fn closure (rustc E0507 on the regen round that admitted them: separator, item, eq, xs, ys in
 // std.algebra closures handed to declared callees).
-fn build_moved_argument_occurrences(proof: OwnershipProof, param_names: Set<String>, locals_admitted: Bool) -> Set<String> {
+fn build_moved_argument_occurrences(proof: OwnershipProof, param_names: Set<String>, locals_admitted: Bool) -> Set<Int> {
   proof.bindings |> map_values
     |> filter(usage => moved_at_its_only_argument(usage: usage)
       && ((locals_admitted && is_owned_local(kind: usage.binding_kind)) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) =>
-      usage.consumers |> fold(init: acc, f: (inner, edge) => set_insert(inner, moved_argument_occurrence_key(name: usage.name, span_start: edge.span_start))))
+      usage.consumers |> fold(init: acc, f: (inner, edge) =>
+        match edge.occurrence {
+          Present { value: id } => set_insert(inner, id.value)
+          Absent => inner
+        }))
 }
 
 fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
