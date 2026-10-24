@@ -766,8 +766,25 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
+/// Right sides at or below this length are pushed one element at a time: im's `Vector::append` costs a
+/// roughly flat tens of microseconds per call whatever the right side's length (measured on the emitted
+/// carrier: 31 us against 0.2 us for one push onto a 20000-element left), so `concat(acc, [x])` in a
+/// fold is superlinear through the append and not through the element count. The two arms cross
+/// between 2048 and 4096 elements; the bound sits below the crossing.
+const APPEND_ELEMENTWISE_MAX: usize = 1024;
+
+fn append_persistent<T: Clone>(a: &mut Vec<T>, b: Vec<T>) {
+    if b.len() <= APPEND_ELEMENTWISE_MAX {
+        for x in b.iter() {
+            a.push_back(x.clone());
+        }
+    } else {
+        a.append(b);
+    }
+}
+
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
-    a.append(b);
+    append_persistent(&mut a, b);
     a
 }
 
@@ -982,7 +999,7 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
-    Rc::make_mut(&mut result).append((*b).clone());
+    append_persistent(Rc::make_mut(&mut result), (*b).clone());
     result
 }
 
