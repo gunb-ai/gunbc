@@ -31,7 +31,7 @@ import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardBase, Sh
 //   Appeared       head has an occurrence base did not;
 //   Vanished       base had an occurrence head does not.
 //
-// THE KEY IS (module, authored spelling, ordinal) -- v2.compiler.occurrence_binding_census says why the
+// THE KEY IS (module, authored spelling, ordinal) -- v2.compiler.occurrence_resolution_census says why the
 // ordinal survives inserting an import and nothing else. ITS STABILITY IS ENFORCED HERE, NOT ASSUMED: an
 // edit beyond import insertion that adds or removes an occurrence of a spelling shifts that spelling's
 // ordinals, and every shifted occurrence surfaces as Appeared or Vanished (or as TargetChanged where two

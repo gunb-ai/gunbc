@@ -22,7 +22,7 @@ data node_equality_walk_boundary_population: FreeSemigroup<String> = FreeSemigro
   "v2.compiler.infer inferred_facts_from_derived_type",
   "v2.compiler.inferred_tree authored_occurrence_census_step",
   "v2.compiler.refinement_discharge discharge_one",
-  "v2.compiler.resolve occurrence_binding_duplicates",
+  "v2.compiler.resolve occurrence_resolution_duplicates",
   "v2.compiler.resolve resolve_declaring_entering",
   "v2.compiler.resolve resolve_path_declares_node",
   "v2.compiler.source_authority source_authority_node_equal",
