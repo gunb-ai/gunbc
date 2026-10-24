@@ -35,7 +35,6 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, apply_staged_leg, deploy_apply_plan_legs, deploy_apply_leg_step,
 }
 import gunbc.live_deploy.retract_legs { RetractRemoveForce }
-import gunbc.live_deploy.release_locus { approval_broker_helper_snapshot_locus }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
 import std.algebra { non_empty_to_list }
 import std.dissolution { UnboundDissolution, BoundDissolution }
@@ -55,7 +54,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
 }
 import gunbc.live_deploy.lab_host_plan { lab_plan_worker_sandbox_choice, SystemManagerLauncherSelected, LabPlanRefused, LabOsUnobserved }
-import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps, deployment_owns_the_host_approval_broker }
+import gunbc.live_deploy.spec { deployment_attempt_unit_drain_steps }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap.spool_stall { SpoolStallEntry }
 import gunbc.roadmap.attempt_system_unit_launch {
@@ -423,7 +422,7 @@ test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => false
     AttemptSystemUnitStartDerived { facts } =>
-      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole, record_owner: inst.directory_owner) {
         AttemptExitHookRefused { reason: _ } => false
         AttemptExitHookRendered { exec_line } =>
           (facts.exit_hook as String) == (exec_line as String)
@@ -693,6 +692,7 @@ test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_d
     node_id: "n",
     attempt_key: "k",
     role: AttemptWorkerRole,
+    record_owner: inst.directory_owner,
   ) {
     AttemptExitHookRefused { reason: _ } => false
     AttemptExitHookRendered { exec_line } =>
@@ -1042,25 +1042,21 @@ test fn a_snapshot_retire_after_the_drain_unit_installs_is_found_in_order() -> B
   ]))
 }
 
-// THE LOCI ARE NOT SHARED, so a retire per locus cannot delete a snapshot another consumer's units still name.
-// The launcher's locus is `<attempt-system-unit-helpers>/<instance>` and the approval broker's is
-// `approval-broker-helpers`; the retire sweeps only the children of its own base, so the claim is that the two
-// bases are disjoint (neither is a path prefix of the other) on a spec that owns both consumers' legs.
+// THE LOCI ARE NOT SHARED, so a retire per locus cannot delete a snapshot another instance's units still name.
+// The launcher's locus is `<attempt-system-unit-helpers>/<instance>`; the retire sweeps only the children of its own
+// base, so the claim is that two instances' bases are disjoint. (The approval broker's helper locus the claim once
+// also named was deleted with the broker's helper grant, #14890.)
 fn base_is_path_prefix_of(base: String, other: String) -> Bool {
   other == base || starts_with(s: other, prefix: join([base, "/"], ""))
 }
 
-test fn the_drain_and_the_broker_helper_snapshots_live_in_disjoint_loci() -> Bool {
-  let spec = deployment_spec_srv1()
-  let legs = full_install_legs(spec: spec)
-  let drain_base = attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance()).base
-  let broker_base = approval_broker_helper_snapshot_locus().base
-  deployment_owns_the_host_approval_broker(spec: spec)
-    && leg_index(legs: legs, step: "helper-grant") >= 0
-    && leg_index(legs: legs, step: "attempt-unit-helper-snapshot-retire") >= 0
-    && !base_is_path_prefix_of(base: drain_base, other: broker_base)
-    && !base_is_path_prefix_of(base: broker_base, other: drain_base)
-    && !base_is_path_prefix_of(base: attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance()).base, other: attempt_system_unit_launcher_locus(instance: srv1_lab_dashboard_instance()).base)
+test fn the_drain_helper_snapshots_of_two_instances_live_in_disjoint_loci() -> Bool {
+  let live_base = attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance()).base
+  let lab_base = attempt_system_unit_launcher_locus(instance: srv1_lab_dashboard_instance()).base
+  let legs = full_install_legs(spec: deployment_spec_srv1())
+  leg_index(legs: legs, step: "attempt-unit-helper-snapshot-retire") >= 0
+    && !base_is_path_prefix_of(base: live_base, other: lab_base)
+    && !base_is_path_prefix_of(base: lab_base, other: live_base)
 }
 
 fn answered(refusal: String?) -> AttemptUnitEntryOutcome {

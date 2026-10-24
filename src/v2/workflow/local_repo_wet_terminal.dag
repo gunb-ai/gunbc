@@ -744,6 +744,120 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_shared_repository_posture_writers_reach_the_repository_when_run" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_shared_repository_posture_writers_reach_the_repository_when_run",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_posture_argv_words_are_executable_shapes" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_posture_argv_words_are_executable_shapes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_a_committed_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_a_committed_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_an_unborn_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_an_unborn_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_a_detached_head_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_a_detached_head_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_headless_dot_git_skeleton" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_refuses_a_headless_dot_git_skeleton",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_plain_directory" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_refuses_a_plain_directory",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_directory_nested_in_a_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_refuses_a_directory_nested_in_a_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_placement_wet_witness", function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after" },
       entry: "dag/test/claim/roadmap/session_placement_wet_witness.dag",
       function: "a_slot_with_no_placement_record_is_kept_in_window_and_released_after",
