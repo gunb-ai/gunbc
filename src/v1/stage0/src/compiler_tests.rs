@@ -3998,6 +3998,54 @@ mod compiler_tests {
     }
 
     #[test]
+    fn coproduct_wire_contract_with_a_misspelled_target_refuses_at_its_importer() {
+        // DISCRIMINATING RED for review 85587 of gunbc#14986: rows are keyed under the module their
+        // DeclarationRef names, so a row whose module_path names no module of the closure applies
+        // nowhere. probe.gate imports gate_state_wire_contract, whose module_path misspells it as
+        // probe.gat; GateState would silently take the default encoding. The importer refuses.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let contracts = "module probe.gate_contracts\nimport std.serialization { CoproductWireContract, StringVariant, SnakeCase }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\ndata gate_state_wire_contract: CoproductWireContract = { coproduct: DeclarationRef { module_path: \"probe.gat\", decl_name: \"GateState\", field: WholeDeclaration }, encoding: StringVariant { naming: SnakeCase } }\n";
+                let sources = im::vector![
+                    source("std_decl_ref.dag", "module std.decl_ref\ntype DeclField = WholeDeclaration | NamedField { field_name: String }\ntype DeclarationRef { module_path: String, decl_name: String, field: DeclField }\n"),
+                    source("std_serialization.dag", "module std.serialization\nimport std.decl_ref { DeclarationRef }\ntype VariantNaming = AsAuthored | SnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming } | TaggedVariant\ntype CoproductWireContract { coproduct: DeclarationRef, encoding: VariantEncoding }\n"),
+                    source("probe_gate_contracts.dag", contracts),
+                    source("probe_gate.dag", "module probe.gate\nimport probe.gate_contracts { gate_state_wire_contract }\ntype GateState = GateOpen | GateShut\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let gate = result.files.iter()
+                    .find(|f| f.path.ends_with("probe_gate.rs"))
+                    .map(|f| f.content.clone())
+                    .unwrap_or_else(|| panic!("no probe_gate.rs; files: {:?}", result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()));
+                assert!(
+                    gate.lines().any(|l| l.contains("compile_error!") && l.contains("gate_state_wire_contract") && l.contains("probe.gat.GateState")),
+                    "probe.gate imports a contract row whose target is probe.gat; it must refuse, naming the row and its target; probe.gate:\n{}",
+                    gate
+                );
+                assert!(
+                    !gate.contains("#[serde(rename_all = \"snake_case\")]"),
+                    "the misdirected row governs nothing; GateState must not take its SnakeCase encoding; probe.gate:\n{}",
+                    gate
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "coproduct_wire_contract_with_a_misspelled_target_refuses_at_its_importer panicked",
+        );
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()

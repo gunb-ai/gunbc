@@ -5110,6 +5110,143 @@ pub fn build_coproduct_wire_contract_index(
     )
 }
 
+pub fn emit_imported_coproduct_wire_contract_misdirections(
+    module_name: String,
+    imports: Rc<Vec<Rc<Node>>>,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for imp in imports.iter().cloned() {
+            __result.extend(
+                (*imported_wire_contract_misdirections_of(
+                    module_name.clone(),
+                    imp.clone(),
+                    module_index.clone(),
+                    source_indices.clone(),
+                ))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn imported_wire_contract_misdirections_of(
+    module_name: String,
+    imp: Rc<Node>,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    match v1_rt::map_get(
+        &module_index.by_name.clone(),
+        crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
+    ) {
+        Some(source_module) => Rc::new({
+            let mut __result = Vec::new();
+            for name in
+                crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+            {
+                __result.extend(
+                    (*imported_wire_contract_row_misdirection(
+                        module_name.clone(),
+                        source_module.clone(),
+                        name.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn imported_wire_contract_row_misdirection(
+    module_name: String,
+    source_module: Rc<TypedModule>,
+    name: String,
+) -> Rc<Vec<String>> {
+    {
+        let ssi = source_module.type_env.source_indices.clone();
+        let source_imports = crate::v1_std_core::module_imports(source_module.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in source_module.items.clone().iter().cloned() {
+                    if ((crate::v1_std_core::authored_name_at(ssi.clone(), item.clone())
+                        == name.clone())
+                        && is_coproduct_wire_contract_row(
+                            item.clone(),
+                            source_module.items.clone(),
+                            source_imports.clone(),
+                            ssi.clone(),
+                        ))
+                    {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*wire_contract_row_target_misdirection(
+                        module_name.clone(),
+                        name.clone(),
+                        item.clone(),
+                        ssi.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn wire_contract_row_target_misdirection(
+    module_name: String,
+    row_name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    match (*coproduct_wire_contract_target(item.clone(), source_indices.clone())).clone() {
+        CoproductWireContractTarget::ContractTargetDeclaration {
+            module_path,
+            decl_name,
+            ..
+        } => {
+            if (module_path.clone() == module_name.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![emit_rust_compile_error_item(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("CoproductWireContract ".to_string(), row_name.clone()), " imported by ".to_string()), module_name.clone()), " targets ".to_string()), module_path.clone()), ".".to_string()), decl_name.clone()), ", which is not this module; a row applies to the module its DeclarationRef names".to_string()))])
+            }
+        }
+        CoproductWireContractTarget::ContractTargetUnreadable => Rc::new(vec![]),
+    }
+}
+
+pub fn concat_with_newline_if_both(a: String, b: String) -> String {
+    if (a.clone() == "".to_string()) {
+        b.clone()
+    } else {
+        if (b.clone() == "".to_string()) {
+            a.clone()
+        } else {
+            v1_rt::concat(v1_rt::concat(a.clone(), "\n".to_string()), b.clone())
+        }
+    }
+}
+
 pub fn coproduct_wire_contract_rows_for_module(
     module_name: String,
     module_index: Rc<ModuleIndex>,
@@ -11217,11 +11354,20 @@ pub fn emit_module_full(
             }
             __result
         });
-        let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
-            this_module_name.clone(),
-            contract_rows.clone(),
-            local_coproduct_names.clone(),
-            scope.type_env.source_indices.clone(),
+        let coproduct_wire_contract_validations = concat_with_newline_if_both(
+            emit_coproduct_wire_contract_validations(
+                this_module_name.clone(),
+                contract_rows.clone(),
+                local_coproduct_names.clone(),
+                scope.type_env.source_indices.clone(),
+            ),
+            emit_imported_coproduct_wire_contract_misdirections(
+                this_module_name.clone(),
+                module_import_items.clone(),
+                module_index.clone(),
+                scope.type_env.source_indices.clone(),
+            )
+            .join(&"\n".to_string()),
         );
         let coproduct_wire_contract_validation_section =
             if (coproduct_wire_contract_validations.clone() == "".to_string()) {
