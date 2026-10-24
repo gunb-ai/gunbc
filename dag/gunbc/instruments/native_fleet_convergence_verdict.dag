@@ -7,6 +7,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_enrollment { EnrollmentAdmission, EnrollmentRefused, fleet_enrollments, fleet_enrollment_refusals }
 import gunbc.fleet.fleet_host_backing { OwnedProvisioning, NoOutOfBand, InstalledViaVirtualMedia }
 import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt }
+import gunbc.fleet.fleet_receipt_collector { CollectedHostReceipt, collected_receipts_only, fleet_verdict_line }
 import gunbc.fleet.fleet_convergence_verdict {
   fleet_convergence_verdict,
   FleetConvergenceVerdict,
@@ -41,14 +42,6 @@ type NativeFleetVerdictCase {
   observed: String
 }
 
-fn verdict_arm(v: FleetConvergenceVerdict) -> String {
-  match v {
-    FleetConverged { host_count: _ } => "FleetConverged"
-    FleetNotConverged { standings: _ } => "FleetNotConverged"
-    FleetEnrollmentRefused { refusals: _ } => "FleetEnrollmentRefused"
-  }
-}
-
 fn supplied_refused_verdict() -> FleetConvergenceVerdict {
   fleet_convergence_verdict(enrollments: [], refusals: [supplied_refusal()], receipts: no_receipts())
 }
@@ -57,8 +50,16 @@ fn supplied_admitted_verdict() -> FleetConvergenceVerdict {
   fleet_convergence_verdict(enrollments: [], refusals: [], receipts: no_receipts())
 }
 
+// The collector's own route (gunbc.fleet.fleet_receipt_collector collect_fleet_convergence_wet) with
+// every host collection failed: no collected receipt reaches the fold. Importing the collector puts its
+// whole import closure in this program's, so the production route's closure is what must resolve.
 fn live_roster_verdict() -> FleetConvergenceVerdict {
-  fleet_convergence_verdict(enrollments: fleet_enrollments, refusals: fleet_enrollment_refusals, receipts: no_receipts())
+  let none_collected: List<CollectedHostReceipt> = []
+  fleet_convergence_verdict(
+    enrollments: fleet_enrollments,
+    refusals: fleet_enrollment_refusals,
+    receipts: collected_receipts_only(collected: none_collected),
+  )
 }
 
 fn no_receipts() -> List<ConvergeCliReceipt> {
@@ -88,7 +89,8 @@ fn without_a_refusal_the_verdict_reads_convergence() -> Bool {
 }
 
 // INHABITANCE: the live roster's admitted and refused enrolments, from their real producers, reach the
-// convergence reading (no refusal at this revision) and count a positive number of unobserved cells.
+// convergence reading through the collector's receipt filter (no refusal at this revision), and with
+// nothing collected the fleet is not converged and counts a positive number of unobserved cells.
 fn the_live_roster_reaches_the_convergence_reading() -> Bool {
   match live_roster_verdict() {
     FleetNotConverged { standings: ss } => length(ss) > 0 && fleet_unobserved_cell_count(standings: ss) > 0
@@ -99,9 +101,9 @@ fn the_live_roster_reaches_the_convergence_reading() -> Bool {
 
 fn native_fleet_verdict_cases() -> List<NativeFleetVerdictCase> {
   [
-    NativeFleetVerdictCase { identity: "a_refused_enrollment_stops_the_verdict", held: a_refused_enrollment_stops_the_verdict(), observed: verdict_arm(v: supplied_refused_verdict()) },
-    NativeFleetVerdictCase { identity: "without_a_refusal_the_verdict_reads_convergence", held: without_a_refusal_the_verdict_reads_convergence(), observed: verdict_arm(v: supplied_admitted_verdict()) },
-    NativeFleetVerdictCase { identity: "the_live_roster_reaches_the_convergence_reading", held: the_live_roster_reaches_the_convergence_reading(), observed: verdict_arm(v: live_roster_verdict()) }
+    NativeFleetVerdictCase { identity: "a_refused_enrollment_stops_the_verdict", held: a_refused_enrollment_stops_the_verdict(), observed: fleet_verdict_line(verdict: supplied_refused_verdict()) },
+    NativeFleetVerdictCase { identity: "without_a_refusal_the_verdict_reads_convergence", held: without_a_refusal_the_verdict_reads_convergence(), observed: fleet_verdict_line(verdict: supplied_admitted_verdict()) },
+    NativeFleetVerdictCase { identity: "the_live_roster_reaches_the_convergence_reading", held: the_live_roster_reaches_the_convergence_reading(), observed: fleet_verdict_line(verdict: live_roster_verdict()) }
   ]
 }
 
