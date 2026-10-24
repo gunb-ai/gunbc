@@ -27,6 +27,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_text }
 import gunbc.auth.branch_dispatch_federation {
+  BranchRunFacts, BranchRunReading, BranchRunAdmitted, BranchRunRefused, judge_branch_run,
   branch_run_impersonation_cell, branch_run_key_variable, parse_branch_run_key,
   branch_run_grant_condition_title_prefix, branch_run_expiry_expression_prefix, branch_run_expiry_expression_suffix,
   branch_run_key, mode_of_run_title, run_scoped_mode_named, run_scoped_mode_eligible, run_scoped_federation_named, run_scoped_account_id,
@@ -63,49 +64,7 @@ import gunbc.auth.approval_request_client { stored_request_from_authorization }
 // approved request unreproducible.
 data branch_run_grant_window: Second = second(count: 3600)
 
-// ── the branch run, as GitHub records it ─────────────────────────────────────────────────────
-
-type BranchRunFacts {
-  run_id: GitHubWorkflowRunId
-  run_attempt: Int
-  mode: String
-  branch: String
-  head_sha: CommitSha
-  dispatched_by: String
-  created_at: Timestamp
-}
-
-type BranchRunReading
-  = BranchRunAdmitted { facts: BranchRunFacts }
-  | BranchRunRefused { reason: NonEmptyStr }
-
-// THE RUN MUST BE A LIVE DISPATCH OF THE FLEET-CONVERGE WORKFLOW, AT THE ATTEMPT ASKED ABOUT: another
-// workflow, another event, a finished run, or a run GitHub has since re-run is refused, so an approval
-// can only ever reach the one attempt of the file this grant is for.
-fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
-  let path = match run.path { Present { value: p } => p  Absent => "" }
-  if github_workflow_run_id_of_wire(n: run.id) != run_id {
-    BranchRunRefused { reason: concat("GitHub answered about another run: ", run.id as String) as NonEmptyStr }
-  } else if run.run_attempt != run_attempt {
-    BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
-  } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
-    BranchRunRefused { reason: concat("the run is not a fleet-converge run: ", path) as NonEmptyStr }
-  } else if run.event != workflow_dispatch_event_name {
-    BranchRunRefused { reason: concat("the run was not dispatched: ", run.event) as NonEmptyStr }
-  } else if (run.status == Completed) {
-    BranchRunRefused { reason: "the run has already completed" as NonEmptyStr }
-  } else {
-    BranchRunAdmitted { facts: BranchRunFacts {
-      run_id: run_id,
-      run_attempt: run_attempt,
-      mode: mode_of_run_title(title: match run.display_title { Present { value: t } => t  Absent => "" }),
-      branch: match run.head_branch { Present { value: b } => b  Absent => "(no branch)" },
-      head_sha: run.head_sha,
-      dispatched_by: match run.triggering_actor { Present { value: u } => u.login as String  Absent => "(unknown)" },
-      created_at: run.created_at,
-    } }
-  }
-}
+// ── the branch run, as GitHub records it: judged by gunbc.auth.branch_dispatch_federation judge_branch_run ──
 
 fn read_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int) -> BranchRunReading {
   match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: github_workflow_run_id_wire_text(id: run_id)) {

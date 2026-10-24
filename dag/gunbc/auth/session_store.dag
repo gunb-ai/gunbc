@@ -49,6 +49,7 @@ import gunbc.principal_projection {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import std.algebra { collection_concat_shape, collection_join_shape, list_push }
 
 data session_store_file_suffix: String = ".json"
 

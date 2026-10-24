@@ -1,10 +1,11 @@
 module gunbc.instruments.ambient_name_census_reading
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.instruments.namespace_wave_binding_shard { shard_owned_rewritten }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitType, ambient_name_homes, ambient_name_candidates }
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
@@ -346,6 +347,13 @@ fn ambient_name_census_standing(
           }
       }
   }
+}
+
+// THE WAVE SCOPE of one census run (GUNBC_WAVE_SHARD, empty for the whole wave): the rewritten modules (the `module`
+// lines of the host's rewritten text) this run's mode owns, so a shard's head census covers its members and their
+// closures instead of the whole wave.
+fn ambient_census_scoped_rewritten(rewritten: String, shard_mode: String) -> List<String> {
+  shard_owned_rewritten(rewritten: rewritten, shard_mode: shard_mode)
 }
 
 // THE ACCEPTANCE KIT'S FIXTURE PAIR (gunbc.namespace_cut.migration_kit), censused as its own subjects. The census
