@@ -45,6 +45,10 @@ import gunbc.live_deploy.member_identity {
   RootAt,
   OidcConfigFile,
   OidcConfigAt,
+  GitWorkerSubtree,
+  GitWorkerSubtreeAt,
+  RepositorySharedPosture,
+  RepositorySharedPostureAt,
   member_identity_member,
   InstalledReleasePosition, InstalledReleaseAt, InstalledReleaseUnobserved, installed_release_position,
   decide_release_members,
@@ -142,6 +146,8 @@ fn root_path_in_roster(roster: List<ConvergedMember>, path: NonEmptyStr) -> Bool
         UnitManager => false
         ServiceProcess => false
         OidcConfigFile => false
+        GitWorkerSubtree { path: _, child: _ } => false
+        RepositorySharedPosture { path: _ } => false
       }
     })
 }
@@ -157,6 +163,8 @@ fn replacement_is_foreign(target: ReleaseTarget, roster: List<ConvergedMember>, 
         UnitManagerAt { standing: _ } => false
         ProcessAt { process: _ } => false
         OidcConfigAt { file: _ } => false
+        GitWorkerSubtreeAt { path: _, child: _, standing: _ } => false
+        RepositorySharedPostureAt { posture: _ } => false
       }
     AlreadyConverged { member: _ } => false
     Create { member: _, to: _ } => false
@@ -430,6 +438,13 @@ fn bind_release_target_to_desired(
           ProcessAt { process: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
           RootAt { root: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
           OidcConfigAt { file: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          // A FLEET REQUEST NEVER CARRIES THESE: the two WORKER-ROOT-EQUIVALENT-3 members are gated on
+          // instance.worker = dedicated and srv1's fleet rows are WorkerIsServiceUser, so the roster
+          // that produced this plan cannot contain them. Refusing here is the closed-world arm, not an
+          // unimplemented path; a plan that DID carry one would be a roster defect, and refusing it is
+          // what keeps the fleet request's admitted surface equal to the fleet's declared surface.
+          GitWorkerSubtreeAt { path: _, child: _, standing: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+          RepositorySharedPostureAt { posture: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
           }
         }
       }
@@ -439,6 +454,8 @@ fn bind_release_target_to_desired(
     ProcessAt { process: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
     RootAt { root: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
     OidcConfigAt { file: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    GitWorkerSubtreeAt { path: _, child: _, standing: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+    RepositorySharedPostureAt { posture: _ } => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
     }
   }
 }

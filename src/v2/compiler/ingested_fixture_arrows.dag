@@ -30,7 +30,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_synthetic,
-  well_formed
+  well_formed,
+  NotADeclaration
 }
 import v2.std.node_query { find_arrow_body_child }
 
@@ -76,7 +77,6 @@ fn ingested_arrow_search_step(node: Node) -> IngestedArrowSearchStep {
     TypeNode { connective: Atom { identity: _ } } => DescendChildren
     TypeNode { connective: Conj } => DescendChildren
     TypeNode { connective: Disj } => DescendChildren
-    TypeNode { connective: Occupancy } => DescendChildren
     TypeNode { connective: Instantiation } => DescendChildren
     ComputationNode { behavior: _ } => DescendChildren
   }
@@ -235,7 +235,8 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
           children: [
             Edge {
               label: Authored { name: fn_name },
-              target: arrow_with_body
+              target: arrow_with_body,
+              declaration: NotADeclaration
             }
           ]
         )

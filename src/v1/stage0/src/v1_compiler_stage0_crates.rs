@@ -916,13 +916,16 @@ pub fn render_stage0_layered_core_lib(
         let reexports = Rc::new({
             let mut __result = Vec::new();
             for ident in Rc::new({
-                let mut __sorted: Vec<_> = reexport_idents.iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|ident: String| ident.clone())(a.clone());
-                    let __kb = (|ident: String| ident.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
+                let mut __keyed: Vec<_> = reexport_idents
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|ident: String| ident.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
             })
             .iter()
             .cloned()
@@ -1181,13 +1184,6 @@ pub fn partition_facade_wrapper_reexports_outcome(
             }
         },
     )
-}
-
-pub fn stage0_partition_lookups_valid() -> bool {
-    match (*stage0_crate_boundary_emit_outcome()).clone() {
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: _, .. } => true,
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause: _, .. } => false,
-    }
 }
 
 pub fn emit_stage0_crate_lib_outcome(spec: Rc<Stage0CrateSpec>) -> Rc<Stage0CrateLibEmitOutcome> {

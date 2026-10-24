@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.else_less_if_statement_has_no_lowered_form
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data else_less_if_statement_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
   identity: "else_less_if_statement_has_no_lowered_form" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "no lowered form for an else-less `if` used as a statement (`if c { return x }` followed by further statements) in v2 body lowering: `v2.compiler.body_lowering_fold` `body_lower_try_if_from_captured` requires an else arm, and a Branch without one has no core shape, so it refuses as `body_lowering_reason_else_less_if_unlowered`, located at the `if`.",

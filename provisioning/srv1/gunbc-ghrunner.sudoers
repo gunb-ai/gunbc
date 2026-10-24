@@ -64,7 +64,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv1-62
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv1-63
 ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv1-64
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv1-01
-ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv1-02
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 00755 -o ghdeploy -g ghdeploy /opt/actions-runner/srv1-02
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv1-01.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv1-01.service
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv1-02.service
@@ -161,6 +161,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/roadmap
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/compute
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/credential-acquisition-slots
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/cursor-attempt-runtime
+ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/attempt-state/worktree-claims
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage/objects
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage/heads
@@ -179,9 +180,66 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /home/briansrls
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /home
+ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc/attempt-state
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc/fabric-storage
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc/fabric-storage/state
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /var/lib/gunbc
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /var/lib
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /var
 ghrunner ALL=(root) NOPASSWD: /usr/bin/ls -1A -- /opt/gunbc/provider-runtime
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-13.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-14.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-15.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-16.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-17.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-18.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-19.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-20.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-21.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-22.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-23.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-24.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-25.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-26.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-27.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-28.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-29.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-30.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-31.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-32.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-33.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-34.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-35.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-36.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-37.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-38.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-39.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-40.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-41.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-42.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-43.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-44.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-45.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-46.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-47.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-48.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-49.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-50.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-03.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-04.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-05.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl mask --now actions-runner@srv1-06.service
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice MemoryMax\=30064771072
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice MemoryHigh\=30064771072
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice MemorySwapMax\=0
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice TasksMax\=16384
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice CPUWeight\=100
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-13.slice CPUQuota\=400%
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv1-13.slice
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryMax\=23622320128
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemoryHigh\=22548578304
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice MemorySwapMax\=0
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice TasksMax\=16384
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice CPUWeight\=100
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv1-14.slice CPUQuota\=
+ghdeploy ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv1-14.slice

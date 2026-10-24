@@ -2,8 +2,12 @@ module extdeps.cloud.gcp.storage
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Int, List, String }
-import extdeps.cloud.gcp.gcp { GcpService, GcpStorage }
+import std.types { Bool, Int, List, String, NonEmptyStr, Secret }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { GET, POST, PUT }
+import extdeps.cloud.gcp.errors { GcpErrorShape }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
+import extdeps.cloud.gcp.gcp { GcpService, GcpStorage, GcpProjectId }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -145,3 +149,138 @@ data gcs_storage_frontier_rows: List<FrontierRow> = [
     dissolution: gcs_frontier_dissolution
   ),
 ]
+
+// ── THE JSON API v1 OPERATIONS THE BOOTSTRAP JOURNAL USES ───────────────────────────────────────
+// Read from the upstream's Discovery document (storage.googleapis.com/$discovery/rest?version=v1,
+// revision 20261013, read 2026-10-19): buckets.get GET b/{bucket}; buckets.insert POST b?project=;
+// buckets.getIamPolicy GET b/{bucket}/iam; buckets.setIamPolicy PUT b/{bucket}/iam; objects.get GET
+// b/{bucket}/o/{object} (metadata; `generation` is an int64 rendered as a string); objects.insert POST on
+// the simple-upload path /upload/storage/v1/b/{bucket}/o with uploadType=media, name and
+// ifGenerationMatch=0, which "succeeds only if no live object has that name" (gcs_objects_insert_if_absent)
+// and answers 412 otherwise; objects.list GET b/{bucket}/o?prefix= answers items and a nextPageToken
+// (a page holds at most 1000 by default). The uploaded bytes are the request body as sent.
+type GcsObjectMetadataWire { name: String, bucket: String, generation: String }
+
+// THE BUCKET AS THE JSON API ANSWERS IT (buckets resource, Discovery revision 20261013): projectNumber is a
+// uint64 rendered as a string, location is the region (the API answers it upper-cased), and
+// iamConfiguration carries uniformBucketLevelAccess.enabled and publicAccessPrevention ("inherited" or
+// "enforced").
+type GcsUniformBucketLevelAccessWire { enabled: Bool? }
+
+type GcsBucketIamConfigurationWire { uniform_bucket_level_access: GcsUniformBucketLevelAccessWire? from "uniformBucketLevelAccess", public_access_prevention: String? from "publicAccessPrevention" }
+
+type GcsBucketWire { name: String, project_number: String? from "projectNumber", location: String?, iam_configuration: GcsBucketIamConfigurationWire? from "iamConfiguration" }
+
+type GcsObjectListWire { items: List<GcsObjectMetadataWire>?, next_page_token: String? from "nextPageToken" }
+
+type GcsBucketPolicyWire { bindings: List<GcpBinding>?, etag: String, version: Int? }
+
+service gcp.Storage {
+  config { endpoint: "https://storage.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetBucket {
+    requires Network
+    input { access_token: Secret, bucket: NonEmptyStr }
+    output { name: String, project_number: String? from "projectNumber", location: String?, iam_configuration: GcsBucketIamConfigurationWire? from "iamConfiguration" }
+    readonly
+    transport rest { method: GET, path: "/storage/v1/b/\{bucket\}" }
+    response {
+      200 => GcsBucketWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation InsertBucket {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, bucket: NonEmptyStr, location: NonEmptyStr, uniform_bucket_level_access: Bool, public_access_prevention: NonEmptyStr }
+    output { name: String }
+    idempotent
+    transport rest { method: POST, path: "/storage/v1/b", query: { project: project_id }, body: { name: bucket, location: location, iamConfiguration: { uniformBucketLevelAccess: { enabled: uniform_bucket_level_access }, publicAccessPrevention: public_access_prevention } } }
+    response {
+      200 => GcsBucketWire
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetBucketIamPolicy {
+    requires Network
+    input { access_token: Secret, bucket: NonEmptyStr }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    readonly
+    transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/iam", query: { optionsRequestedPolicyVersion: 3 } }
+    response {
+      200 => GcsBucketPolicyWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetBucketIamPolicy {
+    requires Network
+    input { access_token: Secret, bucket: NonEmptyStr, bindings: List<GcpBinding>, etag: String, version: Int }
+    output { bindings: List<GcpBinding>?, etag: String, version: Int? }
+    transport rest { method: PUT, path: "/storage/v1/b/\{bucket\}/iam", body: GcpPolicy { bindings: bindings, etag: etag, version: version } }
+    response {
+      200 => GcsBucketPolicyWire
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetObjectMetadata {
+    requires Network
+    input { access_token: Secret, bucket: NonEmptyStr, object: NonEmptyStr }
+    output { name: String, bucket: String, generation: String }
+    readonly
+    transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/\{object\}" }
+    response {
+      200 => GcsObjectMetadataWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation ListObjects {
+    requires Network
+    input { access_token: Secret, bucket: NonEmptyStr, prefix: NonEmptyStr }
+    output { items: List<GcsObjectMetadataWire>?, next_page_token: String? from "nextPageToken" }
+    readonly
+    transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o", query: { prefix: prefix } }
+    response {
+      200 => GcsObjectListWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation InsertObjectIfAbsent {
+    requires Network
+    input { access_token: Secret, bucket: NonEmptyStr, object: NonEmptyStr, kind: String, subject: String, consent: String }
+    output { name: String, bucket: String, generation: String }
+    transport rest { method: POST, path: "/upload/storage/v1/b/\{bucket\}/o", query: { uploadType: "media", name: object, ifGenerationMatch: 0 }, body: { kind: kind, subject: subject, consent: consent } }
+    response {
+      200 => GcsObjectMetadataWire
+      400 => GcpErrorShape
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

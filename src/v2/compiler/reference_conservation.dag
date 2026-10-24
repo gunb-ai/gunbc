@@ -41,7 +41,7 @@ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_id
 import v2.compiler.normalize { normalize_scoped }
 import std.occurrence_identity { scoped_occurrence_allocator }
 import v2.std.language_model { LanguageModel }
-import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
+import v2.std.node { Atom, Authored, DeclaresAt, NotADeclaration, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
@@ -51,6 +51,7 @@ import std.integer { int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   DeclarationRole,
   OccurrenceCategoryModuleScopeExposed,
   OccurrenceCategoryModuleScopeNotExposed,
@@ -60,6 +61,7 @@ import std.occurrence_identity {
   OccurrenceProjected,
   OccurrenceSynthetic,
   ReferenceRole,
+  authored_occurrence_of,
   occurrence_category_module_scope_exposure_verdict,
   occurrence_id_allocator_initial
 }
@@ -275,20 +277,6 @@ fn conserved_identity_of(node: Node) -> Optional<Symbol> {
   }
 }
 
-// THE AUTHORED OCCURRENCE A NODE ANSWERS FOR. A lowering keeps its source's minted id on the image
-// root and projects the other members with that source as their cause, so a member answers for the
-// same authored occurrence its cause names -- which is exactly what it answered for when every
-// member carried the source's minted id, so conservation's population is unchanged by the cut. A
-// pending member (normalization has not yet allocated it) answers for its cause too.
-fn authored_occurrence_of(node: Node) -> Optional<OccurrenceId> {
-  match node.occurrence_id {
-    OccurrenceMinted { id: id } => Present { value: id }
-    OccurrenceProjected { id: _, caused_by: caused_by } => Present { value: caused_by.occurrence }
-    OccurrencePending { caused_by: caused_by } => Present { value: caused_by }
-    OccurrenceSynthetic => Absent
-  }
-}
-
 // THE POPULATION TEST IS A GRAMMAR FACT, NOT A TEXT COMPARISON. An earlier revision compared the
 // atom's identity with the interned source slice at its extent; on real corpus files the recorded
 // extents and the slice primitive disagree past the first multibyte character, so the comparison
@@ -446,7 +434,7 @@ fn population_walk_node(
   let observed = match conserved_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
-      match authored_occurrence_of(node: node) {
+      match authored_occurrence_of(identity: node.occurrence_id) {
         Absent => acc
         Present { value: id } =>
           match dag_string_literal_value_symbol_optional(node: node) {
@@ -510,13 +498,25 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
   let here = match conserved_identity_of(node: node) {
     Absent => acc
     Present { value: identity } =>
-      match authored_occurrence_of(node: node) {
+      match authored_occurrence_of(identity: node.occurrence_id) {
         Absent => acc
         Present { value: id } => map_insert(m: acc, key: id, value: identity)
       }
   }
   fold(node.children, init: here, f: fn(inner, edge) {
-    occurrence_identity_index(acc: inner, node: edge.target)
+    let declared = match edge.declaration {
+      NotADeclaration => inner
+      DeclaresAt { occurrence: occurrence } =>
+        match authored_occurrence_of(identity: occurrence) {
+          Absent => inner
+          Present { value: id } =>
+            match edge.label {
+              Authored { name: name } => map_insert(m: inner, key: id, value: name)
+              _ => inner
+            }
+        }
+    }
+    occurrence_identity_index(acc: declared, node: edge.target)
   })
 }
 
@@ -537,7 +537,7 @@ type RefusalCover {
 }
 
 fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<OccurrenceId, Bool> {
-  let here = match authored_occurrence_of(node: node) {
+  let here = match authored_occurrence_of(identity: node.occurrence_id) {
     Absent => acc
     Present { value: id } => map_insert(m: acc, key: id, value: true)
   }
@@ -737,7 +737,7 @@ fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> 
   let here = match node_atom_identity_optional(node: node) {
     Absent => acc
     Present { value: identity } =>
-      match authored_occurrence_of(node: node) {
+      match authored_occurrence_of(identity: node.occurrence_id) {
         Present { value: _ } => acc
         Absent => pool_add(pool: acc, sym: identity)
       }

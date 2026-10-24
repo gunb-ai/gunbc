@@ -1,5 +1,6 @@
 module test.claim.repository_convergence_placement_witness
 
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr }
 import gunbc.live_deploy.repository_convergence { convergence_fetch_upload_pack }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -357,7 +358,7 @@ test fn the_unit_runs_the_admitted_binary_over_the_runner_checkout_corpus() -> B
     candidate: fixture_candidate,
     receipt_path: convergence_receipt_path(instance_root: "/opt/gunbc"),
   )
-  starts_with(s: cmd, prefix: concat(spec.service.serve_binary as String, " run"))
+  starts_with(s: cmd, prefix: concat(fixed_serve_binary_path(binary: spec.service.serve_binary), " run"))
     && string_contains(s: cmd, pattern: "--source-root $\{GUNBC_TREE_SRC\}/dag")
     && string_contains(s: cmd, pattern: "--source-root $\{GUNBC_TREE_SRC\}/src/v2")
     && string_contains(

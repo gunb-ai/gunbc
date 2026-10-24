@@ -1,5 +1,6 @@
 module v2.test.claim.manual.add_body_emit_typescript
 
+
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body,
@@ -36,7 +37,7 @@ import v2.extdeps.languages.typescript {
 }
 import std.algebra { Cons, Empty, list_append, empty_map }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   InfixToken,
   TargetModel,
@@ -82,7 +83,8 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import v2.std.verification {
   BoolWitness,
@@ -101,7 +103,7 @@ data add_body_ts_emit_operand_swap_source_text: String = "function add(x: number
 data add_body_ts_emit_catalog_minus_source_text: String = "function add(x: number, y: number): number { return x - y; }"
 
 fn add_body_ts_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn add_body_ts_add_operator_row_minus() -> Node {
@@ -167,6 +169,7 @@ fn add_body_ts_lex_with_minus() -> LexRules {
 
 fn add_body_ts_target_model_minus_catalog() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_minus()),
     lex: add_body_ts_lex_with_minus(),
@@ -179,6 +182,7 @@ fn add_body_ts_target_model_minus_catalog() -> TargetModel {
 
 fn add_body_ts_target_model_missing_operator_catalog() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_ts_target_model_bundle(operator_catalog: add_body_ts_operator_catalog_empty()),
     lex: ts_fn_add_lex(),

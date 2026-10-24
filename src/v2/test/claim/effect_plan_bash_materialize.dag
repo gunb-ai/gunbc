@@ -12,7 +12,7 @@ import v2.std.effect_plan {
   While
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
+import std.operation_argv {
   ArgvExpressionUnsupported,
   BoundOperationInvocation,
   DeclaredInputUnbound,
@@ -48,7 +48,7 @@ import v2.workflow.effect_plan_bash_materialize {
   effect_plan_bash_decimal_digits_ok,
   effect_plan_bash_decimal_integer_ok,
   ArgumentContainsNul,
-  BashBoundOperationInvocation,
+  BashPlanEffect,
   CallCalleeEmpty,
   EffectPlanBashEncoded,
   EffectPlanBashEncodingAccepted,
@@ -99,14 +99,14 @@ fn invocation(
   service: String,
   operation: String,
   bindings: List<OperationInputBinding>
-) -> BashBoundOperationInvocation {
+) -> BashPlanEffect {
   bash_bind_operation_invocation(
     at: operation_ref(path: path, service: service, operation: operation),
     bindings: bindings
   )
 }
 
-fn id_invocation(operation: String) -> BashBoundOperationInvocation {
+fn id_invocation(operation: String) -> BashPlanEffect {
   invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.Id",
@@ -115,7 +115,7 @@ fn id_invocation(operation: String) -> BashBoundOperationInvocation {
   )
 }
 
-fn test_path_invocation(operation: String, path: String) -> BashBoundOperationInvocation {
+fn test_path_invocation(operation: String, path: String) -> BashPlanEffect {
   invocation(
     path: "dag/extdeps/shell.dag",
     service: "shell.Test",
@@ -124,7 +124,7 @@ fn test_path_invocation(operation: String, path: String) -> BashBoundOperationIn
   )
 }
 
-fn show_property_invocation(bindings: List<OperationInputBinding>) -> BashBoundOperationInvocation {
+fn show_property_invocation(bindings: List<OperationInputBinding>) -> BashPlanEffect {
   invocation(
     path: "dag/extdeps/systemd/systemctl.dag",
     service: "systemd.Systemctl",
@@ -133,16 +133,16 @@ fn show_property_invocation(bindings: List<OperationInputBinding>) -> BashBoundO
   )
 }
 
-fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>>) -> EffectPlan<BashBoundOperationInvocation> {
+fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<BashPlanEffect>>) -> EffectPlan<BashPlanEffect> {
   EffectPlan { steps: steps, on_failure: FailFast }
 }
 
-fn one_step_plan(inv: BashBoundOperationInvocation) -> EffectPlan<BashBoundOperationInvocation> {
+fn one_step_plan(inv: BashPlanEffect) -> EffectPlan<BashPlanEffect> {
   fail_fast_plan(steps: [Do { effect: inv }])
 }
 
 fn emitted_source_is(
-  plan: EffectPlan<BashBoundOperationInvocation>,
+  plan: EffectPlan<BashPlanEffect>,
   expected: String
 ) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
@@ -152,8 +152,8 @@ fn emitted_source_is(
 }
 
 fn emitted_sources_differ(
-  left: EffectPlan<BashBoundOperationInvocation>,
-  right: EffectPlan<BashBoundOperationInvocation>
+  left: EffectPlan<BashPlanEffect>,
+  right: EffectPlan<BashPlanEffect>
 ) -> Bool {
   match effect_plan_bash_materialize(plan: left) {
     EffectPlanBashMaterialized { source: left_source } =>
@@ -481,12 +481,12 @@ test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool 
   }
 }
 
-fn empty_plan() -> EffectPlan<BashBoundOperationInvocation> {
+fn empty_plan() -> EffectPlan<BashPlanEffect> {
   fail_fast_plan(steps: [])
 }
 
 fn unsupported_step_refuses(
-  step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>,
+  step: v2.std.effect_plan.EffectPlanStep<BashPlanEffect>,
   expected: v2.workflow.effect_plan_bash_materialize.EffectPlanBashUnsupportedStep
 ) -> Bool {
   match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [step])) {
@@ -523,7 +523,7 @@ test fn effect_plan_bash_RED_for_while_retry_still_refuse_with_unchanged_causes(
 // probes for UnsupportedIf / UnsupportedLet / UnsupportedCall. The wall landed, the arms deleted
 // with it, and each probe flips to asserting the step MATERIALIZES.
 fn step_materializes(
-  step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>
+  step: v2.std.effect_plan.EffectPlanStep<BashPlanEffect>
 ) -> Bool {
   match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [step])) {
     EffectPlanBashMaterialized { source: source } => source != ""
@@ -531,11 +531,11 @@ fn step_materializes(
   }
 }
 
-fn call_step(callee: String, args: List<String>) -> v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation> {
+fn call_step(callee: String, args: List<String>) -> v2.std.effect_plan.EffectPlanStep<BashPlanEffect> {
   Call { callee: callee, args: args }
 }
 
-fn call_plan(callee: String, args: List<String>) -> EffectPlan<BashBoundOperationInvocation> {
+fn call_plan(callee: String, args: List<String>) -> EffectPlan<BashPlanEffect> {
   fail_fast_plan(steps: [call_step(callee: callee, args: args)])
 }
 
@@ -552,7 +552,7 @@ test fn effect_plan_bash_if_let_call_no_longer_refuse_as_unsupported() -> Bool {
 }
 
 fn refuses_at_step_with(
-  plan: EffectPlan<BashBoundOperationInvocation>,
+  plan: EffectPlan<BashPlanEffect>,
   step_index: Int,
   matches: fn(EffectPlanBashRefusalCause) -> Bool
 ) -> Bool {
@@ -699,11 +699,11 @@ test fn effect_plan_bash_RED_call_callee_is_a_name_never_a_command_line() -> Boo
 
 // ---- If ----
 
-fn then_plan() -> EffectPlan<BashBoundOperationInvocation> {
+fn then_plan() -> EffectPlan<BashPlanEffect> {
   call_plan(callee: "printf", args: ["then"])
 }
 
-fn else_plan() -> EffectPlan<BashBoundOperationInvocation> {
+fn else_plan() -> EffectPlan<BashPlanEffect> {
   call_plan(callee: "printf", args: ["else"])
 }
 

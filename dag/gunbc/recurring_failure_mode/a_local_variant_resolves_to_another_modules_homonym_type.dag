@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_local_variant_resolves_to_another_modules_homonym_type
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_local_variant_resolves_to_another_modules_homonym_type: RecurringFailureMode = RecurringFailureMode {
   identity: "a_local_variant_resolves_to_another_modules_homonym_type" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "a local variant resolves to another module's homonym type: a module declares a coproduct variant and constructs it by its bare name, and once an unrelated module elsewhere in the pool declares a TYPE of the same spelling, the bare construction resolves to that other module's declaration instead of the variant its own module declares. The module did not import the other; its own declaration is the nearer one by every scoping rule a reader would apply. It is the flat-namespace bare-name class that gunbc#12494 met from the import side (an unimported bare provider), met here from the declaring side: the resolver does not prefer the referring module's own declaration.",

@@ -13,13 +13,14 @@ import v2.lens.synthesis {
 import std.algebra { non_empty }
 import v2.std.node {
   Atom,
-  Occupancy,
+  Instantiation,
   ComputationNode,
   Edge,
   Node,
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 
@@ -32,23 +33,23 @@ data synthesis_gap_poly_leaf: Node = Node {
 data synthesis_gap_poly_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: synthesis_gap_poly_leaf }
+    Edge { label: Positional, target: synthesis_gap_poly_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_gap_poly_inner: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: TypeNode { connective: Instantiation },
   children: [
-    Edge { label: Positional, target: synthesis_gap_poly_body }
+    Edge { label: Positional, target: synthesis_gap_poly_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_gap_poly_input: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: TypeNode { connective: Instantiation },
   children: [
-    Edge { label: Positional, target: synthesis_gap_poly_inner }
+    Edge { label: Positional, target: synthesis_gap_poly_inner, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

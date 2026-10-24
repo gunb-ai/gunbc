@@ -1,0 +1,88 @@
+module test.claim.generic_result_match_binding_witness
+
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows }
+
+// A MATCH BINDING OVER A GENERIC CALL'S RESULT BINDS THE INSTANTIATED TYPE. `match list_head(xs: xs)
+// { Present { value: c } => ... }` bound c to the callee's declared type PARAMETER `T`, which every
+// consumer then treated as permissive: c at a formal of the wrong type, c.zzz and c |> zzzq() all
+// compiled. MECHANISM: pattern_binding_type answered from the declaration reached through the
+// scrutinee's `inferred` link; resolve_pattern_subject now expands a generic coproduct use from its
+// declaration with the use-site type arguments bound (instantiate_scrutinee_expansion). Each RED
+// source below is accepted by the binary without that call and refused (at least one blocking row)
+// with it; each control is accepted by both. The census reports the causal judgment as typed rows,
+// so a probe refusing for a typo reads as a different row count than the one expected. A
+// CensusNotRunnable is a failure with its own cause. dissolve-on: never -- permanent regression
+// control for instantiation of a bound payload.
+
+fn gmb_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data gmb_red_call_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => gmb_int(x: c) Absent => 0 \}\n\}\n"
+
+data gmb_red_let_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> Int \{\n  let r = list_head(xs: xs)\n  match r \{ Present \{ value: c \} => gmb_int(x: c) Absent => 0 \}\n\}\n"
+
+data gmb_red_user_box_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(s: String) -> Int \{\n  match gmb_mk(x: s) \{ GmbFull \{ value: c \} => gmb_int(x: c) GmbHollow => 0 \}\n\}\n"
+
+data gmb_red_field_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => c.zzz Absent => 0 \}\n\}\n"
+
+data gmb_red_record_field_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<GmbRec>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => c.zzzz Absent => 0 \}\n\}\n"
+
+data gmb_red_method_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => c |> zzzq() Absent => 0 \}\n\}\n"
+
+data gmb_red_annotation_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => let d: Int = c\n    d Absent => 0 \}\n\}\n"
+
+data gmb_ctl_formal_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> String \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => gmb_str(x: c) Absent => \"\" \}\n\}\n"
+
+data gmb_ctl_record_field_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<GmbRec>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => c.kind Absent => 0 \}\n\}\n"
+
+data gmb_ctl_method_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(xs: List<String>) -> Int \{\n  match list_head(xs: xs) \{ Present \{ value: c \} => c |> length() Absent => 0 \}\n\}\n"
+
+data gmb_ctl_user_box_source: String = "module gmb_probe_mod\n\nimport std.algebra \{ FreeMonoid, list_head \}\nimport std.optional \{ Optional \}\n\ntype GmbBox<T> = GmbFull \{ value: T \} | GmbHollow\n\ntype GmbRec \{ kind: Int \}\n\nfn gmb_mk<T>(x: T) -> GmbBox<T> \{ GmbFull \{ value: x \} \}\nfn gmb_int(x: Int) -> Int \{ x \}\nfn gmb_str(x: String) -> String \{ x \}\n\nfn gmb_f(s: String) -> String \{\n  match gmb_mk(x: s) \{ GmbFull \{ value: c \} => gmb_str(x: c) GmbHollow => \"\" \}\n\}\n"
+
+test fn generic_result_binding_red_call() -> Bool {
+  gmb_blocking_count(source: gmb_red_call_source) > 0
+}
+
+test fn generic_result_binding_red_let() -> Bool {
+  gmb_blocking_count(source: gmb_red_let_source) > 0
+}
+
+test fn generic_result_binding_red_user_box() -> Bool {
+  gmb_blocking_count(source: gmb_red_user_box_source) > 0
+}
+
+test fn generic_result_binding_red_field() -> Bool {
+  gmb_blocking_count(source: gmb_red_field_source) > 0
+}
+
+test fn generic_result_binding_red_record_field() -> Bool {
+  gmb_blocking_count(source: gmb_red_record_field_source) > 0
+}
+
+test fn generic_result_binding_red_method() -> Bool {
+  gmb_blocking_count(source: gmb_red_method_source) > 0
+}
+
+test fn generic_result_binding_red_annotation() -> Bool {
+  gmb_blocking_count(source: gmb_red_annotation_source) > 0
+}
+
+test fn generic_result_binding_ctl_formal() -> Bool {
+  gmb_blocking_count(source: gmb_ctl_formal_source) == 0
+}
+
+test fn generic_result_binding_ctl_record_field() -> Bool {
+  gmb_blocking_count(source: gmb_ctl_record_field_source) == 0
+}
+
+test fn generic_result_binding_ctl_method() -> Bool {
+  gmb_blocking_count(source: gmb_ctl_method_source) == 0
+}
+
+test fn generic_result_binding_ctl_user_box() -> Bool {
+  gmb_blocking_count(source: gmb_ctl_user_box_source) == 0
+}
