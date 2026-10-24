@@ -106,6 +106,17 @@ type ArgvMaterialization
   = ArgvMaterialized { argv: List<String> }
   | ArgvMaterializationRefused { at: OperationRef, cause: ArgvRefusalCause }
 
+// THE ONE DECLARED HOME of the argv materializer: (path, service, operation, binds) -> ArgvMaterialization, the
+// declaration's own inputs bound by name. Until this declaration the name was ambient in the v1 seed only, through a
+// src/v1/04_method.dag builtin-signature row that declared the wrong parameters and a bare type-variable result; that
+// row and its std.primitives builtin_registry_surface_names entry are retired, so a caller reaches it by
+// `import std.operation_argv { shell_materialize_operation_argv }`. Realization: HostRealizedSeam self-call, selected by
+// this declaration's std.primitive_projection row; where a target has no host realization the emitter writes the
+// declared by-name refusal body (v1.compiler.emit_rust), never a stub.
+fn shell_materialize_operation_argv(path: String, service: String, operation: String, binds: List<OperationInputBinding>) -> ArgvMaterialization {
+  shell_materialize_operation_argv(path, service, operation, binds)
+}
+
 type ShellTransportOperationRow {
   at: OperationRef
   declared_inputs: List<OperationInputName>
