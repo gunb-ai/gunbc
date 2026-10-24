@@ -2,19 +2,21 @@ module gunbc.fabric.fabric_storage_state_serve
 
 import std.types { String }
 import extdeps.http.server { ServeWireResponse }
-import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot }
+import gunbc.fabric.fabric_storage_placement { FabricStateStorage }
 import gunbc.fabric.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix }
 import gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }
 import gunbc.fabric.fabric_storage_state_auth { FabricStateRequestVerified, FabricStateRequestRefused }
 import gunbc.fabric.fabric_storage_state_auth_io { fabric_state_verified_request }
 
 // No unauthenticated route reaches this namespace. Exact original requests are authenticated
-// before dispatch to the same four storage operations used by the legacy namespace.
-fn fabric_storage_state_serve_over(root: FabricStorageFileRoot, method: String, path: String, body: String) -> ServeWireResponse {
+// before dispatch to the same four storage operations used by the legacy namespace. The store is the
+// sealed state store (gunbc.fabric.fabric_storage_placement fabric_state_storage_store), never a root,
+// so the public namespace's store has no route in here.
+fn fabric_storage_state_serve_over(store: FabricStateStorage, method: String, path: String, body: String) -> ServeWireResponse {
   if method != "POST" { text_response(status: 405, body: "fabric state requires POST\n") }
   else if path != concat(concat(fabric_storage_route_prefix, fabric_storage_state_suffix), "/authenticated") { text_response(status: 403, body: "fabric state service authentication required\n") }
   else { match fabric_state_verified_request(body: body) {
     FabricStateRequestRefused => text_response(status: 403, body: "fabric state service authentication refused\n")
-    FabricStateRequestVerified { request: admitted } => fabric_storage_respond(root: root, operation: admitted.operation, body: admitted.request, tailscale_identity: "")
+    FabricStateRequestVerified { request: admitted } => fabric_storage_respond(store: store.operations, operation: admitted.operation, body: admitted.request, tailscale_identity: "")
   } }
 }

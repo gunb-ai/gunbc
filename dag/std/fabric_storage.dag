@@ -1,6 +1,7 @@
 module std.fabric_storage
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.nat { Nat }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_from_structural_digest }
 import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_unreadable_slot_detail }
 
@@ -217,6 +218,19 @@ type FabricClosureRead
   = FabricClosureRead { reading: FabricHeadReading, newest_first: List<FabricStoredObject> }
   | FabricClosureBudgetExhausted { at: FabricObjectRef, bound: Int }
   | FabricClosureRefused { fault: FabricStorageFault }
+
+// THE FOUR OPERATIONS AS ONE VALUE, for a consumer that answers them over whichever store it was
+// handed (the served protocol, gunbc.fabric.fabric_storage_protocol fabric_storage_respond). The
+// fields are the operations themselves, closed over a store, so a holder can run them and cannot
+// read a root out of them. Not sealed: it is the interface, and any realization may inhabit it.
+// Which store a value reaches is sealed where the store is declared (gunbc.fabric.fabric_storage_placement
+// FabricStorage and FabricStateStorage), never here.
+type FabricStorageOperations {
+  head: fn(NonEmptyStr) -> FabricHeadRead
+  put: fn(FabricObject) -> FabricPut
+  advance: fn(NonEmptyStr, FabricHeadExpectation, FabricObjectRef) -> FabricHeadAdvance
+  closure: fn(NonEmptyStr, Nat) -> FabricClosureRead
+}
 
 // THE COMPARISON IS INLINE, AND EXTRACTING IT IS A DEFECT RATHER THAN A TIDY-UP. An earlier
 // revision of this change split the equality arm into a helper taking (asked, content, actual) --

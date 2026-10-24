@@ -1,30 +1,46 @@
 module test.claim.fabric.fabric_state_namespace_wet_witness
 
-import std.types { NonEmptyStr }
-import extdeps.shell
+import std.types { Bool }
 import std.fabric_storage { FabricObject, FabricObjectStored, FabricObjectMissing, FabricHeadAdvanceRefused, ExpectHeadAbsent }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, fabric_storage_file_put, fabric_storage_file_advance }
-import gunbc.fabric.fabric_storage_address { fabric_storage_state_file_root }
+import gunbc.fabric.fabric_storage_placement {
+  fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
+  fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready,
+}
+import gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture }
 
-// Real temp-directory stores, executed by the local-repo wet lane.
-// A known private object reference still cannot be aliased through the legacy public namespace.
+// Real temp-directory stores, minted through the production mints over a test-owned instance
+// (test.claim.fabric.fabric_storage_fixture), executed by the local-repo wet lane.
+
+// A known private object reference still cannot be aliased through the legacy public namespace: the two
+// sealed stores are two directories, so the public store holds no object the state store wrote.
 test fn witness_public_head_cannot_alias_private_state_object() -> Bool {
-  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_state_isolation.XXXXXX").path
-  if directory == "" { false } else {
-    let public_root = fabric_storage_file_root(root: directory as NonEmptyStr)
-    let private_root = fabric_storage_state_file_root(store_root: directory as NonEmptyStr)
-    match fabric_storage_file_root_ensure(root: public_root) {
-      FabricStorageRootReady => match fabric_storage_file_root_ensure(root: private_root) {
-        FabricStorageRootReady => match fabric_storage_file_put(root: private_root, object: FabricObject { links: [], body: "owner-private-record" }) {
-          FabricObjectStored { object: private_ref } => match fabric_storage_file_advance(root: public_root, name: "public-alias", expected: ExpectHeadAbsent, target: private_ref) {
+  let f = fabric_fixture()
+  match fabric_state_storage_store(instance: f.instance) {
+    FabricStateStorageUnready { detail: _ } => false
+    FabricStateStorageReady { store: private } => match fabric_storage_placed_store(instance: f.instance) {
+      FabricStoragePlacedRootRefused { detail: _ } => false
+      FabricStoragePlacedRootReady { store: public } => {
+        let private_ops = private.operations
+        let public_ops = public.operations
+        match private_ops.put(FabricObject { links: [], body: "owner-private-record" }) {
+          FabricObjectStored { object: private_ref } => match public_ops.advance("public-alias", ExpectHeadAbsent, private_ref) {
             FabricHeadAdvanceRefused { fault: FabricObjectMissing { object: _ } } => true
             _ => false
           }
           _ => false
         }
-        _ => false
       }
-      _ => false
     }
+  }
+}
+
+// No unauthenticated route reaches the state store: every raw operation is refused before the store is read.
+test fn witness_state_raw_routes_require_service_authentication() -> Bool {
+  let f = fabric_fixture()
+  match fabric_state_storage_store(instance: f.instance) {
+    FabricStateStorageUnready { detail: _ } => false
+    FabricStateStorageReady { store } => all(["head", "closure", "put", "advance"], operation =>
+      fabric_storage_state_serve_over(store: store, method: "POST", path: concat("/fabric-storage/state/", operation), body: "untrusted").status == 403)
   }
 }
