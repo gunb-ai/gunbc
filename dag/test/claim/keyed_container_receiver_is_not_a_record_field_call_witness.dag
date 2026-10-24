@@ -8,6 +8,12 @@ module test.claim.keyed_container_receiver_is_not_a_record_field_call_witness
 // fixture has no corpus roots) and pipes a spelled receiver into map_keys. The pairing control is
 // an ordinary record whose arrow field is called through its own field, which must stay
 // `(r.step)(..)`: the exemption is the keyed container only.
+//
+// KEYED IS NOT LOWERED (the #14951 v2-bootstrap red, E0308 at the emitted
+// v2_compiler_eval.rs inferred_facts_witness_for_eval): `PartialFunction<K, V>` is a keyed spelling
+// (it carries a container alias row) but has no Rust host inhabitant, so it renders as its record and
+// `tree.facts |> lookup(node)` must stay the field call `(p.lookup)(..)`. The second control holds
+// that line: the exemption keys on the target fact the type renderer uses, not on keyed-ness alone.
 
 fn w_keyed_receiver_is_not_a_field_call() -> Bool {
   compile_dag_rust_emit_check(
@@ -27,10 +33,23 @@ fn w_record_arrow_field_is_still_a_field_call() -> Bool {
   )
 }
 
+fn w_record_rendered_keyed_spelling_is_still_a_field_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module kcf_partial\n\nimport std.types { Int }\n\ntype PartialFunction<key, value> {\n  lookup: fn(key) -> value?\n}\n\nfn kcf_find(p: PartialFunction<String, Int>, k: String) -> Int? {\n  p |> lookup(k)\n}\n",
+    "src/kcf_partial.rs",
+    ["(p.lookup)("],
+    []
+  )
+}
+
 test fn a_keyed_container_receiver_is_not_a_record_field_call() -> Bool {
   w_keyed_receiver_is_not_a_field_call()
 }
 
 test fn a_record_receiver_still_calls_its_own_arrow_field() -> Bool {
   w_record_arrow_field_is_still_a_field_call()
+}
+
+test fn a_record_rendered_keyed_spelling_still_calls_its_own_arrow_field() -> Bool {
+  w_record_rendered_keyed_spelling_is_still_a_field_call()
 }
