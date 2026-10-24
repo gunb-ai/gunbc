@@ -62,16 +62,10 @@ type AmbientNameHome {
   kit_call: AmbientNameKitCall
 }
 
-// Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
+// One row per landed wave. list_push (#14751): its one declared home is std.algebra `fn list_push<T>(xs: FreeMonoid<T>,
+// item: T)`, and its std.primitives list_push_contract row is retired. The kit_call restates that signature
+// (gunbc.rung_drop.kit_call_shape_restates_the_home_signature); the declaration is the authority, so the row follows it.
 fn ambient_name_homes() -> List<AmbientNameHome> {
-  []
-}
-
-// ROWS A WAVE HAS PROPOSED BUT NOT YET LANDED. The acceptance kit censuses a candidate's fixture pair exactly as it
-// does a landed row (ambient_census_kit_rows), so a candidate's checks read RED on main (its name still resolves
-// ambiently) and flip when the wave moves it. The wave that lands a candidate adds the row to ambient_name_homes()
-// and DELETES it here: a name present in both is read once, as the landed row.
-fn ambient_name_candidates() -> List<AmbientNameHome> {
   [AmbientNameHome {
     name: "list_push" as NonEmptyStr,
     home: "std.algebra" as NonEmptyStr,
@@ -81,11 +75,19 @@ fn ambient_name_candidates() -> List<AmbientNameHome> {
     kit_call: AmbientNameKitCall {
       params: [
         AmbientNameKitParam { name: "xs" as NonEmptyStr, type_ref: kit_list_of_int() },
-        AmbientNameKitParam { name: "x" as NonEmptyStr, type_ref: kit_int() }
+        AmbientNameKitParam { name: "item" as NonEmptyStr, type_ref: kit_int() }
       ],
       result: kit_list_of_int()
     }
   }]
+}
+
+// ROWS A WAVE HAS PROPOSED BUT NOT YET LANDED. The acceptance kit censuses a candidate's fixture pair exactly as it
+// does a landed row (ambient_census_kit_rows), so a candidate's checks read RED on main (its name still resolves
+// ambiently) and flip when the wave moves it. The wave that lands a candidate adds the row to ambient_name_homes()
+// and DELETES it here: a name present in both is read once, as the landed row.
+fn ambient_name_candidates() -> List<AmbientNameHome> {
+  []
 }
 
 fn kit_int() -> AmbientNameKitType {
