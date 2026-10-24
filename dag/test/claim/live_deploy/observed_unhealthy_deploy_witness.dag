@@ -148,6 +148,10 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_executable()
     OidcConfigFile => desired_executable()
+    // WORKER-ROOT-EQUIVALENT-3: dedicated-worker members, never in this witness's release roster --
+    // total-and-unreached, beside the DirectoryRoot/OidcConfigFile rows.
+    GitWorkerSubtree { path: _, child: _ } => desired_executable()
+    RepositorySharedPosture { path: _ } => desired_executable()
   }
 }
 
@@ -164,6 +168,8 @@ fn incident_observed(m: ConvergedMember) -> ObservedMember {
     ServiceProcess => unhealthy_process_observed()
     DirectoryRoot { path: _ } => MemberObserved { identity: desired_for(m: m) }
     OidcConfigFile => MemberObserved { identity: desired_for(m: m) }
+    GitWorkerSubtree { path: _, child: _ } => MemberObserved { identity: desired_for(m: m) }
+    RepositorySharedPosture { path: _ } => MemberObserved { identity: desired_for(m: m) }
   }
 }
 
