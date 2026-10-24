@@ -877,7 +877,7 @@ pub fn parser_call_edge_progress(
             ) {
                 strict_after_parser_witness(input_progress)
             } else {
-                input_progress
+                input_progress.clone()
             }
         }
         std::option::Option::None => DescentEvidence::DescentUnknown,
@@ -3757,7 +3757,7 @@ pub fn collect_descent_vars(
                         check_list.clone(),
                         si.clone(),
                     ),
-                    std::option::Option::None => next_vars,
+                    std::option::Option::None => next_vars.clone(),
                 }
             }
             ExprData::ExprMatch => {

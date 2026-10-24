@@ -2085,7 +2085,7 @@ pub fn declaration_substitution_basis(
                 Some(Rc::new(InferredNode::TypeVariable { id: name.clone() })),
             )
         } else {
-            with_children
+            with_children.clone()
         }
     })
 }

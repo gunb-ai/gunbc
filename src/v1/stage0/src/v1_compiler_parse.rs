@@ -703,7 +703,7 @@ pub fn parse_context_record_node_window(
         NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
             parse_context_record_window(ctx, id.clone(), from, to)
         }
-        _ => ctx,
+        _ => ctx.clone(),
     }
 }
 
@@ -814,14 +814,14 @@ pub fn absorbed_subtree_into(
                 field_bindings: bindings,
                 ..
             }) => bindings.iter().cloned().fold(
-                with_inferred,
+                with_inferred.clone(),
                 |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
                     absorbed_subtree_into(m, c.clone(), into.clone())
                 },
             ),
-            Some(MatchPattern::LitPattern { value: _, .. }) => with_inferred,
-            Some(MatchPattern::Wildcard) => with_inferred,
-            std::option::Option::None => with_inferred,
+            Some(MatchPattern::LitPattern { value: _, .. }) => with_inferred.clone(),
+            Some(MatchPattern::Wildcard) => with_inferred.clone(),
+            std::option::Option::None => with_inferred.clone(),
         }
     })
 }
@@ -833,7 +833,7 @@ pub fn absorbed_optional_node_into(
 ) -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
     match node.clone() {
         Some(n) => absorbed_subtree_into(acc, n.clone(), into),
-        std::option::Option::None => acc,
+        std::option::Option::None => acc.clone(),
     }
 }
 
@@ -3458,7 +3458,7 @@ pub fn occurrence_allocator_after_optional_node(
 ) -> OccurrenceIdAllocator {
     match node.clone() {
         Some(value) => occurrence_allocator_after_node(alloc, value.clone()),
-        std::option::Option::None => alloc,
+        std::option::Option::None => alloc.clone(),
     }
 }
 
@@ -3470,10 +3470,10 @@ pub fn occurrence_allocator_after_inferred_node(
         Some(InferredNode::Resolved { node: node, .. }) => {
             occurrence_allocator_after_node(alloc, node.clone())
         }
-        Some(InferredNode::CompilerError { .. }) => alloc,
-        Some(InferredNode::TypeVariable { id: _, .. }) => alloc,
-        Some(InferredNode::Divergent) => alloc,
-        std::option::Option::None => alloc,
+        Some(InferredNode::CompilerError { .. }) => alloc.clone(),
+        Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
+        Some(InferredNode::Divergent) => alloc.clone(),
+        std::option::Option::None => alloc.clone(),
     }
 }
 

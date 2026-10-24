@@ -1637,7 +1637,7 @@ pub fn unify_template(
                         s2,
                         source_indices.clone(),
                     ),
-                    std::option::Option::None => s2,
+                    std::option::Option::None => s2.clone(),
                 }
             }
             _ => subst.clone(),

@@ -326,7 +326,7 @@ pub fn rust_traits_for_construction_contract(
     if deserialize_forbidden.clone() {
         rust_traits_without_deserialize(traits)
     } else {
-        traits
+        traits.clone()
     }
 }
 

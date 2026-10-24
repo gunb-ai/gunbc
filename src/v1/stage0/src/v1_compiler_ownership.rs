@@ -675,7 +675,7 @@ pub fn walk_expr(
                 let v_accum = walk_expr(accum.clone(), v, false, si.clone());
                 match crate::v1_std_core::let_body(texpr.clone()) {
                     Some(b) => walk_expr(v_accum, b.clone(), in_tail.clone(), si.clone()),
-                    std::option::Option::None => v_accum,
+                    std::option::Option::None => v_accum.clone(),
                 }
             }
             ExprData::ExprBlock => {
@@ -719,7 +719,7 @@ pub fn walk_expr(
                                 in_tail.clone(),
                                 si.clone(),
                             ),
-                            std::option::Option::None => init_accum,
+                            std::option::Option::None => init_accum.clone(),
                         }
                     }
                 }
@@ -933,11 +933,10 @@ pub fn build_movable_set(
             .iter()
             .cloned()
         {
-            if (((match (*make_decision(usage.clone())).clone() {
+            if ((match (*make_decision(usage.clone())).clone() {
                 OwnershipDecision::SoleOwner { .. } => true,
                 _ => false,
             } && (whole_value_borrow_count(usage.clone()) == 0))
-                || moved_at_its_only_argument(usage.clone()))
                 && (is_owned_local(usage.binding_kind.clone())
                     || v1_rt::set_contains(&param_names, usage.name.clone())))
             {
@@ -952,6 +951,51 @@ pub fn build_movable_set(
         v1_rt::rc_empty_set::<String>(),
         |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
+        },
+    )
+}
+
+pub fn moved_argument_occurrence_key(name: String, span_start: i64) -> String {
+    v1_rt::concat(
+        v1_rt::concat(name.clone(), "@".to_string()),
+        crate::v1_compiler_emit_core_support::to_string(span_start),
+    )
+}
+
+pub fn build_moved_argument_occurrences(
+    proof: Rc<OwnershipProof>,
+    param_names: Rc<BTreeSet<String>>,
+    locals_admitted: bool,
+) -> Rc<BTreeSet<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
+            .iter()
+            .cloned()
+        {
+            if (moved_at_its_only_argument(usage.clone())
+                && ((locals_admitted.clone() && is_owned_local(usage.binding_kind.clone()))
+                    || v1_rt::set_contains(&param_names, usage.name.clone())))
+            {
+                __result.push(usage);
+            }
+        }
+        __result
+    })
+    .iter()
+    .cloned()
+    .fold(
+        v1_rt::rc_empty_set::<String>(),
+        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            usage.consumers.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<BTreeSet<String>>, edge: Rc<EdgeClassification>| {
+                    v1_rt::rc_set_insert(
+                        inner,
+                        moved_argument_occurrence_key(usage.name.clone(), edge.span_start.clone()),
+                    )
+                },
+            )
         },
     )
 }
@@ -1093,7 +1137,7 @@ pub fn collect_callable_refs(
                     Some(lb) => {
                         v1_rt::rc_set_union(val, collect_callable_refs(lb.clone(), si.clone()))
                     }
-                    std::option::Option::None => val,
+                    std::option::Option::None => val.clone(),
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(

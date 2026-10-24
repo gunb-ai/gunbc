@@ -3854,7 +3854,7 @@ pub fn stamp_collections_in_reference(
                 {
                     stamp_kernel_collection(walked)
                 } else {
-                    walked
+                    walked.clone()
                 }
             }
         }

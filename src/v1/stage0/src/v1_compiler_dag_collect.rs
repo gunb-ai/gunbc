@@ -142,7 +142,7 @@ pub fn dag_collect_optional_node(
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
     match value.clone() {
         Some(inner) => dag_collect_insert_slots(inner.clone(), slots, collision_errors),
-        std::option::Option::None => slots,
+        std::option::Option::None => slots.clone(),
     }
 }
 
@@ -155,7 +155,7 @@ pub fn dag_collect_inferred(
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_collect_insert_slots(n.clone(), slots, collision_errors)
         }
-        _ => slots,
+        _ => slots.clone(),
     }
 }
 

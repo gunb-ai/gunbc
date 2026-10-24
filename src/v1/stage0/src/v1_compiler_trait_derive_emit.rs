@@ -202,7 +202,7 @@ pub fn v1_with_map_key_requirement(
             crate::extdeps_languages_rust_capabilities::map_key_required_derive_traits(),
         )
     } else {
-        base
+        base.clone()
     }
 }
 

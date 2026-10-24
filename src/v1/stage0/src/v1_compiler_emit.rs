@@ -8583,7 +8583,7 @@ pub fn emit_unified_typed_expr(
             texpr,
             target.clone(),
             si.clone(),
-            |result| result,
+            |result| result.clone(),
             |child| {
                 emit_unified_typed_expr(
                     child,
@@ -8961,7 +8961,7 @@ pub fn emit_unified_typed_expr(
                             render_pattern.clone(),
                         )
                     },
-                    |result| result,
+                    |result| result.clone(),
                 )
             },
         )

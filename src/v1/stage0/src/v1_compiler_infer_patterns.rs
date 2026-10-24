@@ -975,7 +975,7 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
         if scrut_is_optional.clone() {
             crate::v1_std_core::with_optional_cardinality(resolved_raw)
         } else {
-            resolved_raw
+            resolved_raw.clone()
         }
     }
 }

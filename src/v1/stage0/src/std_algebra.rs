@@ -2991,7 +2991,7 @@ pub fn list_starts_with<T: Clone>(
                 _phantom: std::marker::PhantomData,
             }),
             |acc, item| match acc.matched.clone() {
-                false => acc,
+                false => acc.clone(),
                 true => {
                     let __fm = acc.rest.clone();
                     if __fm.is_empty() {
