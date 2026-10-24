@@ -413,6 +413,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "parse_stage0_cargo_manifest_bins": BuiltinSignature { params: [BuiltinParam { name: "manifest", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "cargo_manifest_bin_parse") },
   "parse_roadmap_acceptance_event_history_jsonl": BuiltinSignature { params: [BuiltinParam { name: "text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_event_history_parse") },
   "project_roadmap_acceptance_event_history_from_authority_text_host": BuiltinSignature { params: [BuiltinParam { name: "authority_text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_history_projection") },
+  "witness_deferral_freeze_population_census": BuiltinSignature { params: [], returns: string_type },
   "commit_witness_claim_roster_unresolvable_count": BuiltinSignature { params: [], returns: int_type },
   "commit_witness_claim_pair_resolvable": BuiltinSignature { params: [BuiltinParam { name: "entry", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "function", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "complexity_linearity_syntactic_finding_count": BuiltinSignature { params: [], returns: int_type },
