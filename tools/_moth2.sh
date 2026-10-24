@@ -29,12 +29,25 @@ GB=/root/workspace/repo-root/.mt$TAG/release/gunbc
 CB_SHA=$(sha $CB); GB_SHA=$(sha $GB)
 echo "CB_SHA=$CB_SHA GB_SHA=$GB_SHA built=$(elapsed)s (features: text_lookup_work_counter,interp_test_witness,test_hooks)"
 arm_cgroup () {
-  local cg=/sys/fs/cgroup/moth-$1
-  rm -rf $cg 2>/dev/null || true; mkdir -p $cg || return 9
-  echo 51539607552 > $cg/memory.max || return 9
-  local RB; RB=$(cat /sys/fs/cgroup/memory.max)
-  { [ "$RB" != "max" ] && [ -n "$RB" ]; } || { echo "MEM_READBACK_FAIL $1 got=$RB"; return 9; }
-  CGPATH=$cg; CGREADBACK=$RB
+  # READBACK MUST BE $cg/memory.max (the child), not the root -- smoke-tested bug class.
+  local cg=/sys/fs/cgroup/moth-$TAG-$1
+  CGPATH=""; CGREADBACK="unbound"; CGFLAG=0
+  [ -w /sys/fs/cgroup/cgroup.subtree_control ] && echo "+memory" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+  rm -rf $cg 2>/dev/null || true
+  if mkdir -p "$cg" 2>/dev/null && echo 51539607552 > $cg/memory.max 2>/dev/null; then
+    local RB; RB=$(cat $cg/memory.max 2>/dev/null || true)
+    if [ -n "$RB" ] && [ "$RB" != "max" ]; then CGPATH=$cg; CGREADBACK=$RB; CGFLAG=1; fi
+  fi
+  [ "$CGFLAG" = "1" ] || echo "  CGNOTE $1 UNBOUND (no cgroup delegation on this runner instance)"
+  return 0
+}
+run_bound () { # <out> <err> <timeout-s> <cmd...>
+  local o=$1 e=$2; shift 2
+  if [ "${CGFLAG:-0}" = "1" ]; then
+    ( cd $WT && exec 11>$CGPATH/cgroup.procs && echo $BASHPID >&11 && timeout "$@" ) > $o 2>$e
+  else
+    ( cd $WT && timeout "$@" ) > $o 2>$e
+  fi
 }
 claim_arm () { # <name> <dry|wet> <file> <fns-csv>
   local name=$1 mode=$2 file=$3 fns=$4
@@ -45,13 +58,12 @@ claim_arm () { # <name> <dry|wet> <file> <fns-csv>
   done
   local el; el=$(elapsed); [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $name"; return 1; }
   local wf=""; [ "$mode" = wet ] && wf="--wet"
-  arm_cgroup $name || { echo "ROW $name VOID (mem)"; return 0; }
-  ( cd $WT && exec 11>$CGPATH/cgroup.procs && echo $BASHPID >&11 && \
-    timeout 1200 $CB --claim-run $wf --source-root dag --source-root src/v2 --source-root src/v1 --entry "$file" --functions "$fns" ) > /tmp/m2_$name.out 2>/tmp/m2_$name.err
+  arm_cgroup $name
+  run_bound /tmp/m2_$name.out /tmp/m2_$name.err 1200 $CB --claim-run $wf --source-root dag --source-root src/v2 --source-root src/v1 --entry "$file" --functions "$fns"
   local rc=$?
   [ "$rc" = "124" ] && { echo "ROW $name rc=124 TIMEOUT UNOBSERVED (not a result)"; return 0; }
   local NP NF NU; NP=$(grep -ac '^PASS ' /tmp/m2_$name.out); NF=$(grep -ac '^FAIL ' /tmp/m2_$name.out); NU=$(grep -ac '^UNOBSERVED ' /tmp/m2_$name.out)
-  echo "ROW $name rc=$rc mode=$mode PASS=$NP FAIL=$NF UNOBS=$NU cgroup=mem.max=$CGREADBACK el=${el}s"
+  echo "ROW $name rc=$rc mode=$mode PASS=$NP FAIL=$NF UNOBS=$NU cgroup=$CGREADBACK el=${el}s"
   grep -aE '^(PASS|FAIL|UNOBSERVED) ' /tmp/m2_$name.out | sed 's/^/  V| /' | cut -c1-200
   grep -aiE 'refus|error|panic|not indexed|not found' /tmp/m2_$name.err | head -4 | sed 's/^/  E| /' | cut -c1-200
   [ "$rc" = "0" ] && [ "$((NP+NF+NU))" = "0" ] && echo "  ROW $name !! EXIT 0 HAVING OBSERVED NOTHING -- VOID, not a pass"
@@ -64,13 +76,12 @@ compile_arm () { # <name> <entry-file> <outdir>
   [ -f "$file" ] || { echo "ROW $name FILE_ABSENT_AT_SHA $file"; return 0; }
   local el; el=$(elapsed); [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $name"; return 1; }
   rm -rf $od; mkdir -p $od
-  arm_cgroup $name || { echo "ROW $name VOID (mem)"; return 0; }
-  ( cd $WT && exec 11>$CGPATH/cgroup.procs && echo $BASHPID >&11 && \
-    timeout 900 $GB compile --source-root dag --source-root src/v2 --entry "$file" --output-dir $od --target rust ) > /tmp/m2_$name.out 2>/tmp/m2_$name.err
+  arm_cgroup $name
+  run_bound /tmp/m2_$name.out /tmp/m2_$name.err 900 $GB compile --source-root dag --source-root src/v2 --entry "$file" --output-dir $od --target rust
   local rc=$?
   [ "$rc" = "124" ] && { echo "ROW $name rc=124 TIMEOUT UNOBSERVED (not a result)"; return 0; }
   local nout; nout=$(find $od -type f | wc -l)
-  echo "ROW $name rc=$rc outfiles=$nout cgroup=mem.max=$CGREADBACK el=${el}s"
+  echo "ROW $name rc=$rc outfiles=$nout cgroup=$CGREADBACK el=${el}s"
   tail -6 /tmp/m2_$name.out | sed 's/^/  O| /' | cut -c1-200
   grep -aiE 'not found|refus|error' /tmp/m2_$name.err | head -6 | sed 's/^/  E| /' | cut -c1-200
   return 0
