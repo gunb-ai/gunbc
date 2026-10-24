@@ -509,6 +509,15 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
+// A use that supplies arguments to a parameterless alias: the arguments bind to nothing, so the application is
+// refused by arity (expected 0) at the type position, not read as a use of the generic its right-hand side expands to.
+fn is_paramless_alias_use(n: Node, env: TypeEnv) -> Bool {
+  n.connective == NoConnective && (n.children |> count) > 0 && match lookup_type_for(env: env, node: n) {
+    Present { value: used } => used.params |> count == 0 && used.children |> count == 0 && used.connective == NoConnective && used.inferred != none
+    Absent => false
+  }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
@@ -761,15 +770,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
         }
       }
     }
-  } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
+  } else if n.children |> count > 0 && (is_user_generic_use_site(n: n, env: env) || is_paramless_alias_use(n: n, env: env)) {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
     // The application is judged against the arity of the name it USES: a parameterless alias applied to arguments
     // binds them to nothing, whatever generic declaration its right-hand side expands to.
-    let uses_paramless_alias = match lookup_type_for(env: env, node: n) {
-      Present { value: used } => used.params |> count == 0 && used.children |> count == 0 && used.connective == NoConnective && used.inferred != none
-      Absent => false
-    }
+    let uses_paramless_alias = is_paramless_alias_use(n: n, env: env)
     let expected_arity = if uses_paramless_alias { 0 } else { decl.params |> count }
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
