@@ -430,7 +430,7 @@ fn seat16_operator_is_atom_named(n: Node, name: Symbol) -> Bool {
 
 fn seat16_is_receiver_call(n: Node) -> Bool {
   match n.kind {
-    ComputationNode { behavior: Transform } => seat16_operator_is_atom_named(n: n, ^load)
+    ComputationNode { behavior: Transform } => seat16_operator_is_atom_named(n: n, name: ^load)
     _ => false
   }
 }
