@@ -46,38 +46,39 @@ fn is_absent(s: GoogleEnrolmentSlot) -> Bool {
 
 test fn a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store() -> Bool {
   let path = fresh_enrolment_root()
-  let ok = match devices_at(dir: path) { Absent => false  Present { value: devices } => enrolment_sequence(root: devices) }
-  let removed = shell.Remove.RecursiveForce(path: path)
-  ok && removed.success
-}
-
-fn enrolment_sequence(root: ApprovalDeviceStore) -> Bool {
-  let id = google_enrollment_id(subject: fx_subject, decision_key: key_a)
-  let before = observe_google_enrolment(devices: root, enrollment_id: id)
-  match first_write() {
-    GoogleEnrolmentWrites { enrollment: e } =>
-      is_absent(s: before)
-        && (match commit_google_enrolment(devices: root, enrollment: e) { DeviceStoreWritten => true  _ => false })
-        && (match commit_google_enrolment(devices: root, enrollment: e) { DeviceStoreSlotOccupied => true  _ => false })
-        && (match observe_google_enrolment(devices: root, enrollment_id: id) {
-          GoogleEnrolmentActive { enrollment: stored } =>
-            (match again(slot: GoogleEnrolmentActive { enrollment: stored }) {
-              GoogleEnrolmentReplays { enrollment: r } => (r.enrollment_id as String) == (e.enrollment_id as String)
-              _ => false
-            })
-              && (match revoke_google_enrolment(devices: root, slot: GoogleEnrolmentActive { enrollment: stored }, revoked_at: "2026-09-17T11:00:00Z") { DeviceStoreWritten => true  _ => false })
+  let ok = match devices_at(dir: path) {
+    Absent => false
+    Present { value: root } => {
+        let id = google_enrollment_id(subject: fx_subject, decision_key: key_a)
+        let before = observe_google_enrolment(devices: root, enrollment_id: id)
+        match first_write() {
+          GoogleEnrolmentWrites { enrollment: e } =>
+            is_absent(s: before)
+              && (match commit_google_enrolment(devices: root, enrollment: e) { DeviceStoreWritten => true  _ => false })
+              && (match commit_google_enrolment(devices: root, enrollment: e) { DeviceStoreSlotOccupied => true  _ => false })
               && (match observe_google_enrolment(devices: root, enrollment_id: id) {
-                GoogleEnrolmentRevoked { enrollment: r, revoked_at: _ } =>
-                  match again(slot: GoogleEnrolmentRevoked { enrollment: r, revoked_at: "2026-09-17T11:00:00Z" }) {
-                    GoogleEnrolmentRefused { cause: GoogleEnrolmentRevokedKey } => true
+                GoogleEnrolmentActive { enrollment: stored } =>
+                  (match again(slot: GoogleEnrolmentActive { enrollment: stored }) {
+                    GoogleEnrolmentReplays { enrollment: r } => (r.enrollment_id as String) == (e.enrollment_id as String)
                     _ => false
-                  }
+                  })
+                    && (match revoke_google_enrolment(devices: root, slot: GoogleEnrolmentActive { enrollment: stored }, revoked_at: "2026-09-17T11:00:00Z") { DeviceStoreWritten => true  _ => false })
+                    && (match observe_google_enrolment(devices: root, enrollment_id: id) {
+                      GoogleEnrolmentRevoked { enrollment: r, revoked_at: _ } =>
+                        match again(slot: GoogleEnrolmentRevoked { enrollment: r, revoked_at: "2026-09-17T11:00:00Z" }) {
+                          GoogleEnrolmentRefused { cause: GoogleEnrolmentRevokedKey } => true
+                          _ => false
+                        }
+                      _ => false
+                    })
                 _ => false
               })
           _ => false
-        })
-    _ => false
+        }
+    }
   }
+  let removed = shell.Remove.RecursiveForce(path: path)
+  ok && removed.success
 }
 
 // THE SUBJECT PIN THROUGH THE REAL STORE: the first sign-in creates the pin for its subject; another
