@@ -62,9 +62,19 @@ type AmbientNameHome {
   kit_call: AmbientNameKitCall
 }
 
-// Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
+// One row per wave. Wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars, answered by the std.primitives authority
+// row where it binds at all, has its one declared home in std.host_text.
 fn ambient_name_homes() -> List<AmbientNameHome> {
-  []
+  [
+    AmbientNameHome {
+      name: "chars",
+      home: "std.host_text.chars",
+      table: PrimitiveAuthorityTable,
+      origin: ExistingDeclaration,
+      retired_contract: optional_present(value: "chars_contract" as NonEmptyStr),
+      kit_call: chars_kit_call()
+    }
+  ]
 }
 
 // ROWS A WAVE HAS PROPOSED BUT NOT YET LANDED. The acceptance kit censuses a candidate's fixture pair exactly as it
@@ -86,6 +96,14 @@ fn ambient_name_candidates() -> List<AmbientNameHome> {
       result: kit_list_of_int()
     }
   }]
+}
+
+// chars's one declared home is std.host_text `fn chars(text: HostText) -> List<Char>`; the kit fixture calls it so.
+fn chars_kit_call() -> AmbientNameKitCall {
+  AmbientNameKitCall {
+    params: [AmbientNameKitParam { name: "text" as NonEmptyStr, type_ref: AmbientNameKitType { home: "std.host_text" as NonEmptyStr, name: "HostText" as NonEmptyStr, arguments: [] } }],
+    result: AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "List" as NonEmptyStr, arguments: [AmbientNameKitType { home: "std.types" as NonEmptyStr, name: "Char" as NonEmptyStr, arguments: [] }] }
+  }
 }
 
 fn kit_int() -> AmbientNameKitType {
