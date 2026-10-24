@@ -12,6 +12,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
 import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv13 }
 import product.host_identity { HostIdentity }
+import std.algebra { collection_concat_shape, list_push }
 
 // QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
 // FactoryDefault -> CredentialsRotated -> OsInstalled -> FabricJoined is a
