@@ -1,0 +1,5 @@
+module p_neg
+import std.types { String, Int }
+import std.integer { int_to_decimal_string }
+fn probe() -> String { int_to_decimal_string(value: 0 - 1) }
+fn main() -> String { probe() }

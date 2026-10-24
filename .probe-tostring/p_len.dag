@@ -1,0 +1,5 @@
+module p_len
+import std.types { String, Int, list_length }
+import std.integer { int_to_decimal_string }
+fn probe() -> String { int_to_decimal_string(value: list_length(items: [1, 2, 3])) }
+fn main() -> String { probe() }

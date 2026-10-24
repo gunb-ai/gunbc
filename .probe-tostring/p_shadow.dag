@@ -1,0 +1,6 @@
+module p_shadow
+import std.types { String, Nat }
+import std.integer { int_to_decimal_string }
+type Int = Alpha { a: Nat } | Beta
+fn f(x: Int) -> String { int_to_decimal_string(value: x) }
+fn main() -> String { f(x: Alpha { a: 1 }) }

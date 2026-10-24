@@ -1,0 +1,6 @@
+module p_nat_shadow
+import std.types { String }
+import std.nat { Nat, nat_to_decimal_string }
+type Nat = Alpha { a: Nat } | Beta
+fn f(x: Nat) -> String { nat_to_decimal_string(value: x) }
+fn main() -> String { f(x: Alpha { a: 1 }) }

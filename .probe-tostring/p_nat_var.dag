@@ -1,0 +1,5 @@
+module p_nat_var
+import std.types { String }
+import std.nat { Nat, nat_to_decimal_string }
+fn f(n: Nat) -> String { nat_to_decimal_string(value: n) }
+fn main() -> String { f(n: 1) }

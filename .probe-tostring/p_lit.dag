@@ -1,0 +1,5 @@
+module p_lit
+import std.types { String, Int }
+import std.integer { int_to_decimal_string }
+fn probe() -> String { int_to_decimal_string(value: 42) }
+fn main() -> String { probe() }

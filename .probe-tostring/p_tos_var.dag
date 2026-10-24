@@ -1,0 +1,4 @@
+module p_tos_var
+import std.types { String, Int }
+fn f(n: Int) -> String { to_string(value: n) }
+fn main() -> String { f(n: 1) }
