@@ -3,7 +3,7 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape, TotalOrder, total_order_by, string_total_order }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -1548,6 +1548,13 @@ data symbol_lexeme_host_disposition: Disposition = Scaffold {
 
 fn symbol_lexeme(sym: Symbol) -> String {
   symbol_lexeme(sym: sym)
+}
+
+// THE ORDER ON Symbol, DERIVED, NOT DECLARED: string_total_order pulled back through the lexeme
+// (std.algebra total_order_by). It is the order the host sort_by gives symbols, whose realization
+// is their host text, and it is total on Symbol because a symbol is identified by its lexeme.
+fn symbol_total_order() -> TotalOrder<Symbol> {
+  total_order_by(order: string_total_order(), project: fn(s) { symbol_lexeme(sym: s) })
 }
 
 // A DECLARATION REFERENCE IS MARKED, NOT RECOGNISED BY SHAPE. v2.compiler.resolve mints a reference

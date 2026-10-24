@@ -2,7 +2,7 @@ module std.content_hash
 import std.optional { Absent, Present }
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.algebra { collection_concat_shape, collection_join_shape }
+import std.algebra { collection_concat_shape, collection_join_shape, TotalOrder, total_order_by, string_total_order }
 import std.host_text { chars }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
@@ -65,6 +65,13 @@ fn content_hash_family(hash: ContentHash) -> HashFamily {
     Sha1Hash(_) => Sha1Family
     Sha512Hash(_) => Sha512Family
   }
+}
+
+// THE ORDER ON THE STRUCTURAL DIGEST, DERIVED: string_total_order pulled back through the hex text
+// (std.algebra total_order_by). The host sort_by orders digests by that text, so this is the same
+// order; it is total because the digest is its hex text (a lower_hex_16 refinement of String).
+fn fnv1a64_structural_digest_hex_total_order() -> TotalOrder<Fnv1a64StructuralDigestHex> {
+  total_order_by(order: string_total_order(), project: fn(d) { d as String })
 }
 
 fn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {
