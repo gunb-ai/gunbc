@@ -1319,7 +1319,7 @@ fn cas_slot_keys_over(fs: FilesystemInterface, root: NonEmptyStr) -> CasSlotKeys
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
     FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
     FilesystemDirectoryListed(listed) => {
-      let keys = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
+      let keys: List<NonEmptyStr> = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
         Absent => acc
         Present { value: k } => acc |> list_push(k)
       })
