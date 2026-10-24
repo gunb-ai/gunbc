@@ -138,6 +138,7 @@ use crate::v1_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding
 use self::WitnessCtorPathVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::AliasDeclArityVerdict::*;
+use self::CoproductWireContractTarget::*;
 use self::RecordLiteralPhantom::*;
 use self::SealReading::*;
 use self::ForwardedBoundClass::*;
@@ -4960,17 +4961,165 @@ pub fn variant_encoding_is_string_variant(
         == "StringVariant".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CoproductWireContractTarget {
+    ContractTargetDeclaration {
+        module_path: String,
+        decl_name: String,
+    },
+    ContractTargetUnreadable,
+}
+impl CoproductWireContractTarget {
+    pub fn module_path(&self) -> String {
+        match self {
+            CoproductWireContractTarget::ContractTargetDeclaration {
+                module_path: __val, ..
+            } => __val.clone(),
+            CoproductWireContractTarget::ContractTargetUnreadable => {
+                panic!("no module_path on unit variant")
+            }
+        }
+    }
+    pub fn decl_name(&self) -> String {
+        match self {
+            CoproductWireContractTarget::ContractTargetDeclaration {
+                decl_name: __val, ..
+            } => __val.clone(),
+            CoproductWireContractTarget::ContractTargetUnreadable => {
+                panic!("no decl_name on unit variant")
+            }
+        }
+    }
+}
+
+pub fn coproduct_wire_contract_target(
+    contract_item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CoproductWireContractTarget> {
+    match contract_item.body.clone() {
+        Some(body) => match field_value_by_name(
+            body.clone(),
+            "coproduct".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(decl_ref) => match record_string_field(
+                decl_ref.clone(),
+                "module_path".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(module_path) => match record_string_field(
+                    decl_ref.clone(),
+                    "decl_name".to_string(),
+                    source_indices.clone(),
+                ) {
+                    Some(decl_name) => {
+                        Rc::new(CoproductWireContractTarget::ContractTargetDeclaration {
+                            module_path: module_path.clone(),
+                            decl_name: decl_name.clone(),
+                        })
+                    }
+                    std::option::Option::None => {
+                        Rc::new(CoproductWireContractTarget::ContractTargetUnreadable)
+                    }
+                },
+                std::option::Option::None => {
+                    Rc::new(CoproductWireContractTarget::ContractTargetUnreadable)
+                }
+            },
+            std::option::Option::None => {
+                Rc::new(CoproductWireContractTarget::ContractTargetUnreadable)
+            }
+        },
+        std::option::Option::None => Rc::new(CoproductWireContractTarget::ContractTargetUnreadable),
+    }
+}
+
 pub fn coproduct_wire_contract_targets(
     contract_item: Rc<Node>,
+    module_name: String,
     coproduct_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match contract_item.body.clone() {
-        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
-            Some(target_name) => (target_name.clone() == coproduct_name.clone()),
-            std::option::Option::None => false,
+    match (*coproduct_wire_contract_target(contract_item.clone(), source_indices.clone())).clone() {
+        CoproductWireContractTarget::ContractTargetDeclaration {
+            module_path,
+            decl_name,
+            ..
+        } => {
+            ((module_path.clone() == module_name.clone())
+                && (decl_name.clone() == coproduct_name.clone()))
+        }
+        CoproductWireContractTarget::ContractTargetUnreadable => false,
+    }
+}
+
+pub fn build_coproduct_wire_contract_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
+    modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<Node>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, tm: Rc<TypedModule>| {
+            let si = tm.type_env.source_indices.clone();
+            let home_module = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
+            let imports = crate::v1_std_core::module_imports(tm.module.clone());
+            Rc::new({
+                let mut __result = Vec::new();
+                for item in tm.items.clone().iter().cloned() {
+                    if is_coproduct_wire_contract_row(
+                        item.clone(),
+                        tm.items.clone(),
+                        imports.clone(),
+                        si.clone(),
+                    ) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(
+                acc,
+                |row_acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, item: Rc<Node>| {
+                    let key =
+                        match (*coproduct_wire_contract_target(item.clone(), si.clone())).clone() {
+                            CoproductWireContractTarget::ContractTargetDeclaration {
+                                module_path,
+                                ..
+                            } => module_path.clone(),
+                            CoproductWireContractTarget::ContractTargetUnreadable => {
+                                home_module.clone()
+                            }
+                        };
+                    match v1_rt::map_get(&row_acc, key.clone()) {
+                        Some(prior) => v1_rt::rc_map_insert(
+                            row_acc.clone(),
+                            key.clone(),
+                            v1_rt::rc_list_push(prior.clone(), item.clone()),
+                        ),
+                        std::option::Option::None => v1_rt::rc_map_insert(
+                            row_acc.clone(),
+                            key.clone(),
+                            Rc::new(vec![item.clone()]),
+                        ),
+                    }
+                },
+            )
         },
-        std::option::Option::None => false,
+    )
+}
+
+pub fn coproduct_wire_contract_rows_for_module(
+    module_name: String,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(
+        &module_index.coproduct_wire_contracts.clone(),
+        module_name.clone(),
+    ) {
+        Some(rows) => rows.clone(),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -5111,114 +5260,69 @@ pub fn is_coproduct_wire_contract_row(
 
 pub fn emit_coproduct_wire_contract_target_validation(
     contract_item: Rc<Node>,
+    module_name: String,
     local_coproduct_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match contract_item.body.clone() {
-        Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
-            Some(target_name) => {
-                if {
-                    let mut __found = false;
-                    for name in local_coproduct_names.iter().cloned() {
-                        if (name.clone() == target_name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    "".to_string()
-                } else {
-                    emit_rust_compile_error_item(v1_rt::concat(
-                        "CoproductWireContract target does not name a local coproduct: "
-                            .to_string(),
-                        target_name.clone(),
-                    ))
-                }
-            }
-            std::option::Option::None => emit_rust_compile_error_item(
-                "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name"
-                    .to_string(),
-            ),
-        },
-        std::option::Option::None => emit_rust_compile_error_item(
-            "CoproductWireContract row missing initializer body".to_string(),
-        ),
-    }
+    match (*coproduct_wire_contract_target(contract_item.clone(), source_indices.clone())).clone() {
+    CoproductWireContractTarget::ContractTargetDeclaration { decl_name: target_name, .. } => if { let mut __found = false; for name in local_coproduct_names.iter().cloned() { if (name.clone() == target_name.clone()) { __found = true; break; } } __found } {
+        "".to_string()
+    } else {
+        emit_rust_compile_error_item(v1_rt::concat(v1_rt::concat(v1_rt::concat("CoproductWireContract target does not name a coproduct declared in ".to_string(), module_name.clone()), ": ".to_string()), target_name.clone()))
+    },
+    CoproductWireContractTarget::ContractTargetUnreadable => emit_rust_compile_error_item("CoproductWireContract.coproduct must be a DeclarationRef with string module_path and decl_name".to_string()),
+}
 }
 
 pub fn emit_coproduct_wire_contract_validations(
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
+    module_name: String,
+    contract_rows: Rc<Vec<Rc<Node>>>,
     local_coproduct_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((local_coproduct_names.clone().len() as i64) == 0) {
-        "".to_string()
-    } else {
-        Rc::new({
+    Rc::new({
+        let mut __result = Vec::new();
+        for text in Rc::new({
             let mut __result = Vec::new();
-            for text in Rc::new({
-                let mut __result = Vec::new();
-                for item in Rc::new({
-                    let mut __result = Vec::new();
-                    for item in module_items.clone().iter().cloned() {
-                        if is_coproduct_wire_contract_row(
-                            item.clone(),
-                            module_items.clone(),
-                            imports.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __result.push(item);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(emit_coproduct_wire_contract_target_validation(
-                        item.clone(),
-                        local_coproduct_names.clone(),
-                        source_indices.clone(),
-                    ));
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                if (text.clone() != "".to_string()) {
-                    __result.push(text);
-                }
+            for item in contract_rows.iter().cloned() {
+                __result.push(emit_coproduct_wire_contract_target_validation(
+                    item.clone(),
+                    module_name.clone(),
+                    local_coproduct_names.clone(),
+                    source_indices.clone(),
+                ));
             }
             __result
         })
-        .join(&"\n".to_string())
-    }
+        .iter()
+        .cloned()
+        {
+            if (text.clone() != "".to_string()) {
+                __result.push(text);
+            }
+        }
+        __result
+    })
+    .join(&"\n".to_string())
 }
 
-pub fn resolve_local_coproduct_wire_policy(
+pub fn resolve_contract_row_coproduct_wire_policy(
+    module_name: String,
     coproduct_name: String,
     all_unit_variants: bool,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
+    contract_rows: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<RustEnumWireSerde>> {
     {
         let contracts = Rc::new({
             let mut __result = Vec::new();
-            for item in module_items.clone().iter().cloned() {
-                if (is_coproduct_wire_contract_row(
+            for item in contract_rows.iter().cloned() {
+                if coproduct_wire_contract_targets(
                     item.clone(),
-                    module_items.clone(),
-                    imports.clone(),
-                    source_indices.clone(),
-                ) && coproduct_wire_contract_targets(
-                    item.clone(),
+                    module_name.clone(),
                     coproduct_name.clone(),
                     source_indices.clone(),
-                )) {
+                ) {
                     __result.push(item);
                 }
             }
@@ -5265,10 +5369,10 @@ pub fn resolve_local_coproduct_wire_policy(
 }
 
 pub fn resolve_emission_coproduct_wire_policy(
+    module_name: String,
     coproduct_name: String,
     item: Rc<Node>,
-    wire_items: Rc<Vec<Rc<Node>>>,
-    wire_imports: Rc<Vec<Rc<Node>>>,
+    contract_rows: Rc<Vec<Rc<Node>>>,
     wire_contract_item: Option<Rc<Node>>,
     scoped_data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5284,11 +5388,11 @@ pub fn resolve_emission_coproduct_wire_policy(
             }
             __all
         };
-        match resolve_local_coproduct_wire_policy(
+        match resolve_contract_row_coproduct_wire_policy(
+            module_name.clone(),
             coproduct_name.clone(),
             all_unit_variants.clone(),
-            wire_items.clone(),
-            wire_imports.clone(),
+            contract_rows.clone(),
             source_indices.clone(),
         ) {
             Some(local_policy) => local_policy.clone(),
@@ -5478,10 +5582,8 @@ pub fn build_data_variant_wire_spellings(
                     module_index.clone(),
                 ),
             );
-            let wire_imports = v1_rt::concat(
-                crate::v1_std_core::module_imports(tm.module.clone()),
-                contracts_imports.clone(),
-            );
+            let contract_rows =
+                coproduct_wire_contract_rows_for_module(module_name.clone(), module_index.clone());
             let scoped_data = augment_scoped_data_item_index_with_imports(
                 build_scoped_data_item_index(tm.clone(), data_items.clone()),
                 contracts_imports.clone(),
@@ -5521,10 +5623,10 @@ pub fn build_data_variant_wire_spellings(
                     let coproduct_name =
                         crate::v1_std_core::authored_name_at(si.clone(), item.clone());
                     let policy = resolve_emission_coproduct_wire_policy(
+                        module_name.clone(),
                         coproduct_name.clone(),
                         item.clone(),
-                        wire_items.clone(),
-                        wire_imports.clone(),
+                        contract_rows.clone(),
                         wire_contract_item.clone(),
                         scoped_data.clone(),
                         si.clone(),
@@ -10834,6 +10936,8 @@ pub fn emit_module_full(
                 module_index.clone(),
             ),
         );
+        let contract_rows =
+            coproduct_wire_contract_rows_for_module(this_module_name.clone(), module_index.clone());
         let wire_contract_item = Rc::new({
             let mut __result = Vec::new();
             for i in wire_context_items.iter().cloned() {
@@ -10862,7 +10966,7 @@ pub fn emit_module_full(
                     emit_info.clone(),
                     wire_contract_item.clone(),
                     scoped_data_items.clone(),
-                    wire_context_items.clone(),
+                    contract_rows.clone(),
                     wire_context_imports.clone(),
                     export_sets.clone(),
                     typed_modules.clone(),
@@ -11114,8 +11218,8 @@ pub fn emit_module_full(
             __result
         });
         let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
-            wire_context_items.clone(),
-            wire_context_imports.clone(),
+            this_module_name.clone(),
+            contract_rows.clone(),
             local_coproduct_names.clone(),
             scope.type_env.source_indices.clone(),
         );
@@ -11491,6 +11595,7 @@ pub struct ModuleIndex {
     pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
     pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
     pub leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
+    pub coproduct_wire_contracts: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 }
 
 pub fn build_module_index(
@@ -11540,6 +11645,7 @@ pub fn build_module_index(
             by_name: by_name.clone(),
             by_filename: by_filename.clone(),
             leaf_owner_modules: leaf_owner_modules.clone(),
+            coproduct_wire_contracts: build_coproduct_wire_contract_index(modules.clone()),
         })
     }
 }
@@ -16119,7 +16225,7 @@ pub fn emit_typed_item(
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-    module_items: Rc<Vec<Rc<Node>>>,
+    contract_rows: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
@@ -16186,8 +16292,7 @@ pub fn emit_typed_item(
                                 emit_info.clone(),
                                 wire_contract_item.clone(),
                                 data_items.clone(),
-                                module_items.clone(),
-                                imports.clone(),
+                                contract_rows.clone(),
                             ),
                         }
                     } else {
@@ -16896,8 +17001,7 @@ pub fn emit_type_def_from_connective(
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
+    contract_rows: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
@@ -17095,10 +17199,10 @@ pub fn emit_type_def_from_connective(
                     } else {
                         {
                             let serde_policy = resolve_emission_coproduct_wire_policy(
+                                env.module_path.clone(),
                                 item_text.clone(),
                                 item.clone(),
-                                module_items.clone(),
-                                imports.clone(),
+                                contract_rows.clone(),
                                 wire_contract_item.clone(),
                                 data_items.clone(),
                                 env.source_indices.clone(),
