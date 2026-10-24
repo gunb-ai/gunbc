@@ -16,7 +16,9 @@ import gunbc.live_deploy.desired {
   DesiredDeploymentUnknownInstanceId,
   DesiredDeploymentRosterRefused,
 }
-import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name }
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_attempt_unit_drain_path_unit_name }
+import gunbc.roadmap.spool_stall { spool_stall_clear_at, SpoolStallCleared, SpoolStallClearRefused }
+import gunbc.host.host_layout { attempt_unit_spool_stall_record_path }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
@@ -528,7 +530,7 @@ fn belt_exit_drain_cli() -> ProcessExit {
   })
 }
 
-// THE OPERATOR ROUTE OUT OF AN EXIT-SPOOL STALL (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_record_at).
+// THE OPERATOR ROUTE OUT OF AN EXIT-SPOOL STALL (gunbc.roadmap.roadmap_belt_actuate spool_stall_record_at).
 // Both verbs run as the drain's principal. `analyze` is read-only and exits non-zero while a stall is held,
 // printing why each recorded entry cannot leave. `release` re-attempts every recorded claim, and only when none
 // is still unmovable deletes the stall record and re-arms the failed path unit (the one privileged effect;
@@ -563,6 +565,33 @@ fn belt_exit_stall_release_cli() -> ProcessExit {
           BeltExitStallReleaseRefused { reason } => exit_failure(reason: join(["belt_exit_stall_release_cli: ", reason], ""))
         }
       }
+    })
+}
+
+// THE ATTEMPT-UNIT SPOOL'S ROUTE OUT OF A STALL: ONE verb, one privileged effect. The drain re-claims every
+// request when it runs again, so there is nothing for release to claim itself: it clears the record
+// (stalled/ is group-writable by the service principal, like requests/) and re-arms the failed path unit with
+// belt_exit_stall_rearm_at, the same census site as the exit spool's (the effect is identical: reset-failed
+// and start one named system path unit). If a request is still unmovable the drain stalls again at once,
+// writing a fresh record: unlike the exit spool's release (belt_exit_stall_release_at refuses while anything is
+// unmovable), the drain's next pass is this verb's verification (see gunbc.roadmap.spool_stall). A refused clear skips the re-arm; a refused re-arm is typed with the exact argv.
+fn attempt_unit_stall_release_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "attempt_unit_stall_release_cli", continuation: instance =>
+    match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+      DesiredDeploymentRosterRefused { refusal: r } =>
+        exit_failure(reason: join(["attempt_unit_stall_release_cli: desired roster refused: ", desired_roster_refusal_detail(refusal: r)], ""))
+      DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+        exit_failure(reason: join(["attempt_unit_stall_release_cli: no desired deployment for instance ", id], ""))
+      DesiredDeploymentFound { row: row } =>
+        match spool_stall_clear_at(record_path: attempt_unit_spool_stall_record_path(instance_root: instance.instance_root as String)) {
+          SpoolStallClearRefused { reason } => exit_failure(reason: join(["attempt_unit_stall_release_cli: the stall record was not cleared: ", reason], ""))
+          SpoolStallCleared =>
+            match belt_exit_stall_rearm_at(path_unit: deployment_attempt_unit_drain_path_unit_name(names: row.names)) {
+              BeltExitStallRearmed => ExitSuccess
+              BeltExitStallRearmRefused { argv, reason } =>
+                exit_failure(reason: join(["attempt_unit_stall_release_cli: the stall record is cleared but the re-arm was refused (", reason, "); run as a privileged operator: ", join(argv, " ")], ""))
+            }
+        }
     })
 }
 

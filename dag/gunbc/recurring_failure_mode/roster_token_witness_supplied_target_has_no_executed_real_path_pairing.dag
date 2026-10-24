@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.roster_token_witness_supplied_target_has_no_executed_real_path_pairing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data roster_token_witness_supplied_target_has_no_executed_real_path_pairing: RecurringFailureMode = RecurringFailureMode {
+  identity: "roster_token_witness_supplied_target_has_no_executed_real_path_pairing" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the call-reach walk (fn_arrow_decl_facts_live over the runner and fleet pool) completes inside the runner envelope, so it is enrolled on a lane or cadence that executes it to a terminal verdict on every change touching that pool." } },
+
+  receipts: [
+    "**the fleet-converge roster-token witness is handed the roster-reading target, and the pairing obligation (DESIGN 3) that the real producer emits that shape has never been executed to a verdict.** INVALID STATE: a new roster-reading target in the runner and fleet pool, or the supplied target ceasing to reach organization_runner_roster_live_read, turns nothing red. HARM: the witness stays green over a hypothesis the world has left.",
+
+    "POPULATION, DERIVED AND NOT TRANSCRIBED: every target in the runner and fleet pool that reaches the roster read, re-derived by `gunbc test //gunbc/instruments:roster-reach-inhabitance`, not only the one target the witness is handed.",
+
+    "RUNG FOUND AT: mitigatable. The real walk was introduced in #14772 inside the token witness, where it timed out on srv1 (over 64 minutes), then became the operator-dispatched instrument (120bac03d00). It has never run on a lane and no witness runs on the required path (gunbc.rung_drop v1_required_lanes_withdrawn), so mechanically preventable was never established by executed evidence. This is an unmet pairing, not a drop from a held rung.",
+
+    "MEASURED RECEIPT: gunbc.instruments.roster_reach_inhabitance at b5e586bfc2b on srv1 (20 GiB cap, swap 0) hit rc=124 at the 10800s timeout with memory.peak 20,807,602,176 bytes (19.4 GiB) and never left pre-entry. A proven cost-shape defect, named as the next-rung trigger, not a timeout to raise.",
+
+    "INTERIM INHABITANCE RECEIPT, to be linked when it exists and not claimed in advance: the first live fleet-converge runner_host_file_converge run on srv3 after #14814 lands, whose roster read must succeed through the real path.",
+
+    "CEILING: mechanically preventable. The walk is a lens over the call graph, so the invalid state stays writable and safety depends on the walk staying enrolled.",
+  ],
+
+  evidence: [],
+}

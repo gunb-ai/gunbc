@@ -42,7 +42,7 @@ import gunbc.host.smpro_platform_capability {
   MixedRosterWithoutInstalledSelection, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
-import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.toolchain.types { Aarch64 }
 import extdeps.cpu.ampere { altra_q6430_catalog, ampere_altra_soc_family, ampere_altra_max_soc_family }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
 import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
@@ -486,57 +486,8 @@ test fn w_a_board_admitting_carrying_and_non_carrying_families_is_unestablished(
   mixed && no_read && unanimous_still_carries && unanimous_no_still_absent
 }
 
-// ================================================================================================
-// THE SUPPLIED x86 SPECIMEN -- a witness input, NOT a corpus fact and NOT an observed machine.
-//
-// WHAT THIS IS. The fleet has NO x86 machine, so the claim 'an x86 machine is a valid controlled
-// machine' cannot be witnessed against a real one yet. Everything below is a SUPPLIED VALUE AT THE
-// INTERFACE UNDER TEST (DESIGN 3, 'a witness discriminates at one interface'): a board label, a vendor
-// name and a BMC firmware family invented for the purpose, deliberately kept in this test module and
-// NEVER in extdeps, never in a production roster, and never imported by production code. Nothing in
-// this file's production dependencies can see these names.
-//
-// WHAT IS REAL, AND WHY THAT IS WHAT THE CLAIM NEEDS. The claim is about the PLATFORM VERDICT, so the
-// part that decides it is the cited AMD silicon: x86_supplied_fixture_families carries the corpus's own
-// AMD SoC family, whose model rows are the cited 7950X3D catalog row (extdeps.cpu.amd). NotCarried is
-// therefore produced by the cited carrying set against real silicon facts, not by an invented platform
-// -- the fixture only supplies the board wrapper around it.
-//
-// RESTORATION TRIGGER (manager ruling, 2026-10-16). Real x86 hardware has arrived: 2x Supermicro
-// H11SSL-i REV 2.0 with 2x AMD EPYC 7702P (Rome, Zen 2, 64 cores), boards delivered 2026-10-16. When
-// an H11SSL-i's FRU, BMC and CPU reads are taken at arrival, THIS FIXTURE IS DELETED and the claims
-// re-point at the observed machine: a Supermicro board module in extdeps (board row + authority + FRU
-// receipt from the read bytes), a board->SoC edge for it, and an EPYC 7702P silicon row in
-// extdeps.cpu.amd citing AMD's own product documentation. Those rows are authored FROM THE READS AND
-// CITED VENDOR DOCUMENTS -- not from anyone's memory of the specifications. Until then this file is the
-// only place these names exist, and the PR says so.
-// ================================================================================================
-
-// THE SUPPLIED BOARD LABEL. A hypothesis for the interface under test, named as such; it is not a
-// Supermicro product claim and must never be read as one.
-data x86_supplied_fixture_board_label: NonEmptyStr = "SUPPLIED-FIXTURE-x86-Board-NotObserved"
-
-// THE SUPPLIED SoC ROSTER: one family, the corpus's cited AMD family, so the NotCarried verdict is
-// produced by real silicon facts. Not a fleet claim: no board in the corpus admits it.
-data x86_supplied_fixture_families: FreeSemigroup<SoCFamily> = FreeSemigroup {
-  head: amd_7950x3d_soc_family,
-  tail: [],
-}
-
-test fn w_an_x86_platform_with_no_smpro_facility_is_not_carried_by_the_cited_set() -> Bool {
-  // The supplied roster's verdict comes from the cited carrying set applied to the cited AMD family.
-  match smpro_facility_of_families(families: x86_supplied_fixture_families) {
-    SmproFacilityNotCarried { family: f } =>
-      // the family answered negatively is the AMD family itself, and it really is x86 silicon
-      soc_family_eq(a: f, b: amd_7950x3d_soc_family)
-      && match soc_family_architecture(family: amd_7950x3d_soc_family) {
-        Present { value: a } => a == X86_64
-        Absent => false
-      }
-    SmproFacilityCarried { family: _ } => false
-    SmproFacilityUnestablished { cause: _ } => false
-  }
-}
+// The supplied x86 stand-in that stood here is dissolved: the x86 NotCarried verdict is witnessed against
+// the cited H11SSL edge in gunbc test claim host h11ssl_smpro_platform_witness.
 
 // RED (review 81149, finding 3): A FAMILY ROW THAT MERELY SPELLS ITS NAME 'Altra' DOES NOT CARRY SMpro.
 // Membership was first decided by comparing `name`, which handed the SMpro facility to any row that
@@ -842,8 +793,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // hold, same receipt, same allocation set. The platform arm is the ONLY difference.
       let carried = project_managed_host_admission(
         record: r,
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       let carried_is_a_member = match carried {
@@ -862,14 +812,13 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // claim goes RED.
       let not_carried = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, subject: r.subject, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
           smpro: SmproPlatformNotCarried { family: amd_7950x3d_soc_family },
           receipt: r.receipt,
-          current_subject: Present { value: r.subject },
+          current_subject: Present { value: r.binding.subject },
           covering_drop: r.covering_drop,
         ),
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       let not_carried_is_a_member = match not_carried {
@@ -886,28 +835,26 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       // witness would have caught it. Now one does, in both directions.
       let site_refused = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, subject: r.subject, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
           smpro: SmproPlatformSiteRefused {
             family: ampere_altra_soc_family, cause: SiteHasNoTargets,
           },
           receipt: r.receipt,
-          current_subject: Present { value: r.subject },
+          current_subject: Present { value: r.binding.subject },
           covering_drop: r.covering_drop,
         ),
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       let unknown = project_managed_host_admission(
         record: managed_host_admission(
-          host: r.host, subject: r.subject, access: r.access, secure: r.secure, hold: r.hold,
+          host: r.host, binding: r.binding, access: r.access, secure: r.secure, hold: r.hold,
           smpro: SmproPlatformUnestablished { cause: NoBoardRowBound { endpoint: fixture_bmc_endpoint } },
           receipt: r.receipt,
-          current_subject: Present { value: r.subject },
+          current_subject: Present { value: r.binding.subject },
           covering_drop: r.covering_drop,
         ),
-        current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
+        current_subject: Present { value: r.binding.subject },
         allocations: gunbc_fleet_hostname_allocations,
       )
       // Two separate bindings, not one && of two matches: a match nested inside a boolean operand does
