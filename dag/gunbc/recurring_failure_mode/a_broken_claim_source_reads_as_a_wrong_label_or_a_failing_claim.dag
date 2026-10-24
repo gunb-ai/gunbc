@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim: RecurringFailureMode = RecurringFailureMode {
   identity: "a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of the module index returning a typed result for an unreadable or header-less claim source instead of exiting or classifying it as ModuleBindingUnclassified" } },
 
   receipts: [
     "INVALID STATE: a .dag under the claim root that the module index cannot read, selected by `gunbc test //test/claim/x:c`. HARM: the verdict names the wrong cause. A header-bearing file that fails to parse stopped the whole process with `module index refused` and exit 1 (`did not hold`, a claim ran and failed) for EVERY label, healthy or misspelled; a file with no recognized `module` header was silently dropped by the index and the label read `the pattern selected no discovered claim` (exit 2), indistinguishable from a typo. Paths follow names (DESIGN section 3), so a file whose declaration cannot be read cannot be selected.",
