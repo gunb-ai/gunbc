@@ -8,7 +8,7 @@ import std.types { SourceSpan, container_param_name }
 import std.syntax { LiteralValue }
 
 import v1.std.core { Unmarked,
-  Node, ModuleItemFunction, ModuleItemTypeDeclaration, ResolvedArguments, ExpandedDeclarationBody,
+  Node, ModuleItemFunction, ModuleItemTypeDeclaration, AuthoredArguments, ResolvedArguments, ExpandedDeclarationBody,
   authored_name_at, NewlineIndex,
   make_param_node, make_resolved_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
   generic_param_name_at,
@@ -510,10 +510,11 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
 
 // A use that supplies arguments to a parameterless alias: the arguments bind to nothing, so the application is
 // refused by arity (expected 0) at the type position, not read as a use of the generic its right-hand side expands to.
-// A node carrying a `declaration` is a producer-built expansion of one (is_applied_declaration_carrier reads the same
-// fact), not a written use; only a written use, whose declaration is still none, is judged here.
+// Only a written use, whose role is AuthoredArguments, is judged here: a producer-built expansion (an alias expansion
+// names the alias and carries the right-hand side's arguments, with or without a declaration) has role
+// ResolvedArguments or ExpandedDeclarationBody and its arity was already judged at the written use.
 fn is_paramless_alias_use(n: Node, env: TypeEnv) -> Bool {
-  n.connective == NoConnective && (n.children |> count) > 0 && n.declaration == none && match lookup_type_for(env: env, node: n) {
+  n.connective == NoConnective && (n.children |> count) > 0 && n.application_role == Present { value: AuthoredArguments } && match lookup_type_for(env: env, node: n) {
     Present { value: used } => used.params |> count == 0 && used.connective == NoConnective
     Absent => false
   }
