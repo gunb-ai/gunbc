@@ -301,6 +301,20 @@ data approval_enrolment_is_google_sign_in: DesignRuling = DesignRuling {
   provenance: "Operator, via wise-bat-528 to clever-eagle-893: 'i think this all just sucks - can i just log in to google oidc on my phone? and thats all?' ... 'thats fine - please do it now, can you basically remove everything except google enrollment'. Google sign-in on the phone IS enrolment of the approval app: one native iOS OIDC sign-in, in the same step the app creates its Secure-Enclave decision key (Face ID gated) and App Attest key and registers them bound to the verified Google identity. Each approval stays Face ID plus a signature by that key. Removed, delete-first: enrolment codes, QR, SSH issuance, ntfy code delivery, the fleet-converge issue mode, and the SubmissionUnknown/re-read app machinery. App states are signed-out, enrolled, revoked; a failed sign-in is only 'sign in again'. The server notifies on each new device and lists devices with revoke. The broker process is unchanged; only enrolment is replaced.",
 }
 
+// THE DRAIN BOUND IS DERIVED, NOT RATIFIED AS A NUMBER (2026-10-23). The row at
+// gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy carried a ratified literal
+// (wait_bound 2700s) on the premise that 'no source declares the longest job'. The premise is false:
+// the fleet-targeted generated workflows declare job timeouts (gunbc.witness.compiler_gate_workflow
+// compiler_gate_emit_build_timeout_minutes = 90, and a v2-bootstrap job runs ~55 minutes), and the
+// literal bit srv3 cap converge run 39961292233 — every cap withheld on 'the drain bound of 2700s
+// was exceeded' while honest work ran.
+data drain_wait_bound_is_derived_from_declared_job_timeouts: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts"),
+  decided: "2026-10-23",
+  section: "Self-hosting and the fleet",
+  provenance: "Operator ruling 2026-10-23, relayed by sleek-owl-397: wait_bound in gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy is DERIVED from the declared job timeouts of the fleet-targeted generated workflows (90 min today, plus the poll interval); it replaces the 2700s literal. The population rule was ruled by clever-crane-830 the same day: a job is in the fold iff its runner selects the fleet pool AND its workflow's modeled trigger set holds an autonomous trigger (push, pull_request, schedule, merge_group, workflow_call, workflow_run) — the work GitHub can park on a slot with no operator at the keyboard. Dispatch-only fleet jobs (instrument-dispatch, fleet-converge's build) are excluded by the same predicate, with the residual declared: if one is running when a drain starts it can exceed the bound and the bracket refuses typed (caps withheld), fail-closed, the dispatching operator owning the sequencing. The fold lives at gunbc.runner.runner_fleet_job_timeout_census; the control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if a population member's declared timeout exceeds the bound.",
+}
+
 data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
@@ -329,8 +343,16 @@ data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = Desi
   provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
 }
 
+data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products"),
+  decided: "2026-10-09",
+  section: "Building & checks",
+  provenance: "Operator ruling with the v1 withdrawal (gunbc#13658, second round: the required job \"requires fresh emission/build of both retained products\"): the subjects of gunbc.emitted_subject_build_gate emitted_subject_build_rows are the two retained compiler products, //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, and a third subject row is a growth the operator vetoed. Until 2026-10-24 the veto lived only as a comment on test.claim.compiler_gate_emit_build_lane_witness the_job_runs_both_retained_emit_build_subjects, which quotes the roster as remaining the two compiler products; that comment landed in gunbc#13641 and its quotation has no other source in the repository. Re-raised and confirmed on 2026-10-24 by merry-fox-82 when gunbc#14984 built a native control over gunbc.fleet.fleet_convergence_verdict: it stays run by name, and enrolling it would reverse this ruling and goes to the operator.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    emit_build_subjects_are_the_two_compiler_products,
     job_roster_closed_to_growth,
     runner_listener_admission_is_mask_roster_and_no_worker,
     runner_host_sudoers_is_installed,
@@ -374,6 +396,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
     approval_enrolment_is_google_sign_in,
+    drain_wait_bound_is_derived_from_declared_job_timeouts,
   ]
 }
 
