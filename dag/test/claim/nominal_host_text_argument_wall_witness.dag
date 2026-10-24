@@ -63,6 +63,8 @@ data control_declared_conversion_source: String = "module probe_host_text_declar
 
 data control_kernel_scalars_source: String = "module probe_host_text_kernel_scalars\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(i: Int, n: Nat, b: Bool, is: List<Int>, ns: List<Nat>, bs: List<Bool>) -> String { concat(concat(concat(\"i=\", i), concat(\"n=\", n)), concat(concat(\"b=\", b), concat(join(is, \",\"), concat(join(ns, \",\"), join(bs, \",\"))))) }\n"
 
+data control_local_join_parameter_source: String = "module probe_host_text_local_join\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn combine(join: fn(P, P) -> P, p: P) -> P { join(p, p) }\n"
+
 test fn a_record_at_concat_is_refused() -> Bool {
   refusals(source: concat_record_source, subject: "nominal P at host text 'b' of concat: no declared conversion") == 1
 }
@@ -109,4 +111,8 @@ test fn control_declared_conversion_is_accepted() -> Bool {
 
 test fn control_kernel_int_nat_bool_stay_accepted_by_decision() -> Bool {
   blocking_total(source: control_kernel_scalars_source) == 0
+}
+
+test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {
+  blocking_total(source: control_local_join_parameter_source) == 0
 }
