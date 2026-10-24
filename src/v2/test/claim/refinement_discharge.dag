@@ -5,9 +5,10 @@ import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
+import std.algebra { Cons, Empty }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { binder_edge }
 
@@ -172,32 +173,32 @@ test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
   }
 }
 
-// LOCATOR for the two standing-red controls above: the verdict of the DIRECT application per body. discharge's
-// own head is read (bind_outcome's pending-first order and the evaluator diagnostics BEHIND an undischargeable
-// refusal make the tail the evaluator's, not the verdict). 0 infer refused the application, 1 admitted,
-// 2 undischargeable behind a runtime binding lookup miss, 3 violated, 4 other, 5 undischargeable behind another cause.
-fn rdt_verdict_code(o: Optional<Outcome<InferredTree>>) -> Int {
-  match o {
-    Absent => 0
-    Present { value: Accepted { value: _, diagnostics: _ } } => 1
+// LOCATOR (to be deleted with the repair of the two controls above): the evaluator's own first reason BEHIND the
+// undischargeable refusal of the direct true-body application.
+fn rdt_behind_is(reason: Symbol) -> Bool {
+  match rdt_discharged(body: rdt_true()) {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => false
     Present { value: Rejected { diagnostics: d } } =>
-      if d.head.reason == ^refinement_obligation_undischargeable {
-        if diagnostics_fatal_reason(d: d) == ^eval_rejected_runtime_binding_lookup_miss { 2 } else { 5 }
+      match d.tail {
+        Cons { head: x, tail: _ } => x.reason == reason
+        Empty => false
       }
-      else if d.head.reason == ^refinement_predicate_violated { 3 }
-      else { 4 }
   }
 }
 
-test fn rdt_locator_true_body_code_is_0_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 0 }
-test fn rdt_locator_true_body_code_is_1_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 1 }
-test fn rdt_locator_true_body_code_is_2_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 2 }
-test fn rdt_locator_true_body_code_is_3_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 3 }
-test fn rdt_locator_true_body_code_is_4_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 4 }
-test fn rdt_locator_false_body_code_is_0_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 0 }
-test fn rdt_locator_false_body_code_is_1_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 1 }
-test fn rdt_locator_false_body_code_is_2_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 2 }
-test fn rdt_locator_false_body_code_is_3_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 3 }
-test fn rdt_locator_false_body_code_is_4_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 4 }
-test fn rdt_locator_true_body_code_is_5_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 5 }
-test fn rdt_locator_false_body_code_is_5_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 5 }
+test fn rdt_locator_behind_is_type_node_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_type_node) }
+test fn rdt_locator_behind_is_grounding_not_derived_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_grounding_not_derived) }
+test fn rdt_locator_behind_is_callee_absent_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_callee_absent) }
+test fn rdt_locator_behind_is_parameter_reference_unbound_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_parameter_reference_unbound) }
+test fn rdt_locator_behind_is_unsupported_callee_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_unsupported_callee) }
+test fn rdt_locator_behind_is_argument_bind_absent_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_argument_bind_absent) }
+test fn rdt_locator_behind_is_pending_children_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_pending_children) }
+test fn rdt_locator_behind_is_invalid_node_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_invalid_node) }
+test fn rdt_locator_behind_is_resolved_type_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_resolved_type_mismatch) }
+test fn rdt_locator_behind_is_canonical_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_canonical_mismatch) }
+test fn rdt_locator_behind_is_bind_body_absent_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_bind_body_absent) }
+test fn rdt_locator_behind_is_argument_arity_excess_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_argument_arity_excess) }
+test fn rdt_locator_behind_is_runtime_value_node_unrepresentable_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_runtime_value_node_unrepresentable) }
+test fn rdt_locator_behind_is_inhabitance_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_inhabitance_mismatch) }
+test fn rdt_locator_behind_is_grounding_node_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_grounding_node_mismatch) }
