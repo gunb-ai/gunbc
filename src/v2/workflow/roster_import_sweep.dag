@@ -195,6 +195,11 @@ type RosterRefusalReason
   // module that declares that type, or the type's variants did not read): a file whose renamed call it would govern
   // refuses rather than leaving the result matched by ambient tags that bind it untyped.
   | RefusalCompanionUnderivable { call: String, detail: String }
+  // TWO PLANNED EDITS OF ONE FILE THAT ARE NOT DISJOINT: a replacement whose extent covers another edit's start, or two
+  // zero-width insertions at one offset. Applied last-first, either would be last-writer-wins on the same bytes, so the
+  // plan refuses before any splice and names the extents.
+  | RefusalEditsOverlap { start: Int, end: Int, reach: Int }
+  | RefusalEditsCoincide { at: Int }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -232,6 +237,8 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalScopeSelectsNoRow { home: h, selection: sel } => "scope-selects-no-row home=" + h + " " + sel
     RefusalScopeSelectsSeveralRows { home: h, call: c, count: n } => "scope-selects-several-rows home=" + h + " call=" + c + " rows=" + int_to_decimal_string(value: n)
     RefusalRenameCallArity { call: c } => "rename-call-arity call=" + c
+    RefusalEditsOverlap { start: st, end: en, reach: re } => "edits-overlap start=" + int_to_decimal_string(value: st) + " end=" + int_to_decimal_string(value: en) + " covered-to=" + int_to_decimal_string(value: re)
+    RefusalEditsCoincide { at: a } => "edits-coincide at=" + int_to_decimal_string(value: a)
     RefusalRenameCallNamedArgument { call: c } => "rename-call-named-argument call=" + c
     RefusalCompanionUnderivable { call: c, detail: d } => "companion-underivable call=" + c + " " + d
   }
@@ -1317,9 +1324,49 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
   // its argument insertions, and a call nested in another's argument, are planned call by call, so the plan is put in
   // byte order once here. At one byte, a zero-width insertion sorts before the replacement starting there: applied
   // last-first, the replacement lands first and the label is then inserted in front of it.
+  // The sorted plan must then be pairwise disjoint (roster_label_edits_disjoint), or it refuses: the order alone does not
+  // make two edits of the same bytes safe.
   match planned {
-    LabelsSelected { edits: es } => LabelsSelected { edits: list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order()) }
+    LabelsSelected { edits: es } => roster_label_edits_disjoint(edits: list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order()))
     other => other
+  }
+}
+
+// THE DISJOINT-EDIT INVARIANT over a plan in source order. `reach` is the furthest end of any replacement already
+// scanned, so an edit starting before it lies inside that replacement; `insert_at` is the last zero-width insertion's
+// offset, so a second insertion there coincides. A zero-width insertion at a replacement's start (sorted before it) and
+// any edit starting exactly at an earlier one's end are disjoint and pass.
+type RosterEditScan {
+  reach: Int
+  insert_at: Optional<Int>
+  refused: Optional<RosterRefusalReason>
+}
+
+fn roster_label_edits_disjoint(edits: List<RosterLabelEdit>) -> RosterLabelPlan {
+  let scan = fold_list(xs: edits, empty: RosterEditScan { reach: 0, insert_at: Absent, refused: Absent }, cons: fn(acc, e) {
+    match acc.refused {
+      Present { value: _ } => acc
+      Absent =>
+        if e.start < acc.reach {
+          RosterEditScan { reach: acc.reach, insert_at: acc.insert_at, refused: Present { value: RefusalEditsOverlap { start: e.start, end: e.end, reach: acc.reach } } }
+        } else if e.start == e.end {
+          match acc.insert_at {
+            Present { value: at } =>
+              if at == e.start {
+                RosterEditScan { reach: acc.reach, insert_at: acc.insert_at, refused: Present { value: RefusalEditsCoincide { at: e.start } } }
+              } else {
+                RosterEditScan { reach: acc.reach, insert_at: Present { value: e.start }, refused: Absent }
+              }
+            Absent => RosterEditScan { reach: acc.reach, insert_at: Present { value: e.start }, refused: Absent }
+          }
+        } else {
+          RosterEditScan { reach: e.end, insert_at: acc.insert_at, refused: Absent }
+        }
+    }
+  })
+  match scan.refused {
+    Present { value: r } => LabelsRenameRefused { reason: r }
+    Absent => LabelsSelected { edits: edits }
   }
 }
 
@@ -1892,6 +1939,7 @@ fn roster_controls_report() -> String {
         + roster_kind_controls(prepared: prepared, lex: dag_prepared_lex())
         + roster_rename_controls(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_positional_past_unreadable()
+        + roster_control_edits_disjoint()
         + roster_control_edit_splices()
         + roster_control_generation()
         + roster_control_status_names()
@@ -2252,6 +2300,35 @@ type RosterSynthCapture
   = SynthCaptured { node: Node }
   | SynthCaptureMissing
   | SynthCaptureAmbiguous { first: Node, second: Node }
+
+// THE DISJOINT-EDIT CONTROLS, at the invariant's own interface (supplied edit plans; the planner's real route reaches it
+// through every rename and label control above). REDs: two zero-width insertions at one offset, and a replacement that
+// covers another edit's start. Positives: the rename shape (an insertion at a replacement's start, then insertions after
+// it) and two adjacent replacements.
+fn roster_control_edits_disjoint() -> String {
+  roster_edits_disjoint_expect(name: "edits-coincide", edits: [roster_edit_insert(at: 4), roster_edit_insert(at: 4)], want: "edits-coincide at=4")
+    + roster_edits_disjoint_expect(name: "edits-overlap", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_replace(start: 5, end: 7)], want: "edits-overlap start=5 end=7 covered-to=9")
+    + roster_edits_disjoint_expect(name: "edits-insert-inside-replacement", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_insert(at: 5)], want: "edits-overlap start=5 end=5 covered-to=9")
+    + roster_edits_disjoint_expect(name: "edits-rename-shape", edits: [roster_edit_insert(at: 3), roster_edit_replace(start: 3, end: 10), roster_edit_insert(at: 11), roster_edit_insert(at: 15)], want: "")
+    + roster_edits_disjoint_expect(name: "edits-adjacent-replacements", edits: [roster_edit_replace(start: 0, end: 4), roster_edit_replace(start: 4, end: 8)], want: "")
+}
+
+fn roster_edit_insert(at: Int) -> RosterLabelEdit {
+  RosterLabelEdit { start: at, end: at, from: "", to: "k: " }
+}
+
+fn roster_edit_replace(start: Int, end: Int) -> RosterLabelEdit {
+  RosterLabelEdit { start: start, end: end, from: "x", to: "y" }
+}
+
+fn roster_edits_disjoint_expect(name: String, edits: List<RosterLabelEdit>, want: String) -> String {
+  let got = match roster_label_edits_disjoint(edits: edits) {
+    LabelsRenameRefused { reason: r } => roster_refusal_text(reason: r)
+    LabelsSelected { edits: _ } => ""
+    LabelsAmbiguous => "ambiguous"
+  }
+  if got == want { "" } else { "CONTROL-FAIL " + name + ": want '" + want + "', got '" + got + "'\n" }
+}
 
 fn roster_control_positional_past_unreadable() -> String {
   let call = roster_synth_conj(children: [
