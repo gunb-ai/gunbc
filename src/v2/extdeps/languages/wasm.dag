@@ -88,6 +88,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert, map_contains_key }
 import v2.std.algebra_structure_signature { approximate_field_type_node, commutative_semiring_type_node }
@@ -329,7 +330,7 @@ fn wasm_float_inhabitant_for_facts(facts: WasmFloatPrimitiveFacts) -> Node {
 }
 
 fn wasm_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn wasm_int_numeric_immediate_node(

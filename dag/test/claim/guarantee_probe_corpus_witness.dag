@@ -2,7 +2,7 @@ module test.claim.guarantee_probe_corpus_witness
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit }
-import gunbc.compile_census_probe { any_class_census, census_verdict, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
+import gunbc.compile_census_probe { any_class_census, blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
 import std.materialization_ladder { string_list_contains }
 import gunbc.guarantee_probe_corpus {
   guarantee_probe_corpus_charter_note,
@@ -63,8 +63,6 @@ import gunbc.guarantee_probe_corpus {
   ProbeRowResolved,
   ProbeRowUnknown,
   ProbeRowDuplicate,
-  census_blocking_count_for_class,
-  census_any_count_for_class,
   census_blocking_rows,
   census_total_count,
   CensusObserved,
@@ -300,34 +298,32 @@ test fn duplicate_probe_id_reds_registry() -> Bool {
 }
 
 test fn probe_set_digest_is_stable() -> Bool {
-  let a = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
-  let b = probe_set_digest(probe_ids: guarantee_probe_ids()) as String
+  let a = probe_set_digest(probe_ids: guarantee_probe_ids()).digest
+  let b = probe_set_digest(probe_ids: guarantee_probe_ids()).digest
   a == b && a != ""
 }
 
-test fn bare_none_scalar_red_refuses_blocking_field_admission() -> Bool {
+test fn bare_none_scalar_red_refuses_blocking_field_admission() -> ProcessExit {
   let census = census_of(source: bare_none_scalar_red_source)
   match active_probe_row(probe: bare_none_scalar_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
-          Present { value: n } => n == 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: bare_none_scalar_red_source, wanted_class: "BareNoneNotAdmittedByFieldType"), holds: fn(n) { n == 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
-test fn bare_none_collection_red_refuses_blocking_field_admission() -> Bool {
+test fn bare_none_collection_red_refuses_blocking_field_admission() -> ProcessExit {
   let census = census_of(source: bare_none_collection_red_source)
   match active_probe_row(probe: bare_none_collection_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
-          Present { value: n } => n == 2
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: bare_none_collection_red_source, wanted_class: "BareNoneNotAdmittedByFieldType"), holds: fn(n) { n == 2 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -339,12 +335,8 @@ test fn bare_none_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> Bool {
-  let census = census_of(source: bare_none_generic_parameter_boundary_source)
-  match census_blocking_count_for_class(census: census, wanted: "BareNoneNotAdmittedByFieldType") {
-    Present { value: n } => n == 0
-    Absent => false
-  }
+test fn bare_none_generic_parameter_field_is_outside_the_wall_boundary() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: bare_none_generic_parameter_boundary_source, wanted_class: "BareNoneNotAdmittedByFieldType"), holds: fn(n) { n == 0 }))
 }
 
 test fn bare_none_red_does_not_satisfy_green_expectation() -> Bool {
@@ -361,16 +353,15 @@ test fn bare_none_red_does_not_satisfy_green_expectation() -> Bool {
   }
 }
 
-test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> Bool {
+test fn call_mislabel_red_refuses_blocking_call_argument_name_unknown() -> ProcessExit {
   let census = census_of(source: call_mislabel_source)
   match active_probe_row(probe: call_mislabel_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "CallArgumentNameUnknown") {
-          Present { value: n } => n >= 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: call_mislabel_source, wanted_class: "CallArgumentNameUnknown"), holds: fn(n) { n >= 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -382,16 +373,15 @@ test fn call_surplus_red_refuses_blocking_call_positional_surplus() -> Bool {
   }
 }
 
-test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> Bool {
+test fn call_deficit_red_refuses_blocking_call_positional_deficit() -> ProcessExit {
   let census = census_of(source: call_deficit_source)
   match active_probe_row(probe: call_deficit_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "CallPositionalDeficit") {
-          Present { value: n } => n >= 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: call_deficit_source, wanted_class: "CallPositionalDeficit"), holds: fn(n) { n >= 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -424,33 +414,24 @@ test fn formal_selection_named_then_positional_mixed_call_compile_clean() -> Boo
   }
 }
 
-test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> Bool {
+test fn call_duplicate_red_refuses_blocking_call_argument_duplicate() -> ProcessExit {
   let census = census_of(source: call_duplicate_red_source)
   match active_probe_row(probe: call_duplicate_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-          Present { value: n } => n >= 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: call_duplicate_red_source, wanted_class: "CallArgumentDuplicate"), holds: fn(n) { n >= 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
-test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> Bool {
-  let census = census_of(source: call_duplicate_mixed_red_source)
-  match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+test fn call_duplicate_mixed_positional_named_red_refuses_blocking_call_argument_duplicate() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: call_duplicate_mixed_red_source, wanted_class: "CallArgumentDuplicate"), holds: fn(n) { n >= 1 }))
 }
 
-test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> Bool {
-  let census = census_of(source: call_duplicate_named_then_positional_red_source)
-  match census_blocking_count_for_class(census: census, wanted: "CallArgumentDuplicate") {
-    Present { value: n } => n >= 1
-    Absent => false
-  }
+test fn call_duplicate_named_then_positional_red_refuses_blocking_call_argument_duplicate() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: call_duplicate_named_then_positional_red_source, wanted_class: "CallArgumentDuplicate"), holds: fn(n) { n >= 1 }))
 }
 
 test fn call_duplicate_green_control_has_zero_diagnostics() -> Bool {
@@ -494,16 +475,15 @@ test fn call_duplicate_red_does_not_satisfy_mislabel_or_surplus_expectation() ->
   }
 }
 
-test fn method_missing_red_refuses_blocking_method_not_found() -> Bool {
+test fn method_missing_red_refuses_blocking_method_not_found() -> ProcessExit {
   let census = census_of(source: method_missing_source)
   match active_probe_row(probe: method_missing_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
-          Present { value: n } => n >= 3
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: method_missing_source, wanted_class: "MethodNotFound"), holds: fn(n) { n >= 3 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -515,16 +495,15 @@ test fn method_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> Bool {
+test fn conformance_scalar_red_refuses_blocking_type_mismatch() -> ProcessExit {
   let census = census_of(source: conformance_scalar_red_source)
   match active_probe_row(probe: conformance_scalar_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
-          Present { value: n } => n >= 2
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: conformance_scalar_red_source, wanted_class: "TypeMismatch"), holds: fn(n) { n >= 2 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -536,16 +515,15 @@ test fn conformance_green_control_has_zero_diagnostics() -> Bool {
   }
 }
 
-test fn sole_constructor_forged_literal_red_refuses() -> Bool {
+test fn sole_constructor_forged_literal_red_refuses() -> ProcessExit {
   let census = census_of(source: sole_ctor_forged_source)
   match active_probe_row(probe: sole_ctor_forged_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "SoleConstructorViolation") {
-          Present { value: n } => n >= 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: sole_ctor_forged_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -557,29 +535,27 @@ test fn sole_constructor_sanctioned_mint_green_control_has_zero_diagnostics() ->
   }
 }
 
-test fn sole_constructor_cross_module_cast_red_refuses() -> Bool {
+test fn sole_constructor_cross_module_cast_red_refuses() -> ProcessExit {
   let census = census_of(source: sole_ctor_cast_source)
   match active_probe_row(probe: sole_ctor_cast_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "SoleConstructorViolation") {
-          Present { value: n } => n >= 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: sole_ctor_cast_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
-test fn sole_constructor_unadmitted_caller_red_refuses() -> Bool {
+test fn sole_constructor_unadmitted_caller_red_refuses() -> ProcessExit {
   let census = census_of(source: sole_ctor_unadmitted_caller_source)
   match active_probe_row(probe: sole_ctor_unadmitted_caller_red_probe) {
     Present { value: row } =>
-      probe_row_expectation_holds(census: census, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "ConstructorCallAdmissionRefused") {
-          Present { value: n } => n >= 1
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the probe row's expectation holds", holds: probe_row_expectation_holds(census: census, row: row)),
+        census_verdict(census: blocking_class_census(source: sole_ctor_unadmitted_caller_source, wanted_class: "ConstructorCallAdmissionRefused"), holds: fn(n) { n >= 1 })
+      ])
+    Absent => census_exit(census_premise(name: "the active probe row exists", holds: false))
   }
 }
 
@@ -635,7 +611,7 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
   }
 }
 
-test fn blocking_refusal_observation_is_a_verdict() -> Bool {
+test fn blocking_refusal_observation_is_a_verdict() -> ProcessExit {
   let census = census_of(source: method_missing_source)
   match active_v1_compile_probe_row(probe: method_missing_red_probe) {
     Present { value: row } =>
@@ -645,13 +621,12 @@ test fn blocking_refusal_observation_is_a_verdict() -> Bool {
         subject_revision: synthetic_program_subject_revision(source: method_missing_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      observed_is_verdict(o: receipt.observed)
-        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-        && match census_blocking_count_for_class(census: census, wanted: "MethodNotFound") {
-          Present { value: n } => observation_refused_count(o: receipt.observed) == n
-          Absent => false
-        }
-    Absent => false
+      census_verdict_all([
+        census_premise(name: "the receipt observation is a verdict", holds: observed_is_verdict(o: receipt.observed)),
+        census_premise(name: "the receipt matches the probe row", holds: receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)),
+        census_verdict(census: blocking_class_census(source: method_missing_source, wanted_class: "MethodNotFound"), holds: fn(n) { observation_refused_count(o: receipt.observed) == n })
+      ])
+    Absent => census_exit(census_premise(name: "the active v1 compile probe row exists", holds: false))
   }
 }
 
@@ -670,23 +645,24 @@ test fn green_control_observation_is_accepted_clean() -> Bool {
   }
 }
 
-test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> Bool {
-  let advisory_only = CensusObserved {
-    rows: [{
-      diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr,
-      subject_name: "probe" as String,
-      blocking: false,
-      count: 1,
-    }],
-  }
-  !probe_expectation_holds(
-    census: advisory_only,
-    expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
-  )
-    && match census_any_count_for_class(census: advisory_only, wanted: "CallArgumentNameUnknown") {
-      Present { value: n } => n >= 1
-      Absent => false
-    }
+test fn advisory_demotion_would_not_satisfy_blocking_expectation() -> ProcessExit {
+  let advisory_rows = [{
+    diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr,
+    subject_name: "probe" as String,
+    blocking: false,
+    count: 1,
+  }]
+  let advisory_only = CensusObserved { rows: advisory_rows }
+  census_verdict_all([
+    census_premise(
+      name: "an advisory-only row does not satisfy the blocking expectation",
+      holds: !probe_expectation_holds(
+        census: advisory_only,
+        expectation: ExpectBlockingRefusal { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr },
+      ),
+    ),
+    census_verdict(census: CensusObserved { rows: census_rows_of_class(rows: advisory_rows, wanted: "CallArgumentNameUnknown") }, holds: fn(n) { n >= 1 })
+  ])
 }
 
 test fn not_runnable_never_satisfies_expectation() -> Bool {
@@ -846,8 +822,8 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      (receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
-        && !((receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
+      receipt.anchor.probe_set_digest.digest == (probe_set_digest(probe_ids: executed).digest)
+        && !(receipt.anchor.probe_set_digest.digest == (probe_set_digest(probe_ids: guarantee_probe_ids()).digest))
     Absent => false
   }
 }

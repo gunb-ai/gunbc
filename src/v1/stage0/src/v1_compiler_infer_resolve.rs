@@ -28,7 +28,7 @@ pub use crate::v1_compiler_infer_env::{
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
-    node_is_collection, node_is_keyed_collection, resolved_type,
+    node_is_collection, node_is_keyed_algebra_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -819,7 +819,12 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
             {
                 let decl = resolve_generic_use_decl(env.clone(), n.clone());
                 if ((decl.params.clone().len() as i64) > 0) {
-                    if crate::std_types::is_container_type(n.name.clone()) {
+                    if (crate::std_types::is_container_type(n.name.clone())
+                        || crate::v1_compiler_infer_types::node_is_keyed_algebra_spelling(
+                            n.clone(),
+                            env.source_indices.clone(),
+                        ))
+                    {
                         false
                     } else {
                         if (decl.inferred.clone() != std::option::Option::None) {
