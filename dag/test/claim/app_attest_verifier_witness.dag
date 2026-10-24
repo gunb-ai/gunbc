@@ -11,7 +11,7 @@ import extdeps.apple.app_attest {
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
   assertion_signature_verifies_for, chain_link_verifies, base64_of,
   assertion_parts, assertion_structural_refusal, AssertionPartsOk, AssertionPartsRefused,
-  validation_category_refusal, bundle_version_refusal, AttestationBundleVersionAbsent,
+  AttestationBundleVersionAbsent,
   AttestationDecoded, attestation_structural_refusal, attestation_step_order,
   AttestationStep, KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
   LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep, IntermediateCaAuthorityStep,
@@ -86,13 +86,11 @@ test fn the_sample_passes_every_structural_step() -> Bool {
 // does not refuse either step. (A carried map is held to both; its refusing arms are the native
 // program's cases over the carried-map objects.)
 test fn an_absent_extensions_map_refuses_neither_extension_step() -> Bool {
-  match validation_category_refusal(extensions: none, admitted: [2, 3, 4]) {
-    Absent =>
-      match bundle_version_refusal(extensions: none, expected: "1" as NonEmptyStr) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    Present { value: _ } => false
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: ValidationCategoryStep, d: d, e: sample_expectation()) == "none"
+        && ordered_name(step: BundleVersionStep, d: d, e: sample_expectation()) == "none"
   }
 }
 
