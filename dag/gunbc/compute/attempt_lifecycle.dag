@@ -13,7 +13,7 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
-  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore,
+  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
   CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
 }
 import std.decl_ref { decl_ref }
@@ -374,7 +374,7 @@ type AttemptPayloadReading<P>
   | AttemptPayloadUnreadable { detail: String }
 
 fn attempt_payload_read<P>(store: SlotStore, reference: NonEmptyStr, codec: AttemptPayloadCodec<P>) -> AttemptPayloadReading<P> {
-  match store.observe(reference) {
+  match slot_observe(store: store, key: reference) {
     CasObservedUnreadable { cause: c } => AttemptPayloadUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
       match r {
@@ -393,7 +393,7 @@ type AttemptSlotKeysReading
   | AttemptSlotKeysRefused { detail: String }
 
 fn attempt_slot_keys(store: SlotStore) -> AttemptSlotKeysReading {
-  match store.keys() {
+  match slot_keys(store: store) {
     CasSlotKeysListed { keys: ks } => AttemptSlotKeysListed { keys: ks }
     CasSlotKeysListingRefused { root: _, detail: d } => AttemptSlotKeysRefused { detail: join(["the attempt store could not be listed: ", d], "") }
     CasSlotKeysSubjectRefused { root: _, cause: c } => AttemptSlotKeysRefused { detail: join(["the attempt store is not admissible: ", c], "") }
@@ -465,7 +465,7 @@ fn attempt_commit_bytes(
     CasAttemptDigestMismatch { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest did not match its bytes" }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
     CasAttemptAdmitted { verified: v } =>
-      match store.commit(DefaultAccessCreateOnly, v) {
+      match slot_commit(store: store, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: c } => AttemptAdvanced { state: state, generation: c.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           AttemptLostRace {
@@ -521,7 +521,7 @@ fn attempt_advance_payload<P>(
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate_payload"),
   ]
 {
-  match store.observe(reference) {
+  match slot_observe(store: store, key: reference) {
     CasObservedUnreadable { cause: c } =>
       AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
