@@ -47,7 +47,7 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 // ambiguous start stops and is left to a person. Request records share the start claims' directory
 // and failure domain: if that host state is lost, a request refuses (its record or claim cannot be
 // read), and absence is never reconstructed as permission to start.
-fn request_directory() -> String { printer_request_directory as String }
+fn request_directory() -> String { printer_request_directory() as String }
 
 // THE STATE ROOTS ARE CONVERGED BEFORE ANY STANDING IS READ, through the one owned-directory provider
 // (observe, decide, install elevated, independent re-stat). A refusal stops the pass: a missing or

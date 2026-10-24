@@ -47,5 +47,6 @@ test fn w_printer_state_roots_are_owner_only_and_parent_first() -> Bool {
   let ds = printer_state_directories()
   count(ds) == 3 &&
   all(ds, d => (match managed_directory_admit(d: d) { ManagedDirectoryAdmitted { dir: _ } => true ManagedDirectoryRefused { member: _, path: _, writer: _ } => false }) && managed_directory_mode_octal(d: d) == "0700") &&
-  map(ds, d => d.path as String) == [printer_start_claim_directory as String, printer_request_directory as String, print_run_directory as String]
+  map(ds, d => d.path as String) == [printer_start_claim_directory as String, printer_request_directory() as String, print_run_directory as String] &&
+  starts_with(s: printer_request_directory() as String, prefix: concat(printer_start_claim_directory as String, "/"))
 }

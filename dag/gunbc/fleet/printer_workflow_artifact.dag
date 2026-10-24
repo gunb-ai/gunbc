@@ -13,7 +13,8 @@ data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 // printer-starts; request records (gunbc.fleet.print_request PrintRequestRecord) in its requests/
 // child; each pass's prepared plate and verified copy in print-runs.
 data printer_start_claim_directory: NonEmptyStr = "/var/lib/gunbc/printer-starts"
-data printer_request_directory: NonEmptyStr = "/var/lib/gunbc/printer-starts/requests"
+// Request records share the start claims' directory and failure domain, so their root is derived from it.
+fn printer_request_directory() -> NonEmptyStr { concat(printer_start_claim_directory as String, "/requests") as NonEmptyStr }
 data print_run_directory: NonEmptyStr = "/var/lib/gunbc/print-runs"
 
 // EACH IS A ManagedDirectory, CONVERGED BY THE PASS THAT READS IT (gunbc.fleet.print_converge
@@ -39,7 +40,7 @@ fn printer_state_directory(member: String, path: NonEmptyStr) -> ManagedDirector
 fn printer_state_directories() -> List<ManagedDirectory> {
   [
     printer_state_directory(member: "printer-start-claims", path: printer_start_claim_directory),
-    printer_state_directory(member: "printer-request-records", path: printer_request_directory),
+    printer_state_directory(member: "printer-request-records", path: printer_request_directory()),
     printer_state_directory(member: "print-runs", path: print_run_directory),
   ]
 }
