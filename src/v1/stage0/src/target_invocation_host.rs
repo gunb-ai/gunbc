@@ -679,6 +679,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("witness-deferral-freeze-population"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/witness_deferral_freeze_population.dag",
+                function: "witness_deferral_freeze_population_exit",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-cold"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
@@ -1114,7 +1121,8 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             &self_host_source_roots(),
             "ambient-name-census",
             "dag/gunbc/instruments/ambient_name_census_reading.dag",
-            "ambient_name_census_standing",
+            "ambient_name_census_standing_with_kit",
+            true,
         ),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::AmbientOperationDisposition,
@@ -1123,6 +1131,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             "ambient-operation-disposition-census",
             "dag/gunbc/instruments/ambient_operation_disposition_reading.dag",
             "ambient_operation_disposition_standing",
+            false,
         ),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::BindingDiff,
@@ -1895,6 +1904,7 @@ fn run_ambient_name_census(
     label_name: &str,
     reader: &str,
     standing_function: &str,
+    with_kit: bool,
 ) -> InvocationOutcome {
     let unreached = |message: String| InvocationOutcome {
         termination: Termination::SubjectUnreached,
@@ -1977,6 +1987,22 @@ fn run_ambient_name_census(
         Ok(pair) => pair,
         Err(cause) => return unreached(cause),
     };
+    let kit_inputs = if with_kit {
+        let kit_root = match write_root("kit", "ambient_census_kit_files") {
+            Ok(root) => root,
+            Err(cause) => return unreached(cause),
+        };
+        let kit_subjects = match call("ambient_census_kit_subjects")
+            .map_err(|c| c.to_string())
+            .and_then(|v| strings(&v, "ambient_census_kit_subjects"))
+        {
+            Ok(subjects) => subjects,
+            Err(cause) => return unreached(format!("ambient_census_kit_subjects: {cause}")),
+        };
+        Some((kit_root, kit_subjects))
+    } else {
+        None
+    };
     let mut subjects: Vec<String> = roster.clone();
     for (module, present) in &rewritten {
         if *present && !subjects.contains(module) {
@@ -1992,6 +2018,9 @@ fn run_ambient_name_census(
         source_roots,
         &[vec![fixture_root], vec![unindexed_root]],
         &subjects,
+        kit_inputs
+            .as_ref()
+            .map(|(root, subjects)| (root.as_str(), subjects.as_slice())),
         |union| {
             let refused = ambient_probe_modules(&ctx, &union.stdout, &rewritten)?;
             if refused.is_empty() {
@@ -2015,7 +2044,7 @@ fn run_ambient_name_census(
         },
     );
     remove_census_base_tree(&base_tree);
-    let (controls, union, base_run) = match probed {
+    let (controls, union, kit, base_run) = match probed {
         Ok(runs) => runs,
         Err(cause) => return unreached(cause),
     };
@@ -2030,7 +2059,7 @@ fn run_ambient_name_census(
         .map(|(m, present)| format!("{m}\t{}\n", if *present { "present" } else { "absent" }))
         .collect();
     let text = |s: &str| crate::v1_interpreter::Value::Str(s.to_string().into());
-    let args = [
+    let mut args = vec![
         (
             Some("fixture_stdout".to_string()),
             text(&controls[0].stdout),
@@ -2055,6 +2084,9 @@ fn run_ambient_name_census(
             text(&base_probed.join("\n")),
         ),
     ];
+    if let Some(kit) = &kit {
+        args.push((Some("kit_stdout".to_string()), text(&kit.stdout)));
+    }
     match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
         Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),
         Err(cause) => unreached(format!("the reader failed: {cause}")),
