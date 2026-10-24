@@ -3333,20 +3333,27 @@ fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
   )
 }
 
-// WHETHER A COPRODUCT ARM OWES A PHANTOM ZST MARKER IS DECIDED BY IDENTITY, NEVER BY SPELLING. The
-// marker (`pub struct X;`) stands for a unit variant at a type position, so it is owed exactly when
-// the arm IS a unit variant: its reference resolves to no type declaration
-// (resolve_type_decl_reference over EmitGraphInfo.type_decl_items, the identity-keyed index class 2's
-// record_literal_phantom_field reads), AND the closure's unit-variant index names this very arm, by
-// its declaring span, as the one variant of that name used at a type position. An arm that resolves
-// to a declaration denotes that declaration, which is emitted where it is declared, so a marker would
-// be a second item of one name: gunbc.roadmap.roadmap_model's coproduct
-// AcceptanceRevocationDisposition has arms naming its own records AcceptanceNodeReopensActiveFrontier
-// and AcceptanceNodeRemainsSuperseded, and each record was emitted twice (rustc E0428, and E0119 on
-// every derive; class 1 of stern-bat-401's emitter-debt list). The name comparison this replaces
-// treated "no same-named item" as proof the marker was valid. An ambiguous or kernel-undecided
-// reference, unavailable variant evidence, or variant evidence naming a different node is not that
-// proof either: each refuses, located, rather than emitting or dropping the marker.
+// WHETHER A COPRODUCT ARM OWES A PHANTOM ZST MARKER IS DECIDED BY WHAT ITS NAME BINDS IN ITS OWN
+// MODULE'S SCOPE, NEVER BY A SPELLING MATCH. The marker (`pub struct X;`) stands for a unit variant
+// at a type position, so it is owed exactly when the arm's name denotes no type there. Which type a
+// bare name denotes in a module is the scope's binding -- the module's own declaration, then a named
+// import, then the kernel (v1.compiler.infer_emit_info type_decl_occurrence_binding over
+// EmitGraphInfo.type_decl_items, the resolver's lookup order joined to declaration identity). An arm
+// whose name binds a declaration denotes it, and that declaration is emitted where it is declared and
+// brought in by its import, so a marker would be a second item of one name in the emitted module:
+// gunbc.roadmap.roadmap_model's arms AcceptanceNodeReopensActiveFrontier and
+// AcceptanceNodeRemainsSuperseded name its own records (rustc E0428 and E0119; class 1 of
+// stern-bat-401's emitter-debt list), and an arm naming a record the module imports is the same
+// collision through `use`.
+// THE CORPUS-WIDE SPELLING ROUTE IS NOT THIS QUESTION. resolve_type_decl_reference answers an
+// unstamped reference whose leaf ONE module declares with that declaration wherever it lives; read
+// for an arm, it suppressed the markers of unit variants whose names some unrelated module declares
+// (std.coercion HostText, std.constructors Optional, std.types Template, std.measure Volume) and
+// refused std.fidelity's Unit on the kernel spelling. A name the scope does not bind denotes nothing
+// there, which is what makes the arm a variant.
+// The marker is then owed only on positive evidence: the closure's unit-variant index names THIS
+// arm, by declaring span, as the one variant of that name. Unavailable evidence, or evidence naming
+// another node, refuses, located, rather than emitting or dropping the marker.
 type PhantomMarkerDecision
   = PhantomMarkerOwed { indexed: Bool }
   | PhantomMarkerArmDenotesDeclaration
@@ -3354,19 +3361,22 @@ type PhantomMarkerDecision
   | PhantomMarkerUndecided { cause: String }
 
 fn phantom_marker_decision(coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
-  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: arm, source_indices: env.source_indices) {
-    TypeDeclResolved { identity: _, decl: _ } => PhantomMarkerArmDenotesDeclaration
-    TypeDeclLeafAmbiguous { leaf: leaf } => PhantomMarkerUndecided { cause: concat("more than one declaration of ", leaf) }
-    TypeDeclKernelSpellingUndecided { leaf: leaf } => PhantomMarkerUndecided { cause: concat("kernel spelling undecided for ", leaf) }
-    TypeDeclNotDeclared =>
-      match lookup_unit_variant_phantom_type(env: env, variant_name: vname) {
-        UnitVariantPhantomPresent { variant: variant } =>
-          if declaring_span_key(sp: variant.span) == declaring_span_key(sp: arm.span) {
-            PhantomMarkerOwed { indexed: is_static_width_index_arm(env: env, coproduct: coproduct, variant_name: vname) }
-          } else { PhantomMarkerUndecided { cause: "the unit-variant index names a different variant of this name" } }
-        UnitVariantPhantomAbsent => PhantomMarkerNotDemanded
-        UnitVariantPhantomEvidenceUnavailable => PhantomMarkerUndecided { cause: "unit-variant evidence unavailable" }
-      }
+  match type_decl_occurrence_binding(index: emit_info.type_decl_items, leaf: vname, reference: arm) {
+    OccurrenceDeclaredHere { identity: _ } => PhantomMarkerArmDenotesDeclaration
+    OccurrenceImported { identity: _ } => PhantomMarkerArmDenotesDeclaration
+    OccurrenceIsKernelName => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+    OccurrenceUndecided => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+  }
+}
+
+fn phantom_marker_for_unbound_arm(coproduct: Node, arm: Node, vname: String, env: TypeEnv) -> PhantomMarkerDecision {
+  match lookup_unit_variant_phantom_type(env: env, variant_name: vname) {
+    UnitVariantPhantomPresent { variant: variant } =>
+      if declaring_span_key(sp: variant.span) == declaring_span_key(sp: arm.span) {
+        PhantomMarkerOwed { indexed: is_static_width_index_arm(env: env, coproduct: coproduct, variant_name: vname) }
+      } else { PhantomMarkerUndecided { cause: "the unit-variant index names a different variant of this name" } }
+    UnitVariantPhantomAbsent => PhantomMarkerNotDemanded
+    UnitVariantPhantomEvidenceUnavailable => PhantomMarkerUndecided { cause: "unit-variant evidence unavailable" }
   }
 }
 
