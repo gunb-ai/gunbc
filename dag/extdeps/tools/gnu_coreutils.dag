@@ -427,7 +427,10 @@ fn coreutils_install_directory_owned_argv(
 // invocation"): who OWNS what a privileged process creates is the point, since a mkdir run as root leaves a
 // root-owned directory its real consumer cannot rename. Owner and group are NAMES because install(1) accepts
 // either spelling and callers hold declared account names. Consumer: gunbc.roadmap.roadmap_attempt_exit_spool
-// attempt_exit_hook, which renders it as the ExecStopPost record creation.
+// attempt_exit_hook, which renders it as the ExecStopPost record creation, and the per-attempt grant that creates
+// .git/worktrees/<key> at spawn time: that directory has no topology to assert at plan time and an ADDITIVE sweep
+// cannot reach a declared mode from a ~0755 top, so it needs the same three-field restatement. -o is permitted
+// without privilege when it names the invoking principal itself, and -g when it names a group the invoker belongs to.
 fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
   argv_command(
     program: install_program(),
