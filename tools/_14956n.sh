@@ -122,7 +122,6 @@ census () { # census: gunbc test //gunbc/instruments:rfm-rung-census from ITS OW
 rc=0
 if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ;; *) echo "ROW G7 SKIPPED-ARGLIST"; ARMS_NO_G7=1;; esac; fi
 if [ -z "${ARMS_NO_G7:-}" ]; then echo "=== G7 gate on origin/main tree (expect FAIL = the break this PR fixes) $(date -u +%H:%M:%S)Z"; run1 G7 $MAIN_T $ELW wet $GATE $PROBE || rc=$?; fi
-if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ARMS=none-continue;; *) ;; esac; fi
 rc=0
 want G1n && { echo "=== G1n gates wet $(date -u +%H:%M:%S)Z"; run1 G1n $H $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G1n SKIPPED-ARGLIST"
 want G4n && { echo "=== G4n Blocking-repoint RED $(date -u +%H:%M:%S)Z"; run1 G4n $M $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G4n SKIPPED-ARGLIST"
