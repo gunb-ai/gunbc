@@ -25814,7 +25814,10 @@ pub fn unify_denoted_actual(actual: Rc<Node>) -> Rc<Node> {
             {
                 actual
             } else {
-                rt.clone()
+                match crate::v1_compiler_infer_env::transparent_alias_rhs(rt.clone()) {
+                    Some(rhs) => rhs.clone(),
+                    std::option::Option::None => rt.clone(),
+                }
             }
         }
         _ => actual,
