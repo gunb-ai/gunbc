@@ -65,7 +65,7 @@ fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, s
                     Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
                     Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
                       FabricAllocationStoreUnready { detail } => WorkspaceHostOfferUnmet { host: host, reason: detail }
-                      FabricAllocationStoreReady { store: allocation } => workspace_host_offer_admit(allocation: allocation, request: request,
+                      FabricAllocationStoreReady { store: allocation } => workspace_host_offer_admit(cells: allocation, request: request,
                         commissioned: committed, image: image, host: supply, tools: tools,
                         access: WorkspaceHostAccessObserved { host: host, observed_at: supply.observed_at }, now: now as String)
                     }
@@ -76,7 +76,7 @@ fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, s
                       Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
                       Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
                         FabricAllocationStoreUnready { detail } => WorkspaceHostOfferUnmet { host: host, reason: detail }
-                        FabricAllocationStoreReady { store: allocation } => workspace_host_offer_admit(allocation: allocation, request: request,
+                        FabricAllocationStoreReady { store: allocation } => workspace_host_offer_admit(cells: allocation, request: request,
                           commissioned: committed, image: image, host: supply, tools: tools,
                           access: WorkspaceGatewayAccessObserved { evidence: gateway }, now: now as String)
                       }

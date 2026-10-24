@@ -77,7 +77,7 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, tree_dir: NonEm
         let actor = if elected { acquisition_fixture_write(store: store, key: workspace_acquisition_actor_key(plan: prepared),
           value: acquisition_actor_wire(plan: prepared, invocation: "0123456789abcdef0123456789abcdef")) } else { true }
         if !seeded || !protocol || !actor { false } else {
-          match workspace_settle_unelected_retirement(store: store, allocation: allocation, owner: fixture.request.owner, idempotency_key: fixture.request.idempotency_key, observed_at: "2026-09-27T12:31:00Z", slot: slot) {
+          match workspace_settle_unelected_retirement(store: store, cells: allocation, owner: fixture.request.owner, idempotency_key: fixture.request.idempotency_key, observed_at: "2026-09-27T12:31:00Z", slot: slot) {
             WorkspaceStoreWritten { allocation: settled } => expect_released && settled.phase == WorkspaceReleased
             WorkspaceStoreWriteRefused { reason: _ } => !expect_released
             other => false

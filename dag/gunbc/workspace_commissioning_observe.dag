@@ -12,11 +12,11 @@ import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotHeld, HoldSlotFree }
 
 // Observe both existing authorities. Only an explicitly commissioned new lineage may use the
 // empty census; this observation never authorizes creation or treats missing roots as empty.
-fn workspace_observe_commissioning_obligations(allocation: FabricAllocationStore, slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
+fn workspace_observe_commissioning_obligations(cells: FabricAllocationStore, slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
   match read_cell_readiness_store() {
     StoreRead { ownership: StoreRootOwned, records: records } => if count(filter(records, r => (record_cell(record: r) as String) == (runner_slot_instance_name(slot: slot) as String))) != 0 {
       WorkspacePriorObligationsRemain { reason: "slot has readiness or in-flight history; initial commissioning cannot overwrite it" }
-    } else { match fabric_allocation_observe_hold(store: allocation, key: fabric_cell_allocation_key(slot: slot)) {
+    } else { match fabric_allocation_observe_hold(store: cells, key: fabric_cell_allocation_key(slot: slot)) {
       HoldSlotAbsent => WorkspaceNoPriorObligations { settled_generation: 0 }
       HoldSlotHeld { generation: _, owner: _ } => WorkspacePriorObligationsRemain { reason: "slot has an outstanding durable reservation" }
       HoldSlotFree { generation: _, released_by: _ } => WorkspaceObligationHistoryUnreadable { reason: "hold history exists without readiness history; recover it instead of creating initial generation zero" }
@@ -31,6 +31,6 @@ fn workspace_observe_commissioning_obligations(allocation: FabricAllocationStore
 fn workspace_observe_allocation_obligations(slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
   match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => WorkspaceObligationHistoryUnreadable { reason: join(["reservation history is unreadable; ", detail as String], "") }
-    FabricAllocationStoreReady { store } => workspace_observe_commissioning_obligations(allocation: store, slot: slot)
+    FabricAllocationStoreReady { store } => workspace_observe_commissioning_obligations(cells: store, slot: slot)
   }
 }

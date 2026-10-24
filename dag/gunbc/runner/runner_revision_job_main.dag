@@ -215,14 +215,14 @@ fn revision_job_run(
     CellGrantNotSelected { refusal: _ } => RevisionJobNotGranted { detail: "no admissible cell was selected" }
     CellGrantDecided { outcome: g } => match g {
     CellGranted { grant: grant, account: _, ledger: _ } =>
-      revision_job_launch_and_settle(allocation: allocation, spec: spec, revision: revision, work: work, job: job, slot: slot, grant: grant, staged: staged,
+      revision_job_launch_and_settle(cells: allocation, spec: spec, revision: revision, work: work, job: job, slot: slot, grant: grant, staged: staged,
         release_dir: release_dir, image: RevisionJobGuestImage { kernel: image.kernel, rootfs: image.rootfs }, work_dir: work_dir, store_root: store_root, invocation_id: invocation_id, vcpus: vcpus, now: now)
     _ => RevisionJobNotGranted { detail: "the cell grant was not committed" }
     } } } } } } } } } } } }
 }
 
 fn revision_job_launch_and_settle(
-  allocation: FabricAllocationStore,
+  cells: FabricAllocationStore,
   spec: RevisionJobSpec,
   revision: VerifiedGitCommitTree,
   work: product.fabric.work.Work<NonEmptyStr>,
@@ -239,7 +239,7 @@ fn revision_job_launch_and_settle(
   now: Timestamp,
 ) -> RevisionJobOutcome {
   let attempt_id = microvm_job_attempt(slot: slot, job: job).id
-  match observe_granted_cell_wet(store: allocation, host: slot.host, slot: slot, demand: microvm_job_demand(slot: slot, job: job),
+  match observe_granted_cell_wet(store: cells, host: slot.host, slot: slot, demand: microvm_job_demand(slot: slot, job: job),
     offer: microvm_job_offer(slot: slot, job: job), attempt: attempt_id) {
   RequiredBuildCellObserved { snapshot: snapshot } => match bind_microvm_to_cell(snapshot: snapshot) {
     VmUnboundCellNotOwned { cause: c } => RevisionJobCellNotBound { cause: c }
@@ -268,7 +268,7 @@ fn revision_job_launch_and_settle(
         match readiness_of(outcome: outcome) {
           Absent => RevisionJobGuestNotRun { detail: "the controller did not run the attempt to a settled teardown" }
           Present { value: readiness } => match claim_set_receipt_and_settle(
-            store: allocation,
+            store: cells,
             work: work.id,
             offer: microvm_job_offer(slot: slot, job: job).id,
             attempt: attempt_id,

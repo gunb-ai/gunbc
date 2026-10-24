@@ -990,7 +990,7 @@ fn workspace_slot_apply_if_needed(allocation: WorkspaceAllocation, slot: RunnerS
           Absent => workspace_slot_refused(reason: "workspace reservation clock is unreadable")
           Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
           FabricAllocationStoreUnready { detail: _ } => workspace_slot_refused(reason: "the allocation store is unready; durable plan retained for recovery")
-          FabricAllocationStoreReady { store: cells } => match workspace_apply_recorded_plan(store: store, allocation: cells,
+          FabricAllocationStoreReady { store: cells } => match workspace_apply_recorded_plan(store: store, cells: cells,
             owner: allocation.request.owner, idempotency_key: allocation.request.idempotency_key, observed_at: now) {
             WorkspaceStoreWritten { allocation: recorded } => workspace_slot_from_ledger(allocation: recorded, store: store, release_dir: release_dir, invocation_id: invocation_id)
             WorkspaceStoreConflict => workspace_slot_refused(reason: "workspace reservation apply refused; durable plan retained for recovery")
@@ -1018,7 +1018,7 @@ fn workspace_settle_teardown_result(reservation: WorkspaceReservation, store: Fa
     Absent => workspace_slot_refused(reason: "teardown completed but release clock is unreadable; reservation remains held")
     Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail: _ } => workspace_slot_refused(reason: "teardown completed but the allocation store is unready; reservation remains held")
-    FabricAllocationStoreReady { store: cells } => match workspace_complete_teardown(store: store, allocation: cells,
+    FabricAllocationStoreReady { store: cells } => match workspace_complete_teardown(store: store, cells: cells,
       reservation: reservation, teardown: teardown, observed_at: now) {
       WorkspaceStoreWritten { allocation: observed } => if (observed.phase == WorkspaceReleased) { SlotControllerRan { outcome: outcome } }
         else { workspace_slot_refused(reason: concat("workspace cleanup remains outstanding: ", observed.reason)) }
@@ -1034,7 +1034,7 @@ fn workspace_slot_recover_released(reservation: WorkspaceReservation, store: Fab
     Absent => workspace_slot_refused(reason: "release recovery clock is unreadable")
     Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail: _ } => workspace_slot_refused(reason: "release recovery found the allocation store unready")
-    FabricAllocationStoreReady { store: cells } => match workspace_recover_release(store: store, allocation: cells, reservation: reservation, observed_at: now) {
+    FabricAllocationStoreReady { store: cells } => match workspace_recover_release(store: store, cells: cells, reservation: reservation, observed_at: now) {
       WorkspaceStoreWritten { allocation: observed } => if (observed.phase == WorkspaceReleased) {
         SlotControllerSettledWithoutLaunch { reason: "recovered the observed reservation release and sanitized readiness" }
       } else { workspace_slot_refused(reason: "release recovery did not establish Released") }

@@ -115,7 +115,7 @@ fn workspace_reconcile_prepare(store: FabricStorageBinding, allocation: Workspac
     let evidence = workspace_demo_evidence(admissions: admissions, request: request)
     match fabric_allocation_store(tree: host_state_tree()) {
       FabricAllocationStoreUnready { detail } => WorkspaceConvergenceUnobserved { reason: detail as String }
-      FabricAllocationStoreReady { store: cells } => workspace_prepare_convergence_from_observations(store: store, allocation: cells, request: request,
+      FabricAllocationStoreReady { store: cells } => workspace_prepare_convergence_from_observations(store: store, cells: cells, request: request,
         attempt: workspace_demo_attempt(demand: workspace_demand(request: request, submitted_at: allocation.recorded_at, buy: workspace_demo_buy(), objective: debt_payoff_objective)),
         evidence: evidence, policy: workspace_demo_policy(request: request, submitted_at: allocation.recorded_at, evidence: evidence),
         submitted_at: allocation.recorded_at)

@@ -26,7 +26,7 @@ type WorkspacePreparation
 
 // Called while preparing the convergence slice. It persists an immutable selected target before
 // any hold effect. Retries return that target; this entry never launches, acquires or reselects it.
-fn workspace_prepare_recorded_intent(store: FabricStorageBinding, allocation: FabricAllocationStore, request: WorkspaceRequest,
+fn workspace_prepare_recorded_intent(store: FabricStorageBinding, cells: FabricAllocationStore, request: WorkspaceRequest,
   demand: Demand<NonEmptyStr>, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
   supply: WorkspaceDedicatedSupply, duration: GrantDuration,
   resource_policy: ResourceBudgetPolicy<NonEmptyStr>,
@@ -52,7 +52,7 @@ fn workspace_prepare_recorded_intent(store: FabricStorageBinding, allocation: Fa
           Absent => if supply.roster.count() == 0 { WorkspacePreparationUnmet { reason: "no currently commissioned dedicated workspace slot has an admitted observed offer" } }
           else { match workspace_budget_for_request(store: store, request: request, initial: initial_account) {
             WorkspaceBudgetUnreadable { reason: detail } => WorkspacePreparationUnmet { reason: detail }
-            WorkspaceBudgetObserved { account: advanced_account } => match workspace_reservation_prepare(allocation: allocation, request: request, demand: demand,
+            WorkspaceBudgetObserved { account: advanced_account } => match workspace_reservation_prepare(cells: cells, request: request, demand: demand,
               attempt: attempt, supply: supply, resource_policy: resource_policy, duration: duration, account: advanced_account) {
               WorkspaceReservationPreparationRefused { reason: detail } => WorkspacePreparationUnmet { reason: detail as String }
               WorkspaceReservationPrepared { plan: selected_plan } => match workspace_record_plan(store: store, plan: selected_plan) {

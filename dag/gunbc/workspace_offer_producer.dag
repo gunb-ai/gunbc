@@ -58,7 +58,7 @@ type WorkspaceHostOfferRead
   = WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission }
   | WorkspaceHostOfferUnmet { host: HostIdentity, reason: NonEmptyStr }
 
-fn workspace_host_offer_admit(allocation: FabricAllocationStore, request: WorkspaceRequest,
+fn workspace_host_offer_admit(cells: FabricAllocationStore, request: WorkspaceRequest,
   commissioned: WorkspaceCommittedCommissioning, image: VerifiedWorkspaceImage,
   host: WorkspaceHostSupplyObservation, tools: WorkspaceToolsObserved,
   access: WorkspaceAccessEvidence, now: Timestamp) -> WorkspaceHostOfferRead {
@@ -73,7 +73,7 @@ fn workspace_host_offer_admit(allocation: FabricAllocationStore, request: Worksp
         WorkspaceHostOfferUnmet { host: host.host, reason: "commissioned exclusive slot budget cannot contain the selected guest and realization reserve" }
       } else if (match workspace_tools_refusal(observation: tools, slot: commissioned.admitted.slot, now: now) { Present { value: _ } => true Absent => false }) {
         WorkspaceHostOfferUnmet { host: host.host, reason: "controller tools are stale, unobserved, or belong to another host" }
-      } else { match workspace_slot_observation_refusal(allocation: allocation, slot: commissioned.admitted.slot, observation: host, now: now) {
+      } else { match workspace_slot_observation_refusal(cells: cells, slot: commissioned.admitted.slot, observation: host, now: now) {
         Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
         Absent => match workspace_access_refusal(access: required_access, slot: commissioned.admitted.slot, evidence: access, now: now) {
           Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
