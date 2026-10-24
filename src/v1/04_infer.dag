@@ -8555,6 +8555,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspon
       if map_is_empty(init_subst) {
         unify_lambda_solves(
           solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
+          returned: lambda_return_solves(formal: formal_raw, lambda: ar.typed, generic_names: generic_names, source_indices: scope.type_env.source_indices),
           generic_names: generic_names,
           acc: st.subst,
           scope: scope
@@ -15246,28 +15247,43 @@ fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_
 // return is computed under a substitution that may not yet bind its own parameters, so it can be
 // an unresolved type variable (callable_param), and binding a parameter to that would fix it first
 // and keep it against the informative argument that follows. Such an entry is dropped, so a later
-// argument or round 2 decides it. An entry fills only an Absent binding; it never overrides one.
-fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>, scope: InferScope) -> Map<String, Node> {
+// argument or round 2 decides it. An entry fills an Absent binding; a closed binding is never overridden, and an open one joins only with the return (lambda_return_solves).
+fn unify_lambda_solves(solved: Map<String, Node>, returned: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>, scope: InferScope) -> Map<String, Node> {
   fold(generic_names, init: acc, f: (st, g) =>
-    match map_get(solved, g) {
-      Present { value: candidate } =>
-        if unify_binding_is_uninformative(n: candidate) {
-          st
-        } else {
-          match map_get(st, g) {
-            Absent => map_insert(st, g, candidate)
-            Present { value: bound } =>
-              if fold_carrier_is_open(carrier: bound, scope: scope) {
-                match branch_join_type(types: [bound, candidate], scope: scope) {
+    match map_get(st, g) {
+      Absent =>
+        match map_get(solved, g) {
+          Present { value: candidate } => if unify_binding_is_uninformative(n: candidate) { st } else { map_insert(st, g, candidate) }
+          Absent => st
+        }
+      Present { value: bound } =>
+        if !fold_carrier_is_open(carrier: bound, scope: scope) { st }
+        else {
+          match map_get(returned, g) {
+            Present { value: sighting } =>
+              if unify_binding_is_uninformative(n: sighting) { st }
+              else {
+                match branch_join_type(types: [bound, sighting], scope: scope) {
                   Present { value: joined } => map_insert(st, g, joined)
                   Absent => st
                 }
-              } else { st }
+              }
+            Absent => st
           }
         }
-      Absent => st
     }
   )
+}
+
+// THE LAMBDA'S RETURN, solved alone. A lambda's parameter types are read OUT of the substitution it is
+// inferred under, so for a generic already bound they echo that binding and are no sighting of it; its
+// return is the one independent sighting, and the only one an open binding may join with.
+fn lambda_return_solves(formal: Node, lambda: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+  match formal.inferred {
+    Present { value: Resolved { node: formal_ret } } =>
+      unify_generics(formal: formal_ret, actual: resolved_type(n: lambda), generic_names: generic_names, source_indices: source_indices, acc: empty_map())
+    _ => empty_map()
+  }
 }
 
 // A type that is, or holds as its single element, any unresolved type variable.
