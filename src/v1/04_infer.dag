@@ -11153,7 +11153,10 @@ fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> N
         let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
         if is_parameterized_alias {
           match decl.inferred {
-            Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
+            // A parameterized alias body spells its formals as bare names; substitution keys on the declaration-parameter
+            // stamp alone, so the body is stamped through the one stamper before the arguments are bound.
+            Present { value: Resolved { node: alias_body } } =>
+              substitute_generics(n: stamp_field_type_from_decl_params(field_type: alias_body, serving_decl: decl, source_indices: env.source_indices), subst: subst, source_indices: env.source_indices)
             _ => target
           }
         } else {
