@@ -110,36 +110,81 @@ fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
   rcf_read_in(tree: DagTree, source: source, id: id, unit: unit, path: path)
 }
 
+data rcf_read_provider: DagSourceReadWitness = rcf_read(source: rcf_provider_source, id: ^rcf_provider_read, unit: ^rcf_provider_cu, path: "src/v2/test/fixture/record_construct_field/provider.dag")
+
+data rcf_read_bad: DagSourceReadWitness = rcf_read(source: rcf_bad_source, id: ^rcf_bad_read, unit: ^rcf_bad_cu, path: "src/v2/test/fixture/record_construct_field/bad.dag")
+
+data rcf_read_good: DagSourceReadWitness = rcf_read(source: rcf_good_source, id: ^rcf_good_read, unit: ^rcf_good_cu, path: "src/v2/test/fixture/record_construct_field/good.dag")
+
+data rcf_read_generic_good: DagSourceReadWitness = rcf_read(source: rcf_generic_good_source, id: ^rcf_generic_good_read, unit: ^rcf_generic_good_cu, path: "src/v2/test/fixture/record_construct_field/generic_good.dag")
+
+data rcf_read_nested_good: DagSourceReadWitness = rcf_read(source: rcf_nested_good_source, id: ^rcf_nested_good_read, unit: ^rcf_nested_good_cu, path: "src/v2/test/fixture/record_construct_field/nested_good.dag")
+
+data rcf_read_missing: DagSourceReadWitness = rcf_read(source: rcf_missing_source, id: ^rcf_missing_read, unit: ^rcf_missing_cu, path: "src/v2/test/fixture/record_construct_field/missing.dag")
+
+data rcf_read_unknown: DagSourceReadWitness = rcf_read(source: rcf_unknown_source, id: ^rcf_unknown_read, unit: ^rcf_unknown_cu, path: "src/v2/test/fixture/record_construct_field/unknown.dag")
+
+data rcf_read_generic_bad: DagSourceReadWitness = rcf_read(source: rcf_generic_bad_source, id: ^rcf_generic_bad_read, unit: ^rcf_generic_bad_cu, path: "src/v2/test/fixture/record_construct_field/generic_bad.dag")
+
+data rcf_read_other: DagSourceReadWitness = rcf_read(source: rcf_other_source, id: ^rcf_other_read, unit: ^rcf_other_cu, path: "src/v2/test/fixture/record_construct_field/other.dag")
+
+data rcf_read_far_value: DagSourceReadWitness = rcf_read(source: rcf_far_value_source, id: ^rcf_far_value_read, unit: ^rcf_far_value_cu, path: "src/v2/test/fixture/record_construct_field/far_value.dag")
+
+data rcf_read_far_missing: DagSourceReadWitness = rcf_read(source: rcf_far_missing_source, id: ^rcf_far_missing_read, unit: ^rcf_far_missing_cu, path: "src/v2/test/fixture/record_construct_field/far_missing.dag")
+
+data rcf_read_bool_field: DagSourceReadWitness = rcf_read(source: rcf_bool_field_source, id: ^rcf_bool_field_read, unit: ^rcf_bool_field_cu, path: "src/v2/test/fixture/record_construct_field/bool_field.dag")
+
+data rcf_read_pattern: DagSourceReadWitness = rcf_read(source: rcf_pattern_source, id: ^rcf_pattern_read, unit: ^rcf_pattern_cu, path: "src/v2/test/fixture/record_construct_field/pattern.dag")
+
+data rcf_read_fs_list: DagSourceReadWitness = rcf_read(source: rcf_fs_list_source, id: ^rcf_fs_list_read, unit: ^rcf_fs_list_cu, path: "src/v2/test/fixture/record_construct_field/fs_list.dag")
+
+data rcf_read_fs_color: DagSourceReadWitness = rcf_read(source: rcf_fs_color_source, id: ^rcf_fs_color_read, unit: ^rcf_fs_color_cu, path: "src/v2/test/fixture/record_construct_field/fs_color.dag")
+
+data rcf_read_fs_conflict: DagSourceReadWitness = rcf_read(source: rcf_fs_conflict_source, id: ^rcf_fs_conflict_read, unit: ^rcf_fs_conflict_cu, path: "src/v2/test/fixture/record_construct_field/fs_conflict.dag")
+
+data rcf_read_fs_position: DagSourceReadWitness = rcf_read(source: rcf_fs_position_source, id: ^rcf_fs_position_read, unit: ^rcf_fs_position_cu, path: "src/v2/test/fixture/record_construct_field/fs_position.dag")
+
+data rcf_read_fs_return: DagSourceReadWitness = rcf_read(source: rcf_fs_return_source, id: ^rcf_fs_return_read, unit: ^rcf_fs_return_cu, path: "src/v2/test/fixture/record_construct_field/fs_return.dag")
+
+data rcf_read_fs_let: DagSourceReadWitness = rcf_read(source: rcf_fs_let_source, id: ^rcf_fs_let_read, unit: ^rcf_fs_let_cu, path: "src/v2/test/fixture/record_construct_field/fs_let.dag")
+
+data rcf_read_fs_return_mismatch: DagSourceReadWitness = rcf_read(source: rcf_fs_return_mismatch_source, id: ^rcf_fs_return_mismatch_read, unit: ^rcf_fs_return_mismatch_cu, path: "src/v2/test/fixture/record_construct_field/fs_return_mismatch.dag")
+
+data rcf_read_alias_wrong: DagSourceReadWitness = rcf_read(source: rcf_alias_wrong_source, id: ^rcf_alias_wrong_read, unit: ^rcf_alias_wrong_cu, path: "src/v2/test/fixture/record_construct_field/alias_wrong.dag")
+
+// THE FULL INGEST exists for ONE claim: the pairing claim that asserts the route over every fixture module
+// (rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds). Every other claim ingests only the
+// sources it judges, so no claim pays to normalize modules it never reads.
 data rcf_ingest: SourceRootIngest = [
-  rcf_read(source: rcf_provider_source, id: ^rcf_provider_read, unit: ^rcf_provider_cu, path: "src/v2/test/fixture/record_construct_field/provider.dag"),
-  rcf_read(source: rcf_bad_source, id: ^rcf_bad_read, unit: ^rcf_bad_cu, path: "src/v2/test/fixture/record_construct_field/bad.dag"),
-  rcf_read(source: rcf_good_source, id: ^rcf_good_read, unit: ^rcf_good_cu, path: "src/v2/test/fixture/record_construct_field/good.dag"),
-  rcf_read(source: rcf_generic_good_source, id: ^rcf_generic_good_read, unit: ^rcf_generic_good_cu, path: "src/v2/test/fixture/record_construct_field/generic_good.dag"),
-  rcf_read(source: rcf_nested_good_source, id: ^rcf_nested_good_read, unit: ^rcf_nested_good_cu, path: "src/v2/test/fixture/record_construct_field/nested_good.dag"),
-  rcf_read(source: rcf_missing_source, id: ^rcf_missing_read, unit: ^rcf_missing_cu, path: "src/v2/test/fixture/record_construct_field/missing.dag"),
-  rcf_read(source: rcf_unknown_source, id: ^rcf_unknown_read, unit: ^rcf_unknown_cu, path: "src/v2/test/fixture/record_construct_field/unknown.dag"),
-  rcf_read(source: rcf_generic_bad_source, id: ^rcf_generic_bad_read, unit: ^rcf_generic_bad_cu, path: "src/v2/test/fixture/record_construct_field/generic_bad.dag"),
-  rcf_read(source: rcf_other_source, id: ^rcf_other_read, unit: ^rcf_other_cu, path: "src/v2/test/fixture/record_construct_field/other.dag"),
-  rcf_read(source: rcf_far_value_source, id: ^rcf_far_value_read, unit: ^rcf_far_value_cu, path: "src/v2/test/fixture/record_construct_field/far_value.dag"),
-  rcf_read(source: rcf_far_missing_source, id: ^rcf_far_missing_read, unit: ^rcf_far_missing_cu, path: "src/v2/test/fixture/record_construct_field/far_missing.dag"),
-  rcf_read(source: rcf_bool_field_source, id: ^rcf_bool_field_read, unit: ^rcf_bool_field_cu, path: "src/v2/test/fixture/record_construct_field/bool_field.dag"),
-  rcf_read(source: rcf_pattern_source, id: ^rcf_pattern_read, unit: ^rcf_pattern_cu, path: "src/v2/test/fixture/record_construct_field/pattern.dag"),
-  rcf_read(source: rcf_fs_list_source, id: ^rcf_fs_list_read, unit: ^rcf_fs_list_cu, path: "src/v2/test/fixture/record_construct_field/fs_list.dag"),
-  rcf_read(source: rcf_fs_color_source, id: ^rcf_fs_color_read, unit: ^rcf_fs_color_cu, path: "src/v2/test/fixture/record_construct_field/fs_color.dag"),
-  rcf_read(source: rcf_fs_conflict_source, id: ^rcf_fs_conflict_read, unit: ^rcf_fs_conflict_cu, path: "src/v2/test/fixture/record_construct_field/fs_conflict.dag"),
-  rcf_read(source: rcf_fs_position_source, id: ^rcf_fs_position_read, unit: ^rcf_fs_position_cu, path: "src/v2/test/fixture/record_construct_field/fs_position.dag"),
-  rcf_read(source: rcf_fs_return_source, id: ^rcf_fs_return_read, unit: ^rcf_fs_return_cu, path: "src/v2/test/fixture/record_construct_field/fs_return.dag"),
-  rcf_read(source: rcf_fs_let_source, id: ^rcf_fs_let_read, unit: ^rcf_fs_let_cu, path: "src/v2/test/fixture/record_construct_field/fs_let.dag"),
-  rcf_read(source: rcf_fs_return_mismatch_source, id: ^rcf_fs_return_mismatch_read, unit: ^rcf_fs_return_mismatch_cu, path: "src/v2/test/fixture/record_construct_field/fs_return_mismatch.dag"),
-  rcf_read(source: rcf_alias_wrong_source, id: ^rcf_alias_wrong_read, unit: ^rcf_alias_wrong_cu, path: "src/v2/test/fixture/record_construct_field/alias_wrong.dag")
+  rcf_read_provider,
+  rcf_read_bad,
+  rcf_read_good,
+  rcf_read_generic_good,
+  rcf_read_nested_good,
+  rcf_read_missing,
+  rcf_read_unknown,
+  rcf_read_generic_bad,
+  rcf_read_other,
+  rcf_read_far_value,
+  rcf_read_far_missing,
+  rcf_read_bool_field,
+  rcf_read_pattern,
+  rcf_read_fs_list,
+  rcf_read_fs_color,
+  rcf_read_fs_conflict,
+  rcf_read_fs_position,
+  rcf_read_fs_return,
+  rcf_read_fs_let,
+  rcf_read_fs_return_mismatch,
+  rcf_read_alias_wrong
 ]
 
-fn rcf_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
-  module_roots_from_source_root_ingest(ingest: rcf_ingest, lm: dag_language_model())
+fn rcf_fixture_normalized(ingest: SourceRootIngest) -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: ingest, lm: dag_language_model())
 }
 
-fn rcf_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
-  match rcf_fixture_normalized() {
+fn rcf_resolve_subject(ingest: SourceRootIngest, subject: String) -> Outcome<ResolvedTree> {
+  match rcf_fixture_normalized(ingest: ingest) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
       resolve_in_context(
@@ -152,26 +197,26 @@ fn rcf_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn rcf_resolved_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bad") }
-fn rcf_resolved_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_good") }
-fn rcf_resolved_generic_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_good") }
-fn rcf_resolved_nested_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_nested_good") }
-fn rcf_resolved_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_missing") }
-fn rcf_resolved_unknown() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_unknown") }
-fn rcf_resolved_generic_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_bad") }
-fn rcf_resolved_bool_field() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bool_field") }
-fn rcf_resolved_other() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_other") }
-fn rcf_resolved_far_value() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_far_value") }
-fn rcf_resolved_far_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_far_missing") }
-fn rcf_resolved_pattern() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_pattern") }
-fn rcf_resolved_fs() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs") }
-fn rcf_resolved_fs_color() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_color") }
-fn rcf_resolved_fs_conflict() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_conflict") }
-fn rcf_resolved_fs_position() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_position") }
-fn rcf_resolved_fs_return() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_return") }
-fn rcf_resolved_fs_let() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_let") }
-fn rcf_resolved_fs_return_mismatch() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_return_mismatch") }
-fn rcf_resolved_alias_wrong() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_alias_wrong") }
+fn rcf_resolved_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_bad], subject: "v2.test.rcf_bad") }
+fn rcf_resolved_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_good], subject: "v2.test.rcf_good") }
+fn rcf_resolved_generic_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_generic_good], subject: "v2.test.rcf_generic_good") }
+fn rcf_resolved_nested_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_nested_good], subject: "v2.test.rcf_nested_good") }
+fn rcf_resolved_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_missing], subject: "v2.test.rcf_missing") }
+fn rcf_resolved_unknown() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_unknown], subject: "v2.test.rcf_unknown") }
+fn rcf_resolved_generic_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_generic_bad], subject: "v2.test.rcf_generic_bad") }
+fn rcf_resolved_bool_field() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: rcf_ingest, subject: "v2.test.rcf_bool_field") }
+fn rcf_resolved_other() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_other], subject: "v2.test.rcf_other") }
+fn rcf_resolved_far_value() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_provider, rcf_read_far_value], subject: "v2.test.rcf_far_value") }
+fn rcf_resolved_far_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_provider, rcf_read_far_missing], subject: "v2.test.rcf_far_missing") }
+fn rcf_resolved_pattern() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_pattern], subject: "v2.test.rcf_pattern") }
+fn rcf_resolved_fs() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_list], subject: "v2.test.rcf_fs") }
+fn rcf_resolved_fs_color() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_color], subject: "v2.test.rcf_fs_color") }
+fn rcf_resolved_fs_conflict() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_conflict], subject: "v2.test.rcf_fs_conflict") }
+fn rcf_resolved_fs_position() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_position], subject: "v2.test.rcf_fs_position") }
+fn rcf_resolved_fs_return() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_return], subject: "v2.test.rcf_fs_return") }
+fn rcf_resolved_fs_let() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_let], subject: "v2.test.rcf_fs_let") }
+fn rcf_resolved_fs_return_mismatch() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_fs_return_mismatch], subject: "v2.test.rcf_fs_return_mismatch") }
+fn rcf_resolved_alias_wrong() -> Outcome<ResolvedTree> { rcf_resolve_subject(ingest: [rcf_read_alias_wrong], subject: "v2.test.rcf_alias_wrong") }
 
 // INFER'S VERDICT, READ WHOLE. A refusal carries the advisories pending when it fired ahead of the
 // refusing diagnostic (v2.std.diagnostic rejected_with_pending), so the refusal is looked for by
