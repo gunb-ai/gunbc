@@ -130,11 +130,12 @@ fn lua_hook_lines(h: LuaHook) -> List<String> {
     ], map(cs, c => "ngx.var." + (c.variable as String) + " = res.header['" + (c.header as String) + "']"))
     LogPostToLoopback { port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
       "if ngx.var." + (o as String) + " == '' then return end",
+      "local value = ngx.var." + (hv as String),
       "ngx.timer.at(0, function(p)",
       "local s = ngx.socket.tcp()",
       "s:settimeout(" + (t as String) + ")",
       "if not s:connect('127.0.0.1', " + (pt as String) + ") then return end",
-      "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. ngx.var." + (hv as String) + " .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
+      "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. value .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
       "s:receive('*a')",
       "s:close()",
       "end)",
