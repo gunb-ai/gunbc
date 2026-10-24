@@ -2,13 +2,6 @@ dag/test/claim/declaration_fork_census_witness.dag
 dag/test/claim/documentary_refs_witness.dag
 dag/test/claim/long/decl_ref_resolution_witness.dag
 dag/test/claim/v1_complexity_decl_classification_witness.dag
-dag/test/fixture/scaffold_disposition_census/expected_classification.dag
-src/v2/lens/enforcement/contract.dag
-src/v2/lens/enforcement/cost_coverage.dag
-src/v2/lens/enforcement/gate.dag
-src/v2/lens/enforcement/lens_module_gate.dag
-src/v2/lens/enforcement/receipts.dag
-src/v2/lens/registry/completeness.dag
 src/v2/test/claim/advisories/fatal_first_readers.dag
 src/v2/test/claim/complexity_contract_subject_partition_witness.dag
 src/v2/test/claim/construction_justification/outside_modeled_guarantee_witness.dag
@@ -19,4 +12,3 @@ src/v2/test/lens_common/derived_equality_backfill.dag
 src/v2/test/lens_cost/p9_llvm_instruction_cost_registry_owner.dag
 src/v2/test/lens_enforcement/gate.dag
 src/v2/test/lens_registry/sg_claims.dag
-src/v2/workflow/enforcement_live.dag
