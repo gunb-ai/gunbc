@@ -172,15 +172,19 @@ test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
   }
 }
 
-// LOCATOR for the two standing-red controls above: the verdict of the DIRECT application per body.
-// 0 infer refused the application, 1 admitted, 2 undischargeable, 3 violated, 4 other.
+// LOCATOR for the two standing-red controls above: the verdict of the DIRECT application per body. discharge's
+// own head is read (bind_outcome's pending-first order and the evaluator diagnostics BEHIND an undischargeable
+// refusal make the tail the evaluator's, not the verdict). 0 infer refused the application, 1 admitted,
+// 2 undischargeable behind a runtime binding lookup miss, 3 violated, 4 other, 5 undischargeable behind another cause.
 fn rdt_verdict_code(o: Optional<Outcome<InferredTree>>) -> Int {
   match o {
     Absent => 0
     Present { value: Accepted { value: _, diagnostics: _ } } => 1
     Present { value: Rejected { diagnostics: d } } =>
-      if diagnostics_fatal_reason(d: d) == ^refinement_obligation_undischargeable { 2 }
-      else if diagnostics_fatal_reason(d: d) == ^refinement_predicate_violated { 3 }
+      if d.head.reason == ^refinement_obligation_undischargeable {
+        if diagnostics_fatal_reason(d: d) == ^eval_rejected_runtime_binding_lookup_miss { 2 } else { 5 }
+      }
+      else if d.head.reason == ^refinement_predicate_violated { 3 }
       else { 4 }
   }
 }
@@ -195,3 +199,5 @@ test fn rdt_locator_false_body_code_is_1_holds() -> Bool { rdt_verdict_code(o: r
 test fn rdt_locator_false_body_code_is_2_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 2 }
 test fn rdt_locator_false_body_code_is_3_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 3 }
 test fn rdt_locator_false_body_code_is_4_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 4 }
+test fn rdt_locator_true_body_code_is_5_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_true())) == 5 }
+test fn rdt_locator_false_body_code_is_5_holds() -> Bool { rdt_verdict_code(o: rdt_discharged(body: rdt_false())) == 5 }
