@@ -21425,37 +21425,27 @@ fn resolve_module_encoding(
 }
 
 fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireContractIndex {
-    // Row admission and target reading are the emitter's predicates, not a second copy:
-    // `is_coproduct_wire_contract_row` (typed CoproductWireContract imported from
-    // std.serialization, not a local homonym, both fields present) and
-    // `coproduct_decl_ref_decl_name`. The DeclarationRef's module_path is the one field the
-    // emitter has no reader for, because it only ever matches rows in the declaring module.
+    // Row admission and target identity are the emitter's, not a second copy: the closure's
+    // contract rows come from `build_coproduct_wire_contract_index` (each admitted under its own
+    // module by `is_coproduct_wire_contract_row`), and each row's target is read once by
+    // `coproduct_wire_contract_target` -- the DeclarationRef's (module_path, decl_name), the same
+    // identity the emitted crate applies the row under. An unreadable row governs nothing here;
+    // the emitter refuses it in its declaring module.
     use crate::v1_compiler_emit_rust::{
-        coproduct_decl_ref_decl_name, coproduct_wire_contract_encoding, field_value_by_name,
-        is_coproduct_wire_contract_row, record_string_field,
+        build_coproduct_wire_contract_index as build_contract_rows,
+        coproduct_wire_contract_encoding, coproduct_wire_contract_target,
+        CoproductWireContractTarget,
     };
     let si = ctx.si();
     let mut encodings: std::collections::HashMap<(String, String), Vec<Rc<Node>>> =
         std::collections::HashMap::new();
-    for tm in ctx.modules.iter() {
-        let imports = crate::v1_std_core::module_imports(tm.module.clone());
-        for item in tm.items.iter() {
-            if !is_coproduct_wire_contract_row(
-                Rc::clone(item),
-                tm.items.clone(),
-                imports.clone(),
-                si.clone(),
-            ) {
-                continue;
-            }
-            let Some(body) = item.body.clone() else {
-                continue;
-            };
-            let Some(decl_name) = coproduct_decl_ref_decl_name(body.clone(), si.clone()) else {
-                continue;
-            };
-            let Some(module_path) = field_value_by_name(body, "coproduct".to_string(), si.clone())
-                .and_then(|r| record_string_field(r, "module_path".to_string(), si.clone()))
+    let rows_by_target = build_contract_rows(ctx.modules.clone());
+    for rows in rows_by_target.values() {
+        for item in rows.iter() {
+            let CoproductWireContractTarget::ContractTargetDeclaration {
+                module_path,
+                decl_name,
+            } = &*coproduct_wire_contract_target(Rc::clone(item), si.clone())
             else {
                 continue;
             };
@@ -21464,7 +21454,7 @@ fn build_coproduct_wire_contract_index(ctx: &InterpContext) -> CoproductWireCont
                 continue;
             };
             encodings
-                .entry((module_path, decl_name))
+                .entry((module_path.clone(), decl_name.clone()))
                 .or_default()
                 .push(encoding);
         }
