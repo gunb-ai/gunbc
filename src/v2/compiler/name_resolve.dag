@@ -15,7 +15,7 @@ import v2.compiler.normalized_tree {
 }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget }
-import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_enclosing_declaration_paths, symbol_index_owning_module_of }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
   empty_module_outcome_index,
@@ -1274,21 +1274,38 @@ fn closure_unavailable_by_module(
   })
 }
 
+// THE CALLEE'S OWNING MODULE IS THE FILL-TIME ONE (v2.std.symbol_index symbol_index_owning_module_of),
+// never the path less its last segment: that is the module only for a module-root declaration, and for a
+// variant (`v2.b.T.V`) it is the coproduct.
 fn closure_unavailable_owner_refusal(
+  index: SymbolIndex,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
   callee: QualifiedName
 ) -> Optional<NonEmptyDiagnostics> {
-  map_lookup(m: unavailable, key: qualified_name_init(qn: callee))
+  match symbol_index_owning_module_of(index: index, path: callee) {
+    Present { value: owner } => map_lookup(m: unavailable, key: owner)
+    Absent => optional_absent()
+  }
 }
 
+// A CALLEE IS BLOCKED WHEN THE ROW IT SITS IN IS: availability is recorded per module-root declaration,
+// so a variant of a blocked coproduct is read through the coproduct's row
+// (v2.std.symbol_index symbol_index_enclosing_declaration_paths, the reader resolve's provider lookup
+// shares), never by its own exact path, which no row carries.
 fn closure_callee_blocking_refusal(
+  index: SymbolIndex,
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
   callee: QualifiedName
 ) -> Optional<NonEmptyDiagnostics> {
-  match map_lookup(m: blocked, key: callee) {
+  match fold_list(xs: symbol_index_enclosing_declaration_paths(index: index, path: callee), empty: optional_absent(), cons: fn(found, enclosing) {
+    match found {
+      Present { value: _ } => found
+      Absent => map_lookup(m: blocked, key: enclosing)
+    }
+  }) {
     Present { value: r } => optional_present(value: r)
-    Absent => closure_unavailable_owner_refusal(unavailable: unavailable, callee: callee)
+    Absent => closure_unavailable_owner_refusal(index: index, unavailable: unavailable, callee: callee)
   }
 }
 
@@ -1389,6 +1406,7 @@ fn closure_reverse_components(xs: List<List<String>>) -> List<List<String>> {
 }
 
 fn closure_component_blocking_refusal(
+  index: SymbolIndex,
   rows: Map<String, DeclPhase1Row>,
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
@@ -1412,6 +1430,7 @@ fn closure_component_blocking_refusal(
                         hit
                       } else {
                         closure_callee_blocking_refusal(
+                          index: index,
                           blocked: blocked,
                           unavailable: unavailable,
                           callee: callee
@@ -1426,6 +1445,7 @@ fn closure_component_blocking_refusal(
 }
 
 fn closure_phase2_blocked(
+  index: SymbolIndex,
   rows: List<DeclPhase1Row>,
   unavailable: List<ModuleOutcome>
 ) -> Map<QualifiedName, NonEmptyDiagnostics> {
@@ -1446,6 +1466,7 @@ fn closure_phase2_blocked(
   )
   fold_list(xs: components, empty: seed, cons: fn(blocked, component) {
     match closure_component_blocking_refusal(
+      index: index,
       rows: by_path,
       blocked: blocked,
       unavailable: unavailable_by_module,
@@ -1613,7 +1634,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           }
         }
       )
-      let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
+      let blocked = closure_phase2_blocked(index: phase1.context.symbol_index, rows: phase1.rows, unavailable: phase1.unavailable)
       let index = fold_list(xs: phase1.trees, empty: empty_symbol_index(), cons: fn(acc, nt) {
         match qualified_name_from_module_node(root: nt.root) {
           Rejected { diagnostics: _ } => acc
