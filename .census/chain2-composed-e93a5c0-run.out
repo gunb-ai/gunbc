@@ -63,4 +63,4 @@ NEW vs base: 0 (with wall text: 0); GONE: 0
 === NEW
 === GONE
 done
-srv2 converged tree vs 53dd63e515e: mirror files differing 7
+mirror check (taken at 19:03 on srv2, right after round 3 installed 0, before the base checkout): the converged tree (e93a5c0 + regenerated mirrors) vs 53dd63e515e: 0 mirror files differ, 0 other tracked files differ. So the candidate leg ran 53dd63e515e's seed.
