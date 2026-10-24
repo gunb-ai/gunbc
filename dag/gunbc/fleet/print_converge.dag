@@ -54,8 +54,9 @@ fn record_json(r: PrintRequestRecord) -> String {
   ]))
 }
 
-fn field(v: JsonValue, key: String) -> String {
-  match json_field_string(obj: v, key: key) { FieldRead { value: s } => s FieldAbsent => "" FieldMalformed { cause: _ } => "" }
+// A field that is absent, malformed or empty is a refusal of the whole record, never a default.
+fn field(v: JsonValue, key: String) -> NonEmptyStr? {
+  match json_field_string(obj: v, key: key) { FieldRead { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } } FieldAbsent => none FieldMalformed { cause: _ } => none }
 }
 
 type RecordRead = RecordAbsent | RecordPresent { record: PrintRequestRecord } | RecordRefused { cause: String }
@@ -71,15 +72,22 @@ fn read_record(request: PrintRequest) -> RecordRead {
       match parse_json_document(s: read.content) {
         JsonDocumentUnreadable { gap: _ } => RecordRefused { cause: "Request record is not JSON" }
         JsonDocumentParsed { value: v } => {
-          let fields = [field(v: v, key: "source_revision"), field(v: v, key: "credential_version"), field(v: v, key: "artifact_sha256"), field(v: v, key: "attempt_id")]
-          if any(fields, f => f == "") { return RecordRefused { cause: "Request record is missing a field" } }
+          let request_id = match field(v: v, key: "request_id") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field request_id is absent or malformed" } }
+          let root = match field(v: v, key: "root") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field root is absent or malformed" } }
+          let recipe = match field(v: v, key: "recipe") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field recipe is absent or malformed" } }
+          let printer = match field(v: v, key: "printer") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field printer is absent or malformed" } }
+          let revision = match field(v: v, key: "source_revision") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field source_revision is absent or malformed" } }
+          let version = match field(v: v, key: "credential_version") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field credential_version is absent or malformed" } }
+          let key = match field(v: v, key: "preparation_key_digest") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field preparation_key_digest is absent or malformed" } }
+          let artifact = match field(v: v, key: "artifact_sha256") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field artifact_sha256 is absent or malformed" } }
+          let attempt = match field(v: v, key: "attempt_id") { Present { value: x } => x Absent => return RecordRefused { cause: "Request record field attempt_id is absent or malformed" } }
           let recorded = PrintRequestRecord {
-            request: PrintRequest { request_id: field(v: v, key: "request_id") as NonEmptyStr, root: field(v: v, key: "root") as NonEmptyStr, recipe: field(v: v, key: "recipe") as NonEmptyStr, printer: field(v: v, key: "printer") as PhysicalAssetIdentity },
-            source_revision: field(v: v, key: "source_revision") as NonEmptyStr,
-            credential_version: field(v: v, key: "credential_version") as NonEmptyStr,
-            preparation_key_digest: field(v: v, key: "preparation_key_digest"),
-            artifact_sha256: field(v: v, key: "artifact_sha256"),
-            attempt_id: field(v: v, key: "attempt_id") as NonEmptyStr,
+            request: PrintRequest { request_id: request_id, root: root, recipe: recipe, printer: printer as PhysicalAssetIdentity },
+            source_revision: revision,
+            credential_version: version,
+            preparation_key_digest: key as String,
+            artifact_sha256: artifact as String,
+            attempt_id: attempt,
           }
           if !record_matches(record: recorded, request: request) { RecordRefused { cause: "This request id is recorded for a different root, recipe or printer; use a new request id" } }
           else { if recorded.attempt_id != print_attempt_id(request: request, artifact_sha256: recorded.artifact_sha256) { RecordRefused { cause: "Recorded attempt does not derive from the recorded request and artifact" } }
@@ -101,14 +109,13 @@ fn prepare_and_record(request: PrintRequest, source_revision: NonEmptyStr, crede
   let read = Filesystem.Read(path: concat(output, "/prepared-queues.json"))
   if !read.success { return RecordRefused { cause: "Prepared queue receipt unreadable" } }
   let queues = match parse_json_document(s: read.content) { JsonDocumentParsed { value: JsonArray { elements: q } } => q _ => return RecordRefused { cause: "Prepared queue receipt is not a list" } }
-  let mine = filter(queues, q => field(v: q, key: "printer") == (request.printer as String))
+  let mine = filter(queues, q => match field(v: q, key: "printer") { Present { value: p } => (p as String) == (request.printer as String) Absent => false })
   if count(mine) != 1 || count(queues) != 1 { return RecordRefused { cause: "The root's plan must name exactly the requested printer" } }
   let plates = flat_map(mine, q => match json_field(obj: q, key: "plates") { FieldRead { value: JsonArray { elements: p } } => p _ => [] })
   if count(plates) != 1 { return RecordRefused { cause: "One request prints one plate; the root's plan has a different count" } }
   let plate = match plates.first() { Present { value: p } => p Absent => return RecordRefused { cause: "No prepared plate" } }
-  let digest = field(v: plate, key: "digest")
-  let key = field(v: plate, key: "key_digest")
-  if digest == "" || key == "" { return RecordRefused { cause: "Prepared plate carries no digest or key" } }
+  let digest = match field(v: plate, key: "digest") { Present { value: d } => d as String Absent => return RecordRefused { cause: "Prepared plate carries no digest" } }
+  let key = match field(v: plate, key: "key_digest") { Present { value: k } => k as String Absent => return RecordRefused { cause: "Prepared plate carries no preparation key" } }
   let record = PrintRequestRecord { request: request, source_revision: source_revision, credential_version: credential_version, preparation_key_digest: key, artifact_sha256: digest, attempt_id: print_attempt_id(request: request, artifact_sha256: digest) }
   if !shell.Mkdir.Parents(path: request_directory as FilePath).success || !Filesystem.WriteCreateNew(path: record_path(request: request), content: record_json(r: record)).success {
     return RecordRefused { cause: "Cannot write the request record, or another pass wrote it first; re-run" }
@@ -156,7 +163,11 @@ fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, credentia
   }
   let completed = match listed(path_dir: printer_start_claim_directory as String, name: completion_path(claim: claim_file)) { Present { value: b } => b Absent => return exit_failure(reason: "Start claims unreadable; standing cannot be derived") }
   let claimed = match listed(path_dir: printer_start_claim_directory as String, name: claim_file) { Present { value: b } => b Absent => return exit_failure(reason: "Start claims unreadable; standing cannot be derived") }
-  let report = match report_using_session(session: session) { ProcessOutputPresent { text: t } => t ProcessOutputAbsent => "" ProcessRefused { exit_code: _, stderr: _ } => "" }
+  let report = match report_using_session(session: session) {
+    ProcessOutputPresent { text: t } => t
+    ProcessOutputAbsent => return exit_failure(reason: "Printer report empty; standing cannot be derived and nothing was sent")
+    ProcessRefused { exit_code: _, stderr: e } => return exit_failure(reason: concat("Printer report unreadable; standing cannot be derived and nothing was sent: ", e))
+  }
   let evidence = if completed { CompletionRecorded } else { if claimed { ClaimedObserved { job: observe_job(text: report, remote: remote as String) } } else { RecordedNotClaimed { printer_ready: report_allows_start(text: report) } } }
   let standing = print_standing(evidence: evidence)
   let name = print_standing_name(s: standing)

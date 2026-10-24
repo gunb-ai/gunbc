@@ -84,7 +84,7 @@ on:
         options: [printer-01, printer-02]
         type: choice
       printer_request:
-        description: "Printer operation JSON: operation (observe/print), project_path, project_sha256, credential_version, bed_clear (string true/false). The existing printer admission validates every field."
+        description: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes."
         required: false
         type: string
       agent_state_slot:
@@ -3959,7 +3959,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: printer-lan
-    timeout-minutes: 35
+    timeout-minutes: 65
     if: github.event.inputs.mode == 'printer'
     permissions:
       contents: read
@@ -4062,7 +4062,7 @@ jobs:
           token_format: access_token
           create_credentials_file: false
         timeout-minutes: 5
-      - name: "Printer: observe credential or deliver and start the pinned project"
+      - name: "Printer: observe the credential or converge one print request"
         id: printer
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -4075,11 +4075,10 @@ jobs:
           GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE: /etc/gunbc-roadmap/approval-store-receipt-mac-key
           PRINTER_TARGET: ${{ inputs.printer }}
           PRINTER_OPERATION: ${{ fromJSON(inputs.printer_request || '{}').operation }}
-          PRINTER_PROJECT_PATH: ${{ fromJSON(inputs.printer_request || '{}').project_path }}
-          PRINTER_PROJECT_SHA256: ${{ fromJSON(inputs.printer_request || '{}').project_sha256 }}
-          PRINTER_CREDENTIAL_VERSION: ${{ fromJSON(inputs.printer_request || '{}').credential_version }}
-          PRINTER_BED_CLEAR: ${{ fromJSON(inputs.printer_request || '{}').bed_clear }}
-        timeout-minutes: 15
+          PRINTER_REQUEST_ID: ${{ fromJSON(inputs.printer_request || '{}').request_id }}
+          PRINTER_ROOT: ${{ fromJSON(inputs.printer_request || '{}').root }}
+          PRINTER_RECIPE: ${{ fromJSON(inputs.printer_request || '{}').recipe }}
+        timeout-minutes: 45
       - name: Upload printer operation receipt
         id: printer_receipt
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
