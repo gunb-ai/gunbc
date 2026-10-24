@@ -97,6 +97,9 @@ test fn w_an_unnotched_sleeve_is_seen_in_the_keepout() -> Bool {
 }
 
 fn face_with(lower_edge: Micrometer, setback: Micrometer, depth: Micrometer) -> EndFaceMeasurement {
+  face_with_connector(lower_edge: lower_edge, setback: setback, depth: depth, connector: a16_end_face.connector_from_top)
+}
+fn face_with_connector(lower_edge: Micrometer, setback: Micrometer, depth: Micrometer, connector: Micrometer) -> EndFaceMeasurement {
   EndFaceMeasurement {
     source: "fixture",
     face_length: a16_end_face.face_length,
@@ -107,10 +110,10 @@ fn face_with(lower_edge: Micrometer, setback: Micrometer, depth: Micrometer) -> 
     window_from_back: a16_end_face.window_from_back,
     fin_setback: setback,
     insert_spacing: a16_end_face.insert_spacing,
-    insert_from_back: a16_end_face.insert_from_back,
-    upper_insert_far_edge_from_top: a16_end_face.upper_insert_far_edge_from_top,
+    insert_near_edge_from_back: a16_end_face.insert_near_edge_from_back,
+    upper_insert_near_edge_from_top: a16_end_face.upper_insert_near_edge_from_top,
     lower_insert_near_edge_from_bottom: lower_edge,
-    connector_from_top: a16_end_face.connector_from_top,
+    connector_from_top: connector,
   }
 }
 
@@ -144,7 +147,7 @@ test fn w_fins_at_the_face_refuse() -> Bool {
 
 // RED: a window deeper than the 92 mm fan frame cannot open into the plenum.
 test fn w_a_window_deeper_than_the_fan_refuses() -> Bool {
-  match refusal(f: face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: micrometer(count: 95000))) {
+  match admit_gpu_duct(f: face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: micrometer(count: 95000)), d: a16_duct_design, mount: PlugAndFlange, extent: FullDuct) {
     GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => true
     GpuDuctAdmitted { parts: _, interfaces: _ } => false
     GpuDuctInsertReadingsDisagree { implied_face_length: _, face_length: _ } => false
@@ -164,4 +167,41 @@ test fn w_a_window_too_shallow_for_the_plug_walls_refuses() -> Bool {
     GpuDuctFanMountRefused { mount: _ } => false
     GpuDuctWindowDeeperThanFan { window_depth: _, fan_edge: _ } => false
   }
+}
+
+fn admitted(a: GpuDuctAdmission) -> Bool { match parts_of(a: a) { Present { value: _ } => true Absent => false } }
+
+// A plug-only refusal binds the plug and not the sleeve, which has no lip in the fins.
+test fn w_a_sleeve_survives_a_plug_only_refusal() -> Bool {
+  let f = face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: micrometer(count: 400), depth: a16_end_face.window_depth)
+  !admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: PlugAndFlange, extent: CardFitRing)) &&
+  admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: SleeveOverCardEnd, extent: CardFitRing))
+}
+
+// A fan-stage refusal binds the full duct and not the fit ring, which is the card interface alone.
+test fn w_a_fit_ring_survives_a_full_duct_refusal() -> Bool {
+  let f = face_with(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: micrometer(count: 95000))
+  !admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: SleeveOverCardEnd, extent: FullDuct)) &&
+  admitted(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: SleeveOverCardEnd, extent: CardFitRing))
+}
+
+fn keepout_length(f: EndFaceMeasurement) -> Int {
+  match parts_of(a: admit_gpu_duct(f: f, d: a16_duct_design, mount: PlugAndFlange, extent: CardFitRing)) {
+    Present { value: parts } => match flat_map(filter(parts, p => p.id == "POWER-KEEPOUT"), p => p.adds).first() {
+      Present { value: k } => {
+        let b = primitive_bounds(p: k)
+        b.hi_x - b.lo_x
+      }
+      Absent => 0
+    }
+    Absent => 0
+  }
+}
+
+// The keep-out is derived from the measured connector: moving the outer pin 3 mm further from the
+// top lengthens it by 3 mm (bounds are doubled micrometres).
+test fn w_the_keepout_follows_the_measured_connector() -> Bool {
+  let base = keepout_length(f: a16_end_face)
+  let moved = keepout_length(f: face_with_connector(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: a16_end_face.window_depth, connector: micrometer(count: 5560)))
+  base > 0 && moved - base == 6000
 }

@@ -73,8 +73,8 @@ type EndFaceMeasurement {
   window_from_back: Micrometer
   fin_setback: Micrometer
   insert_spacing: Micrometer
-  insert_from_back: Micrometer
-  upper_insert_far_edge_from_top: Micrometer
+  insert_near_edge_from_back: Micrometer
+  upper_insert_near_edge_from_top: Micrometer
   lower_insert_near_edge_from_bottom: Micrometer
   connector_from_top: Micrometer
 }
@@ -89,21 +89,25 @@ data a16_end_face: EndFaceMeasurement = EndFaceMeasurement {
   window_from_back: micrometer(count: 13090),
   fin_setback: micrometer(count: 6000),
   insert_spacing: micrometer(count: 27620),
-  insert_from_back: micrometer(count: 8860),
-  upper_insert_far_edge_from_top: micrometer(count: 59720),
+  insert_near_edge_from_back: micrometer(count: 8860),
+  upper_insert_near_edge_from_top: micrometer(count: 59720),
   lower_insert_near_edge_from_bottom: micrometer(count: 7540),
   connector_from_top: micrometer(count: 2560),
 }
 
-// The inserts take an M3 x 4 screw (operator, 2026-10-23). The insert edge readings are read as
-// edges, not centres; insert_readings_agree is what admits that reading, since the two far readings
-// and the spacing then close on the face length to within the tolerance.
+// The inserts take an M3 x 4 screw (operator, 2026-10-23). Every insert reading is to the hole's
+// NEAR edge from the named face: top edge of the upper hole from the top end, bottom edge of the
+// lower hole from the bottom end, nearest edge from the back face. A centre is one bore radius
+// further in. insert_readings_agree admits the edge reading along the face, where the two edge
+// readings, the spacing and one bore close on the face length; the back reading is taken the same
+// way and has no closure of its own.
 data insert_bore: Micrometer = micrometer(count: 3000)
 data insert_reading_tolerance: Micrometer = micrometer(count: 500)
 
 // ═══ DUCT PROPOSALS ═══
-// Design allowances, not qualified values. The keep-out length covers the 8-pin header from its
-// measured offset plus the mating plug's latch; the keep-out depth reserves the plug and cable bend.
+// Design allowances, not qualified values. The keep-out runs from the card's top end past the
+// measured outer pin of the 8-pin header by an allowance for the rest of the header, the mating
+// plug's latch and finger room; the keep-out depth reserves the plug and cable bend.
 // The flange is thick enough to clear an M3 x 4 head and leave thread for the insert.
 type GpuDuctDesign {
   fan: FanMountingPattern
@@ -117,7 +121,7 @@ type GpuDuctDesign {
   flange_thickness: Micrometer
   sleeve_clearance: Micrometer
   sleeve_depth: Micrometer
-  connector_keepout_length: Micrometer
+  connector_keepout_past_outer_pin: Micrometer
   connector_keepout_depth: Micrometer
   band_clearance: Micrometer
 }
@@ -134,7 +138,7 @@ data a16_duct_design: GpuDuctDesign = GpuDuctDesign {
   flange_thickness: micrometer(count: 2500),
   sleeve_clearance: micrometer(count: 300),
   sleeve_depth: micrometer(count: 10000),
-  connector_keepout_length: micrometer(count: 26000),
+  connector_keepout_past_outer_pin: micrometer(count: 23440),
   connector_keepout_depth: micrometer(count: 40000),
   band_clearance: micrometer(count: 1000),
 }
@@ -151,8 +155,12 @@ data minimum_plug_passage: Micrometer = micrometer(count: 4000)
 
 fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
 
+fn connector_keepout_length(f: EndFaceMeasurement, d: GpuDuctDesign) -> Int {
+  um(m: f.connector_from_top) + um(m: d.connector_keepout_past_outer_pin)
+}
+
 fn implied_face_length(f: EndFaceMeasurement) -> Int {
-  um(m: f.upper_insert_far_edge_from_top) + um(m: f.insert_spacing) + um(m: insert_bore) + um(m: f.lower_insert_near_edge_from_bottom)
+  um(m: f.upper_insert_near_edge_from_top) + um(m: f.insert_spacing) + um(m: insert_bore) + um(m: f.lower_insert_near_edge_from_bottom)
 }
 
 fn insert_readings_agree(f: EndFaceMeasurement) -> Bool {
@@ -161,47 +169,61 @@ fn insert_readings_agree(f: EndFaceMeasurement) -> Bool {
   a <= um(m: insert_reading_tolerance)
 }
 
-fn admit_gpu_duct(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, extent: DuctExtent) -> GpuDuctAdmission {
-  let edge = um(m: d.fan.frame_edge)
-  let plug_h = um(m: f.window_depth) - 2 * um(m: d.plug_clearance)
-  if !insert_readings_agree(f: f) {
-    GpuDuctInsertReadingsDisagree { implied_face_length: micrometer(count: implied_face_length(f: f)), face_length: f.face_length }
-  } else { if um(m: f.fin_setback) <= um(m: d.fin_margin) {
-    GpuDuctFinsAtTheWindowFace { fin_setback: f.fin_setback, fin_margin: d.fin_margin }
-  } else { if um(m: f.window_depth) + um(m: d.band_clearance) > edge {
-    GpuDuctWindowDeeperThanFan { window_depth: f.window_depth, fan_edge: d.fan.frame_edge }
-  } else { if plug_h - 2 * um(m: d.wall) < um(m: minimum_plug_passage) {
-    GpuDuctPlugPassageClosed { plug_depth: micrometer(count: plug_h), wall: d.wall }
-  } else {
-    let fan_mount = admit_fan_mount(pattern: d.fan, plate_edge: d.fan.frame_edge, plate_thickness: d.plate_thickness, bore_diameter: d.bore)
-    match fan_mount {
-      FanMountAdmitted { geometry: g } => {
-        let printed_id = match extent { FullDuct => "DUCT" CardFitRing => "FIT-RING" }
-        let card_joints = [
-          mechanical_interface(id: "duct-to-card-inserts", members: [printed_id, "CARD"], fastener: M3IntoCardInsert, quantity: 2, status: Proposed,
-            requirement: "Two M3 x 4 screws through the 3.4 mm flange holes into the end cap's threaded inserts. Insert positions are caliper readings; the fit ring checks them."),
-          match mount {
-            PlugAndFlange => mechanical_interface(id: "duct-to-card-locate", members: [printed_id, "CARD"], fastener: FrictionFitPlug, quantity: 1, status: Proposed,
-              requirement: "Plug lip locates in the fin window, 0.2 mm under the tightest measured window per side, stopping short of the fins.")
-            SleeveOverCardEnd => mechanical_interface(id: "duct-to-card-locate", members: [printed_id, "CARD"], fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
-              requirement: "Sleeve locates over the card end, 0.3 mm over the measured outer face per side.")
-          },
-        ]
-        let fan_joints = match extent {
-          FullDuct => [mechanical_interface(id: "fan-to-duct", members: ["FAN", "DUCT"], fastener: FanSelfTappingScrew, quantity: 4, status: Proposed,
-            requirement: "Four fan screws into the 4.3 mm plate holes. Thread engagement in printed plastic is unqualified.")]
-          CardFitRing => []
-        }
-        GpuDuctAdmitted {
-          parts: duct_parts(f: f, d: d, mount: mount, extent: extent, bore: fan_mount_bore(g: g), holes: fan_mount_mounting_holes(g: g)),
-          interfaces: concat(fan_joints, card_joints),
-        }
-      }
-      FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => GpuDuctFanMountRefused { mount: fan_mount }
-      FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => GpuDuctFanMountRefused { mount: fan_mount }
-      FanMountPlateSmallerThanPattern { plate_edge: _, required_edge: _ } => GpuDuctFanMountRefused { mount: fan_mount }
+// ADMISSION IS LAYERED THE WAY THE PARTS ARE. The measured card facts are common; each mount admits
+// only its own interface (the sleeve has no lip, so fin setback and plug passage do not bind it);
+// a fit ring is the interface alone, and only a full duct adds the fan and plenum admissions.
+fn admit_mount_interface(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount) -> GpuDuctAdmission? {
+  match mount {
+    PlugAndFlange => {
+      let plug_h = um(m: f.window_depth) - 2 * um(m: d.plug_clearance)
+      if um(m: f.fin_setback) <= um(m: d.fin_margin) { Present { value: GpuDuctFinsAtTheWindowFace { fin_setback: f.fin_setback, fin_margin: d.fin_margin } } }
+      else { if plug_h - 2 * um(m: d.wall) < um(m: minimum_plug_passage) { Present { value: GpuDuctPlugPassageClosed { plug_depth: micrometer(count: plug_h), wall: d.wall } } }
+      else { none } }
     }
-  } } } }
+    SleeveOverCardEnd => none
+  }
+}
+
+fn card_joints(mount: DuctCardMount, printed_id: String) -> List<MechanicalInterface> {
+  [
+    mechanical_interface(id: "duct-to-card-inserts", members: [printed_id, "CARD"], fastener: M3IntoCardInsert, quantity: 2, status: Proposed,
+      requirement: "Two M3 x 4 screws through the 3.4 mm flange holes into the end cap's threaded inserts. Insert positions are caliper readings; the fit ring checks them."),
+    match mount {
+      PlugAndFlange => mechanical_interface(id: "duct-to-card-locate", members: [printed_id, "CARD"], fastener: FrictionFitPlug, quantity: 1, status: Proposed,
+        requirement: "Plug lip locates in the fin window, 0.2 mm under the tightest measured window per side, stopping short of the fins.")
+      SleeveOverCardEnd => mechanical_interface(id: "duct-to-card-locate", members: [printed_id, "CARD"], fastener: FrictionFitSleeve, quantity: 1, status: Proposed,
+        requirement: "Sleeve locates over the card end, 0.3 mm over the measured outer face per side.")
+    },
+  ]
+}
+
+fn admit_gpu_duct(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, extent: DuctExtent) -> GpuDuctAdmission {
+  if !insert_readings_agree(f: f) {
+    return GpuDuctInsertReadingsDisagree { implied_face_length: micrometer(count: implied_face_length(f: f)), face_length: f.face_length }
+  }
+  match admit_mount_interface(f: f, d: d, mount: mount) { Present { value: refused } => return refused Absent => {} }
+  match extent {
+    CardFitRing => GpuDuctAdmitted {
+      parts: duct_parts(f: f, d: d, mount: mount, extent: extent, fan_cuts: [], holes: []),
+      interfaces: card_joints(mount: mount, printed_id: "FIT-RING"),
+    }
+    FullDuct => {
+      if um(m: f.window_depth) + um(m: d.band_clearance) > um(m: d.fan.frame_edge) {
+        return GpuDuctWindowDeeperThanFan { window_depth: f.window_depth, fan_edge: d.fan.frame_edge }
+      }
+      let fan_mount = admit_fan_mount(pattern: d.fan, plate_edge: d.fan.frame_edge, plate_thickness: d.plate_thickness, bore_diameter: d.bore)
+      match fan_mount {
+        FanMountAdmitted { geometry: g } => GpuDuctAdmitted {
+          parts: duct_parts(f: f, d: d, mount: mount, extent: extent, fan_cuts: concat([fan_mount_bore(g: g)], fan_mount_mounting_holes(g: g)), holes: fan_mount_mounting_holes(g: g)),
+          interfaces: concat([mechanical_interface(id: "fan-to-duct", members: ["FAN", "DUCT"], fastener: FanSelfTappingScrew, quantity: 4, status: Proposed,
+            requirement: "Four fan screws into the 4.3 mm plate holes. Thread engagement in printed plastic is unqualified.")], card_joints(mount: mount, printed_id: "DUCT")),
+        }
+        FanMountBoreReachesMountingHoles { bore_radius: _, hole_center_distance: _ } => GpuDuctFanMountRefused { mount: fan_mount }
+        FanMountBoreNotEnclosedByPlate { bore_diameter: _, plate_edge: _ } => GpuDuctFanMountRefused { mount: fan_mount }
+        FanMountPlateSmallerThanPattern { plate_edge: _, required_edge: _ } => GpuDuctFanMountRefused { mount: fan_mount }
+      }
+    }
+  }
 }
 
 // Part-local frame: Z is the airflow axis, the fan plate sits on the bed at Z = 0, and the card's end
@@ -209,7 +231,7 @@ fn admit_gpu_duct(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount,
 // window's back edge, with the power cap toward +Y. Every card feature is placed from the top end
 // and the back face, which is how it was measured. A fit ring keeps the same frame, so its card
 // interface is the full duct's, primitive for primitive.
-fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, extent: DuctExtent, bore: OpThroughHole, holes: List<OpThroughHole>) -> List<AssemblyPart> {
+fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, extent: DuctExtent, fan_cuts: List<OpThroughHole>, holes: List<OpThroughHole>) -> List<AssemblyPart> {
   let edge = um(m: d.fan.frame_edge)
   let wall = um(m: d.wall)
   let t = um(m: d.plate_thickness)
@@ -225,9 +247,9 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
   let window_x = top - um(m: f.window_from_top) - wl / 2
   let window_y = 0 - wd / 2
   let fl = um(m: d.flange_thickness)
-  let keep_len = um(m: d.connector_keepout_length)
-  let insert_y = band - um(m: f.insert_from_back)
-  let upper_x = top - um(m: f.upper_insert_far_edge_from_top) - um(m: insert_bore) / 2
+  let keep_len = connector_keepout_length(f: f, d: d)
+  let insert_y = band - um(m: f.insert_near_edge_from_back) - um(m: insert_bore) / 2
+  let upper_x = top - um(m: f.upper_insert_near_edge_from_top) - um(m: insert_bore) / 2
   let insert_xs = [upper_x, upper_x - um(m: f.insert_spacing)]
   let screw_holes = map(insert_xs, x => round(diameter: um(m: m3_clearance), length: fl + 2000, axis: Axis3Z, x: x, y: insert_y, z: face_z - fl / 2))
   let interface = card_interface(f: f, d: d, mount: mount, face_z: face_z, window_x: window_x, window_y: window_y, card_y: card_y, top: top)
@@ -242,7 +264,7 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
     CardFitRing => []
   }
   let fan_stage_cuts = match extent {
-    FullDuct => concat(map(concat([bore], holes), op => match op {
+    FullDuct => concat(map(fan_cuts, op => match op {
       OpThroughHole { diameter: dd, center_x: cx, center_y: cy } =>
         round(diameter: um(m: dd), length: t + 2000, axis: Axis3Z, x: um(m: cx) - edge / 2, y: fan_y + um(m: cy) - edge / 2, z: t / 2)
     }), [block(w: plenum_w - 2 * wall, h: edge - 2 * wall, d: p - wall, x: 0, y: fan_y, z: t + (p - wall) / 2)])
@@ -287,7 +309,7 @@ fn duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount, ext
       adds: [block(w: keep_len, h: band, d: um(m: d.connector_keepout_depth), x: top - keep_len / 2, y: band / 2, z: face_z - um(m: d.connector_keepout_depth) / 2)],
       cuts: [],
       x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, plane: LayOnXY,
-      notes: "Keep printed material out of this envelope in front of the 8-pin header. Length and depth are design allowances."),
+      notes: "Keep printed material out of this envelope in front of the 8-pin header. It runs from the top end past the measured outer pin by a design allowance; the depth is a design allowance."),
   ])
 }
 
@@ -302,7 +324,7 @@ fn card_interface(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount,
   let band = um(m: f.window_from_back)
   let wl = um(m: f.window_length)
   let wd = um(m: f.window_depth)
-  let keep_len = um(m: d.connector_keepout_length)
+  let keep_len = connector_keepout_length(f: f, d: d)
   match mount {
     PlugAndFlange => {
       let pc = um(m: d.plug_clearance)
