@@ -19,7 +19,7 @@ import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem, mtcollins1_census_image, census_served_check }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
@@ -2460,7 +2460,7 @@ fn mtcollins1_boot_actuate(
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
-          match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, attempt: boot_medium_served_attempt_raw)) {
+          match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, check: census_served_check(medium: medium, image: mtcollins1_census_image), attempt: boot_medium_served_attempt_raw)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
@@ -3002,7 +3002,7 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(medium: BootMedium, resolve_toolc
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match boot_medium_served_refusal_before_filing(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, attempt: boot_medium_served_attempt_raw)) {
+  match boot_medium_served_refusal_before_filing(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, check: census_served_check(medium: medium, image: mtcollins1_census_image), attempt: boot_medium_served_attempt_raw)) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
