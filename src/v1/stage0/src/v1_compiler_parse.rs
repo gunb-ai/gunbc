@@ -810,6 +810,7 @@ pub fn absorbed_subtree_into(
             Some(InferredNode::CompilerError { .. }) => with_annotation.clone(),
             Some(InferredNode::TypeVariable { id: _, .. }) => with_annotation.clone(),
             Some(InferredNode::Divergent) => with_annotation.clone(),
+            Some(InferredNode::ArgumentsResolved) => with_annotation.clone(),
             std::option::Option::None => with_annotation.clone(),
         };
         match node.match_pattern.clone().as_deref().cloned() {
@@ -3480,6 +3481,7 @@ pub fn occurrence_allocator_after_inferred_node(
         Some(InferredNode::CompilerError { .. }) => alloc.clone(),
         Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
         Some(InferredNode::Divergent) => alloc.clone(),
+        Some(InferredNode::ArgumentsResolved) => alloc.clone(),
         std::option::Option::None => alloc.clone(),
     }
 }

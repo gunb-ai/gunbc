@@ -19,7 +19,7 @@ import std.interface_summary {
 import v1.std.core {
   Node, ErrorNode,
   make_param_node, param_node_name_at, param_node_type_expr,
-  make_field_node,
+  make_field_node, make_expr_error_node, ExprErrorKind, SemanticExprError,
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -269,6 +269,9 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
     CompilerError { message: _, span: _ } => []
     TypeVariable { id: _ } => []
     Divergent => []
+    // An operation's output type is never a substituted use-site application; if one arrives its expansion cannot be
+    // rebuilt here, so the output is a located error type, never an absent one.
+    ArgumentsResolved => [make_field_node(occurrence_identity: OccurrenceSynthetic, name: "value", type_expr: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "internal: an operation output type is an applied use whose expansion was dropped", span: span), cardinality: Required, default_value: none, from_key_properties: [], span: span, name_span: no_span())]
     Resolved { node: rt } =>
         let has_structure = rt.connective != NoConnective
         if has_structure {

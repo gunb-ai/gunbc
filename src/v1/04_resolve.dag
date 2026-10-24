@@ -49,6 +49,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
+  alias_rhs_of_declaration,
   TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
@@ -59,7 +60,7 @@ import v1.compiler.infer_env {
 // KIND INHABITANCE AT AN APPLIED TYPE ARGUMENT -- the wall that makes a kinded parameter position
 // mean something. It sits beside the arity check in resolve_node_bounded's generic-use-site branch
 // because that is the ONE place an applied user generic is judged, so every occurrence is reached
-// rather than only the field-access route alias_chain_arity_diagnostics covers.
+// rather than only the field-access route.
 //
 // THE ADMITTING ARMS, AND THE HONEST CEILING OF EACH; the arms themselves are read from
 // type_arg_kind_inhabitance below rather than counted here, because a count in prose rots the first
@@ -455,7 +456,10 @@ fn generic_declaration_application(n: Node, decl: Node, type_name: String, resol
     Present { value: d } => Present { value: d }
     Absent => declaration_ref_of_declaration_node(decl: decl, source_indices: env.source_indices, env: env)
   }
-  let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: applied_declaration, expr_data: n.expr_data }
+  // The expansion IS the declaration's body (its children are the declaration's own members, each slot
+  // substituted), so the producer marks it a type declaration: is_applied_declaration_carrier reads that
+  // to tell it from the application whose children are the authored type arguments.
+  let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: ModuleItemTypeDeclaration, declaration_marker: n.declaration_marker, declaration: applied_declaration, expr_data: n.expr_data }
   Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: applied_declaration, expr_data: n.expr_data }
 }
 
@@ -503,6 +507,17 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
         Present { value: decl } => decl
         Absent => n
       }
+  }
+}
+
+// A use that supplies arguments to a parameterless alias: the arguments bind to nothing, so the application is
+// refused by arity (expected 0) at the type position, not read as a use of the generic its right-hand side expands to.
+// A node carrying a `declaration` is a producer-built expansion of one (is_applied_declaration_carrier reads the same
+// fact), not a written use; only a written use, whose declaration is still none, is judged here.
+fn is_paramless_alias_use(n: Node, env: TypeEnv) -> Bool {
+  n.connective == NoConnective && (n.children |> count) > 0 && n.declaration == none && match lookup_type_for(env: env, node: n) {
+    Present { value: used } => used.params |> count == 0 && used.connective == NoConnective
+    Absent => false
   }
 }
 
@@ -761,10 +776,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
         }
       }
     }
-  } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
+  } else if n.children |> count > 0 && (is_user_generic_use_site(n: n, env: env) || is_paramless_alias_use(n: n, env: env)) {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
-    let expected_arity = decl.params |> count
+    // The application is judged against the arity of the name it USES: a parameterless alias applied to arguments
+    // binds them to nothing, whatever generic declaration its right-hand side expands to.
+    let uses_paramless_alias = is_paramless_alias_use(n: n, env: env)
+    let expected_arity = if uses_paramless_alias { 0 } else { decl.params |> count }
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]
@@ -838,7 +856,19 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
         let el_param_name = if child_node.inferred != none { authored_name(env: env, node: child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: child_node) } }
-        let resolved_child = Node { occurrence_identity: child_node.occurrence_identity, name: el_param_name, span: child_node.span, ident_span: child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: el_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        // A transparent alias element is stored as its AUTHORED reference (the alias declaration and its authored arguments), the type
+        // expression this wrapper's contract names, so a generic callee's parameter binds an element that settles by declaration identity
+        // with every other spelling of the alias; resolving it to the expansion's declaration dropped the arguments (FreeMonoid, not FreeMonoid<Symbol>).
+        let el_authored = reference_with_declaration(n: el_type, env: env)
+        let el_stored = match el_authored.declaration {
+          Present { value: d } =>
+            match alias_rhs_of_declaration(item_ref: d, env: env) {
+              Present { value: _ } => el_authored
+              Absent => el_resolved
+            }
+          Absent => el_resolved
+        }
+        let resolved_child = Node { occurrence_identity: child_node.occurrence_identity, name: el_param_name, span: child_node.span, ident_span: child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: el_stored } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         NodeResolveResult {
           resolved: stamp_kernel_collection(n: reference_with_declaration(env: env, n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData })),
           diagnostics: el_diags
@@ -943,6 +973,15 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
         }
       Divergent => NodeResolveResult { resolved: divergent_type(), diagnostics: [] }
+      // ArgumentsResolved is stamped on a use-site application whose cached expansion was dropped, and is rebuilt from
+      // that use's arguments (generic_application_reapplied). A declaration's own inferred slot is not such a use, so
+      // there is nothing to rebuild here: a type is never fabricated for it, the arm refuses.
+      ArgumentsResolved =>
+        let msg = "internal: a declaration's inferred type is an applied use whose expansion was dropped and cannot be rebuilt from a declaration"
+        NodeResolveResult {
+          resolved: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: msg, span: kernel_span(name: module_name)),
+          diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: kernel_span(name: module_name) }, module_name: module_name)]
+        }
       TypeVariable { id: tv } =>
         NodeResolveResult { resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tv, span: kernel_span(name: tv), ident_span: Present { value: kernel_span(name: tv) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tv } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, diagnostics: [] }
     }
@@ -1587,3 +1626,36 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
     diagnostics: concat(collision_diags, alias_cycle_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
   }
 }
+
+fn is_declaration_body(n: Node) -> Bool {
+  n.module_item_kind == ModuleItemTypeDeclaration
+}
+
+fn is_applied_declaration_carrier(n: Node) -> Bool {
+  n.connective == NoConnective && n.declaration != none && (n.children |> count) > 0 && !is_declaration_body(n: n)
+}
+
+fn generic_application_reapplied(n: Node, env: TypeEnv) -> Node {
+  let carries_resolved_target = match n.inferred {
+    Present { value: Resolved { node: _ } } => n.connective == NoConnective && (n.children |> count) > 0
+    Present { value: ArgumentsResolved } => n.connective == NoConnective && (n.children |> count) > 0
+    _ => false
+  }
+  if carries_resolved_target && is_user_generic_use_site(n: n, env: env) {
+    let type_name = authored_name(env: env, node: n)
+    let decl = resolve_generic_use_decl(env: env, n: n)
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias || (decl.params |> count) != (n.children |> count) || is_declaration_body(n: n) {
+      node_with_inferred(n: n, inferred: none)
+    } else {
+      let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+        match n.children |> skip(pair.first) |> first {
+          Present { value: arg } => map_insert(acc, authored_name_at(source_indices: env.source_indices, node: pair.second), arg)
+          Absent => acc
+        }
+      )
+      generic_declaration_application(n: n, decl: decl, type_name: type_name, resolved_args: n.children, slot_bindings: slot_bindings, env: env)
+    }
+  } else { n }
+}
+

@@ -1051,6 +1051,8 @@ fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, St
         "}")
     Divergent =>
       "{\"kind\": \"Divergent\"}"
+    ArgumentsResolved =>
+      "{\"kind\": \"ArgumentsResolved\"}"
     TypeVariable { id: id } =>
       concat("{\"kind\": \"TypeVariable\", \"id\": ", json_quote(s: id), "}")
   }

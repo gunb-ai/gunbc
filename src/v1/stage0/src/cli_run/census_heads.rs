@@ -379,12 +379,13 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         Some(InferredNode::Resolved { node }) => Some(Rc::new(InferredNode::Resolved {
             node: project_node(node, base, relabel)?,
         })),
-        Some(InferredNode::CompilerError {
-            message: _,
-            span: _,
-        })
-        | Some(InferredNode::TypeVariable { id: _ })
-        | Some(InferredNode::Divergent) => inferred.clone(),
+        // TEMPORARY WILDCARD, a bootstrap step (DESIGN 4b declared drop). Committed stage0 has no
+        // InferredNode::ArgumentsResolved until heal publishes the regenerated mirror, so naming it here fails the
+        // first build (E0599). Every fact reaching this arm is a leaf with no nested node to project.
+        // Removal trigger: the heal-published mirror carries the variant. The very next commit replaces this arm
+        // with an explicit `Some(InferredNode::CompilerError { .. }) | Some(InferredNode::TypeVariable { .. })
+        // | Some(InferredNode::Divergent) | Some(InferredNode::ArgumentsResolved)` match, no wildcard.
+        Some(_) => inferred.clone(),
     };
     let match_pattern = match match_pattern.as_deref() {
         None => None,
