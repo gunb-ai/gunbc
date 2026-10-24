@@ -517,18 +517,23 @@ fn site_reach_reason(table: EffectReachTable, function: QualifiedName, callee: F
   }
 }
 
+// Every admitted call site advances the body-local ordinal, reaching or not; only reaching sites are kept.
+fn scan_body_sites(body: BodyOrdered, table: EffectReachTable) -> BodySiteScan {
+  fold_list(xs: body.sites, empty: BodySiteScan { next: 0, found: Empty }, cons: fn(acc, s) {
+    match site_reach_reason(table: table, function: body.function, callee: s.callee) {
+      Present { value: r } => BodySiteScan { next: acc.next + 1, found: list_snoc_item(xs: acc.found, item: EffectSite { occurrence: s.enter, locus: site_locus(o: s.occurrence), ordinal: acc.next, callee: s.callee, reason: r, contexts: site_contexts(sites: body.sites, groups: body.groups, tick: s.enter) }) }
+      Absent => BodySiteScan { next: acc.next + 1, found: acc.found }
+    }
+  })
+}
+
 // The body's facts under a reach table: only reaching sites are the pair population, but the order
 // graph keeps every site so a chain through a pure call still orders its ends.
 fn body_effect_facts(body: BodyOrdered, table: EffectReachTable) -> BodyEffectFacts {
   BodyEffectFacts {
     module: body.module,
     function: body.function,
-    sites: fold_list(xs: body.sites, empty: BodySiteScan { next: 0, found: Empty }, cons: fn(acc, s) {
-      match site_reach_reason(table: table, function: body.function, callee: s.callee) {
-        Present { value: r } => BodySiteScan { next: acc.next + 1, found: list_snoc_item(xs: acc.found, item: EffectSite { occurrence: s.enter, locus: site_locus(o: s.occurrence), ordinal: acc.next, callee: s.callee, reason: r, contexts: site_contexts(sites: body.sites, groups: body.groups, tick: s.enter) }) }
-        Absent => BodySiteScan { next: acc.next + 1, found: acc.found }
-      }
-    }).found,
+    sites: scan_body_sites(body: body, table: table).found,
     orders: body.orders,
     exclusive: body.exclusive
   }
