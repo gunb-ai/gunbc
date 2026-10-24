@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped: RecurringFailureMode = RecurringFailureMode {
   identity: "an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped" as NonEmptyStr,
-  rung: RungUnread { cause: BlockerClassUnstated },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the seed and native typecheckers type a pattern tag against the scrutinee's declared coproduct, so a match over a declared Optional<V> with ambient Present / Absent tags refuses (or binds the payload at V) instead of binding it untyped" } },
 
   receipts: [
     "INVALID STATE: a match over a value of the DECLARED std.optional Optional<V> whose arms use the AMBIENT tags Present / Absent (the module does not import std.optional) binds the Present payload with no type, so a use of it is not checked against V. Specimen (wise-moth-707, 2026-10-23, the map_get -> std.algebra map_lookup rename wave; seed built at main 2fdbab77bb, gunbc run resolve + typecheck): `type Acc { m: Map<NonEmptyStr, Set<String>> }` and `fn probe(acc: Acc, k: NonEmptyStr) -> Int { match map_lookup(m: acc.m, key: k) { Present { value: s } => s  Absent => 0 } }` is ACCEPTED, returning a Set<String> as an Int. The same body over the ambient map_get (kernel Optional result) REFUSES with `match arms produce proven-disjoint types: Container(Set,Primitive(String)) vs Primitive(Int)`, and so does the map_lookup body with `import std.optional { Present, Absent }`. The ambient map_get with the std.optional tags imported also refuses correctly, so binding the declared tags is safe over a kernel Optional scrutinee.",
