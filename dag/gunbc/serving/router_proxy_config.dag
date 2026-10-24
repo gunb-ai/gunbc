@@ -1,7 +1,7 @@
 module gunbc.serving.router_proxy_config
 
 import std.optional { Optional, Present, Absent }
-import std.types { String, Int, Bool, List }
+import std.types { String, Int, Bool, List, Milliseconds }
 import extdeps.proxy.openresty {
   OpenRestyVersion, openresty_1_27_1_1, NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff,
   ServerBlock, ListenLoopback, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
@@ -104,7 +104,7 @@ fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Int, authz_por
           ProxySetHeader { header: v.seat_permit_header, source: HeaderFromVariable { variable: v.permit_variable } },
           ProxyPassDirective { target: ProxyTargetFromUpstreamVariable, variable: v.upstream_variable },
           LuaPhaseHook { phase: LogPhase, hook: LogPostToLoopback {
-            port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000,
+            port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000 as Milliseconds,
             only_when_set: v.permit_variable, header: v.seat_permit_header, header_value: v.permit_variable,
           } },
         ] },
@@ -124,15 +124,5 @@ fn router_proxy_config(listen_port: Int, authz_port: Int, stream_end_port: Int) 
   match router_proxy_vocabulary() {
     Present { value: v } => RouterProxyConfigRendered { text: render_nginx_directives(rows: router_proxy_directives(v: v, listen_port: listen_port, authz_port: authz_port, stream_end_port: stream_end_port)) }
     Absent => RouterProxyConfigRefused { token: "vocabulary" }
-  }
-}
-
-// The falsifier instrument's emit entry (tools/serving_proxy_falsifier): the rendered text, or on
-// refusal the text "refused <token>", which is not a nginx configuration, so the instrument's
-// `nginx -t` control fails loudly rather than driving an empty or plausible config.
-fn router_proxy_config_text(listen_port: Int, authz_port: Int, stream_end_port: Int) -> String {
-  match router_proxy_config(listen_port: listen_port, authz_port: authz_port, stream_end_port: stream_end_port) {
-    RouterProxyConfigRendered { text: t } => t
-    RouterProxyConfigRefused { token: k } => "refused " + k
   }
 }

@@ -1,7 +1,7 @@
 module extdeps.proxy.openresty
 
 import std.optional { Optional, Present, Absent }
-import std.types { NonEmptyStr, brand, String, Int, List, Bool }
+import std.types { NonEmptyStr, brand, String, Int, List, Bool, Milliseconds }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -77,7 +77,7 @@ type HeaderCopy {
 
 type LuaHook
   = CaptureSubrequest { location: NginxToken, failure_status: Int, copies: List<HeaderCopy> }
-  | LogPostToLoopback { port: Int, path: NginxToken, timeout_ms: Int, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
+  | LogPostToLoopback { port: Int, path: NginxToken, timeout_ms: Milliseconds, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
 
 type LuaPhase
   = | AccessPhase
@@ -133,7 +133,7 @@ fn lua_hook_lines(h: LuaHook) -> List<String> {
       "local value = ngx.var." + (hv as String),
       "ngx.timer.at(0, function(p)",
       "local s = ngx.socket.tcp()",
-      "s:settimeout(" + (t as String) + ")",
+      "s:settimeout(" + ((t as Int) as String) + ")",
       "if not s:connect('127.0.0.1', " + (pt as String) + ") then return end",
       "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. value .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
       "s:receive('*a')",
