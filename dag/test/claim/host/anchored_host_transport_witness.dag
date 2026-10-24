@@ -3,7 +3,6 @@ module test.claim.host.anchored_host_transport_witness
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import extdeps.filesystem.filesystem_io { filesystem_read }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
