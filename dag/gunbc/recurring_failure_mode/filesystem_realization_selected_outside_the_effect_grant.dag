@@ -23,8 +23,6 @@ data filesystem_realization_selected_outside_the_effect_grant: RecurringFailureM
     "RUNG: found at mitigatable (the seam was writable and nothing refused it); still mitigatable. Ceiling structurally guaranteed: with a typed binding arm and the grant as the only route, an accepted program cannot answer a multiply-realized Filesystem operation without a covering grant.",
   ],
   evidence: [
-    DeclarationRef { module_path: "std.effect_grant", decl_name: "HandlerBinding", field: WholeDeclaration },
-    DeclarationRef { module_path: "std.effect_grant", decl_name: "covering_grant", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.typed_remote_file_write", decl_name: "typed_remote_file_step", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_windowed", field: WholeDeclaration },
   ],
