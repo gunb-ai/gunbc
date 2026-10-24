@@ -24,7 +24,7 @@ import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
   content_hash_combine_structural,
-  as_content_hash_structural, fnv1a64_structural_digest_hex_total_order
+  as_content_hash_structural,
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -1307,7 +1307,7 @@ fn symbols_are_one_distinct_set(a: List<Symbol>, b: List<Symbol>) -> Bool {
   if count(a) != count(b) {
     false
   } else {
-    let walk = fold(list_sort_by_key(xs: a, key: fn(x) { x }, order: symbol_total_order()), init: SortedSymbolWalk { rest: list_sort_by_key(xs: b, key: fn(x) { x }, order: symbol_total_order()), previous: [], ok: true }, f: fn(acc, x) {
+    let walk = fold(sort_by(a, fn(x) { x }), init: SortedSymbolWalk { rest: sort_by(b, fn(x) { x }), previous: [], ok: true }, f: fn(acc, x) {
       match acc.rest {
         Empty => SortedSymbolWalk { rest: Empty, previous: [x], ok: false }
         Cons { head: y, tail: more } =>
@@ -2183,8 +2183,8 @@ fn labeled_sort_classes<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> Labe
 fn sort_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) -> List<T> {
   let classes = labeled_sort_classes(items: items, label_of: label_of)
   concat(
-    list_sort_by_key(xs: classes.structural, key: fn(x) { label_sort_key(label: label_of(x)) }, order: symbol_total_order()),
-    list_sort_by_key(xs: classes.other, key: fn(x) { label_sort_key(label: label_of(x)) }, order: symbol_total_order())
+    sort_by(classes.structural, fn(x) { label_sort_key(label: label_of(x)) }),
+    sort_by(classes.other, fn(x) { label_sort_key(label: label_of(x)) })
   )
 }
 
@@ -3134,7 +3134,7 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
 
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
-    list_sort_by_key(xs: xs, key: fn(h) { h.digest }, order: fnv1a64_structural_digest_hex_total_order()),
+    sort_by(xs, fn(h) { h.digest }),
     init: empty,
     f: fn(acc, h) {
       combine_hash(a: acc, b: h)
