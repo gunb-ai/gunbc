@@ -28,9 +28,10 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
 import gunbc.auth.branch_run_grant {
-  BranchRunFacts, BranchRunAdmitted, BranchRunRefused, BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
-  judge_branch_run, plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
+  BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
+  plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
 }
+import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted, BranchRunRefused, judge_branch_run }
 import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }

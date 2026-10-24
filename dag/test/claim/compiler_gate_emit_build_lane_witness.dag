@@ -142,7 +142,7 @@ test fn the_required_job_is_fleet_guarded() -> Bool {
 
 // THE SUBJECTS ARE THE TWO RETAINED NATIVE COMPILATIONS, BY LABEL. A green here that named one
 // subject would be the coverage claim without the coverage; a third row is the growth the operator
-// vetoed on 2026-10-09 (the roster "remains the two compiler products").
+// vetoed on 2026-10-09 (gunbc.design_ruling emit_build_subjects_are_the_two_compiler_products).
 test fn the_job_runs_both_retained_emit_build_subjects() -> Bool {
   (emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))) == [
     "//gunbc/instruments:self-host",
