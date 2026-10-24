@@ -7637,7 +7637,11 @@ fn tostr_census_diags(route: String, target: String, value: Node, span: SourceSp
         TypeReferenceNamesDeclaration { declaration: d } => concat("decl:", d.module_path as String, ".", d.decl_name as String)
         TypeReferenceIsKernelType { name: k } => concat("kernel:", k, if node_is_kernel_mint(n: t) { ":mint" } else { ":named" })
         TypeReferenceIsTypeVariable { id: v } => concat("tyvar:", v)
-        TypeReferenceUnidentified { authored: _, resolved: _ } => "unidentified"
+        TypeReferenceUnidentified { authored: _, resolved: _ } =>
+          match type_reference_declaration_ref(n: t, source_indices: si, env: scope.type_env) {
+            Present { value: d } => concat("decl-env:", d.module_path as String, ".", d.decl_name as String)
+            Absent => "unidentified"
+          }
       }
       concat(r, " card=", card)
     Present { value: TypeVariable { id: v } } => concat("value-tyvar:", v, " card=?")
