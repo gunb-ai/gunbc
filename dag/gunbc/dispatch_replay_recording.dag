@@ -262,6 +262,19 @@ fn recording_capture(repo_root: String, base_sha: String, result_commit: String,
           cause: RecordingCaptureExitPairNotReproducible { status: status, manager_result: recording_manager_result_word(result: exit.result) },
         }
       } else {
+        match git_object_id_from_untagged_hex(hex: base_sha) {
+          Absent =>
+            RecordingCaptureRefused { cause: RecordingCaptureObjectUnusable { object: base_sha, detail: "the base is not a git object id" } }
+          Present { value: _ } =>
+            recording_capture_read_tree(repo_root: repo_root, base_sha: base_sha, result_commit: result_commit, status: status, exit: exit)
+        }
+      }
+  }
+}
+
+// The result tree is read only after the base is admitted as an object id: the decode refuses a base that is not
+// one (recording_id_decode), so capture refuses it too rather than minting an id the decode would reject.
+fn recording_capture_read_tree(repo_root: String, base_sha: String, result_commit: String, status: Int, exit: AttemptExitRecord) -> RecordingCapture {
         let tree_read = git.Plumbing.ObserveRef(
           address: devboot_repo_address(repo_root: repo_root),
           ref_name: concat(result_commit, recording_peel_to_tree_suffix),
@@ -283,8 +296,6 @@ fn recording_capture(repo_root: String, base_sha: String, result_commit: String,
               base: base_sha,
             )
         }
-      }
-  }
 }
 
 // REPLAY IS EXACT OR REFUSES. The attempt's base must equal the recording's base byte for byte: no rebase, no
