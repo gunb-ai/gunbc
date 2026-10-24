@@ -437,12 +437,27 @@ fn occurrence_binding_duplicates(entries: List<OccurrenceBindingEntry>) -> List<
 // subject's own declarations. So the change cannot take a capability away from a caller that has not yet been
 // given the closure.
 fn resolved_declarations_over(closure: SymbolIndex, subject: Node) -> SymbolIndex {
-  symbol_index_fill_module_declarations(
-    index: closure,
-    root: subject,
-    record_declarations: Empty,
-    resource_declarations: Empty
-  )
+  match resolved_subject_in_closure(closure: closure, subject: subject) {
+    true => closure
+    false =>
+      symbol_index_fill_module_declarations(
+        index: closure,
+        root: subject,
+        record_declarations: Empty,
+        resource_declarations: Empty
+      )
+  }
+}
+
+// A SUBJECT THE CLOSURE ALREADY HOLDS IS NOT FILLED AGAIN. Every fill inserts into the closure's maps, and a
+// map handed to an insert while the context still holds it is copied whole, so refilling the subject cost
+// the size of the corpus per module. The closure was produced from the same module roots, so its row for
+// this module is the row a refill would write.
+fn resolved_subject_in_closure(closure: SymbolIndex, subject: Node) -> Bool {
+  match qualified_name_from_module_node(root: subject) {
+    Accepted { value: module_qn, diagnostics: _ } => map_contains_key(m: closure.module_roots, key: module_qn)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // `test_code`, `declared_in` and `imported_origins` exist for one decision: whether a reference binds
