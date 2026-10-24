@@ -160,14 +160,37 @@ fn linear_case(member: String, v: LadderLinearity) -> String {
   concat("case ", member, ".home_linear ", verdict_word(held: !(ladder_is_unobserved(v: v) || ladder_is_superlinear(v: v))), " observed=", linearity_text(v: v), "\n")
 }
 
+// THE CURSOR-WALK CONTROL (the discriminating RED for the emitter's TCO cursor lowering, owned by
+// clever-crane-830): fold_list's emitted loop reads each element by index, an O(log n) descent on the
+// persistent Vector, so quadrupling n multiplies its time by more than 4. Held when the home fold's
+// time at 16000 is within cursor_walk_budget_x100 per 100 of 4x its time at 4000. A POLICY BUDGET:
+// 1.25 over linear separates a linear walk from the measured indexed one (5.9x on 2026-10-24).
+fn cursor_walk_budget_x100() -> Int { 500 }
+
+fn fold_home_at(rows: List<PairRow>, n: Int) -> List<PairRow> {
+  filter(rows, r => (r.member == "fold") && (r.n == n))
+}
+
+fn cursor_walk_held(rows: List<PairRow>) -> Bool {
+  let small = fold_home_at(rows: rows, n: 4000)
+  let large = fold_home_at(rows: rows, n: 16000)
+  if (count(small) != 1) || (count(large) != 1) { false }
+  else { all(large, l => all(small, s => nanosecond_count(n: l.home) * 100 <= nanosecond_count(n: s.home) * cursor_walk_budget_x100())) }
+}
+
+fn cursor_walk_case(rows: List<PairRow>) -> String {
+  concat("case fold.cursor_walk ", verdict_word(held: cursor_walk_held(rows: rows)), " observed=",
+    join(map(filter(rows, r => r.member == "fold"), r => concat(to_string(value: r.n), ":", to_string(value: nanosecond_count(n: r.home)))), ","), "\n")
+}
+
 fn native_claim_report() -> NativeClaimReport {
   let rows = pair_rows()
   let members = member_names()
   let verdicts = map(members, m => ladder_arm_linearity(rows: home_timings(rows: rows), arm: m))
-  let identities = list_append(left: map(rows, r => size_identity(r: r)), right: map(members, m => concat(m, ".home_linear")))
-  let cases = concat(join(map(rows, r => size_case(r: r)), ""), join(map(members, m => linear_case(member: m, v: ladder_arm_linearity(rows: home_timings(rows: rows), arm: m))), ""))
+  let identities = list_append(left: map(rows, r => size_identity(r: r)), right: list_append(left: map(members, m => concat(m, ".home_linear")), right: ["fold.cursor_walk"]))
+  let cases = concat(join(map(rows, r => size_case(r: r)), ""), join(map(members, m => linear_case(member: m, v: ladder_arm_linearity(rows: home_timings(rows: rows), arm: m))), ""), cursor_walk_case(rows: rows))
   let unobserved = count(filter(verdicts, v => ladder_is_unobserved(v: v)))
-  let failed = count(filter(rows, r => !(r.agree && within_budget(r: r)))) + count(filter(verdicts, v => ladder_is_superlinear(v: v)))
+  let failed = count(filter(rows, r => !(r.agree && within_budget(r: r)))) + count(filter(verdicts, v => ladder_is_superlinear(v: v))) + (if cursor_walk_held(rows: rows) { 0 } else { 1 })
   let terminal = if unobserved > 0 { NativeClaimNoObservation { reason: "a home arm's curve could not be read" } }
     else if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " case(s) not held") } }
     else { NativeClaimHeld }
