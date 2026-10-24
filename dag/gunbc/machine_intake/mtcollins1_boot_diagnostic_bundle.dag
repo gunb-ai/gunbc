@@ -805,7 +805,7 @@ fn handoff_media_harness(h: MtCollins1HandoffMedia) -> List<HarnessFinding> {
 // historical-only one.
 type MtCollins1EndMedia
   = EndMediaNotTaken { reason: NonEmptyStr }
-  | EndMediaObserved { look: MegaRacAttachResult, release: EndMediaRelease }
+  | EndMediaObserved { look: MegaRacAttachResult, end_release: EndMediaRelease }
 
 // WHAT THE ATTEMPT DID WITH ITS OWN SESSION AFTER THE END LOOK, decided by the power after the attempt
 // (end_release_gate). A host observed ON keeps its medium: a diskless host that stays up runs from it.
@@ -839,8 +839,8 @@ fn end_release_gate(power_after: PowerAfterAttempt) -> EndReleaseGate {
 // the host was kept on deliberately. Every other arm is residue the next attempt meets, so it is loud:
 // a stop the read-back did not establish, a row the release could not read or would not stop, a release
 // whose own login session was not released, and a power that could not say whether a stop was owed.
-fn end_release_residue(release: EndMediaRelease) -> NonEmptyStr? {
-  match release {
+fn end_release_residue(end_release: EndMediaRelease) -> NonEmptyStr? {
+  match end_release {
     EndReleaseKeptHostOn => none
     EndReleaseWithheld { reason: r } => Present { value: concat("this attempt's session may remain on the controller: ", r as String) as NonEmptyStr }
     EndReleaseRan { result: res } =>
@@ -864,8 +864,8 @@ fn end_release_session_residue(standing: SessionRelease) -> NonEmptyStr? {
   }
 }
 
-fn end_release_text(release: EndMediaRelease) -> String {
-  match release {
+fn end_release_text(end_release: EndMediaRelease) -> String {
+  match end_release {
     EndReleaseKeptHostOn => "kept: the host is on after the attempt, and a host that stays up runs from its medium"
     EndReleaseWithheld { reason: r } => concat("WITHHELD: ", r as String)
     EndReleaseRan { result: res } =>
@@ -881,8 +881,8 @@ fn end_release_text(release: EndMediaRelease) -> String {
 fn outcome_with_end_release(outcome: ProcessExit, end: MtCollins1EndMedia) -> ProcessExit {
   match end {
     EndMediaNotTaken { reason: _ } => outcome
-    EndMediaObserved { look: _, release: rel } =>
-      match end_release_residue(release: rel) {
+    EndMediaObserved { look: _, end_release: rel } =>
+      match end_release_residue(end_release: rel) {
         Absent => outcome
         Present { value: why } =>
           match outcome {
@@ -905,7 +905,7 @@ fn end_media_is_owed(media: MtCollins1MediaAttachRecord) -> Bool {
 fn end_media_text(e: MtCollins1EndMedia) -> String {
   match e {
     EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
-    EndMediaObserved { look: l, release: rel } => join([observation_text(r: l), " | release: ", end_release_text(release: rel)], "")
+    EndMediaObserved { look: l, end_release: rel } => join([observation_text(r: l), " | release: ", end_release_text(end_release: rel)], "")
   }
 }
 
@@ -950,7 +950,7 @@ fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndM
         MediaLossAffirmed { phase: p, reason: r } => MediaLossAffirmed { phase: p, reason: r }
         MediaLossNotAffirmed =>
           match end {
-            EndMediaObserved { look: l, release: _ } => media_loss_of_look(look: l, phase: MediaLostAtEndOfAttempt)
+            EndMediaObserved { look: l, end_release: _ } => media_loss_of_look(look: l, phase: MediaLostAtEndOfAttempt)
             EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
           }
       }

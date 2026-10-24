@@ -219,14 +219,14 @@ fn ran(end: OwnSessionEnd, session: String) -> EndMediaRelease {
 }
 
 fn residue_present(r: EndMediaRelease, pattern: String) -> Bool {
-  match end_release_residue(release: r) {
+  match end_release_residue(end_release: r) {
     Present { value: why } => string_contains(s: why as String, pattern: pattern)
     Absent => false
   }
 }
 
 fn residue_absent(r: EndMediaRelease) -> Bool {
-  match end_release_residue(release: r) {
+  match end_release_residue(end_release: r) {
     Present { value: _ } => false
     Absent => true
   }
@@ -246,20 +246,20 @@ test fn every_other_release_is_residue_naming_its_cause() -> Bool {
     && residue_present(r: EndReleaseRan { result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "401" }, session_release: SessionReleaseNotAttempted, baseline: none } }, pattern: "did not run: session refused: 401")
 }
 
-fn observed(release: EndMediaRelease) -> MtCollins1EndMedia {
-  EndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none }, release: release }
+fn observed(end_release: EndMediaRelease) -> MtCollins1EndMedia {
+  EndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none }, end_release: end_release }
 }
 
 // A success that left its session behind is a failure naming it; a failure keeps its own cause first.
 test fn residue_turns_a_success_into_a_failure_and_rides_beside_a_failure() -> Bool {
   let residue = ran(end: OwnSessionStopUnconfirmed { detach: evidence(readback_read: false, readback: ""), reason: "the read-back failed" }, session: "released")
-  (match outcome_with_end_release(outcome: ExitSuccess, end: observed(release: residue)) {
+  (match outcome_with_end_release(outcome: ExitSuccess, end: observed(end_release: residue)) {
     ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "end-of-attempt release:")
     ExitSuccess => false
-  }) && (match outcome_with_end_release(outcome: exit_failure(reason: "fan stop"), end: observed(release: residue)) {
+  }) && (match outcome_with_end_release(outcome: exit_failure(reason: "fan stop"), end: observed(end_release: residue)) {
     ExitFailure { code: _, reason: r } => starts_with(s: r, prefix: "fan stop") && string_contains(s: r, pattern: "at the end of the attempt:")
     ExitSuccess => false
-  }) && (match outcome_with_end_release(outcome: ExitSuccess, end: observed(release: EndReleaseKeptHostOn)) {
+  }) && (match outcome_with_end_release(outcome: ExitSuccess, end: observed(end_release: EndReleaseKeptHostOn)) {
     ExitSuccess => true
     ExitFailure { code: _, reason: _ } => false
   })

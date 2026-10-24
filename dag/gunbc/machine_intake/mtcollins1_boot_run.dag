@@ -2574,7 +2574,7 @@ fn mtcollins1_boot_actuate(
         Present { value: look } =>
           EndMediaObserved {
             look: look,
-            release: match end_release_gate(power_after: power_after) {
+            end_release: match end_release_gate(power_after: power_after) {
               EndReleaseGateKeep => EndReleaseKeptHostOn
               EndReleaseGateWithhold { reason: why } => EndReleaseWithheld { reason: why }
               EndReleaseGateAdmit { power: off } => EndReleaseRan { result: megarac_release_boot_session(proof: proof, image_name: subject.medium.image_name, replaceable_seeded_stems: lane_stems, power: off, password_file: password_file, attempt: attempt) }

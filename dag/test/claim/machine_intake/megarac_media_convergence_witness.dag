@@ -703,8 +703,8 @@ fn attributed_reason(handoff: MtCollins1HandoffMedia, end: MtCollins1EndMedia) -
 }
 
 test fn a_presentation_lost_after_a_confirmed_handoff_is_the_named_cause() -> Bool {
-  let at_after = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look, release: EndReleaseKeptHostOn })
-  let at_end = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: withdrawn_look, release: EndReleaseKeptHostOn })
+  let at_after = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look, end_release: EndReleaseKeptHostOn })
+  let at_end = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: withdrawn_look, end_release: EndReleaseKeptHostOn })
   starts_with(s: at_after, prefix: "mtcollins1 boot: media presentation lost at after-handoff (")
     && string_contains(s: at_after, pattern: "deadline reached without a host-capture terminal")
     && starts_with(s: at_end, prefix: "mtcollins1 boot: media presentation lost at end-of-attempt (")
@@ -713,9 +713,9 @@ test fn a_presentation_lost_after_a_confirmed_handoff_is_the_named_cause() -> Bo
 test fn an_unaffirmed_look_or_an_unconfirmed_handoff_leaves_the_cause_alone() -> Bool {
   let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none }
   let unchanged = "mtcollins1 boot: deadline reached without a host-capture terminal"
-  attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: served_look, release: EndReleaseKeptHostOn }) == unchanged
-    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: failed }, end: EndMediaObserved { look: failed, release: EndReleaseKeptHostOn }) == unchanged
-    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffAttemptedUnconfirmed { reason: "no read-back" }, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look, release: EndReleaseKeptHostOn }) == unchanged
+  attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: served_look, end_release: EndReleaseKeptHostOn }) == unchanged
+    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: failed }, end: EndMediaObserved { look: failed, end_release: EndReleaseKeptHostOn }) == unchanged
+    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffAttemptedUnconfirmed { reason: "no read-back" }, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look, end_release: EndReleaseKeptHostOn }) == unchanged
     && (match outcome_attributing_media_loss(outcome: ExitSuccess, loss: media_loss_after_handoff(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaNotTaken { reason: "x" })) { ExitSuccess => true _ => false })
 }
 
