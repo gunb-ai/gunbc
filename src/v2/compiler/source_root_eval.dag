@@ -3137,6 +3137,11 @@ type NativeDemandCensusWalk {
   t_outcomes: Int
   t_facts: Int
   t_readings: Int
+  marks: List<Int>
+}
+
+fn native_census_mark(w: NativeDemandCensusWalk, t: Int) -> List<Int> {
+  if length(xs: w.standings) % 200 == 199 { list_snoc_item(xs: w.marks, item: t) } else { w.marks }
 }
 
 // The module's root scope, as resolution itself built it for the module just resolved: the namespace
@@ -3213,6 +3218,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             t_outcomes: w.t_outcomes + (c2 - c1),
             t_facts: w.t_facts,
             t_readings: w.t_readings,
+            marks: native_census_mark(w: w, t: w.t_resolve + (c1 - c0)),
             standings: match length(xs: split.available) > 0 {
               true =>
                 list_snoc_item(xs: with_refused, item: DemandModuleResolved {
@@ -3235,6 +3241,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             t_outcomes: w.t_outcomes + (c2 - c1),
             t_facts: w.t_facts + (c4 - c3),
             t_readings: w.t_readings,
+            marks: native_census_mark(w: w, t: w.t_resolve + (c1 - c0)),
             context: step.context,
             functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
             operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
@@ -3281,12 +3288,13 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
           t_resolve: 0,
           t_outcomes: 0,
           t_facts: 0,
-          t_readings: 0
+          t_readings: 0,
+          marks: []
         },
         cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: authored_by_owner) }
       )
       let k3 = observed_thread_cpu_nanos("tm-walk-finish")
-      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000), " absorb_ms=", to_string(folded.t_absorb / 1000000), " accepted_roots=", to_string(length(xs: folded.context.roots)), " refusals=", to_string(length(xs: folded.context.file_refusals))])], report: demand_census_report(
+      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000), " absorb_ms=", to_string(folded.t_absorb / 1000000), " marks_ms=", fold_list(xs: walked.marks, empty: "", cons: fn(a, m) { concat(a, concat(to_string(m / 1000000), ",")) }), " accepted_roots=", to_string(length(xs: folded.context.roots)), " refusals=", to_string(length(xs: folded.context.file_refusals))])], report: demand_census_report(
         uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
         functions: walked.functions,
         operations: walked.operations,
