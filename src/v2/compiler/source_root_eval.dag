@@ -5958,6 +5958,7 @@ fn native_effect_pair_census_report(ingest: SourceRootIngest) -> Outcome<EffectP
         roots: walked.roots,
         unobserved_modules: walked.unobserved_modules,
         unclassified_operations: length(xs: table.unclassified),
+        unclassified_names: table.unclassified,
         ambiguous_semantics_rows: table.ambiguous_rows,
         file_refusals: length(xs: folded.context.file_refusals),
         unreadable_files: length(xs: folded.unreadable)

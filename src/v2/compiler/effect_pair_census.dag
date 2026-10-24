@@ -699,6 +699,7 @@ type EffectPairCensusReport {
   roots: List<UnobservedRoot>
   unobserved_modules: Int
   unclassified_operations: Int
+  unclassified_names: List<QualifiedName>
   ambiguous_semantics_rows: Int
   file_refusals: Int
   unreadable_files: Int
@@ -786,7 +787,10 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
     " exclusive_pairs=", to_string(t.exclusive_pairs),
     " repeated_sites=", to_string(epc_repeated_count(r: r))
   ])]
-  let roots = fold_list(xs: r.roots, empty: head, cons: fn(acc, x) {
+  let named = fold_list(xs: r.unclassified_names, empty: head, cons: fn(acc, q) {
+    list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-unclassified] operation=", qualified_name_to_dotted_string(qn: q), " semantics=execution_semantics_unknown reaches=true"]))
+  })
+  let roots = fold_list(xs: r.roots, empty: named, cons: fn(acc, x) {
     list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-root] root=", x.root, " cause=", x.cause, " modules=", to_string(x.modules), " example=", qualified_name_to_dotted_string(qn: x.example)]))
   })
   fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) {
