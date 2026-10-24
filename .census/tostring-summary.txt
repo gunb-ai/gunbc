@@ -4,7 +4,7 @@ Corpus population: gunbc compile --source-root dag --source-root src/v2 (primary
 
  2600  A kernel Int
    28  A kernel Int (read by name only)
-    2  A kernel Int (std.integer Int declaration)
+    2  L std.integer.Int, a declared coproduct NonNegative{n: Nat} | Negative{pred: Nat}, NOT the kernel Int
  1216  B Nat
   239  C Int refinement
    29  D Nat refinement / Nat measure
