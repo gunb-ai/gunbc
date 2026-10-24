@@ -21,7 +21,8 @@ import v2.std.compilers.target_model { PrimitivePassByValue, PrimitivePassByShar
   target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
   target_value_expression_callable_apply,
-  target_value_expression_resolved_primitive_call,
+  LocalCallee,
+  PrimitiveRowCallee,
   target_value_expression_to_concrete_tokens
 }
 import v2.std.diagnostic { Accepted, Rejected, None, Outcome, bind_outcome }
@@ -36,8 +37,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rust_primitive_string_length_call() -> TargetValueExpression {
-  target_value_expression_resolved_primitive_call(
-    callee: ^string_length,
+  target_value_expression_callable_apply(
+    callee: ^string_length_contract,
+    kind: PrimitiveRowCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }
@@ -46,6 +48,7 @@ fn rust_primitive_string_length_call() -> TargetValueExpression {
 fn rust_user_string_length_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
     callee: ^string_length,
+    kind: LocalCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }
@@ -53,6 +56,7 @@ fn rust_user_string_length_call() -> TargetValueExpression {
 fn rust_primitive_unknown_call() -> TargetValueExpression {
   target_value_expression_callable_apply(
     callee: ^string_to_upper,
+    kind: LocalCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }
@@ -206,10 +210,10 @@ fn rust_primitive_marker_edges(wire: Node) -> List<Edge> {
     match e.label {
       Positional => acc
       StructuralLabel { label: _ } => acc
-      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_resolved_primitive, target: e.target)
+      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_callee_kind, target: e.target)
     }
   }) {
-    NamedChildFound { target: t } => [Edge { label: Authored { name: ^target_value_expr_field_resolved_primitive }, target: t, declaration: NotADeclaration }]
+    NamedChildFound { target: t } => [Edge { label: Authored { name: ^target_value_expr_field_callee_kind }, target: t, declaration: NotADeclaration }]
     NamedChildMissing => []
     NamedChildAmbiguous => []
   }
@@ -236,7 +240,7 @@ test fn rust_primitive_duplicated_marker_edge_refuses_as_ambiguous() -> Bool {
       catalog: rust_operator_realizations_catalog_node(),
       primitives: rust_primitive_rows_wired()
     ),
-    reason: ^target_value_expr_resolved_primitive_marker_ambiguous
+    reason: ^target_value_expr_callee_kind_marker_ambiguous
   )
 }
 
@@ -268,7 +272,7 @@ fn rust_primitive_two_argument_rows() -> TargetPrimitiveRealizations {
 
 fn rust_two_argument_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
   match rust_primitive_emit(
-    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    expr: target_value_expression_callable_apply(callee: callee, kind: PrimitiveRowCallee, args: args),
     catalog: rust_operator_realizations_catalog_node(),
     primitives: rust_primitive_two_argument_rows()
   ) {
@@ -279,7 +283,7 @@ fn rust_two_argument_text(callee: Symbol, args: List<TargetValueExpression>) -> 
 
 test fn rust_primitive_free_call_emits_both_arguments_in_order() -> Bool {
   rust_two_argument_text(
-    callee: ^pair_probe,
+    callee: ^pair_probe_contract,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y)
@@ -289,7 +293,7 @@ test fn rust_primitive_free_call_emits_both_arguments_in_order() -> Bool {
 
 test fn rust_primitive_method_call_emits_both_arguments_in_order() -> Bool {
   rust_two_argument_text(
-    callee: ^method_probe,
+    callee: ^method_probe_contract,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y),
@@ -340,7 +344,7 @@ test fn rust_named_field_row_does_not_realize_a_whole_declaration_callee() -> Bo
 //        cannot realize the receiver-polymorphic map contract; it has no row and refuses (the control below).
 fn rust_primitive_real_rows_text(callee: Symbol, args: List<TargetValueExpression>) -> String {
   match rust_primitive_emit(
-    expr: target_value_expression_resolved_primitive_call(callee: callee, args: args),
+    expr: target_value_expression_callable_apply(callee: callee, kind: PrimitiveRowCallee, args: args),
     catalog: rust_operator_realizations_catalog_node(),
     primitives: rust_primitive_rows_wired()
   ) {
@@ -351,7 +355,7 @@ fn rust_primitive_real_rows_text(callee: Symbol, args: List<TargetValueExpressio
 
 test fn rust_to_string_row_emits_a_method_call_on_the_receiver() -> Bool {
   rust_primitive_real_rows_text(
-    callee: ^to_string,
+    callee: ^to_string_contract,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   ) == "(x).to_string()"
 }
@@ -360,7 +364,7 @@ test fn rust_to_string_row_emits_a_method_call_on_the_receiver() -> Bool {
 // typed as missing rather than emitting Rust that rustc rejects.
 test fn rust_map_has_no_row_because_its_receiver_is_polymorphic() -> Bool {
   rust_primitive_real_rows_text(
-    callee: ^map,
+    callee: ^map_contract,
     args: [
       target_value_expression_binding_ref(binding: ^rust_binding_param_x),
       target_value_expression_binding_ref(binding: ^rust_binding_param_y)

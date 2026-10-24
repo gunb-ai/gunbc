@@ -89,6 +89,7 @@ import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms
 import v2.std.compilers.target_model {
   DeclarationReferenceForm,
   ModuleScopedPath,
+  CalleeScopeUnrealized,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
   TargetGenericApply,
@@ -815,7 +816,8 @@ fn swift_declaration_reference_form() -> DeclarationReferenceForm {
   ModuleScopedPath {
     root_text: "Gunbc",
     scope_separator_text: ".",
-    module_segment_joiner: "."
+    module_segment_joiner: ".",
+    callee_scope: CalleeScopeUnrealized
   }
 }
 
