@@ -3874,10 +3874,12 @@ type NativeCensusCascade
 
 // TWO COUNTS, BECAUSE THEY ARE TWO FACTS (parent ruling on census C, option A).
 // `closure_fan_out` is how many DISTINCT modules have the root in their import closure -- what fixing
-// the root unblocks. Those modules are BLOCKED, not refused: in c -> b -> a with a refused, resolve
-// refuses b (its imports are unbound) and ACCEPTS c, because b's declarations are indexed; c still
-// cannot compile as a program while a is refused. Distinct modules, never paths: a diamond counts
-// its apex once.
+// the root unblocks. That is a fact of the import graph, not of which of those modules refused: in
+// c -> b -> a with a refused, resolve refuses b (its import target's file was refused) and refuses c
+// declarer_refused (it names a declaration of the refused b, v2.compiler.resolve), so both are
+// counted here and both are members of a; a module that only reaches the root through an import it
+// never names would be counted here and refuse nothing. Distinct modules, never paths: a diamond
+// counts its apex once.
 // `resolve_refused_importers` is the directly observed fact beside it: how many modules' resolve
 // refusals this census attributed to the root. Absent means resolve was not run (the `census` verb),
 // not zero.
