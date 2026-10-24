@@ -67,6 +67,17 @@ test fn rendering_follows_the_rows() -> Bool {
     && text_of(r: router_proxy_config(listen_port: 8444 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
 }
 
+// Expected text from the concrete ports: the internal exact-match location, its proxy_pass, the listen line
+// and the two Lua hooks. A fixed literal per fragment, so a mis-rendered arm goes red.
+test fn the_rendered_text_holds_the_expected_fragments() -> Bool {
+  let t = text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
+  string_contains(t, "location = /_authz")
+    && string_contains(t, "listen 127.0.0.1:8443;")
+    && string_contains(t, "proxy_pass http://127.0.0.1:9001")
+    && string_contains(t, "ngx.exit(503)")
+    && string_contains(t, "s:connect('127.0.0.1', 9002)")
+}
+
 // An unsafe token has no constructor result: the checked constructors return Absent, so it cannot reach a row.
 test fn an_unsafe_token_is_absent() -> Bool {
   match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false }

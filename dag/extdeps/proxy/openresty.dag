@@ -157,7 +157,7 @@ fn lua_phase_name(ph: LuaPhase) -> String {
 }
 
 fn location_match_text(m: LocationMatch) -> String {
-  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + ((p as Int) as String) }
+  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + (p as String) }
 }
 
 fn join_with(items: List<String>, sep: String) -> String {

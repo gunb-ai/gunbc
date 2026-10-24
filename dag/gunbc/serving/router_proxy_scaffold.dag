@@ -31,4 +31,4 @@ data router_proxy_lua_hook_render_scaffold: Disposition = Scaffold {
   }
 }
 
-data router_proxy_direct_render_dissolution: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN a v2-native streaming door carries the router's bytes itself (plan gunbc.plans.fabric_serving_router section 3, named later realization); extdeps.proxy.openresty, gunbc.serving.router_proxy_config and this row are then deleted together.")
+data router_proxy_direct_render_dissolution: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN EITHER (a) nginx-conf and Lua grammar rows exist under extdeps/languages so a directive model is emitted by the one grammar fold rather than hand-concatenated strings (none exists today), OR (b) a v2-native streaming door carries the router's bytes itself (plan gunbc.plans.fabric_serving_router section 3, named later realization); extdeps.proxy.openresty, gunbc.serving.router_proxy_config and this row are then deleted together.")
