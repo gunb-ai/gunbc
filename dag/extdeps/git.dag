@@ -1164,6 +1164,71 @@ fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
   argv_command(program: git_program(), arguments: git_rev_parse_head_args(repository_dir: repository_dir))
 }
 
+// THE TRACKED LISTING. `git ls-files` is the only route that answers "which paths does the index track"
+// without a governed source tree, which is what makes it the enumeration route for paths NO acquirer can
+// see: `v2.cli.repository_layout repository_tree_of_root_argument` admits only V2Tree and DagTree, so a
+// tree outside those two can never be a --source-root and no discovery walk will ever list it (the repo's
+// own note v1_claim_scoped_witness_batch_deleted_note in gunbc.ci.ci_layer_roots declares that population
+// and its restoration trigger). The authority for this read is the declared `git_ls_files_external_authority_anchor`
+// above, whose consumer is the `LsFiles` operation of `service git.Core`; this builder adds no new anchor.
+// The pathspec is a parameter rather than a hardcoded glob because the caller's population is the claim,
+// and a builder that fixed one would be a second census hidden inside a transport.
+fn git_ls_files_args(repository_dir: String, pathspec: String) -> List<String> {
+  ["-C", repository_dir, "ls-files", "--", pathspec]
+}
+
+fn git_ls_files_command(repository_dir: String, pathspec: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: git_ls_files_args(repository_dir: repository_dir, pathspec: pathspec))
+}
+
+// WHICH TRACKED FILES DECLARE A CLAIM. The second read the outside-roots census needs, because the listing
+// above answers only "which paths are tracked": a `.dag` that declares no `test fn` is a helper inventory,
+// not an uncovered claim, and reporting it as one is a fabricated finding. Some files under the note's
+// subject are exactly that, and some outside it are files whose text merely MENTIONS the phrase in a
+// comment -- the census excludes both at the declaration grain, which is why the pattern below asks for the
+// declaration shape rather than the bare phrase. `-l` prints one path per line and nothing else, which is
+// the grain the census joins on.
+//
+// THE PATTERN IS A PARAMETER because the rule belongs to the caller, and a transport that fixes it becomes a
+// second census. BE HONEST ABOUT WHAT IT IS: this is a TEXT test by git. The interpreter's own marker read,
+// `v2.compiler.module_acquisition acquisition_test_markers`, is a PARSE of the file. The two agree on the
+// current population -- re-checked every run against the v1 emitter's own registry by the witness claims in
+// src/v2/test/claim/outside_discovery_roots_census_witness.dag, so the agreement is measured, never
+// transcribed -- and the census does not claim
+// more than that. Dissolution: when a parse is reachable for a path the layout does not bind, the marker read
+// above replaces this call (the same drop `floor_pure_producer_share`'s pairing row names for
+// `acquisition_test_markers`, interpreted route, C4-E).
+fn git_grep_files_with_matches_args(repository_dir: String, pattern: String, pathspec: String) -> List<String> {
+  ["-C", repository_dir, "grep", "-E", "-l", pattern, "--", pathspec]
+}
+
+fn git_grep_files_with_matches_command(repository_dir: String, pattern: String, pathspec: String) -> ArgvCommand {
+  argv_command(
+    program: git_program(),
+    arguments: git_grep_files_with_matches_args(
+      repository_dir: repository_dir,
+      pattern: pattern,
+      pathspec: pathspec
+    )
+  )
+}
+
+// The argv shape, spelled the way a person would type it, for the claim that pins the builder (shape_*
+// siblings in this module). Renders the program name; executes nothing.
+fn shape_git_grep_files_with_matches_args(
+  repository_dir: String,
+  pattern: String,
+  pathspec: String
+) -> List<String> {
+  concat(["git"], git_grep_files_with_matches_args(repository_dir: repository_dir, pattern: pattern, pathspec: pathspec))
+}
+
+// The argv shape, spelled the way a person would type it, for the claim that pins the builder. Like its
+// siblings (shape_git_rev_parse_head_args), it renders the program name and never executes anything.
+fn shape_git_ls_files_args(repository_dir: String, pathspec: String) -> List<String> {
+  ["git", "-C", repository_dir, "ls-files", "--", pathspec]
+}
+
 // HEAD IS NOT THE TREE. `rev-parse HEAD` says which commit is checked out and nothing about whether
 // the working tree still matches it, so a build whose only provenance check is the commit id will
 // happily build a modified context and stamp it with an unmodified revision. `--porcelain` prints one
