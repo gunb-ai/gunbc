@@ -17,6 +17,7 @@ import v2.lens.module_graph {
   ModuleDependencyEdge,
   ImportResolutionFact,
 }
+import std.decl_ref { ModuleIdentity }
 import v2.lens.module_impact_query {
   DeclaredTargetAbsentFromPool,
   DependenciesOf,
@@ -27,7 +28,6 @@ import v2.lens.module_impact_query {
   ImpactImportAcyclicityViolation,
   ImpactReading,
   Incomplete,
-  ModuleIdentity,
   PoolIndependentProjectionUnavailable,
   ProvisionalForObservedPool,
   UndeclaredTargetModule,

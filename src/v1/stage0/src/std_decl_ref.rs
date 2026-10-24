@@ -2,9 +2,10 @@
 // Source module: std.decl_ref
 
 use self::CitationIndexCoverage::*;
+use self::CitedSymbol::*;
 use self::DeclField::*;
-pub use crate::std_algebra::collection_concat_shape;
-pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
+pub use crate::std_types::{Char, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -151,6 +152,18 @@ pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
             ),
         ),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleIdentity {
+    pub name: Rc<Vec<Char>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CitedSymbol {
+    DeclarationSymbol { reference: Rc<DeclarationRef> },
+    ModuleSymbol { module: Rc<ModuleIdentity> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -40,8 +40,8 @@ import gunbc.repo.repo_atlas_projection {
   AtlasSubjectUnobserved,
   atlas_snapshot_occupant_total
 }
+import std.decl_ref { ModuleIdentity }
 import v2.lens.module_impact_query {
-  ModuleIdentity,
   ImpactReading,
   DependentsOf,
   ExactForGraphSubject,

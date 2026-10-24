@@ -2,11 +2,11 @@ module gunbc.plans.for_while_loop_sugar
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
+import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, CodeText, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
-fn code(text: String) -> MarkdownBlock { CodeBlock { code: text } }
+fn code(text: String) -> MarkdownBlock { CodeBlock { segments: [CodeText { text: text }] } }
 
 fn table3(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
   TableBlock { header: header, alignments: [AlignNone, AlignNone, AlignNone], rows: rows }

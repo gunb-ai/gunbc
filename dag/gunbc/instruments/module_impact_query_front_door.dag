@@ -26,6 +26,7 @@ import v2.workflow.floor_diff_observe {
   NameStatusDiffFail,
   floor_observe_git_diff_name_status_for_ci,
 }
+import std.decl_ref { ModuleIdentity }
 import v2.lens.module_impact_query {
   ChangedPathSeeds,
   ChangedSurfaceImpactOutcome,
@@ -58,7 +59,6 @@ import v2.lens.module_impact_query {
   Incomplete,
   PoolIndependentProjectionUnavailable,
   ProvisionalForObservedPool,
-  ModuleIdentity,
   impact_paths_for_module,
   impact_seeds_for_path,
   module_impact_reading,
