@@ -38,9 +38,6 @@ git worktree add -q --force --detach $MAIN_T origin/main || { echo WTMAIN_FAIL; 
 grep -q "lens_contract_schedule_lens" $MAIN_T/src/v2/lens/enforcement/contract.dag && echo "MAIN_SHAPE contract-present" || echo "MAIN_SHAPE_WARN contract-absent"
 [ -f $MAIN_T/src/v2/lens/schedule_lens.dag ] && echo "MAIN_SHAPE module-present" || echo "MAIN_SHAPE_WARN module-absent"
 [ ! -f $MAIN_T/src/v2/test/claim/walk_plan_schedule_lens_test.dag ] && echo "MAIN_SHAPE witness-absent (the break)" || echo "MAIN_SHAPE_WARN witness-present"
-if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ;; *) echo "ROW G7 SKIPPED-ARGLIST"; ARMS_NO_G7=1;; esac; fi
-if [ -z "${ARMS_NO_G7:-}" ]; then echo "=== G7 gate on origin/main tree (expect FAIL = the break this PR fixes) $(date -u +%H:%M:%S)Z"; run1 G7 $MAIN_T $ELW wet $GATE $PROBE || rc=$?; fi
-if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ARMS=none-continue;; *) ;; esac; fi
 # base shape proof on P (= pre-merge 115143a4d8a):
 [ -f $P/src/v2/lens/schedule_lens.dag ] && echo "BASE_PROOF module-present-at-premerge" || { echo "BASE_NOT_OLD module-missing -- STOP"; exit 9; }
 grep -q "lens_contract_schedule_lens" $P/src/v2/lens/enforcement/contract.dag && echo "BASE_PROOF contract-present-at-premerge" || { echo "BASE_NOT_OLD contract-missing -- STOP"; exit 9; }
@@ -122,6 +119,10 @@ census () { # census: gunbc test //gunbc/instruments:rfm-rung-census from ITS OW
   echo "ROW CENSUS rc=$rc lines=$(wc -l < $CKPT/jobs/CENSUS.out) el=${el}s"
   grep -aE 'census_read|census_below|case |refus|REFUSED|a_frozen' $CKPT/jobs/CENSUS.out | head -12 | sed 's|^|  CENSUS |' | cut -c1-190
 }
+rc=0
+if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ;; *) echo "ROW G7 SKIPPED-ARGLIST"; ARMS_NO_G7=1;; esac; fi
+if [ -z "${ARMS_NO_G7:-}" ]; then echo "=== G7 gate on origin/main tree (expect FAIL = the break this PR fixes) $(date -u +%H:%M:%S)Z"; run1 G7 $MAIN_T $ELW wet $GATE $PROBE || rc=$?; fi
+if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ARMS=none-continue;; *) ;; esac; fi
 rc=0
 want G1n && { echo "=== G1n gates wet $(date -u +%H:%M:%S)Z"; run1 G1n $H $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G1n SKIPPED-ARGLIST"
 want G4n && { echo "=== G4n Blocking-repoint RED $(date -u +%H:%M:%S)Z"; run1 G4n $M $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G4n SKIPPED-ARGLIST"
