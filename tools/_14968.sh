@@ -119,8 +119,8 @@ if [ ! -s $CKPT/jobs/C.out ]; then
   grep -m3 '"kind":"admitted"' $CKPT/C.raw | sed 's|^|  C |'
   grep -m3 '"kind":"unreached"' $CKPT/C.raw | sed 's|^|  C |'
   grep -m2 "summary\|unreached_count\|admitted_count" $CKPT/C.raw | sed 's|^|  C |'
-  echo "C guarantee_probe admitted=$(grep -c 'guarantee_probe_corpus_witness.*admitted\|admitted.*guarantee_probe_corpus_witness' $CKPT/C.raw) unreached=$(grep -c 'unreached.*guarantee_probe_corpus_witness\|guarantee_probe_corpus_witness.*unreached' $CKPT/C.raw) anyline=$(grep -c 'guarantee_probe_corpus_witness' $CKPT/C.raw)"
-  echo "C approval_ntfy anyline=$(grep -c 'approval_ntfy_access_readback_witness' $CKPT/C.raw)"
+  echo "  C guarantee_probe admitted=$(grep -c 'guarantee_probe_corpus_witness.*admitted\|admitted.*guarantee_probe_corpus_witness' $CKPT/C.raw) unreached=$(grep -c 'unreached.*guarantee_probe_corpus_witness\|guarantee_probe_corpus_witness.*unreached' $CKPT/C.raw) anyline=$(grep -c 'guarantee_probe_corpus_witness' $CKPT/C.raw)"
+  echo "  C approval_ntfy anyline=$(grep -c 'approval_ntfy_access_readback_witness' $CKPT/C.raw)"
   cp $CKPT/C.raw $CKPT/jobs/C.out
 else
   echo "ROW C SKIPPED-CHECKPOINT"
