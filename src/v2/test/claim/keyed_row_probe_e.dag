@@ -60,6 +60,28 @@ fn kp_clean(src: String) -> Bool {
   }
 }
 
+fn kp_rejected(src: String) -> Bool {
+  match kp_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+fn kp_advisory(src: String) -> Bool {
+  match kp_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
+      }
+  }
+}
+
 data kp_y: String = "module p\n\nimport std.probe_seq { Seq }\n\ntype Num\n  = N\n\nfn y(rows: Seq<Num>) -> Num {\n  N\n}\n"
 data kp_e: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.probe_seq { Seq }\n\ntype Sw\n  = On\n  | Off\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: Seq<R<K, V>>, s: Sw) -> Optional<R<K, V>> {\n  fold(rows, init: none, f: fn(acc, row) {\n    match s {\n      On => Present { value: row }\n      Off => acc\n    }\n  })\n}\n"
 data kp_e_absent: String = "module p\n\nimport std.optional { Optional, Present, Absent }\nimport std.probe_seq { Seq }\n\ntype Sw\n  = On\n  | Off\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: Seq<R<K, V>>, s: Sw) -> Optional<R<K, V>> {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    match s {\n      On => Present { value: row }\n      Off => acc\n    }\n  })\n}\n"
