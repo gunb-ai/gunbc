@@ -2,7 +2,7 @@ module gunbc.host.host_identity_adopt
 
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
 import std.realization_reconcile { reconciliation_converged }

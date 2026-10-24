@@ -507,6 +507,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-fleet-convergence-verdict"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_fleet_convergence_verdict.dag",
+            },
+        ),
+        (
             instrument_label("native-allocation-observation"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_allocation_observation.dag",
