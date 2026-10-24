@@ -11549,20 +11549,26 @@ fn belt_dispatch_node_for_instance(
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
 }
 
-// The dispatch route reaches the SAME staged fold with a caller-supplied plan. belt_dispatch_node_staged_over
-// already took the graph as a parameter, so this adds no second decision path -- it only supplies
-// launch_graph_of_projection over the given plan instead of over the public one.
+// The dispatch route reaches the SAME staged fold with a caller-supplied plan thunk.
+// Host standing is resolved first: observe-only (and any other host refusal) is
+// LaunchInstanceActuationRefused through launch_admission_staged, and the plan is forced
+// only when launch_host_refusal is absent — never a second observe-only arm at HTTP.
 fn belt_dispatch_node_for_instance_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   node_id: String,
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
+  let standing = belt_launch_host_standing(instance: instance)
   belt_dispatch_node_staged_over(
     instance: instance,
-    standing: belt_launch_host_standing(instance: instance),
-    graph: launch_graph_of_projection(proj: plan),
+    standing: standing,
+    graph: match launch_host_refusal(standing: standing) {
+      Present { value: _ } =>
+        LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
+      Absent => launch_graph_of_projection(proj: plan())
+    },
     merged: authored_merged_prs(),
     node_id: node_id,
     request: request,
