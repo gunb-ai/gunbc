@@ -910,6 +910,60 @@ mod list_slice_tests {
             assert_eq!(list_take(&xs, n), copying_take, "take {}", n);
         }
     }
+
+    // From #14997 (calm-ferret-416): every shape of both entry points agrees with plain extension,
+    // including both sides of LIST_CONCAT_ELEMENTWISE_MAX.
+    #[test]
+    fn append_agrees_with_extension_for_every_shape() {
+        for (l, r) in [
+            (0usize, 0usize),
+            (0, 1),
+            (0, 5),
+            (5, 0),
+            (5, 1),
+            (5, 2),
+            (7, 3000),
+            (3000, 1),
+            (9, LIST_CONCAT_ELEMENTWISE_MAX),
+            (9, LIST_CONCAT_ELEMENTWISE_MAX + 1),
+        ] {
+            let a: Vec<i64> = (0..l as i64).collect();
+            let b: Vec<i64> = (100..100 + r as i64).collect();
+            let want: std::vec::Vec<i64> = a.iter().chain(b.iter()).cloned().collect();
+            let bare = list_concat(a.clone(), b.clone());
+            assert_eq!(bare.iter().cloned().collect::<std::vec::Vec<_>>(), want, "bare {} {}", l, r);
+            let rc = rc_list_concat(Rc::new(a), Rc::new(b));
+            assert_eq!(rc.iter().cloned().collect::<std::vec::Vec<_>>(), want, "rc {} {}", l, r);
+        }
+    }
+
+    // THE RED CONTROL FOR THE IDENTITY ARMS (#14997): an empty left takes the right side whole and an
+    // empty right side is the identity, so neither copies an element; walking and cloning the right
+    // side (the arm this replaced) counts one clone per member.
+    #[test]
+    fn an_empty_side_copies_no_element() {
+        let cps = non_ascii_code_points(50);
+        let (_, left_empty) = clones_during(|| list_concat(Vec::new(), cps.clone()));
+        assert_eq!(left_empty, 0);
+        let (_, right_empty) = clones_during(|| list_concat(cps.clone(), Vec::new()));
+        assert_eq!(right_empty, 0);
+        let rc = Rc::new(cps);
+        let (_, rc_left_empty) = clones_during(|| rc_list_concat(Rc::new(Vec::new()), rc.clone()));
+        assert_eq!(rc_left_empty, 0);
+        let (_, rc_right_empty) = clones_during(|| rc_list_concat(rc.clone(), Rc::new(Vec::new())));
+        assert_eq!(rc_right_empty, 0);
+    }
+
+    // THE RED CONTROL FOR THE CONSUMING ARM: a uniquely held right side under the threshold is moved
+    // into the left, so no member is cloned; the clone-per-member walk this replaced counts 50.
+    #[test]
+    fn a_uniquely_held_right_side_is_moved_not_cloned() {
+        let left = Rc::new(non_ascii_code_points(3));
+        let right = non_ascii_code_points(50);
+        let (out, clones) = clones_during(|| rc_list_concat(left, Rc::new(right)));
+        assert_eq!(out.len(), 53);
+        assert_eq!(clones, 0);
+    }
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
