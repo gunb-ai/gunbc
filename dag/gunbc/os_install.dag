@@ -20,7 +20,9 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
+  AutoinstallSshServer,
 }
+import std.optional { Present }
 import gunbc.fleet.fleet_intent_network { operator_lan_segment }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
@@ -176,9 +178,7 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   identity: srv3_autoinstall_identity,
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
-  install_openssh_server: true,
-  ssh_authorized_keys: fleet_authorized_keys,
-  ssh_password_auth: false,
+  ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
   storage_policy: StoragePolicyAbsent,
 }
 
@@ -190,9 +190,7 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   identity: srv3_autoinstall_identity,
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
-  install_openssh_server: true,
-  ssh_authorized_keys: fleet_authorized_keys,
-  ssh_password_auth: false,
+  ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
   storage_policy: StoragePolicyDirectLayout,
 }
 
@@ -213,9 +211,7 @@ data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   identity: srv4_autoinstall_identity,
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
-  install_openssh_server: true,
-  ssh_authorized_keys: fleet_authorized_keys,
-  ssh_password_auth: false,
+  ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
   storage_policy: StoragePolicyDirectLayout,
 }
 

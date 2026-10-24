@@ -1414,19 +1414,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/ci_materialization_witness_test.dag",
-      check_fns: [
-        "ci_ladder_holds_on_live_workflow",
-        "ci_ladder_holds_without_sccache_single_build",
-        "ci_sccache_is_eligible_for_the_capacity_bounded_role"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/duplicate_computation/placement_grain_witness.dag",
       check_fns: [
         "ci_build_across_two_jobs_is_one_violation",
@@ -1476,7 +1463,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/floor_materialization_witness_test.dag",
+      entry: "dag/test/claim/floor/floor_materialization_witness.dag",
       check_fns: [
         "floor_index_build_share_is_shared_by_reference",
         "floor_index_build_has_plural_readers",

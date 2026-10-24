@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.text { String }
 import std.algebra { length, fold_list }
 import gunbc.instrument_targets { instrument_bindings }
-import gunbc.native_census_verb { NativeCensusVerbWord, native_census_verb_of_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, native_census_verb_of_word, native_census_verbs }
 import gunbc.target_binding { TargetBinding, NativeCensusVerbProducer }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -299,7 +299,7 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
-        NativeDriverCensusVerb { verb: _, source_roots: _ } => false
+        NativeDriverCensusVerb { verb: v, source_roots: _ } => v == CensusVerbDemand
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
         NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => false
@@ -313,6 +313,14 @@ test fn demand_census_plans_its_own_verb_over_its_roots_holds() -> Bool {
   parsed_verb_is_demand_census(argv: ["demand-census", "dag", "src/v2"])
     && (planned_root_count(argv: ["demand-census", "dag", "src/v2"]) == 2)
     && !parsed_verb_is_census_resolve(argv: ["demand-census", "dag"])
+}
+
+// THE PREDICATE KEYS ON THE VERB ROW, not on the plan arm: every census verb plans the one
+// NativeDriverCensusVerb arm, so demand-census and decl-ref-census are told apart only by the word
+// the row carries. An arm answering one constant for the whole row fails one side of this pair.
+test fn demand_census_is_not_another_census_verb_holds() -> Bool {
+  parsed_verb_is_demand_census(argv: ["demand-census", "dag"])
+    && !parsed_verb_is_demand_census(argv: ["decl-ref-census", "dag"])
 }
 
 // THE SCOPED VERB: its own word, a subject operand checked against the one label-to-module function
