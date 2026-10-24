@@ -1066,9 +1066,11 @@ test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_dire
 // the prepare step makes. Refused live on the srv1 lab, 2026-10-24: the attempt directory was 1000:1003
 // 0700, so the worker-traversal step stopped the spawn (no execute bit for gunbc-worker). The lab's
 // prepare is three installs: the attempt directory alone at the setgid group-traverse arm (setgid, so
-// worker/ made inside it keeps the shared group), worker/ alone at the group-writable setgid arm, and the
-// stage directories the worker never enters at owner-only. The last conjunct is the integrity half: no
-// install gives the attempt directory group write, so the worker cannot replace what sits beside it.
+// worker/ made inside it keeps the shared group), worker/ and the wire log directory inside it at the
+// group-writable setgid arm, and the stage directories the worker never enters at owner-only. The wire
+// conjuncts are RED on the head that filed the wire directory with the owner-only stages: the lab's
+// worker then could not write its rounds. The last conjunct is the integrity half: no install gives the
+// attempt directory group write, so the worker cannot replace what sits beside it.
 test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scratch_group_writable() -> Bool {
   let instance = srv1_lab_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
@@ -1077,6 +1079,7 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
   let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: key)
   let scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: key))
   let publication_dir = dispatch_attempt_publication_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let wire_dir = dispatch_attempt_wire_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
   let traverse = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid))
   let writable = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid))
   let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
@@ -1084,6 +1087,8 @@ test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scra
   list_length(items: argvs) == 3
     && any(argvs, a => any(a.args, w => w == attempt_dir) && any(a.args, w => w == traverse) && !any(a.args, w => w == scratch))
     && any(argvs, a => any(a.args, w => w == scratch) && any(a.args, w => w == writable) && !any(a.args, w => w == attempt_dir))
+    && any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == writable))
+    && !any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == owner_only))
     && any(argvs, a => any(a.args, w => w == publication_dir) && any(a.args, w => w == owner_only) && !any(a.args, w => w == attempt_dir))
     && setgid_traverse.setgid && setgid_traverse.group.execute && !setgid_traverse.group.write
     && !any(argvs, a => any(a.args, w => w == attempt_dir) && (any(a.args, w => w == writable) || any(a.args, w => w == owner_only)))

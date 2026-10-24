@@ -184,6 +184,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_launch_path_for_instance,
   dispatch_attempt_spawn_origin_path_for_instance,
   dispatch_attempt_events_path_for_instance,
+  dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed,
   dispatch_attempt_spawn_failure_path_for_instance,
   dispatch_attempt_oracle_identity_path_for_instance,
   dispatch_attempt_oracle_revision_path_for_instance,
@@ -1045,15 +1046,17 @@ fn belt_attempt_state_initialize_for_instance(
         detail: launch_write.error,
       }
     } else {
-      let events_write = Filesystem.Write(
-        path: dispatch_attempt_events_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        content: "",
-      )
-      if events_write.success {
+      match dispatch_attempt_events_initialize_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+      ) {
+      DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
+        AttemptStateInitializationFailed {
+          step: "attempt-events-initialize",
+          detail: events_detail,
+        }
+      DispatchAttemptEventsInitialized => {
         let receipt_initialized = Filesystem.Write(
           path: dispatch_attempt_validation_receipt_path_for_instance(
             instance: instance,
@@ -1116,11 +1119,7 @@ fn belt_attempt_state_initialize_for_instance(
               }
           }
         }
-      } else {
-        AttemptStateInitializationFailed {
-          step: "attempt-events-initialize",
-          detail: events_write.error,
-        }
+      }
       }
     }
   }
