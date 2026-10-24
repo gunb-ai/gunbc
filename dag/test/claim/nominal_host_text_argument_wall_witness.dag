@@ -70,15 +70,15 @@ data control_bool_source: String = "module probe_host_text_bool\nimport std.type
 data control_local_join_parameter_source: String = "module probe_host_text_local_join\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn combine(join: fn(P, P) -> P, p: P) -> P { join(p, p) }\n"
 
 test fn a_record_at_concat_is_refused() -> Bool {
-  refusals(source: concat_record_source, subject: "nominal P at host text 'b' of concat: no declared conversion") == 1
+  refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
 }
 
 test fn a_unit_arm_coproduct_at_concat_is_refused() -> Bool {
-  refusals(source: concat_coproduct_unit_source, subject: "nominal U at host text 'b' of concat: no declared conversion") == 1
+  refusals(source: concat_coproduct_unit_source, subject: "nominal U at host text String formal of concat: no declared conversion") == 1
 }
 
 test fn a_record_arm_coproduct_at_concat_is_refused() -> Bool {
-  refusals(source: concat_coproduct_record_arm_source, subject: "nominal C at host text 'b' of concat: no declared conversion") == 1
+  refusals(source: concat_coproduct_record_arm_source, subject: "nominal C at host text String formal of concat: no declared conversion") == 1
 }
 
 test fn record_elements_at_join_are_refused() -> Bool {

@@ -7589,13 +7589,15 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
 // that `as` and the host-text formals give one answer.
 //
 // A type is a nominal value with no declared conversion unless its DECLARATION is grounded onto
-// a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact
+// a kernel type, is the std.types `Unit` placeholder, or is std.types `Bool`. Every exemption is keyed on the exact
 // DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
 // spelling: Nat is exempt because gunbc.structural_realization_bindings kernel_grounding_rows carries a
 // row whose carrier IS that declaration (a Nat is an Int, so `n as Int` is a declared identity), and a
 // foreign type spelled `Unit` is not std.types Unit. `Unit` is what the call-site generic solve answers
 // for a parameter it did not solve and what an absent literal infers as, so it is no established
-// nominal identity. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
+// nominal identity. std.types Bool is declared as the coproduct `True | False`, so the head exposure
+// reads it as a coproduct, but it is a kernel scalar of the cast table and not a nominal value; at a
+// host-text formal it follows the cast's admission like Int and Nat. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
 // located, so it is counted by the diagnostic census rather than waved through.
 fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
@@ -7606,6 +7608,7 @@ fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
       Present { value: d } =>
         !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
           && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+          && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Bool"))
     }
 }
 
