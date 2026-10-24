@@ -28,3 +28,6 @@ run m4_bool_neg  'fn f() -> String { int_to_decimal_string(value: true) }'
 run m5_local_int 'type Int = Alpha { a: Nat } | Beta
 fn f(x: Int) -> String { int_to_decimal_string(value: x) }'
 run m6_untagged  'fn f(n: Int) -> String { int_to_decimal_string(n) }'
+run m7_nat_at_int 'fn f(n: Nat) -> String { int_to_decimal_string(value: n) }'
+run m8_local_named 'type MyInt = Alpha { a: Nat } | Beta
+fn f(x: MyInt) -> String { int_to_decimal_string(value: x) }'
