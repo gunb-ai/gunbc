@@ -111,6 +111,13 @@ test fn a_failure_row_reading_no_reading_while_powered_refuses_with_its_own_arm(
     && string_contains(s: no_reading_text(stdout: s), pattern: "FAN4_Failure")
 }
 
+// RED: the no-reading sort is the upstream's, not a literal: `Disabled` on a powered Failure row is also a sensor not reporting.
+test fn a_failure_row_reading_disabled_while_powered_refuses_as_no_reading() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | ns  | 29.0 | Disabled")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: no_reading_text(stdout: s), pattern: "FAN4_Failure")
+}
+
 // RED: an asserted failure (any status but ok on an empty reading) refuses with its own arm, carrying the row text.
 test fn an_asserted_failure_row_refuses_with_its_own_arm() -> Bool {
   let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | cr  | 29.0 | ")

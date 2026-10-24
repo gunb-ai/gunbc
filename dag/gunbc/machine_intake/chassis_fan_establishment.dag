@@ -150,11 +150,18 @@ fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
 }
 
 // A FAILURE SENSOR ADMITS ONLY AS OBSERVED NOT-ASSERTED WHILE POWERED: an empty reading cell with status ok (the powered shape of
-// artifacts/bmc/mtcollins1-32dimm/06-sdr.txt). `No Reading` (any status) is a sensor not reporting, so it refuses with its own arm: its only observed `ns` shape is the HOST-OFF capture of run 39053311400, and this gate runs with the chassis on.
+// artifacts/bmc/mtcollins1-32dimm/06-sdr.txt). A reading in the upstream no-reading sort (`sdr_fan_reading` -> `SdrFanNoReading`: `No Reading`, `Disabled`, `ns`, under any status) means the sensor is not reporting, so it refuses with its own arm: its only observed `ns` shape is the HOST-OFF capture of run 39053311400, and this gate runs with the chassis on.
+fn fan_reading_is_no_reading(reading_text: NonEmptyStr) -> Bool {
+  match sdr_fan_reading(reading_text: reading_text) {
+    SdrFanNoReading => true
+    _ => false
+  }
+}
+
 fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<SdrEmptyReadingRow>) -> PostPowerFanRefusal? {
   match failure_rows.filter(r => (r.status as String) != fan_row_status_ok).first() {
     Present { value: r } => Present { value: FanFailureSensorNotNominal { text: r.text } }
-    Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String) && (l.reading_text as String) == "No Reading").first() {
+    Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String) && fan_reading_is_no_reading(reading_text: l.reading_text)).first() {
       Present { value: l } => Present { value: FanFailureSensorNoReading { text: join([l.name as String, " | ", l.status as String, " | ", l.reading_text as String], "") } }
       Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String)).first() {
         Present { value: l } => Present { value: FanFailureSensorNotNominal { text: join([l.name as String, " | ", l.status as String, " | ", l.reading_text as String], "") } }
