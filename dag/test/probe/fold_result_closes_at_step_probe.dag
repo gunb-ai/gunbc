@@ -80,3 +80,40 @@ type Tally {
 fn tally(xs: List<Int>) -> Tally {
   fold(xs, init: Tally { hits: 0, misses: 0 }, f: (acc, x) => if x > 0 { Tally { hits: acc.hits + 1, misses: acc.misses } } else { Tally { hits: acc.hits, misses: acc.misses + 1 } })
 }
+
+// The T-free-arm shapes again with the declaration's formal spelled apart from the fn's own
+// parameter, so no rendering of the bare declaration can coincide with the fn's generic by spelling.
+type ScanForElem<E>
+  = ScanForElemNotFound { seen: Map<String, Bool> }
+  | ScanForElemFound { value: E }
+
+fn first_repeat_apart<T>(xs: List<T>, key: fn(T) -> String) -> T? {
+  match fold(xs, init: ScanForElemNotFound { seen: empty_map() }, f: fn(acc, x) {
+    match acc {
+      ScanForElemFound { value: v } => ScanForElemFound { value: v }
+      ScanForElemNotFound { seen: seen } =>
+        match map_get(seen, key(x)) {
+          Present { value: _ } => ScanForElemFound { value: x }
+          Absent => ScanForElemNotFound { seen: map_insert(seen, key(x), true) }
+        }
+    }
+  }) {
+    ScanForElemFound { value: v } => Present { value: v }
+    ScanForElemNotFound { seen: _ } => none
+  }
+}
+
+type KeptScanElem<E> {
+  seen: Map<String, Int>
+  kept_reversed: List<E>
+}
+
+fn distinct_kept_apart<T>(xs: List<T>, key: fn(T) -> String) -> List<T> {
+  let scan = fold(xs, init: KeptScanElem { seen: empty_map(), kept_reversed: [] }, f: fn(acc, x) {
+    match map_get(acc.seen, key(x)) {
+      Present { value: _ } => acc
+      Absent => KeptScanElem { seen: map_insert(acc.seen, key(x), 1), kept_reversed: concat([x], acc.kept_reversed) }
+    }
+  })
+  reverse(scan.kept_reversed)
+}
