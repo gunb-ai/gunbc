@@ -124,7 +124,7 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names, template_renders_receiver_elements_as_host_text,
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names, template_renders_receiver_elements_as_host_text, builtin_receiver_self_host_text_param_names, builtin_host_display_deferred_param_names,
   is_empty_map_constructor, is_empty_set_constructor,
   bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
   KernelMethodOnly, DeclarationOnly
@@ -7108,20 +7108,38 @@ type Tier2bBt {
 // (v1.compiler.infer_method builtin_host_text_param_names) is asked the one text-representation
 // authority (v1.compiler.infer_env text_representation_by_identity); a CodePointSequence there refuses,
 // located at the argument. An argument is matched to its parameter by label, else by position.
+fn builtin_argument_bound_name(func_name: String, arg: Node, index: Int, scope: InferScope) -> String {
+  match arg_name_at(n: arg, source_indices: scope.type_env.source_indices) {
+    Present { value: label } => label
+    Absent => match builtin_param_names(name: func_name) |> skip(index) |> first { Present { value: n } => n  Absent => "" }
+  }
+}
+
 fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ErrorNode> {
   let host_params = builtin_host_text_param_names(name: func_name)
   if host_params |> count == 0 { [] }
   else {
-    let formal_names = builtin_param_names(name: func_name)
+    let self_params = builtin_receiver_self_host_text_param_names(name: func_name)
+    let deferred_params = builtin_host_display_deferred_param_names(name: func_name)
+    let self_is_host_text = typed_args |> enumerate |> any(pair =>
+      self_params |> any(n => n == builtin_argument_bound_name(func_name: func_name, arg: pair.second, index: pair.first, scope: scope))
+        && match arg_value(n: pair.second).inferred {
+          Present { value: Resolved { node: _ } } =>
+            match argument_text_representation(value: arg_value(n: pair.second), type_env: scope.type_env) { HostText => true  _ => false }
+          _ => false
+        })
     typed_args |> enumerate |> flat_map(pair => {
       let arg = pair.second
-      let bound_name = match arg_name_at(n: arg, source_indices: scope.type_env.source_indices) {
-        Present { value: label } => label
-        Absent => match formal_names |> skip(pair.first) |> first { Present { value: n } => n  Absent => "" }
-      }
+      let bound_name = builtin_argument_bound_name(func_name: func_name, arg: arg, index: pair.first, scope: scope)
       if !(host_params |> any(n => n == bound_name)) { [] }
       else {
         let value = arg_value(n: arg)
+        let position = concat("'", concat(bound_name, concat("' of ", func_name)))
+        let route_judged = !(deferred_params |> any(n => n == bound_name))
+          && (!(self_params |> any(n => n == bound_name)) || self_is_host_text)
+        let route_diags = if route_judged {
+          nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: position, span: value.span, scope: scope)
+        } else { [] }
         match value.inferred {
           Present { value: Resolved { node: _ } } =>
             match argument_text_representation(value: value, type_env: scope.type_env) {
@@ -7130,10 +7148,10 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
                   " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
                 span: value.span, module_name: scope.module_name)]
               HostText => []
-              NotText => nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: concat("'", concat(bound_name, concat("' of ", func_name))), span: value.span, scope: scope)
+              NotText => route_diags
               TextRepresentationUnidentified => concat(
-                [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument '", concat(bound_name, concat("' of ", func_name))), span: value.span }, module_name: scope.module_name)],
-                nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: concat("'", concat(bound_name, concat("' of ", func_name))), span: value.span, scope: scope))
+                [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument ", position), span: value.span }, module_name: scope.module_name)],
+                route_diags)
             }
           _ => []
         }

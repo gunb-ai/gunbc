@@ -89,6 +89,10 @@ data concat_imported_coproduct_source: String = "module probe_host_text_concat_i
 
 data concat_optional_carrier_source: String = "module probe_host_text_concat_optional_carrier\nimport std.types { String, Int, List }\nimport std.optional { Optional }\nfn text(o: Optional<Int>) -> String { concat(\"o=\", o) }\n"
 
+data to_string_record_source: String = "module probe_host_text_to_string_record\nimport std.types { String, Int }\ntype P { value: Int }\nfn text(p: P) -> String { to_string(value: p) }\n"
+
+data list_concat_unsolved_source: String = "module probe_host_text_list_concat\nimport std.types { String, Int, List }\nfn joined(xs: List<List<Int>>) -> List<Int> { fold(xs, init: [], f: (acc, x) => concat(acc, x)) }\n"
+
 test fn a_record_at_concat_is_refused() -> Bool {
   refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
 }
@@ -171,4 +175,18 @@ test fn an_imported_coproduct_at_concat_is_refused() -> Bool {
 // three local bool_text copies) wrote the host's `true` and `false`; these pin the same bytes.
 test fn bool_text_writes_true_and_false() -> Bool {
   bool_text(b: true) == "true" && bool_text(b: false) == "false"
+}
+
+// ADMITTED TODAY, A DECLARED RESIDUAL: to_string's `value` is a host-Display rendering position whose
+// nominal and optional judgment is deferred (v1.compiler.method host_display_deferred_formals). When
+// the to_string program dispositions its non-text sites and the row is deleted, this claim flips to a
+// RED in one edit.
+test fn residual_a_record_at_to_string_is_admitted() -> Bool {
+  blocking_total(source: to_string_record_source) == 0
+}
+
+// A List concatenation through a fold accumulator reaches the registry concat with an unsolved Self:
+// its ReceiverSelf formals are not established host text, so nothing is refused there.
+test fn control_a_list_concat_through_an_unsolved_accumulator_is_accepted() -> Bool {
+  blocking_total(source: list_concat_unsolved_source) == 0
 }
