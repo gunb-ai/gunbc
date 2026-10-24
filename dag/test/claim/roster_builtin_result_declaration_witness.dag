@@ -1,0 +1,44 @@
+module test.claim.roster_builtin_result_declaration_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A ROSTER BUILTIN'S RESULT IS ITS DECLARATION AT THE CALL, on the
+// source -> .dag-acceptance path (v1.compiler.infer builtin_result_at_call). While the registry typed
+// shell_materialize_operation_argv's result as an unsolved type variable, a match over it bound
+// `argv` as an error type with no diagnostic, so returning that binder where an Int is declared
+// compiled clean (gunbc.recurring_failure_mode
+// a_compiler_error_type_reaches_emission_without_a_blocking_diagnostic). The RED returns the binder
+// at the wrong type and must refuse; the GREEN returns it at its declared field type, List<String>
+// (std.operation_argv ArgvMaterialized), and must compile clean, so the refusal is the binder's
+// type and not the call.
+//
+// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data binder_at_wrong_type_source: String = "module probe_roster_result_binder_wrong_type\nimport std.types { Int, String }\nimport std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> Int {\n  match shell_materialize_operation_argv(op, \"w\", [], []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => 0\n  }\n}\n"
+
+data binder_at_declared_type_source: String = "module probe_roster_result_binder_declared_type\nimport std.types { String, List }\nimport std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> List<String> {\n  match shell_materialize_operation_argv(op, \"w\", [], []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => []\n  }\n}\n"
+
+test fn w_a_builtin_result_binder_at_the_wrong_type_is_refused() -> Bool {
+  blocking_count(source: binder_at_wrong_type_source) >= 1
+}
+
+test fn w_a_builtin_result_binder_at_its_declared_field_type_is_accepted() -> Bool {
+  blocking_count(source: binder_at_declared_type_source) == 0
+}
