@@ -55,6 +55,7 @@ pub enum ItemKind {
     TypeItem,
     DataItem,
     ServiceItem,
+    ResourceItem,
     OtherItem,
 }
 
@@ -282,6 +283,9 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
         {
             ItemKind::TypeItem
         } else {
+            if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource) {
+                ItemKind::ResourceItem
+            } else {
             if (item.transport.clone() != std::option::Option::None) {
                 ItemKind::ServiceItem
             } else {
@@ -302,6 +306,7 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
                         }
                     }
                 }
+            }
             }
         };
         kind
@@ -353,6 +358,8 @@ pub struct TypeItem;
 pub struct DataItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceItem;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OtherItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

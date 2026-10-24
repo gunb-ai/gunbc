@@ -210,7 +210,7 @@ pub use crate::v1_compiler_infer_env::{
     TypeEnvCacheMergeConflict, TypeReferenceDeclarationReading, UnitVariantContribution,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
-    DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
+    DataItem, FnItem, OtherItem, ResourceItem, ServiceItem, TypeItem,
 };
 use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
 pub use crate::v1_compiler_infer_items::{
@@ -1022,6 +1022,7 @@ pub fn nominal_ref_node(
     name: String,
     span: Rc<SourceSpan>,
     ident_span: Option<Rc<SourceSpan>>,
+    module_item_kind: ParsedModuleItemKind,
 ) -> Rc<Node> {
     {
         let declared_leaf = Rc::new(Node {
@@ -1068,7 +1069,7 @@ pub fn nominal_ref_node(
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            module_item_kind: module_item_kind.clone(),
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
@@ -8781,7 +8782,7 @@ pub fn direct_call_argument_inhabitance_diags(
                                             subject: app.formal.parameter_identity.clone(),
                                             declared:
                                                 if direct_call_formal_has_unbound_type_variable(
-                                                    app.formal.substitution_basis.clone(),
+                                                    app.formal.declared_type.clone(),
                                                 ) {
                                                     app.formal.substitution_basis.clone()
                                                 } else {
@@ -25831,7 +25832,8 @@ pub fn unify_generics(
                     acc.clone(),
                 )
             } else {
-                if (((formal.children.clone().len() as i64) > 0)
+                if ((((formal.children.clone().len() as i64) > 0)
+                    && (formal.connective.clone() == actual.connective.clone()))
                     && ((formal.children.clone().len() as i64)
                         == (actual.children.clone().len() as i64)))
                 {
@@ -26878,6 +26880,7 @@ pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
         ItemKind::TypeItem => Some(ExportKind::ExportType),
         ItemKind::DataItem => Some(ExportKind::ExportData),
         ItemKind::ServiceItem => Some(ExportKind::ExportService),
+        ItemKind::ResourceItem => std::option::Option::None,
         ItemKind::OtherItem => std::option::Option::None,
     }
 }
@@ -27148,6 +27151,7 @@ pub fn local_binding_for_item(
                                     ),
                                     item.span.clone(),
                                     item.ident_span.clone(),
+                                    item.module_item_kind.clone(),
                                 );
                                 Some(Rc::new(TypeBinding {
                                     name: crate::v1_std_core::authored_name_at(
@@ -30276,7 +30280,7 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
                     } else {
                         if ((item.transport.clone() == std::option::Option::None) && ((item.children.clone().len() as i64) > 0)) {
                             {
-                                let ref_node = nominal_ref_node(crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()), item.span.clone(), item.ident_span.clone());
+                                let ref_node = nominal_ref_node(crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()), item.span.clone(), item.ident_span.clone(), item.module_item_kind.clone());
 v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
     resolved: ref_node.clone(),

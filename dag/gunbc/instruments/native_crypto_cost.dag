@@ -131,9 +131,8 @@ fn signature_verified(v: SignatureVerification) -> Bool {
 }
 
 // ── extdeps.apple.app_attest over Apple's iOS 14.4 sample: the whole fold, as the broker runs it.
-// The sample predates the validation-category extensions, so the fold's owed verdict is a refusal
-// WITH A NAMED ARM (AppAttestSample owed_attestation / owed_assertion; gunbc.instruments.native_app_attest
-// states why). `held` is that exact owed verdict, so an early refusal of another arm is not_held.
+// The sample carries no extensions map, so the fold's owed verdict is the success arm (AppAttestSample
+// owed_attestation / owed_assertion). `held` is that exact owed verdict, so a refusal is not_held.
 fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
   let t0 = observed_monotonic_nanos("verify-attestation-start")
   let whole = verify_attestation(object: s.attestation, e: s.expectation)
@@ -144,12 +143,16 @@ fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
     AttestationDecodeOk { decoded: d } =>
       match assertion_expectation(s: s, d: d) {
         Absent => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
-        Present { value: e } => {
-          let a0 = observed_monotonic_nanos("verify-assertion-start")
-          let a = verify_assertion(object: s.assertion, e: e)
-          let a1 = observed_monotonic_nanos("verify-assertion-end")
-          [first, CostRow { identity: "app_attest_verify_assertion", held: owed_assertion_holds(owed: s.owed_assertion, v: a), nanos: nanosecond(count: a1 - a0) }]
-        }
+        Present { value: e } =>
+          match s.assertion {
+            Absent => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
+            Present { value: object } => {
+              let a0 = observed_monotonic_nanos("verify-assertion-start")
+              let a = verify_assertion(object: object, e: e)
+              let a1 = observed_monotonic_nanos("verify-assertion-end")
+              [first, CostRow { identity: "app_attest_verify_assertion", held: owed_assertion_holds(owed: s.owed_assertion, v: a), nanos: nanosecond(count: a1 - a0) }]
+            }
+          }
       }
   }
 }

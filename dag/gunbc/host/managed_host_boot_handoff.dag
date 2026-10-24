@@ -133,6 +133,15 @@ fn admitted_release_of(outcome: OobBootHandoffOutcome) -> BmcFirmwareReleaseIden
 // THE HANDOFF'S EXIT AND THE START IT OBSERVED, so the boot's phase timing can say whether the
 // attempt was a cold or a warm boot (gunbc.host.managed_host_boot_phase_timing) without a second chassis
 // read.
+// THE ACCOUNT THAT POWERED THE HOST ON, held only by a handoff that issued the power control. It is
+// sole_constructor, so the one place that mints it is boot_drive_handoff's issued branch, where the
+// account the control was written with is in hand; a consumer that needs a powered host's account
+// (the post-power-on chassis-fan gate, its safe stop) takes this record and cannot be handed a host
+// that was powered on with no account to stop it with.
+type BootHandoffPoweredOn sole_constructor {
+  account: NonEmptyStr
+}
+
 type BootHandoffResult {
   outcome: ProcessExit
   start: BootStart
@@ -141,6 +150,9 @@ type BootHandoffResult {
   // itself handed back. Present only with a control the route reported as issued, and then it is the
   // identity the ADMISSION consumed, not a value any caller supplied.
   admitted: BmcFirmwareReleaseIdentity?
+  // PRESENT EXACTLY WHEN THE ROUTE REPORTED THE CONTROL ISSUED (the arm the outcome renders as success),
+  // carrying the account it was written with; none on every refusal.
+  powered_on: BootHandoffPoweredOn?
 }
 
 fn boot_handoff_not_issued(outcome: ProcessExit) -> BootHandoffResult {
@@ -148,6 +160,24 @@ fn boot_handoff_not_issued(outcome: ProcessExit) -> BootHandoffResult {
     outcome: outcome,
     start: BootStartUnobserved { reason: "the handoff refused before any controller write" },
     admitted: none,
+    powered_on: none,
+  }
+}
+
+// THE POWER-ON RECORD OF AN ISSUED CONTROL, minted with the account the control was written with.
+fn boot_handoff_powered_on_of(outcome: OobBootHandoffOutcome, account: NonEmptyStr) -> BootHandoffPoweredOn? {
+  match outcome {
+    BootControlIssued { selected: _, power: _, admitted: _ } => Present { value: BootHandoffPoweredOn { account: account } }
+    BootSelectionRefused => none
+    BootSelectionNotApplied { requested: _, readback: _ } => none
+    BootSelectionUnverifiable { requested: _, readback: _ } => none
+    BootSelectionFlagInvalid { requested: _, readback: _ } => none
+    BootSelectionNotOneShot { requested: _, readback: _ } => none
+    BootSelectionFirmwareMismatch { requested: _, readback: _ } => none
+    PowerStateReadFailed { selected: _, observed_state: _ } => none
+    PowerCommandRefused { selected: _, action: _ } => none
+    PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => none
+    BootHandoffNotAdmitted { admission: _ } => none
   }
 }
 
@@ -205,6 +235,7 @@ fn boot_drive_handoff(
             outcome: boot_handoff_render_outcome(label: label, outcome: outcome),
             start: boot_handoff_start_of(outcome: outcome),
             admitted: admitted_release_of(outcome: outcome),
+            powered_on: boot_handoff_powered_on_of(outcome: outcome, account: account),
           }
         }
       }
