@@ -376,6 +376,25 @@ fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ord
   }
 }
 
+// A DECLARING OCCURRENCE IS NOT A MENTION: the atom a `let` binds is where the name is introduced, so a walk that lists the
+// mentions of a spelling must not list it (a sweep read it as a free call of the spelling it declares). Decided from the same
+// slot table child_value_scope reads, as a fact of the syntax. An Arrow's parameters are already carried
+// (arrow_slot_is_carried) and a match arm's pattern atoms are UNDECIDED, not declared, until resolution has the symbol
+// index, so the `let` binder is the only declaring occurrence a walk can name here.
+fn child_is_declaring_occurrence(frame: ValueFrame, edge: Edge, positional_ordinal: Int) -> Bool {
+  match frame {
+    BindValueFrame { binder: _, exits_arm: _ } =>
+      match edge.label {
+        Positional => bind_positional_slot(ordinal: positional_ordinal) == BindBinderSlot
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => false
+      }
+    NoValueFrame => false
+    ArrowValueFrame { params: _ } => false
+    MatchValueFrame => false
+  }
+}
+
 // A `let` THAT ENDS ITS MATCH ARM'S BINDERS (v2.std.node MatchArmScopeExitEdge): its value stands in the arm's
 // scope and its binder and body stand in the scope enclosing the match, exactly as resolution walks them
 // (v2.compiler.resolve resolve_arm_scope_exit_bind). The marker is the one fact, read here once and by
