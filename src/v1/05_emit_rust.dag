@@ -3333,10 +3333,19 @@ fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
   )
 }
 
+// A UNIT VARIANT'S PHANTOM MARKER IS SHADOWED BY ANY TYPE THE SAME MODULE DECLARES UNDER THAT NAME,
+// and the type DEFINITION is one of them. The marker stands for the variant at a type position; a
+// type-position reference to a name the module declares as a type resolves to that declaration, so
+// the marker names nothing and is a second item of one name. gunbc.roadmap.roadmap_model declares
+// the records `type AcceptanceNodeReopensActiveFrontier {}` and `type AcceptanceNodeRemainsSuperseded {}`
+// and the coproduct AcceptanceRevocationDisposition whose arms carry those names; the predicate
+// recognized aliases and opaque declarations but not definitions, so each record was emitted twice
+// (rustc E0428, and E0119 on every derive; class 1 of stern-bat-401's emitter-debt list). The
+// comparison is over this module's own items, where a name is the declaration's identity.
 fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
   items |> any(item =>
     authored_name_at(source_indices: source_indices, node: item) == vname
-    && (is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
+    && (is_type_def_item(item: item) || is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
   )
 }
 

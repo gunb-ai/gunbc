@@ -6083,13 +6083,15 @@ pub fn phantom_marker_name_shadowed_by_real_type_item(
         for item in items.iter().cloned() {
             if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
                 == vname.clone())
-                && (crate::v1_compiler_emit_core_support::is_type_alias_item(
-                    item.clone(),
-                    source_indices.clone(),
-                ) || crate::v1_compiler_emit_core_support::is_type_decl_item(
-                    item.clone(),
-                    source_indices.clone(),
-                )))
+                && ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    || crate::v1_compiler_emit_core_support::is_type_alias_item(
+                        item.clone(),
+                        source_indices.clone(),
+                    ))
+                    || crate::v1_compiler_emit_core_support::is_type_decl_item(
+                        item.clone(),
+                        source_indices.clone(),
+                    )))
             {
                 __found = true;
                 break;

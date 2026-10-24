@@ -1,0 +1,22 @@
+module test.claim.phantom_marker_same_named_record_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing witness for v1.compiler.emit_rust phantom_marker_name_shadowed_by_real_type_item. A
+// module that declares a record and a coproduct arm of the same name (gunbc.roadmap.roadmap_model
+// AcceptanceNodeReopensActiveFrontier) had the record emitted twice: once as its declaration and once
+// as the unit variant's phantom ZST marker, whose derive list carries Eq (rustc E0428 and E0119; class
+// 1 of stern-bat-401's emitter-debt list). The RED is the marker's derive line on the record's name;
+// the control, asserted in the same row, is DispositionPending: a unit variant with no same-named
+// type, which keeps its marker.
+
+test fn same_named_record_suppresses_the_variant_marker() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_witness.shadowed\n\ntype ReopensFrontier {}\ntype RemainsSuperseded {}\n\ntype Disposition = ReopensFrontier | RemainsSuperseded | DispositionPending\n\nfn reopens(d: Disposition) -> Bool {\n  match d {\n    ReopensFrontier {} => true\n    RemainsSuperseded {} => false\n    DispositionPending => false\n  }\n}\n",
+    "src/phantom_marker_witness_shadowed.rs",
+    ["pub struct ReopensFrontier;", "PartialEq, Eq, serde::Serialize, serde::Deserialize)]\npub struct DispositionPending;"],
+    ["PartialEq, Eq, serde::Serialize, serde::Deserialize)]\npub struct ReopensFrontier;"]
+  )
+}
