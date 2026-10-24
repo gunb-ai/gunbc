@@ -35,7 +35,7 @@ import gunbc.instruments.app_attest_sample_rows {
 // gunbc.native_claim_program's.
 //
 // BOTH ROWS OWE THE SUCCESS ARM. Neither Apple's 2021 sample nor the operator's iPhone attestation
-// (extdeps.apple.app_attest_operator_device_ios_26_6_2) carries an authData extensions map, which Apple
+// (gunbc.instruments.app_attest_operator_device_ios_26_6_2) carries an authData extensions map, which Apple
 // describes as optional, so the whole fold verifies each: chain, nonce, key id, RP ID hash, counter, AAGUID
 // and credentialId on real bytes. The chain links are also run at their own producer (chain_link_verifies)
 // so a wrong root is a RED of the signature itself and not only of the issuer name.

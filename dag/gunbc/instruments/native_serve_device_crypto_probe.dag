@@ -7,7 +7,7 @@ import extdeps.standards.rfc_6979 {
   rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
 }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data }
-import extdeps.apple.app_attest_operator_device_ios_26_6_2 {
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
   operator_device_attestation_octets, operator_device_client_data, operator_device_key_id_b64,
   operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
 }
@@ -48,7 +48,7 @@ import gunbc.auth.approval_device_crypto_wire {
 //   - P-256 base point order: n*G is infinity; (n-1)*G is finite (the control that makes the first an
 //     observation: a scalar multiplication that always answered infinity fails the second).
 //   - Apple's published iOS 14.4 attestation and assertion (extdeps.apple.app_attest_sample_ios_14_4)
-//     and the operator's iPhone attestation (extdeps.apple.app_attest_operator_device_ios_26_6_2):
+//     and the operator's iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2):
 //     none carries an authData extensions map, so the verdicts the folds owe are the success arms
 //     AttestationVerified and AssertionAuthentic, with the two P-384 chain links and the P-256
 //     assertion signature run in the emitted binary (gunbc.instruments.native_app_attest states the

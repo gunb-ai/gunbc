@@ -14,7 +14,7 @@ import extdeps.apple.app_attest {
   AssertionValidationCategoryRefused, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
   AssertionVerification, AssertionAuthentic, AssertionRefused,
 }
-import extdeps.apple.app_attest_operator_device_ios_26_6_2 {
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
   operator_device_attestation_octets, operator_device_key_id_b64, operator_device_client_data,
   operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
 }
@@ -34,7 +34,7 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
 // 2021 sample, a success for a capture carrying the extension steps. Every case identity is
 // prefixed with the row's name, so the roster join names which object a failure is about.
 //
-// THE OPERATOR'S PHONE IS ROW TWO: a real iPhone attestation (extdeps.apple.app_attest_operator_device_ios_26_6_2)
+// THE OPERATOR'S PHONE IS ROW TWO: a real iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2)
 // carries no extensions map, and so does Apple's 2021 sample, so BOTH rows owe the success arm. A row with
 // no assertion capture owes none: `assertion` is Absent and its assertion cases are not rostered.
 type AppAttestSample {

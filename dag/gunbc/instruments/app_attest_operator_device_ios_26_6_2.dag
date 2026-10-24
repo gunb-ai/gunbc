@@ -1,14 +1,15 @@
-module extdeps.apple.app_attest_operator_device_ios_26_6_2
+module gunbc.instruments.app_attest_operator_device_ios_26_6_2
 
 import std.types { Int, List, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
+// A RECEIPT OF THIS REPOSITORY'S OWN APP, so it lives in the observing layer, not extdeps (DESIGN section 3):
+// our team, our bundle, our enrolment framing. Apple's own published sample stays upstream fact in
+// extdeps.apple.app_attest_sample_ios_14_4.
 // ONE REAL ATTESTATION OBJECT FROM A PHYSICAL IPHONE, AS OBSERVED, never transcribed from a message:
 // the operator's iPhone (iOS 26.6.2) running apps/approve-ios, development build, attesting for the
 // Google enrolment on 2026-10-24T01:37:11Z. Captured off loopback on srv1 (/tmp/approve-cap2.pcap,
 // POST to the verifier sidecar, object_b64 of the request body) and decoded here to octets, per the
-// practice of extdeps.apple.app_attest_sample_ios_14_4 (a witness that base64-decodes 5.8 KB in the
+// octet practice of extdeps.apple.app_attest_sample_ios_14_4 (a witness that base64-decodes 5.8 KB in the
 // interpreter spends its eval steps on transport rather than on the fact under claim).
 // SHA-256 of the attestation octets: 52a8916b225157569d45aa8c2c2a77225118ff3626a4afb79df3f2225da7e67d.
 //
@@ -20,13 +21,6 @@ import extdeps.uri { Uri, Https }
 // object, and extdeps.apple.app_attest models that absence (NotCarried) rather than refusing it.
 // Its credential certificate is valid 2026-10-23T01:37:10Z to 2026-10-26T01:37:10Z, so observed_at below
 // is inside the window.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server"
-  }
-}
-
 data operator_device_team_identifier: NonEmptyStr = "72HGYAMBVQ"
 data operator_device_bundle_identifier: NonEmptyStr = "ai.gunb.approve"
 
