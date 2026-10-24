@@ -3615,6 +3615,55 @@ pub fn compile_to_resolved_with_options(
     }
 }
 
+// COUNTS, ON THE CALLING THREAD, EVERY RENDER THAT ASKED FOR EVERY MODULE.
+// `RenderEveryModule` is the whole-graph render the census must never request: the census runs
+// on the compiled graph's diagnostics and asks for no render subject at all, so a census that
+// reached a whole-graph render is a regression, not a slower pass. The census control
+// (`src/v1/stage0/tests/census_no_render_subject_control.rs`) snapshots this counter around real
+// census calls; every whole-graph render reaches [`emit_resolved_for_target_selected`] with
+// `RenderEveryModule` in hand (the unselected entry delegates here), so a census-side widening
+// cannot dodge the count by choosing an entry point.
+//
+// PER-THREAD, NOT PROCESS-GLOBAL (review 85075): `cargo test` runs one integration file's tests
+// in parallel threads of a single process, and a process-wide counter let one test's whole-graph
+// render move another test's census delta -- flaky in both directions, which made the zero-delta
+// check non-discriminating. The census, its snapshots, and the render all run on the calling
+// thread (the compile route is `Rc`-based and spawns nothing), so a thread-local delta counts
+// exactly this thread's renders. (Plain comments, not doc comments: a doc comment on the
+// thread_local! macro invocation trips unused_doc_comments, which this crate denies.)
+thread_local! {
+    static EVERY_MODULE_RENDER_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// This thread's count of whole-graph (`RenderEveryModule`) renders so far. Read it before and
+/// after a census call; a census that renders must never reach `emit_resolved_for_target_selected`
+/// with `RenderEveryModule`, so the delta over a census is the control's assertion.
+pub fn every_module_render_calls() -> u64 {
+    EVERY_MODULE_RENDER_CALLS.with(|calls| calls.get())
+}
+
+// COUNTS, ON THE CALLING THREAD, EVERY REQUEST THAT ASKED FOR SOMETHING RENDERED.
+// The census route asks for NOTHING rendered: its selection is the empty
+// `RenderSelectedMirrors`. `RenderEveryModule` (whole-graph) widening is caught by
+// `EVERY_MODULE_RENDER_CALLS` above; this counter closes the other half of the gap (review
+// 85086 advisory) -- a widening that instead passed a NON-EMPTY selected-basenames list would
+// move nothing there. Both counters are incremented at the entry of
+// `emit_resolved_for_target_selected`, where every selection arrives whatever entry point the
+// caller chose, and they count the REQUEST, not matched output, because the control asks whether
+// the census requested a render subject at all.
+thread_local! {
+    static NON_EMPTY_SELECTED_RENDER_CALLS: std::cell::Cell<u64> = const {
+        std::cell::Cell::new(0)
+    };
+}
+
+/// This thread's count of renders requested with a NON-EMPTY selected-basenames selection.
+/// Alongside [`every_module_render_calls`], this makes the census control discriminating against
+/// both widening shapes: whole-graph and selected-list.
+pub fn non_empty_selected_render_calls() -> u64 {
+    NON_EMPTY_SELECTED_RENDER_CALLS.with(|calls| calls.get())
+}
+
 pub fn emit_resolved_for_target(
     resolved: Rc<ResolvedPipelineResult>,
     target: RenderTarget,
@@ -3631,6 +3680,20 @@ pub fn emit_resolved_for_target_selected(
     target: RenderTarget,
     selection: Rc<RustModuleRenderSelection>,
 ) -> Rc<PipelineResult> {
+    // ONE COUNTING SITE: every render request, whichever entry point asked for it, passes
+    // through this function with its selection in hand. Counting here means a census-side
+    // widening cannot dodge the counters by calling a different entry point. Both shapes count:
+    // whole-graph (RenderEveryModule) and a NON-EMPTY selected list (review 85086 advisory).
+    match &*selection {
+        RustModuleRenderSelection::RenderEveryModule => {
+            EVERY_MODULE_RENDER_CALLS.with(|calls| calls.set(calls.get() + 1));
+        }
+        RustModuleRenderSelection::RenderSelectedMirrors { basenames } => {
+            if !basenames.is_empty() {
+                NON_EMPTY_SELECTED_RENDER_CALLS.with(|calls| calls.set(calls.get() + 1));
+            }
+        }
+    }
     match emittable_graph(resolved.clone()) {
         std::option::Option::None => Rc::new(PipelineResult {
             files: Rc::new(vec![]),
