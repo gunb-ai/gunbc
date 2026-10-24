@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String, List, NonEmptyStr }
 import extdeps.package_managers.apt { package_tailscale }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

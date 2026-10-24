@@ -1,5 +1,6 @@
 module v2.test.claim.manual.bind_emit
 
+
 import v2.test.claim.complexity_gate.table_fixture_bind_subject_producer {
   table_fixture_bind_arrow_with_body,
   table_fixture_bind_wrong_value_arrow_with_body

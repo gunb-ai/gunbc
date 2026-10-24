@@ -1,0 +1,47 @@
+module gunbc.site.aligned_columns
+
+import std.types { String, Int, List }
+import std.render_repeat_string_bootstrap { repeat_string }
+
+// Column alignment for gunb.ai's hand-formatted cards.js. This is the deck's formatting policy, not an
+// ECMA-262 form, so it lives with the site and not in extdeps.languages.ecmascript.emit.
+// Column alignment is a property of a table of rows, derived from the cells: a column is as wide as its
+// longest cell and each non-final cell is padded to that width plus the column's gap (the spaces between
+// it and the next cell). The final cell is never padded.
+fn text_width(s: String) -> Int {
+  0 + s.length()
+}
+
+fn spaces(n: Int) -> String {
+  repeat_string(s: " ", n: n)
+}
+
+fn column(table: List<List<String>>, index: Int) -> List<String> {
+  flat_map(table, r => flat_map(enumerate(r), pair => if pair.first == index { [pair.second] } else { [] }))
+}
+
+fn column_width(cells: List<String>) -> Int {
+  fold(cells, init: 0, f: (acc, c) => if text_width(s: c) > acc { text_width(s: c) } else { acc })
+}
+
+fn gap_at(gaps: List<Int>, index: Int) -> Int {
+  fold(enumerate(gaps), init: 0, f: (acc, g) => if g.first == index { g.second } else { acc })
+}
+
+fn aligned_cell(cell: String, column: List<String>, gap: Int) -> String {
+  concat(cell, spaces(n: column_width(cells: column) - text_width(s: cell) + gap))
+}
+
+fn aligned_row(row: List<String>, table: List<List<String>>, gaps: List<Int>) -> String {
+  // ONE length authority (DESIGN §3: no nickname fork of an existing operation). The former
+  // site-local `list_length` was an exact re-mint of std.types.list_length<T> and is deleted;
+  // this call consumes the std authority directly, named by module path so the effect join
+  // settles on it without waiting on the flat namespace.
+  // Authority: dag/std/types.dag `list_length`.
+  let last = std.types.list_length(items: row) - 1
+  join(map(enumerate(row), pair => if pair.first == last {
+    pair.second
+  } else {
+    aligned_cell(cell: pair.second, column: column(table: table, index: pair.first), gap: gap_at(gaps: gaps, index: pair.first))
+  }), "")
+}

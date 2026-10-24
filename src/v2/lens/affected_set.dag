@@ -10,7 +10,7 @@ import v2.compiler.infer { InferredTree }
 import v2.std.change { AffectedDependency, AffectedExclusion, AffectedSet, AffectedSetDiagnostics, AffectedSetEvidence, AffectedSetFailClosed, AffectedSetProduced, AffectedSetReason, Change, ChangeSet, DependencyDependent, DependencyEndpoint, DependencySource, NodeChanged }
 import v2.std.dependency { Contains, DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
 import v2.std.diagnostic { Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Accepted, None, Rejected, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_accepted }
-import v2.std.node { Arrow, Atom, Behavior, Bind, Branch, Occupancy, ComputationNode, Conj, Connective, Diff, Disj, Edit, Hash, Instantiation, Loop, Node, Path, Symbol, Transform, TypeNode, Value, content_hash }
+import v2.std.node { Arrow, Atom, Behavior, Bind, Branch, ComputationNode, Conj, Connective, Diff, Disj, Edit, Hash, Instantiation, Loop, Node, Path, Symbol, Transform, TypeNode, Value, content_hash }
 import v2.std.node_reflection { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at, find_child_by_label }
 
@@ -1002,7 +1002,6 @@ fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
     Conj => ^canonical_tag_conj
     Disj => ^canonical_tag_disj
     Arrow => ^canonical_tag_arrow
-    Occupancy => ^canonical_tag_cardinality
     Instantiation => ^canonical_tag_instantiation
   }
 }

@@ -1,7 +1,7 @@
 module gunbc.rung_drop.app_attest_verifier_new_witness_eval_step_cost
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_app_attest_verifier_rows }
 
@@ -37,15 +37,13 @@ data app_attest_verifier_new_witness_eval_step_cost: RungDrop = RungDrop {
 
   declared: "2026-09-22",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "the CBOR, DER and SHA-256 readers executing as natively emitted code over the sample objects rather than as interpreted octet-list folds",
     },
-    population: app_attest_verifier_new_witness_eval_step_cost_population,
+    population: population_from_list(xs: app_attest_verifier_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY. MachineWidth<N> reification (gunbc#11819) lets the extdeps.apple.app_attest closure emit, and these six identities execute on the natively emitted route -- the gunbc test instrument row the ecdsa_verification_realization_frontier names -- while each still exercises its own production code over its own inputs -- Apple's objects end to end for the two inhabitance claims, its one named step for the three step claims, the RFC 6979 carriers for the carrier-join claim; WHAT THAT MUST BE SUFFICIENT FOR: the verifier folds are exercised over the real sample on the acceptance path, and the carrier join over its real carriers, with no interpreted octet walk inside a claim frame, and the identities then measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, or leave the floor for that native row. Supplying the two inhabitance claims' inputs as fixtures, precomputing a step's hashes, or deleting the identities satisfies neither.",
-  }
+  } }
 }

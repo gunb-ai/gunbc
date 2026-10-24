@@ -2,10 +2,13 @@ module gunbc.recurring_failure_mode.match_arm_statement_body_lowers_to_its_first
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 
 data match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "match_arm_statement_body_lowers_to_its_first_expression_at_v2_body_lowering" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "structurally guaranteed." as NonEmptyStr } },
 
   receipts: [
     "**a match arm whose body is a statement sequence lowers to its FIRST expression, and normalize ACCEPTS the module** (INVALID STATE: the arm body `let t = v` followed by `e` lowers to `v`. The binder `t` and every following statement, including a nested match, are gone, and there is no diagnostic.) The arm answers the let's bound value instead of what its last statement computes, and a name in any later statement never reaches resolve.",

@@ -1,0 +1,265 @@
+module test.claim.gcp_iam_bootstrap_first_publication_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpIamBindingCell, gcp_cells_bindings }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapResource, BootstrapPool, IamBootstrapBinding,
+  iam_bootstrap_delta_bindings_over, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_resource_key,
+  BootstrapBucket, iam_bootstrap_journal_bucket, iam_bootstrap_delta_role_permissions, iam_bootstrap_journal_role_permissions, iam_bootstrap_denied_permissions, deny_permission_iam_spelling, iam_bootstrap_journal_cells, iam_bootstrap_capability_bindings_over, delta_owned, iam_bootstrap_delta_role_withholds_its_boundary,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta {
+  BootstrapSubjectReading, SubjectPolicyRead, SubjectPolicyUnpublished, SubjectUnreadable,
+  SubjectNotBootstrapped, BootstrapSubjectStanding, SubjectUnbound, SubjectUnpublished, SubjectAbsentOrUnboundCannotTell,
+  pool_policy_reading, roster_subjects, subject_cells,
+}
+import gunbc.auth.gcp_iam_bootstrap_delta_route {
+  SubjectWriteRoute, FencedAdditionOnly, FirstPublicationAdmitted, subject_write_route, RootCeremonyCellsMissing, bootstrap_delta_requestable,
+  BootstrapDeltaRequestBody, bootstrap_delta_preimage,
+}
+import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.gcp_iam_bootstrap_journal { JournalMark, JournalElection, JournalClosure, JournalPoolFirstPublication, journal_object_name, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused }
+import std.durable_compare_and_set { CasSlotVersion, CasAttempt, CasOutcome, CasReadableAbsent, cas_decide_readable, CasPreconditionFailed, CasStoreRefused, CasGenerationPublicationRefused, ExpectSlotAbsent, CasReadablePresent, cas_generation_first }
+import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
+import gunbc.auth.gcp_iam_bootstrap {
+  iam_bootstrap_pool_seedable, pool_election_object, pool_journal_object, PoolJournalStanding, PoolJournalRead, PoolJournalUnreadable, pool_journal_standing, PoolInitDecision, PoolInitNothing, PoolInitCloseJournal, PoolInitPublish, PoolInitRefused, pool_initialization_decision,
+  PoolInitReadback, PoolInitReadbackExact, PoolInitReadbackRefused, pool_initialization_readback,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── WHAT THESE CLAIMS ARE ABOUT ──────────────────────────────────────────────────────────────
+// Rulings (a) and (c) on gunbc#14360 (warm-crane-219, 2026-10-19), at their pure interfaces:
+//   (a) a new target pool's first policy is published by the delta, under the approved digest, through
+//       the ceremony's one journaled initializer (gunbc.auth.gcp_iam_bootstrap
+//       iam_bootstrap_publish_initial_pool_policy): a fresh etag-less pool takes it and reads back exactly
+//       the approved cells; a pool with an etag never takes it; an uncertain publication is never
+//       replayed; a differing readback refuses; and the tap consents to the first publication by name.
+//   (c) the ceremony creates only root identities: widening the targets leaves its population unchanged.
+
+fn is_pool(s: IamBootstrapResource) -> Bool {
+  match s { BootstrapPool { pool: _ } => true  _ => false }
+}
+
+data delta_roster: List<IamBootstrapBinding> = iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+
+fn target_pools() -> List<IamBootstrapResource> {
+  filter(roster_subjects(roster: delta_roster), s => is_pool(s: s))
+}
+
+fn approved_cells(p: IamBootstrapResource) -> List<GcpIamBindingCell> {
+  map(subject_cells(roster: delta_roster, subject: p), b => b.cell)
+}
+
+fn subject_with(p: IamBootstrapResource, standing: BootstrapSubjectStanding) -> SubjectNotBootstrapped {
+  SubjectNotBootstrapped { subject: p, standing: standing, missing: subject_cells(roster: delta_roster, subject: p) }
+}
+
+fn exact_policy(cells: List<GcpIamBindingCell>, etag: String) -> GcpPolicy {
+  GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: etag, version: 3 }
+}
+
+fn publishes(d: PoolInitDecision) -> Bool {
+  match d { PoolInitPublish => true  PoolInitNothing => false  PoolInitCloseJournal => false  PoolInitRefused { reason: _ } => false }
+}
+
+fn first_publication(r: SubjectWriteRoute) -> Bool {
+  match r { FirstPublicationAdmitted => true  FencedAdditionOnly => false }
+}
+
+// (a)1 A FRESH, ETAG-LESS TARGET POOL TAKES THE PUBLICATION PATH AND READS BACK EXACTLY THE APPROVED CELLS.
+test fn a_fresh_etagless_target_pool_takes_the_publication_path_and_reads_back_exactly_the_approved_cells() -> Bool {
+  count(target_pools()) > 0
+    && (match pool_policy_reading(bindings: Absent, etag: Absent) { SubjectPolicyUnpublished => true  _ => false })
+    && all(target_pools(), p => {
+      let cells = approved_cells(p: p)
+      count(cells) > 0
+        && first_publication(r: subject_write_route(s: subject_with(p: p, standing: SubjectUnpublished)))
+        && first_publication(r: subject_write_route(s: subject_with(p: p, standing: SubjectAbsentOrUnboundCannotTell { cause: "status 403" })))
+        && publishes(d: pool_initialization_decision(elected: false, closed: false, observed: Absent, seedable: true, cells: cells))
+        && (match pool_initialization_readback(reading: PolicyObserved { policy: exact_policy(cells: cells, etag: "r1") }, cells: cells) { PoolInitReadbackExact => true  PoolInitReadbackRefused { reason: _ } => false })
+    })
+}
+
+// (a)2 A POOL WITH AN ETAG NEVER TAKES IT: read in place, written fenced, and the initializer does nothing.
+test fn a_pool_with_an_etag_never_takes_it() -> Bool {
+  all(target_pools(), p => {
+    let cells = approved_cells(p: p)
+    (match pool_policy_reading(bindings: Present { value: gcp_cells_bindings(cs: cells) }, etag: Present { value: "r1" }) { SubjectPolicyRead { policy: _ } => true  _ => false })
+      && !first_publication(r: subject_write_route(s: subject_with(p: p, standing: SubjectUnbound)))
+      && !publishes(d: pool_initialization_decision(elected: false, closed: false, observed: Present { value: exact_policy(cells: [], etag: "r1") }, seedable: false, cells: cells))
+      && !publishes(d: pool_initialization_decision(elected: false, closed: false, observed: Present { value: exact_policy(cells: cells, etag: "r1") }, seedable: false, cells: cells))
+  })
+    && all(target_pools(), p => match pool_policy_reading(bindings: Present { value: gcp_cells_bindings(cs: approved_cells(p: p)) }, etag: Absent) { SubjectUnreadable { cause: _ } => true  _ => false })
+}
+
+// (a)3 AN UNCERTAIN PUBLICATION IS NEVER REPLAYED: an elected (or closed) journal with no revisioned
+// policy refuses, typed; it never publishes again.
+test fn an_uncertain_publication_is_never_replayed() -> Bool {
+  all(target_pools(), p => {
+    let cells = approved_cells(p: p)
+    !publishes(d: pool_initialization_decision(elected: true, closed: false, observed: Absent, seedable: true, cells: cells))
+      && !publishes(d: pool_initialization_decision(elected: true, closed: true, observed: Absent, seedable: true, cells: cells))
+      && !publishes(d: pool_initialization_decision(elected: false, closed: true, observed: Absent, seedable: true, cells: cells))
+      && (match pool_initialization_decision(elected: true, closed: false, observed: Absent, seedable: true, cells: cells) { PoolInitRefused { reason: _ } => true  _ => false })
+  })
+}
+
+fn refused(r: PoolInitReadback) -> Bool {
+  match r { PoolInitReadbackRefused { reason: _ } => true  PoolInitReadbackExact => false }
+}
+
+// (a)3b NO UNFENCED FIRST PUBLICATION OVER EXISTING BINDINGS (srv2 mutation N6): the state can change
+// between the tap and the apply, so the apply-time initializer refuses on its own whenever the policy it
+// reads carries no etag but is not empty; the seedable verdict is computed from that read.
+test fn an_etagless_policy_with_bindings_is_refused_at_apply_time() -> Bool {
+  all(target_pools(), p => {
+    let cells = approved_cells(p: p)
+    let present = Present { value: gcp_cells_bindings(cs: cells) }
+    let seedable = iam_bootstrap_pool_seedable(audit_configured: false, bindings: present, etag: Absent, version: Absent)
+    !seedable
+      && (match pool_initialization_decision(elected: false, closed: false, observed: Absent, seedable: seedable, cells: cells) { PoolInitRefused { reason: _ } => true  _ => false })
+      && (match pool_initialization_decision(elected: false, closed: false, observed: Absent, seedable: false, cells: cells) { PoolInitRefused { reason: _ } => true  _ => false })
+  })
+}
+
+// (a)4 A READBACK THAT DIFFERS FROM THE APPROVED CELLS REFUSES: one cell short, one foreign cell more, or
+// no revision.
+test fn a_readback_differing_from_the_approved_cells_refuses() -> Bool {
+  let foreign = GcpIamBindingCell { role: "roles/iam.workloadIdentityPoolAdmin", member: "user:someone@example.com", condition: none }
+  all(target_pools(), p => {
+    let cells = approved_cells(p: p)
+    refused(r: pool_initialization_readback(reading: PolicyObserved { policy: exact_policy(cells: cells.skip(n: 1), etag: "r1") }, cells: cells))
+      && refused(r: pool_initialization_readback(reading: PolicyObserved { policy: exact_policy(cells: cells + [foreign], etag: "r1") }, cells: cells))
+      && refused(r: pool_initialization_readback(reading: PolicyObserved { policy: exact_policy(cells: cells, etag: "") }, cells: cells))
+      && refused(r: pool_initialization_readback(reading: PolicyUnreadable { cause: "status 503" }, cells: cells))
+  })
+}
+
+// (a)5 CONSENT COVERS IT: the preimage names the first publication, so a tap on a fenced-only pool is a
+// different digest from a tap that admits the first publication.
+test fn the_tap_consents_to_the_first_publication_by_name() -> Bool {
+  all(target_pools(), p => {
+    let first = bootstrap_delta_preimage(b: BootstrapDeltaRequestBody { subjects: [subject_with(p: p, standing: SubjectUnpublished)] })
+    let fenced = bootstrap_delta_preimage(b: BootstrapDeltaRequestBody { subjects: [subject_with(p: p, standing: SubjectUnbound)] })
+    string_contains(s: first, pattern: "first-publication-if-unpublished") && !string_contains(s: fenced, pattern: "first-publication-if-unpublished") && first != fenced
+  })
+}
+
+// (c) THE CEREMONY CREATES ONLY ROOT IDENTITIES: widening the targets leaves its population unchanged.
+fn population_pools(targets: List<DedicatedFederation>) -> List<String> {
+  map(iam_bootstrap_ceremony_identity_population_over(targets: targets), i => i.federation.pool_id as String)
+}
+
+test fn the_ceremony_identities_population_does_not_move_when_targets_widen() -> Bool {
+  let narrow = population_pools(targets: [])
+  let wide = population_pools(targets: gcp_iam_converge_targets)
+  count(gcp_iam_converge_targets) > 0 && count(narrow) == 3
+    && count(wide) == count(narrow) && all(wide, x => any(narrow, y => y == x))
+    && !any(gcp_iam_converge_targets, t => any(wide, x => x == (t.pool_id as String)))
+}
+
+// ── BLOCKER 2: THE DURABLE JOURNAL (operator ruling A, 2026-10-19) ─────────────────────────────
+// Through the pure half: a durable "elected, unresolved" record with an empty checkout refuses reissue;
+// no record admits the election and the publication; a closed election settles. The checkout is not an
+// input: the standing is a function of the journal's listed names only.
+// THE FIXTURE'S NAMES COME FROM THE REAL PRODUCER (gunbc.auth.gcp_iam_bootstrap pool_journal_object), so
+// they are exactly the objects the pool route writes: one slot per pool, whatever the consent.
+fn pool_names(pool: NonEmptyStr, marks: List<JournalMark>) -> List<String> {
+  map(marks, m => pool_journal_object(pool: pool, mark: m) as String)
+}
+
+fn decision_over(pool: NonEmptyStr, cells: List<GcpIamBindingCell>, names: List<String>, observed: GcpPolicy?) -> PoolInitDecision {
+  match pool_journal_standing(pool_key: iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), names: names) {
+    PoolJournalUnreadable { cause: c } => PoolInitRefused { reason: c as String }
+    PoolJournalRead { elected, closed, unresolved: _ } => pool_initialization_decision(elected: elected, closed: closed, observed: observed, seedable: true, cells: cells)
+  }
+}
+
+fn settles(d: PoolInitDecision) -> Bool {
+  match d { PoolInitNothing => true  PoolInitCloseJournal => false  PoolInitPublish => false  PoolInitRefused { reason: _ } => false }
+}
+
+fn refuses_decision(d: PoolInitDecision) -> Bool {
+  match d { PoolInitRefused { reason: _ } => true  PoolInitNothing => false  PoolInitCloseJournal => false  PoolInitPublish => false }
+}
+
+// [Election] refuses reissue from an empty checkout; [Election, Closure] settles over the published
+// policy; [] publishes; [Closure] alone is an orphan and refuses.
+test fn a_durable_unresolved_election_refuses_reissue_from_an_empty_checkout() -> Bool {
+  count(target_pools()) > 0 && all(target_pools(), r => match r {
+    BootstrapPool { pool } => {
+      let cells = approved_cells(p: r)
+      refuses_decision(d: decision_over(pool: pool, cells: cells, names: pool_names(pool: pool, marks: [JournalElection]), observed: Absent))
+        && settles(d: decision_over(pool: pool, cells: cells, names: pool_names(pool: pool, marks: [JournalElection, JournalClosure]), observed: Present { value: exact_policy(cells: cells, etag: "r1") }))
+        && publishes(d: decision_over(pool: pool, cells: cells, names: [], observed: Absent))
+        && refuses_decision(d: decision_over(pool: pool, cells: cells, names: pool_names(pool: pool, marks: [JournalClosure]), observed: Absent))
+    }
+    _ => false
+  })
+}
+
+// THE JOURNAL'S AUTHORITY IS THE DECLARED BUCKET, AND ITS CELLS ARE ROOT CELLS: iam-bootstrap may create,
+// get and list objects on that bucket only, the cell is the root ceremony's (so a delta reaching it
+// refuses as RootCeremonyCellsMissing), and no journal permission is one the boundary denies.
+test fn the_journal_is_the_declared_bucket_and_its_cells_are_root_cells() -> Bool {
+  let cells = iam_bootstrap_journal_cells()
+  let all_cells = iam_bootstrap_capability_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
+  count(cells) == 2
+    && all(cells, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapBucket { bucket: iam_bootstrap_journal_bucket })
+      && !delta_owned(b: b) && any(all_cells, x => iam_bootstrap_resource_key(resource: x.resource) == iam_bootstrap_resource_key(resource: b.resource) && x.cell.role == b.cell.role && x.cell.member == b.cell.member))
+    && (match bootstrap_delta_requestable(subjects: [SubjectNotBootstrapped { subject: BootstrapBucket { bucket: iam_bootstrap_journal_bucket }, standing: SubjectUnbound, missing: cells }]) { RootCeremonyCellsMissing { cells: rs } => count(rs) == 2  _ => false })
+    && iam_bootstrap_delta_role_withholds_its_boundary()
+}
+
+// THE COMMITTED OUTCOME IS OBTAINED FROM THE FOLD, NOT AUTHORED. An absent slot with an ExpectSlotAbsent
+// attempt is the supplied hypothesis; cas_decide_readable is the real producer that turns it into
+// CasCommitted, so this witness builds no success arm itself.
+fn t_committed_through_the_fold(content: ContentHash) -> CasOutcome<String> {
+  cas_decide_readable(
+    attempt: CasAttempt { key: "slot", expected: ExpectSlotAbsent, proposed: "x", proposed_content: content },
+    readable: CasReadableAbsent,
+  )
+}
+
+// K1. WHAT A MARK WRITE MEANS is pure and pinned: only a committed create-once write is Recorded; the
+// store observing the slot present is AlreadyPresent (a LOST election, which refuses); a store refusal
+// is Refused.
+test fn a_lost_election_is_never_read_as_recorded() -> Bool {
+  match sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") {
+    Absent => false
+    Present { value: d } => {
+      let v = CasSlotVersion { generation: cas_generation_first(), content: as_content_hash_cryptographic(digest: d), value: "x" }
+      (match journal_mark_outcome(o: t_committed_through_the_fold(content: v.content)) { JournalMarkRecorded => true  _ => false })
+        && (match journal_mark_outcome(o: CasPreconditionFailed { expected: ExpectSlotAbsent, observed: CasReadablePresent { version: v } }) { JournalMarkAlreadyPresent => true  _ => false })
+        && (match journal_mark_outcome(o: CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "403" } }) { JournalMarkRefused { cause: _ } => true  _ => false })
+    }
+  }
+}
+
+// K5. THE JOURNAL'S BOUNDARY: iam-bootstrap's effective storage reach (granted minus denied) is exactly
+// objects.create/get/list, and every destructive storage permission is denied to it.
+data journal_destructive_permissions: List<String> = [
+  "storage.googleapis.com/objects.delete", "storage.googleapis.com/objects.update", "storage.googleapis.com/objects.move",
+  "storage.googleapis.com/buckets.delete", "storage.googleapis.com/buckets.update", "storage.googleapis.com/buckets.setIamPolicy",
+]
+
+test fn iam_bootstraps_journal_reach_is_exactly_create_get_list() -> Bool {
+  let granted = filter(iam_bootstrap_delta_role_permissions + iam_bootstrap_journal_role_permissions, p => starts_with(s: p, prefix: "storage."))
+  let denied = map(iam_bootstrap_denied_permissions, p => deny_permission_iam_spelling(p: p))
+  let effective = filter(granted, p => !any(denied, d => d == p))
+  count(effective) == 3 && all(["storage.objects.create", "storage.objects.get", "storage.objects.list"], p => any(effective, e => e == p))
+    && all(journal_destructive_permissions, d => any(iam_bootstrap_denied_permissions, x => x == d))
+}
+
+// SHOULD-FIX 1. A POOL'S FIRST PUBLICATION IS ELECTED ONCE PER RESOURCE: its election object does not
+// depend on the consent, so a concurrent second apply under another digest meets the first election
+// (the store's 412) and refuses. The journal itself is the exclusion, not only the concurrency group.
+test fn two_consents_contend_for_one_pool_election() -> Bool {
+  count(target_pools()) > 0 && all(target_pools(), p => match p {
+    BootstrapPool { pool } => (pool_election_object(pool: pool, consent: "digest-a") as String) == (pool_election_object(pool: pool, consent: "digest-b") as String)
+    _ => false
+  })
+}

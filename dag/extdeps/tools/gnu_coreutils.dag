@@ -552,6 +552,25 @@ fn install_file_owned_command(source: String, destination: String, mode: NonEmpt
   ])
 }
 
+// CREATE OR REGROUP A DIRECTORY WITH OWNERSHIP AND MODE STATED ABSOLUTELY (WORKER-ROOT-EQUIVALENT-3,
+// round 3). The sibling above mints an ArgvCommand over the word builder
+// coreutils_install_directory_owned_arguments -- the ONE spelling of -d -m -o -g, shared with the
+// deploy route's owned_directory_install_argv in gunbc.owned_directory, so a witness that executes this
+// command executes the deploy's. WHY A ROUTE NEEDS THE ARGV COMMAND WHEN the owned-directory provider
+// already installs tops: the provider asserts a TOPOLOGY's tops (objects/, refs/, logs/) at plan time;
+// a per-attempt grant (.git/worktrees/<key>, created later by `git worktree add` under the instance
+// principal's umask) has no topology to assert and needs the same three-field restatement at spawn time
+// -- and an ADDITIVE sweep cannot reach a declared mode from a ~0755 top, it can only add bits. -o is
+// permitted without privilege when it names the invoking principal itself, and -g when it names a group
+// the invoker belongs to; both hold at the call site (the instance principal names itself and its
+// declared shared group), measured in the wet witness that execs this exact shape.
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
 // mv -T: rename SOURCE to exactly DESTINATION, treating the destination as a file name and never as
 // a directory to move into -- so publishing a staged tree over an absent path renames it, and a
 // destination that still exists as a non-empty directory is an error rather than a nested copy.

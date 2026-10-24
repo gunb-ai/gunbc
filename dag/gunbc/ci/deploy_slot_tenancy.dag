@@ -3,10 +3,8 @@ module gunbc.ci.deploy_slot_tenancy
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
-import gunbc.runner.runner_host_deploy { srv1_runner_host_spec }
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
-  runner_group_restriction_not_yet_observed,
 }
 import gunbc.ci.deploy_route_requirement { DeployRouteJobTenancy, SharesJobUidWithPullRequestJobs, SoleTenantOfJobUid }
 
@@ -58,15 +56,5 @@ fn deploy_slot_observed_tenancy(reading: DeploySlotReading) -> DeployRouteJobTen
       } else {
         SharesJobUidWithPullRequestJobs
       }
-  }
-}
-
-// What srv1 reads as today: no deploy group observed, and the deploy route runs as the one uid every
-// slot shares.
-fn srv1_deploy_slot_reading_today() -> DeploySlotReading {
-  DeploySlotReading {
-    group: runner_group_restriction_not_yet_observed(name: deploy_slot_runner_group_name),
-    deploy_slot_job_user: srv1_runner_host_spec.job_user,
-    other_slot_job_users: [srv1_runner_host_spec.job_user],
   }
 }

@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node { Occupancy, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, ComputationNode, Edge, Loop, LoopBoundEdge, Node, Positional, Symbol, TypeNode, core_edge_label, NotADeclaration }
 import v2.std.witness { Witness }
 
 type LensComplexityClaim {
@@ -21,19 +21,26 @@ type LensComplexityClaim {
   falsification: Diagnostic
 }
 
+data ts_task_complexity_measure: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^ts_task_complexity_measure_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
 data ts_task_complexity_input: Node = Node {
-  kind: TypeNode { connective: Occupancy },
+  kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: ts_task_type_alias_emitted() }
+    Edge { label: Positional, target: ts_task_type_alias_emitted(), declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: ts_task_complexity_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
 
 data ts_task_complexity_claim: LensComplexityClaim = LensComplexityClaim {
   input: ts_task_complexity_input,
-  expected_cost: LinearCost { variable: SizeVariable { source: ts_task_complexity_input } },
+  expected_cost: LinearCost { variable: SizeVariable { source: ts_task_complexity_measure } },
   expected_complexity: linear_complexity(
-    size_var: SizeVariable { source: ts_task_complexity_input }
+    size_var: SizeVariable { source: ts_task_complexity_measure }
   ),
   falsification: Diagnostic {
     reason: ^ts_task_complexity_reason,

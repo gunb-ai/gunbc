@@ -1,7 +1,7 @@
 module extdeps.languages.css.values
 
 import std.types { Int, String, Bool, List }
-import std.decimal { fixed_point_trimmed_wire }
+import std.decimal { ExactDecimal, exact_decimal_wire }
 import std.optional { Optional, Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -27,6 +27,8 @@ type CssLengthUnit
   = Px
   | Rem
   | Ch
+  | Em
+  | Vw
   | Percent
 
 fn css_length_unit_token(u: CssLengthUnit) -> String {
@@ -34,6 +36,8 @@ fn css_length_unit_token(u: CssLengthUnit) -> String {
     Px => "px"
     Rem => "rem"
     Ch => "ch"
+    Em => "em"
+    Vw => "vw"
     Percent => "%"
   }
 }
@@ -138,10 +142,16 @@ fn css_var_ref_wire(v: CssVarRef) -> String {
 }
 
 // A <number> with a fractional part (CSS Values and Units Level 4 section 4.1) is carried as an Int of
-// thousandths, so the magnitude stays exact; its wire is std.decimal.fixed_point_trimmed_wire over
-// css_number_fraction_digits places (the shortest decimal: 0.4, 0.85, 56). A fraction needing more
+// thousandths, so the magnitude stays exact; its wire is css_number_wire (std.decimal.exact_decimal_wire over
+// css_number_fraction_digits places) (the shortest decimal: 0.4, 0.85, 56). A fraction needing more
 // than three places is not representable and is a different Int, never a rounded one.
 data css_number_fraction_digits: Int = 3
+
+// The shortest signed decimal of a thousandths magnitude (std.decimal.exact_decimal_wire: the sign is split
+// off before the digits, which fixed_point_trimmed_wire's non-negative domain does not do).
+fn css_number_wire(milli: Int) -> String {
+  exact_decimal_wire(d: ExactDecimal { units: milli, fraction_digits: css_number_fraction_digits })
+}
 
 // A length whose magnitude may be fractional (0.4rem). css_length_wire keeps the Int-valued form.
 type CssDecimalLength {
@@ -149,11 +159,24 @@ type CssDecimalLength {
   unit: CssLengthUnit
 }
 
+// CSS Values 4 section 5.1: a zero <length> may drop its unit, and the served sheet writes bare 0 for
+// zero lengths. A percentage is not a <length>, so 0% keeps its unit.
+fn css_zero_drops_unit(u: CssLengthUnit) -> String {
+  match u {
+    Px => "0"
+    Rem => "0"
+    Ch => "0"
+    Em => "0"
+    Vw => "0"
+    Percent => "0%"
+  }
+}
+
 fn css_decimal_length_wire(l: CssDecimalLength) -> String {
   if l.milli == 0 {
-    "0"
+    css_zero_drops_unit(u: l.unit)
   } else {
-    join([fixed_point_trimmed_wire(value: l.milli, decimals: css_number_fraction_digits), css_length_unit_token(u: l.unit)], "")
+    join([css_number_wire(milli: l.milli), css_length_unit_token(u: l.unit)], "")
   }
 }
 
@@ -188,6 +211,6 @@ fn css_hsl_wire(c: CssHsl) -> String {
   ]
   match c.alpha_milli {
     Absent => join(["hsl(", join(channels, ", "), ")"], "")
-    Present { value: a } => join(["hsla(", join(concat(channels, [fixed_point_trimmed_wire(value: a, decimals: css_number_fraction_digits)]), ", "), ")"], "")
+    Present { value: a } => join(["hsla(", join(concat(channels, [css_number_wire(milli: a)]), ", "), ")"], "")
   }
 }

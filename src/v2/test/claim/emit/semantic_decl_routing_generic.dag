@@ -1,5 +1,6 @@
 module v2.test.claim.emit.semantic_decl_routing_generic
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
@@ -7,7 +8,7 @@ import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_stag
 import extdeps.languages.rust.emit { rust_enum_derives, rust_struct_derives }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, NotADeclaration }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -36,7 +37,7 @@ fn sdrg_record(edges: List<Edge>) -> Node {
 }
 
 fn sdrg_variant_edge(name: Symbol, payload: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: payload }
+  Edge { label: Authored { name: name }, target: payload, declaration: NotADeclaration }
 }
 
 fn semantic_witness_coproduct() -> Node {
@@ -55,7 +56,7 @@ fn semantic_pair_record() -> Node {
 }
 
 fn semantic_generic_emit_text(name: Symbol, params: List<Symbol>, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(name: name, params: params, node: node, target: rust_semantic_decl_target_model_staging(), realization_host: rust_semantic_decl_target_model_staging()) {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], name: name, params: params, node: node, target: rust_semantic_decl_target_model_staging(), realization_host: rust_semantic_decl_target_model_staging()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }

@@ -2,7 +2,7 @@ module v2.test.claim.manual.target_operation_grounding_emit_typescript
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.compilers.target_model {
+import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclUnwired,
   CanonicalOperation,
   InfixToken,
@@ -79,6 +79,7 @@ fn op_grounding_test_bundle() -> Node {
 
 fn op_grounding_test_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: op_grounding_test_bundle(),
     lex: op_grounding_test_lex(),

@@ -1,0 +1,546 @@
+module gunbc.auth.approval_google_enrolment
+
+import std.types { NonEmptyStr, String, Timestamp, Bool, List }
+import std.decl_ref { decl_ref }
+import std.error_primitives { pure_dag_seam_unreachable_string }
+import std.encoding { base64_encode, base64_octets, UrlSafe }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.crypto.signature { VerifyingKey }
+import extdeps.auth.jwt { JwtStringOrUri, JwtBareString, JwtAudience, JwtAudienceSingle, JwtAudienceMultiple, NumericDate, jwt_string_or_uri_wire }
+import extdeps.auth.oidc { OidcIdTokenClaims, OidcIdTokenSignature, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal, OidcIdTokenVerdictPolicy, verify_oidc_id_token }
+import extdeps.apple.app_attest { AttestKeyId, AttestationVerification, AttestationVerified, AttestationRefused, AttestationRefusal }
+import gunbc.auth.google_workspace_login { google_workspace_issuer, gunb_ai_hosted_domain }
+import gunbc.auth.approval_device_wire { MobilePlatform, MobileIos, MobileAndroid, platform_wire, framed }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
+import gunbc.auth.approval_decision_store { approval_google_approver_emails, json_field_string }
+import std.durable_compare_and_set { CasGeneration, cas_generation_first, cas_generation_count }
+import extdeps.crypto.signature { EcdsaP256Sha256, Sec1Uncompressed }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+
+// ── GOOGLE SIGN-IN IS ENROLMENT (ruling gunbc.design_ruling approval_enrolment_is_google_sign_in) ──
+// The phone signs in with Google once. In the same step it creates its Secure-Enclave decision key
+// and its App Attest key, and one POST registers both under the verified Google identity. There is
+// no code, no second step, and no state the phone must recover: the POST is idempotent, so an
+// unanswered POST is resent, and a failed sign-in is "sign in again". This module is the authority
+// for what admits an enrolment.
+//
+// THREE SEALED STAGES, each consuming the carrier only the stage before it mints, so no caller can
+// reach an enrolment write with facts it assembled itself:
+//   1. admit_google_approver: takes the UNVERIFIED claims, the signature realization's verdict and
+//      the submitted keys, runs the verdict fold itself under this module's policy, and mints
+//      VerifiedGoogleApprover. Caller-sealed (admit_callers), because the signature input is the
+//      realization seam: whoever may call this may assert a verified signature.
+//   2. join_subject_pin: the route's create-or-read of the email's subject pin, joined to the
+//      presented subject, mints SubjectPinnedToPresentedSubject.
+//   3. google_enrolment_admission: from that carrier and the attestation, decides write, replay
+//      (joined to the stored record field by field) or refusal.
+//
+// Every check is a fact an earlier authority already owns, and this module joins them:
+//   - the ID token's verdict is extdeps.auth.oidc verify_oidc_id_token, its signature the
+//     production JWKS realization gunbc.auth.oidc_id_token_verification;
+//   - issuer and hosted domain are gunbc.auth.google_workspace_login's (hd == gunb.ai);
+//   - the audience is the approve-ios OAuth client, one row here (an iOS-type client: a web client
+//     cannot serve a native redirect, and admitting the dashboard client's audience would let a
+//     dashboard login token enrol a device);
+//   - who may enrol is the approver roster, matched on the verified Workspace email, and the
+//     Google subject is pinned per email before anything is written;
+//   - the App Attest verdict is extdeps.apple.app_attest's, kept as VerifiedPlatformEvidence.
+
+// ── THE TRANSCRIPT, AND WHY THE NONCE IS ITS HASH ──────────────────────────────────────────────
+// The app builds the transcript BEFORE sign-in from the keys it just created, and passes
+// nonce = base64url(sha256(transcript)) to Google. The server rebuilds the transcript from the
+// submitted keys, so the token's nonce commits Google's assertion to exactly these keys. A token
+// replayed beside a different decision key or attest key yields a different transcript and refuses
+// at the verdict's nonce arm; no server-side nonce store exists, because the nonce is DERIVED, never
+// issued. The App Attest attestation is made over the same transcript, so the two proofs name one
+// set of keys.
+data approval_google_enrolment_protocol: NonEmptyStr = "gunbc.approval-google-enrolment.v1" as NonEmptyStr
+
+fn google_enrolment_transcript(platform: MobilePlatform, decision_key: VerifyingKey, attest_key_id: AttestKeyId) -> NonEmptyStr {
+  framed(fields: [
+    approval_google_enrolment_protocol as String,
+    platform_wire(p: platform) as String,
+    decision_key.point_b64url as String,
+    attest_key_id as String,
+  ])
+}
+
+// sha256's output is 32 in-range octets, so the qualifying refusal arm is unreachable, and it
+// diverges rather than fabricating a digest.
+fn sha256_b64url(text: NonEmptyStr) -> NonEmptyStr {
+  match base64_octets(values: sha256(message: bytes_octets(b: utf8_encode_bytes(s: text as String)))) {
+    QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: UrlSafe) as NonEmptyStr
+    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string() as NonEmptyStr
+  }
+}
+
+fn google_enrolment_nonce(transcript: NonEmptyStr) -> NonEmptyStr {
+  sha256_b64url(text: transcript)
+}
+
+// ── THE AUDIENCE, EXACTLY ──────────────────────────────────────────────────────────────────────
+// The audience is gunbc.auth.tracker_web_oauth_client approve_ios_oauth_client, the iOS client the
+// operator registered, read from the registration and never passed in. The generic verdict admits a
+// token whose aud INTERSECTS the admitted list and does not read azp; enrolment needs more, so this
+// module adds an exact check after the verdict: aud names the approve-ios client and nothing else,
+// and azp, when present, is that client too. A token whose aud also names the dashboard client (or
+// whose authorized party is the dashboard) was minted for a flow that is not this one, and refuses.
+fn approve_ios_audience() -> JwtStringOrUri {
+  JwtBareString { value: approve_ios_oauth_client.client_id }
+}
+
+fn approval_google_enrolment_policy(transcript: NonEmptyStr, observed_at: NumericDate) -> OidcIdTokenVerdictPolicy {
+  OidcIdTokenVerdictPolicy {
+    expected_issuer: google_workspace_issuer(),
+    admitted_audiences: [approve_ios_audience()],
+    expected_hosted_domain: gunb_ai_hosted_domain,
+    expected_nonce: Present { value: google_enrolment_nonce(transcript: transcript) },
+    observed_at: observed_at,
+  }
+}
+
+fn audience_is_exactly_approve_ios(aud: JwtAudience) -> Bool {
+  match aud {
+    JwtAudienceSingle { value: v } => v == approve_ios_audience()
+    JwtAudienceMultiple { values: vs } => all(vs, v => v == approve_ios_audience())
+  }
+}
+
+fn authorized_party_admitted(azp: JwtStringOrUri?) -> Bool {
+  match azp {
+    Absent => true
+    Present { value: v } => v == approve_ios_audience()
+  }
+}
+
+// ── THE SUBMITTED KEYS ─────────────────────────────────────────────────────────────────────────
+// What the phone submits beside its token. The approver carrier binds them, so the keys a later
+// stage admits are exactly the keys the token's nonce was checked against.
+type GoogleEnrolmentKeys {
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  attest_key_id: AttestKeyId
+}
+
+fn google_enrolment_keys_transcript(k: GoogleEnrolmentKeys) -> NonEmptyStr {
+  google_enrolment_transcript(platform: k.platform, decision_key: k.decision_key, attest_key_id: k.attest_key_id)
+}
+
+// ── STAGE 1: THE APPROVER ──────────────────────────────────────────────────────────────────────
+type VerifiedGoogleApprover sole_constructor {
+  email: NonEmptyStr
+  subject: NonEmptyStr
+  keys: GoogleEnrolmentKeys
+}
+
+type GoogleEnrolmentRefusal
+  = GoogleEnrolmentTokenRefused { cause: OidcIdTokenRefusal }
+  | GoogleEnrolmentAudienceNotExact
+  | GoogleEnrolmentAuthorizedPartyNotAdmitted
+  | GoogleEnrolmentEmailAbsent
+  | GoogleEnrolmentNotAnApprover { email: NonEmptyStr }
+  | GoogleEnrolmentSubjectMismatch { email: NonEmptyStr }
+  | GoogleEnrolmentAttestationRefused { cause: AttestationRefusal }
+  | GoogleEnrolmentAttestationForOtherBytes
+  | GoogleEnrolmentAttestKeyMismatch
+  | GoogleEnrolmentAndroidUnrealized
+  | GoogleEnrolmentRevokedKey
+  | GoogleEnrolmentStoredMismatch { field: StoredEnrolmentField }
+  | GoogleEnrolmentStoreUnreadable { detail: NonEmptyStr }
+
+type GoogleApproverAdmission
+  = GoogleApproverAdmitted { approver: VerifiedGoogleApprover }
+  | GoogleApproverRefused { cause: GoogleEnrolmentRefusal }
+
+fn email_on_roster(email: NonEmptyStr, roster: List<NonEmptyStr>) -> Bool {
+  any(roster, e => (e as String) == (email as String))
+}
+
+// The fold over a supplied roster. Sealed to the production wrapper below and to the witness
+// fixture that supplies its own roster; child A's enrol route joins the production wrapper's roster.
+fn admit_google_approver_on_roster(
+  roster: List<NonEmptyStr>,
+  claims: OidcIdTokenClaims,
+  signature: OidcIdTokenSignature,
+  keys: GoogleEnrolmentKeys,
+  observed_at: NumericDate,
+) -> GoogleApproverAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_google_enrolment", decl_name: "admit_google_approver"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_approver_admission"),
+  ]
+{
+  match verify_oidc_id_token(claims: claims, signature: signature, policy: approval_google_enrolment_policy(transcript: google_enrolment_keys_transcript(k: keys), observed_at: observed_at)) {
+    OidcIdTokenRefused { cause: c } => GoogleApproverRefused { cause: GoogleEnrolmentTokenRefused { cause: c } }
+    OidcIdTokenVerified { claims: verified } =>
+      if !audience_is_exactly_approve_ios(aud: verified.audience) {
+        GoogleApproverRefused { cause: GoogleEnrolmentAudienceNotExact }
+      } else if !authorized_party_admitted(azp: verified.azp) {
+        GoogleApproverRefused { cause: GoogleEnrolmentAuthorizedPartyNotAdmitted }
+      } else {
+        match verified.standard.email {
+          Absent => GoogleApproverRefused { cause: GoogleEnrolmentEmailAbsent }
+          Present { value: email_value } =>
+            let email = email_value as NonEmptyStr
+            if !email_on_roster(email: email, roster: roster) {
+              GoogleApproverRefused { cause: GoogleEnrolmentNotAnApprover { email: email } }
+            } else {
+              GoogleApproverAdmitted { approver: VerifiedGoogleApprover { email: email, subject: jwt_string_or_uri_wire(value: verified.subject), keys: keys } }
+            }
+        }
+      }
+  }
+}
+
+// THE PRODUCTION ADMISSION, on the one roster row. Its admit_callers roster is the enrol route's
+// device_enrol_admit and the witness wrapper.
+fn admit_google_approver(claims: OidcIdTokenClaims, signature: OidcIdTokenSignature, keys: GoogleEnrolmentKeys, observed_at: NumericDate) -> GoogleApproverAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_enrol_admit"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_production_approver_admission"),
+  ]
+{
+  admit_google_approver_on_roster(roster: approval_google_approver_emails, claims: claims, signature: signature, keys: keys, observed_at: observed_at)
+}
+
+// ── STAGE 2: THE SUBJECT PIN, BEFORE ANY WRITE ─────────────────────────────────────────────────
+// One create-once slot per approver email holds the Google subject of the first account that
+// enrolled under it. The route attempts the create with the presented subject; if the CAS is lost
+// (the slot exists, or a concurrent enrolment won it) it REREADS the slot. That observation is the
+// only input here, and a write or a replay requires the carrier this stage mints, so two accounts
+// racing under one address cannot both reach an enrolment: the loser rereads the winner's subject
+// and refuses.
+type SubjectPinCreateOrRead
+  = SubjectPinCreatedForPresented
+  | SubjectPinReread { subject: NonEmptyStr }
+  | SubjectPinUnreadable { detail: NonEmptyStr }
+
+type SubjectPinnedToPresentedSubject sole_constructor {
+  approver: VerifiedGoogleApprover
+}
+
+type SubjectPinJoin
+  = SubjectPinJoined { pinned: SubjectPinnedToPresentedSubject }
+  | SubjectPinRefused { cause: GoogleEnrolmentRefusal }
+
+fn join_subject_pin(approver: VerifiedGoogleApprover, observed: SubjectPinCreateOrRead) -> SubjectPinJoin {
+  match observed {
+    SubjectPinUnreadable { detail: d } => SubjectPinRefused { cause: GoogleEnrolmentStoreUnreadable { detail: d } }
+    SubjectPinCreatedForPresented => SubjectPinJoined { pinned: SubjectPinnedToPresentedSubject { approver: approver } }
+    SubjectPinReread { subject: pinned } =>
+      if (pinned as String) == (approver.subject as String) {
+        SubjectPinJoined { pinned: SubjectPinnedToPresentedSubject { approver: approver } }
+      } else {
+        SubjectPinRefused { cause: GoogleEnrolmentSubjectMismatch { email: approver.email } }
+      }
+  }
+}
+
+// ── STAGE 3: THE ENROLMENT ─────────────────────────────────────────────────────────────────────
+// enrollment_id = hash(subject, decision key): the same Google subject with the same key is the
+// same enrolment, so a resent POST lands on the same slot and is answered from it. A new key under
+// the same subject is a new device, which is exactly what notifies the operator.
+fn google_enrollment_id(subject: NonEmptyStr, decision_key: VerifyingKey) -> NonEmptyStr {
+  let digest = sha256_b64url(text: framed(fields: [approval_google_enrolment_protocol as String, subject as String, decision_key.point_b64url as String]))
+  join(["genr-", digest as String], "") as NonEmptyStr
+}
+
+// What the server KEEPS once the platform evidence is verified: the facts later checks need, never
+// the raw object. iOS keeps the App Attest key's id and public key (every later assertion verifies
+// under it) and the receipt (Apple's fraud-metric handle). Android's attestation certifies the
+// decision key itself.
+type VerifiedPlatformEvidence
+  = IosAttestedAppInstance { attest_key_id: AttestKeyId, attest_public_key_b64url: NonEmptyStr, receipt_b64: NonEmptyStr }
+  | AndroidAttestedDecisionKey
+
+type GoogleDeviceEnrollment sole_constructor {
+  enrollment_id: NonEmptyStr
+  google_subject: NonEmptyStr
+  google_email: NonEmptyStr
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  evidence: VerifiedPlatformEvidence
+  enrolled_at: Timestamp
+}
+
+// The enrolment slot the route read at google_enrollment_id(subject, key): absent, enrolled
+// (generation 1), or revoked (generation 2).
+type GoogleEnrolmentSlot
+  = GoogleEnrolmentAbsent
+  | GoogleEnrolmentActive { enrollment: GoogleDeviceEnrollment }
+  | GoogleEnrolmentRevoked { enrollment: GoogleDeviceEnrollment, revoked_at: Timestamp }
+  | GoogleEnrolmentUnreadable { detail: NonEmptyStr }
+
+// Write: a new enrolment, after which the route publishes the new-device notice. Replay: the stored
+// enrolment IS this request's (every field joined below), answered with no write and no notice.
+type GoogleEnrolmentAdmission
+  = GoogleEnrolmentWrites { enrollment: GoogleDeviceEnrollment }
+  | GoogleEnrolmentReplays { enrollment: GoogleDeviceEnrollment }
+  | GoogleEnrolmentRefused { cause: GoogleEnrolmentRefusal }
+
+fn stored_attest_key_id(e: GoogleDeviceEnrollment) -> String {
+  match e.evidence {
+    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } => k as String
+    AndroidAttestedDecisionKey => ""
+  }
+}
+
+// The fields a request determines in its stored record, one arm each, so a mismatch names its field
+// as a constructor the wire and the app match exhaustively, never a spelling.
+type StoredEnrolmentField
+  = StoredFieldEnrollmentId
+  | StoredFieldGoogleSubject
+  | StoredFieldGoogleEmail
+  | StoredFieldDecisionKey
+  | StoredFieldPlatform
+  | StoredFieldAttestKeyId
+
+// THE REPLAY JOIN: a stored record answers this request only if it is this request's enrolment in
+// every field the request determines. The first field that disagrees is named, so a slot read at
+// the wrong key or a record that drifted refuses rather than being echoed back.
+fn stored_enrolment_disagreement(e: GoogleDeviceEnrollment, a: VerifiedGoogleApprover) -> StoredEnrolmentField? {
+  if (e.enrollment_id as String) != (google_enrollment_id(subject: a.subject, decision_key: a.keys.decision_key) as String) { Present { value: StoredFieldEnrollmentId } }
+  else if (e.google_subject as String) != (a.subject as String) { Present { value: StoredFieldGoogleSubject } }
+  else if (e.google_email as String) != (a.email as String) { Present { value: StoredFieldGoogleEmail } }
+  else if (e.decision_key.point_b64url as String) != (a.keys.decision_key.point_b64url as String) { Present { value: StoredFieldDecisionKey } }
+  else if e.platform != a.keys.platform { Present { value: StoredFieldPlatform } }
+  else if stored_attest_key_id(e: e) != (a.keys.attest_key_id as String) { Present { value: StoredFieldAttestKeyId } }
+  else { none }
+}
+
+fn google_enrolment_admission(
+  pinned: SubjectPinnedToPresentedSubject,
+  attestation: AttestationVerification,
+  slot: GoogleEnrolmentSlot,
+  observed_at: Timestamp,
+) -> GoogleEnrolmentAdmission {
+  let a = pinned.approver
+  match a.keys.platform {
+    MobileAndroid => GoogleEnrolmentRefused { cause: GoogleEnrolmentAndroidUnrealized }
+    MobileIos =>
+      match attestation {
+        AttestationRefused { cause: r } => GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestationRefused { cause: r } }
+        AttestationVerified { verified: v } =>
+          if (v.key_id as String) != (a.keys.attest_key_id as String) {
+            GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestKeyMismatch }
+          } else if v.client_data != google_enrolment_keys_transcript(k: a.keys) {
+            GoogleEnrolmentRefused { cause: GoogleEnrolmentAttestationForOtherBytes }
+          } else {
+            match slot {
+              GoogleEnrolmentUnreadable { detail: d } => GoogleEnrolmentRefused { cause: GoogleEnrolmentStoreUnreadable { detail: d } }
+              GoogleEnrolmentRevoked { enrollment: e, revoked_at: _ } =>
+                match stored_enrolment_disagreement(e: e, a: a) {
+                  Present { value: f } => GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: f } }
+                  Absent => GoogleEnrolmentRefused { cause: GoogleEnrolmentRevokedKey }
+                }
+              GoogleEnrolmentActive { enrollment: e } =>
+                match stored_enrolment_disagreement(e: e, a: a) {
+                  Present { value: f } => GoogleEnrolmentRefused { cause: GoogleEnrolmentStoredMismatch { field: f } }
+                  Absent => GoogleEnrolmentReplays { enrollment: e }
+                }
+              GoogleEnrolmentAbsent =>
+                GoogleEnrolmentWrites {
+                  enrollment: GoogleDeviceEnrollment {
+                    enrollment_id: google_enrollment_id(subject: a.subject, decision_key: a.keys.decision_key),
+                    google_subject: a.subject,
+                    google_email: a.email,
+                    platform: MobileIos,
+                    decision_key: a.keys.decision_key,
+                    evidence: IosAttestedAppInstance { attest_key_id: v.key_id, attest_public_key_b64url: v.public_key_point_b64url, receipt_b64: v.receipt_b64 },
+                    enrolled_at: observed_at,
+                  },
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── WHO MAY DECIDE, AND REVOCATION ─────────────────────────────────────────────────────────────
+// Only an ACTIVE slot answers an enrolment to the redemption path. Revocation is one CAS from
+// generation 1 to 2, issued by an authenticated dashboard session of a rostered approver; a revoked
+// key cannot re-enrol (GoogleEnrolmentRevokedKey), so the phone must create a new key, sign in
+// again, and the operator is notified of that device.
+fn deciding_google_enrollment(slot: GoogleEnrolmentSlot) -> GoogleDeviceEnrollment? {
+  match slot {
+    GoogleEnrolmentActive { enrollment: e } => Present { value: e }
+    GoogleEnrolmentAbsent => none
+    GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => none
+    GoogleEnrolmentUnreadable { detail: _ } => none
+  }
+}
+
+// THE NEW-DEVICE NOTICE: emitted only on GoogleEnrolmentWrites, never on a replay, so one device
+// notifies once however often its POST is resent.
+type NewDeviceNotice {
+  enrollment_id: NonEmptyStr
+  google_email: NonEmptyStr
+  attest_key_id: AttestKeyId
+  enrolled_at: Timestamp
+}
+
+fn new_device_notice(a: GoogleEnrolmentAdmission) -> NewDeviceNotice? {
+  match a {
+    GoogleEnrolmentWrites { enrollment: e } =>
+      match e.evidence {
+        IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } =>
+          Present { value: NewDeviceNotice { enrollment_id: e.enrollment_id, google_email: e.google_email, attest_key_id: k, enrolled_at: e.enrolled_at } }
+        AndroidAttestedDecisionKey => none
+      }
+    GoogleEnrolmentReplays { enrollment: _ } => none
+    GoogleEnrolmentRefused { cause: _ } => none
+  }
+}
+
+// ── THE STORED RECORDS ─────────────────────────────────────────────────────────────────────────
+// READING A PERSISTED ENROLMENT RE-MINTS GoogleDeviceEnrollment, which is why the parse lives in this
+// module: the only bytes it trusts are this store's own, written only from a GoogleEnrolmentWrites
+// value under a root no other principal can write. One CAS slot per enrollment_id: generation 1 is
+// the enrolment, generation 2 its revocation. Each kind is paired with its generation here, so the
+// writers and the reader cannot disagree about either.
+type GoogleEnrolmentRecordKind
+  = GoogleEnrolledRecord
+  | GoogleRevokedRecord
+
+fn google_enrolment_record_kind_wire(k: GoogleEnrolmentRecordKind) -> NonEmptyStr {
+  match k {
+    GoogleEnrolledRecord => "enrolled" as NonEmptyStr
+    GoogleRevokedRecord => "revoked" as NonEmptyStr
+  }
+}
+
+fn google_enrolment_record_kind_generation(k: GoogleEnrolmentRecordKind) -> CasGeneration {
+  match k {
+    GoogleEnrolledRecord => cas_generation_first()
+    GoogleRevokedRecord => 2
+  }
+}
+
+fn google_enrolment_members(kind: GoogleEnrolmentRecordKind, e: GoogleDeviceEnrollment) -> List<JsonKeyValue> {
+  let evidence = match e.evidence {
+    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: pk, receipt_b64: r } => [
+      json_kv(key: "attest_key_id", value: json_string(s: k as String)),
+      json_kv(key: "attest_public_key_b64url", value: json_string(s: pk as String)),
+      json_kv(key: "receipt_b64", value: json_string(s: r as String)),
+    ]
+    AndroidAttestedDecisionKey => []
+  }
+  concat([
+    json_kv(key: "kind", value: json_string(s: google_enrolment_record_kind_wire(k: kind) as String)),
+    json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
+    json_kv(key: "google_subject", value: json_string(s: e.google_subject as String)),
+    json_kv(key: "google_email", value: json_string(s: e.google_email as String)),
+    json_kv(key: "platform", value: json_string(s: platform_wire(p: e.platform) as String)),
+    json_kv(key: "decision_key_point_b64url", value: json_string(s: e.decision_key.point_b64url as String)),
+    json_kv(key: "enrolled_at", value: json_string(s: e.enrolled_at)),
+  ], evidence)
+}
+
+fn google_enrolment_json(e: GoogleDeviceEnrollment) -> String {
+  serialize_json(v: json_object(members: google_enrolment_members(kind: GoogleEnrolledRecord, e: e)))
+}
+
+fn google_revocation_json(e: GoogleDeviceEnrollment, revoked_at: Timestamp) -> String {
+  serialize_json(v: json_object(members: concat(google_enrolment_members(kind: GoogleRevokedRecord, e: e), [
+    json_kv(key: "revoked_at", value: json_string(s: revoked_at)),
+  ])))
+}
+
+// A required string field, or "" when absent -- the caller checks every required key first, so a
+// missing field is an unreadable record, never a defaulted one.
+fn field_or_empty(v: JsonValue, key: String) -> String {
+  match json_field_string(v: v, key: key) { Present { value: s } => s  Absent => "" }
+}
+
+fn first_missing(v: JsonValue, keys: List<String>) -> NonEmptyStr? {
+  fold(keys, init: none, f: (acc, k) => match acc {
+    Present { value: _ } => acc
+    Absent => if field_or_empty(v: v, key: k) == "" { Present { value: k as NonEmptyStr } } else { none }
+  })
+}
+
+data google_enrolment_required_keys: List<String> = ["enrollment_id", "google_subject", "google_email", "platform", "decision_key_point_b64url", "enrolled_at", "attest_key_id", "attest_public_key_b64url", "receipt_b64"]
+
+fn parse_google_enrolment_fields(v: JsonValue) -> GoogleDeviceEnrollment? {
+  if first_missing(v: v, keys: google_enrolment_required_keys) != none || field_or_empty(v: v, key: "platform") != "ios" {
+    none
+  } else {
+    Present { value: GoogleDeviceEnrollment {
+      enrollment_id: field_or_empty(v: v, key: "enrollment_id") as NonEmptyStr,
+      google_subject: field_or_empty(v: v, key: "google_subject") as NonEmptyStr,
+      google_email: field_or_empty(v: v, key: "google_email") as NonEmptyStr,
+      platform: MobileIos,
+      decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: field_or_empty(v: v, key: "decision_key_point_b64url") as NonEmptyStr },
+      evidence: IosAttestedAppInstance {
+        attest_key_id: field_or_empty(v: v, key: "attest_key_id") as AttestKeyId,
+        attest_public_key_b64url: field_or_empty(v: v, key: "attest_public_key_b64url") as NonEmptyStr,
+        receipt_b64: field_or_empty(v: v, key: "receipt_b64") as NonEmptyStr,
+      },
+      enrolled_at: field_or_empty(v: v, key: "enrolled_at"),
+    } }
+  }
+}
+
+fn google_enrolment_kind_of_wire(s: String) -> GoogleEnrolmentRecordKind? {
+  if s == (google_enrolment_record_kind_wire(k: GoogleEnrolledRecord) as String) { Present { value: GoogleEnrolledRecord } }
+  else if s == (google_enrolment_record_kind_wire(k: GoogleRevokedRecord) as String) { Present { value: GoogleRevokedRecord } }
+  else { none }
+}
+
+// The record kind must agree with the generation it sits at; a disagreement is unreadable, never
+// reinterpreted.
+fn parse_google_enrolment_record(text: String, generation: CasGeneration) -> GoogleEnrolmentSlot {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => GoogleEnrolmentUnreadable { detail: "enrolment record is not a JSON document" }
+    JsonDocumentParsed { value: v } =>
+      match google_enrolment_kind_of_wire(s: field_or_empty(v: v, key: "kind")) {
+        Absent => GoogleEnrolmentUnreadable { detail: "enrolment record names no known kind" }
+        Present { value: kind } =>
+          if cas_generation_count(g: google_enrolment_record_kind_generation(k: kind)) != cas_generation_count(g: generation) {
+            GoogleEnrolmentUnreadable { detail: "enrolment record kind disagrees with its generation" }
+          } else {
+            match parse_google_enrolment_fields(v: v) {
+              Absent => GoogleEnrolmentUnreadable { detail: "enrolment record lacks a field or names an unrealized platform" }
+              Present { value: e } =>
+                match kind {
+                  GoogleEnrolledRecord => GoogleEnrolmentActive { enrollment: e }
+                  GoogleRevokedRecord =>
+                    if first_missing(v: v, keys: ["revoked_at"]) != none { GoogleEnrolmentUnreadable { detail: "revocation record lacks revoked_at" } }
+                    else { GoogleEnrolmentRevoked { enrollment: e, revoked_at: field_or_empty(v: v, key: "revoked_at") } }
+                }
+            }
+          }
+      }
+  }
+}
+
+// ── THE SUBJECT PIN'S RECORD ───────────────────────────────────────────────────────────────────
+// One create-once slot per approver email, keyed by the digest of the email (an address is not
+// slot-addressable), holding the subject that first enrolled under it.
+fn subject_pin_key(email: NonEmptyStr) -> NonEmptyStr {
+  join(["gpin-", sha256_b64url(text: email) as String], "") as NonEmptyStr
+}
+
+fn subject_pin_json(email: NonEmptyStr, subject: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "subject_pin")),
+    json_kv(key: "email", value: json_string(s: email as String)),
+    json_kv(key: "subject", value: json_string(s: subject as String)),
+  ]))
+}
+
+// A stored pin is read back only for the email it was written under; anything else is unreadable.
+fn parse_subject_pin(text: String, email: NonEmptyStr) -> SubjectPinCreateOrRead {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => SubjectPinUnreadable { detail: "subject pin record is not a JSON document" }
+    JsonDocumentParsed { value: v } =>
+      if first_missing(v: v, keys: ["kind", "email", "subject"]) != none || field_or_empty(v: v, key: "kind") != "subject_pin" || field_or_empty(v: v, key: "email") != (email as String) {
+        SubjectPinUnreadable { detail: "subject pin record lacks a field or names another email" }
+      } else {
+        SubjectPinReread { subject: field_or_empty(v: v, key: "subject") as NonEmptyStr }
+      }
+  }
+}
