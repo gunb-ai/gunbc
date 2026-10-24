@@ -837,6 +837,11 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 // the teardown within sixty seconds of the power action -- before the census could have printed. This
 // case was pinned as reporting the loss only at the deadline until #12434's watch detected it. The final
 // world shows the drop fired, so the case is not green on a run where the loss never happened.
+//
+// DECLARED RED SINCE THE REALIZATION REACHED THE FAN GATE: #14263's gate sleeps its 60s settle between
+// power-on and this watch with SOL unwatched, so the teardown lands past the bound. Held in
+// v2.workflow.floor_expected_red floor_expected_red_chunk_fan_gate_settle_leaves_sol_unwatched until the
+// SOL watch covers the settle; the bound is the contract and stays.
 fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
