@@ -1,0 +1,93 @@
+module v2.test.claim.parse.call_suffix_line_break
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Hash, content_hash }
+import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A `(` THAT OPENS THE NEXT LINE IS NOT A CALL (v2.extdeps.languages.dag
+// dag_grammar_postfix_call_suffix_expr), the rule the index suffix states for `[`. Read across the
+// break, `let mx = m0 * x` followed by `(x * 2) % 7` parsed the callee `x` as a local Int applied to
+// `(x * 2)`, left the let with no body, and the module was refused as wrapper-retained
+// (std.bignat montgomery_newton).
+//
+// THE CONTROL IS THE SAME CALL ON ONE LINE: it keeps the call reading and front-ends exactly as it did
+// before the guard (measured with the pre-fix and post-fix native binaries), so the guard moved the
+// reading of the break and nothing else.
+fn normalized_ok(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn normalized_hash(tag: String, text: String) -> Optional<Hash> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree.root) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+data next_line_paren_source: String = "module probe.call\n\nfn f(m0: Int, x: Int) -> Int {\n  let mx = m0 * x\n  (x * 2) % 7\n}\n"
+data unparenthesized_body_source: String = "module probe.call\n\nfn f(m0: Int, x: Int) -> Int {\n  let mx = m0 * x\n  x * 2 % 7\n}\n"
+data same_line_local_call_source: String = "module probe.call\n\nfn f(m0: Int, x: Int) -> Int {\n  let mx = m0 * x\n  x(x * 2) % 7\n}\n"
+data same_line_record_init_source: String = "module probe.call\n\ntype R {\n  a: Int\n}\n\nfn f(x: Int) -> R {\n  let k = R { a: 1 }\n  k\n}\n"
+data bodiless_let_source: String = "module probe.call\n\nfn f(x: Int) -> Int {\n  let k = x\n}\n"
+data next_line_brace_source: String = "module probe.call\n\ntype R {\n  a: Int\n}\n\nfn f(x: Int) -> R {\n  let k = R\n  { a: 1 }\n}\n"
+
+// THE ROUTE, not only the verdict: the next-line spelling normalizes to the SAME tree as the body
+// written without a leading `(`, where no call reading exists, so `(x * 2) % 7` is the block's value
+// and `x` is not applied to anything; the call reading cannot satisfy it.
+test fn a_paren_on_the_next_line_is_the_blocks_value_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "next_line", text: next_line_paren_source), b: normalized_hash(tag: "unparenthesized", text: unparenthesized_body_source))
+}
+
+// The same-line spelling is a different program (a call of `x`), so the two spellings do not collapse.
+test fn a_same_line_call_is_not_the_next_line_body_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "same_line", text: same_line_local_call_source), b: normalized_hash(tag: "next_line2", text: next_line_paren_source)) == false
+}
+
+test fn a_same_line_call_keeps_the_call_reading_holds() -> Bool {
+  normalized_ok(tag: "same_line2", text: same_line_local_call_source)
+}
+
+// A `{` THAT OPENS THE NEXT LINE IS NOT A RECORD INITIALIZER (dag_grammar_primary_ident_suffix_expr), the
+// same rule the call and index suffixes state, through the same dag_grammar_same_line_terminal_guard
+// (Charter 5 work item C5-F, node://adhoc-0acbcf32-85e). Read across the break, `let k = R` followed by
+// `{ a: 1 }` parsed `R { a: 1 }` and left the let with no body, refused as wrapper-retained; RED at the
+// grammar without the guard, GREEN with it (front-end only: the anonymous record then has no expected
+// type at the fn tail, a later and different refusal).
+test fn a_brace_on_the_next_line_is_not_a_record_init_holds() -> Bool {
+  normalized_ok(tag: "brace", text: next_line_brace_source)
+}
+
+// THE CONTROL: the record init on ONE line still reads as one, and it is a different program from the
+// next-line spelling, so the guard moved the reading of the break and nothing else.
+test fn a_same_line_record_init_keeps_the_record_reading_holds() -> Bool {
+  normalized_ok(tag: "brace_same", text: same_line_record_init_source)
+}
+
+test fn a_same_line_record_init_is_not_the_next_line_body_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "brace_same2", text: same_line_record_init_source), b: normalized_hash(tag: "brace_next2", text: next_line_brace_source)) == false
+}
+
+// THE RETENTION CONTROL: a tree that really is not normalized is still refused (a let with no body),
+// evidence the retention check itself was not widened by either guard.
+test fn the_retention_check_still_refuses_an_unnormalized_tree_holds() -> Bool {
+  normalized_ok(tag: "bodiless", text: bodiless_let_source) == false
+}

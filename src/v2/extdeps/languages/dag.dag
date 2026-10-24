@@ -908,6 +908,19 @@ fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
 
+// A TOKEN THAT OPENS A NEW LINE, one fact for every rule that reads a line break as a boundary: the
+// `-` newline guard, the call suffix and the index suffix each ask it of their own token class, so a
+// further postfix or operator token with this boundary is a row naming its class, not another copy.
+fn dag_grammar_line_break_terminal(token_class: Symbol) -> GrammarExpr {
+  grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: token_class))
+}
+
+// THE LOOKAHEAD THAT ENDS A POSTFIX CHAIN AT A LINE BREAK: succeeds, consuming nothing, exactly when
+// the token is NOT on a new line.
+fn dag_grammar_same_line_terminal_guard(token_class: Symbol) -> GrammarExpr {
+  grammar_expr_not_predicate(element: dag_grammar_line_break_terminal(token_class: token_class))
+}
+
 fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal_lexeme(token_class: token_class)
 }
@@ -1791,7 +1804,7 @@ fn dag_infix_operators() -> List<InfixOperatorRow> {
 fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
   grammar_expr_not_predicate(
     element: grammar_expr_refuse_on_match(
-      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
+      element: dag_grammar_line_break_terminal(token_class: ^dag_token_minus),
       reason: NewlineBeforeDualRoleOperator
     )
   )
@@ -1894,12 +1907,20 @@ fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   )
 }
 
+// THE `(` IS ON THE CALLEE'S LINE, the same rule the index suffix below states for `[`: a line break
+// ends a postfix chain. `let mx = m0 * x` followed on the next line by `(x * 2) % 7` is a binding
+// and the block's value; without this predicate the suffix read across the break and parsed it as
+// the call `x(x * 2)` on a local Int, a shell body lowering has no producer for, so the module
+// was refused as wrapper-retained (std.bignat montgomery_newton).
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+    left: dag_grammar_same_line_terminal_guard(token_class: ^dag_token_lparen),
     right: dag_grammar_sequence(
-      left: dag_grammar_arg_list_helper(),
-      right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+      left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+      right: dag_grammar_sequence(
+        left: dag_grammar_arg_list_helper(),
+        right: dag_grammar_terminal(token_class: ^dag_token_rparen)
+      )
     )
   )
 }
@@ -1952,7 +1973,7 @@ fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
 // the let -- a different program, which normalize then refused for the missing body.
 fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: grammar_expr_not_predicate(element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))),
+    left: dag_grammar_same_line_terminal_guard(token_class: ^dag_token_lbracket),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
       right: dag_grammar_sequence(
@@ -2002,12 +2023,15 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
     element: dag_grammar_choice(
       left: dag_grammar_postfix_call_suffix_expr(),
       right: dag_grammar_sequence(
-        left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
+        left: dag_grammar_same_line_terminal_guard(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+          left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
           right: dag_grammar_sequence(
-            left: dag_grammar_record_field_init_list_helper(),
-            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+            left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+            right: dag_grammar_sequence(
+              left: dag_grammar_record_field_init_list_helper(),
+              right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+            )
           )
         )
       )
