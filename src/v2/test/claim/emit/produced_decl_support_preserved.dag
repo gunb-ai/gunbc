@@ -13,6 +13,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   ProducedDeclSupport,
   ProducedDeclUnwired,
   ProducedDeclWired,
+  OpaqueTypeBindingsAbsent,
   ProducedSignatureFixed,
   ValueProducing,
   produced_decl_render_from_rows,
@@ -65,7 +66,8 @@ fn pdp_wired_support() -> ProducedDeclSupport {
   ProducedDeclWired {
     render_rows: pdp_render_rows,
     scaffold_relation_rule_name: ^pdp_relation_rule,
-    scaffold_base_row: target_model_type_atom_node(identity: ^pdp_base_row)
+    scaffold_base_row: target_model_type_atom_node(identity: ^pdp_base_row),
+    opaque_bindings: OpaqueTypeBindingsAbsent
   }
 }
 
@@ -98,7 +100,8 @@ fn pdp_renderer_executes(target: TargetModel) -> Bool {
     ProducedDeclWired {
       render_rows: rows,
       scaffold_relation_rule_name: _,
-      scaffold_base_row: _
+      scaffold_base_row: _,
+      opaque_bindings: _
     } =>
       match pdp_rendered_scaffold(rows: rows) {
         Accepted { value: scaffold, diagnostics: _ } =>
