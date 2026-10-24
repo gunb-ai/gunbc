@@ -12,3 +12,8 @@ Rulings (stern-ram-763, 2026-10-24):
 - Hand WriteCreateNew/Mkdir.NewOwnerOnly locks are a fork of std.durable_exclusive_hold: move onto the hold library in the cohort PR; state why no lock can be live across the deploy boundary.
 - Host singletons: nullary mint; the root derives from ONE declared host-state tree root plus the store's member declaration, never a literal. No host key (nothing consumes one); a store that turns out to need one is Blocked: host-key.
 - Blocked (named): append-only logs; ops that cannot close over one derived root (root-per-call); remote-host realization; GitHub Actions artifact/cache transport; shared stores (approval store: gunbc.rung_drop approval_store_single_writer_by_agreement).
+
+## Final merge (v2)
+Spine: vivid-ibex-111's per-store hand read (census-data/vivid-ibex-111-store-inventory b3a8cb4cf8e, shape column), plus rows only jolly-hawk-60's or bright-gull-439's readers found (census-data/bright-gull-439 0cc49a7b3cb9): hold-library consumers, instruments, extdeps, src/v2.
+Further rulings (stern-ram-763, 2026-10-24): APPEND_LOG -> Blocked: append-only (named); SECRET_PATH -> ReHomedAccess; DEPLOY_TREE -> ReHomedPlacement; shared parent roots split into one member declaration per store under the parent (Blocked only if two stores share one directory's entries); BMC /tmp credential files OutOfLane.
+cohort = the child PR that owns the row. 'note' starting 'child checks:' is a disposition the child confirms before migrating.
