@@ -16,7 +16,8 @@ import v2.compiler.value_use_dependency {
 }
 import v2.compiler.primitive_execution_semantics { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, effect_demand_operation_classifications }
 import std.primitive_projection { primitive_projection_roster }
-import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites, FactGroup, FactSpan }
+import v2.compiler.activation_dependency { ActivationNotDerivedReason, BranchNotConditionThenElse, MatchScrutineeAbsent, MatchArmMalformed }
+import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
   FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources,
@@ -305,7 +306,9 @@ type BodyOrdered {
   orders: List<OrderEdge>
   exclusive: List<OrderEdge>
   not_derived: List<NotDerivedKey>
+  activation_not_derived: List<String>
   repeated: List<RepeatedOccurrence>
+  repetition_unknown: List<RepeatedOccurrence>
 }
 
 type RepeatedOccurrence {
@@ -334,26 +337,56 @@ fn activation_arm_sites(sites: List<FactCallSite>, span: FactSpan) -> List<Int> 
 type ActivationEdges {
   orders: List<OrderEdge>
   exclusive: List<OrderEdge>
+  refusals: List<String>
 }
 
+fn activation_refusal_word(r: ActivationNotDerivedReason) -> String {
+  match r {
+    BranchNotConditionThenElse { children: _, positional: _ } => "branch_not_condition_then_else"
+    MatchScrutineeAbsent => "match_scrutinee_absent"
+    MatchArmMalformed { arm: _ } => "match_arm_malformed"
+  }
+}
+
+fn activation_span_sites(sites: List<FactCallSite>, spans: List<FactSpan>, want: FactSpanRoleWanted) -> List<List<Int>> {
+  fold_list(xs: spans, empty: Empty, cons: fn(a, sp) {
+    if activation_role_is(role: sp.role, want: want) { list_snoc_item(xs: a, item: activation_arm_sites(sites: sites, span: sp)) } else { a }
+  })
+}
+
+type FactSpanRoleWanted
+  = WantSelector
+  | WantAlternative
+
+fn activation_role_is(role: FactSpanRole, want: FactSpanRoleWanted) -> Bool {
+  match role {
+    FactSelector => match want { WantSelector => true, WantAlternative => false }
+    FactAlternative => match want { WantSelector => false, WantAlternative => true }
+    FactUnroled => false
+  }
+}
+
+// ROLES COME FROM THE WALK (v2.compiler.activation_dependency joined by identity at the Branch/Match node, children
+// roled by v2.std.node's slot tables). A group A2 did not derive orders nothing and excludes nothing; its typed
+// reason is carried. No raw position is read here.
 fn activation_edges(sites: List<FactCallSite>, groups: List<FactGroup>) -> ActivationEdges {
-  fold_list(xs: groups, empty: ActivationEdges { orders: Empty, exclusive: Empty }, cons: fn(acc, g) {
-   match g.repetition {
-    Present { value: _ } => acc
-    Absent => {
-    let spans = fold_list(xs: g.children, empty: Empty, cons: fn(a, sp) { list_snoc_item(xs: a, item: activation_arm_sites(sites: sites, span: sp)) })
-    let selector = match list_head(xs: spans) {
-      Present { value: x } => x
-      Absent => Empty
+  fold_list(xs: groups, empty: ActivationEdges { orders: Empty, exclusive: Empty, refusals: Empty }, cons: fn(acc, g) {
+    match g {
+      FactRepeatedGroup { children: _, repetition: _ } => acc
+      FactActivationGroup { children: children, not_derived: nd } =>
+        match nd {
+          Present { value: why } => ActivationEdges { orders: acc.orders, exclusive: acc.exclusive, refusals: list_snoc_item(xs: acc.refusals, item: activation_refusal_word(r: why)) }
+          Absent => {
+            let selectors = activation_span_sites(sites: sites, spans: children, want: WantSelector)
+            let arms = activation_span_sites(sites: sites, spans: children, want: WantAlternative)
+            let selector = fold_list(xs: selectors, empty: Empty, cons: fn(a, x) { fold_list(xs: x, empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: o) }) })
+            let ordered = fold_list(xs: arms, empty: acc.orders, cons: fn(o, arm) {
+              fold_list(xs: selector, empty: o, cons: fn(o2, a) { fold_list(xs: arm, empty: o2, cons: fn(o3, b) { list_snoc_item(xs: o3, item: OrderEdge { from: a, to: b }) }) })
+            })
+            ActivationEdges { orders: ordered, exclusive: activation_exclusive(arms: arms, acc: acc.exclusive), refusals: acc.refusals }
+          }
+        }
     }
-    let arms = activation_tail(xs: spans)
-    let ordered = fold_list(xs: arms, empty: acc.orders, cons: fn(o, arm) {
-      fold_list(xs: selector, empty: o, cons: fn(o2, a) { fold_list(xs: arm, empty: o2, cons: fn(o3, b) { list_snoc_item(xs: o3, item: OrderEdge { from: a, to: b }) }) })
-    })
-    let alt = activation_exclusive(arms: arms, acc: acc.exclusive)
-    ActivationEdges { orders: ordered, exclusive: alt }
-    }
-   }
   })
 }
 
@@ -402,17 +435,26 @@ fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<String>>) ->
   })
 }
 
-// Occurrences inside a Loop or lambda-template extent run more than once; one entry per (site, source).
-fn repeated_occurrences(sites: List<FactCallSite>, groups: List<FactGroup>) -> List<RepeatedOccurrence> {
+// Only a Loop's iterated body repeats; a lambda is a typed unknown (its consumer's instantiation is not read here).
+fn repeated_occurrences(sites: List<FactCallSite>, groups: List<FactGroup>, want: FactRepetition) -> List<RepeatedOccurrence> {
   fold_list(xs: groups, empty: Empty, cons: fn(acc, g) {
-    match g.repetition {
-      Absent => acc
-      Present { value: source } =>
-        fold_list(xs: g.children, empty: acc, cons: fn(a, sp) {
-          fold_list(xs: activation_arm_sites(sites: sites, span: sp), empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: RepeatedOccurrence { occurrence: o, source: source }) })
-        })
+    match g {
+      FactActivationGroup { children: _, not_derived: _ } => acc
+      FactRepeatedGroup { children: children, repetition: rep } =>
+        if repetition_word(r: rep) == repetition_word(r: want) {
+          fold_list(xs: children, empty: acc, cons: fn(a, sp) {
+            fold_list(xs: activation_arm_sites(sites: sites, span: sp), empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: RepeatedOccurrence { occurrence: o, source: repetition_word(r: rep) }) })
+          })
+        } else { acc }
     }
   })
+}
+
+fn repetition_word(r: FactRepetition) -> String {
+  match r {
+    LoopIteratedBody => "loop_iterated_body"
+    LambdaInstantiationUnknown => "lambda_instantiation_unknown"
+  }
 }
 
 fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, uses: List<UseEdge>, not_derived: List<NotDerivedKey>) -> List<BodyOrdered> {
@@ -420,7 +462,7 @@ fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, use
   let nd_index = not_derived_index(rows: not_derived)
   fold_list(xs: bodies, empty: Empty, cons: fn(acc, body) {
     let act = activation_edges(sites: body.sites, groups: body.groups)
-    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index), repeated: repeated_occurrences(sites: body.sites, groups: body.groups) })
+    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index), activation_not_derived: act.refusals, repeated: repeated_occurrences(sites: body.sites, groups: body.groups, want: LoopIteratedBody), repetition_unknown: repeated_occurrences(sites: body.sites, groups: body.groups, want: LambdaInstantiationUnknown) })
   })
 }
 
@@ -447,6 +489,7 @@ type BodyNotDerived {
   module: QualifiedName
   function: QualifiedName
   rows: List<NotDerivedKey>
+  activation: List<String>
 }
 
 type ModuleEffectPairCensus {
@@ -454,14 +497,15 @@ type ModuleEffectPairCensus {
   pairs: List<EffectPairRow>
   exclusive_pairs: List<ExclusivePairRow>
   repeated: List<RepeatedEffectSite>
+  repetition_unknown: List<RepeatedEffectSite>
   totals: ModuleEffectPairTotals
 }
 
 // One row per reaching site that sits in a repetition extent: the site runs more than once, so it
 // conflicts with its own other iterations, a pair the single-occurrence reducer cannot see.
-fn body_repeated_sites(body: BodyOrdered, table: EffectReachTable) -> List<RepeatedEffectSite> {
+fn body_repeated_sites(body: BodyOrdered, table: EffectReachTable, rows: List<RepeatedOccurrence>) -> List<RepeatedEffectSite> {
   let facts = body_effect_facts(body: body, table: table)
-  fold_list(xs: body.repeated, empty: Empty, cons: fn(acc, r) {
+  fold_list(xs: rows, empty: Empty, cons: fn(acc, r) {
     fold_list(xs: facts.sites, empty: acc, cons: fn(a, s) {
       if s.occurrence == r.occurrence { list_snoc_item(xs: a, item: RepeatedEffectSite { module: body.module, function: body.function, site: s, repetition_source: r.source }) } else { a }
     })
@@ -474,16 +518,18 @@ fn effect_pair_census_of_module(module: QualifiedName, bodies: List<BodyOrdered>
     pairs: Empty,
     exclusive_pairs: Empty,
     repeated: Empty,
+    repetition_unknown: Empty,
     totals: ModuleEffectPairTotals { module: module, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }
   }
   fold_list(xs: bodies, empty: seed, cons: fn(acc, body) {
     let found = body_effect_pairs(facts: body_effect_facts(body: body, table: table))
     let n = length(xs: found.pairs)
     ModuleEffectPairCensus {
-      not_derived: if n > 0 { list_snoc_item(xs: acc.not_derived, item: BodyNotDerived { module: module, function: body.function, rows: body.not_derived }) } else { acc.not_derived },
+      not_derived: if n > 0 { list_snoc_item(xs: acc.not_derived, item: BodyNotDerived { module: module, function: body.function, rows: body.not_derived, activation: body.activation_not_derived }) } else { acc.not_derived },
       pairs: fold_list(xs: found.pairs, empty: acc.pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
       exclusive_pairs: fold_list(xs: found.exclusive_pairs, empty: acc.exclusive_pairs, cons: fn(a, p) { list_snoc_item(xs: a, item: p) }),
-      repeated: fold_list(xs: body_repeated_sites(body: body, table: table), empty: acc.repeated, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }),
+      repeated: fold_list(xs: body_repeated_sites(body: body, table: table, rows: body.repeated), empty: acc.repeated, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }),
+      repetition_unknown: fold_list(xs: body_repeated_sites(body: body, table: table, rows: body.repetition_unknown), empty: acc.repetition_unknown, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }),
       totals: ModuleEffectPairTotals {
         module: module,
         bodies_scanned: acc.totals.bodies_scanned + 1,
@@ -743,6 +789,15 @@ fn epc_not_derived_lines(b: BodyNotDerived) -> List<String> {
   })
 }
 
+fn epc_activation_lines(b: BodyNotDerived) -> List<String> {
+  fold_list(xs: b.activation, empty: Empty, cons: fn(acc, r) {
+    list_snoc_item(xs: acc, item: epc_text(parts: [
+      "[effect-pair-activation-not-derived] module=", qualified_name_to_dotted_string(qn: b.module),
+      " function=", qualified_name_to_dotted_string(qn: b.function), " reason=", r
+    ]))
+  })
+}
+
 fn epc_totals(r: EffectPairCensusReport) -> ModuleEffectPairTotals {
   fold_list(xs: r.modules, empty: ModuleEffectPairTotals { module: Empty, bodies_scanned: 0, bodies_with_pairs: 0, pairs: 0, exclusive_pairs: 0 }, cons: fn(t, m) {
     ModuleEffectPairTotals {
@@ -782,7 +837,8 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
     " bodies_with_pairs=", to_string(t.bodies_with_pairs),
     " pairs=", to_string(t.pairs),
     " exclusive_pairs=", to_string(t.exclusive_pairs),
-    " repeated_sites=", to_string(epc_repeated_count(r: r))
+    " repeated_sites=", to_string(epc_repeated_count(r: r)),
+    " repetition_unknown_sites=", to_string(fold_list(xs: r.modules, empty: 0, cons: fn(n, m) { n + length(xs: m.repetition_unknown) }))
   ])]
   let named = fold_list(xs: r.unclassified_names, empty: head, cons: fn(acc, q) {
     list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-unclassified] operation=", qualified_name_to_dotted_string(qn: q), " semantics=execution_semantics_unknown reaches=true"]))
@@ -792,8 +848,11 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
   })
   fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) {
     let with_pairs = fold_list(xs: m.repeated, empty: fold_list(xs: m.pairs, empty: acc, cons: fn(a, p) { list_snoc_item(xs: a, item: epc_pair_line(p: p)) }), cons: fn(a, p) { list_snoc_item(xs: a, item: epc_repeated_line(p: p)) })
-    fold_list(xs: m.not_derived, empty: with_pairs, cons: fn(a, b) {
-      fold_list(xs: epc_not_derived_lines(b: b), empty: a, cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) })
+    let with_unknown = fold_list(xs: m.repetition_unknown, empty: with_pairs, cons: fn(a, p) {
+      list_snoc_item(xs: a, item: epc_text(parts: ["[effect-pair-repetition-unknown] module=", qualified_name_to_dotted_string(qn: p.module), " function=", qualified_name_to_dotted_string(qn: p.function), " site=", epc_site_text(s: p.site), " repetition=lambda_instantiation_unknown"]))
+    })
+    fold_list(xs: m.not_derived, empty: with_unknown, cons: fn(a, b) {
+      fold_list(xs: epc_activation_lines(b: b), empty: fold_list(xs: epc_not_derived_lines(b: b), empty: a, cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) }), cons: fn(a2, l) { list_snoc_item(xs: a2, item: l) })
     })
   })
 }

@@ -1,12 +1,38 @@
 module v2.test.claim.compiler.effect_pair_census
 
-import std.algebra { Cons, Empty, length, list_snoc_item, map_lookup }
+import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, map_lookup }
 import std.types { Bool, List }
 import v2.std.integer { Int }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import std.optional { Absent, Present }
 import v2.compiler.dependency_demand { FunctionFact, OperationFact, RequiresNone, RequiresOpaque }
-import v2.compiler.dependency_demand_census { FactCallSite }
+import v2.compiler.dependency_demand_census {
+  DemandFactWalk,
+  FactActivationGroup,
+  FactCallSite,
+  FactGroup,
+  FactRepeatedGroup,
+  FactSelector,
+  FactAlternative,
+  FactSpan,
+  FactUnroled,
+  demand_fact_walk_children
+}
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.communication.medium { Lossless, Medium }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { optional_absent, optional_present, Optional }
+import v2.std.text { String }
+import v2.std.node {
+  Atom, Branch, ComputationNode, Conj, Edge, Match, MatchArmBodyEdge, MatchArmPatternEdge, Node, NotADeclaration, Positional, Symbol, TypeNode, core_edge_label
+}
 import v2.compiler.primitive_execution_semantics { Pure, ReadsBoundInput }
 import v2.compiler.effect_pair_census {
   BodyEffectFacts,
@@ -18,6 +44,7 @@ import v2.compiler.effect_pair_census {
   EffectSite,
   OrderEdge,
   ReachesHostActuation,
+  activation_edges,
   body_effect_pairs
 }
 
@@ -171,7 +198,9 @@ fn epc_repeat_body() -> BodyOrdered {
     orders: Empty,
     exclusive: Empty,
     not_derived: Empty,
-    repeated: list_snoc_item(xs: Empty, item: RepeatedOccurrence { occurrence: 1, source: "loop" })
+    activation_not_derived: Empty,
+    repetition_unknown: Empty,
+    repeated: list_snoc_item(xs: Empty, item: RepeatedOccurrence { occurrence: 1, source: "loop_iterated_body" })
   }
 }
 
@@ -183,4 +212,162 @@ test fn a_site_in_a_loop_extent_gives_one_repeated_row_holds() -> Bool {
   )
   let r = effect_pair_census_of_module(module: qualified_name_from_dotted_string(dotted: "t"), bodies: list_snoc_item(xs: Empty, item: epc_repeat_body()), table: table)
   length(xs: r.repeated) == 1 && length(xs: r.pairs) == 0
+}
+
+
+// ---- THE REAL EXTRACTOR OVER SUPPLIED TREES ---------------------------------------------------------
+// The D13 walk (demand_fact_walk_children) runs on supplied Node roots, and its groups feed the real reducer
+// activation_edges, so the boundary under test is the walk's roles and A2 join, not hand-written spans. The
+// shapes (four-positional Branch, labeled Match child, malformed arm, shared node) are ones the front end never
+// writes; the shared-node controls below pair with the source control that the front end does write a three
+// positional Branch whose roles are read (epc_branch_source).
+data epc_fe_artifact: Artifact = Artifact { kind: SourceFile, id: ^epc_fe_artifact, file_path: "src/v2/test/fixture/effect_pair_census.dag" }
+
+data epc_branch_source: String = "module acd\n\nfn f(c: Bool, a: Int, b: Int) -> Int {\n  if c { a + 1 } else { b + 2 }\n}\n"
+
+fn epc_tree() -> Optional<ResolvedTree> {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness { source: Medium { carried: epc_branch_source, fidelity: Lossless }, artifact: epc_fe_artifact, compilation_unit: ^epc_fe_cu, source_root: V2Tree },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^acd, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn epc_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: Empty, occurrence_id: OccurrenceSynthetic }
+}
+
+fn epc_pos(target: Node) -> Edge {
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
+}
+
+fn epc_arm(pattern: Node, body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn epc_walk_groups(node: Node) -> List<FactGroup> {
+  match epc_tree() {
+    Absent => Empty
+    Present { value: tree } =>
+      demand_fact_walk_children(
+        w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false, sites: Empty, bodies: Empty, tick: 0, groups: Empty },
+        position: qualified_name_from_dotted_string(dotted: "t.f"),
+        node: node,
+        resolved: tree
+      ).groups
+  }
+}
+
+fn epc_spans_of(g: FactGroup) -> List<FactSpan> {
+  match g {
+    FactActivationGroup { children: c, not_derived: _ } => c
+    FactRepeatedGroup { children: c, repetition: _ } => c
+  }
+}
+
+fn epc_sites_in(spans: List<FactSpan>) -> List<FactCallSite> {
+  fold_list(xs: spans, empty: Empty, cons: fn(acc, sp) {
+    list_snoc_item(xs: acc, item: FactCallSite { occurrence: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), enter: sp.enter, exit: sp.exit, operands: Empty })
+  })
+}
+
+fn epc_unroled_all(spans: List<FactSpan>) -> Bool {
+  fold_list(xs: spans, empty: true, cons: fn(acc, sp) { acc && (match sp.role { FactUnroled => true, _ => false }) })
+}
+
+fn epc_single_group(node: Node) -> Optional<FactGroup> {
+  match epc_walk_groups(node: node) {
+    Cons { head: g, tail: Empty } => optional_present(value: g)
+    _ => optional_absent()
+  }
+}
+
+// A FOUR-POSITIONAL Branch is not condition/then/else: A2 refuses it, so the group carries that typed reason, roles
+// no span, and the reducer orders and excludes nothing (the refusal is carried, never guessed at from position).
+// RED if the walk or the reducer reads "first child = selector, the rest = arms".
+test fn a_four_positional_branch_is_carried_as_not_derived_and_orders_nothing_holds() -> Bool {
+  match epc_single_group(node: Node { kind: ComputationNode { behavior: Branch }, children: [epc_pos(target: epc_atom(s: ^e1)), epc_pos(target: epc_atom(s: ^e2)), epc_pos(target: epc_atom(s: ^e3)), epc_pos(target: epc_atom(s: ^e4))], occurrence_id: OccurrenceSynthetic }) {
+    Absent => false
+    Present { value: g } =>
+      match g {
+        FactRepeatedGroup { children: _, repetition: _ } => false
+        FactActivationGroup { children: spans, not_derived: nd } => {
+          let e = activation_edges(sites: epc_sites_in(spans: spans), groups: list_snoc_item(xs: Empty, item: g))
+          (match nd { Present { value: _ } => true, Absent => false }) && epc_unroled_all(spans: spans) && length(xs: e.orders) == 0 && length(xs: e.exclusive) == 0 && length(xs: e.refusals) == 1
+        }
+      }
+  }
+}
+
+// A MALFORMED MATCH ARM (an arm without its pattern/body markers): refused by A2 as MatchArmMalformed; carried, no roles.
+test fn a_malformed_match_arm_is_carried_as_not_derived_and_orders_nothing_holds() -> Bool {
+  match epc_single_group(node: Node { kind: ComputationNode { behavior: Match }, children: [epc_pos(target: epc_atom(s: ^s)), epc_pos(target: epc_atom(s: ^not_an_arm)), epc_pos(target: epc_arm(pattern: epc_atom(s: ^p), body: epc_atom(s: ^b)))], occurrence_id: OccurrenceSynthetic }) {
+    Absent => false
+    Present { value: g } =>
+      match g {
+        FactRepeatedGroup { children: _, repetition: _ } => false
+        FactActivationGroup { children: spans, not_derived: nd } => {
+          let e = activation_edges(sites: epc_sites_in(spans: spans), groups: list_snoc_item(xs: Empty, item: g))
+          (match nd { Present { value: _ } => true, Absent => false }) && epc_unroled_all(spans: spans) && length(xs: e.orders) == 0 && length(xs: e.exclusive) == 0
+        }
+      }
+  }
+}
+
+// A LABELED CHILD of a Match is neither selector nor arm: its span is FactUnroled, and the positional scrutinee and
+// arms keep their slot roles (or, were the site refused, every span is unroled). RED if the walk counts positions
+// over all children (the labeled child would take the first arm's place).
+test fn a_labeled_match_child_takes_no_role_and_positions_count_positionals_only_holds() -> Bool {
+  match epc_single_group(node: Node { kind: ComputationNode { behavior: Match }, children: [
+    epc_pos(target: epc_atom(s: ^s)),
+    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: epc_atom(s: ^labeled), declaration: NotADeclaration },
+    epc_pos(target: epc_arm(pattern: epc_atom(s: ^p1), body: epc_atom(s: ^b1))),
+    epc_pos(target: epc_arm(pattern: epc_atom(s: ^p2), body: epc_atom(s: ^b2)))
+  ], occurrence_id: OccurrenceSynthetic }) {
+    Absent => false
+    Present { value: g } =>
+      match g {
+        FactRepeatedGroup { children: _, repetition: _ } => false
+        FactActivationGroup { children: spans, not_derived: nd } =>
+          match nd {
+            Present { value: _ } => epc_unroled_all(spans: spans)
+            Absent =>
+              match spans {
+                Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Cons { head: d, tail: Empty } } } } =>
+                  (match a.role { FactSelector => true, _ => false }) && (match b.role { FactUnroled => true, _ => false }) && (match c.role { FactAlternative => true, _ => false }) && (match d.role { FactAlternative => true, _ => false })
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// SHARED NODES: the condition IS the else arm (one node). Spans are keyed by extent, not node identity, so the
+// selector orders before BOTH arms and the two arms are alternatives: two orders, one exclusive pair. RED if the
+// reducer finds roles by node equality.
+test fn a_shared_selector_and_arm_node_keeps_roles_by_slot_holds() -> Bool {
+  match epc_single_group(node: Node { kind: ComputationNode { behavior: Branch }, children: [epc_pos(target: epc_atom(s: ^shared)), epc_pos(target: epc_atom(s: ^then_arm)), epc_pos(target: epc_atom(s: ^shared))], occurrence_id: OccurrenceSynthetic }) {
+    Absent => false
+    Present { value: g } =>
+      match g {
+        FactRepeatedGroup { children: _, repetition: _ } => false
+        FactActivationGroup { children: spans, not_derived: nd } => {
+          let e = activation_edges(sites: epc_sites_in(spans: spans), groups: list_snoc_item(xs: Empty, item: g))
+          (match nd { Present { value: _ } => false, Absent => true }) && length(xs: e.orders) == 2 && length(xs: e.exclusive) == 1
+        }
+      }
+  }
 }
