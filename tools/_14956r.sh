@@ -5,6 +5,7 @@
 set -u
 cd "$(dirname "$0")/.." || exit 9
 DEADLINE=${1:-2400}
+ARMS=${2:-all}   # comma list of arm tags, or "all"
 START=$(date +%s)
 . tools/_14956prelude.sh
 CKPT=/tmp/c4v/ckpt956; mkdir -p $CKPT/jobs
@@ -26,6 +27,7 @@ branch_of () { case $1 in
 elapsed () { echo $(( $(date +%s) - START )); }
 runjob () { # runjob <tag> <tree> <entry> <wet|dry> <fn1> [..]   (skip if checkpoint present)
   local tag=$1; shift; local tree=$1; shift; local entry=$1; shift; local mode=$1; shift
+  if [ "$ARMS" != all ]; then case ",$ARMS," in *",$tag,"*) ;; *) echo "ROW $tag SKIPPED-ARGLIST"; return 0;; esac; fi
   [ -s $CKPT/jobs/$tag.out ] && { echo "ROW $tag SKIPPED-CHECKPOINT"; return 0; }
   local el; el=$(elapsed)
   if [ "$el" -gt "$DEADLINE" ]; then echo "DEADLINE_REACHED at ${el}s before $tag -- resume later"; return 1; fi
@@ -38,12 +40,13 @@ runjob () { # runjob <tag> <tree> <entry> <wet|dry> <fn1> [..]   (skip if checkp
     timeout 2100 $CB --claim-run $extra --source-root dag --source-root src/v2 --entry $entry --functions "$fns" ) > $d/out.txt 2>&1
   local rc=$?
   echo "ROW $tag tree=$(branch_of $tree) entry=$entry mode=$mode rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) lines=$(wc -l < $d/out.txt) el=${el}s"
-  grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |" | head -30
+  if [ $(wc -l < $d/out.txt) -le 80 ]; then sed "s|^|  $tag |" $d/out.txt; else grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |" | head -30; fi
   grep -E 'runtime error|NO OBSERVATION|outcomes-out' $d/out.txt | head -3 | sed "s|^|  $tag note: |"
   mv $d/out.txt $CKPT/jobs/$tag.out
 }
 sweep_job () { # sweep_job <tag> <idx> <file> <tree>
   local tag=$1 i=$2 f=$3; local CKPT_TREE=$4
+  if [ "$ARMS" != all ]; then case ",$ARMS," in *",SW-$tag-$i,"*) ;; *) echo "ROW SW-$tag-$i SKIPPED-ARGLIST"; return 0;; esac; fi
   [ -s $CKPT/jobs/SW-$tag-$i.out ] && { echo "ROW SW-$tag-$i file=$f SKIPPED-CHECKPOINT"; return 0; }
   local el; el=$(elapsed)
   if [ "$el" -gt "$DEADLINE" ]; then echo "DEADLINE_REACHED at ${el}s before SW-$tag-$i -- resume later"; return 1; fi
