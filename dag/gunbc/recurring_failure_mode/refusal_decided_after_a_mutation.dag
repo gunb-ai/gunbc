@@ -25,7 +25,6 @@ data refusal_decided_after_a_mutation: RecurringFailureMode = RecurringFailureMo
     decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "memory_cap_withheld_line"),
     decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "deploy_shell_merge_stderr_command"),
     decl_ref(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_cmp_stages_command"),
-    decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_admitted_steps"),
     decl_ref(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_dirs_exit_trap_command"),
     decl_ref(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_cap_stage_dir_var"),
     decl_ref(module_path: "gunbc.host.host_axis_caps", decl_name: "deploy_cap_upsert_staged_stmts"),

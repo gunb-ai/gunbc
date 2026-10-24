@@ -329,3 +329,11 @@ fn rc13() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r() -> List<Int> { c
 fn rc14() -> Outcome<ResolvedTree> { ers_assemble(body: "fn r() -> Bool { let x = collection_concat_shape([], [])\n true }\n") }
 test fn rc13_roster_call_empty_lists_take_expected_instance_accepts() -> Bool { ers_infer_accepted(o: rc13()) }
 test fn rc14_roster_call_empty_lists_without_expected_refuses() -> Bool { ers_fatal_is(o: rc14(), reason: ^infer_unsolved_constructor_type_variable) }
+
+// HELD-ARM CLOSE CONTROLS: the two shapes measured to mint and close an InferHeldArm (an argument position and a record field), so acceptance
+// is acceptance THROUGH infer_close_held_root_closed after the arm carries its own open type (InferHeldArm.open_type).
+fn hc_arg() -> Outcome<ResolvedTree> { ers_assemble(body: "fn mk() -> Int? { Absent }\n\nfn take(o: Int?) -> Int { 0 }\n\nfn t() -> Int {\n  take(if true { Absent } else { mk() })\n}\n") }
+test fn hc_arg_held_arm_closes_and_accepts() -> Bool { ers_infer_accepted(o: hc_arg()) }
+
+fn hc_field() -> Outcome<ResolvedTree> { ers_assemble(body: "type Row {\n  f: Int?\n}\n\nfn t() -> Row {\n  Row { f: if true { Absent } else { Present { value: 1 } } }\n}\n") }
+test fn hc_field_held_arm_closes_and_accepts() -> Bool { ers_infer_accepted(o: hc_field()) }

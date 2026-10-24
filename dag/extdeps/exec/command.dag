@@ -228,6 +228,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_almost_all_one_per_line_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_regroup_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_group_writable_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_mode_readback_command"),
+
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
@@ -268,6 +272,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_executable_command"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_directory_command"),
     decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_names_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_group_name_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_gid_command"),
+    decl_ref(module_path: "extdeps.tools.id", decl_name: "id_uid_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_version_command"),
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_version_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
@@ -281,6 +288,16 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_upload_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_enable_now_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_absolute_git_dir_premise_argv"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_shared_repository_group_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_gc_auto_disabled_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_maintenance_auto_disabled_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_repack_quiet_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_pack_refs_all_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_local_config_get_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_branch_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_show_ref_verify_quiet_command"),
+
     decl_ref(module_path: "extdeps.git", decl_name: "git_clone_shallow_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_revision_command"),
@@ -331,6 +348,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_size_bytes_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_empty_file_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
     decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_exact_command_at"),
@@ -341,6 +359,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 

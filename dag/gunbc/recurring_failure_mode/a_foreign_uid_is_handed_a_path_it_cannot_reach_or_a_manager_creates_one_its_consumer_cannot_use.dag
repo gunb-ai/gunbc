@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the host's account and directory convergence modeled end to end (gunbc.fleet.fleet_posix_accounts reading back its own result) so the traversal observation is a modeled receipt rather than a spawn-time stat, and the manager-created log target pre-created owned by its consumer (ExecStartPre in the systemd property model) so the creation is constructed from the consumer's requirement rather than judged against it" } },
+
+  receipts: [
+    "INVALID STATE (two directions of one boundary, a path and an identity that cannot meet): (1) a unit whose User= is a foreign uid is handed a path under an ancestor that uid cannot traverse; (2) the system manager creates a path on the unit's behalf (the ExecStopPost record, a StandardOutput append target) with an owner and mode its consumer, a different principal, cannot use. HARM: (1) systemd fails the unit before it runs, status=200/CHDIR, and the worker never executes; (2) the exit record is root:root 0755 and the drain, as the service user, gets EACCES renaming it inbox -> queued, so the record can never leave the inbox. Both were silent until the unit ran. DISTINGUISHING FACT: WRE-1 changed the producer's identity (user manager to a system unit with a foreign User=) and nothing re-derived what each consumer needs of what the producer creates or hands over; the corpus had established traversal for exactly one directory, attempts/, never its ancestors.",
+
+    "SPECIMEN (bright-moth-475, srv1 lab 2026-10-21, lab-dev 2352488e): gunbc-attempt-<node>-<key>.service as gunbc-worker (uid 1004; groups gunbc-worker and gunbc-attempt) failed with 200/CHDIR; /home/briansrls/.local/share is 0710 briansrls:briansrls and blocks the old instance root, and the corpus had ruled that directory must not be opened. Second specimen, same dispatch: the root-owned exit record in the inbox, and worker-stdout.log created root:root 0644. Briefs: WRE-1b.",
+
+    "RUNG FOUND AT: runtime (200/CHDIR at unit start; EACCES at the drain). NOW: (1) mechanically preventable at plan time: gunbc.roadmap.dispatch_worker_traversal judges a stat receipt per ancestor against the worker's OBSERVED groups and refuses before the root helper, the placement record and the enqueue; the lab instance is re-rooted outside the home tree so the refusal does not fire. (2) mechanically preventable: attempt_exit_hook takes the consumer's declared principal as the record owner, and the census gunbc.roadmap.dispatch_unit_created_paths JUDGES the creation (owner, mode, operation) against the consumer; the owner is shared with the hook by construction, but the mode and the consumer's operation are judged, not constructed, so this is a validator over a declared census and not a guarantee. Both judges select the permission class through the one rule extdeps.access.posix file_mode_class_bits. DECLARED RESIDUAL (1): the judge establishes ANCESTOR and directory-leaf traversal only, not the operation per leaf role (read on a read-only pointer, write on a read-write carve-out, execute on the binary, read+execute on a source root, create-or-append on a stream target); that is the next rung, trigger: the first dispatch that fails for a leaf operation, or the process-filesystem contract programme. The exit root is the manager's (the \"+\" hook) and is deliberately not in the worker fold. CEILING: (1) structurally guaranteed only for what is observable, because directory modes and group membership are host facts outside the modeled guarantee; the climb is a validator over an observation, and an unobserved ancestor is a could-not-look refusal. (2) structurally guaranteed over declared principals once the creation is constructed from the consumer's requirement rather than judged against it. NEXT TRIGGER: (1) the host's account and directory convergence modeled end to end (gunbc.fleet.fleet_posix_accounts reading back its own result) so the observation is a modeled receipt rather than a spawn-time stat; (2) the manager-created log target pre-created owned by its consumer, which needs ExecStartPre in the systemd property model; until then the log is judged read-only-consumable.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.roadmap.dispatch_worker_traversal", decl_name: "dispatch_worker_traversal_admit"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_traversal_witness", decl_name: "the_observed_lab_chain_refuses_naming_local_share_and_emits_no_spawn"),
+    decl_ref(module_path: "gunbc.roadmap.dispatch_unit_created_paths", decl_name: "dispatch_unit_created_path_judge"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_unit_created_paths_witness", decl_name: "a_root_created_record_the_service_user_must_rename_refuses_and_no_spawn_follows"),
+  ],
+}
