@@ -30,7 +30,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets, namespace_wave_binding_diff_label,
+  type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets, namespace_wave_binding_diff_label, native_xl2_rehearsal_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import gunbc.instruments.namespace_wave_binding_diff { shard_dir, binding_diff_base_ref }
@@ -318,6 +318,7 @@ fn instrument_dispatch_labels() -> List<Label> {
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     instrument_dispatch_wave_label(),
+    native_xl2_rehearsal_label(),
   ]
 }
 
@@ -376,6 +377,20 @@ data instrument_dispatch_compute_run_unit_cold_memory_demand: ByteSize = compute
 // minutes, every shard is bounded by 240, and a refusal is never answered by widening it.
 data instrument_dispatch_wave_memory_demand: ByteSize = byte_size(17179869184)
 
+// 16 GiB: the namespace-cut XL-2 rehearsal's policy budget, per M1's ruling for this row (2026-10-23).
+// The measured basis is 13,520,420,864 B (12.59 GiB) PEAK -- a memory.current sample at 0.2s cadence on
+// BuildBuddy runner 59ea1eb7-9f04-41ef-aa05-c4e921611279, with the emitter at rss 12.5 GiB at arena
+// release -- and it is a LOWER bound: that kernel exposes no memory.peak, so the sampler can miss
+// between-tick maxima. 16 GiB is that bound plus about 24 percent headroom, and the fleet has measured
+// room for it: the guard step on srv4-18 reads memory.high=26843545600 (25 GiB) and memory.max=
+// 27917287424 (26 GiB) on the runner slot's own cgroup, so the selected target admits the row and the
+// run-time guard still refuses loudly on an under-provisioned runner
+// before the prelude spends anything. Whether the self-hosted fleet kernel exposes memory.peak is
+// confirmed by the same guard step's memory.peak echo (best-effort; absent prints 'unavailable') on the
+// first xl2 dispatch -- a higher true peak would only ever RAISE what the row must cover, so the declared
+// value stays sound as a floor while that reading is pending.
+data instrument_dispatch_native_xl2_rehearsal_memory_demand: ByteSize = byte_size(17179869184)
+
 fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> {
   [
     InstrumentDispatchMemoryDemand { label: regen_round_cost_label(), demand: instrument_dispatch_stage0_regen_memory_demand },
@@ -389,6 +404,7 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     InstrumentDispatchMemoryDemand { label: instrument_dispatch_wave_label(), demand: instrument_dispatch_wave_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    InstrumentDispatchMemoryDemand { label: native_xl2_rehearsal_label(), demand: instrument_dispatch_native_xl2_rehearsal_memory_demand },
   ]
 }
 
@@ -434,7 +450,7 @@ fn instrument_dispatch_memory_refusal(source: String) -> List<Node> {
   ]
 }
 
-fn instrument_dispatch_cgroup_read(file: String) -> Node {
+fn instrument_dispatch_cgroup_read_with_fallback(file: String, fallback: String) -> Node {
   bash_build_word_cmdsubst(body: bash_build_or_else(
     left: bash_build_with_redir(
       inner: bash_build_command_with_words(words: [
@@ -447,8 +463,12 @@ fn instrument_dispatch_cgroup_read(file: String) -> Node {
       ]),
       redir: ^bash_production_fold_redir_stderr_null,
     ),
-    right: bash_build_command_from_lits(lits: ["echo", "max"]),
+    right: bash_build_command_from_lits(lits: ["echo", fallback]),
   ))
+}
+
+fn instrument_dispatch_cgroup_read(file: String) -> Node {
+  instrument_dispatch_cgroup_read_with_fallback(file: file, fallback: "max")
 }
 
 fn instrument_dispatch_below_required(var: String) -> Node {
@@ -477,6 +497,10 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
     ))),
     bash_build_assign(name: "memory_high", value: instrument_dispatch_cgroup_read(file: "memory.high")),
     bash_build_assign(name: "memory_max", value: instrument_dispatch_cgroup_read(file: "memory.max")),
+    // Best-effort kernel-peak read for the xl2 demand row's measurement (memory.peak is the cgroup v2
+    // true high-water mark; kernels without it print 'unavailable' and the guard still passes -- this
+    // line is a WITNESS, not a wall: nothing here refuses on it).
+    bash_build_assign(name: "memory_peak", value: instrument_dispatch_cgroup_read_with_fallback(file: "memory.peak", fallback: "unavailable")),
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "echo"),
       bash_build_word_concat_from_nodes(parts: [
@@ -488,6 +512,8 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
         bash_build_word_var(name: "memory_high"),
         bash_build_word_lit(text: " memory.max="),
         bash_build_word_var(name: "memory_max"),
+        bash_build_word_lit(text: " memory.peak="),
+        bash_build_word_var(name: "memory_peak"),
         bash_build_word_lit(text: " required="),
         bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
       ]),
