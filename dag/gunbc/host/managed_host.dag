@@ -340,7 +340,8 @@ fn member_under_declared_drop(
 }
 
 // THE PUBLIC ENTRY. Every parameter is consumed: a hard-coded current subject, drop list, or
-// allocation list changes the arm. Incomplete records, unbound standings, a missing allocation, a mismatched receipt, or an unreadable current subject are Absent, never defaulted.
+// allocation list changes the arm. Incomplete records, unbound standings, a missing allocation, a
+// mismatched receipt, or an unreadable current subject are Absent, never defaulted.
 fn project_managed_host_admission(
   record: ManagedHostAdmission,
   current_subject: MachineIntakeSubject?,
