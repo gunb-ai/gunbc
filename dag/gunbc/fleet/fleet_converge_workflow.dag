@@ -2,6 +2,7 @@ module gunbc.fleet.fleet_converge_workflow
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
+import gunbc.host.boot_medium_reader_key_mint { boot_medium_reader_key_mint_receipt_path }
 import gunbc.fleet.flex_pass_run { flex_pass_receipt_path }
 import product.fabric.flex_vast_template_control { flex_vast_template_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
@@ -165,6 +166,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_r2_workspace_object_write_mint_invoke,
   gunbc_ci_r2_cache_object_read_mint_invoke,
   gunbc_ci_hetzner_cloud_server_read_invoke,
+  gunbc_ci_boot_medium_reader_key_mint_invoke,
   gunbc_ci_flex_pass_invoke,
   gunbc_ci_flex_template_ensure_invoke,
   gunbc_ci_branch_run_grant_request_invoke,
@@ -347,6 +349,7 @@ type FleetConvergeWorkflowMode
   | R2WorkspaceObjectWriteMint
   | R2CacheObjectReadMint
   | HetznerCloudServerRead
+  | BootMediumReaderKeyMint
   | FlexPass
   | FlexTemplateEnsure
   | BranchRunGrant
@@ -423,6 +426,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2WorkspaceObjectWriteMint => "r2_workspace_object_write_mint"
     R2CacheObjectReadMint => "r2_cache_object_read_mint"
     HetznerCloudServerRead => "hetzner_cloud_server_read"
+    BootMediumReaderKeyMint => "boot_medium_reader_key_mint"
     FlexPass => "flex_pass"
     FlexTemplateEnsure => "flex_template_ensure"
     BranchRunGrant => "branch_run_grant"
@@ -473,7 +477,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -527,6 +531,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     R2WorkspaceObjectWriteMint => SixteenBinaryPack
     R2CacheObjectReadMint => SixteenBinaryPack
     HetznerCloudServerRead => SixteenBinaryPack
+    BootMediumReaderKeyMint => SixteenBinaryPack
     FlexPass => SixteenBinaryPack
     FlexTemplateEnsure => SixteenBinaryPack
     BranchRunGrant => SixteenBinaryPack
@@ -639,6 +644,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2WorkspaceObjectWriteMint => none
     R2CacheObjectReadMint => none
     HetznerCloudServerRead => none
+    BootMediumReaderKeyMint => none
     FlexPass => none
     FlexTemplateEnsure => none
     BranchRunGrant => none
@@ -786,6 +792,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2WorkspaceObjectWriteMint => FleetSshKeyNotConsumed
     R2CacheObjectReadMint => FleetSshKeyNotConsumed
     HetznerCloudServerRead => FleetSshKeyNotConsumed
+    BootMediumReaderKeyMint => FleetSshKeyNotConsumed
     FlexPass => FleetSshKeyNotConsumed
     FlexTemplateEnsure => FleetSshKeyNotConsumed
     BranchRunGrant => FleetSshKeyNotConsumed
@@ -1245,9 +1252,11 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
 // THE SIXTEEN-BINARY BUILD RUNS FOR EVERY MODE THAT CONSUMES IT, and the boot no longer does (it
 // builds the compiler pair itself), so the boot mode skips it rather than paying for a pack nothing
 // reads. Every other mode keeps the edge it had.
-data fleet_converge_build_job_if: String = join([
-  "github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'",
-], "")
+// THE MODES WHOSE OWN JOB BUILDS WHAT IT RUNS: the boot (its compiler pair) and the reader key mint (gunbc,
+// on a GitHub-hosted runner).
+data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, BootMediumReaderKeyMint]
+
+data fleet_converge_build_job_if: String = join(map(fleet_converge_modes_without_release_pack, m => join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: m), "'"], "")), " && ")
 
 fn fleet_converge_build_job() -> Job {
   Job {
@@ -1645,6 +1654,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2WorkspaceObjectWriteMint => ExecutorDomain
     R2CacheObjectReadMint => ExecutorDomain
     HetznerCloudServerRead => ExecutorDomain
+    BootMediumReaderKeyMint => ExecutorDomain
     FlexPass => SubjectDomain { group: fleet_converge_flex_vast_account_group }
     FlexTemplateEnsure => SubjectDomain { group: fleet_converge_flex_vast_account_group }
     BranchRunGrant => ExecutorDomain
@@ -4919,6 +4929,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     R2WorkspaceObjectWriteMint => fleet_converge_shared_job_id
     R2CacheObjectReadMint => fleet_converge_shared_job_id
     HetznerCloudServerRead => fleet_converge_shared_job_id
+    BootMediumReaderKeyMint => fleet_converge_boot_medium_reader_key_mint_job_id
     FlexPass => fleet_converge_shared_job_id
     FlexTemplateEnsure => fleet_converge_shared_job_id
     BranchRunGrant => "gcp-iam-converge" as NonEmptyStr
@@ -4969,14 +4980,15 @@ data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
 
 // EVERY JOB THAT TOUCHES A HOST HAS A DECLARED SOURCE FOR ITS BINARIES: it waits for `build`, the
 // producer of the release pack, or it is rostered in fleet_converge_in_job_compiler_pair_jobs and
-// builds the compiler pair itself. `build`, the rostered jobs and the grant wait -- which touches no
-// host, runs GitHub-hosted and builds the one binary it runs -- are the only rows whose needs are
-// empty. A row added here with no edge and no roster entry is visible as exactly that rather than
+// builds the compiler pair itself. `build`, the rostered jobs, the grant wait and the reader key mint --
+// which touch no host, run GitHub-hosted and build the one binary they run -- are the only rows whose
+// needs are empty. A row added here with no edge and no roster entry is visible as exactly that rather than
 // buried in a builder.
 data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_plan_revision_job_id, needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [fleet_converge_plan_revision_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_branch_run_grant_await_job_id, needs: [] },
+  FleetConvergeJobEdge { id: fleet_converge_boot_medium_reader_key_mint_job_id, needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
@@ -5020,6 +5032,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_plan_revision_job(),
     fleet_converge_build_job(),
     fleet_converge_branch_run_grant_await_job(),
+    fleet_converge_boot_medium_reader_key_mint_job(),
     fleet_converge_job(),
     fleet_converge_mtcollins1_boot_job(),
     fleet_converge_host_reset_return_job(),
@@ -5069,8 +5082,14 @@ fn fleet_converge_branch_run_grant_await_step() -> Step {
 }
 
 fn fleet_converge_branch_run_grant_await_build_step() -> Step {
+  fleet_converge_hosted_gunbc_build_step(purpose: "the grant wait")
+}
+
+// A GITHUB-HOSTED JOB BUILDS THE ONE BINARY IT RUNS from its own checkout: it touches no host, so no
+// release pack is shipped to it.
+fn fleet_converge_hosted_gunbc_build_step(purpose: String) -> Step {
   RunStep {
-    name: Present { value: "Build the gunbc binary the grant wait runs" },
+    name: Present { value: join(["Build the gunbc binary ", purpose, " runs"], "") },
     id: none,
     run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
     shell: none,
@@ -5410,6 +5429,87 @@ fn fleet_converge_hetzner_cloud_server_read_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_hetzner_cloud_server_read_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+data fleet_converge_boot_medium_reader_key_mint_step_if: String = fleet_converge_mode_step_if(mode: BootMediumReaderKeyMint)
+
+// THE BOOT MEDIUM READER KEY'S MINT (gunbc.host.boot_medium_reader_key_mint), as the fleet identity at
+// main: generate an ed25519 keypair in the run, add the private half as a version of its custody secret
+// under the versionAdder cell, and write a receipt naming only the public key, its fingerprint and the
+// version. It holds no fleet SSH key and touches no host.
+fn fleet_converge_boot_medium_reader_key_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "Boot medium reader key mint (ssh-keygen ed25519 in-run; private half to Secret Manager only)" },
+    id: Present { value: "boot_medium_reader_key_mint" },
+    run: gunbc_ci_boot_medium_reader_key_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_boot_medium_reader_key_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE MINT IS ITS OWN JOB ON A GITHUB-HOSTED RUNNER (gunbc.host.boot_medium_reader_key_mint): the private
+// half is generated in that VM's tmpfs, and the VM is discarded after the job, so even a run killed
+// before its cleanup leaves no copy on a fleet runner, whose job user branch jobs share. It signs in as the
+// fleet identity, whose pool admits a dispatch at main whatever the runner; it holds no fleet SSH key.
+data fleet_converge_boot_medium_reader_key_mint_job_id: NonEmptyStr = "boot-medium-reader-key-mint" as NonEmptyStr
+
+fn fleet_converge_boot_medium_reader_key_mint_job() -> Job {
+  let steps = concat(
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
+    [
+      fleet_converge_hosted_gunbc_build_step(purpose: "the reader key mint"),
+      fleet_converge_fleet_identity_auth_step(if_condition: fleet_converge_boot_medium_reader_key_mint_step_if),
+      fleet_converge_boot_medium_reader_key_mint_step(),
+      fleet_converge_boot_medium_reader_key_mint_receipt_upload_step(),
+    ],
+  )
+  Job {
+    id: fleet_converge_boot_medium_reader_key_mint_job_id as String,
+    name: none,
+    runner: HostedRunner { label: Ubuntu2404Arm },
+    environment: none,
+    steps: steps,
+    needs: fleet_converge_job_needs(id: fleet_converge_boot_medium_reader_key_mint_job_id),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_boot_medium_reader_key_mint_step_if },
+    timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: Present { value: PermWrite },
+      }
+    },
+  }
+}
+
+fn fleet_converge_boot_medium_reader_key_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload boot medium reader key mint receipt (public key, fingerprint, version; no private material)" },
+    id: Present { value: "boot_medium_reader_key_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "boot-medium-reader-key-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: boot_medium_reader_key_mint_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_boot_medium_reader_key_mint_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
