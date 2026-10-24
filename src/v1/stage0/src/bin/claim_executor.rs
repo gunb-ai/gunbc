@@ -333,7 +333,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Read-only: prints, changes nothing. Refusal of the ingestion is rc 1 with the cause,
     // never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
     if required_admitted_set_mode {
-        match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(&source_roots) {
+        return match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(
+            &source_roots,
+        ) {
             Ok(identities) => {
                 for identity in &identities {
                     println!("admitted-module-identities: {identity}");
@@ -348,7 +350,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 eprintln!("claim_executor --required-ci: ingestion refused: {cause}");
                 Err(ExitCode::FAILURE)
             }
-        }
+        };
     }
 
     let _phase_profile = PhaseProfile::install_from_env();
