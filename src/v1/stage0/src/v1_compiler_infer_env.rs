@@ -3855,16 +3855,21 @@ pub fn declaration_named_in_module(
                 module_path.clone(),
                 name.clone(),
             ) {
-                Some(m) => match &*bare_occurrence_import_terminal(
+                Some(m) => match (*bare_occurrence_import_terminal(
                     env.symbol_index.clone(),
                     m.clone(),
                     name.clone(),
                     16,
-                ) {
+                ))
+                .clone()
+                {
                     BareOccurrenceBinding::BareOccurrenceImportedByName {
                         module_path: declaring,
-                        declaration: _,
-                    } => Some(crate::std_decl_ref::decl_ref(declaring.clone(), name.clone())),
+                        ..
+                    } => Some(crate::std_decl_ref::decl_ref(
+                        declaring.clone(),
+                        name.clone(),
+                    )),
                     _ => std::option::Option::None,
                 },
                 std::option::Option::None => match symbol_index_lookup(
