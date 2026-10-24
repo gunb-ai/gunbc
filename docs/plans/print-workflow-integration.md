@@ -21,7 +21,8 @@ when changing output directories or assigning work to another printer.
 The CLI entry takes `plan_file`, `output`, `appimage`, `machine`, `filament`, `process`,
 `mode` and `root`. Paths are explicit tool/artifact inputs, not shell fragments. `root` is
 the wire spelling of a `product.printed_chassis.printable_assembly` `PrintedAssemblyRoot`
-(`residential-cassette`, `cassette-rack-review`, `a16-inlet-duct`); an unknown spelling
+(`residential-cassette`, `cassette-rack-review`, `a16-plug-duct`, `a16-sleeve-duct`,
+`a16-plug-fit-ring`, `a16-sleeve-fit-ring`); an unknown spelling
 refuses. `product.printed_chassis.printable_assembly_selection` `select_printable_assembly`
 is the one place a root becomes parts, keep-outs and assembly membership.
 
