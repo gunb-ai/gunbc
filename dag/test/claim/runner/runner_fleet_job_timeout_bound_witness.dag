@@ -85,9 +85,12 @@ fn poll_seconds() -> Int {
 test fn the_wait_bound_is_the_declared_timeout_fold_plus_the_poll_interval() -> Bool {
   let boot = filter(compiler_gate_workflow.jobs, j => j.id == compiler_gate_required_job_id)
   length(boot) == 1
-    && job_declared_timeout_minutes(j: boot[0]) == compiler_gate_emit_build_timeout_minutes
-    && fleet_job_belongs_to_population(w: compiler_gate_workflow, j: boot[0])
-    && bound_seconds() == job_declared_timeout_minutes(j: boot[0]) * 60 + poll_seconds()
+    && all(
+      boot,
+      j => job_declared_timeout_minutes(j: j) == compiler_gate_emit_build_timeout_minutes
+        && fleet_job_belongs_to_population(w: compiler_gate_workflow, j: j)
+        && bound_seconds() == job_declared_timeout_minutes(j: j) * 60 + poll_seconds()
+    )
     && (second_count(s: fleet_targeted_wait_bound(policy_poll_interval: runner_host_cap_drain_policy.poll_interval)) as Int) == bound_seconds()
 }
 
