@@ -50,10 +50,9 @@ import v2.compiler.effect_pair_census {
   RepeatedOccurrence,
   effect_pair_census_of_module,
   effect_reach_table,
-  EffectReachTable,
-  ModuleEffectPairCensus,
   reach_reason_of_semantics,
   EffectSite,
+  EffectPairRow,
   CallSiteUnlocated,
   module_ordered_bodies,
   OrderEdge,
@@ -552,19 +551,15 @@ fn epc_is_static_site_of(s: FactCallSite, dotted: String) -> Bool {
   }
 }
 
-fn epc_effect_table() -> EffectReachTable {
-  effect_reach_table(
-    functions: Empty,
-    operations: list_snoc_item(xs: Empty, item: OperationFact { path: qualified_name_from_dotted_string(dotted: "acd.an_effect"), requirement: RequiresOpaque })
-  )
-}
-
-fn epc_census_of(source: String) -> ModuleEffectPairCensus {
+fn epc_census_pairs(source: String) -> List<EffectPairRow> {
   effect_pair_census_of_module(
     module: qualified_name_from_dotted_string(dotted: "acd"),
     bodies: module_ordered_bodies(module: qualified_name_from_dotted_string(dotted: "acd"), bodies: epc_source_bodies(source: source), uses: Empty, not_derived: Empty),
-    table: epc_effect_table()
-  )
+    table: effect_reach_table(
+      functions: Empty,
+      operations: list_snoc_item(xs: Empty, item: OperationFact { path: qualified_name_from_dotted_string(dotted: "acd.an_effect"), requirement: RequiresOpaque })
+    )
+  ).pairs
 }
 
 // POSITIVE: a call through a PARAMETER beside a static effect is two sites, the function-value one typed as such,
@@ -576,7 +571,7 @@ test fn a_function_value_call_beside_a_static_effect_is_one_candidate_pair_holds
       length(xs: sites) == 2
         && fold_list(xs: sites, empty: false, cons: fn(a, s) { a || epc_is_function_value_site(s: s) })
         && fold_list(xs: sites, empty: false, cons: fn(a, s) { a || epc_is_static_site_of(s: s, dotted: "acd.an_effect") })
-        && length(xs: epc_census_of(source: epc_fv_source).pairs) == 1
+        && length(xs: epc_census_pairs(source: epc_fv_source)) == 1
   }
 }
 
@@ -593,7 +588,7 @@ test fn a_branch_with_a_declaration_reference_selector_is_not_a_call_site_holds(
 // tick of the first is past 0 (it advanced across the data reference and the earlier declaration). RED if the
 // tick is reported as the ordinal.
 test fn call_ordinals_reset_per_function_and_ignore_unrelated_references_holds() -> Bool {
-  match epc_census_of(source: epc_ordinal_source).pairs {
+  match epc_census_pairs(source: epc_ordinal_source) {
     Cons { head: p, tail: Empty } => p.first.ordinal == 0 && p.second.ordinal == 1 && p.first.occurrence > 0
     _ => false
   }
