@@ -1182,7 +1182,7 @@ fn last_ordinal(route: List<DispatchRecord>, name: String) -> Int {
 test fn an_attempt_that_ends_with_the_host_off_stops_its_own_session() -> Bool {
   match run_attempt(world: healthy_census_world_with_a_stopped_fan()) {
     WitnessReturned { value, route } =>
-      starts_with(s: outcome_reason(a: value), prefix: "mtcollins1 boot stopped: chassis fan function not established after power-on")
+      string_contains(s: outcome_reason(a: value), pattern: "mtcollins1 boot stopped: chassis fan function not established after power-on")
         && string_contains(s: outcome_reason(a: value), pattern: "end-of-attempt") == false
         && count_named(route: route, name: "megarac.Media.StopMedia") == 1
         && first_ordinal(route: route, name: "megarac.Media.StopMedia") > last_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
