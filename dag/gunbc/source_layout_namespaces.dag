@@ -183,6 +183,7 @@ fn layout_namespaces() -> List<String> {
     "extdeps.programmable_logic.ice40",
     "extdeps.project_schedule",
     "extdeps.prometheus",
+    "extdeps.proxy",
     "extdeps.provisioning",
     "extdeps.rack",
     "extdeps.radixark",
