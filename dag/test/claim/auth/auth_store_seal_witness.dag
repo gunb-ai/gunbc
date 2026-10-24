@@ -237,3 +237,67 @@ test fn the_lawful_login_transaction_store_mint_is_admitted() -> ProcessExit {
     census_verdict(census: seal_violations(source: login_lawful_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 0 }),
   ])
 }
+
+// ── the two JWKS caches and the broker's host-singleton stores ─────────────────────────────────
+// Casts and cross-type uses only: they do not depend on which fields the sealed records carry. The
+// forged-literal REDs for these records follow their record shape.
+
+fn broker_probe(name: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { String, NonEmptyStr, Int }\n",
+    "import gunbc.host_state_root { HostStateTree }\n",
+    "import extdeps.auth.oidc { OidcIdTokenSignature, OidcIdTokenSignatureRefused }\n",
+    "import extdeps.auth.jwt { JwtCompactSerialization }\n",
+    "import gunbc.auth.oidc_id_token_verification { InstanceJwksCache }\n",
+    "import gunbc.roadmap.roadmap_auth_routes { auth_token_signature }\n",
+    "import gunbc.auth.approval_device_redemption { BrokerJwksCache, BrokerJwksCacheReady, BrokerJwksCacheUnready, broker_jwks_cache, ApprovalDeviceStore }\n",
+    "import gunbc.auth.approval_device_routes { broker_token_signature_over, PushRegistrationStore }\n",
+    "import gunbc.auth.approval_assertion_counter { AssertionCounterStore }\n",
+    body,
+  ], "")
+}
+
+fn broker_baseline_source() -> String {
+  broker_probe(name: "probe_broker_store_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+}
+
+fn cast_source(name: String, subject: String) -> String {
+  broker_probe(name: name, body: join(["fn f(r: NonEmptyStr) -> ", subject, " {\n  r as ", subject, "\n}\n"], ""))
+}
+
+test fn a_forged_instance_jwks_cache_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_instance_jwks_cast", subject: "InstanceJwksCache"), subject: "InstanceJwksCache"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_broker_jwks_cache_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_broker_jwks_cast", subject: "BrokerJwksCache"), subject: "BrokerJwksCache"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_approval_device_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_device_store_cast", subject: "ApprovalDeviceStore"), subject: "ApprovalDeviceStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_assertion_counter_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_counter_store_cast", subject: "AssertionCounterStore"), subject: "AssertionCounterStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_push_registration_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_push_store_cast", subject: "PushRegistrationStore"), subject: "PushRegistrationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn an_instance_jwks_cache_is_not_the_brokers() -> ProcessExit {
+  census_exit(blocking_delta(hostile: broker_probe(name: "probe_instance_jwks_as_broker", body: "fn f(c: InstanceJwksCache, t: JwtCompactSerialization) -> OidcIdTokenSignature {\n  broker_token_signature_over(cache: c, id_token: t, epoch: 0, verify_id: \"v\")\n}\n"), safe: broker_baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn a_broker_jwks_cache_is_not_an_instances() -> ProcessExit {
+  census_exit(blocking_delta(hostile: broker_probe(name: "probe_broker_jwks_as_instance", body: "fn f(c: BrokerJwksCache, t: NonEmptyStr) -> OidcIdTokenSignature {\n  auth_token_signature(cache: c, id_token: t, epoch: 0, verify_id: \"v\")\n}\n"), safe: broker_baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_broker_jwks_cache_mint_is_admitted() -> ProcessExit {
+  let lawful = broker_probe(name: "probe_broker_jwks_lawful", body: "fn f(tree: HostStateTree, t: JwtCompactSerialization) -> OidcIdTokenSignature {\n  match broker_jwks_cache(tree: tree) {\n    BrokerJwksCacheReady { cache } => broker_token_signature_over(cache: cache, id_token: t, epoch: 0, verify_id: \"v\")\n    BrokerJwksCacheUnready { detail } => OidcIdTokenSignatureRefused { reason: detail }\n  }\n}\n")
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful, safe: broker_baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful, subject: "BrokerJwksCache"), holds: fn(n) { n == 0 }),
+  ])
+}

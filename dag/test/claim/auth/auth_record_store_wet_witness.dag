@@ -37,9 +37,10 @@ import gunbc.auth.profile_projection {
 // stores wrote BEFORE they were sealed: each was written by the pre-seal code (head c24fbe2, the layout-taking
 // session_store_save / login_transaction_store_save / profile_store_upsert_from_session) for the fixture
 // records below, and copied here byte for byte (receipt in the change). Each claim plants that file, reads it
-// back through the sealed store, then writes the same record through the sealed store and requires the file
-// to be byte-identical to the planted one. RED if the format moved, if the sealed read does not find what the
-// old code wrote, or if the store reads somewhere other than the declared directory.
+// back through the sealed store, then writes the same record through a second sealed store over a fresh tree
+// (the stores write create-new, owner-only, so a write never replaces a file) and requires that file to be
+// byte-identical to the planted one. RED if the format moved, if the sealed read does not find what the old
+// code wrote, or if the store reads somewhere other than the declared directory.
 
 data session_bytes_before_the_seal: String = "{\"schema\": \"gunbc-auth-session/v1\", \"session_id\": \"sealreadback-session\", \"principal\": \"principal:google-oidc/accounts/seal-readback-subject\", \"authenticated_at\": \"2026-10-24T00:00:00Z\", \"expires_at\": \"2099-01-01T00:00:00Z\", \"auth_method\": \"google-oidc\", \"client\": \"tracker-web\", \"csrf\": \"sealreadback-csrf\", \"picture\": \"https://example.com/a.png\", \"name\": \"Ada Readback\", \"email\": \"ada@example.com\"}"
 
@@ -90,6 +91,39 @@ fn file_is(path: String, bytes: String) -> Bool {
 
 // ── 1. records written before the seal read back, and are written again byte for byte ──────────
 
+fn session_rewritten_identically(dir: String) -> Bool {
+  let instance = fixture_instance(directory: dir)
+  let made = shell.Mkdir.Parents(path: session_store_slots_path(instance: instance))
+  made.success && match session_store(instance: instance) {
+    SessionStoreUnready { detail: _ } => false
+    SessionStoreReady { store: sessions } =>
+      (match session_store_save(store: sessions, session: fixture_session()) { SessionStoreSaved { session_id: _ } => true  SessionStoreSaveRefused { step: _, reason: _ } => false })
+        && file_is(path: join([session_store_slots_path(instance: instance) as String, "/sealreadback-session.json"], ""), bytes: session_bytes_before_the_seal)
+  }
+}
+
+fn login_transaction_rewritten_identically(dir: String) -> Bool {
+  let instance = fixture_instance(directory: dir)
+  let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
+  made.success && match login_transaction_store(instance: instance) {
+    LoginTransactionStoreUnready { detail: _ } => false
+    LoginTransactionStoreReady { store: transactions } =>
+      (match login_transaction_store_save(store: transactions, transaction: fixture_transaction()) { LoginTransactionSaved { state: _ } => true  LoginTransactionSaveRefused { step: _, reason: _ } => false })
+        && file_is(path: join([login_transaction_store_slots_path(instance: instance) as String, "/sealreadback-state.json"], ""), bytes: login_transaction_bytes_before_the_seal)
+  }
+}
+
+fn profile_rewritten_identically(dir: String) -> Bool {
+  let instance = fixture_instance(directory: dir)
+  let made = shell.Mkdir.Parents(path: profile_store_slots_path(instance: instance))
+  made.success && match profile_store(instance: instance) {
+    ProfileStoreUnready { detail: _ } => false
+    ProfileStoreReady { store: profiles } =>
+      (match profile_store_upsert_from_session(store: profiles, session: fixture_session()) { ProfileStoreUpserted { principal: _ } => true  ProfileStoreUpsertRefused { step: _, reason: _ } => false })
+        && file_is(path: join([profile_store_slots_path(instance: instance) as String, "/", profile_file_before_the_seal], ""), bytes: profile_bytes_before_the_seal)
+  }
+}
+
 test fn a_session_written_before_the_seal_reads_back_and_rewrites_identically() -> Bool {
   with_temp_dir(scenario: fn(dir) {
     let instance = fixture_instance(directory: dir)
@@ -105,8 +139,7 @@ test fn a_session_written_before_the_seal_reads_back_and_rewrites_identically() 
               && (match s.profile.name { Present { value: n } => n == "Ada Readback"  Absent => false })
           _ => false
         })
-        && (match session_store_save(store: sessions, session: fixture_session()) { SessionStoreSaved { session_id: _ } => true  SessionStoreSaveRefused { step: _, reason: _ } => false })
-        && file_is(path: file, bytes: session_bytes_before_the_seal)
+        && session_rewritten_identically(dir: join([dir, "/rewrite"], ""))
     }
   })
 }
@@ -124,8 +157,7 @@ test fn a_login_transaction_written_before_the_seal_reads_back_and_rewrites_iden
           LoginTransactionStoreFound { transaction: t } => (t.nonce as String) == "sealreadback-nonce" && (t.return_path.path as String) == "/after"
           _ => false
         })
-        && (match login_transaction_store_save(store: transactions, transaction: fixture_transaction()) { LoginTransactionSaved { state: _ } => true  LoginTransactionSaveRefused { step: _, reason: _ } => false })
-        && file_is(path: file, bytes: login_transaction_bytes_before_the_seal)
+        && login_transaction_rewritten_identically(dir: join([dir, "/rewrite"], ""))
     }
   })
 }
@@ -146,11 +178,7 @@ test fn a_profile_written_before_the_seal_reads_back_and_rewrites_identically() 
           })
         ProfileStoreUnread { step: _, reason: _ } => false
       })
-      && (match reading {
-        ProfileStoreUnready { detail: _ } => false
-        ProfileStoreReady { store: profiles } => match profile_store_upsert_from_session(store: profiles, session: fixture_session()) { ProfileStoreUpserted { principal: _ } => true  ProfileStoreUpsertRefused { step: _, reason: _ } => false }
-      })
-      && file_is(path: file, bytes: profile_bytes_before_the_seal)
+      && profile_rewritten_identically(dir: join([dir, "/rewrite"], ""))
   })
 }
 

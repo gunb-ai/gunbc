@@ -85,7 +85,7 @@ import gunbc.auth.approval_decision_store {
 }
 import gunbc.auth.approval_device_redemption {
   ApprovalDeviceStoreReading, ApprovalDeviceStoreReady, ApprovalDeviceStoreUnready, approval_device_store,
-  BrokerJwksCacheReady, BrokerJwksCacheUnready, broker_jwks_cache,
+  BrokerJwksCache, BrokerJwksCacheReady, BrokerJwksCacheUnready, broker_jwks_cache,
   GoogleEnrolmentListing,
   observe_google_enrolment, commit_google_enrolment, create_or_read_subject_pin, enrolment_readback_of,
   list_google_enrolments, GoogleEnrolmentsListed, GoogleEnrolmentListingRefused, revoke_google_enrolment,
@@ -433,8 +433,14 @@ fn assertion_counter_admitted(enrollment_id: NonEmptyStr, observed: Int) -> Asse
 fn broker_token_signature(id_token: JwtCompactSerialization, epoch: Int, verify_id: NonEmptyStr) -> OidcIdTokenSignature {
   match broker_jwks_cache(tree: host_state_tree()) {
     BrokerJwksCacheUnready { detail: d } => OidcIdTokenSignatureRefused { reason: join(["the broker JWKS cache is not ready: ", d], "") }
-    BrokerJwksCacheReady { cache: jwks } => oidc_id_token_signature_verify(ops: jwks.ops, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
+    BrokerJwksCacheReady { cache: jwks } => broker_token_signature_over(cache: jwks, id_token: id_token, epoch: epoch, verify_id: verify_id)
   }
+}
+
+// The broker's verification takes the broker's cache and no other: an instance's InstanceJwksCache is a
+// different type and does not stand here.
+fn broker_token_signature_over(cache: BrokerJwksCache, id_token: JwtCompactSerialization, epoch: Int, verify_id: NonEmptyStr) -> OidcIdTokenSignature {
+  oidc_id_token_signature_verify(ops: cache.ops, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
 }
 
 // A fresh id for the signature verification's scratch files: 128 bits of entropy as lowercase hex.
