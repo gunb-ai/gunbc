@@ -220,6 +220,30 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
       description: "dissolves when the boot route for mtcollins1 starts sshd with HostKey pointing at exactly the custody-placed path and a live boot's presented key is read back and matched (the read obligation on this module's anchor row); a placement receipt alone does not fire this"
     )
   ),
+  // THE MINT SHELL'S HAND-ASSEMBLED BODY, registered as a declared residual (review 85232/85396;
+  // the githooks_pre_push_emit_concat_body_dissolution shape, whose frontier module states the same
+  // reasoning for its hook). WHY A RESIDUAL AND NOT NODES: the emitter path -- v2.workflow.bash_emit
+  // bash_emit_stmts over v2.extdeps.languages.bash_build nodes, serialized by
+  // bash_command_fold -- covers most of this script's forms (the pipe, || via or_else, if, the
+  // command substitution, >&2 via redir_stdout_to_stderr, [ ] tests, exit, set -e). Two forms it
+  // does NOT: the trap line (trap is absent from the fold grammar entirely -- zero productions), and
+  // the guard's brace-group then-branch ({ echo ... >&2; exit 1; } -- brace braces are
+  // ingest-recognized only, bash_fold_lex_rule classes ^bash_ingest_brace_open/close, with no fold
+  // production, the same status the githooks frontier records for while/case). Half-emitting the
+  // script and concatenating the rest is the concat shape that frontier registers as the residual,
+  // not a cutover. THE TRIGGER NAMES THE CAPABILITY, NOT A CARRIER (§4b obligation 3; review 85396):
+  // when those two grammar rows land, anchored_host_key_mint_shell is EMITTED from typed intent --
+  // bash_build_pipe over the two argv builder renders, the guard as bash_build_if (or or_else) over
+  // bash_build_word_cmdsubst + bash_build_with_redir + bash_build_exit -- and the string literals
+  // are deleted byte-identically. Provisioning an execution route that merely carries the hand
+  // bytes does NOT fire this.
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
+    reason: "gunbc.host.anchored_host_transport|anchored_host_key_mint_shell:concat-assembled shell -- the trap line (EXIT INT TERM cleanup) and the tmpfs guard's brace-group then-branch ({ echo ... >&2; exit 1; }) are spelled as string literals around the builder-rendered legs; shell control text in the medium the effect runs in, not in .dag",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the bash fold grammar gains the two rows the emitter needs for this body: trap with a signal list, and a brace-group statement production (today ingest-recognized only); anchored_host_key_mint_shell is then EMITTED via v2.workflow.bash_emit bash_emit_stmts over v2.extdeps.languages.bash_build nodes -- bash_build_pipe for the cat|gcloud leg, the guard as bash_build_if over bash_build_word_cmdsubst + bash_build_with_redir + bash_build_exit -- and the string literals are deleted byte-identically. Wiring an execution route that only carries the hand-assembled bytes does NOT fire this"
+    )
+  ),
 ]
 
 type AnchoredHostBinding
@@ -536,7 +560,9 @@ fn anchored_host_key_mint_cleanup_commands(mint_dir: String) -> List<ArgvCommand
   ]
 }
 
-// THE MINT, RENDERED -- the runbook's Step 1 block IS this function's output, not a hand copy.
+// THE MINT, RENDERED -- the runbook's Step 1 block was PRODUCED from this function's output (the
+// authoring session pasted the render; the runbook's Step 1 states its own honest boundary: no claim
+// reads that file, so keeping the copy equal to the render is convention + review, not a test).
 // The mint dir is a fixed path created with mkdir -m 0700 CREATE-ONLY: it refuses outright when the
 // dir already exists, which means a previous minting session died mid-run. The trap then removes any
 // key found there -- removing a stale private half is the Q1-CORRECT action, not evidence loss (the
@@ -571,10 +597,15 @@ fn anchored_host_key_mint_shell() -> String {
 
 // THE MINT IS AN OUT-OF-BAND HUMAN ACT, and its scaffold status is a typed carrier, not a comment
 // (DESIGN §4c; review 85232's hand-shell gate). The bash above dissolves to a real dispatch once
-// an execution route that can carry it exists -- the trigger is named on the marker, mirroring
-// verified_binary_install_shell_bash_emit_dissolution_trigger. Until then the runbook renders it
-// for a human, and the gate is human actuation: this module's authoring session ran NOTHING; the
-// operator or merry-fox-82 executes what Step 1 renders.
+// the CAPABILITY THAT RETIRES IT lands -- orchestration-to-shell bash EMISSION (v2.workflow.bash_emit
+// bash_emit_stmts over v2.extdeps.languages.bash_build nodes), NOT merely an execution route that
+// can carry hand-assembled bytes (§4b obligation 3: "the trigger names the CAPABILITY restored";
+// review 85396). The residual control forms this string still spells -- trap with a signal list, and
+// the tmpfs guard's >&2 fd redirection -- are named, with their conversion, on this module's fourth
+// census-closure frontier row (anchored_host_key_mint_shell); the argv legs and the cat|gcloud pipe
+// convert byte-identically the day the grammar lands. Until then the runbook renders it for a human,
+// and the gate is human actuation: this module's authoring session ran NOTHING; the operator or
+// merry-fox-82 executes what Step 1 renders.
 data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
@@ -582,10 +613,12 @@ data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = S
 
 // THE MINTER'S STEP, typed (review 85232, "model it the same way as the neighbouring mint rows
 // (for example approval_ntfy_publisher_token_mint_intervention)"). The instruction NAMES the model
-// symbols the operator runs rather than transcribing shell -- the render and the model cannot
-// drift because the instruction points at the single source, exactly as the ntfy mint instruction
-// points at its broker. The mint is FleetOnce: the stable key is minted once per fleet, not per
-// boot (per boot is the DELIVERY, and delivery is the custody arm's job, not this step's).
+// symbol the operator renders rather than transcribing shell -- inside the model there is no second
+// shell text to disagree with the render, exactly as the ntfy mint instruction points at its broker.
+// (The runbook's copied Step 1 block is a separate hand projection held to the render by convention
+// and review, which its own Step 1 states; no claim reads that file.) The mint is FleetOnce: the
+// stable key is minted once per fleet, not per boot (per boot is the DELIVERY, and delivery is the
+// custody arm's job, not this step's).
 fn anchored_host_key_mint_intervention() -> HumanIntervention {
   HumanIntervention {
     identity: "mtcollins1_ssh_host_key_mint" as HumanInterventionIdentity,
@@ -601,7 +634,7 @@ fn anchored_host_key_mint_intervention() -> HumanIntervention {
 }
 
 fn ssh_keygen_public_key_command_label() -> String {
-  "ssh-keygen -y -f <mint-dir>/ssh_host_ed25519_key (extdeps.ssh.openssh_client_commands.ssh_keygen_public_key_command)"
+  "ssh-keygen -y -f <mint-dir>/mc_host (extdeps.ssh.openssh_client_commands.ssh_keygen_public_key_command)"
 }
 
 // THE MINT'S PRIVILEGED EFFECT (review 85232: "no PrivilegedEffect ... and no PrivilegedEffectSite.

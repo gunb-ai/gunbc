@@ -46,8 +46,15 @@ Two corollaries this runbook enforces mechanically, not by trust:
 
 ## Step 1 — mint and upload (operator / merry-fox-82, one shell session)
 
-**This block is the render of `gunbc.host.anchored_host_transport` `anchored_host_key_mint_shell()`
-— do not hand-edit it, and do not run a remembered copy of it.** Every command line inside it is
+**This block was produced by rendering `gunbc.host.anchored_host_transport`
+`anchored_host_key_mint_shell()` — do not hand-edit it, and do not run a remembered copy of it.**
+HONEST BOUNDARY on that sentence: the claim-run executes the MODEL and pins the render's legs
+(`the_mint_render_carries_no_private_material`, `the_mint_render_is_the_builders_render` in
+`test.claim.host.anchored_host_transport_witness`); no claim reads this file, so the copied block
+below can in principle drift from the render and the suite would stay green. The guard is convention
+and review, not a test — treat any mismatch between this block and a fresh
+`anchored_host_key_mint_shell()` render as the defect, and prefer re-rendering over hand-fixing.
+Every command line inside it is
 produced by an admitted argv builder (`extdeps.ssh.openssh_client_commands.ssh_keygen_ed25519_mint_command`,
 `extdeps.tools.gcloud.gcloud_secrets_create_command`, `extdeps.tools.gcloud.gcloud_secrets_versions_add_stdin_command`,
 `extdeps.tools.gnu_coreutils` `mkdir_create_only_with_mode_command` / `cat_file_command` /

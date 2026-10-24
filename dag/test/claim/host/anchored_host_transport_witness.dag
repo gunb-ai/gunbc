@@ -38,6 +38,8 @@ import gunbc.host.anchored_host_transport {
   anchored_host_key_mint_shell_bash_emit_dissolution_trigger,
   anchored_host_key_mint_create_command,
   anchored_host_key_mint_upload_command,
+  anchored_host_key_mint_keygen_command,
+  anchored_host_key_mint_cleanup_commands,
 }
 import extdeps.dns.domain_name { DnsLabel }
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
@@ -46,7 +48,7 @@ import extdeps.exec.command { argv_words, shell_command_render }
 import std.disposition { Scaffold, RealizationDispatch }
 import std.human_intervention { FleetOnce, NoDischargeSiteModeled }
 import gunbc.auth.privileged_effect_census {
-  privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  privileged_effect_census, site_verdict, SiteVerdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
   manual_api_effect_beside_unlanded_approval_adapter,
 }
 import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, OperatorApprovedCapability, PatternSelected }
@@ -445,7 +447,7 @@ test fn the_transport_route_cites_the_executed_selectors() -> Bool {
   && string_contains(s: source_cited, pattern: "select_access_token_source:")
 }
 
-// THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries three frontier
+// THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries four frontier
 // rows for what this diff does NOT yet do in production: nothing routes a live transport through
 // anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
 // (no sshd in this slice). They must be well-formed and stand in the census-closure registry -- a gap in
@@ -456,7 +458,7 @@ fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
 }
 
 test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
-  count(anchored_host_transport_frontier_rows) == 3
+  count(anchored_host_transport_frontier_rows) == 4
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
   && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
 }
@@ -526,12 +528,14 @@ test fn the_mint_render_carries_no_private_material() -> Bool {
   && string_contains(s: shell_command_render(command: anchored_host_key_mint_upload_command()), pattern: "--data-file=-")
 }
 
-// CLAIM: THE RUNBOOK'S STEP 1 IS THE RENDER, NOT A HAND COPY. The shell string is composed from the
-// builder renders -- the create leg's render, the upload leg's render, and the stdin pipe appear in
-// it -- and the secret name and project it carries are the SecretRef's own fields (there is no
-// second spelling to drift from: change the SecretRef and this render changes). Re-typing a gcloud
-// leg by hand in the model, or retyping the literals, fails here.
-test fn the_runbook_step_is_the_model_render() -> Bool {
+// CLAIM: THE MINT RENDER IS COMPOSED FROM THE BUILDERS. The shell string contains the create leg's
+// render, the upload leg's render, and the stdin pipe -- and the secret name and project it carries
+// are the SecretRef's OWN fields, so the literals have no second spelling INSIDE THE MODEL: change
+// the SecretRef and this render changes. HONEST SCOPE (review 85396): this checks the model against
+// itself -- no claim reads docs/runbooks/mtcollins1-ssh-host-key-mint.md, so the runbook's copied
+// block is held to the render by convention and review, not by this test; the runbook says so at
+// its own Step 1. Re-typing a gcloud leg by hand in the model, or retyping the literals, fails here.
+test fn the_mint_render_is_the_builders_render() -> Bool {
   let shell = anchored_host_key_mint_shell()
   string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_create_command()))
   && string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_upload_command()))
