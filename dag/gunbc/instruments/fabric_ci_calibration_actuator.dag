@@ -44,7 +44,7 @@ import std.host_text { chars }
 // Alpha/Beta transport split, the altered byte, the failed and the ignored write, and the removed
 // projection arm each remain a separate observed process.
 //
-// Environment (set by tools/fabric_ci_fci1_live_instrument.sh, the sole launcher):
+// Environment (set by gunbc.instruments.fabric_ci_fci1_live_actuator fci1_calibration_env_words, the sole launcher):
 //   FABRIC_CI_GUNBC_BIN     the exact gunbc binary under calibration
 //   FABRIC_CI_SOURCE_ROOT   the checkout holding dag/ and src/v2
 //   FABRIC_CI_VALUE_ROOT    a private directory for the named value files
@@ -53,6 +53,7 @@ type FabricCiCalibrationContext {
   gunbc_bin: NonEmptyStr
   source_root: String
   value_root: String
+  entry: String
 }
 
 type FabricCiChildObservation {
@@ -67,8 +68,8 @@ fn fabric_ci_env_required(name: NonEmptyStr) -> String? {
   }
 }
 
-fn fabric_ci_calibration_entry(context: FabricCiCalibrationContext) -> String {
-  concat(context.source_root, "/dag/gunbc/instruments/fabric_ci_evidence.dag")
+fn fabric_ci_calibration_evidence_entry(source_root: String) -> String {
+  concat(source_root, "/dag/gunbc/instruments/fabric_ci_evidence.dag")
 }
 
 // The argv mint for a calibration child: a runtime word list (fixed `run` words plus the row's own
@@ -84,7 +85,7 @@ fn fabric_ci_calibration_child(context: FabricCiCalibrationContext, function: St
     "run",
     "--source-root", concat(context.source_root, "/dag"),
     "--source-root", concat(context.source_root, "/src/v2"),
-    "--entry", fabric_ci_calibration_entry(context: context),
+    "--entry", context.entry,
     "--function", function,
   ], arguments)
   let observed = shell.Exec.RunArgv(
@@ -173,14 +174,13 @@ type FabricCiTransportCapture
   = FabricCiTransportCaptured { wire: String }
   | FabricCiTransportRefused { cause: FabricCiTransportCause }
 
-// The value channel: run the producer child with --arg path=<value file>, require exit 0 and a
-// freshly written named value file in the FCIE0X wire. Only that file's bytes are returned.
-fn fabric_ci_capture_transport(context: FabricCiCalibrationContext, producer: String, coordinate: String) -> FabricCiTransportCapture {
+// Before a producer writes its value file the named file must be absent: a stale file is removed and
+// the absence is then observed, so a producer that writes nothing cannot be read as the last run's value.
+fn fabric_ci_capture_clear(context: FabricCiCalibrationContext, coordinate: String) -> FabricCiTransportCause? {
   if !fabric_ci_coordinate_is_name(coordinate: coordinate) {
-    FabricCiTransportRefused { cause: TransportCoordinateInvalid { coordinate: coordinate } }
+    Present { value: TransportCoordinateInvalid { coordinate: coordinate } }
   } else {
     let value_path = join([context.value_root, "/", coordinate, ".wire"], "")
-    let name = concat(coordinate, ".wire")
     let deleted = Filesystem.Delete(path: value_path)
     let cleared = match filesystem_delete(path: value_path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind) {
       FilesystemDeleted { path: _ } => none
@@ -188,38 +188,54 @@ fn fabric_ci_capture_transport(context: FabricCiCalibrationContext, producer: St
       FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: TransportStaleNotCleared { error: e } }
       FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => Present { value: TransportStaleNotCleared { error: e } }
     }
-    let before = fabric_ci_require_absent(state: fabric_ci_value_file_state(context: context, name: name), value_path: value_path)
+    let before = fabric_ci_require_absent(state: fabric_ci_value_file_state(context: context, name: concat(coordinate, ".wire")), value_path: value_path)
     match cleared {
-      Present { value: c } => FabricCiTransportRefused { cause: c }
+      Present { value: c } => Present { value: c }
       Absent => match before {
-        Present { value: r } => FabricCiTransportRefused { cause: TransportPrestateNotAbsent { detail: r } }
-        Absent => fabric_ci_capture_produced(context: context, producer: producer, name: name, value_path: value_path)
+        Present { value: r } => Present { value: TransportPrestateNotAbsent { detail: r } }
+        Absent => none
       }
     }
   }
 }
 
-fn fabric_ci_capture_produced(context: FabricCiCalibrationContext, producer: String, name: String, value_path: String) -> FabricCiTransportCapture {
-  let produced = fabric_ci_calibration_child(context: context, function: producer, arguments: ["--arg", concat("path=", value_path)])
-  if produced.exit_code != 0 {
-    FabricCiTransportRefused { cause: TransportProducerExited { code: produced.exit_code, diagnostics: produced.diagnostics } }
-  } else {
-    let state = fabric_ci_value_file_state(context: context, name: name)
-    match state {
-      ValueFileAbsent => FabricCiTransportRefused { cause: TransportNoValueFile }
-      _ => match fabric_ci_require_regular(state: state, value_path: value_path) {
-        Present { value: r } => FabricCiTransportRefused { cause: TransportValueFileState { detail: r } }
-        Absent => {
-          let read = Filesystem.Read(path: value_path)
-          if !read.success {
-            FabricCiTransportRefused { cause: TransportUnreadable { error: read.error } }
-          } else {
-            match decode_fabric_ci_evidence_wire(wire: read.content) {
-              FabricCiEvidenceUndecodable { cause: _ } => FabricCiTransportRefused { cause: TransportUndecodable { path: value_path } }
-              FabricCiEvidenceDecoded { value: _ } => FabricCiTransportCaptured { wire: read.content }
-            }
+// After a producer exited 0 the named file must be a regular file whose bytes decode as an FCIE0X wire.
+// Only that file's bytes are returned: the producer's stdout and stderr are never read as the value.
+fn fabric_ci_capture_read(context: FabricCiCalibrationContext, coordinate: String) -> FabricCiTransportCapture {
+  let name = concat(coordinate, ".wire")
+  let value_path = join([context.value_root, "/", name], "")
+  let state = fabric_ci_value_file_state(context: context, name: name)
+  match state {
+    ValueFileAbsent => FabricCiTransportRefused { cause: TransportNoValueFile }
+    _ => match fabric_ci_require_regular(state: state, value_path: value_path) {
+      Present { value: r } => FabricCiTransportRefused { cause: TransportValueFileState { detail: r } }
+      Absent => {
+        let read = Filesystem.Read(path: value_path)
+        if !read.success {
+          FabricCiTransportRefused { cause: TransportUnreadable { error: read.error } }
+        } else {
+          match decode_fabric_ci_evidence_wire(wire: read.content) {
+            FabricCiEvidenceUndecodable { cause: _ } => FabricCiTransportRefused { cause: TransportUndecodable { path: value_path } }
+            FabricCiEvidenceDecoded { value: _ } => FabricCiTransportCaptured { wire: read.content }
           }
         }
+      }
+    }
+  }
+}
+
+// The value channel: run the producer child with --arg path=<value file> (plus the producer's own
+// arguments), require exit 0 and a freshly written named value file in the FCIE0X wire.
+fn fabric_ci_capture_transport(context: FabricCiCalibrationContext, producer: String, coordinate: String, arguments: List<String>) -> FabricCiTransportCapture {
+  match fabric_ci_capture_clear(context: context, coordinate: coordinate) {
+    Present { value: cause } => FabricCiTransportRefused { cause: cause }
+    Absent => {
+      let value_path = join([context.value_root, "/", coordinate, ".wire"], "")
+      let produced = fabric_ci_calibration_child(context: context, function: producer, arguments: concat(["--arg", concat("path=", value_path)], arguments))
+      if produced.exit_code != 0 {
+        FabricCiTransportRefused { cause: TransportProducerExited { code: produced.exit_code, diagnostics: produced.diagnostics } }
+      } else {
+        fabric_ci_capture_read(context: context, coordinate: coordinate)
       }
     }
   }
@@ -287,25 +303,25 @@ fn fabric_ci_calibration_step(context: FabricCiCalibrationContext, step: FabricC
     FabricCiCalibrationExpectStatus { function, status } =>
       fabric_ci_expect_exit(observed: fabric_ci_calibration_child(context: context, function: function as String, arguments: []), expected: status, label: function as String)
     FabricCiCalibrationTransportAssert { producer, coordinate, assertion } =>
-      match fabric_ci_capture_transport(context: context, producer: producer as String, coordinate: coordinate as String) {
+      match fabric_ci_capture_transport(context: context, producer: producer as String, coordinate: coordinate as String, arguments: []) {
         FabricCiTransportRefused { cause } => exit_failure(reason: concat("FCI-EVIDENCE-0 transport capture refused: ", fabric_ci_transport_cause_text(cause: cause)))
         FabricCiTransportCaptured { wire } =>
           fabric_ci_expect_exit(observed: fabric_ci_calibration_child(context: context, function: assertion as String, arguments: fabric_ci_wire_argument(wire: wire)), expected: 0, label: assertion as String)
       }
     FabricCiCalibrationTransportCrossRed { producer, coordinate, wrong_assertion } =>
-      match fabric_ci_capture_transport(context: context, producer: producer as String, coordinate: coordinate as String) {
+      match fabric_ci_capture_transport(context: context, producer: producer as String, coordinate: coordinate as String, arguments: []) {
         FabricCiTransportRefused { cause } => exit_failure(reason: concat("FCI-EVIDENCE-0 transport capture refused: ", fabric_ci_transport_cause_text(cause: cause)))
         FabricCiTransportCaptured { wire } =>
           fabric_ci_expect_red(observed: fabric_ci_calibration_child(context: context, function: wrong_assertion as String, arguments: fabric_ci_wire_argument(wire: wire)), label: "transport-cross")
       }
     FabricCiCalibrationDiagnosticNotChannel { function, coordinate } =>
-      match fabric_ci_capture_transport(context: context, producer: function as String, coordinate: coordinate as String) {
+      match fabric_ci_capture_transport(context: context, producer: function as String, coordinate: coordinate as String, arguments: []) {
         FabricCiTransportCaptured { wire: _ } => exit_failure(reason: "FCI-EVIDENCE-0 a diagnostic was readable through the value channel")
         FabricCiTransportRefused { cause: TransportProducerExited { code: _, diagnostics: _ } } => ExitSuccess
         FabricCiTransportRefused { cause } => exit_failure(reason: concat("FCI-EVIDENCE-0 diagnostic-not-channel red for the wrong cause: ", fabric_ci_transport_cause_text(cause: cause)))
       }
     FabricCiCalibrationAlteredByteRed { producer, coordinate, assertion } =>
-      match fabric_ci_capture_transport(context: context, producer: producer as String, coordinate: coordinate as String) {
+      match fabric_ci_capture_transport(context: context, producer: producer as String, coordinate: coordinate as String, arguments: []) {
         FabricCiTransportRefused { cause } => exit_failure(reason: concat("FCI-EVIDENCE-0 transport capture refused: ", fabric_ci_transport_cause_text(cause: cause)))
         FabricCiTransportCaptured { wire } =>
           fabric_ci_expect_red(observed: fabric_ci_calibration_child(context: context, function: assertion as String, arguments: fabric_ci_wire_argument(wire: fabric_ci_wire_alter_last(wire: wire))), label: "altered-byte")
@@ -315,7 +331,7 @@ fn fabric_ci_calibration_step(context: FabricCiCalibrationContext, step: FabricC
     FabricCiCalibrationWriteFailureRed { function, path } =>
       fabric_ci_expect_red(observed: fabric_ci_calibration_child(context: context, function: function as String, arguments: ["--arg", concat("path=", path as String)]), label: "write-failure")
     FabricCiCalibrationIgnoredWriteRed { function, coordinate } =>
-      match fabric_ci_capture_transport(context: context, producer: function as String, coordinate: coordinate as String) {
+      match fabric_ci_capture_transport(context: context, producer: function as String, coordinate: coordinate as String, arguments: []) {
         FabricCiTransportCaptured { wire: _ } => exit_failure(reason: "FCI-EVIDENCE-0 an ignored write was accepted as a value")
         FabricCiTransportRefused { cause: TransportNoValueFile } => ExitSuccess
         FabricCiTransportRefused { cause } => exit_failure(reason: concat("FCI-EVIDENCE-0 ignored-write red for the wrong cause: ", fabric_ci_transport_cause_text(cause: cause)))
@@ -380,7 +396,7 @@ fn fabric_ci_calibration_run() -> ProcessExit {
           match fabric_ci_env_required(name: "FABRIC_CI_VALUE_ROOT") {
             Absent => exit_failure(reason: "CalibrationRefused: FABRIC_CI_VALUE_ROOT unset")
             Present { value: value_root } =>
-              fabric_ci_calibration_run_all(FabricCiCalibrationContext { gunbc_bin: gunbc_bin as NonEmptyStr, source_root: source_root, value_root: value_root })
+              fabric_ci_calibration_run_all(FabricCiCalibrationContext { gunbc_bin: gunbc_bin as NonEmptyStr, source_root: source_root, value_root: value_root, entry: fabric_ci_calibration_evidence_entry(source_root: source_root) })
           }
       }
   }

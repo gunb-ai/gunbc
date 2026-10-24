@@ -6,6 +6,7 @@ import std.measure { finite_byte_size_count }
 import extdeps.exec.command { argv_words }
 import gunbc.fabric.fci1_bounded_execution_context { fci1_bounded_execution_context, Fci1BoundedExecutionContextBuilt }
 import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
+import gunbc.instruments.fabric_ci_fci1_live_actuator { Fci1LiveContext, fci1_live_unit_command }
 import gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator {
   Fci1UnitBound, Fci1UnitBounded, Fci1UnitUnbounded,
   Fci1UnitCommandBuilt, Fci1UnitCommandRefused, fci1_unit_command,
@@ -55,6 +56,23 @@ test fn the_unbounded_unit_argv_is_memory_max_infinity_with_no_slice() -> Bool {
         && word_hits(words: words, needle: "--property=WorkingDirectory=/wt")
         && !any(words, w => string_contains(s: w, pattern: "--property=Slice="))
     }
+  }
+}
+
+test fn the_live_unit_argv_adds_the_runtime_directory_only_when_named() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: ".") {
+    Fci1BoundedExecutionContextBuilt { context: c } => {
+      let ctx = Fci1LiveContext { gunbc_bin: "/g", root: "/wt", receipt_root: "/r", value_root: "/v", checkpoint: "c", bounded: c }
+      match fci1_live_unit_command(ctx: ctx, unit: "fci1-l" as NonEmptyStr, runtime_directory: Present { value: "fci1-rt" }, child_words: ["true"]) {
+        Fci1UnitCommandRefused { detail: _ } => false
+        Fci1UnitCommandBuilt { command } => {
+          let words = argv_words(command: command)
+          word_hits(words: words, needle: "--property=RuntimeDirectory=fci1-rt")
+            && word_hits(words: words, needle: "--property=WorkingDirectory=/wt")
+        }
+      }
+    }
+    _ => false
   }
 }
 

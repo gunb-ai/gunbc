@@ -1189,18 +1189,15 @@ test fn fci1_control_slice_unit_file_is_emitted_from_the_row() -> Bool {
     && string_contains(s: fci1_controls_slice_unit_path(), pattern: join(["/run/systemd/system/", fci1_controls_slice_unit_name as String], ""))
 }
 
-// INHABITANCE (DESIGN section 3 pairing): the real producer of the `.env` wrappers names the slice in
-// exactly the bounded wrappers, and the unbounded control wrapper stays outside it, so its refusal is
-// the wrap policy's UncappedSystemSlice rather than an absent control.
-test fn fci1_bounded_wrappers_carry_the_slice_and_the_unbounded_control_does_not() -> Bool {
+// The operator wrapper sources only the install/remove pair; the per-unit run wrappers were retired with
+// their last shell callers (the typed actuators build the unit commands from rows), so the producer must
+// emit exactly the pair and no run wrapper.
+test fn the_env_emits_the_slice_install_remove_pair_and_no_run_wrapper() -> Bool {
   match expected_fci1_bounded_execution_context_env() {
-    Fci1BoundedExecutionContextEmitted { content: c } => {
-      let slice_line = join(["--property=\"Slice=", fci1_controls_slice_unit_name as String, "\" \\\n"], "")
-      string_contains(s: c, pattern: slice_line)
-        && string_contains(s: c, pattern: "fci1_run_unbounded_memory_control() {\n  local unit=$1 checkout_root=$2; shift 2\n  systemd-run --quiet --wait --pipe --collect --unit=\"$unit\" \\\n    --property=\"WorkingDirectory=$checkout_root\" \\\n    --property=\"MemoryMax=infinity\"")
-        && string_contains(s: c, pattern: "fci1_install_controls_slice()")
+    Fci1BoundedExecutionContextEmitted { content: c } =>
+      string_contains(s: c, pattern: "fci1_install_controls_slice()")
         && string_contains(s: c, pattern: "fci1_remove_controls_slice()")
-    }
+        && !string_contains(s: c, pattern: "fci1_run_")
     _ => false
   }
 }
@@ -1212,21 +1209,6 @@ test fn the_committed_fci1_env_equals_the_emitter_output() -> Bool {
   match expected_fci1_bounded_execution_context_env() {
     Fci1BoundedExecutionContextEmitted { content: c } =>
       filesystem_read(path: "tools/fabric_ci_fci1_bounded_execution_context.env").content == c
-    _ => false
-  }
-}
-
-// A control that greps a unit's output reads what `systemd-run --pipe` forwards: without it a
-// `--wait` unit writes to the journal and the redirected file is empty, so a RED row (wrong cwd)
-// can never name its refusal. Every emitted runner carries it; none is left on the journal-only form.
-test fn every_emitted_fci1_runner_pipes_the_unit_output_to_the_caller() -> Bool {
-  match expected_fci1_bounded_execution_context_env() {
-    Fci1BoundedExecutionContextEmitted { content: c } =>
-      string_contains(s: c, pattern: "fci1_run_bounded_driver() {\n  local checkout_root=$1; shift\n  systemd-run --quiet --wait --pipe --collect")
-        && string_contains(s: c, pattern: "fci1_run_bounded_submitter() {\n  local unit=$1 checkout_root=$2; shift 2\n  systemd-run --quiet --wait --pipe --collect")
-        && string_contains(s: c, pattern: "fci1_run_bounded_dependent_submitter() {\n  local unit=$1 checkout_root=$2 runtime_directory=$3; shift 3\n  systemd-run --quiet --wait --pipe --collect")
-        && string_contains(s: c, pattern: "fci1_run_unbounded_memory_control() {\n  local unit=$1 checkout_root=$2; shift 2\n  systemd-run --quiet --wait --pipe --collect")
-        && !string_contains(s: c, pattern: "--wait --collect")
     _ => false
   }
 }
