@@ -1,0 +1,31 @@
+module test.claim.substituted_node_declaration_witness
+
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows }
+
+// C1.2d: SUBSTITUTED NODES KEEP THEIR DECLARATIONREF. A type-argument position of an actual
+// (Map<Int, List<Int>>) is a wrapper at the argument's source position, named for the container's
+// parameter, whose Resolved inferred holds the argument. C1.2c bound the wrapper, so a generic
+// bound through it (map_insert's V) substituted into a bare parameter node carrying List's
+// declaration but no use-args, and a Cons literal expected at V refused as "the expected type
+// spelled 'List' resolves to no declaration the census can identify". unify_child_actual binds
+// what the position resolves to. The RED is the merge of #14632 (alias_rhs_applied) with C1.2c.
+// dissolve-on: never -- permanent regression control for generic binding through type arguments.
+
+fn sndw_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data sndw_insert_list_source: String = "module sndw_probe_mod\n\nimport std.types \{ List, Map \}\nimport std.algebra \{ Cons, Empty, map_insert \}\n\nfn sndw_a(acc: Map<Int, List<Int>>, k: Int, v: Int) -> Map<Int, List<Int>> \{\n  map_insert(m: acc, key: k, value: Cons \{ head: v, tail: Empty \})\n\}\n"
+
+data sndw_insert_mismatch_source: String = "module sndw_probe_mod\n\nimport std.types \{ List, Map \}\nimport std.algebra \{ map_insert \}\n\nfn sndw_b(acc: Map<Int, List<Int>>, k: Int) -> Map<Int, List<Int>> \{\n  map_insert(m: acc, key: k, value: 7)\n\}\n"
+
+test fn sndw_cons_literal_at_substituted_list_is_accepted() -> Bool {
+  sndw_blocking_count(sndw_insert_list_source) == 0
+}
+
+test fn sndw_int_at_substituted_list_is_still_refused() -> Bool {
+  sndw_blocking_count(sndw_insert_mismatch_source) > 0
+}
