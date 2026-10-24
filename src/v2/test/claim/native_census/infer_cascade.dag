@@ -63,19 +63,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // CENSUS PART 2'S CASCADE CONTROLS, STRUCTURED BY THE DESIGN SECTION 3 WITNESS RULE. ONE inhabitance
 // claim runs the real census-infer route over supplied source bytes: native_test_context_from_ingest, the
 // census roster, the closure index, native_census_module_inference per module (resolve, then the real
-// infer_and_discharge) and native_census_cause_groups_add_infer_module. Removing the infer cascade from
-// that route reds it. Every other control supplies values to the decision it judges
+// infer_and_discharge) and native_census_cause_groups_add_infer_module. Removing the declarer cascade's
+// filing from that route reds it. Every other control supplies values to the decision it judges
 // (native_census_infer_cascade_of, native_census_subject_closure, native_census_root_subject_membership)
 // and runs no front end.
 //
-// THE EDGE THESE CONTROLS EXERCISE IS THE ONE v2 INFER HAS (v2.compiler.compile
-// native_census_infer_cascade, superseding docs/plans/census-part-2-inference-design.md section 4 on
-// this point). Provider b fails RESOLVE (an unbound name in a body beside the record). Importer a
-// resolves, because b's declarations are indexed, and then fails INFER projecting that record, because
-// a provider that never resolved contributes nothing to the closure index. a's chain carries b's
-// resolve chain immediately ahead of its closure-miss fatal.
+// WHERE THE PROVIDER CASCADE IS FILED ON THE REAL ROUTE TODAY: AT RESOLVE. Provider b's record fails
+// RESOLVE (its field type is unbound), so the closure publishes no InferLeg (declaration-grained
+// publication, v2.compiler.name_resolve closure_declarations_demand, #14029). Importer a names that
+// record, so resolve refuses a declarer_refused with b's chain carried ahead of the fatal
+// (v2.compiler.resolve declarer_refused_diagnostic, #13853), and the census files a once, as a member
+// of b's root (native_census_chain_cascade through native_census_provider_root) -- on the census-infer
+// route, through the resolve arm of native_census_cause_groups_add_infer_module.
+// THE INFER CLOSURE-MISS EDGE (native_census_infer_cascade) IS NO LONGER REACHED BY THIS FIXTURE, and the
+// claim no longer says it is. It was written when a resolved against b's indexed declarations and failed
+// INFER projecting the record; #14029 made a refusal in one declaration leave b's others published (a
+// then infers clean: measured), and #13853 refuses every name a mentions from an unpublished declaration
+// at resolve. No authored fixture reaching infer_closure_miss_refusal is known; that unobserved
+// inhabitance is carried, with its trigger, by
+// gunbc.recurring_failure_mode.census_row_shape_moved_without_moving_its_consumer, so the supplied-value
+// claims of native_census_infer_cascade_of below judge a shape no route here is shown to produce.
 
-data infer_b_unresolvable_source: String = "module v2.census_infer_b\n\ntype InferLeg {\n  target: Int\n}\n\nfn census_infer_b_broken() -> Int {\n  no_such_name_anywhere\n}\n"
+data infer_b_unresolvable_source: String = "module v2.census_infer_b\n\ntype InferLeg {\n  target: NoSuchTypeAnywhere\n}\n"
 
 data infer_a_source: String = "module v2.census_infer_a\n\nimport v2.census_infer_b { InferLeg }\n\nfn census_infer_a_read(l: InferLeg) -> Int {\n  l.target\n}\n"
 
@@ -183,11 +192,12 @@ fn infer_single_root_is_b(roots: List<NativeCensusCauseMember>, infer: Bool, fan
   }
 }
 
-// THE INHABITANCE CLAIM (DESIGN section 3 pairing): THE CASCADE OVER THE REAL ROUTE. b refuses resolve, a refuses infer only because b's record never entered the
-// closure index. Expected: ONE wall, b, a Resolve-stage root with closure fan-out 1 ({a}). a has exactly
-// one member, at the Infer stage, a cascade member of b. RED if a's infer refusal is filed as its own root
-// (walls 2), if a's row is stamped Resolve (the stage conflation design section 3 forbids), if b carries no
-// fan-out, or if the infer call is gone (a has no member at all).
+// THE PROVIDER CASCADE OVER THE REAL census-infer ROUTE. b's record refuses resolve, and a refuses only
+// because it names that record. Expected: ONE wall, b, a Resolve-stage root with closure fan-out 1 ({a}).
+// a has exactly one member, at the Resolve stage where it refused, a cascade member of b. RED if a's
+// refusal is filed as its own root (walls 2), if a's row is stamped Infer (a stage it never reached:
+// the stage conflation design section 3 forbids), if b carries no fan-out, or if a's refusal is not
+// filed at all (a has no member).
 test fn census_infer_provider_cascade_is_one_root_with_fan_out_one_holds() -> Bool {
   match infer_cascade_census() {
     InferCensusContextRefused => false
@@ -197,7 +207,7 @@ test fn census_infer_provider_cascade_is_one_root_with_fan_out_one_holds() -> Bo
         && match a {
           Empty => false
           Cons { head: m, tail: rest } =>
-            length(xs: rest) == 0 && infer_stage_is(stage: m.stage, infer: true) && match m.cascade {
+            length(xs: rest) == 0 && infer_stage_is(stage: m.stage, infer: false) && match m.cascade {
               NativeCensusCascadeMemberOf { root: r, root_reason: _ } => r == ^census_infer_b_cu
               NativeCensusCascadeNone => false
               NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => false
@@ -210,9 +220,11 @@ test fn census_infer_provider_cascade_is_one_root_with_fan_out_one_holds() -> Bo
 
 // ── supplied-value claims: native_census_infer_cascade_of and the subject closure, at their interface ──
 //
-// The real route above establishes that infer emits the chain shape these claims supply: a provider's
-// resolve chain carried immediately before the closure-miss fatal, with the module's own advisories
-// ahead of it. Each claim below hands the decision that shape directly, so none re-runs a front end.
+// The shape these claims supply is the one infer_closure_miss_refusal builds: a provider's resolve chain
+// carried immediately before the closure-miss fatal, with the module's own advisories ahead of it. No
+// real route here is shown to emit it today (the header above says why), so these claims judge the
+// decision on a shape whose inhabitance is unobserved. Each hands the decision that shape directly, so
+// none re-runs a front end.
 
 fn sv_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic { reason: reason, at: DeclarationLocus { declaration: [] }, correction: Unavailable { reason: CorrectionNotModeled } }
