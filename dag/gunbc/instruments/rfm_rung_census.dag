@@ -1,7 +1,6 @@
 module gunbc.instruments.rfm_rung_census
 
 import std.types { Int, List, String, Bool, NonEmptyStr }
-import std.list { distinct_by_key }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
@@ -13,6 +12,13 @@ import gunbc.recurring_failure_mode {
   StandingAdmission, StandingAdmitted, StandingNotBelowCeiling, StandingTriggerRefused, standing_admission,
 }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.guarantee_stall { StallPopulation }
+import std.state_durability { LifecycleRestartMode }
+import extdeps.posix.process { ProcessSpawnOutcome }
+import gunbc.host_convergence_protocol { CanonicalProtocolLayer }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.github.pulls { PullRequestState }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // THE RUNG CENSUS OF THE RECURRING-FAILURE-MODE LEDGER (DESIGN section 4b, the ledger rule: rung
 // found at, ceiling with reason, next trigger). Every count below is read from the typed `rung`
@@ -107,7 +113,7 @@ fn row_unread_label(r: RecurringFailureMode) -> String {
 // compile refusal (test.claim.rfm_rung_census_unread_cause_witness holds the RED), and the report names
 // the causes the roster's unread rows carry. A cause with no row is absent from the report, not counted zero.
 fn unread_cause_labels() -> List<String> {
-  distinct_by_key(xs: recurring_failure_mode_roster |> filter(r => row_is_unread(r: r)) |> map(r => row_unread_label(r: r)), key: fn(l) { l })
+  recurring_failure_mode_roster |> filter(r => row_is_unread(r: r)) |> map(r => row_unread_label(r: r))
 }
 
 fn unread_cause_row(label: String) -> String {
