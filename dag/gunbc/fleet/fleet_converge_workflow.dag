@@ -108,7 +108,7 @@ import gunbc.fleet.fleet_workflow_steps {
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.host.managed_host_unit_hold {
-  UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
+  UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired, UnitHoldHostUndecided,
   unit_hold_admission_for, unit_hold_host_admission_refusal,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
@@ -4317,9 +4317,9 @@ data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_after_grant_
 data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, fleet_converge_mtcollins1_boot_store_host()], "")
 
 // THE STORE HOST IS READ OFF THE UNIT'S MANAGED ROW, through the hold admission
-// (gunbc.host.managed_host_unit_hold unit_hold_admission_for): the row's hold decision names where its
-// store lives, and this job is pinned there. A unit that is not a managed host, or whose row declares
-// no hold, has no store host, and there is no label to fall back to: the reading below carries the
+// (gunbc.host.managed_host_unit_hold unit_hold_admission_for): the host's hold decision names where its
+// store lives, and this job is pinned there. A unit that is not a managed host, or whose decision is no
+// hold or absent, has no store host, and there is no label to fall back to: the reading below carries the
 // refusal in place of a host, and fleet_converge_yml_after_reset_assignment refuses to emit any yaml
 // while it stands, so the refusal text never reaches a runs-on.
 data fleet_converge_mtcollins1_boot_hold_admission: UnitHoldHostAdmission = unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr)
@@ -4337,6 +4337,7 @@ fn fleet_converge_mtcollins1_boot_store_host() -> String {
     UnitHoldHostAdmitted { subject: s } => s.store_host as String
     UnitHoldHostNotManaged { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
     UnitHoldHostNotRequired { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
+    UnitHoldHostUndecided { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
   }
 }
 
