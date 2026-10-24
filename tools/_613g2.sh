@@ -4,7 +4,7 @@ cd /root/workspace/repo-root 2>/dev/null || true
 # (gunbc run generated_artifact_gate main_wet_one --arg path=...) for DESIGN.md, instrument-dispatch.yml, heal.yml.
 # Arms: G0 route rc=0 + no drift on each file; G1 drift-repair control on each (corrupt, route must repair byte-exact);
 # G2 unrostered path refuses typed (GeneratedArtifactPathUnrostered).
-OID=e36e8124af184e8243ddac366d71e92d5ba68fb2
+OID=b7854d98d76584c65b04df7ce1a971b1ab7322fc
 echo "HEADSHA_from_gh=$OID START $(date -u +%H:%M:%S)Z"
 git worktree prune >/dev/null 2>&1 || true
 rm -rf /tmp/w613h

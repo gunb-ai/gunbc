@@ -1,7 +1,7 @@
 set -u
 cd /root/workspace/repo-root 2>/dev/null || true
 # #14613 @ e36e8124af18 (GO msg_76ebec15). Dispatch 1: build + 18/18 + RED1 typed-template revert + RED2 swap revert + final.
-OID=e36e8124af184e8243ddac366d71e92d5ba68fb2
+OID=b7854d98d76584c65b04df7ce1a971b1ab7322fc
 echo "HEADSHA_from_gh=$OID START $(date -u +%H:%M:%S)Z"
 git worktree prune >/dev/null 2>&1 || true
 rm -rf /tmp/w613g
