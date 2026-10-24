@@ -48,7 +48,7 @@ run1 () { # run1 <tag> <tree> <entry> <wet|dry> <fn1> [fn2..]
   ( cd $tree && exec 11>$cg/cgroup.procs && echo $BASHPID >&11 && \
     timeout 2400 $CB --claim-run $extra --source-root dag --source-root src/v2 --entry $entry --functions "$fns" ) > $d/out.txt 2>&1
   local rc=$?
-  echo "ROW $tag tree=$($branch_of $tree) entry=$entry mode=$mode rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) lines=$(wc -l < $d/out.txt)"
+  echo "ROW $tag tree=$(branch_of $tree) entry=$entry mode=$mode rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) lines=$(wc -l < $d/out.txt)"
   grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |"
   grep -E '^(UNOBSERVED|.*runtime error|\[resolve)' $d/out.txt | head -4 | sed "s|^|  $tag note: |"
   cp $d/out.txt /tmp/956-$tag.out
