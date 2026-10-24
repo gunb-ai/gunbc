@@ -12,7 +12,10 @@ import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeWorkflowMode, DashboardDeploy, FullHostPlan,
   fleet_converge_branch_run_grant_await_job, fleet_converge_branch_run_grant_await_job_id, fleet_converge_branch_run_grant_wait_if,
   fleet_converge_grant_wait_placement_refusal, needs_result_is,
+  fleet_converge_grant_wait_admits, fleet_converge_grant_required_expression, GrantWaitSucceeded, GrantWaitSkipped, GrantWaitFailed, GrantWaitCancelled,
+  MtCollins1Boot, fleet_converge_mtcollins1_boot_job_if,
 }
+import extdeps.github.expressions { LogicalAnd, LogicalNot }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.github.expressions { serialize_expression }
 import std.types { Int }
@@ -172,4 +175,28 @@ test fn a_row_with_an_unknown_account_refuses_generation_naming_mode_and_account
     Present { value: r } => r.contains("mode apply account_id no-such-run-account")
     Absent => false
   }) && (match fleet_converge_unfederated_run_scoped_refusal() { Present { value: _ } => false  Absent => true })
+}
+
+// RED: "the wait was skipped" is not "no grant was required". A branch boot, whose selection
+// (select_boot_credential_source off main) requires the grant, refuses when its wait was skipped, as do a
+// branch plan and a branch hetzner read. CONTROLS: a boot at reviewed main, where the selection names the
+// dedicated identity and no grant, proceeds over a skipped wait; a succeeded wait admits; a failed or
+// cancelled one does not. The boot job's rendered gate carries the same law: its skipped arm is
+// conjoined with the negated requirement the predicate reads.
+test fn a_required_grant_whose_wait_was_skipped_refuses_and_a_main_boot_proceeds() -> Bool {
+  !fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitSkipped)
+    && !fleet_converge_grant_wait_admits(mode: FullHostPlan, on_reviewed_main: false, result: GrantWaitSkipped)
+    && (match mode_of_wire(wire: "hetzner_cloud_server_read") {
+      Present { value: h } => !fleet_converge_grant_wait_admits(mode: h, on_reviewed_main: true, result: GrantWaitSkipped)
+      Absent => false
+    })
+    && fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: true, result: GrantWaitSkipped)
+    && fleet_converge_grant_wait_admits(mode: FullHostPlan, on_reviewed_main: true, result: GrantWaitSkipped)
+    && fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitSucceeded)
+    && !fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitFailed)
+    && !fleet_converge_grant_wait_admits(mode: MtCollins1Boot, on_reviewed_main: false, result: GrantWaitCancelled)
+    && fleet_converge_mtcollins1_boot_job_if.contains(serialize_expression(expression: LogicalAnd {
+      left: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "skipped"),
+      right: LogicalNot { operand: fleet_converge_grant_required_expression() },
+    }))
 }
