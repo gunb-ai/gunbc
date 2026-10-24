@@ -1,0 +1,152 @@
+module gunbc.realization_census
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.algebra { FreeSemigroup }
+import gunbc.guarantee_rung { GuaranteeRung }
+
+// THE CLOSED VOCABULARIES OF THE REALIZATION CENSUS, AS TYPES. The census (a population of modules
+// measured at a revision; its observation shape is gunbc.repository_census_observation) records, per
+// module and per realization dimension, WHERE the decision is made today and which guarantee rung
+// the module's handling of it sits at. A cell outside these sets is unwritable here rather than
+// refused later: the interim producer (gunbc.realization_census_rows_gen) admits each TSV cell
+// into these types or refuses the whole run with the cell's location, and emits constructors, so a
+// value outside the set never reaches a sheet. SiteOther and DimensionOther are vocabulary members,
+// not escapes added here: the census brief made `other` the explicit class for misfits.
+
+type RealizationDimension
+  = DimensionStorage
+  | DimensionCaching
+  | DimensionAccess
+  | DimensionAuthz
+  | DimensionPlacement
+  | DimensionOther
+
+type DecisionSite
+  = SiteNone
+  | SiteHome
+  | SitePassed
+  | SiteRederived
+  | SiteLiteral
+  | SiteForked
+  | SiteOther
+
+type RealizationLevel
+  = LevelL0
+  | LevelL1
+  | LevelL2
+  | LevelL3
+  | LevelL4
+  | LevelL5
+
+type CensusModuleClass
+  = ClassProduction
+  | ClassSeedGenerated
+  | ClassSeed
+  | ClassRoster
+  | ClassTest
+  | ClassExtdeps
+
+type DimensionReading {
+  site: DecisionSite
+  level: RealizationLevel
+}
+
+type ModuleCensusReading {
+  module: NonEmptyStr
+  module_class: CensusModuleClass
+  storage: DimensionReading
+  caching: DimensionReading
+  access: DimensionReading
+  authz: DimensionReading
+  placement: DimensionReading
+  ambient_calls: Int
+  worst_site: DecisionSite
+  worst_finding: String
+  evidence_symbols: String
+  phase: String
+}
+
+type FindingCensusReading {
+  finding_id: NonEmptyStr
+  class_id: NonEmptyStr?
+  module: NonEmptyStr
+  dimension: RealizationDimension
+  level: RealizationLevel
+  module_class: CensusModuleClass
+  site: DecisionSite
+  symbol: String
+  specimen: String
+  note: String
+  existing_authority: String
+  fix_shape: String
+}
+
+// THE CLASSES TAB'S RUNG IS NOT gunbc.guarantee_rung ALONE. The census writes 0 for a class nothing
+// models yet; DESIGN section 4b's OutsideTheLadder is a different fact (external reality,
+// undecidable or undeclared intent), so mapping 0 onto it would give one name two meanings.
+type CensusClassRung
+  = RungUnmodeled
+  | RungOnLadder { rung: GuaranteeRung }
+
+// A class's population counts (instances, modules, and their split by module class) are NOT
+// carried: they are projections of the findings whose class_id names the class, so the sheet
+// derives them and the producer refuses a TSV whose stated counts disagree with that projection.
+type ClassCensusReading {
+  class_id: NonEmptyStr
+  dimension: RealizationDimension
+  decision_sites: FreeSemigroup<DecisionSite>
+  pattern: String
+  current_rung: CensusClassRung
+  attainable_ceiling: GuaranteeRung
+  ceiling_reason: String
+  owning_authority: String
+  wall: String
+  red_control: String
+  residual: String
+  next_trigger: String
+}
+
+fn decision_site_text(s: DecisionSite) -> String {
+  match s {
+    SiteNone => "None"
+    SiteHome => "Home"
+    SitePassed => "Passed"
+    SiteRederived => "Rederived"
+    SiteLiteral => "Literal"
+    SiteForked => "Forked"
+    SiteOther => "Other"
+  }
+}
+
+fn realization_level_text(l: RealizationLevel) -> String {
+  match l {
+    LevelL0 => "L0"
+    LevelL1 => "L1"
+    LevelL2 => "L2"
+    LevelL3 => "L3"
+    LevelL4 => "L4"
+    LevelL5 => "L5"
+  }
+}
+
+fn realization_dimension_text(d: RealizationDimension) -> String {
+  match d {
+    DimensionStorage => "storage"
+    DimensionCaching => "caching"
+    DimensionAccess => "access"
+    DimensionAuthz => "authz"
+    DimensionPlacement => "placement"
+    DimensionOther => "other"
+  }
+}
+
+fn census_module_class_text(c: CensusModuleClass) -> String {
+  match c {
+    ClassProduction => "production"
+    ClassSeedGenerated => "seed-generated"
+    ClassSeed => "seed"
+    ClassRoster => "roster"
+    ClassTest => "test"
+    ClassExtdeps => "extdeps"
+  }
+}

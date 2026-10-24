@@ -1,0 +1,97 @@
+module gunbc.review_sheet_kind
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, skip }
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ProjectionRow,
+  ValidatedHeaderSchema,
+  HeaderSchemaValidated,
+  HeaderSchemaRefused,
+  validate_header_schema,
+}
+import gunbc.review_sheet_format_actuator { FormatRule }
+
+// A REVIEW SHEET KIND IS A VALUE, AND THE CONVERGE TAKES IT AS ONE. Before this module the converge
+// knew one kind by name -- the CI prospect sheet's schema, file name and Drive marker were literals
+// inside it -- so a second kind could only arrive as a copied branch (DESIGN section 6b: the third
+// instance of one shape becomes a row). Everything that differs between kinds is here: the Drive
+// file's name and marker, and per tab its title, schema, conditional-format rules and where its
+// rows come from. gunbc.review_sheet_kind_roster lists the kinds, and nothing in the converge
+// branches on which one it holds.
+
+// WHO WRITES A TAB'S ROWS IS PART OF THE KIND, BECAUSE TWO ANSWERS EXIST TODAY. The realization
+// census supplies its rows as typed data, so this converge writes them. The CI prospect sheet's rows
+// are written by a consumer in another repository (strategy.ci_prospect_sheet_write, gunbc-private)
+// under its own transaction; this converge must not write them, and saying so is a typed arm rather
+// than an empty projection, because an empty projection is a different instruction -- it says the
+// tab should hold no derived rows -- and would read as one.
+type ReviewTabRows
+  = TabRowsProjected { rows: List<ProjectionRow> }
+  | TabRowsWrittenElsewhere { writer: NonEmptyStr }
+
+type ReviewSheetTab {
+  title: NonEmptyStr
+  schema: ReviewSheetSchema
+  rules: List<FormatRule>
+  rows: ReviewTabRows
+}
+
+type ReviewSheetKind {
+  kind_id: NonEmptyStr
+  sheet_name: NonEmptyStr
+  marker_value: NonEmptyStr
+  tabs: FreeSemigroup<ReviewSheetTab>
+}
+
+fn review_sheet_kind_tabs(kind: ReviewSheetKind) -> List<ReviewSheetTab> {
+  concat([kind.tabs.head], kind.tabs.tail)
+}
+
+fn review_sheet_kind_tab_titles(kind: ReviewSheetKind) -> FreeSemigroup<NonEmptyStr> {
+  FreeSemigroup { head: kind.tabs.head.title, tail: map(kind.tabs.tail, t => t.title) }
+}
+
+// A KIND IS ADMITTED BEFORE ANY REQUEST IS SPENT ON IT. Two tabs under one title would make the tab
+// set unconvergeable (the set check refuses a doubled title) and every per-title locate ambiguous,
+// so the kind refuses at its declaration instead of at the workbook. Each schema is validated here
+// once, and the validated schema is what the header init, the row write and the formatter receive.
+type AdmittedReviewSheetTab {
+  tab: ReviewSheetTab
+  validated: ValidatedHeaderSchema
+}
+
+type ReviewSheetKindAdmission
+  = ReviewSheetKindAdmitted { kind: ReviewSheetKind, tabs: List<AdmittedReviewSheetTab> }
+  | ReviewSheetKindRefused { kind_id: NonEmptyStr, cause: NonEmptyStr }
+
+type TabAdmissionScan {
+  admitted: List<AdmittedReviewSheetTab>
+  refusals: List<String>
+}
+
+fn admit_review_sheet_tabs(tabs: List<ReviewSheetTab>) -> TabAdmissionScan {
+  fold(tabs, init: TabAdmissionScan { admitted: [], refusals: [] }, f: fn(acc, tab) {
+    let doubled = count(filter(tabs, t => (t.title as String) == (tab.title as String))) > 1
+    if doubled {
+      TabAdmissionScan { admitted: acc.admitted, refusals: append(acc.refusals, [join(["tab title ", tab.title as String, " is declared more than once"], "")]) }
+    } else {
+      match validate_header_schema(schema: tab.schema) {
+        HeaderSchemaRefused { refusal: _, reason: r } =>
+          TabAdmissionScan { admitted: acc.admitted, refusals: append(acc.refusals, [join(["tab ", tab.title as String, ": ", r as String], "")]) }
+        HeaderSchemaValidated { validated: v } =>
+          TabAdmissionScan { admitted: append(acc.admitted, [AdmittedReviewSheetTab { tab: tab, validated: v }]), refusals: acc.refusals }
+      }
+    }
+  })
+}
+
+fn admit_review_sheet_kind(kind: ReviewSheetKind) -> ReviewSheetKindAdmission {
+  let scan = admit_review_sheet_tabs(tabs: review_sheet_kind_tabs(kind: kind))
+  if count(scan.refusals) > 0 {
+    ReviewSheetKindRefused { kind_id: kind.kind_id, cause: join(scan.refusals, "; ") as NonEmptyStr }
+  } else {
+    ReviewSheetKindAdmitted { kind: kind, tabs: scan.admitted }
+  }
+}
