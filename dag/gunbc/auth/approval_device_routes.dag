@@ -440,7 +440,7 @@ fn broker_token_signature(id_token: JwtCompactSerialization, epoch: Int, verify_
 // The broker's verification takes the broker's cache and no other: an instance's InstanceJwksCache is a
 // different type and does not stand here.
 fn broker_token_signature_over(cache: BrokerJwksCache, id_token: JwtCompactSerialization, epoch: Int, verify_id: NonEmptyStr) -> OidcIdTokenSignature {
-  oidc_id_token_signature_verify(ops: cache.ops, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
+  oidc_id_token_signature_verify(cache: cache.cache, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
 }
 
 // A fresh id for the signature verification's scratch files: 128 bits of entropy as lowercase hex.
@@ -503,22 +503,24 @@ data push_registration_slots: PushRegistrationSlotsDeclaration = PushRegistratio
   member: "approval-device-push" as NonEmptyStr,
 }
 
-// THE PUSH REGISTRATION STORE, A SEALED VALUE MINTED FROM THAT DECLARATION: its one field is the store's
-// one operation, closed over the derived directory, so the routes hold no path. Sealed in place: a record
-// is the bytes the store wrote before the seal. sole_constructor, non-generic, never a variant arm
-// (test.claim.sole_constructor_completeness_audit_probe f13). An enrolment id the filesystem would not admit
-// as a child of the directory is refused as a write, never resolved outside it.
+// THE PUSH REGISTRATION STORE, A SEALED VALUE MINTED FROM THAT DECLARATION: data only (the derived directory),
+// its one operation push_registration_store_write below. Sealed in place: a record is the bytes the store wrote
+// before the seal. sole_constructor, non-generic, never a variant arm
+// (test.claim.sole_constructor_completeness_audit_probe f13); construction is what is sealed, and the root is a
+// readable field (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). An
+// enrolment id the filesystem would not admit as a child of the directory is refused as a write, never
+// resolved outside it.
 type PushRegistrationStore sole_constructor {
-  write_registration: fn(NonEmptyStr, String) -> FilesystemWriteOutcome
+  root: NonEmptyStr
 }
 
 type PushRegistrationStoreReading
   = PushRegistrationStoreReady { store: PushRegistrationStore }
   | PushRegistrationStoreUnready { detail: String }
 
-fn push_registration_write_at(root: NonEmptyStr, enrollment_id: NonEmptyStr, push_json: String) -> FilesystemWriteOutcome {
+fn push_registration_store_write(store: PushRegistrationStore, enrollment_id: NonEmptyStr, push_json: String) -> FilesystemWriteOutcome {
   let name = (enrollment_id as String) + ".json"
-  let path = (root as String) + "/" + name
+  let path = (store.root as String) + "/" + name
   match admit_filesystem_entry_name(name: name) {
     FilesystemEntryNameRefused { name: _, cause: c } => FilesystemWriteRefused { path: path, error: c }
     FilesystemEntryNameAdmitted(_) => {
@@ -534,9 +536,7 @@ fn push_registration_store(tree: HostStateTree) -> PushRegistrationStoreReading 
   match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => PushRegistrationStoreUnready { detail: join(["the push registration store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => PushRegistrationStoreUnready { detail: join(["the push registration store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => PushRegistrationStoreReady { store: PushRegistrationStore {
-      write_registration: fn(enrollment_id, push_json) { push_registration_write_at(root: root, enrollment_id: enrollment_id, push_json: push_json) }
-    } }
+    FilesystemDirectoryListed(_) => PushRegistrationStoreReady { store: PushRegistrationStore { root: root } }
   }
 }
 
@@ -552,8 +552,7 @@ data approval_device_push_sender_frontier: DissolutionCondition = unbound_dissol
 )
 
 fn store_push_registration(pushes: PushRegistrationStore, enrollment_id: NonEmptyStr, push_json: String) -> DeviceRouteResponse? {
-  let write = pushes.write_registration
-  match write(enrollment_id, push_json) {
+  match push_registration_store_write(store: pushes, enrollment_id: enrollment_id, push_json: push_json) {
     FilesystemWritten { path: _ } => none
     FilesystemWriteRefused { path: _, error: e } => Present { value: device_refused(status: 503, reason: "push registration not stored: " + e) }
   }

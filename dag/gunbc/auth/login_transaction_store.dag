@@ -33,6 +33,8 @@ import extdeps.languages.json.parse {
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
 import gunbc.auth.login_transaction_store_root {
   LoginTransactionStore, LoginTransactionConsumeWon, LoginTransactionConsumeAlreadyWon, LoginTransactionConsumeRefused,
+  login_transaction_store_read_record, login_transaction_store_record_presence, login_transaction_store_write_record,
+  login_transaction_store_delete_record, login_transaction_store_consume,
 }
 
 data login_transaction_file_schema: String = "gunbc-login-transaction/v1"
@@ -174,7 +176,8 @@ fn login_transaction_decode_finish(
 // answers Found | Unknown | Unread | Malformed, and the callback's consume folds expiry in —
 // an expired transaction refuses AND is deleted, so the expired document cannot be replayed
 // either. Every operation takes the sealed LoginTransactionStore minted from the instance in
-// gunbc.auth.login_transaction_store_root and reaches a file only through its fields.
+// gunbc.auth.login_transaction_store_root and reaches a file only through that module's store
+// operations.
 
 type LoginTransactionStoreSave
   = LoginTransactionSaved { state: NonEmptyStr }
@@ -188,8 +191,7 @@ fn login_transaction_store_save(store: LoginTransactionStore, transaction: OidcL
 }
 
 fn login_transaction_store_save_keyed(store: LoginTransactionStore, key: AuthStoreKey, transaction: OidcLoginTransaction) -> LoginTransactionStoreSave {
-  let write = store.write_record
-  match write(key, login_transaction_json(transaction: transaction)) {
+  match login_transaction_store_write_record(store: store, key: key, content: login_transaction_json(transaction: transaction)) {
     FilesystemWritten { path: _ } => LoginTransactionSaved { state: transaction.state }
     FilesystemWriteRefused { path: _, error: e } => LoginTransactionSaveRefused { step: "write", reason: e }
   }
@@ -212,8 +214,7 @@ fn login_transaction_store_lookup(store: LoginTransactionStore, state: NonEmptyS
 
 fn login_transaction_store_lookup_keyed(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionStoreLookup {
   let state = key.value
-  let read = store.read_record
-  match read(key) {
+  match login_transaction_store_read_record(store: store, key: key) {
     FilesystemFileAbsent(absence) =>
       LoginTransactionStoreUnknown { state: absence.name as NonEmptyStr }
     FilesystemFileRead { path: _, content: c } =>
@@ -248,18 +249,15 @@ fn login_transaction_store_delete(store: LoginTransactionStore, state: NonEmptyS
 // there, so something else moved it.
 fn login_transaction_store_delete_keyed(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionStoreDelete {
   let state = key.value
-  let presence = store.record_presence
-  match presence(key) {
+  match login_transaction_store_record_presence(store: store, key: key) {
     FilesystemEntryAbsent(absence) =>
       LoginTransactionNothingToDelete { state: absence.name as NonEmptyStr }
     FilesystemEntryListed { directory: _, name: _ } => {
-      let consume = store.consume
-      match consume(key) {
+      match login_transaction_store_consume(store: store, key: key) {
         LoginTransactionConsumeAlreadyWon => LoginTransactionDeleteRefused { state: state, detail: "transaction consumption already won" }
         LoginTransactionConsumeRefused { detail: d } => LoginTransactionDeleteRefused { state: state, detail: join(["the transaction's consume hold could not be taken: ", d], "") }
         LoginTransactionConsumeWon => {
-          let delete = store.delete_record
-          match delete(key) {
+          match login_transaction_store_delete_record(store: store, key: key) {
             FilesystemDeleted { path: _ } => LoginTransactionDeleted { state: state }
             FilesystemDeleteTargetAbsent { path: p } => LoginTransactionDeleteRefused { state: state, detail: join(["the listed transaction file ", p, " was absent when it was deleted"], "") }
             FilesystemDeleteRefused { path: _, kind: _, error: e } => LoginTransactionDeleteRefused { state: state, detail: e }

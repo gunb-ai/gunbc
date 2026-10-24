@@ -19,7 +19,7 @@ import extdeps.languages.json.parse {
 import extdeps.uri { Uri, Https, Http, uri_wire }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
-import gunbc.auth.profile_store_root { ProfileStore, ProfileStoreReading, ProfileStoreReady, ProfileStoreUnready, profile_store_file_suffix }
+import gunbc.auth.profile_store_root { ProfileStore, ProfileStoreReading, ProfileStoreReady, ProfileStoreUnready, profile_store_file_suffix, profile_store_list, profile_store_read_record, profile_store_write_record, profile_store_read_listed }
 import gunbc.auth.session { AuthenticatedSession }
 
 // THE PROFILE PROJECTION (Cut 4 plan, docs/plans/google-workspace-identity-convergence.md
@@ -239,8 +239,7 @@ fn profile_store_upsert_from_session(store: ProfileStore, session: Authenticated
       ProfileStoreUpsertRefused { step: "digest", reason: r }
     Sha256FileDigest { digest: d } =>
       let digest_hex = d.hex as String
-      let read = store.read_record
-      match read(digest_hex) {
+      match profile_store_read_record(store: store, digest_hex: digest_hex) {
         FilesystemFileIndeterminate { cause: c } =>
           ProfileStoreUpsertRefused { step: "read", reason: c }
         FilesystemFileObservationsDisagree { path: _, cause: c } =>
@@ -287,8 +286,7 @@ fn profile_store_upsert_write(store: ProfileStore, digest_hex: String, session: 
     updated_at: session.authenticated_at,
     source: ProfileSourceGoogleOidcLogin,
   }
-  let write = store.write_record
-  match write(digest_hex, principal_profile_json(profile: merged)) {
+  match profile_store_write_record(store: store, digest_hex: digest_hex, content: principal_profile_json(profile: merged)) {
     FilesystemWritten { path: _ } => ProfileStoreUpserted { principal: session.principal }
     FilesystemWriteRefused { path: _, error: e } => ProfileStoreUpsertRefused { step: "write", reason: e }
   }
@@ -311,8 +309,7 @@ type ProfileStoreReadAll
 // assignee picker (the never-blocks law at the read side; the malformed file stays on disk for
 // inspection).
 fn profile_store_read_all(store: ProfileStore) -> ProfileStoreReadAll {
-  let list = store.list
-  match list() {
+  match profile_store_list(store: store) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnread { step: "list", reason: c }
     FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnread { step: "list", reason: e }
     FilesystemDirectoryListed(listing) => {
@@ -349,8 +346,7 @@ fn profile_store_decode_entries(
       let stepped = if !ends_with(s: entry, suffix: profile_store_file_suffix) {
         { profiles: acc, skipped: skipped_acc }
       } else {
-        let read_listed = store.read_listed
-        match read_listed(entry) {
+        match profile_store_read_listed(store: store, entry: entry) {
           FilesystemReadRefused { error } => {
             let refused_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", error], "") }]) }
             refused_file

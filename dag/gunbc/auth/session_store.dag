@@ -46,7 +46,11 @@ import gunbc.auth.session {
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
 }
-import gunbc.auth.session_store_root { SessionStore, session_store_file_suffix }
+import gunbc.auth.session_store_root {
+  SessionStore, session_store_file_suffix,
+  session_store_list, session_store_read_record, session_store_record_presence, session_store_write_record,
+  session_store_delete_record, session_store_read_listed,
+}
 import std.algebra { collection_concat_shape, collection_join_shape, list_push }
 
 data session_file_schema: String = "gunbc-auth-session/v1"
@@ -356,8 +360,8 @@ fn session_client_of_label(label: String) -> SessionClient? {
 // ── The store operations ───────────────────────────────────────────────────────────────────────
 // THREE OPERATIONS AND NOTHING ELSE, the carrier's grain: save one session, resolve one id,
 // delete one id. WHERE sessions live is gunbc.auth.session_store_root: every operation here takes
-// the sealed SessionStore minted there from the instance, and reaches a file only through its
-// fields. The seam asks the questions, the model decides over the answers.
+// the sealed SessionStore minted there from the instance, and reaches a file only through that
+// module's store operations. The seam asks the questions, the model decides over the answers.
 
 type SessionStoreSave
   = SessionStoreSaved { session_id: NonEmptyStr }
@@ -376,8 +380,7 @@ fn session_store_save(store: SessionStore, session: AuthenticatedSession) -> Ses
 }
 
 fn session_store_save_keyed(store: SessionStore, key: AuthStoreKey, session: AuthenticatedSession) -> SessionStoreSave {
-  let write = store.write_record
-  match write(key, authenticated_session_json(session: session)) {
+  match session_store_write_record(store: store, key: key, content: authenticated_session_json(session: session)) {
     FilesystemWritten { path: _ } => SessionStoreSaved { session_id: session.session_id }
     FilesystemWriteRefused { path: _, error: e } => SessionStoreSaveRefused { step: "write", reason: e }
   }
@@ -390,7 +393,7 @@ type SessionStoreLookup
   | SessionStoreEntryMalformed { session_id: NonEmptyStr, detail: String }
 
 // THE LOOKUP, absence established from a listing and never from a failed read: the store's
-// read_record folds the listing through filesystem_file_observation, so "the store could not be
+// session_store_read_record folds the listing through filesystem_file_observation, so "the store could not be
 // listed", "the file was listed and would not read", and "no such file is listed" are three answers
 // that keep their remedies. The id lands in every refusal so a located cause can name the session a
 // request claimed.
@@ -405,8 +408,7 @@ fn session_store_lookup(store: SessionStore, session_id: NonEmptyStr) -> Session
 
 fn session_store_lookup_keyed(store: SessionStore, key: AuthStoreKey) -> SessionStoreLookup {
   let session_id = key.value
-  let read = store.read_record
-  match read(key) {
+  match session_store_read_record(store: store, key: key) {
     FilesystemFileAbsent(absence) =>
       SessionStoreUnknown { session_id: absence.name as NonEmptyStr }
     FilesystemFileRead { path: _, content: c } =>
@@ -453,13 +455,11 @@ fn session_store_delete_refusal(deleted: FilesystemDelete) -> String? {
 
 fn session_store_delete_keyed(store: SessionStore, key: AuthStoreKey) -> SessionStoreDelete {
   let session_id = key.value
-  let presence = store.record_presence
-  match presence(key) {
+  match session_store_record_presence(store: store, key: key) {
     FilesystemEntryAbsent(absence) =>
       SessionStoreNothingToDelete { session_id: absence.name as NonEmptyStr }
     FilesystemEntryListed { directory: _, name: _ } => {
-      let delete = store.delete_record
-      match session_store_delete_refusal(deleted: delete(key)) {
+      match session_store_delete_refusal(deleted: session_store_delete_record(store: store, key: key)) {
         Absent => SessionStoreDeleted { session_id: session_id }
         Present { value: e } => SessionStoreDeleteRefused { session_id: session_id, detail: e }
       }
@@ -490,8 +490,7 @@ fn session_store_purge_principal(
   principal: PrincipalRef,
   except_session_id: NonEmptyStr,
 ) -> SessionStorePurge {
-  let list = store.list
-  match list() {
+  match session_store_list(store: store) {
     FilesystemDirectoryListed(listed) =>
       session_store_purge_listed(store: store, principal: principal, except_session_id: except_session_id, entries: split(s: listed.entries, delimiter: "\n"))
     FilesystemDirectoryListingRefused { directory: _, error: e } =>
@@ -557,8 +556,7 @@ fn session_store_purge_targets(
                 targets: targets,
               )
             } else {
-              let read_listed = store.read_listed
-              match read_listed(entry) {
+              match session_store_read_listed(store: store, entry: entry) {
                 FilesystemReadRefused { error: e } =>
                   SessionStorePurgePlanRefused {
                     step: join(["read ", entry], ""),
@@ -606,8 +604,7 @@ fn session_store_purge_execute(store: SessionStore, targets: List<NonEmptyStr>, 
       match auth_store_key_of(raw: target as String) {
         Absent => SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: "a listed session entry is not a store key; refusing rather than deleting outside the store" }
         Present { value: key } => {
-          let delete = store.delete_record
-          match session_store_delete_refusal(deleted: delete(key)) {
+          match session_store_delete_refusal(deleted: session_store_delete_record(store: store, key: key)) {
             Absent => session_store_purge_execute(store: store, targets: targets.skip(n: 1), deleted: deleted + 1)
             Present { value: e } => SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: e }
           }

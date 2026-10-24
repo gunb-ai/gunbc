@@ -38,38 +38,42 @@ fn profile_store_file_name(digest_hex: String) -> String {
 }
 
 // THE PROFILE STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.auth.session_store_root SessionStore
-// is: its fields are the store's operations closed over the derived root, there is no root field, and the
-// files are the bytes the store wrote before it was sealed. read_record and write_record take the digest
-// that names a principal's file; read_listed takes an entry a listing named. A name the filesystem would not
-// admit as a child of the root is refused, never resolved outside it. sole_constructor, non-generic and never
-// a variant arm (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: a store minted
-// for instance A refused where B is required.
+// is: data only (the instance and the derived root), its operations the functions below, and the files the bytes
+// the store wrote before it was sealed. read_record and write_record take the digest that names a principal's
+// file; read_listed takes an entry a listing named. A name the filesystem would not admit as a child of the root
+// is refused, never resolved outside it. sole_constructor, non-generic and never a variant arm
+// (test.claim.sole_constructor_completeness_audit_probe f13). Construction is what is sealed; the root is a
+// readable field (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). NOT
+// established: a store minted for instance A refused where B is required.
 type ProfileStore sole_constructor {
   instance: NonEmptyStr
-  read_record: fn(String) -> FilesystemFileObservation
-  write_record: fn(String, String) -> FilesystemWriteOutcome
-  list: fn() -> FilesystemListingObservation
-  read_listed: fn(String) -> FilesystemReadOutcome
+  root: NonEmptyStr
 }
 
 type ProfileStoreReading
   = ProfileStoreReady { store: ProfileStore }
   | ProfileStoreUnready { detail: String }
 
-fn profile_store_listing(root: FilePath) -> FilesystemListingObservation {
-  let listed = Filesystem.List(path: root as String)
-  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
+fn profile_store_listing_at(root: String) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: root)
+  filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
-fn profile_store_read_record_at(root: FilePath, digest_hex: String) -> FilesystemFileObservation {
+// ── The store's operations ─────────────────────────────────────────────────────────────────────
+
+fn profile_store_list(store: ProfileStore) -> FilesystemListingObservation {
+  profile_store_listing_at(root: store.root as String)
+}
+
+fn profile_store_read_record(store: ProfileStore, digest_hex: String) -> FilesystemFileObservation {
   let name = profile_store_file_name(digest_hex: digest_hex)
   match admit_filesystem_entry_name(name: name) {
-    FilesystemEntryNameRefused { name: n, cause: c } => FilesystemFileSubjectRefused { directory: root as String, name: n, cause: c }
+    FilesystemEntryNameRefused { name: n, cause: c } => FilesystemFileSubjectRefused { directory: store.root as String, name: n, cause: c }
     FilesystemEntryNameAdmitted(_) => {
-      let path = join([root as String, "/", name], "")
+      let path = join([store.root as String, "/", name], "")
       let read = Filesystem.Read(path: path)
       filesystem_file_observation(
-        listing: profile_store_listing(root: root),
+        listing: profile_store_list(store: store),
         name: name,
         path: path,
         read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
@@ -78,9 +82,9 @@ fn profile_store_read_record_at(root: FilePath, digest_hex: String) -> Filesyste
   }
 }
 
-fn profile_store_write_record_at(root: FilePath, digest_hex: String, content: String) -> FilesystemWriteOutcome {
+fn profile_store_write_record(store: ProfileStore, digest_hex: String, content: String) -> FilesystemWriteOutcome {
   let name = profile_store_file_name(digest_hex: digest_hex)
-  let path = join([root as String, "/", name], "")
+  let path = join([store.root as String, "/", name], "")
   match admit_filesystem_entry_name(name: name) {
     FilesystemEntryNameRefused { name: _, cause: c } => FilesystemWriteRefused { path: path, error: c }
     FilesystemEntryNameAdmitted(_) => {
@@ -90,11 +94,11 @@ fn profile_store_write_record_at(root: FilePath, digest_hex: String, content: St
   }
 }
 
-fn profile_store_read_listed_at(root: FilePath, entry: String) -> FilesystemReadOutcome {
+fn profile_store_read_listed(store: ProfileStore, entry: String) -> FilesystemReadOutcome {
   match admit_filesystem_entry_name(name: entry) {
     FilesystemEntryNameRefused { name: _, cause: c } => FilesystemReadRefused { error: c }
     FilesystemEntryNameAdmitted(_) => {
-      let read = Filesystem.Read(path: join([root as String, "/", entry], ""))
+      let read = Filesystem.Read(path: join([store.root as String, "/", entry], ""))
       filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
     }
   }
@@ -104,16 +108,10 @@ fn profile_store_read_listed_at(root: FilePath, entry: String) -> FilesystemRead
 // directory is listed, and only a listed directory yields a store.
 fn profile_store(instance: HostDashboardInstance) -> ProfileStoreReading {
   let root = profile_store_slots_path(instance: instance)
-  match profile_store_listing(root: root) {
+  match profile_store_listing_at(root: root as String) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnready { detail: join(["the profile store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnready { detail: join(["the profile store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => ProfileStoreReady { store: ProfileStore {
-      instance: instance.instance_id,
-      read_record: fn(digest_hex) { profile_store_read_record_at(root: root, digest_hex: digest_hex) }
-      write_record: fn(digest_hex, content) { profile_store_write_record_at(root: root, digest_hex: digest_hex, content: content) }
-      list: fn() { profile_store_listing(root: root) }
-      read_listed: fn(entry) { profile_store_read_listed_at(root: root, entry: entry) }
-    } }
+    FilesystemDirectoryListed(_) => ProfileStoreReady { store: ProfileStore { instance: instance.instance_id, root: root as String as NonEmptyStr } }
   }
 }
 

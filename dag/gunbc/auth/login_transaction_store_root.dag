@@ -42,10 +42,6 @@ fn login_transaction_file_name(key: AuthStoreKey) -> String {
   join([key.value as String, login_transaction_file_suffix], "")
 }
 
-fn login_transaction_entry_path(root: FilePath, name: String) -> String {
-  join([root as String, "/", name], "")
-}
-
 // ── The single-consume election ─────────────────────────────────────────────────────────────────
 // A TRANSACTION IS CONSUMED BY WINNING ITS HOLD, never by a hand-written marker. Consumption is an
 // exclusion: of every callback that presents one state, exactly one may go on to the code exchange. That is
@@ -82,81 +78,95 @@ fn login_transaction_consume_election_of(outcome: FileHoldAcquireOutcome) -> Log
 }
 
 // THE LOGIN TRANSACTION STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.auth.session_store_root
-// SessionStore is: its fields are the store's operations closed over the derived root, there is no root
-// field, and the records are the bytes the store wrote before it was sealed. sole_constructor, non-generic
-// and never a variant arm (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: a store
-// minted for instance A refused where B is required.
-//
-// stage_token_form / remove_token_form are the callback's token-request scratch (one owner-only file per
-// state, written, posted and removed in one request; a scratch row, not a store), staged in this store's
-// owner-only directory as it was before the seal. The written arm carries the staged file's path because
-// http.Client.PostFormFromFile reads its body from a path; it names one scratch file, not the store root,
-// and no store can be minted from it.
+// SessionStore is: data only (the instance and the derived root), its operations the functions below, and the
+// records the bytes the store wrote before it was sealed. sole_constructor, non-generic and never a variant arm
+// (test.claim.sole_constructor_completeness_audit_probe f13). Construction is what is sealed; the root is a
+// readable field (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). NOT
+// established: a store minted for instance A refused where B is required.
 type LoginTransactionStore sole_constructor {
   instance: NonEmptyStr
-  read_record: fn(AuthStoreKey) -> FilesystemFileObservation
-  record_presence: fn(AuthStoreKey) -> FilesystemEntryPresence
-  write_record: fn(AuthStoreKey, String) -> FilesystemWriteOutcome
-  delete_record: fn(AuthStoreKey) -> FilesystemDelete
-  consume: fn(AuthStoreKey) -> LoginTransactionConsumeElection
-  stage_token_form: fn(AuthStoreKey, String) -> FilesystemWriteOutcome
-  remove_token_form: fn(AuthStoreKey) -> FilesystemDelete
+  root: NonEmptyStr
 }
 
 type LoginTransactionStoreReading
   = LoginTransactionStoreReady { store: LoginTransactionStore }
   | LoginTransactionStoreUnready { detail: String }
 
-fn login_transaction_store_listing(root: FilePath) -> FilesystemListingObservation {
-  let listed = Filesystem.List(path: root as String)
-  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
+fn login_transaction_store_listing_at(root: String) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: root)
+  filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
-fn login_transaction_read_record_at(root: FilePath, key: AuthStoreKey) -> FilesystemFileObservation {
+fn login_transaction_entry_at(store: LoginTransactionStore, name: String) -> String {
+  join([store.root as String, "/", name], "")
+}
+
+fn login_transaction_write_owner_only(store: LoginTransactionStore, name: String, content: String) -> FilesystemWriteOutcome {
+  let path = login_transaction_entry_at(store: store, name: name)
+  let written = Filesystem.WriteOwnerOnly(path: path, content: content)
+  filesystem_write_outcome(path: path, success: written.success, error: written.error)
+}
+
+fn login_transaction_delete_entry(store: LoginTransactionStore, name: String) -> FilesystemDelete {
+  let path = login_transaction_entry_at(store: store, name: name)
+  let deleted = Filesystem.Delete(path: path)
+  filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind)
+}
+
+// ── The store's operations ─────────────────────────────────────────────────────────────────────
+
+fn login_transaction_store_read_record(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemFileObservation {
   let name = login_transaction_file_name(key: key)
-  let path = login_transaction_entry_path(root: root, name: name)
+  let path = login_transaction_entry_at(store: store, name: name)
   let read = Filesystem.Read(path: path)
   filesystem_file_observation(
-    listing: login_transaction_store_listing(root: root),
+    listing: login_transaction_store_listing_at(root: store.root as String),
     name: name,
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   )
 }
 
-fn login_transaction_write_owner_only_at(root: FilePath, name: String, content: String) -> FilesystemWriteOutcome {
-  let path = login_transaction_entry_path(root: root, name: name)
-  let written = Filesystem.WriteOwnerOnly(path: path, content: content)
-  filesystem_write_outcome(path: path, success: written.success, error: written.error)
+fn login_transaction_store_record_presence(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemEntryPresence {
+  filesystem_entry_presence(listing: login_transaction_store_listing_at(root: store.root as String), name: login_transaction_file_name(key: key))
 }
 
-fn login_transaction_delete_at(root: FilePath, name: String) -> FilesystemDelete {
-  let path = login_transaction_entry_path(root: root, name: name)
-  let deleted = Filesystem.Delete(path: path)
-  filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind)
+fn login_transaction_store_write_record(store: LoginTransactionStore, key: AuthStoreKey, content: String) -> FilesystemWriteOutcome {
+  login_transaction_write_owner_only(store: store, name: login_transaction_file_name(key: key), content: content)
 }
 
+fn login_transaction_store_delete_record(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemDelete {
+  login_transaction_delete_entry(store: store, name: login_transaction_file_name(key: key))
+}
+
+fn login_transaction_store_consume(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionConsumeElection {
+  login_transaction_consume_election_of(outcome: file_hold_acquire(root: store.root, slot_key: key.value, requested_owner: login_transaction_consume_owner))
+}
+
+// THE CALLBACK'S TOKEN-REQUEST SCRATCH: one owner-only file per state, written, posted and removed in one
+// request (a scratch row, not a store), staged in this store's owner-only directory as it was before the seal.
+// The written arm carries the staged file's path because http.Client.PostFormFromFile reads its body from a
+// path; it names one scratch file, and no store can be minted from it.
 fn login_transaction_token_form_name(key: AuthStoreKey) -> String {
   join([key.value as String, "-token.form"], "")
+}
+
+fn login_transaction_store_stage_token_form(store: LoginTransactionStore, key: AuthStoreKey, form: String) -> FilesystemWriteOutcome {
+  login_transaction_write_owner_only(store: store, name: login_transaction_token_form_name(key: key), content: form)
+}
+
+fn login_transaction_store_remove_token_form(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemDelete {
+  login_transaction_delete_entry(store: store, name: login_transaction_token_form_name(key: key))
 }
 
 // THE ONE MINT. It takes the instance and nothing else: the root is derived from
 // login_transaction_store_slots, the directory is listed, and only a listed directory yields a store.
 fn login_transaction_store(instance: HostDashboardInstance) -> LoginTransactionStoreReading {
   let root = login_transaction_store_slots_path(instance: instance)
-  match login_transaction_store_listing(root: root) {
+  match login_transaction_store_listing_at(root: root as String) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => LoginTransactionStoreUnready { detail: join(["the login transaction store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => LoginTransactionStoreUnready { detail: join(["the login transaction store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => LoginTransactionStoreReady { store: LoginTransactionStore {
-      instance: instance.instance_id,
-      read_record: fn(key) { login_transaction_read_record_at(root: root, key: key) }
-      record_presence: fn(key) { filesystem_entry_presence(listing: login_transaction_store_listing(root: root), name: login_transaction_file_name(key: key)) }
-      write_record: fn(key, content) { login_transaction_write_owner_only_at(root: root, name: login_transaction_file_name(key: key), content: content) }
-      delete_record: fn(key) { login_transaction_delete_at(root: root, name: login_transaction_file_name(key: key)) }
-      consume: fn(key) { login_transaction_consume_election_of(outcome: file_hold_acquire(root: root as String as NonEmptyStr, slot_key: key.value, requested_owner: login_transaction_consume_owner)) }
-      stage_token_form: fn(key, form) { login_transaction_write_owner_only_at(root: root, name: login_transaction_token_form_name(key: key), content: form) }
-      remove_token_form: fn(key) { login_transaction_delete_at(root: root, name: login_transaction_token_form_name(key: key)) }
-    } }
+    FilesystemDirectoryListed(_) => LoginTransactionStoreReady { store: LoginTransactionStore { instance: instance.instance_id, root: root as String as NonEmptyStr } }
   }
 }
 

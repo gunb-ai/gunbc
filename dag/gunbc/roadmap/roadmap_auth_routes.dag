@@ -7,7 +7,7 @@ import gunbc.auth.session { SessionCookieAbsent, SessionCookieUnread, SessionCoo
 import gunbc.auth.session_store_root { SessionStore, SessionStoreReady, SessionStoreUnready, session_store }
 import gunbc.auth.session_store { session_cookie_standing_of_lookup, session_store_save, session_store_delete, session_store_purge_principal, SessionStoreSaved, SessionStoreSaveRefused, SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused, SessionStorePurged, SessionStorePurgeRefused }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig, OidcDeploymentConfigLoaded, OidcDeploymentConfigUnavailable, oidc_deployment_config_read }
-import gunbc.auth.login_transaction_store_root { LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store }
+import gunbc.auth.login_transaction_store_root { LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_stage_token_form, login_transaction_store_remove_token_form }
 import gunbc.auth.auth_store_key { auth_store_key_of }
 import gunbc.auth.login_transaction_store { login_transaction_store_save, login_transaction_store_lookup, login_transaction_store_delete, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused }
 import gunbc.auth.oidc_id_token_verification { InstanceJwksCache, InstanceJwksCacheReady, InstanceJwksCacheUnready, instance_jwks_cache, oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused }
@@ -451,14 +451,12 @@ fn auth_callback_exchange_decoded(instance: HostDashboardInstance, transaction: 
               Absent =>
                 serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be staged\n")
               Present { value: key } => {
-                let stage = transactions.stage_token_form
-                match stage(key, form) {
+                match login_transaction_store_stage_token_form(store: transactions, key: key, form: form) {
                   FilesystemWriteRefused { path: _, error: _ } =>
                     serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be staged\n")
                   FilesystemWritten { path: form_path } => {
                     let got = http.Client.PostFormFromFile(url: "https://oauth2.googleapis.com/token" as NonEmptyStr, request_body_file: form_path, max_seconds: "15" as NonEmptyStr)
-                    let remove = transactions.remove_token_form
-                    let cleanup_error = auth_token_form_cleanup_error(cleanup: remove(key))
+                    let cleanup_error = auth_token_form_cleanup_error(cleanup: login_transaction_store_remove_token_form(store: transactions, key: key))
                     match auth_token_exchange_disposition(cleanup_succeeded: cleanup_error == "", cleanup_error: cleanup_error, exchange_succeeded: got.success, exchange_body: got.body) {
                       TokenExchangeRefused { response: r } => r
                       TokenExchangeAnswered { body: b } => auth_callback_id_token(instance: instance, transaction: transaction, config: config, exchange_body: b)
@@ -583,7 +581,7 @@ fn auth_callback_verify(instance: HostDashboardInstance, transaction: OidcLoginT
 // The dashboard's verification takes its instance's cache and no other: the approval broker's BrokerJwksCache
 // is a different type and does not stand here.
 fn auth_token_signature(cache: InstanceJwksCache, id_token: NonEmptyStr, epoch: Int, verify_id: NonEmptyStr) -> OidcIdTokenSignature {
-  oidc_id_token_signature_verify(ops: cache.ops, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
+  oidc_id_token_signature_verify(cache: cache.cache, id_token: id_token, now_epoch: epoch, verify_id: verify_id)
 }
 
 fn auth_callback_verdict(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, id_token: NonEmptyStr, epoch: Int, verify_id: NonEmptyStr) -> ServeHttpResponse {

@@ -8,7 +8,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.auth.auth_store_key { auth_store_key_of }
 import gunbc.auth.login_transaction_store_root {
-  LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_slots_path,
+  LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_slots_path, login_transaction_store_consume,
   LoginTransactionConsumeWon, LoginTransactionConsumeAlreadyWon, LoginTransactionConsumeRefused,
 }
 import gunbc.auth.login_transaction_store { login_transaction_store_save, login_transaction_store_delete, login_transaction_store_lookup, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed }
@@ -81,9 +81,8 @@ test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing()
             match auth_store_key_of(raw: transaction.state as String) {
               Absent => false
               Present { value: key } => {
-                let consume = store.consume
-                let won = match consume(key) { LoginTransactionConsumeWon => true  LoginTransactionConsumeAlreadyWon => false  LoginTransactionConsumeRefused { detail: _ } => false }
-                let again = match consume(key) { LoginTransactionConsumeAlreadyWon => true  LoginTransactionConsumeWon => false  LoginTransactionConsumeRefused { detail: _ } => false }
+                let won = match login_transaction_store_consume(store: store, key: key) { LoginTransactionConsumeWon => true  LoginTransactionConsumeAlreadyWon => false  LoginTransactionConsumeRefused { detail: _ } => false }
+                let again = match login_transaction_store_consume(store: store, key: key) { LoginTransactionConsumeAlreadyWon => true  LoginTransactionConsumeWon => false  LoginTransactionConsumeRefused { detail: _ } => false }
                 won && again && match login_transaction_store_delete(store: store, state: transaction.state) {
                   LoginTransactionDeleteRefused { state: _, detail: _ } =>
                     match login_transaction_store_lookup(store: store, state: transaction.state) {
