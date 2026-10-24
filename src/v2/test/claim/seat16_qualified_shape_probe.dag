@@ -1,0 +1,200 @@
+module v2.test.claim.seat16_qualified_shape_probe
+
+// SCRATCH PROBE (NEVER MERGE): what does the qualified fixture ACTUALLY lower to through the fold
+// door? PR #14994 round 2 measurement: the qualified triad (RED, shape POSITIVE, pin) is red BOTH
+// with and without the fold-site mutation, and the shape POSITIVE does not depend on the
+// occurrence -- so seat16_qualified_call_opt never finds the node it looks for. Each claim below
+// is one binary question about the lowered tree, so the run's PASS/FAIL pattern locates the
+// truth. Controls: the receiver fixture (measured green through the same door) and the EXACT
+// green source text from v2.test.claim.body_lowering_qualified_path's qualified call.
+
+import std.optional { Absent, Optional, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.list { first_where }
+import std.algebra { list_at_optional }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Node,
+  Symbol,
+  Transform,
+  TypeNode,
+  node_subtree_nodes,
+  positional_child_target_nodes
+}
+import v2.std.qualified_name { qualified_name_from_node, qualified_name_to_dotted_string }
+import v2.test.claim.body_lowering_call_node_occurrence { seat16_door_lowered }
+
+// Declared HERE, not imported: the probe's fixtures are byte-copies of the PR module's and the
+// green qualified_path qualified call, so the probe measures the same text without importing
+// data across claim modules.
+data prb_qualified_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+data prb_green_text_source: String = "module wall.peer\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+data prb_receiver_source: String = "module probe.receiver\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Int {\n  r.items[i].load(a: 7)\n}\n"
+
+fn prb_dotted(n: Node) -> String {
+  match qualified_name_from_node(root: n) {
+    Rejected { diagnostics: _ } => ""
+    Accepted { value: qn, diagnostics: _ } => qualified_name_to_dotted_string(qn: qn)
+  }
+}
+
+fn prb_found(opt: Optional<Node>) -> Bool {
+  match opt {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn prb_slot0(n: Node) -> Optional<Node> {
+  list_at_optional(xs: positional_child_target_nodes(node: n), index: 0)
+}
+
+fn prb_is_transform(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => true
+    _ => false
+  }
+}
+
+fn prb_any_transform(tree: Node) -> Bool {
+  prb_found(first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { prb_is_transform(n: n) }))
+}
+
+fn prb_any_transform_slot0_dotted(tree: Node, want: String) -> Bool {
+  prb_found(first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) {
+    match prb_is_transform(n: n) {
+      true =>
+        match prb_slot0(n: n) {
+          Present { value: s0 } => prb_dotted(n: s0) == want
+          Absent => false
+        }
+      false => false
+    }
+  }))
+}
+
+fn prb_any_dotted(tree: Node, want: String) -> Bool {
+  prb_found(first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { prb_dotted(n: n) == want }))
+}
+
+fn prb_any_transform_slot0_conj(tree: Node) -> Bool {
+  prb_found(first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) {
+    match prb_is_transform(n: n) {
+      true =>
+        match prb_slot0(n: n) {
+          Present { value: s0 } =>
+            match s0.kind {
+              TypeNode { connective: Conj } => true
+              _ => false
+            }
+          Absent => false
+        }
+      false => false
+    }
+  }))
+}
+
+fn prb_any_transform_slot0_atom_named(tree: Node, name: Symbol) -> Bool {
+  prb_found(first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) {
+    match prb_is_transform(n: n) {
+      true =>
+        match prb_slot0(n: n) {
+          Present { value: s0 } =>
+            match s0.kind {
+              TypeNode { connective: Atom { identity: id } } => id == name
+              _ => false
+            }
+          Absent => false
+        }
+      false => false
+    }
+  }))
+}
+
+// Q01: does the door even ACCEPT the fixture (return a lowered tree)? If false, every later
+// qualified claim's falsity is explained at once and the fixture is the suspect, not the locator.
+test fn q01_qualified_door_found() -> Bool {
+  prb_found(seat16_door_lowered(source: prb_qualified_source))
+}
+
+// Q02: control -- the EXACT green text from body_lowering_qualified_path through the same door.
+test fn q02_green_text_door_found() -> Bool {
+  prb_found(seat16_door_lowered(source: prb_green_text_source))
+}
+
+// Q03: does the tree contain ANY Transform (a call at all)?
+test fn q03_qualified_any_transform() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_transform(tree: tree)
+    Absent => false
+  }
+}
+
+// Q04: the claim's current locator (Transform whose slot 0 reads wall.peer.peer_leaf).
+test fn q04_slot0_dotted_qual() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_transform_slot0_dotted(tree: tree, want: "wall.peer.peer_leaf")
+    Absent => false
+  }
+}
+
+// Q05: does ANY node, of any kind, read as wall.peer.peer_leaf?
+test fn q05_any_node_dotted_qual() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_dotted(tree: tree, want: "wall.peer.peer_leaf")
+    Absent => false
+  }
+}
+
+// Q06/Q07: what SHAPE is the first positional slot of some Transform -- a Conj spine, or an atom?
+test fn q06_transform_slot0_is_conj() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_transform_slot0_conj(tree: tree)
+    Absent => false
+  }
+}
+
+test fn q07_transform_slot0_is_atom_peer_leaf() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_transform_slot0_atom_named(tree: tree, name: ^peer_leaf)
+    Absent => false
+  }
+}
+
+// Q08-Q10: alternative dotted readings, to tell a wrong-spine lowering from a missing call.
+test fn q08_transform_slot0_dotted_wall_peer() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_transform_slot0_dotted(tree: tree, want: "wall.peer")
+    Absent => false
+  }
+}
+
+test fn q09_transform_slot0_dotted_wall() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_transform_slot0_dotted(tree: tree, want: "wall")
+    Absent => false
+  }
+}
+
+test fn q10_any_node_dotted_peer_leaf() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_any_dotted(tree: tree, want: "peer_leaf")
+    Absent => false
+  }
+}
+
+// Q11: harness control -- the receiver fixture lowers and its call is found through this same
+// door+probe machinery (measured green as a claim; must stay green here).
+test fn q11_receiver_control_door_found() -> Bool {
+  prb_found(seat16_door_lowered(source: prb_receiver_source))
+}
+
+// Q12: is the ROOT itself the call (Transform) -- distinguishes root-is-call from call-deeper.
+test fn q12_root_is_transform() -> Bool {
+  match seat16_door_lowered(source: prb_qualified_source) {
+    Present { value: tree } => prb_is_transform(n: tree)
+    Absent => false
+  }
+}
