@@ -1,6 +1,6 @@
 module gunbc.rung_drop.literal_only_where_refinement_judgment
 
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
@@ -15,6 +15,8 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // judgment is built for that population only. Non-literals still refuse; cast, return and let positions are
 // not covered (counted frontier, each still refuses the literal). The rung is mechanically preventable, not
 // guaranteed: safety depends on the demand producer and the post-pass staying enrolled.
+data literal_only_where_refinement_judgment_population: FreeSemigroup<String> = FreeSemigroup { head: "a literal at a where-refinement-typed call argument", tail: ["a literal at a where-refinement-typed record field"] }
+
 data literal_only_where_refinement_judgment: RungDrop = RungDrop {
   identity: "literal_only_where_refinement_judgment" as NonEmptyStr,
 
@@ -26,7 +28,7 @@ data literal_only_where_refinement_judgment: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged { replacement: "NonEmptyStr and the other where-refinements become checked constructors returning Optional (where_refinements_retire_for_checked_constructors); the literal-only judgment is the operator-ruled interim of 2026-10-23" },
-    population: Enumerated { members: FreeSemigroup { head: "a literal at a where-refinement-typed call argument", tail: ["a literal at a where-refinement-typed record field"] } },
+    population: Enumerated { members: literal_only_where_refinement_judgment_population },
     restoration_trigger: "the NonEmptyStr structural cut lands, SUFFICIENT FOR no where-refinement clause to reach infer: then InferLiteralRefinementDemand, infer_literal_refinement_demand and infer_demands_to_obligations are deleted with the clause."
   } }
 }
