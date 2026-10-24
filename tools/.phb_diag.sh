@@ -2,7 +2,7 @@
 set -u
 source <(sed -n '/^B()/p;/^regen()/,/^}/p;/^wit()/,/^}/p' tools/.phaseb_run.sh)
 B; regen
-wit HEAD
+# wit HEAD (receipt: phb_diag9)
 python3 - <<'P'
 p='src/v1/04_infer.dag'; s=open(p).read()
 a=s.index('fn nominal_value_at_host_text_diags'); o='  if value_type_is_declared_nominal(t: t, scope: scope) {'; b=s.index(o,a)
