@@ -1241,8 +1241,6 @@ fn dispatch_attempt_identity_claim(instance: HostDashboardInstance, node_id: Roa
   }
 }
 
-}
-
 // Verification validates the committed head in a DETACHED checkout, never the mutable
 // implementation worktree the agent may still be editing. The path is head-addressed beside the
 // attempt worktree so multiple heads per attempt each retain their own immutable tree without
