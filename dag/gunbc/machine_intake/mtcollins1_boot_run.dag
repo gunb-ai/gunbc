@@ -75,7 +75,7 @@ import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import std.optional { Present }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate, mtcollins1_boot_fan_gate_abandon, mtcollins1_boot_fan_gate_allowance }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
-import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, PostPowerFanGatePowered, PoweredFanGate, PostPowerFanGateReached, PostPowerFanGateAbandoned, post_power_fan_gate_abandoned_text, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_exit }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
@@ -1834,21 +1834,21 @@ fn mtcollins1_boot_watch_observer_gone(gone: String) -> ProcessExit {
 // mtcollins1_fan_transition_window before the gate reads the chassis, so the window is spent in ticks of the
 // census watch's own cadence, each observing through mtcollins1_sol_watch_observe and deciding by watch_tick:
 // a lost channel stops the boot within one cadence of its last live observation, before the gate, the
-// census watch or anything optional runs. The settle acts only on the two stops, and either one ABANDONS the
-// gate: the host is safe-stopped without a fan read (mtcollins1_boot_fan_gate mtcollins1_boot_fan_gate_abandon),
-// since both leave a powered host with unverified fans unwatched. A capture terminal seen
-// during it is not acted on: the capture is cumulative, and the census watch's first tick after the gate
-// reads it again, so the fan read always precedes the verdict. The tick count is the window over the
+// census watch or anything optional runs. Three ticks stop the settle, and each ABANDONS the gate: the host is
+// safe-stopped without a fan read (mtcollins1_boot_fan_gate mtcollins1_boot_fan_gate_abandon). A lost channel and a
+// gone SOL notice watcher leave a powered host with unverified fans unwatched; a REFUSED capture terminal (merry-fox-82,
+// 2026-10-24) ends the boot, and a boot that has ended leaves no powered host with unverified fans, so it is stopped
+// rather than read. An ACCEPTED terminal does not stop the settle: the host is meant to keep running, so its fans are
+// still owed the gate, and the census watch's first tick after the gate re-reads the cumulative capture. The tick count is the window over the
 // cadence rounded up, so the settle is never shorter than the window.
 type FanSettleWatch
   = FanSettleElapsed { last_live_at: String, screen_reported: List<String> }
   | FanSettleStopped { watch: TerminalWatch }
 
 // THE STOPPED SETTLE'S WATCH, with the abandonment's safe stop named in its exit after the stop's own cause.
-fn fan_settle_stop_watch(watch: TerminalWatch, gate: PostPowerFanGateReading) -> TerminalWatch {
+fn fan_settle_stop_watch(watch: TerminalWatch, gate: PoweredFanGate) -> TerminalWatch {
   let clause = match gate {
     PostPowerFanGateAbandoned { reason: _, stop: s } => post_power_fan_gate_abandoned_text(stop: s)
-    PostPowerFanGateNotReached { reason: why } => concat("the host was NOT powered down: ", why as String)
     PostPowerFanGateReached { fitted: _, outcome: _ } => "the chassis-fan gate was read"
   }
   TerminalWatch {
@@ -1884,9 +1884,9 @@ fn mtcollins1_boot_watched_fan_settle(
   let live_at = match seen.channel { SolChannelLive => seen.at as String SolChannelNotLive { collector: _, client: _ } => last_live_at }
   let lost = match watch_tick(verdict: seen.verdict, channel: seen.channel) {
     WatchChannelLost { collector: l, client: c, last: why } => Present { value: mtcollins1_boot_watch_channel_lost(seen: seen, collector: l, client: c, last: why, last_live_at: last_live_at, capture_path: capture_path, password_file: password_file, screen: screen) }
+    WatchRefused { causes: causes } => Present { value: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)) }
     WatchAccepted => none
     WatchRunnerHostAccepted { up: _ } => none
-    WatchRefused { causes: _ } => none
     WatchContinue { reason: _ } => none
   }
   let stop = match lost {
@@ -2226,7 +2226,7 @@ fn actuation_with_outcome(act: MtCollins1BootActuation, outcome: ProcessExit) ->
 // THE WATCH'S RESULT AS THE ACTUATION SEES IT, PURE: the terminal watch's outcome, stage and the one
 // accepted runner-host reading pass through unchanged, so the reading the terminal accepted is the
 // reading the attempt result carries (none on every watch that did not accept a runner host).
-fn actuation_watch_of(watch: TerminalWatch, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead, terminal_read: ProcUptimeRead, fan_gate: PostPowerFanGateReading) -> ActuationWatch {
+fn actuation_watch_of(watch: TerminalWatch, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead, terminal_read: ProcUptimeRead, fan_gate: PoweredFanGate) -> ActuationWatch {
   ActuationWatch {
     outcome: watch.outcome,
     stage: if watch.census_ended {
@@ -2237,7 +2237,7 @@ fn actuation_watch_of(watch: TerminalWatch, selection: IpmiBootSelection, at_pow
     smpro_step: PhaseStepRan { result: smpro_phase_result(reading: at_power_on), end: smpro_read },
     terminal_step: PhaseStepRan { result: exit_phase_result(outcome: watch.outcome), end: terminal_read },
     runner_host: watch.runner_host,
-    fan_gate: fan_gate,
+    fan_gate: PostPowerFanGatePowered { gate: fan_gate },
   }
 }
 
@@ -2604,26 +2604,23 @@ fn mtcollins1_boot_actuate(
         HandoffMediaNotReached { reason: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
         HandoffMediaWithheldAtRecheck { before: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
       }
-      let observed = match handoff.result.outcome {
-        ExitSuccess => {
+      // THE POWERED BRANCH IS ENTERED ON THE HANDOFF'S POWER-ON RECORD, which only an issued control carries, with the
+      // account it was written with: every post-power-on gate read and safe stop uses that account, so no powered host
+      // reaches the gate without one to stop it with.
+      let observed = match handoff.result.powered_on {
+        Present { value: powered } => {
           let handoff_live_at = handoff.live_at
           let _screen_at_power_on = kvm_observer_trigger(start: screen, order: 1, reason: "power-on-verified")
           let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
           let smpro_read = proc_uptime_read()
           match mtcollins1_boot_watched_fan_settle(remaining: mtcollins1_boot_fan_settle_ticks(), capture_path: sol_capture_path, pid_path: sol_pid_path, subject: subject, password_file: password_file, last_live_at: handoff_live_at, screen: screen, screen_reported: []) {
             FanSettleStopped { watch: stopped } => {
-              let abandoned = match mtcollins1_bmc_username {
-                Present { value: user } => mtcollins1_boot_fan_gate_abandon(username: user, password_file: password_file as NonEmptyStr, reason: "the SOL watch stopped the boot during the settle window, before the chassis fans were read" as NonEmptyStr)
-                Absent => PostPowerFanGateNotReached { reason: "the SOL watch stopped the boot during the settle window, and no BMC account is modeled to power the host down with" as NonEmptyStr }
-              }
+              let abandoned = mtcollins1_boot_fan_gate_abandon(powered: powered, password_file: password_file as NonEmptyStr, reason: "the SOL watch stopped the boot during the settle window, before the chassis fans were read" as NonEmptyStr)
               actuation_watch_of(watch: fan_settle_stop_watch(watch: stopped, gate: abandoned), selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read, terminal_read: proc_uptime_read(), fan_gate: abandoned)
             }
             FanSettleElapsed { last_live_at: settled_live_at, screen_reported: settle_reported } => {
-          let fan_gate = match mtcollins1_bmc_username {
-            Present { value: user } => mtcollins1_boot_fan_gate(username: user, password_file: password_file as NonEmptyStr)
-            Absent => PostPowerFanGateNotReached { reason: "no BMC account is modeled, so chassis fan function could not be read after power-on" as NonEmptyStr }
-          }
-          match fan_gate_continuation(reading: fan_gate, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read) {
+          let fan_gate = mtcollins1_boot_fan_gate(powered: powered, password_file: password_file as NonEmptyStr)
+          match fan_gate_continuation(gate: fan_gate, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read) {
             FanGateStopsBoot { watch: stopped } => stopped
             FanGateAdmitsBoot => {
           let watch = mtcollins1_boot_await_capture_terminal(
@@ -2644,8 +2641,8 @@ fn mtcollins1_boot_actuate(
             }
           }
         }
-        other => ActuationWatch {
-          outcome: other,
+        Absent => ActuationWatch {
+          outcome: handoff.result.outcome,
           stage: ActuationNotPoweredOn { reason: "the SOL supervision, the attach or the handoff refused, so power on was never observed" },
           smpro_step: PhaseStepSkipped { reason: "power on was never verified" },
           terminal_step: PhaseStepSkipped { reason: "power on was never verified" },
@@ -3166,31 +3163,31 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 ]
 
 
-// THE GATE-TO-BOOT DECISION, PURE, so it is executed by a control and not only wired: a refusal and an unreached gate
-// each yield the stopped watch (the failure exit, the census and the terminal watch skipped); only an observed,
-// established reading admits the boot. mtcollins1_boot_actuate branches on this and on nothing else.
+// THE GATE-TO-BOOT DECISION, PURE, so it is executed by a control and not only wired: a refused or an abandoned gate
+// yields the stopped watch (the failure exit, the census and the terminal watch skipped); only an observed,
+// established reading admits the boot. It takes the powered gate, which has no not-reached arm: an unread gate is not
+// a decision this boot can be asked to make. mtcollins1_boot_actuate branches on this and on nothing else.
 type FanGateContinuation
   = FanGateStopsBoot { watch: ActuationWatch }
   | FanGateAdmitsBoot
 
-fn fan_gate_continuation(reading: PostPowerFanGateReading, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead) -> FanGateContinuation {
-  match post_power_fan_gate_exit_of(reading: reading) {
+fn fan_gate_continuation(gate: PoweredFanGate, selection: IpmiBootSelection, at_power_on: SmproReading, smpro_read: ProcUptimeRead) -> FanGateContinuation {
+  match post_power_fan_gate_exit_of(gate: gate) {
     ExitFailure { code: c, reason: r } => FanGateStopsBoot { watch: ActuationWatch {
       outcome: ExitFailure { code: c, reason: r },
       stage: ActuationPoweredOn { selection: selection, smpro_power_on: at_power_on, smpro_census: SmproNotTaken { reason: "the post-power-on chassis-fan gate stopped the boot before the census was watched" } },
       smpro_step: PhaseStepRan { result: smpro_phase_result(reading: at_power_on), end: smpro_read },
       terminal_step: PhaseStepSkipped { reason: "the post-power-on chassis-fan gate stopped the boot" },
       runner_host: none,
-      fan_gate: reading,
+      fan_gate: PostPowerFanGatePowered { gate: gate },
     } }
     ExitSuccess => FanGateAdmitsBoot
   }
 }
 
-// THE GATE READING AS THE WATCH'S EXIT: a refusal stops the boot, an unreached gate stops it, only an observed reading boots.
-fn post_power_fan_gate_exit_of(reading: PostPowerFanGateReading) -> ProcessExit {
-  match reading {
-    PostPowerFanGateNotReached { reason: why } => exit_failure(reason: concat("mtcollins1 boot stopped: the post-power-on chassis-fan gate was not reached: ", why as String))
+// THE POWERED GATE AS THE WATCH'S EXIT: a refusal or an abandonment stops the boot, only an established reading boots.
+fn post_power_fan_gate_exit_of(gate: PoweredFanGate) -> ProcessExit {
+  match gate {
     PostPowerFanGateAbandoned { reason: why, stop: s } => exit_failure(reason: concat("mtcollins1 boot stopped: ", concat(why as String, concat("; ", post_power_fan_gate_abandoned_text(stop: s)))))
     PostPowerFanGateReached { fitted: fitted, outcome: outcome } => post_power_fan_gate_exit(fitted: fitted, outcome: outcome)
   }

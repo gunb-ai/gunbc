@@ -51,13 +51,18 @@ type PostPowerFanGateOutcome
   = PostPowerFanEstablished { observation: FanObservationRound }
   | PostPowerFanRefused { cause: PostPowerFanRefusal, observation: FanObservationRound, stop: FanGateSafeStopReceipt, manager: FanManagerReadStanding, evidence: FanGateEvidence }
 
-// WHETHER THE ATTEMPT REACHED THE GATE AT ALL. Abandoned is a boot stopped while the host was powered on and before the
-// gate passed (the SOL watch stopped it during the settle): no fan read is taken and the host is safe-stopped, because a
-// powered host whose fans were never verified, with nothing watching it, is not a state the boot may leave (DESIGN 5).
+// THE GATE OF A POWERED HOST, which has NO not-reached arm: once the host is on, the gate is either read (Reached, whose
+// refusal safe-stops) or abandoned before it passed (the settle stopped the boot) with the host safe-stopped and no fan
+// read taken. A powered host whose fans were never verified is not a state the boot may leave (DESIGN 5), so it has no
+// constructor here; the post-power-on boot route carries this type, never the reading below.
+type PoweredFanGate
+  = PostPowerFanGateReached { fitted: FittedFanSet, outcome: PostPowerFanGateOutcome }
+  | PostPowerFanGateAbandoned { reason: NonEmptyStr, stop: FanGateSafeStopReceipt }
+
+// WHETHER THE ATTEMPT POWERED THE HOST AT ALL. NotReached is an attempt that never powered the host on, so no gate was owed.
 type PostPowerFanGateReading
   = PostPowerFanGateNotReached { reason: NonEmptyStr }
-  | PostPowerFanGateReached { fitted: FittedFanSet, outcome: PostPowerFanGateOutcome }
-  | PostPowerFanGateAbandoned { reason: NonEmptyStr, stop: FanGateSafeStopReceipt }
+  | PostPowerFanGatePowered { gate: PoweredFanGate }
 
 fn last_readback(readbacks: List<ChassisPowerObservation>) -> String {
   fold(readbacks, init: "no readback was taken", f: (acc, r) => chassis_observation_text(observation: r) as String)
@@ -159,6 +164,12 @@ fn fan_gate_write_text(w: FanGateWrite) -> String {
 fn post_power_fan_gate_text(reading: PostPowerFanGateReading) -> String {
   match reading {
     PostPowerFanGateNotReached { reason: why } => concat("post-power-on chassis-fan gate: not reached: ", why as String)
+    PostPowerFanGatePowered { gate: g } => powered_fan_gate_text(gate: g)
+  }
+}
+
+fn powered_fan_gate_text(gate: PoweredFanGate) -> String {
+  match gate {
     PostPowerFanGateAbandoned { reason: why, stop: s } => join(["post-power-on chassis-fan gate: ABANDONED before it passed, no fan read taken: ", why as String, "\n", post_power_fan_gate_stop_section(stop: s)], "")
     PostPowerFanGateReached { fitted: fitted, outcome: outcome } => match outcome {
       PostPowerFanEstablished { observation: o } => join(["post-power-on chassis-fan gate: ESTABLISHED\n", fitted_set_standing_text(fitted: fitted), "\n", render_round_block(round: o), "\n"], "")
