@@ -7584,26 +7584,62 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
   }
 }
 
-fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
-  node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
-    || node_is_kernel_mint_named(n: n, name: "Bool") || node_is_kernel_mint_named(n: n, name: "Unit")
-    || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
-}
-
-fn non_text_kernel_cast_into_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
-  match source_inferred {
-    Present { value: Resolved { node: src_node } } =>
-      if text_representation_is_text_arm(r: text_representation_by_identity(n: target_type, env: scope.type_env))
-        && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
-        let si = scope.type_env.source_indices
-        let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (std.integer int_to_decimal_string, std.nat nat_to_decimal_string, or a checked constructor over its rendering)")
-        [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
-      } else { [] }
-    _ => []
+fn non_text_kernel_cast_into_text_diags(source_reading: HostTextSourceReading, source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  match source_reading {
+    HostTextRouteAbsentKernel { kernel: _ } =>
+      match source_inferred {
+        Present { value: Resolved { node: src_node } } =>
+          if text_representation_is_text_arm(r: text_representation_by_identity(n: target_type, env: scope.type_env)) {
+            let si = scope.type_env.source_indices
+            let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (std.integer int_to_decimal_string, std.nat nat_to_decimal_string, or a checked constructor over its rendering)")
+            [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
+          } else { [] }
+        _ => []
+      }
+    HostTextRouteAbsentNominal => []
+    HostTextSourceAdmissible => []
   }
 }
 
-// A cast source is a nominal value with no declared conversion unless its DECLARATION is grounded onto
+// THE ONE READING OF WHETHER A VALUE HAS AN IMPLICIT ROUTE INTO HOST TEXT, asked at every crossing
+// into a text position: the explicit `as` here (validate_cast for the nominal arm,
+// non_text_kernel_cast_into_text_diags for the kernel arm), and the host-text formals of builtins
+// and algebra methods (gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, chain (ii)), so the
+// implicit route cannot admit what the explicit cast refuses (DESIGN section 4,
+// gunbc.design_ruling coercion_is_the_implicit_safe_subset). Operator ruling via stern-bat-401,
+// 2026-10-24: Int, Nat and Bool into host text need a declared, imported conversion at both
+// crossings. A coproduct and not a predicate, because each crossing words its refusal per arm, and
+// which kernels have no route is ONE list here rather than one per crossing.
+//   - HostTextRouteAbsentNominal: a declared product or coproduct (value_type_is_declared_nominal).
+//   - HostTextRouteAbsentKernel: a non-text kernel value -- the kernel mints Int, Float, Bool and
+//     Unit by mint provenance, and std.nat Nat by the declaration its reference resolves to.
+//   - HostTextSourceAdmissible: neither; text itself, a type variable, and every other source this
+//     reading does not judge.
+type HostTextSourceReading
+  = HostTextRouteAbsentNominal
+  | HostTextRouteAbsentKernel { kernel: String }
+  | HostTextSourceAdmissible
+
+fn host_text_source_reading(t: Node, scope: InferScope) -> HostTextSourceReading {
+  if value_type_is_declared_nominal(t: t, scope: scope) { HostTextRouteAbsentNominal }
+  else if node_is_kernel_mint_named(n: t, name: "Int") { HostTextRouteAbsentKernel { kernel: "Int" } }
+  else if node_is_kernel_mint_named(n: t, name: "Float") { HostTextRouteAbsentKernel { kernel: "Float" } }
+  else if node_is_kernel_mint_named(n: t, name: "Bool") { HostTextRouteAbsentKernel { kernel: "Bool" } }
+  else if node_is_kernel_mint_named(n: t, name: "Unit") { HostTextRouteAbsentKernel { kernel: "Unit" } }
+  else if type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope) { HostTextRouteAbsentKernel { kernel: "Nat" } }
+  else { HostTextSourceAdmissible }
+}
+
+fn cast_source_host_text_reading(source_inferred: InferredNode?, scope: InferScope) -> HostTextSourceReading {
+  match source_inferred {
+    Present { value: Resolved { node: source_node } } => host_text_source_reading(t: source_node, scope: scope)
+    _ => HostTextSourceAdmissible
+  }
+}
+
+// A type is a nominal value with no declared conversion unless it is a declared product or coproduct
+// whose DECLARATION is not grounded onto
 // a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact
 // DeclarationRef read by type_reference_declaration_ref, never a module-path substring and never a
 // spelling: Nat is exempt because gunbc.structural_realization_bindings kernel_grounding_rows carries a
@@ -7613,13 +7649,15 @@ fn non_text_kernel_cast_into_text_diags(source_inferred: InferredNode?, target_t
 // nominal identity. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
 // located, so it is counted by the diagnostic census rather than waved through.
-fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
-  match type_reference_declaration_ref(n: source_node, source_indices: source_indices, env: env) {
-    Absent => !cast_source_is_solver_unit_placeholder(source_node: source_node)
-    Present { value: d } =>
-      !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
-        && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
-  }
+fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
+  (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
+    || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
+    && match type_reference_declaration_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+      Absent => !cast_source_is_solver_unit_placeholder(source_node: t)
+      Present { value: d } =>
+        !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
+          && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+    }
 }
 
 // A NOMINAL PRODUCT OR COPRODUCT HAS NO IMPLICIT ROUTE THROUGH `as`
@@ -7627,9 +7665,10 @@ fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String
 // chain (i)). std.coercion dag_cast_rules rosters only Int, Float and Bool, so a nominal source
 // has no declared conversion to any target; abstaining here (the is_dag_cast_domain_type arms
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
-// source_is_nominal is the head exposure of the source's declaration identity, the same authority
-// product_at_scalar_declared_type reads, never a bare spelling.
-fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
+// source_reading is host_text_source_reading of the source; its nominal arm is the head exposure of
+// the source's declaration identity, the same authority product_at_scalar_declared_type reads, never
+// a bare spelling.
+fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -7639,20 +7678,28 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
-      else if source_is_nominal {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
-        let diag = InternalError { message: msg, span: span }
-        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
-      }
-      else if !is_dag_cast_domain_type(name: source_name) { none }
-      else if !is_dag_cast_domain_type(name: target_name) { none }
-      else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name)
-        let diag = InternalError { message: msg, span: span }
-        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+        match source_reading {
+          HostTextRouteAbsentNominal =>
+            let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
+            let diag = InternalError { message: msg, span: span }
+            Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+          HostTextRouteAbsentKernel { kernel: _ } => validate_cast_in_table_domain(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+          HostTextSourceAdmissible => validate_cast_in_table_domain(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+        }
       }
     _ => none
+  }
+}
+
+fn validate_cast_in_table_domain(source_name: String, target_name: String, span: SourceSpan, module_name: String) -> ErrorNode? {
+  if !is_dag_cast_domain_type(name: source_name) { none }
+  else if !is_dag_cast_domain_type(name: target_name) { none }
+  else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
+  else {
+    let msg = concat("invalid cast: ", source_name, " as ", target_name)
+    let diag = InternalError { message: msg, span: span }
+    Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
   }
 }
 
@@ -10666,14 +10713,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let inner_emissions = inner_result.emissions
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
-      let source_is_nominal = match inner_typed.inferred {
-        Present { value: Resolved { node: source_node } } =>
-          (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: source_node, scope: scope))
-            || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: source_node, scope: scope)))
-            && cast_source_is_declared_nominal(source_node: source_node, source_indices: si, env: scope.type_env)
-        _ => false
-      }
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
+      let source_reading = cast_source_host_text_reading(source_inferred: inner_typed.inferred, scope: scope)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
@@ -10686,7 +10727,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         module_name: scope.module_name
       )
       let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
-      let cast_non_text_diags = non_text_kernel_cast_into_text_diags(source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
+      let cast_non_text_diags = non_text_kernel_cast_into_text_diags(source_reading: source_reading, source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
         value_expr: inner_typed,

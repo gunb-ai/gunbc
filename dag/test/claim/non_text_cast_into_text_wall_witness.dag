@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE EXECUTED EVIDENCE THAT A NON-TEXT KERNEL VALUE HAS NO ROUTE INTO NonEmptyStr, on the
 // source -> .dag-acceptance path. validate_cast abstained on any source outside the dag_cast_rules
 // domain, so `n as NonEmptyStr` over an Int, Bool, Float or Unit compiled clean and re-typed a
-// number as text. The REDs are one per kernel mint in is_non_text_kernel_cast_source. The GREEN arms keep
+// number as text. The REDs are one per kernel arm of v1.compiler.infer host_text_source_reading. The GREEN arms keep
 // the wall from being a wrecking ball: a string literal, a String value (the text-representation
 // crossing is not this wall's question), a value already typed NonEmptyStr, and a non-text cast that
 // is not into text (`as Float`) all still compile.
@@ -90,8 +90,8 @@ test fn w_non_text_cast_not_into_text_is_still_accepted() -> Bool { blocking_cou
 // KEYED ON IDENTITY, NOT SPELLING: a corpus type that happens to be named Int is not the kernel Int,
 // so the wall does not fire on it (a leaf-name check would). A record cast is outside the cast domain
 // and this wall's question, so the fixture compiles with no blocking diagnostic.
-// A user-declared type spelled Int is a nominal product, so the nominal-source wall (validate_cast
-// source_is_nominal, test.claim.nominal_cast_wall_witness) refuses it -- but under ITS message, never
+// A user-declared type spelled Int is a nominal product, so the nominal-source wall (validate_cast's
+// HostTextRouteAbsentNominal arm, test.claim.nominal_cast_wall_witness) refuses it -- but under ITS message, never
 // this wall's. The discriminator is the subject: this wall's text (truncated at 80 chars, the census
 // subject width) must not appear, and the nominal wall's must.
 fn refusals_at(source: String, subject: String) -> Int {
