@@ -26,7 +26,8 @@ import gunbc.fleet.fleet_convergence_verdict {
 // which turned the seed's bare channel off for every other name in it (gunbc.recurring_failure_mode
 // bare_reference_channel_declines_a_pull_in_silence) -- and every required check stayed green while
 // the verdict's own RED could not execute. A closure that stops resolving here makes the emit refuse,
-// so the label goes red rather than the case going missing.
+// so the label goes red rather than the case going missing. IT IS RUN BY NAME AND BLOCKS NO LANDING:
+// it is not a row of emitted_subject_build_rows, so its red is seen only by whoever runs it.
 //
 // THE FIRST TWO CASES SUPPLY the verdict's inputs at its interface (DESIGN section 3, a witness
 // discriminates at one interface); the third is the pairing obligation's inhabitance case: the real

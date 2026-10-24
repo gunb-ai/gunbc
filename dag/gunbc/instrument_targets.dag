@@ -609,8 +609,9 @@ fn native_emission_controls_entry() -> String {
 // THE NATIVE FLEET CONVERGENCE VERDICT: gunbc.fleet.fleet_convergence_verdict's refused-enrolment RED,
 // its control and one inhabitance case over the live enrolment roster, emitted, built and run by the
 // NativeClaimDriver program gunbc.instruments.native_fleet_convergence_verdict. Its closure lies
-// outside both required emitted closures, so this label is what goes red when that closure stops
-// resolving. `gunbc test //gunbc/instruments:native-fleet-convergence-verdict`.
+// outside both required emitted closures, so this label goes red when that closure stops resolving
+// -- for whoever runs it: run by name, not a merge gate (gunbc.emitted_subject_build_gate
+// emitted_subject_build_rows does not list it). `gunbc test //gunbc/instruments:native-fleet-convergence-verdict`.
 fn native_fleet_convergence_verdict_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-fleet-convergence-verdict" } }
 }
